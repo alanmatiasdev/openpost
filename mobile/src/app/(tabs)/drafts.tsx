@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -11,10 +11,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { useShareIntentContext } from "expo-share-intent";
 
 import { BodyText, Button, Card, Screen, TextField, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { relativeTime } from "@/lib/format";
+import { stashSharedFiles } from "@/lib/share";
 import { usePublications, useWorkspaces, type PublicationListItem } from "@/lib/queries";
 import { getServer } from "@/lib/server";
 import { signOut } from "@/lib/auth";
@@ -27,6 +29,8 @@ export default function DraftsScreen() {
   const drafts = usePublications("draft");
   const workspaces = useWorkspaces();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  const handledShare = useRef(false);
 
   const createDraft = useMutation({
     mutationFn: async (text: string) => {
@@ -63,6 +67,35 @@ export default function DraftsScreen() {
       setCaptureError(err instanceof Error ? err.message : "Could not save draft");
     }
   }
+
+  // Handle content shared from other apps: text/URLs become the draft body,
+  // images are stashed for the composer to attach after upload.
+  useEffect(() => {
+    if (!hasShareIntent || handledShare.current) return;
+    if (!workspaces.data?.[0]?.id) return;
+    handledShare.current = true;
+
+    const parts = [shareIntent.text?.trim(), shareIntent.webUrl?.trim()].filter(Boolean);
+    const sharedText = parts.join("\n\n");
+    const files = shareIntent.files ?? [];
+    if (files.length > 0) stashSharedFiles(files);
+
+    resetShareIntent();
+    void (async () => {
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const draft = await new Promise<
+          NonNullable<Awaited<ReturnType<typeof createDraft.mutateAsync>>>
+        >((resolve, reject) =>
+          createDraft.mutate(sharedText, { onSuccess: resolve, onError: reject }),
+        );
+        router.push(`/compose/${draft.id}` as never);
+      } catch {
+        // Draft creation failed; leave the user on drafts with a visible error.
+        setCaptureError("Could not create a draft from the shared content");
+      }
+    })();
+  }, [hasShareIntent, shareIntent, resetShareIntent, workspaces.data, createDraft]);
 
   const list = drafts.data ?? [];
 

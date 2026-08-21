@@ -1,4 +1,6 @@
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import { Image } from "expo-image";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -26,7 +28,30 @@ import {
 } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { formatDateTime, platformLabel } from "@/lib/format";
+import { uploadAttachment, type PendingAttachment } from "@/lib/media";
+import { takePendingAttachments } from "@/lib/share";
 import { currentWorkspaceId, useAccounts, useSocialSets } from "@/lib/queries";
+
+type Attachment = {
+  localId: string;
+  uri?: string;
+  mediaId?: string;
+  mimeType: string;
+  filename: string;
+  size: number | null;
+  status: "local" | "uploading" | "ready" | "error";
+};
+
+function attachmentsFromPublication(pub: PublicationDetail): Attachment[] {
+  return (pub.media ?? []).map((media) => ({
+    localId: `remote-${media.id}`,
+    mediaId: media.id,
+    mimeType: media.mime_type ?? "image/jpeg",
+    filename: media.original_filename ?? media.id,
+    size: media.size ?? null,
+    status: "ready" as const,
+  }));
+}
 
 type PublicationDetail = NonNullable<Awaited<ReturnType<typeof fetchPublication>>>;
 
@@ -106,6 +131,18 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>(() => [
+    ...attachmentsFromPublication(pub),
+    ...takePendingAttachments().map((pending) => ({
+      localId: pending.localId,
+      uri: pending.uri,
+      mimeType: pending.mimeType,
+      filename: pending.filename,
+      size: pending.size,
+      status: "local" as const,
+    })),
+  ]);
+  const initialMediaIds = pub.media?.map((media) => media.id) ?? [];
 
   const accounts = useAccounts();
   const socialSets = useSocialSets();
@@ -123,8 +160,55 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     return new Error(await errorMessage(response, fallback));
   }
 
+  /** Upload any not-yet-uploaded attachments; returns ordered media ids. */
+  async function resolveAttachments(): Promise<string[]> {
+    const mediaIds: string[] = [];
+    for (const attachment of attachments) {
+      if (attachment.mediaId) {
+        mediaIds.push(attachment.mediaId);
+        continue;
+      }
+      if (!attachment.uri || attachment.status === "error") continue;
+      setAttachments((current) =>
+        current.map((item) =>
+          item.localId === attachment.localId ? { ...item, status: "uploading" } : item,
+        ),
+      );
+      try {
+        const mediaId = await uploadAttachment(attachment as PendingAttachment);
+        mediaIds.push(mediaId);
+        setAttachments((current) =>
+          current.map((item) =>
+            item.localId === attachment.localId
+              ? { ...item, mediaId, status: "ready" as const }
+              : item,
+          ),
+        );
+      } catch (err) {
+        setAttachments((current) =>
+          current.map((item) =>
+            item.localId === attachment.localId ? { ...item, status: "error" as const } : item,
+          ),
+        );
+        throw err instanceof Error ? err : new Error("Could not upload photo");
+      }
+    }
+    return mediaIds;
+  }
+
   /** Persist title/body/schedule/selection/overrides; returns the new revision. */
   async function persist(): Promise<number> {
+    // Uploads first so a failure surfaces before any post mutation.
+    let mediaChanged = false;
+    for (const attachment of attachments) {
+      if (!attachment.mediaId || !initialMediaIds.includes(attachment.mediaId)) {
+        mediaChanged = true;
+        break;
+      }
+    }
+    if (attachments.length !== initialMediaIds.length) mediaChanged = true;
+
+    const media = await resolveAttachments();
     const desired = [...selectedAccounts];
     const removed = (pub.renditions ?? []).filter(
       (rendition) =>
@@ -145,6 +229,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         expected_revision: revision,
         title,
         source_text: body,
+        ...(mediaChanged ? { media: media.map((mediaId) => ({ media_id: mediaId })) } : {}),
         ...(scheduledChanged
           ? scheduledAt
             ? { scheduled_at: scheduledAt.toISOString() }
@@ -284,6 +369,59 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     setSelectedAccounts(new Set(accountIds));
   }
 
+  function addAttachment(asset: ImagePicker.ImagePickerAsset) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAttachments((current) => [
+      ...current,
+      {
+        localId: `local-${Date.now()}-${current.length}`,
+        uri: asset.uri,
+        mimeType: asset.mimeType ?? "image/jpeg",
+        filename: asset.fileName ?? `photo-${Date.now()}.jpg`,
+        size: asset.fileSize ?? null,
+        status: "local",
+      },
+    ]);
+  }
+
+  async function pickFromLibrary() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.9,
+    });
+    if (!result.canceled) {
+      for (const asset of result.assets) addAttachment(asset);
+    }
+  }
+
+  async function takePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setActionError("Camera permission is needed to take photos.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.9 });
+    if (!result.canceled && result.assets[0]) {
+      addAttachment(result.assets[0]);
+    }
+  }
+
+  function removeAttachment(localId: string) {
+    setAttachments((current) => current.filter((item) => item.localId !== localId));
+  }
+
+  function moveAttachment(index: number, delta: -1 | 1) {
+    setAttachments((current) => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   const isScheduled = pub.status === "scheduled" || pub.status === "publishing";
 
   return (
@@ -336,6 +474,88 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           textAlignVertical="top"
           style={{ lineHeight: 22, minHeight: 140 }}
         />
+
+        <View style={styles.attachRow}>
+          {attachments.map((attachment, index) => (
+            <View key={attachment.localId} style={styles.thumbWrap}>
+              {attachment.uri ? (
+                <Image source={{ uri: attachment.uri }} style={styles.thumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                  <Text style={{ fontSize: 20 }}>🖼️</Text>
+                </View>
+              )}
+              {attachment.status === "uploading" ? (
+                <View style={styles.thumbOverlay}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                </View>
+              ) : attachment.status === "error" ? (
+                <View style={[styles.thumbOverlay, { backgroundColor: "rgba(255,69,58,0.6)" }]}>
+                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>!</Text>
+                </View>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${attachment.filename}`}
+                onPress={() => removeAttachment(attachment.localId)}
+                hitSlop={6}
+                style={styles.thumbRemove}
+              >
+                <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>✕</Text>
+              </Pressable>
+              {attachments.length > 1 ? (
+                <>
+                  {index > 0 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Move earlier"
+                      onPress={() => moveAttachment(index, -1)}
+                      hitSlop={6}
+                      style={[styles.thumbOrder, styles.thumbOrderLeft]}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 10 }}>‹</Text>
+                    </Pressable>
+                  ) : null}
+                  {index < attachments.length - 1 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Move later"
+                      onPress={() => moveAttachment(index, 1)}
+                      hitSlop={6}
+                      style={[styles.thumbOrder, styles.thumbOrderRight]}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 10 }}>›</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add photos from library"
+            onPress={() => void pickFromLibrary()}
+            style={({ pressed }) => [
+              styles.addTile,
+              { borderColor: colors.separator },
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={{ color: colors.tint, fontSize: 24, fontWeight: "300" }}>＋</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Take a photo"
+            onPress={() => void takePhoto()}
+            style={({ pressed }) => [
+              styles.addTile,
+              { borderColor: colors.separator },
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={{ fontSize: 20 }}>📷</Text>
+          </Pressable>
+        </View>
 
         <SectionHeader label="Destinations" />
         {(socialSets.data?.length ?? 0) > 0 ? (
@@ -560,6 +780,72 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
     paddingBottom: 60,
+  },
+  attachRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  thumbWrap: {
+    width: 64,
+    height: 64,
+  },
+  thumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+  },
+  thumbPlaceholder: {
+    backgroundColor: "rgba(128,128,128,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbOrder: {
+    position: "absolute",
+    bottom: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbOrderLeft: {
+    left: -4,
+  },
+  thumbOrderRight: {
+    right: -4,
+  },
+  addTile: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
   },
   successText: {
     color: "#34c759",

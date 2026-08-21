@@ -18,6 +18,8 @@ Requires the [Expo Go](https://expo.dev/go) app or a dev client. No backend chan
 - **Workspace picker** after sign-in.
 - **Drafts tab**: quick idea capture (creates a draft instantly), draft list, full composer.
 - **Composer**: title/text, social-set and per-account destination selection, per-platform text overrides, datetime or next-slot scheduling, publish now, delete. Optimistic-concurrency aware (`expected_revision`, 409 handling).
+- **Photos**: attach from library or camera in the composer; reorder/remove thumbnails; uploaded through the direct-upload session flow and attached to the publication in order.
+- **Share capture**: share text, links, or images from any app into OpenPost to start a draft. Requires a **development build** (`bunx expo run:ios` / `run:android`) because the share extension is native — it does not work in Expo Go.
 - **Calendar tab**: month grid fed by `calendar_from/calendar_before`, status dots, day sheet, same occurrence rules as the web app.
 - **Queue tab**: upcoming and failed sections with inline retry of failed destinations.
 - **Post detail**: per-rendition provider truth (status, error message, retry-at), reschedule, cancel, retry, delete, open published URLs.
@@ -31,6 +33,8 @@ Settings intentionally live on the web: "Open web app" in the Drafts menu.
 - `src/lib/api/client.ts` — typed `openapi-fetch` client rebuilt when server/token changes
 - `src/lib/api/schema.d.ts` — generated from `frontend/openapi.json`; regenerate with `bun run generate:api`
 - `src/lib/auth.ts` — login/TOTP/pairing flows
+- `src/lib/media.ts` — direct-upload session flow (create → binary upload → complete)
+- `src/lib/share.ts` — stash for files arriving via the OS share sheet
 - `src/app/` — expo-router routes: `(tabs)` = native tabs, modals for compose/detail
 
 ## Checks
