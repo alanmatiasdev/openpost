@@ -31,8 +31,7 @@ describe('setKeyframe', () => {
 				durationInFrames: 60,
 				label: '',
 				type: 'video',
-				opacity: 1,
-				volume: 1
+				transform: { x: 0, y: 0, width: 0, height: 0, opacity: 1, rotation: 0 }
 			}
 		]);
 	});
