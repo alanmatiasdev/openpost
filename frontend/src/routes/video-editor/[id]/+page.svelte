@@ -14,7 +14,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import {
 		rippleDeleteItems,
 		splitAtFrame,
-		toggleMarkerAtPlayhead
+		toggleMarkerAtPlayhead,
+		setItemSpeed
 	} from '$lib/video-editor/timeline/actions/items';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
@@ -110,6 +111,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} finally {
 			sending = false;
 		}
+	}
+
+	function applySpeed(multiplier: number): void {
+		if (!selectedItemId) return;
+		const item = timelineStore.itemById.get(selectedItemId);
+		if (!item || item.type === 'text' || item.type === 'subtitle') return;
+		setItemSpeed(item.id, Math.round((item.speed ?? 1) * multiplier * 100) / 100);
+		editorSession.scheduleAutosave();
 	}
 
 	function handleAddCrossfade(): void {

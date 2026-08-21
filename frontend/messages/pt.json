@@ -4068,5 +4068,7 @@
 	"record_unsupported": "Este navegador não suporta o formato selecionado.",
 	"video_editor_crossfade": "Adicionar crossfade",
 	"video_editor_no_neighbor": "Nenhum clipe encostado depois deste.",
-	"video_editor_marker_remove_hint": "Clique para navegar, clique duplo para remover"
+	"video_editor_marker_remove_hint": "Clique para navegar, clique duplo para remover",
+	"video_editor_speed_slower": "Metade da velocidade",
+	"video_editor_speed_faster": "Dobrar velocidade"
 }

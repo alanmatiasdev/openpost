@@ -229,6 +229,19 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 	});
 }
 
+/** Rate-stretch: change playback speed while keeping the item's start fixed. */
+export function setItemSpeed(id: string, speed: number): void {
+	execute('SET_ITEM_SPEED', () => {
+		const item = timelineStore.itemById.get(id);
+		if (!item || item.type === 'text' || item.type === 'subtitle') return;
+		const clamped = Math.min(Math.max(speed, 0.1), 8);
+		const previous = item.speed ?? 1;
+		if (clamped === previous) return;
+		const duration = Math.max(1, Math.round((item.durationInFrames * previous) / clamped));
+		timelineStore._updateItems([{ id, patch: { speed: clamped, durationInFrames: duration } }]);
+	});
+}
+
 export function setCurrentFrame(frame: number): void {
 	// Playhead moves are not undoable — they're navigation, not edits.
 	timelineStore._setCurrentFrame(frame);

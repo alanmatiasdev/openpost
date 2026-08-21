@@ -4068,5 +4068,7 @@
 	"record_unsupported": "This browser can't record with the selected format.",
 	"video_editor_crossfade": "Add crossfade",
 	"video_editor_no_neighbor": "No touching clip follows this one.",
-	"video_editor_marker_remove_hint": "Click to seek, double-click to remove"
+	"video_editor_marker_remove_hint": "Click to seek, double-click to remove",
+	"video_editor_speed_slower": "Half speed",
+	"video_editor_speed_faster": "Double speed"
 }
