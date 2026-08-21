@@ -7,11 +7,12 @@
  * Ported from FreeCut (MIT) — commands/types.ts, trimmed to v1.
  */
 
-import type { TimelineItem, TimelineTrack } from '../../project/types';
+import type { TimelineItem, TimelineTrack, TimelineTransition } from '../../project/types';
 
 export interface TimelineSnapshot {
 	items: TimelineItem[];
 	tracks: TimelineTrack[];
+	transitions: TimelineTransition[];
 	inPoint: number | null;
 	outPoint: number | null;
 	fps: number;

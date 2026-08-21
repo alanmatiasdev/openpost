@@ -4065,5 +4065,7 @@
 	"record_done": "Saved {name}.",
 	"record_download_again": "Download again",
 	"record_preview_empty": "Pick a source and start recording.",
-	"record_unsupported": "This browser can't record with the selected format."
+	"record_unsupported": "This browser can't record with the selected format.",
+	"video_editor_crossfade": "Add crossfade",
+	"video_editor_no_neighbor": "No touching clip follows this one."
 }

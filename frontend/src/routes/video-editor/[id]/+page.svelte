@@ -14,6 +14,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { rippleDeleteItems, splitAtFrame } from '$lib/video-editor/timeline/actions/items';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
+	import { addTransition } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { exportProject } from '$lib/video-editor/media/export';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -104,6 +105,26 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
 			sending = false;
+		}
+	}
+
+	function handleAddCrossfade(): void {
+		if (!selectedItemId) return;
+		const item = timelineStore.itemById.get(selectedItemId);
+		if (!item) return;
+		const neighbors = (timelineStore.itemsByTrackId.get(item.trackId) ?? [])
+			.filter((other) => other.from >= item.from + item.durationInFrames - 1)
+			.sort((a, b) => a.from - b.from);
+		const next = neighbors[0];
+		if (!next) {
+			showToast(m.video_editor_no_neighbor(), 'error');
+			return;
+		}
+		try {
+			addTransition(item.id, next.id, 'crossfade');
+			editorSession.scheduleAutosave();
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
 		}
 	}
 
@@ -225,8 +246,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleSplit}>
 						{m.video_editor_split()}
 					</Button>
-					<Button size="sm" variant="destructive" disabled={!selectedItemId} onclick={handleDelete}>
+					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleDelete}>
 						{m.video_editor_delete_clip()}
+					</Button>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={!selectedItemId}
+						onclick={handleAddCrossfade}
+					>
+						{m.video_editor_crossfade()}
 					</Button>
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 						<Button

@@ -10,6 +10,7 @@ import type { TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { expandSelectionWithLinkedItems } from '../utils/linked-items';
+import { pruneOrphanedTransitions } from './transitions.svelte';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -21,6 +22,7 @@ export function removeItems(ids: string[]): void {
 	execute('REMOVE_ITEMS', () => {
 		const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
 		timelineStore._removeItems(expanded);
+		pruneOrphanedTransitions();
 	});
 }
 
@@ -155,6 +157,7 @@ export function rippleDeleteItems(ids: string[]): void {
 		}
 		timelineStore._removeItems([...expanded]);
 		timelineStore._moveItems(updates);
+		pruneOrphanedTransitions();
 	});
 }
 

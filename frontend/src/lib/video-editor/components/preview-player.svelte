@@ -5,6 +5,13 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
+	import {
+		incomingOpacity,
+		outgoingOpacity,
+		transitionsStore,
+		transitionAtFrame
+	} from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import type { TimelineItem } from '$lib/video-editor/project/types';
 
 	const project = $derived(editorSession.project);
 	const aspect = $derived(
@@ -27,7 +34,25 @@
 		);
 	});
 
-	const activeUrl = $derived(activeItem ? (urls[activeItem.mediaId ?? ''] ?? null) : null);
+	// Transition state at the playhead, if two video clips are blending.
+	const blend = $derived.by(() => {
+		const frame = timelineStore.currentFrame;
+		for (const transition of transitionsStore.list) {
+			const stateAt = transitionAtFrame(transition, frame, editorSession.fps);
+			if (!stateAt) continue;
+			const outgoing = timelineStore.itemById.get(stateAt.outgoing);
+			const incoming = timelineStore.itemById.get(stateAt.incoming);
+			if (!outgoing || !incoming) continue;
+			if (outgoing.type !== 'video' || incoming.type !== 'video') continue;
+			return { state: stateAt, outgoing, incoming };
+		}
+		return null;
+	});
+
+	const activeUrl = $derived(
+		blend ? (urls[blend.incoming.mediaId ?? ''] ?? null) : (urls[activeItem?.mediaId ?? ''] ?? null)
+	);
+	const outgoingUrl = $derived(blend ? (urls[blend.outgoing.mediaId ?? ''] ?? null) : null);
 
 	async function loadUrls(): Promise<void> {
 		for (const media of mediaPool.mediaList) {
@@ -49,6 +74,23 @@
 			urls = {};
 		};
 	});
+
+	// Sync the outgoing blend layer under the incoming one.
+	let outVideoEl = $state<HTMLVideoElement | null>(null);
+
+	$effect(() => {
+		if (!blend || !outgoingUrl || !outVideoEl) return;
+		outVideoEl.currentTime = sourceTimeFor(blend.outgoing, timelineStore.currentFrame);
+		outVideoEl.style.opacity = String(outgoingOpacity(blend.state.type, blend.state.progress));
+	});
+
+	function sourceTimeFor(item: TimelineItem, frame: number): number {
+		const fps = editorSession.fps;
+		const speed = item.speed ?? 1;
+		const relativeFrame = frame - item.from;
+		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
+		return (item.sourceStart ?? 0) / sourceFps + (relativeFrame / fps) * speed;
+	}
 
 	// Sync <video> to clock: seek when paused; correct drift while playing.
 	$effect(() => {
@@ -75,6 +117,9 @@
 			}
 		};
 		apply();
+		if (outVideoEl && blend) {
+			outVideoEl.style.opacity = String(outgoingOpacity(blend.state.type, blend.state.progress));
+		}
 
 		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(apply));
 		const offPause = editorSession.clock.on('pause', () => videoEl?.pause());

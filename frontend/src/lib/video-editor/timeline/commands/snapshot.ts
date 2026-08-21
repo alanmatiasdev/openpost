@@ -11,6 +11,7 @@
  */
 
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { transitionsStore } from '../actions/transitions.svelte';
 import { sanitizeInOutPoints } from '../utils/in-out-points';
 import type { TimelineSnapshot } from './types';
 
@@ -21,6 +22,7 @@ export function captureSnapshot(): TimelineSnapshot {
 	return {
 		items: structuredClone(timelineStore.items),
 		tracks: structuredClone(timelineStore.tracks),
+		transitions: structuredClone(transitionsStore.list),
 		inPoint: timelineStore.inPoint,
 		outPoint: timelineStore.outPoint,
 		fps: timelineStore.fps,
@@ -39,6 +41,7 @@ export function restoreSnapshot(snapshot: TimelineSnapshot): void {
 			0
 		)
 	});
+	transitionsStore.setAll(structuredClone(snapshot.transitions));
 	timelineStore.setAll({
 		items: snapshot.items,
 		tracks: snapshot.tracks,
@@ -58,6 +61,7 @@ export function snapshotsEqual(a: TimelineSnapshot, b: TimelineSnapshot): boolea
 	return (
 		JSON.stringify(a.items) === JSON.stringify(b.items) &&
 		JSON.stringify(a.tracks) === JSON.stringify(b.tracks) &&
+		JSON.stringify(a.transitions) === JSON.stringify(b.transitions) &&
 		a.inPoint === b.inPoint &&
 		a.outPoint === b.outPoint &&
 		a.fps === b.fps &&

@@ -4065,5 +4065,7 @@
 	"record_done": "{name} salvo.",
 	"record_download_again": "Baixar novamente",
 	"record_preview_empty": "Escolha uma fonte e inicie a gravação.",
-	"record_unsupported": "Este navegador não suporta o formato selecionado."
+	"record_unsupported": "Este navegador não suporta o formato selecionado.",
+	"video_editor_crossfade": "Adicionar crossfade",
+	"video_editor_no_neighbor": "Nenhum clipe encostado depois deste."
 }
