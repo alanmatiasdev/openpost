@@ -30,6 +30,24 @@ export interface CropSettings {
 	left: number;
 }
 
+/** Property that can be animated with per-item keyframes. */
+export type KeyframeProperty = 'opacity' | 'volume';
+
+/**
+ * Parallel frame/value arrays for one animated property. Frames ascend and
+ * are relative to the item's start (`from`), so tracks survive item moves.
+ */
+export interface KeyframeTrack {
+	frames: number[];
+	values: number[];
+}
+
+/** Per-property keyframe tracks stored on a timeline item. */
+export interface ItemKeyframes {
+	opacity?: KeyframeTrack;
+	volume?: KeyframeTrack;
+}
+
 /** Styling for text items and caption rendering. */
 export interface TextStyleFields {
 	fontFamily?: string;
@@ -110,6 +128,9 @@ export interface TimelineItem extends TextStyleFields {
 	// Video properties
 	fadeIn?: number;
 	fadeOut?: number;
+
+	// Animated properties (keyframes override the static values above)
+	keyframes?: ItemKeyframes;
 }
 
 export interface TimelineTrack {
