@@ -4070,5 +4070,6 @@
 	"video_editor_no_neighbor": "Nenhum clipe encostado depois deste.",
 	"video_editor_marker_remove_hint": "Clique para navegar, clique duplo para remover",
 	"video_editor_speed_slower": "Metade da velocidade",
-	"video_editor_speed_faster": "Dobrar velocidade"
+	"video_editor_speed_faster": "Dobrar velocidade",
+	"video_editor_import_captions": "Importar legendas"
 }

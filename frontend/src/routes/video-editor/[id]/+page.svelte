@@ -20,6 +20,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import { addTransition } from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
 	import { exportProject } from '$lib/video-editor/media/export';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -110,6 +111,23 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
 			sending = false;
+		}
+	}
+
+	async function handleImportCaptions(): Promise<void> {
+		const handles = await window.showOpenFilePicker?.({
+			types: [{ description: 'Subtitles', accept: { 'text/plain': ['.srt', '.vtt'] } }],
+			multiple: false
+		});
+		if (!handles?.[0]) return;
+		try {
+			const file = await handles[0].getFile();
+			addSubtitleItemFromSrt(await file.text());
+			editorSession.scheduleAutosave();
+		} catch (err) {
+			if (err instanceof Error && err.name !== 'AbortError') {
+				showToast(err.message, 'error');
+			}
 		}
 	}
 
