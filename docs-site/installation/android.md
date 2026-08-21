@@ -10,7 +10,7 @@ Official GitHub releases publish this APK:
 openpost-app-android.apk
 ```
 
-Download it from [GitHub Releases](https://github.com/getopenpost/openpost/releases/latest), then open the file on your Android device. Android may ask you to allow installs from your browser or file manager. Only install APKs from the official OpenPost release page.
+Download it from [GitHub Releases](https://github.com/getopenpost/openpost/releases/latest), then open the file on your Android device. Because this is a release APK distributed outside the Play Store, Android may ask you to allow installs from your browser or file manager. Only install APKs from the official OpenPost release page.
 
 ## Connect to OpenPost
 
