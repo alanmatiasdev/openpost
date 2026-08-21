@@ -211,6 +211,24 @@ export function toggleMarkerAtPlayhead(): void {
 	else addMarker(frame);
 }
 
+/**
+ * Slip: shift an item's source window without moving it on the timeline.
+ * Delta is clamped so the window stays inside the source material.
+ */
+export function slipItem(id: string, deltaSourceFrames: number): void {
+	execute('SLIP_ITEM', () => {
+		const item = timelineStore.itemById.get(id);
+		if (!item || item.type === 'text' || item.type === 'subtitle') return;
+		const start = item.sourceStart ?? 0;
+		const end = item.sourceEnd ?? start + item.durationInFrames;
+		const limit = (item.sourceDuration ?? end) - (end - start);
+		const next = Math.min(Math.max(start + deltaSourceFrames, 0), Math.max(limit, 0));
+		timelineStore._updateItems([
+			{ id, patch: { sourceStart: next, sourceEnd: next + (end - start) } }
+		]);
+	});
+}
+
 export function setCurrentFrame(frame: number): void {
 	// Playhead moves are not undoable — they're navigation, not edits.
 	timelineStore._setCurrentFrame(frame);
