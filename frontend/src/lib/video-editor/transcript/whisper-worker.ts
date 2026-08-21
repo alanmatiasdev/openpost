@@ -45,13 +45,9 @@ async function getPipeline(modelId: string): Promise<AutomaticSpeechRecognitionP
 		task: 'automatic-speech-recognition',
 		modelId: string,
 		options?: Record<string, never>
-	) => Promise<unknown>;
+	) => Promise<AutomaticSpeechRecognitionPipeline>;
 	// SAFETY: transformers.js resolves its ASR pipeline for this task key.
-	const created = (await asrFactory(
-		'automatic-speech-recognition',
-		modelId,
-		{}
-	)) as AutomaticSpeechRecognitionPipeline;
+	const created = await asrFactory('automatic-speech-recognition', modelId, {});
 	asrPipeline = Promise.resolve(created);
 	loadedModelId = modelId;
 	return asrPipeline;
