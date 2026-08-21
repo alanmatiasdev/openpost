@@ -4,6 +4,7 @@
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { activeValueAt } from '$lib/video-editor/timeline/actions/keyframes';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
 	import {
 		incomingOpacity,
@@ -121,8 +122,19 @@
 			outVideoEl.style.opacity = String(outgoingOpacity(blend.state.type, blend.state.progress));
 		}
 
+		const keyframedOpacity = activeValueAt(item, 'opacity', timelineStore.currentFrame);
+		if (keyframedOpacity !== null) {
+			videoEl.style.opacity = String(keyframedOpacity);
+		} else if (!blend || !outVideoEl) {
+			videoEl.style.opacity = '';
+		}
+
 		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(apply));
 		const offPause = editorSession.clock.on('pause', () => videoEl?.pause());
+		return () => {
+			offPause();
+			offFrame();
+		};
 		return () => {
 			offFrame();
 			offPause();
