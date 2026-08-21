@@ -19,7 +19,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/timeline/actions/items';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
-	import { addTransition } from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import {
+		addTransition,
+		transitionsStore
+	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
 	import {
 		transcribeClip,
@@ -28,6 +31,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { exportProject } from '$lib/video-editor/media/export';
+	import { renderMultiTrackVideo } from '$lib/video-editor/media/render-export';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
@@ -90,6 +94,42 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
 			exporting = false;
+		}
+	}
+
+	let rendering = $state(false);
+	let renderFrames = $state<{ done: number; total: number } | null>(null);
+
+	async function handleRenderExport(): Promise<void> {
+		if (!editorSession.project) return;
+		rendering = true;
+		renderFrames = null;
+		try {
+			editorSession.pausePlayback();
+			await editorSession.saveNow();
+			const result = await renderMultiTrackVideo(
+				{
+					...editorSession.project,
+					timeline: {
+						...editorSession.project.timeline,
+						items: structuredClone(timelineStore.items),
+						tracks: timelineStore.tracks,
+						transitions: [...transitionsStore.list]
+					}
+				},
+				{
+					format: 'webm',
+					onProgress: (progress) => {
+						renderFrames = { done: progress.framesDone, total: progress.totalFrames };
+					}
+				}
+			);
+			showToast(m.video_editor_export_done({ name: result.fileName }), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			rendering = false;
+			renderFrames = null;
 		}
 	}
 
@@ -341,6 +381,42 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						>
 							{m.video_editor_export()}
 						</Button>
+						<Button
+							size="sm"
+							variant="secondary"
+							class="mt-1 w-full"
+							disabled={rendering || timelineStore.items.length === 0}
+							onclick={handleRenderExport}
+						>
+							{#if rendering}
+								<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+							{/if}
+							{m.video_editor_export_render()}
+						</Button>
+						{#if renderFrames}
+							<div
+								class="mt-1 rounded-md border border-[oklch(0.25_0.015_55)] p-1 text-[10px] text-[oklch(0.65_0.015_55)]"
+								role="status"
+							>
+								<p class="text-center">
+									{m.video_editor_render_progress({
+										done: renderFrames.done,
+										total: renderFrames.total
+									})}
+								</p>
+								<div
+									class="mt-1 h-1 overflow-hidden rounded-full bg-[oklch(0.25_0.015_55)]"
+									aria-hidden="true"
+								>
+									<div
+										class="h-full bg-[oklch(0.66_0.14_45)] transition-[width]"
+										style="width: {Math.round(
+											(renderFrames.done / Math.max(renderFrames.total, 1)) * 100
+										)}%;"
+									></div>
+								</div>
+							</div>
+						{/if}
 						<Button
 							size="sm"
 							variant="secondary"
