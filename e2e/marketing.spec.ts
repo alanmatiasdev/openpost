@@ -602,10 +602,13 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
 
   await page.goto("/");
   const hopOn = page.getByRole("link", { name: "Hop on", exact: true });
-  await expect(hopOn).toHaveAttribute("data-cuelume-press", "press");
-  await expect(hopOn).toHaveAttribute("data-cuelume-release", "release");
-  await hopOn.dispatchEvent("pointerdown", { pointerType: "mouse" });
-  await hopOn.dispatchEvent("pointerup", { pointerType: "mouse" });
+  await expect(hopOn).toHaveAttribute("data-cuelume-toggle", "release");
+  await expect(hopOn).not.toHaveAttribute("data-cuelume-press");
+  await expect(hopOn).not.toHaveAttribute("data-cuelume-release");
+  await hopOn.evaluate((element) => {
+    element.addEventListener("click", (event) => event.preventDefault(), { once: true });
+  });
+  await hopOn.click();
   await expect
     .poll(() =>
       page.evaluate(
