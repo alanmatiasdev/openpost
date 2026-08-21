@@ -9,7 +9,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - A **Publication** is the user-visible post; it owns the source idea, schedule, status, and destination outputs.
 - A **Rendition** is one destination-specific version: per-account text, media, format, timing, and provider settings.
 - The composer (posts, threads, stories, short videos, videos), Social Sets, shared Media library, Image and Video Editors, calendar and durable queue, analytics/engagement/inbox, and Workspaces make up the product.
-- The web app, Android wrapper, HTTP API, CLI, and MCP server share the same terms, permissions, and workspace boundaries.
+- The web app, native mobile app, HTTP API, CLI, and MCP server share the same terms, permissions, and workspace boundaries.
 
 ## Product direction
 

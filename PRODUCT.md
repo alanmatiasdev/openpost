@@ -8,7 +8,7 @@ adaptive
 
 ## Users
 
-OpenPost serves solo founders first: people building a company without a dedicated content team who still need to explain their work, earn attention, and publish consistently. Creators, small teams, agencies, and operators use the same workflow when they manage more accounts or workspaces. Most content work happens at a desk; the responsive app and Capacitor Android wrapper also support quick checks and focused edits on mobile.
+OpenPost serves solo founders first: people building a company without a dedicated content team who still need to explain their work, earn attention, and publish consistently. Creators, small teams, agencies, and operators use the same workflow when they manage more accounts or workspaces. Most content work happens at a desk; the responsive web app and native mobile app support quick capture, queue checks, and focused edits away from it.
 
 ## Product Purpose
 
@@ -22,7 +22,7 @@ OpenPost is the all-in-one content team for solo founders. It sits above a basic
 
 Users move between composing, adapting destination renditions, managing connected accounts and reusable media, planning a calendar, and inspecting scheduled or completed jobs. Small teams share workspaces and roles. Automation uses the same workspace and account boundaries through the API, CLI, and MCP server. Users may choose the Hosted service, while self-hosted operators configure their own domain, storage, database, and provider applications.
 
-The SvelteKit interface is embedded in the Go binary and also packaged as a Capacitor Android wrapper. The wrapper uses the same responsive web interface rather than a separate native design language.
+The SvelteKit interface is embedded in the Go binary. A standalone Expo mobile app uses the same typed HTTP API, terms, permissions, and workspace boundaries through a native Android interface.
 
 ## Capabilities and Constraints
 
@@ -33,7 +33,7 @@ The SvelteKit interface is embedded in the Go binary and also packaged as a Capa
 - OpenPost Image Editor creates editable, multi-page social images from workspace media, original templates, brand assets, text, and shapes. It exports ordered derivatives back to Media or the active composer without replacing source assets.
 - The web app, typed HTTP API, CLI, and MCP server share authorization and workspace boundaries.
 - Provider capabilities, media limits, review requirements, quotas, and live-account readiness vary. Product copy and UI must preserve those distinctions.
-- The app supports light and dark themes, English and Portuguese, responsive browser use, and an Android build from the same frontend.
+- The web app supports light and dark themes, English and Portuguese, and responsive browser use. The native mobile app supports light and dark themes and the focused Android workflow described above.
 - Self-hosted deployments must remain portable: embedded static assets, configurable storage, SQLite by default, PostgreSQL support, and no hard dependency on an external queue service.
 - OpenPost Image Editor remains a focused still-image editor. Video editing, animation, print color workflows, arbitrary remote assets, and low-level image-editor MCP operations are outside its product scope.
 
