@@ -13,6 +13,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { rippleDeleteItems, splitAtFrame } from '$lib/video-editor/timeline/actions/items';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
+	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
+	import { exportProject } from '$lib/video-editor/media/export';
+	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
+	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -49,6 +53,77 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
+	let exporting = $state(false);
+	let sending = $state(false);
+	async function handleExport(): Promise<void> {
+		if (!editorSession.project) return;
+		exporting = true;
+		try {
+			editorSession.pausePlayback();
+			await editorSession.saveNow();
+			const result = await exportProject(
+				{
+					...editorSession.project,
+					timeline: {
+						...editorSession.project.timeline,
+						items: structuredClone(timelineStore.items),
+						tracks: timelineStore.tracks
+					}
+				},
+				{ format: 'mp4' }
+			);
+			showToast(m.video_editor_export_done({ name: result.fileName }), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			exporting = false;
+		}
+	}
+
+	async function handleSendToOpenPost(): Promise<void> {
+		const workspaceId = workspaceCtx.currentWorkspace?.id;
+		if (!workspaceId || !editorSession.project) return;
+		sending = true;
+		try {
+			editorSession.pausePlayback();
+			await editorSession.saveNow();
+			const result = await exportProject(
+				{
+					...editorSession.project,
+					timeline: {
+						...editorSession.project.timeline,
+						items: structuredClone(timelineStore.items),
+						tracks: timelineStore.tracks
+					}
+				},
+				{ format: 'mp4' }
+			);
+			await sendToOpenPost({ workspaceId, blob: result.blob, fileName: result.fileName });
+			showToast(m.video_editor_sent(), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			sending = false;
+		}
+	}
+
+	let removingSilence = $state(false);
+	async function handleRemoveSilence(): Promise<void> {
+		const ids = selectedItemId ? [selectedItemId] : timelineStore.items.map((i) => i.id);
+		if (ids.length === 0) return;
+		removingSilence = true;
+		try {
+			editorSession.pausePlayback();
+			await removeSilenceSignal(ids, { mode: 'signal', minSilenceMs: 500 });
+			editorSession.scheduleAutosave();
+			showToast(m.video_editor_silence_done(), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			removingSilence = false;
+		}
+	}
+
 	function togglePlay(): void {
 		if (editorSession.clock.isPlaying) editorSession.pausePlayback();
 		else
@@ -60,6 +135,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
+		// SAFETY: event targets in this page are HTML elements.
 		if ((event.target as HTMLElement)?.tagName === 'INPUT') return;
 		if (event.code === 'Space') {
 			event.preventDefault();
@@ -152,6 +228,39 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="destructive" disabled={!selectedItemId} onclick={handleDelete}>
 						{m.video_editor_delete_clip()}
 					</Button>
+					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={removingSilence || timelineStore.items.length === 0}
+							onclick={handleRemoveSilence}
+						>
+							{#if removingSilence}
+								<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+							{/if}
+							{m.video_editor_remove_silence()}
+						</Button>
+					</div>
+					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+						<Button
+							size="sm"
+							disabled={exporting || timelineStore.items.length === 0}
+							onclick={handleExport}
+						>
+							{m.video_editor_export()}
+						</Button>
+						<Button
+							size="sm"
+							variant="secondary"
+							class="mt-1 w-full"
+							disabled={sending ||
+								timelineStore.items.length === 0 ||
+								!workspaceCtx.currentWorkspace}
+							onclick={handleSendToOpenPost}
+						>
+							{m.video_editor_send_to_openpost()}
+						</Button>
+					</div>
 				</aside>
 			</div>
 

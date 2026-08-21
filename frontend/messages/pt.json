@@ -4027,5 +4027,11 @@
 	"video_editor_zoom_out": "Reduzir",
 	"video_editor_tools": "Editar",
 	"video_editor_split": "Cortar na agulha (B)",
-	"video_editor_delete_clip": "Excluir com ripple"
+	"video_editor_delete_clip": "Excluir com ripple",
+	"video_editor_remove_silence": "Remover silêncio",
+	"video_editor_silence_done": "Silêncio removido.",
+	"video_editor_export": "Exportar MP4",
+	"video_editor_send_to_openpost": "Enviar para OpenPost",
+	"video_editor_export_done": "{name} salvo na pasta de exportações.",
+	"video_editor_sent": "Enviado à sua biblioteca de mídia OpenPost."
 }
