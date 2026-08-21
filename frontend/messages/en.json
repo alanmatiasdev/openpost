@@ -4071,5 +4071,8 @@
 	"video_editor_marker_remove_hint": "Click to seek, double-click to remove",
 	"video_editor_speed_slower": "Half speed",
 	"video_editor_speed_faster": "Double speed",
-	"video_editor_import_captions": "Import captions"
+	"video_editor_import_captions": "Import captions",
+	"video_editor_transcribe": "Auto-captions",
+	"video_editor_transcribing": "Transcribing…",
+	"video_editor_transcribe_done": "Captions generated"
 }

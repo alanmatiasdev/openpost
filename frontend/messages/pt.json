@@ -4071,5 +4071,8 @@
 	"video_editor_marker_remove_hint": "Clique para navegar, clique duplo para remover",
 	"video_editor_speed_slower": "Metade da velocidade",
 	"video_editor_speed_faster": "Dobrar velocidade",
-	"video_editor_import_captions": "Importar legendas"
+	"video_editor_import_captions": "Importar legendas",
+	"video_editor_transcribe": "Legendas automáticas",
+	"video_editor_transcribing": "A transcrever…",
+	"video_editor_transcribe_done": "Legendas geradas"
 }

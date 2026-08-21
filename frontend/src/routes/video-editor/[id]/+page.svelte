@@ -21,6 +21,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import { addTransition } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
+	import {
+		transcribeClip,
+		addGeneratedSubtitleItem
+	} from '$lib/video-editor/transcript/transcribe-action';
+	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { exportProject } from '$lib/video-editor/media/export';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -111,6 +117,29 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
 			sending = false;
+		}
+	}
+
+	let transcribing = $state(false);
+
+	async function handleTranscribe(): Promise<void> {
+		if (!selectedItemId || transcribing) return;
+		const item = timelineStore.itemById.get(selectedItemId);
+		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
+		if (!item || !media) return;
+		transcribing = true;
+		try {
+			const blob = await resolveMediaBlob(media);
+			const file =
+				blob instanceof File ? blob : new File([blob], media.fileName, { type: media.mimeType });
+			const words = await transcribeClip(item, file);
+			addGeneratedSubtitleItem(item.id, words);
+			editorSession.scheduleAutosave();
+			showToast(m.video_editor_transcribe_done(), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			transcribing = false;
 		}
 	}
 
