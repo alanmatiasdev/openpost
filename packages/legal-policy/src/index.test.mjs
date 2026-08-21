@@ -206,6 +206,8 @@ test("browser storage inventory covers every supported storage technology", () =
     "localStorage:exact:vitepress-theme-appearance",
     "sessionStorage:exact:openpost:marketing-motion",
     "IndexedDB:exact:openpost-studio",
+    "IndexedDB:exact:openpost-video-handles-db",
+    "IndexedDB:exact:handles",
     "IndexedDB:exact:workbox-expiration",
     "OPFS:exact:openpost-image-editor-media",
     "Cache Storage:exact:openpost-pages-1",

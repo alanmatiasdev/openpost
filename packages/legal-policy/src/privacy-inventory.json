@@ -791,6 +791,30 @@
       "source_refs": ["frontend/src/lib/image-editor/local-persistence.ts"]
     },
     {
+      "id": "idb-video-editor-handles",
+      "technology": "IndexedDB",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-handles-db",
+      "purpose": "Stores browser permission handles and metadata for local Video Editor workspaces, media, and project folders so the editor can reopen user-selected files.",
+      "scope": "Application origin and browser profile; access remains subject to browser file-permission checks.",
+      "duration": "Until the user removes the related workspace, media, or project, the browser evicts the database, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/workspace-fs/handles-db.ts"]
+    },
+    {
+      "id": "idb-video-editor-handles-store",
+      "technology": "IndexedDB",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "handles",
+      "purpose": "Stores local workspace, media, and project-folder handle records inside the openpost-video-handles-db database.",
+      "scope": "Application origin; openpost-video-handles-db database and the browser profile that granted file access.",
+      "duration": "Until the related record is removed, the browser evicts the database, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/workspace-fs/handles-db.ts"]
+    },
+    {
       "id": "idb-workbox-expiration",
       "technology": "IndexedDB",
       "owner": "Workbox service-worker runtime",

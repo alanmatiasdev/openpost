@@ -1,6 +1,6 @@
 # Android App
 
-OpenPost ships a standalone native Android app built with Expo. It connects to OpenPost Hosted or a self-hosted OpenPost server through the same API as the web app. It does not load the web app in a wrapper.
+This page is for Android users installing OpenPost and connecting it to OpenPost Hosted or a self-hosted instance. OpenPost ships a standalone native Android app built with Expo. It uses the same API as the web app and does not load the web app in a wrapper.
 
 ## Install from a release
 

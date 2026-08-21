@@ -522,6 +522,15 @@ jobs:
         with:
           java-version: "21"
           distribution: temurin
+      - name: Install Android SDK components
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.1.12297006
+            cmake;3.22.1
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
@@ -530,8 +539,6 @@ jobs:
             ~/.gradle/wrapper
           key: android-${{ runner.os }}-${{ hashFiles('mobile/bun.lock', 'mobile/app.json', 'mobile/plugins/**') }}
           restore-keys: android-${{ runner.os }}-
-      - name: Install Android SDK components
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
       - name: Install the standalone mobile app
         working-directory: mobile
         run: bun install --frozen-lockfile

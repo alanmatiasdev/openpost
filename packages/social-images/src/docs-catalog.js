@@ -663,7 +663,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "installation/android.md",
     "title": "Android App",
-    "description": "This page is for Android users installing OpenPost and connecting it to a self-hosted instance.",
+    "description": "This page is for Android users installing OpenPost and connecting it to OpenPost Hosted or a self-hosted instance.",
     "route": "/installation/android",
     "agentRepresentation": {
       "membership": "ordinary"
