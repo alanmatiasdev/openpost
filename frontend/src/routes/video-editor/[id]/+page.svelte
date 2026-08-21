@@ -5857,7 +5857,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				</aside>
 
 				<nav
-					class="col-start-1 row-start-2 flex min-w-0 snap-x items-stretch overflow-x-auto scroll-smooth border-t bg-background/98 pb-[max(0.25rem,env(safe-area-inset-bottom))] min-[56rem]:hidden"
+					class="col-start-1 row-start-2 flex min-w-0 snap-x snap-mandatory items-stretch overflow-x-auto overscroll-x-contain scroll-smooth border-t bg-background/98 pb-[max(0.25rem,env(safe-area-inset-bottom))] min-[56rem]:hidden"
 					aria-label={m.video_editor_mobile_tools()}
 				>
 					{#each toolFamilies as family (family.id)}

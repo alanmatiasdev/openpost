@@ -3484,7 +3484,7 @@
 	</nav>
 
 	<nav
-		class="hidden h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 snap-x overflow-x-auto border-t bg-background px-1 pt-1 pb-[env(safe-area-inset-bottom)] sm:flex lg:hidden"
+		class="hidden h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 snap-x snap-mandatory overflow-x-auto overscroll-x-contain border-t bg-background px-1 pt-1 pb-[env(safe-area-inset-bottom)] sm:flex lg:hidden"
 		aria-label={m.image_editor_tools()}
 	>
 		<Button
@@ -4398,7 +4398,12 @@
 		height: 1px;
 	}
 
-	.image-editor-resize-handle:hover::after,
+	@media (hover: hover) and (pointer: fine) {
+		.image-editor-resize-handle:hover::after {
+			background: var(--primary);
+		}
+	}
+
 	.image-editor-resize-handle:focus-visible::after {
 		background: var(--primary);
 	}

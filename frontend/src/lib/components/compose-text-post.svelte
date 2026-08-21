@@ -5765,7 +5765,9 @@
 		background-color: color-mix(in oklch, var(--foreground) 22%, transparent);
 	}
 
-	.destination-tabs-scrollbar::-webkit-scrollbar-thumb:hover {
-		background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+	@media (hover: hover) and (pointer: fine) {
+		.destination-tabs-scrollbar::-webkit-scrollbar-thumb:hover {
+			background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+		}
 	}
 </style>

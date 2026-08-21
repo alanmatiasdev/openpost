@@ -387,7 +387,8 @@
 	<title>OpenPost</title>
 </svelte:head>
 
-{#if !isPreviewRoute}<ModeWatcher />{/if}
+{#if !isPreviewRoute}
+	<ModeWatcher themeColors={{ light: '#faf9f7', dark: '#251f1c' }} />{/if}
 <Toaster position="bottom-center" richColors closeButton />
 {#if !isPreviewRoute && !isErrorRoute}<ConnectivityNotice />{/if}
 {#if isPreviewRoute}
@@ -404,7 +405,7 @@
 		{#if isManagedEdition}
 			<PublicHome />
 		{:else}
-			<div class="flex min-h-[80vh] items-center justify-center">
+			<div class="flex min-h-[80dvh] items-center justify-center">
 				<div class="mx-auto max-w-md px-4 py-12 text-center">
 					<div class="mb-6 flex justify-center">
 						<Logo width={100} height={29} />
