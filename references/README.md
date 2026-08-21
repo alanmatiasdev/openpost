@@ -8,7 +8,8 @@ This directory is for local, gitignored source checkouts used as implementation 
 - `openscreen/` is a shallow clone of <https://github.com/getopenscreen/openscreen>. Use it for cross-platform capture, cursor metadata, demo recording, native media, and export.
 - `capptivo/` is a shallow clone of <https://github.com/SECHAK-AG/capptivo>. Use it for recorder/editor boundaries, cursor sidecars, and crash-safe recording ideas.
 - `cap/` is a shallow clone of <https://github.com/CapSoftware/Cap>. Use it for capture, audio, camera, cursor, and desktop/cloud boundaries. Audit each crate's license before porting code.
-- `freecut/` is a shallow clone of <https://github.com/walterlow/freecut>. Use it for timeline commands, sequences, keyframes, effects, and editor tests.
+- `freecut/` is a shallow clone of <https://github.com/walterlow/freecut> (MIT). Use it for timeline commands, sequences, keyframes, effects, and editor tests.
+- `losslesscut/` is a shallow clone of <https://github.com/mifi/losslesscut> (**GPL-2.0**). Behavioral/product reference only for Quick Cut (segments, keyframe cuts, stream copy); never port its source into OpenPost.
 - `kdenlive/` is a shallow clone of <https://invent.kde.org/multimedia/kdenlive>. Use it for mature NLE semantics, proxies, recovery, and export edge cases.
 - `shotcut/` is a shallow clone of <https://github.com/mltframework/shotcut>. Use it for mature cross-platform editing and media-pipeline behavior.
 - `opencut/` and `opencut-classic/` are shallow clones of <https://github.com/OpenCut-app/OpenCut> and <https://github.com/OpenCut-app/opencut-classic>. Use them for editor API direction and accessible timeline UX.
