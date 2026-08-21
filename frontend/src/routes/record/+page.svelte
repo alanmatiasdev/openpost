@@ -4,7 +4,9 @@ Record: screen, camera, microphone, or combined capture saved locally.
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import Logo from '$lib/components/Logo.svelte';
 	import { showToast } from '$lib/toast';
 	import {
@@ -135,31 +137,37 @@ Record: screen, camera, microphone, or combined capture saved locally.
 				{#if needsCamera && cameras.length > 0}
 					<label class="flex items-center gap-1.5">
 						{m.record_camera()}
-						<select bind:value={cameraId} class="rounded-md bg-[oklch(0.18_0.008_55)] px-2 py-1">
-							{#each cameras as camera (camera.deviceId)}
-								<option value={camera.deviceId}>{camera.label || m.record_device_default()}</option>
-							{/each}
-						</select>
+						<AppSelect
+							bind:value={cameraId}
+							ariaLabel={m.record_camera()}
+							options={cameras.map((camera) => ({
+								value: camera.deviceId,
+								label: camera.label || m.record_device_default()
+							}))}
+							class="h-9 min-w-40"
+						/>
 					</label>
 				{/if}
 				{#if source !== 'screen' && microphones.length > 0}
 					<label class="flex items-center gap-1.5">
 						{m.record_microphone()}
-						<select bind:value={micId} class="rounded-md bg-[oklch(0.18_0.008_55)] px-2 py-1">
-							<option value="">{m.record_device_default()}</option>
-							{#each microphones as mic (mic.deviceId)}
-								<option value={mic.deviceId}>{mic.label}</option>
-							{/each}
-						</select>
+						<AppSelect
+							bind:value={micId}
+							ariaLabel={m.record_microphone()}
+							options={[
+								{ value: '', label: m.record_device_default() },
+								...microphones.map((microphone) => ({
+									value: microphone.deviceId,
+									label: microphone.label
+								}))
+							]}
+							class="h-9 min-w-40"
+						/>
 					</label>
 				{/if}
 				{#if hasVideo}
 					<label class="flex items-center gap-1.5">
-						<input
-							type="checkbox"
-							bind:checked={systemAudio}
-							class="accent-[oklch(0.66_0.14_45)]"
-						/>
+						<Checkbox bind:checked={systemAudio} />
 						{m.record_system_audio()}
 					</label>
 				{/if}

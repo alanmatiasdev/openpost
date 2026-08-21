@@ -9,6 +9,7 @@
 		removeMarker
 	} from '$lib/video-editor/timeline/actions/items';
 	import { moveItems } from '$lib/video-editor/timeline/actions/items';
+	import { Slider } from '$lib/components/ui/slider';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 
@@ -167,15 +168,14 @@
 		>
 			<ZoomOutIcon class="size-4" />
 		</button>
-		<input
-			type="range"
-			class="w-28 accent-[oklch(0.66_0.14_45)]"
-			min="0.01"
-			max="50"
-			step="0.01"
+		<Slider
+			class="w-28"
+			min={0.01}
+			max={50}
+			step={0.01}
 			value={zoom}
-			aria-label={m.video_editor_zoom()}
-			oninput={(event) => timelineStore._setZoomLevel(Number(event.currentTarget.value))}
+			ariaLabel={m.video_editor_zoom()}
+			onValueChange={(value) => timelineStore._setZoomLevel(value)}
 		/>
 		<button
 			type="button"
@@ -268,9 +268,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	input[type='range'] {
-		height: 1rem;
-	}
-</style>
