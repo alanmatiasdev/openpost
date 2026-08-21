@@ -9,7 +9,6 @@ const securitySource = read('./settings/SecuritySettingsTab.svelte');
 const mediaSource = read('../../routes/media/+page.svelte');
 const promptsSource = read('../../routes/prompts/+page.svelte');
 const sidebarSource = read('./sidebar-planner.svelte');
-const videoEditorSource = read('../../routes/video-editor/+page.svelte');
 
 describe('loaded-context recovery consumers', () => {
 	it('retains media and prompt results while same-query retries are pending or fail', () => {
@@ -54,24 +53,6 @@ describe('loaded-context recovery consumers', () => {
 		expect(sidebarSource).toContain('onclick={() => void loadDrafts(workspaceId)}');
 		expect(sidebarSource).toContain('{:else if !draftsError && drafts.length === 0}');
 		expect(sidebarSource).not.toContain('const publications = publicationResult.error ? []');
-	});
-
-	it('keeps local video editor state available when cloud projects fail', () => {
-		const initialize = videoEditorSource.slice(
-			videoEditorSource.indexOf('async function initialize'),
-			videoEditorSource.indexOf('async function openFiles')
-		);
-		expect(initialize).toContain('recentProjects = localProjects;');
-		expect(initialize).toContain(
-			'if ($auth.isAuthenticated) await loadCloudProjects(localProjects, true);'
-		);
-		expect(initialize).toContain('cloudLoadError =');
-		const cloudLoad = initialize.slice(initialize.indexOf('async function loadCloudProjects'));
-		expect(cloudLoad).not.toContain('loadError =');
-		expect(videoEditorSource).toContain(
-			'onclick={() => void loadCloudProjects(recentProjects, true)}'
-		);
-		expect(videoEditorSource).toContain('{:else if cloudProjects.length === 0 && !cloudLoadError}');
 	});
 
 	it('clears account and schedule results only when their owning workspace changes', () => {

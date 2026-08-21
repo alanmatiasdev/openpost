@@ -1,6 +1,5 @@
 import type { components } from '$lib/api/types';
 import type { HandoffJSONValue } from '$lib/editor-handoff';
-import type { VideoHandoffPlan, VideoVariantID } from '$lib/video-editor/composer-handoff';
 import type { PostItem, VariantPost } from '$lib/components/compose/draft-utils';
 import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
 
@@ -27,11 +26,6 @@ export interface ComposerHandoffPayload {
 	random_delay_override: string;
 	repost_override: components['schemas']['Override'];
 	revision: number;
-	video?: {
-		replace_media_id?: string;
-		scope_account_id?: string;
-		plan: VideoHandoffPlan;
-	};
 }
 
 function valueFields(value: HandoffJSONValue | undefined): Map<string, HandoffJSONValue> {
@@ -195,65 +189,6 @@ function numberEntries(value: HandoffJSONValue | undefined): Array<[string, numb
 	return entries;
 }
 
-function videoVariant(value: HandoffJSONValue | undefined): VideoVariantID | null {
-	switch (stringValue(value)) {
-		case 'portrait':
-			return 'portrait';
-		case 'feed-portrait':
-			return 'feed-portrait';
-		case 'square':
-			return 'square';
-		case 'landscape':
-			return 'landscape';
-		default:
-			return null;
-	}
-}
-
-function variantAssignments(
-	value: HandoffJSONValue | undefined
-): VideoHandoffPlan['variant_accounts'] {
-	const fields = valueFields(value);
-	return {
-		portrait: stringArray(fields.get('portrait')) ?? [],
-		'feed-portrait': stringArray(fields.get('feed-portrait')) ?? [],
-		square: stringArray(fields.get('square')) ?? [],
-		landscape: stringArray(fields.get('landscape')) ?? []
-	};
-}
-
-function videoPlan(value: HandoffJSONValue | undefined): VideoHandoffPlan | null {
-	const fields = valueFields(value);
-	const primaryVariant = videoVariant(fields.get('primary_variant'));
-	const requiredValue = fields.get('required_variants');
-	if (!primaryVariant || !Array.isArray(requiredValue)) return null;
-	const requiredVariants = requiredValue.map(videoVariant);
-	if (requiredVariants.some((variant) => variant === null)) return null;
-	const plan: VideoHandoffPlan = {
-		primary_variant: primaryVariant,
-		required_variants: [],
-		variant_renditions: variantAssignments(fields.get('variant_renditions')),
-		variant_accounts: variantAssignments(fields.get('variant_accounts'))
-	};
-	for (const variant of requiredVariants) {
-		if (variant) plan.required_variants.push(variant);
-	}
-	return plan;
-}
-
-function videoPayload(value: HandoffJSONValue | undefined): ComposerHandoffPayload['video'] {
-	if (value === undefined) return undefined;
-	const fields = valueFields(value);
-	const plan = videoPlan(fields.get('plan'));
-	if (!plan) return undefined;
-	const video: NonNullable<ComposerHandoffPayload['video']> = { plan };
-	const replacementID = stringValue(fields.get('replace_media_id'));
-	const accountID = stringValue(fields.get('scope_account_id'));
-	if (replacementID) video.replace_media_id = replacementID;
-	if (accountID) video.scope_account_id = accountID;
-	return video;
-}
-
 function repostRule(
 	value: HandoffJSONValue | undefined
 ): components['schemas']['Rule'] | undefined {
@@ -365,7 +300,5 @@ export function parseComposerHandoffPayload(
 	};
 	const selectedDate = stringValue(fields.get('selected_date'));
 	if (selectedDate) payload.selected_date = selectedDate;
-	const video = videoPayload(fields.get('video'));
-	if (video) payload.video = video;
 	return payload;
 }

@@ -280,9 +280,6 @@ func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
 		(*models.DesignDocument)(nil),
 		(*models.DesignRevision)(nil),
 		(*models.DesignRevisionMediaIndexState)(nil),
-		(*models.VideoProject)(nil),
-		(*models.VideoProjectRevision)(nil),
-		(*models.VideoRevisionMediaIndexState)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
 		require.NoError(t, err)

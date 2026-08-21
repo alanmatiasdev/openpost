@@ -19,7 +19,7 @@ test("finds deployed asset URLs without treating source imports as copies", () =
   const source = [
     `const favicon = "/assets/brand/icon.svg";`,
     `const sourceImport = "../../../../assets/logos/x.svg?raw";`,
-    `const editorAudio = "/video-editor-audio/assets/tap.wav";`,
+    `const editorModel = "/image-editor-models/resources.json";`,
     "const docsLogo = `${docsBase}assets/brand/logo-docs.svg`;",
   ].join("\n");
 

@@ -20,11 +20,7 @@ const composerErrorMessages = {
 	session_request_failed: m.compose_error_session_request_failed,
 	image_editor_return_inactive: m.compose_error_image_editor_return_inactive,
 	image_editor_return_workspace_mismatch: m.compose_error_image_editor_return_workspace_mismatch,
-	video_editor_return_inactive: m.compose_error_video_editor_return_inactive,
-	video_editor_return_workspace_mismatch: m.compose_error_video_editor_return_workspace_mismatch,
-	video_editor_return_metadata_missing: m.compose_error_video_editor_return_metadata_missing,
-	editor_origin_segment_missing: m.compose_error_editor_origin_segment_missing,
-	video_editor_return_export_missing: m.compose_error_video_editor_return_export_missing
+	editor_origin_segment_missing: m.compose_error_editor_origin_segment_missing
 } satisfies Record<ComposerErrorCode, () => string>;
 
 export function composerErrorMessage(cause: unknown): string {

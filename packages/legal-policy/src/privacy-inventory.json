@@ -123,8 +123,7 @@
         "backend/internal/services/identity/service.go",
         "backend/internal/services/cli_auth/service.go",
         "backend/internal/api/handlers/oauth.go",
-        "backend/internal/api/handlers/image_editor.go",
-        "backend/internal/api/handlers/video_editor.go"
+        "backend/internal/api/handlers/image_editor.go"
       ]
     },
     {
@@ -201,7 +200,6 @@
       "exceptions": "Browser-only projects are covered by the browser-storage inventory, not this managed-service schedule. Referenced media follows the media lifecycle.",
       "evidence": [
         "backend/internal/api/handlers/image_editor.go",
-        "backend/internal/api/handlers/video_editor.go",
         "backend/internal/models/models.go"
       ]
     },
@@ -649,30 +647,6 @@
       "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
-      "id": "local-video-text-styles",
-      "technology": "localStorage",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "openpost-video-editor-text-styles",
-      "purpose": "Keeps reusable local Video Editor text styles.",
-      "scope": "Application origin and public Video Editor on that origin.",
-      "duration": "Until styles are replaced or site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/routes/video-editor/[id]/+page.svelte"]
-    },
-    {
-      "id": "local-video-diagnostics",
-      "technology": "localStorage",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "openpost-video-editor-diagnostics-v1",
-      "purpose": "Keeps up to 100 sanitized local Video Editor failure diagnostics for recovery and user-approved support reporting.",
-      "scope": "Application origin and public Video Editor on that origin.",
-      "duration": "Old entries are dropped as the 100-entry limit is exceeded; all entries disappear when site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/failures.ts"]
-    },
-    {
       "id": "session-chunk-reload",
       "technology": "sessionStorage",
       "owner": "OpenPost application shell",
@@ -817,114 +791,6 @@
       "source_refs": ["frontend/src/lib/image-editor/local-persistence.ts"]
     },
     {
-      "id": "idb-video-editor",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "openpost-video-editor",
-      "purpose": "Indexes local projects, revisions, OPFS assets, recording manifests, analysis results, model metadata, and export jobs across seven named object stores.",
-      "scope": "Application origin and public Video Editor on that origin; browser profile.",
-      "duration": "Project records remain until the user deletes a project, the browser evicts data, or site data is cleared. Autosave revisions are capped at 20 per project. Disposable indexed assets are eligible after seven days without access or earlier under storage pressure.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/types.ts",
-        "frontend/src/lib/video-editor/storage.ts"
-      ]
-    },
-    {
-      "id": "idb-video-projects-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "projects",
-      "purpose": "Stores local Video Editor project documents and cloud-link state inside the openpost-video-editor database.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Until project deletion, browser eviction, or site-data clearing.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/types.ts"]
-    },
-    {
-      "id": "idb-video-revisions-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "project-revisions",
-      "purpose": "Stores bounded local autosaves, checkpoints, operation journals, and migration backups for Video Editor recovery.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Autosaves are capped at 20 per project; other revisions remain until project deletion, browser eviction, or site-data clearing.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/types.ts",
-        "frontend/src/lib/video-editor/storage.ts"
-      ]
-    },
-    {
-      "id": "idb-video-assets-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "asset-index",
-      "purpose": "Indexes local Video Editor source, recording, proxy, thumbnail, waveform, analysis, export, and temporary OPFS files.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Project assets remain until project deletion. Disposable assets become eligible after seven days without access or earlier under storage pressure.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/types.ts",
-        "frontend/src/lib/video-editor/storage.ts"
-      ]
-    },
-    {
-      "id": "idb-video-recordings-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "recording-manifests",
-      "purpose": "Stores resumable local Video Editor recording manifests and chunk verification metadata.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Until the recording or project is deleted, the browser evicts data, or site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/types.ts"]
-    },
-    {
-      "id": "idb-video-analysis-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "analysis-results",
-      "purpose": "Stores local transcription, voice-activity, framing, and related Video Editor analysis results.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Until replaced or removed with the project or source, browser eviction, or site-data clearing.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/types.ts"]
-    },
-    {
-      "id": "idb-video-model-metadata-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "model-cache-metadata",
-      "purpose": "Records the version, integrity, size, and last use of locally cached Video Editor models.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Until the model is removed or replaced, browser eviction, or site-data clearing.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/types.ts",
-        "frontend/src/lib/video-editor/model-manager.ts"
-      ]
-    },
-    {
-      "id": "idb-video-export-jobs-store",
-      "technology": "IndexedDB",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "export-jobs",
-      "purpose": "Stores local Video Editor export progress, recovery state, and output references.",
-      "scope": "Application origin; openpost-video-editor database.",
-      "duration": "Until the export or project is cleared, browser eviction, or site-data clearing.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/types.ts"]
-    },
-    {
       "id": "idb-workbox-expiration",
       "technology": "IndexedDB",
       "owner": "Workbox service-worker runtime",
@@ -971,49 +837,6 @@
       "duration": "A file is removed with its guest design or media; otherwise it remains until browser eviction or site-data clearing.",
       "necessity": "functional",
       "source_refs": ["frontend/src/lib/image-editor/local-persistence.ts"]
-    },
-    {
-      "id": "opfs-video-editor",
-      "technology": "OPFS",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "openpost-video-editor",
-      "purpose": "Stores browser-local Video Editor sources, recordings, proxies, thumbnails, waveforms, analysis files, exports, temporary files, and resumable model-download parts.",
-      "scope": "Application origin and browser profile; projects use openpost-video-editor/projects/<project-id>/<area>/ paths.",
-      "duration": "Project files remain until project deletion or site-data clearing. Disposable assets become eligible after seven days without access or earlier under pressure. Completed model partials are removed after verification; interrupted parts remain for resume until replaced or site data is cleared.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/storage.ts",
-        "frontend/src/lib/video-editor/model-manager.ts",
-        "frontend/src/lib/video-editor/recording-writer.worker.ts"
-      ]
-    },
-    {
-      "id": "opfs-video-project-files",
-      "technology": "OPFS",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "prefix",
-      "identifier": "openpost-video-editor/projects/",
-      "purpose": "Describes project-scoped Video Editor source, recording, proxy, thumbnail, waveform, analysis, export, and temporary files.",
-      "scope": "Application origin and browser profile; followed by project ID, storage area, and generated filename.",
-      "duration": "Project files remain until project deletion. Disposable files become eligible after seven days without access or earlier under storage pressure.",
-      "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/video-editor/types.ts",
-        "frontend/src/lib/video-editor/storage.ts"
-      ]
-    },
-    {
-      "id": "opfs-video-model-downloads",
-      "technology": "OPFS",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "model-downloads",
-      "purpose": "Nested Video Editor directory for resumable model .partial and .etag files while each download is fetched and verified.",
-      "scope": "Application origin under openpost-video-editor/.",
-      "duration": "Removed after successful model verification, restarted when inconsistent, or removed when site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/model-manager.ts"]
     },
     {
       "id": "opfs-video-streams",
@@ -1074,18 +897,6 @@
       "duration": "Up to 365 days, subject to versioned-cache replacement, entry-count eviction, browser pressure, or site-data clearing.",
       "necessity": "functional",
       "source_refs": ["frontend/vite.config.ts"]
-    },
-    {
-      "id": "cache-video-models",
-      "technology": "Cache Storage",
-      "owner": "OpenPost Video Editor",
-      "identifier_kind": "exact",
-      "identifier": "transformers-cache",
-      "purpose": "Stores integrity-checked Video Editor transcription, voice-activity, and reframing model files downloaded after the user starts the tool.",
-      "scope": "Application origin and browser profile.",
-      "duration": "Until the user removes a model, a changed manifest replaces it, browser pressure evicts it, or site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/video-editor/model-manager.ts"]
     },
     {
       "id": "cache-workbox-precache",

@@ -20,7 +20,6 @@ test("the root manifest exposes one canonical verification interface", () => {
   for (const script of canonicalScripts) assert.ok(manifest.scripts[script], script);
   assert.deepEqual(Object.keys(manifest.scripts).sort(), [
     "_policy",
-    "benchmark:video-editor",
     "browser:install",
     "build",
     "capture:product-screenshots",
@@ -97,7 +96,7 @@ test("workspace manifests keep implementation tasks without old public aliases",
   const marketing = manifest("marketing-site/package.json");
   assert.deepEqual(Object.keys(marketing.scripts).sort(), ["build", "check", "dev", "preview"]);
 
-  for (const file of ["packages/telemetry/package.json", "packages/video-project/package.json"]) {
+  for (const file of ["packages/telemetry/package.json"]) {
     const workspace = manifest(file);
     assert.equal(workspace.scripts.build, undefined, `${file} build`);
     assert.equal(workspace.scripts.check, "tsc --noEmit", `${file} check`);
@@ -168,7 +167,7 @@ test("the frontend test scope covers every browser-side workspace", () => {
   assert.equal(result.status, 0, result.stderr);
   const plan = JSON.parse(result.stdout);
   assert.deepEqual(plan.stages[0].commands, [
-    "bunx turbo run test --filter @openpost/web --filter @openpost/video-project --filter @openpost/telemetry --filter @openpost/social-preview",
+    "bunx turbo run test --filter @openpost/web --filter @openpost/telemetry --filter @openpost/social-preview",
   ]);
 });
 

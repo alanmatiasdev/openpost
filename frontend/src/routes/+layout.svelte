@@ -99,27 +99,28 @@
 		'/accounts/mastodon/callback',
 		'/accounts/callback'
 	];
+	const localEditorRoutes = ['/video-editor', '/quick-cut', '/record'];
+	function matchesLocalEditorRoute(path: string): boolean {
+		return localEditorRoutes.some((route) => path === route || path.startsWith(`${route}/`));
+	}
 	let isStandaloneRoute = $derived(
 		standaloneRoutes.includes(currentPath) ||
 			isErrorRoute ||
 			isPublicProfileRoute ||
 			currentPath === '/image-editor' ||
 			currentPath.startsWith('/image-editor/') ||
-			currentPath === '/video-editor' ||
-			currentPath.startsWith('/video-editor/')
+			matchesLocalEditorRoute(currentPath)
 	);
 	let isPublicImageEditorRoute = $derived(
 		currentPath === '/image-editor' || currentPath.startsWith('/image-editor/local_design_')
 	);
-	let isPublicVideoEditorRoute = $derived(
-		currentPath === '/video-editor' || currentPath.startsWith('/video-editor/')
-	);
+	let isPublicLocalEditorRoute = $derived(matchesLocalEditorRoute(currentPath));
 	let isPublicRoute = $derived(
 		currentPath === '/' ||
 			isErrorRoute ||
 			isPublicProfileRoute ||
 			isPublicImageEditorRoute ||
-			isPublicVideoEditorRoute ||
+			isPublicLocalEditorRoute ||
 			publicRoutes.some((route) => currentPath.startsWith(route))
 	);
 
@@ -198,7 +199,7 @@
 
 		if (needsOnboarding) {
 			if (
-				(isPublicImageEditorRoute || isPublicVideoEditorRoute) &&
+				(isPublicImageEditorRoute || isPublicLocalEditorRoute) &&
 				!(
 					currentPath.startsWith('/image-editor/local_design_') &&
 					$page.url.searchParams.get('import') === '1'
@@ -396,7 +397,7 @@
 {:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeSkipsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
-	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
+	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !isPublicLocalEditorRoute}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>
@@ -430,7 +431,7 @@
 		{@render children()}
 	{/if}
 {:else if isStandaloneRoute}
-	{#if !isPublicProfileRoute && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
+	{#if !isPublicProfileRoute && !currentPath.startsWith('/image-editor/') && !isPublicLocalEditorRoute}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>

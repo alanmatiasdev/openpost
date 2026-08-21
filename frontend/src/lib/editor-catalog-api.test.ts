@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { client } from '$lib/api/client';
 import { listImageEditorDesigns } from '$lib/image-editor/api';
-import { deleteCloudVideoProject, listCloudVideoProjects } from '$lib/video-editor/api';
 
 const mocks = { get: vi.fn(), delete: vi.fn() };
 vi.spyOn(client, 'GET').mockImplementation(mocks.get);
@@ -38,48 +37,5 @@ describe('editor catalog API pagination', () => {
 			},
 			signal: controller.signal
 		});
-	});
-
-	it('forwards scoped video search, pagination, and cancellation', async () => {
-		mocks.get.mockResolvedValue({
-			data: { projects: [], total: 75, can_edit: false },
-			error: null
-		});
-		const controller = new AbortController();
-
-		await expect(
-			listCloudVideoProjects('workspace-b', {
-				search: 'recap',
-				limit: 50,
-				offset: 50,
-				signal: controller.signal
-			})
-		).resolves.toEqual({ projects: [], total: 75, canEdit: false });
-		expect(mocks.get).toHaveBeenCalledWith('/video-editor/projects', {
-			params: {
-				query: {
-					workspace_id: 'workspace-b',
-					search: 'recap',
-					limit: 50,
-					offset: 50
-				}
-			},
-			signal: controller.signal
-		});
-	});
-
-	it('uses the existing authorized cloud-video delete endpoint and preserves server errors', async () => {
-		mocks.delete.mockResolvedValueOnce({ error: null });
-		await expect(deleteCloudVideoProject('video-a')).resolves.toBeUndefined();
-		expect(mocks.delete).toHaveBeenCalledWith('/video-editor/projects/{id}', {
-			params: { path: { id: 'video-a' } }
-		});
-
-		mocks.delete.mockResolvedValueOnce({
-			error: { detail: 'workspace is read-only for this user' }
-		});
-		await expect(deleteCloudVideoProject('video-b')).rejects.toThrow(
-			'workspace is read-only for this user'
-		);
 	});
 });

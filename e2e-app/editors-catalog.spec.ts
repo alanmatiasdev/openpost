@@ -22,23 +22,10 @@ function designSummary(id: string, title: string) {
   };
 }
 
-function videoSummary(id: string, title: string) {
-  return {
-    id,
-    title,
-    revision: 1,
-    duration_ms: 10_000,
-    source_count: 2,
-    cover_preview_media_id: "",
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  };
-}
-
 async function fulfillCatalogPage(
   route: Route,
   items: Array<Record<string, unknown>>,
-  itemKey: "designs" | "projects",
+  itemKey: "designs",
   canEdit = true,
 ) {
   const url = new URL(route.request().url());
@@ -73,7 +60,7 @@ async function registerWorkspace(
   return { auth, workspace };
 }
 
-test("editor catalog paginates past both former caps and searches the full workspace", async ({
+test("editor catalog paginates past former caps and searches the full workspace", async ({
   page,
   request,
 }) => {
@@ -81,33 +68,21 @@ test("editor catalog paginates past both former caps and searches the full works
   const designs = Array.from({ length: 125 }, (_, index) =>
     designSummary(`design-${index}`, `Design ${String(index).padStart(3, "0")}`),
   );
-  const videos = Array.from({ length: 75 }, (_, index) =>
-    videoSummary(`video-${index}`, `Video ${String(index).padStart(3, "0")}`),
-  );
   await page.route("**/api/v1/image-editor/designs?**", (route) =>
     fulfillCatalogPage(route, designs, "designs"),
-  );
-  await page.route("**/api/v1/video-editor/projects?**", (route) =>
-    fulfillCatalogPage(route, videos, "projects"),
   );
 
   await page.goto("/editors");
   const designSection = page.getByRole("region", { name: "Image designs" });
-  const videoSection = page.getByRole("region", { name: "Video projects" });
   await expect(designSection.locator('a[href^="/image-editor/"]')).toHaveCount(50);
   await designSection.getByRole("button", { name: "Load more designs" }).click();
   await expect(designSection.locator('a[href^="/image-editor/"]')).toHaveCount(100);
   await designSection.getByRole("button", { name: "Load more designs" }).click();
   await expect(designSection.locator('a[href^="/image-editor/"]')).toHaveCount(125);
 
-  await expect(videoSection.locator('a[href^="/video-editor?cloud="]')).toHaveCount(50);
-  await videoSection.getByRole("button", { name: "Load more video projects" }).click();
-  await expect(videoSection.locator('a[href^="/video-editor?cloud="]')).toHaveCount(75);
-
   await page.getByRole("textbox", { name: "Search projects" }).fill("Design 124");
   await expect(page.getByText("Design 124", { exact: true })).toBeVisible();
   await expect(designSection.locator('a[href^="/image-editor/"]')).toHaveCount(1);
-  await expect(videoSection.locator('a[href^="/video-editor?cloud="]')).toHaveCount(0);
 });
 
 test("workspace changes clear old results and reject a late prior-workspace search", async ({
@@ -167,9 +142,6 @@ test("workspace changes clear old results and reject a late prior-workspace sear
       "designs",
     );
   });
-  await page.route("**/api/v1/video-editor/projects?**", (route) =>
-    fulfillCatalogPage(route, [], "projects"),
-  );
 
   await page.goto("/editors");
   await expect(page.getByText("First loaded", { exact: true })).toBeVisible();
@@ -187,92 +159,4 @@ test("workspace changes clear old results and reject a late prior-workspace sear
   releaseCurrent();
   await expect(page.getByText("Current slow result", { exact: true })).toBeVisible();
   await expect(page.getByText("Stale slow result", { exact: true })).toHaveCount(0);
-});
-
-test("cloud delete confirms policy, rolls failures back, and refreshes the workspace on success", async ({
-  page,
-  request,
-}) => {
-  await registerWorkspace(page, request, "Cloud Delete");
-  let deleted = false;
-  let deleteAttempts = 0;
-  let releaseFailure = () => {};
-  const failureGate = new Promise<void>((resolve) => {
-    releaseFailure = resolve;
-  });
-  await page.route("**/api/v1/image-editor/designs?**", (route) =>
-    fulfillCatalogPage(route, [], "designs"),
-  );
-  await page.route("**/api/v1/video-editor/projects?**", (route) =>
-    fulfillCatalogPage(
-      route,
-      deleted ? [] : [videoSummary("cloud-video", "Cloud launch")],
-      "projects",
-    ),
-  );
-  await page.route("**/api/v1/video-editor/projects/cloud-video", async (route) => {
-    deleteAttempts += 1;
-    if (deleteAttempts === 1) {
-      await failureGate;
-      await route.fulfill({
-        status: 500,
-        contentType: "application/problem+json",
-        json: { detail: "Cloud storage is temporarily unavailable." },
-      });
-      return;
-    }
-    deleted = true;
-    await route.fulfill({
-      contentType: "application/json",
-      json: { deleted: true },
-    });
-  });
-
-  await page.goto("/editors");
-  const projectCard = page.locator('a[href="/video-editor?cloud=cloud-video"]');
-  await expect(projectCard).toBeVisible();
-  await projectCard.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Delete cloud project?" });
-  await expect(dialog).toContainText(
-    "Its source media and published posts will not be deleted. Media used by other active work remains protected",
-  );
-  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(projectCard).toHaveCount(0);
-  releaseFailure();
-  await expect(projectCard).toBeVisible();
-  await expect(dialog.getByText("Cloud storage is temporarily unavailable.")).toBeVisible();
-
-  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(projectCard).toHaveCount(0);
-  await expect(page.getByText("Cloud video project moved to trash.")).toBeVisible();
-});
-
-test("read-only catalog users never receive a cloud-video delete action", async ({
-  page,
-  request,
-}) => {
-  await registerWorkspace(page, request, "Read-only Catalog");
-  let deleteCalls = 0;
-  await page.route("**/api/v1/image-editor/designs?**", (route) =>
-    fulfillCatalogPage(route, [], "designs", false),
-  );
-  await page.route("**/api/v1/video-editor/projects?**", (route) =>
-    fulfillCatalogPage(route, [videoSummary("viewer-video", "Viewer video")], "projects", false),
-  );
-  await page.route("**/api/v1/video-editor/projects/viewer-video", async (route) => {
-    deleteCalls += 1;
-    await route.fulfill({
-      status: 403,
-      json: { detail: "workspace is read-only for this user" },
-    });
-  });
-
-  await page.goto("/editors");
-  const projectCard = page.locator('a[href="/video-editor?cloud=viewer-video"]');
-  await expect(projectCard).toBeVisible();
-  await projectCard.click({ button: "right" });
-  await expect(page.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
-  expect(deleteCalls).toBe(0);
 });

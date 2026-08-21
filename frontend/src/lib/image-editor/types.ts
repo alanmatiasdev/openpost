@@ -1,4 +1,4 @@
-import type { StockMediaProvenance } from '@openpost/video-project';
+import type { StockMediaProvenance } from '$lib/stock-media';
 
 export const IMAGE_EDITOR_SCHEMA_VERSION = 1 as const;
 export const IMAGE_EDITOR_LIMITS = {

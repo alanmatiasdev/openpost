@@ -61,50 +61,6 @@ func ensureDesignRevisionMediaReferenceSchema(ctx context.Context, db *bun.DB) e
 			}
 		}
 	}
-	videoReady, err := migrationTablesExist(
-		ctx,
-		db,
-		"video_projects",
-		"video_project_revisions",
-		"video_project_assets",
-		"media_attachments",
-	)
-	if err != nil {
-		return err
-	}
-	if videoReady {
-		revisionColumnPresent, columnErr := migrationColumnExists(
-			ctx,
-			db,
-			"video_project_assets",
-			"revision_id",
-		)
-		if columnErr != nil {
-			return columnErr
-		}
-		if !revisionColumnPresent {
-			if _, err := db.ExecContext(ctx, `ALTER TABLE video_project_assets
-				ADD COLUMN revision_id TEXT REFERENCES video_project_revisions(id) ON DELETE CASCADE`); err != nil {
-				return err
-			}
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS video_project_assets_revision_idx
-			ON video_project_assets (revision_id)`); err != nil {
-			return err
-		}
-		_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS video_revision_media_index_state (
-			revision_id TEXT PRIMARY KEY,
-			media_count INTEGER NOT NULL DEFAULT 0,
-			missing_media_count INTEGER NOT NULL DEFAULT 0,
-			status TEXT NOT NULL DEFAULT 'complete',
-			failure_code TEXT NOT NULL DEFAULT '',
-			processed_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
-			FOREIGN KEY (revision_id) REFERENCES video_project_revisions(id) ON DELETE CASCADE
-		)`)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

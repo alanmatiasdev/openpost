@@ -38,8 +38,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -96,8 +94,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -132,8 +128,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -173,8 +167,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -202,8 +194,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -268,8 +258,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -315,8 +303,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -368,8 +354,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -408,8 +392,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -442,8 +424,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -489,8 +469,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -515,8 +493,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -584,8 +560,6 @@ jobs:
           sparse-checkout: |
             /*
             !/frontend/static/image-editor-models/
-            !/frontend/static/video-editor-audio/
-            !/frontend/static/video-editor-models/
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:

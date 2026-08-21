@@ -326,7 +326,7 @@ test("non-build CI jobs omit immutable editor assets from partial checkouts", ()
   ]) {
     const job = workflowJob(ci, jobName);
     assert.match(job, /sparse-checkout-cone-mode: false/u, jobName);
-    for (const directory of ["image-editor-models", "video-editor-audio", "video-editor-models"]) {
+    for (const directory of ["image-editor-models"]) {
       assert.match(job, new RegExp(`!/frontend/static/${directory}/`, "u"), jobName);
     }
   }

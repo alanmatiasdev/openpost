@@ -206,15 +206,11 @@ test("browser storage inventory covers every supported storage technology", () =
     "localStorage:exact:vitepress-theme-appearance",
     "sessionStorage:exact:openpost:marketing-motion",
     "IndexedDB:exact:openpost-studio",
-    "IndexedDB:exact:openpost-video-editor",
     "IndexedDB:exact:workbox-expiration",
     "OPFS:exact:openpost-image-editor-media",
-    "OPFS:exact:openpost-video-editor",
-    "OPFS:exact:openpost-video-streams",
     "Cache Storage:exact:openpost-pages-1",
     "Cache Storage:exact:openpost-app-assets-1",
     "Cache Storage:exact:openpost-image-editor-models-1.7.0",
-    "Cache Storage:exact:transformers-cache",
     "Cache Storage:prefix:workbox-precache-v2-",
   ]) {
     assert.ok(identifiers.has(required), `missing browser identifier ${required}`);

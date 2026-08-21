@@ -21,11 +21,7 @@ const imageResources = [
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 async function writeValidAssetFixture(source) {
-  await Promise.all(
-    ["image-editor-models", "video-editor-audio/assets", "video-editor-models"].map((directory) =>
-      mkdir(path.join(source, directory), { recursive: true }),
-    ),
-  );
+  await mkdir(path.join(source, "image-editor-models"), { recursive: true });
   await Promise.all([
     writeFile(path.join(source, "image-editor-models/chunk.bin"), "chunk\n"),
     writeFile(
@@ -43,31 +39,6 @@ async function writeValidAssetFixture(source) {
       path.join(source, "image-editor-models/bundle-manifest.json"),
       JSON.stringify({ version: 1, resources: imageResources }),
     ),
-    writeFile(path.join(source, "video-editor-audio/assets/clip.wav"), "audio\n"),
-    writeFile(
-      path.join(source, "video-editor-audio/manifest.json"),
-      JSON.stringify({
-        assets: [
-          {
-            path: "/video-editor-audio/assets/clip.wav",
-            size_bytes: 6,
-            sha256: sha256("audio\n"),
-          },
-        ],
-      }),
-    ),
-    writeFile(path.join(source, "video-editor-models/model.onnx"), "canonical\n"),
-    writeFile(
-      path.join(source, "video-editor-models/manifest.json"),
-      JSON.stringify({
-        models: [
-          {
-            id: "fixture",
-            files: [{ path: "model.onnx", size_bytes: 10, sha256: sha256("canonical\n") }],
-          },
-        ],
-      }),
-    ),
   ]);
 }
 
@@ -77,10 +48,10 @@ test("immutable editor assets replace generated copies with shared files", async
   const source = path.join(root, "static");
   const output = path.join(root, "build");
   await writeValidAssetFixture(source);
-  await mkdir(path.join(output, "video-editor-models"), { recursive: true });
+  await mkdir(path.join(output, "image-editor-models"), { recursive: true });
   await Promise.all([
-    writeFile(path.join(output, "video-editor-models", "model.onnx"), "copy\n"),
-    writeFile(path.join(output, "video-editor-models", "stale.onnx"), "stale\n"),
+    writeFile(path.join(output, "image-editor-models", "chunk.bin"), "copy\n"),
+    writeFile(path.join(output, "image-editor-models", "stale.onnx"), "stale\n"),
     writeFile(path.join(output, "app.js"), "app\n"),
   ]);
 
@@ -90,12 +61,12 @@ test("immutable editor assets replace generated copies with shared files", async
   });
 
   const [canonical, materialized] = await Promise.all([
-    stat(path.join(source, "video-editor-models", "model.onnx")),
-    stat(path.join(output, "video-editor-models", "model.onnx")),
+    stat(path.join(source, "image-editor-models", "chunk.bin")),
+    stat(path.join(output, "image-editor-models", "chunk.bin")),
   ]);
   assert.equal(materialized.ino, canonical.ino);
   assert.equal(await readFile(path.join(output, "app.js"), "utf8"), "app\n");
-  await assert.rejects(stat(path.join(output, "video-editor-models", "stale.onnx")), /ENOENT/u);
+  await assert.rejects(stat(path.join(output, "image-editor-models", "stale.onnx")), /ENOENT/u);
 });
 
 test("thin frontend copies omit immutable assets before build tools copy public files", async (t) => {
@@ -109,7 +80,7 @@ test("thin frontend copies omit immutable assets before build tools copy public 
   await copyFrontendWithoutImmutableAssets({ sourceDirectory: source, outputDirectory: output });
 
   assert.equal(await readFile(path.join(output, "robots.txt"), "utf8"), "User-agent: *\n");
-  await assert.rejects(stat(path.join(output, "video-editor-models")), /ENOENT/u);
+  await assert.rejects(stat(path.join(output, "image-editor-models")), /ENOENT/u);
 });
 
 test("frontend asset materialization targets only generated surface trees", () => {
@@ -127,9 +98,8 @@ test("missing canonical asset directories fail without changing generated copies
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = path.join(root, "static");
   const output = path.join(root, "build");
-  await mkdir(path.join(source, "image-editor-models"), { recursive: true });
-  await mkdir(path.join(output, "video-editor-models"), { recursive: true });
-  await writeFile(path.join(output, "video-editor-models", "removed.onnx"), "stale\n");
+  await mkdir(path.join(output, "image-editor-models"), { recursive: true });
+  await writeFile(path.join(output, "image-editor-models", "removed.onnx"), "stale\n");
 
   await assert.rejects(
     materializeImmutableFrontendAssets({
@@ -140,7 +110,7 @@ test("missing canonical asset directories fail without changing generated copies
   );
 
   assert.equal(
-    await readFile(path.join(output, "video-editor-models", "removed.onnx"), "utf8"),
+    await readFile(path.join(output, "image-editor-models", "removed.onnx"), "utf8"),
     "stale\n",
   );
 });
@@ -151,9 +121,9 @@ test("missing manifest entries fail without changing generated copies", async (t
   const source = path.join(root, "static");
   const output = path.join(root, "build");
   await writeValidAssetFixture(source);
-  await rm(path.join(source, "video-editor-audio/assets/clip.wav"));
-  await mkdir(path.join(output, "video-editor-models"), { recursive: true });
-  await writeFile(path.join(output, "video-editor-models/stale.onnx"), "stale\n");
+  await rm(path.join(source, "image-editor-models/chunk.bin"));
+  await mkdir(path.join(output, "image-editor-models"), { recursive: true });
+  await writeFile(path.join(output, "image-editor-models/stale.onnx"), "stale\n");
 
   await assert.rejects(
     materializeImmutableFrontendAssets({ sourceDirectory: source, outputDirectory: output }),
@@ -161,7 +131,7 @@ test("missing manifest entries fail without changing generated copies", async (t
   );
 
   assert.equal(
-    await readFile(path.join(output, "video-editor-models/stale.onnx"), "utf8"),
+    await readFile(path.join(output, "image-editor-models/stale.onnx"), "utf8"),
     "stale\n",
   );
 });
@@ -172,7 +142,7 @@ test("same-size asset corruption fails digest validation", async (t) => {
   const source = path.join(root, "static");
   const output = path.join(root, "build");
   await writeValidAssetFixture(source);
-  await writeFile(path.join(source, "video-editor-audio/assets/clip.wav"), "wrong\n");
+  await writeFile(path.join(source, "image-editor-models/chunk.bin"), "wrong\n");
 
   await assert.rejects(
     materializeImmutableFrontendAssets({ sourceDirectory: source, outputDirectory: output }),
