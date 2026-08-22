@@ -32,6 +32,13 @@ export interface ImportOptions {
 	storageMode: 'copy' | 'link';
 }
 
+export interface GeneratedImageImportOptions {
+	projectId: string;
+	width: number;
+	height: number;
+	tags?: string[];
+}
+
 const AUDIO_EXTENSIONS = /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i;
 
 function guessKind(file: File): 'video' | 'audio' | 'image' {
@@ -155,6 +162,36 @@ export async function resolveMediaBlob(media: MediaMetadata): Promise<Blob> {
 	const blob = await readBlob(root, mediaSourceByFileName(media.id, sanitizeOrName(media)));
 	if (!blob) throw new Error(`Source bytes missing for ${media.fileName}`);
 	return blob;
+}
+
+/** Save a renderer-created image into the workspace media pool. */
+export async function importGeneratedImage(
+	file: File,
+	options: GeneratedImageImportOptions
+): Promise<MediaMetadata> {
+	const root = requireWorkspaceRoot();
+	const id = crypto.randomUUID();
+	const fileName = sanitizeWorkspaceFileName(file.name);
+	const metadata: MediaMetadata = {
+		id,
+		storageType: 'workspace',
+		fileName,
+		fileSize: file.size,
+		mimeType: file.type || 'image/png',
+		duration: 0,
+		width: options.width,
+		height: options.height,
+		fps: 0,
+		codec: 'png',
+		bitrate: 0,
+		tags: [...new Set(['image', ...(options.tags ?? [])])]
+	};
+
+	await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+	await createMedia(metadata);
+	await associateMediaWithProject(options.projectId, id);
+	mediaPool.upsert(metadata, 'ready');
+	return metadata;
 }
 
 function sanitizeOrName(media: MediaMetadata): string {

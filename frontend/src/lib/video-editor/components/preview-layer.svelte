@@ -16,6 +16,8 @@
 	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 	import { selectCuesAtFrame } from '$lib/video-editor/media/render-plan';
+	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
+	import { previewItemVolume } from '$lib/video-editor/preview/playback-settings';
 
 	let {
 		item,
@@ -92,6 +94,14 @@
 		resolved.type === 'subtitle'
 			? selectCuesAtFrame(resolved.cues ?? [], timelineStore.currentFrame)[0]
 			: undefined
+	);
+	const previewVolume = $derived(
+		previewItemVolume(
+			resolved,
+			timelineStore.tracks,
+			previewPlaybackSettings.volume,
+			previewPlaybackSettings.muted
+		)
 	);
 
 	$effect(() => {
@@ -192,6 +202,7 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 			playsinline
+			volume={previewVolume}
 		></video>
 		{#if needsGpu}<canvas
 				bind:this={gpuCanvas}

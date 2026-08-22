@@ -34,11 +34,18 @@ import {
 	WebMOutputFormat
 } from 'mediabunny';
 import { saveExportFile } from '../workspace-fs/exports';
-import type { Project, TimelineItem } from '../project/types';
+import type { Project, TimelineItem, TimelineTransition } from '../project/types';
 import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { mediaDrawGeometry, scaleItemForCanvas } from './render-geometry';
+import { effectsToCssFilter } from '../effects/filter';
+import {
+	createGpuCompositor,
+	type GpuCompositor,
+	type GpuRenderEffect
+} from '../effects/gpu/compositor';
+import { getGpuEffectDefaultParams } from '../effects/gpu/registry';
 import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
 import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
@@ -244,6 +251,7 @@ function drawTransformed(
 	const geometry = mediaDrawGeometry(item, sourceWidth, sourceHeight, canvasWidth, canvasHeight);
 	ctx.save();
 	ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
+	ctx.filter = effectsToCssFilter(item.effects) || 'none';
 	ctx.translate(geometry.centerX, geometry.centerY);
 	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
 	ctx.scale(transform.flipHorizontal === true ? -1 : 1, transform.flipVertical === true ? -1 : 1);
@@ -346,6 +354,213 @@ function drawSubtitleText(
 	ctx.restore();
 }
 
+export interface TimelineFrameRenderOptions {
+	width?: number;
+	height?: number;
+	burnSubtitles?: boolean;
+}
+
+/** Shared full-resolution compositor used by export and still-frame capture. */
+export class TimelineFrameRenderer {
+	readonly canvas: OffscreenCanvas;
+	private readonly ctx: OffscreenCanvasRenderingContext2D;
+	private readonly width: number;
+	private readonly height: number;
+	private readonly backgroundColor: string;
+	private readonly fps: number;
+	private readonly orderedItems: TimelineItem[];
+	private readonly subtitleItems: TimelineItem[];
+	private readonly transitions: TimelineTransition[];
+	private readonly itemsById: Map<string, TimelineItem>;
+	private readonly burnSubtitles: boolean;
+	private readonly decoders = new Map<string, VideoDecoder>();
+	private readonly imageCache = new Map<string, ImageBitmap>();
+	private readonly inputs: Input[] = [];
+	private readonly gpuCanvas = new OffscreenCanvas(1, 1);
+	private readonly gpuCompositor: GpuCompositor | null;
+
+	constructor(
+		private readonly project: Project,
+		options: TimelineFrameRenderOptions = {}
+	) {
+		this.width = options.width ?? project.metadata.width;
+		this.height = options.height ?? project.metadata.height;
+		this.canvas = new OffscreenCanvas(this.width, this.height);
+		const context = this.canvas.getContext('2d');
+		if (!context) throw new Error('Failed to create the render canvas context.');
+		this.ctx = context;
+		this.ctx.imageSmoothingEnabled = true;
+		this.ctx.imageSmoothingQuality = 'high';
+		this.backgroundColor = project.metadata.backgroundColor ?? '#000000';
+		this.fps = project.metadata.fps;
+		const items = project.timeline?.items ?? [];
+		const tracks = project.timeline?.tracks ?? [];
+		this.orderedItems = paintOrder(items, tracks).filter(
+			(item) => item.type === 'video' || item.type === 'image' || item.type === 'text'
+		);
+		this.subtitleItems = items.filter((item) => item.type === 'subtitle');
+		this.transitions = project.timeline?.transitions ?? [];
+		this.itemsById = new Map(items.map((item) => [item.id, item]));
+		this.burnSubtitles = options.burnSubtitles ?? true;
+		this.gpuCompositor = createGpuCompositor(this.gpuCanvas);
+	}
+
+	private renderGpuEffects(
+		source: CanvasImageSource,
+		width: number,
+		height: number,
+		item: TimelineItem,
+		frame: number
+	): CanvasImageSource {
+		const effects: GpuRenderEffect[] = (item.effects ?? []).flatMap((effect) =>
+			effect.type === 'gpu' && effect.enabled
+				? [
+						{
+							effectId: effect.effectId,
+							params: {
+								...getGpuEffectDefaultParams(effect.effectId),
+								...effect.params
+							}
+						}
+					]
+				: []
+		);
+		if (effects.length === 0 || !this.gpuCompositor) return source;
+		// SAFETY: callers only pass canvas and ImageBitmap sources, which satisfy TexImageSource.
+		const rendered = this.gpuCompositor.render(source as TexImageSource, width, height, effects, {
+			time: frame / this.fps
+		});
+		return rendered ? this.gpuCanvas : source;
+	}
+
+	private async getDecoder(mediaId: string): Promise<VideoDecoder | null> {
+		const existing = this.decoders.get(mediaId);
+		if (existing) return existing;
+		const media = mediaPool.get(mediaId);
+		if (!media) return null;
+		const blob = await resolveMediaBlob(media);
+		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		this.inputs.push(input);
+		const videoTrack = await input.getPrimaryVideoTrack();
+		if (!videoTrack) return null;
+		const decoder: VideoDecoder = {
+			input,
+			sink: new CanvasSink(videoTrack, { width: this.width, height: this.height, fit: 'contain' })
+		};
+		this.decoders.set(mediaId, decoder);
+		return decoder;
+	}
+
+	async render(frame: number): Promise<OffscreenCanvas> {
+		const ctx = this.ctx;
+		ctx.globalAlpha = 1;
+		ctx.fillStyle = this.backgroundColor;
+		ctx.fillRect(0, 0, this.width, this.height);
+
+		const blend = transitionBlendAtFrame(this.transitions, this.itemsById, frame);
+		for (const item of this.orderedItems) {
+			if (!isVisibleAtFrame(item, frame)) continue;
+			const resolvedItem = scaleItemForCanvas(
+				resolveAnimatedItemAt(item, frame),
+				this.width / this.project.metadata.width,
+				this.height / this.project.metadata.height
+			);
+			if (resolvedItem.type === 'text') {
+				drawTextItem(ctx, resolvedItem, this.width, this.height);
+				continue;
+			}
+			if (!resolvedItem.mediaId) continue;
+			let alpha = baseOpacity(resolvedItem);
+			if (blend) {
+				if (item.id === blend.outgoingId) alpha *= outgoingOpacity(blend.type, blend.progress);
+				else if (item.id === blend.incomingId) alpha *= incomingOpacity(blend.type, blend.progress);
+			}
+			if (alpha <= 0) continue;
+
+			if (resolvedItem.type === 'video') {
+				const decoder = await this.getDecoder(resolvedItem.mediaId);
+				if (!decoder) continue;
+				const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, this.fps));
+				if (!wrapped) continue;
+				const source = this.renderGpuEffects(
+					wrapped.canvas,
+					wrapped.canvas.width,
+					wrapped.canvas.height,
+					resolvedItem,
+					frame
+				);
+				drawTransformed(
+					ctx,
+					source,
+					wrapped.canvas.width,
+					wrapped.canvas.height,
+					resolvedItem,
+					this.width,
+					this.height,
+					alpha
+				);
+			} else {
+				let bitmap = this.imageCache.get(resolvedItem.mediaId);
+				if (!bitmap) {
+					const media = mediaPool.get(resolvedItem.mediaId);
+					if (!media) continue;
+					bitmap = await createImageBitmap(await resolveMediaBlob(media));
+					this.imageCache.set(resolvedItem.mediaId, bitmap);
+				}
+				const source = this.renderGpuEffects(
+					bitmap,
+					bitmap.width,
+					bitmap.height,
+					resolvedItem,
+					frame
+				);
+				drawTransformed(
+					ctx,
+					source,
+					bitmap.width,
+					bitmap.height,
+					resolvedItem,
+					this.width,
+					this.height,
+					alpha
+				);
+			}
+		}
+
+		if (this.burnSubtitles) {
+			for (const item of this.subtitleItems) {
+				if (!isVisibleAtFrame(item, frame)) continue;
+				const cue = selectCuesAtFrame(item.cues ?? [], frame)[0];
+				if (cue) {
+					drawSubtitleText(ctx, cue.text, this.width, this.height, item.subtitleStyleScale ?? 1);
+				}
+			}
+		}
+		return this.canvas;
+	}
+
+	dispose(): void {
+		for (const input of this.inputs) input.dispose?.();
+		for (const bitmap of this.imageCache.values()) bitmap.close();
+		this.imageCache.clear();
+		this.gpuCompositor?.dispose();
+	}
+}
+
+export async function renderTimelineFrame(
+	project: Project,
+	frame: number,
+	options: TimelineFrameRenderOptions = {}
+): Promise<Blob> {
+	const renderer = new TimelineFrameRenderer(project, options);
+	try {
+		await renderer.render(Math.max(0, Math.round(frame)));
+		return await renderer.canvas.convertToBlob({ type: 'image/png' });
+	} finally {
+		renderer.dispose();
+	}
+}
+
 /** Render the full timeline into one composed file and save it to exports. */
 export async function renderMultiTrackVideo(
 	project: Project,
@@ -358,8 +573,6 @@ export async function renderMultiTrackVideo(
 	const items = timeline?.items ?? [];
 	if (items.length === 0) throw new Error('This timeline has nothing to render.');
 	const tracks = timeline?.tracks ?? [];
-	const transitions = timeline?.transitions ?? [];
-	const itemsById = new Map(items.map((item) => [item.id, item]));
 	const fullDuration = outputDurationFrames(items);
 	const startFrame = Math.max(0, Math.floor(options.range?.startFrame ?? 0));
 	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
@@ -447,115 +660,17 @@ export async function renderMultiTrackVideo(
 	const feedTask = runFeed();
 	feedTask.catch(() => undefined);
 
-	const canvas = new OffscreenCanvas(width, height);
-	const ctx = canvas.getContext('2d');
-	if (!ctx) throw new Error('Failed to create the render canvas context.');
-	ctx.imageSmoothingEnabled = true;
-	ctx.imageSmoothingQuality = 'high';
-
-	const backgroundColor = project.metadata.backgroundColor ?? '#000000';
-	const orderedItems = paintOrder(items, tracks).filter(
-		(item) => item.type === 'video' || item.type === 'image' || item.type === 'text'
-	);
-	const subtitleItems = items.filter((item) => item.type === 'subtitle');
-
-	const decoders = new Map<string, VideoDecoder>();
-	const imageCache = new Map<string, ImageBitmap>();
-	const inputs: Input[] = [];
-
-	async function getDecoder(mediaId: string): Promise<VideoDecoder | null> {
-		const existing = decoders.get(mediaId);
-		if (existing) return existing;
-		const media = mediaPool.get(mediaId);
-		if (!media) return null;
-		const blob = await resolveMediaBlob(media);
-		const input = new Input({
-			source: new BlobSource(blob),
-			formats: ALL_FORMATS
-		});
-		inputs.push(input);
-		const videoTrack = await input.getPrimaryVideoTrack();
-		if (!videoTrack) return null;
-		const decoder: VideoDecoder = {
-			input,
-			sink: new CanvasSink(videoTrack, { width, height, fit: 'contain' })
-		};
-		decoders.set(mediaId, decoder);
-		return decoder;
-	}
+	const frameRenderer = new TimelineFrameRenderer(project, {
+		width,
+		height,
+		burnSubtitles: subtitleMode === 'burn'
+	});
 
 	try {
 		for (let outputFrame = 0; outputFrame < totalFrames; outputFrame++) {
 			throwIfAborted(options.signal);
 			const frame = startFrame + outputFrame;
-			ctx.globalAlpha = 1;
-			ctx.fillStyle = backgroundColor;
-			ctx.fillRect(0, 0, width, height);
-
-			const blend = transitionBlendAtFrame(transitions, itemsById, frame);
-			for (const item of orderedItems) {
-				if (!isVisibleAtFrame(item, frame)) continue;
-				const resolvedItem = scaleItemForCanvas(
-					resolveAnimatedItemAt(item, frame),
-					width / project.metadata.width,
-					height / project.metadata.height
-				);
-				if (resolvedItem.type === 'text') {
-					drawTextItem(ctx, resolvedItem, width, height);
-					continue;
-				}
-				if (!resolvedItem.mediaId) continue;
-				let alpha = baseOpacity(resolvedItem);
-				if (blend) {
-					if (item.id === blend.outgoingId) {
-						alpha *= outgoingOpacity(blend.type, blend.progress);
-					} else if (item.id === blend.incomingId) {
-						alpha *= incomingOpacity(blend.type, blend.progress);
-					}
-				}
-				if (alpha <= 0) continue;
-
-				if (resolvedItem.type === 'video') {
-					const decoder = await getDecoder(resolvedItem.mediaId);
-					if (!decoder) continue;
-					const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, fps));
-					if (!wrapped) continue;
-					drawTransformed(
-						ctx,
-						wrapped.canvas,
-						wrapped.canvas.width,
-						wrapped.canvas.height,
-						resolvedItem,
-						width,
-						height,
-						alpha
-					);
-				} else {
-					let bitmap = imageCache.get(resolvedItem.mediaId);
-					if (!bitmap) {
-						const media = mediaPool.get(resolvedItem.mediaId);
-						if (!media) continue;
-						bitmap = await createImageBitmap(await resolveMediaBlob(media));
-						imageCache.set(resolvedItem.mediaId, bitmap);
-					}
-					drawTransformed(
-						ctx,
-						bitmap,
-						bitmap.width,
-						bitmap.height,
-						resolvedItem,
-						width,
-						height,
-						alpha
-					);
-				}
-			}
-
-			for (const item of subtitleMode === 'burn' ? subtitleItems : []) {
-				if (!isVisibleAtFrame(item, frame)) continue;
-				const cue = selectCuesAtFrame(item.cues ?? [], frame)[0];
-				if (cue) drawSubtitleText(ctx, cue.text, width, height, item.subtitleStyleScale ?? 1);
-			}
+			const canvas = await frameRenderer.render(frame);
 
 			const sample = new VideoSample(canvas, {
 				timestamp: outputFrame / fps,
@@ -579,9 +694,7 @@ export async function renderMultiTrackVideo(
 		}
 		throw error;
 	} finally {
-		for (const input of inputs) input.dispose?.();
-		for (const bitmap of imageCache.values()) bitmap.close();
-		imageCache.clear();
+		frameRenderer.dispose();
 	}
 
 	const buffer = target.buffer;

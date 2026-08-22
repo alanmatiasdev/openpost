@@ -1,5 +1,6 @@
 <!-- Multi-track composited preview with direct transform gizmos. -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type {
 		ItemTransform,
@@ -21,6 +22,8 @@
 		transitionAtFrame
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import PreviewLayer from './preview-layer.svelte';
+	import PreviewAudioLayer from './preview-audio-layer.svelte';
+	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 
 	let {
 		selectedItemId = $bindable(null),
@@ -50,17 +53,17 @@
 
 	$effect(() => {
 		for (const media of mediaPool.mediaList) {
-			if (media.tags.includes('audio') || urls[media.id]) continue;
+			if (urls[media.id]) continue;
 			void getMediaObjectUrl(media)
 				.then((url) => {
 					urls = { ...urls, [media.id]: url };
 				})
 				.catch(() => undefined);
 		}
-		return () => {
-			for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
-			urls = {};
-		};
+	});
+
+	onDestroy(() => {
+		for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
 	});
 
 	function transitionOpacity(item: TimelineItem): number {
@@ -119,12 +122,15 @@
 	}
 </script>
 
-<div class="flex min-h-0 flex-1 items-center justify-center bg-[oklch(0.12_0.008_55)] p-4">
+<div
+	class="fullscreen:p-6 [container-type:size] flex min-h-0 flex-1 overflow-auto bg-[oklch(0.12_0.008_55)] p-4"
+>
 	<div
 		bind:this={viewport}
-		class="[container-type:size] relative max-h-full max-w-full overflow-hidden rounded-md bg-black"
-		style="aspect-ratio: {aspect}; width: min(100%, calc((100vh - 19rem) * {canvasWidth /
-			canvasHeight}));"
+		class="[container-type:size] relative m-auto shrink-0 overflow-hidden rounded-md bg-black"
+		style={previewPlaybackSettings.zoom === -1
+			? `aspect-ratio:${aspect}; width:min(100cqw, calc(100cqh * ${canvasWidth / canvasHeight})); max-width:100%; max-height:100%;`
+			: `aspect-ratio:${aspect}; width:${canvasWidth * previewPlaybackSettings.zoom}px;`}
 	>
 		{#if activeItems.length === 0}
 			<div
@@ -169,4 +175,7 @@
 			{/if}
 		{/if}
 	</div>
+	{#each timelineStore.items.filter((item) => item.type === 'audio' && timelineStore.currentFrame >= item.from && timelineStore.currentFrame < item.from + item.durationInFrames) as item (item.id)}
+		<PreviewAudioLayer {item} url={urls[item.mediaId ?? '']} />
+	{/each}
 </div>
