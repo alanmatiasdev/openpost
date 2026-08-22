@@ -4095,5 +4095,10 @@
 	"video_editor_transcript_hide": "Ocultar transcrição",
 	"video_editor_transcript_empty": "Ainda sem legendas.",
 	"video_editor_transcript_line": "Linha de legenda",
-	"video_editor_transcript_delete_line": "Eliminar linha"
+	"video_editor_transcript_delete_line": "Eliminar linha",
+	"video_editor_keyframes": "Fotogramas-chave",
+	"video_editor_keyframe_opacity": "Opacidade",
+	"video_editor_keyframe_volume": "Volume",
+	"video_editor_keyframe_add_opacity": "Adicionar fotograma-chave de opacidade na cabeça de leitura",
+	"video_editor_keyframe_add_volume": "Adicionar fotograma-chave de volume na cabeça de leitura"
 }

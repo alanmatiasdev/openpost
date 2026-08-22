@@ -4095,5 +4095,10 @@
 	"video_editor_transcript_hide": "Hide transcript",
 	"video_editor_transcript_empty": "No captions yet.",
 	"video_editor_transcript_line": "Caption line",
-	"video_editor_transcript_delete_line": "Delete line"
+	"video_editor_transcript_delete_line": "Delete line",
+	"video_editor_keyframes": "Keyframes",
+	"video_editor_keyframe_opacity": "Opacity",
+	"video_editor_keyframe_volume": "Volume",
+	"video_editor_keyframe_add_opacity": "Add opacity keyframe at playhead",
+	"video_editor_keyframe_add_volume": "Add volume keyframe at playhead"
 }

@@ -18,6 +18,12 @@
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { Slider } from '$lib/components/ui/slider';
+	import {
+		activeValueAt,
+		removeKeyframe,
+		setKeyframe
+	} from '$lib/video-editor/timeline/actions/keyframes';
+	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 
@@ -202,15 +208,66 @@
 	function zoomBy(factor: number): void {
 		timelineStore._setZoomLevel(zoom * factor);
 	}
+
+	const KEYFRAME_PROPERTIES: readonly KeyframeProperty[] = ['opacity', 'volume'];
+	const DEFAULT_KEYFRAME_VALUES: Record<KeyframeProperty, number> = { opacity: 1, volume: 1 };
+
+	const selectedItem = $derived(
+		selectedItemId ? timelineStore.itemById.get(selectedItemId) : undefined
+	);
+	const keyframeRows = $derived.by(() => {
+		if (!selectedItem) return [];
+		return KEYFRAME_PROPERTIES.filter(
+			(property) => (selectedItem.keyframes?.[property]?.frames.length ?? 0) > 0
+		);
+	});
+
+	function keyframeLabel(property: KeyframeProperty): string {
+		return property === 'opacity'
+			? m.video_editor_keyframe_opacity()
+			: m.video_editor_keyframe_volume();
+	}
+
+	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
+		const item = selectedItem;
+		if (!item) return;
+		const frame = Math.max(0, timelineStore.currentFrame - item.from);
+		const value =
+			activeValueAt(item, property, timelineStore.currentFrame) ??
+			DEFAULT_KEYFRAME_VALUES[property];
+		if (setKeyframe(item.id, property, frame, value)) onedit();
+	}
+
+	function removeKeyframeAt(property: KeyframeProperty, frame: number): void {
+		const item = selectedItem;
+		if (!item) return;
+		if (removeKeyframe(item.id, property, frame)) onedit();
+	}
 </script>
 
 <div class="flex items-center gap-2 px-3 py-1">
 	<span class="text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_timeline()}</span>
 	<div class="ml-auto flex items-center gap-1">
-		{#if selectedItemId}
+		{#if selectedItem}
 			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
-				{timelineStore.itemById.get(selectedItemId)?.label}
+				{selectedItem.label}
 			</span>
+			<button
+				type="button"
+				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				title={m.video_editor_keyframe_add_opacity()}
+				onclick={() => addKeyframeAtPlayhead('opacity')}
+			>
+				◆ {keyframeLabel('opacity')}
+			</button>
+			<button
+				type="button"
+				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				title={m.video_editor_keyframe_add_volume()}
+				onclick={() => addKeyframeAtPlayhead('volume')}
+			>
+				◆ {keyframeLabel('volume')}
+			</button>
 		{/if}
 		<button
 			type="button"
@@ -242,7 +299,7 @@
 
 <div
 	bind:this={scrollContainer}
-	class="relative max-h-56 min-h-32 overflow-x-auto overflow-y-hidden pb-2"
+	class="relative max-h-72 min-h-32 overflow-x-auto overflow-y-hidden pb-2"
 	role="region"
 	aria-label={m.video_editor_timeline()}
 >
@@ -317,6 +374,42 @@
 				{/each}
 			</div>
 		{/each}
+
+		<!-- Keyframe dopesheet for the selected clip -->
+		{#if selectedItem && keyframeRows.length > 0}
+			<div class="relative border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)]">
+				<span
+					class="pointer-events-none absolute -top-4 left-1 text-[9px] text-[oklch(0.65_0.015_55)] uppercase"
+				>
+					{m.video_editor_keyframes()}
+				</span>
+				{#each keyframeRows as property (property)}
+					<div class="relative h-5 border-b border-[oklch(0.22_0.01_50)] last:border-b-0">
+						<span
+							class="pointer-events-none absolute top-1/2 left-1 z-10 -translate-y-1/2 text-[9px] text-[oklch(0.65_0.015_55)] uppercase"
+						>
+							{keyframeLabel(property)}
+						</span>
+						{#each selectedItem.keyframes?.[property]?.frames ?? [] as frame (frame)}
+							<button
+								type="button"
+								class="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[oklch(0.66_0.14_45)] hover:bg-[oklch(0.78_0.14_45)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								style="left:{frameToPx(selectedItem.from + frame)}px"
+								title="{keyframeLabel(property)} — {m.video_editor_marker_remove_hint()}"
+								onclick={() => setCurrentFrame(selectedItem.from + frame)}
+								ondblclick={() => removeKeyframeAt(property, frame)}
+								onkeydown={(event) => {
+									if (event.key === 'Enter') setCurrentFrame(selectedItem.from + frame);
+									if (event.key === 'Delete' || event.key === 'Backspace') {
+										removeKeyframeAt(property, frame);
+									}
+								}}
+							></button>
+						{/each}
+					</div>
+				{/each}
+			</div>
+		{/if}
 
 		<!-- Playhead -->
 		<div
