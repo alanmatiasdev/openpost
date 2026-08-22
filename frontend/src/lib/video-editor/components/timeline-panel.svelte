@@ -316,10 +316,12 @@
 		return null;
 	}
 
-	function findSlideNeighbors(item: TimelineItem): {
+	interface SlideNeighbors {
 		left: TimelineItem | null;
 		right: TimelineItem | null;
-	} {
+	}
+
+	function findSlideNeighbors(item: TimelineItem): SlideNeighbors {
 		const end = item.from + item.durationInFrames;
 		return {
 			left:
