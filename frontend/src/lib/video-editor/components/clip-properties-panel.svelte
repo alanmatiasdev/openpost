@@ -1,5 +1,6 @@
 <!-- Type-specific, undoable clip inspector with FreeCut-compatible auto-key rules. -->
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
@@ -20,30 +21,66 @@
 	const transformFields: NumericField[] = [
 		{ property: 'x', label: 'X', min: -2, max: 2, step: 0.01 },
 		{ property: 'y', label: 'Y', min: -2, max: 2, step: 0.01 },
-		{ property: 'width', label: 'Width', min: 1, max: 7680, step: 1 },
-		{ property: 'height', label: 'Height', min: 1, max: 4320, step: 1 },
-		{ property: 'rotation', label: 'Rotation', min: -360, max: 360, step: 1 },
-		{ property: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.01 },
-		{ property: 'cornerRadius', label: 'Radius', min: 0, max: 1000, step: 1 }
+		{ property: 'width', label: m.video_editor_property_width(), min: 1, max: 7680, step: 1 },
+		{ property: 'height', label: m.video_editor_property_height(), min: 1, max: 4320, step: 1 },
+		{ property: 'rotation', label: m.video_editor_rotation(), min: -360, max: 360, step: 1 },
+		{ property: 'opacity', label: m.video_editor_clip_opacity(), min: 0, max: 1, step: 0.01 },
+		{
+			property: 'cornerRadius',
+			label: m.video_editor_property_radius(),
+			min: 0,
+			max: 1000,
+			step: 1
+		}
 	];
 
 	const cropFields: NumericField[] = [
-		{ property: 'cropLeft', label: 'Left', min: 0, max: 1, step: 0.01 },
-		{ property: 'cropRight', label: 'Right', min: 0, max: 1, step: 0.01 },
-		{ property: 'cropTop', label: 'Top', min: 0, max: 1, step: 0.01 },
-		{ property: 'cropBottom', label: 'Bottom', min: 0, max: 1, step: 0.01 },
-		{ property: 'cropSoftness', label: 'Softness', min: 0, max: 1, step: 0.01 }
+		{ property: 'cropLeft', label: m.video_editor_align_left(), min: 0, max: 1, step: 0.01 },
+		{ property: 'cropRight', label: m.video_editor_align_right(), min: 0, max: 1, step: 0.01 },
+		{ property: 'cropTop', label: m.video_editor_property_top(), min: 0, max: 1, step: 0.01 },
+		{ property: 'cropBottom', label: m.video_editor_property_bottom(), min: 0, max: 1, step: 0.01 },
+		{
+			property: 'cropSoftness',
+			label: m.video_editor_property_softness(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		}
 	];
 
 	const textFields: NumericField[] = [
-		{ property: 'fontSize', label: 'Size', min: 8, max: 500, step: 1 },
-		{ property: 'fontWeight', label: 'Weight', min: 100, max: 900, step: 100 },
-		{ property: 'lineHeight', label: 'Line height', min: 0.5, max: 4, step: 0.05 },
-		{ property: 'letterSpacing', label: 'Tracking', min: -10, max: 50, step: 0.1 },
-		{ property: 'paddingX', label: 'Padding X', min: 0, max: 500, step: 1 },
-		{ property: 'paddingY', label: 'Padding Y', min: 0, max: 500, step: 1 },
-		{ property: 'borderRadius', label: 'Box radius', min: 0, max: 500, step: 1 },
-		{ property: 'strokeWidth', label: 'Stroke', min: 0, max: 30, step: 0.5 }
+		{ property: 'fontSize', label: m.video_editor_property_size(), min: 8, max: 500, step: 1 },
+		{
+			property: 'fontWeight',
+			label: m.video_editor_property_weight(),
+			min: 100,
+			max: 900,
+			step: 100
+		},
+		{
+			property: 'lineHeight',
+			label: m.video_editor_property_line_height(),
+			min: 0.5,
+			max: 4,
+			step: 0.05
+		},
+		{
+			property: 'letterSpacing',
+			label: m.video_editor_property_tracking(),
+			min: -10,
+			max: 50,
+			step: 0.1
+		},
+		{ property: 'paddingX', label: m.video_editor_property_padding_x(), min: 0, max: 500, step: 1 },
+		{ property: 'paddingY', label: m.video_editor_property_padding_y(), min: 0, max: 500, step: 1 },
+		{
+			property: 'borderRadius',
+			label: m.video_editor_property_box_radius(),
+			min: 0,
+			max: 500,
+			step: 1
+		},
+		{ property: 'strokeWidth', label: m.video_editor_property_stroke(), min: 0, max: 30, step: 0.5 }
 	];
 
 	function valueFor(source: TimelineItem, property: KeyframeProperty): number {
@@ -137,12 +174,12 @@
 </script>
 
 {#if item}
-	<div class="flex flex-col gap-3" aria-label="Clip properties">
+	<div class="flex flex-col gap-3" aria-label={m.video_editor_clip_properties()}>
 		<section>
 			<h3
 				class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
 			>
-				Transform
+				{m.video_editor_property_transform()}
 			</h3>
 			<div class="grid grid-cols-2 gap-1">
 				{#each transformFields as field (field.property)}
@@ -153,7 +190,7 @@
 								type="button"
 								class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
 								class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
-								aria-label="Toggle auto-key for {field.label}"
+								aria-label={m.video_editor_property_auto_key({ property: field.label })}
 								onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
 							>
 						</span>
@@ -176,7 +213,7 @@
 				<h3
 					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
 				>
-					Crop
+					{m.video_editor_crop()}
 				</h3>
 				<div class="grid grid-cols-2 gap-1">
 					{#each cropFields as field (field.property)}
@@ -199,7 +236,7 @@
 
 		{#if item.type === 'video' || item.type === 'audio'}
 			<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-				>Volume<input
+				>{m.video_editor_clip_volume()}<input
 					class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
 					type="number"
 					min="0"
@@ -216,7 +253,7 @@
 				<h3
 					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
 				>
-					Text
+					{m.video_editor_tool_text()}
 				</h3>
 				<textarea
 					class="mb-1 min-h-16 w-full resize-y rounded bg-[oklch(0.22_0.01_50)] p-1.5 text-xs"
@@ -244,7 +281,7 @@
 				</div>
 				<div class="mt-1 grid grid-cols-2 gap-1">
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-						>Text color<input
+						>{m.video_editor_text_color()}<input
 							class="block h-8 w-full rounded bg-transparent"
 							type="color"
 							value={item.color ?? '#ffffff'}
@@ -252,7 +289,7 @@
 						/></label
 					>
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-						>Background<input
+						>{m.video_editor_text_background()}<input
 							class="block h-8 w-full rounded bg-transparent"
 							type="color"
 							value={item.backgroundColor ?? '#000000'}

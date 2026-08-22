@@ -161,7 +161,7 @@
 						</div>
 						<div class="mt-1 grid grid-cols-2 gap-1">
 							<label class="text-[9px] text-[oklch(0.62_0.01_55)]"
-								>Start<input
+								>{m.video_editor_property_start()}<input
 									class="mt-0.5 w-full rounded bg-[oklch(0.24_0.01_50)] px-1 py-0.5 text-[10px]"
 									type="number"
 									min="0"
@@ -171,7 +171,7 @@
 								/></label
 							>
 							<label class="text-[9px] text-[oklch(0.62_0.01_55)]"
-								>End<input
+								>{m.video_editor_property_end()}<input
 									class="mt-0.5 w-full rounded bg-[oklch(0.24_0.01_50)] px-1 py-0.5 text-[10px]"
 									type="number"
 									min={cue.startFrame + 1}
@@ -190,7 +190,7 @@
 										<input
 											class="w-16 bg-transparent text-[10px] outline-none"
 											value={word.text}
-											aria-label="Transcript word"
+											aria-label={m.video_editor_transcript_word()}
 											onfocus={() => setCurrentFrame(word.startFrame)}
 											onblur={(event) => {
 												if (event.currentTarget.value !== word.text)
@@ -202,7 +202,7 @@
 												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
 												type="number"
 												value={word.startFrame}
-												aria-label="Word start frame"
+												aria-label={m.video_editor_transcript_word_start()}
 												onblur={(event) =>
 													updateWord(item, cue, word.id, {
 														startFrame: Math.max(0, event.currentTarget.valueAsNumber)
@@ -211,7 +211,7 @@
 												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
 												type="number"
 												value={word.endFrame}
-												aria-label="Word end frame"
+												aria-label={m.video_editor_transcript_word_end()}
 												onblur={(event) =>
 													updateWord(item, cue, word.id, {
 														endFrame: Math.max(
@@ -222,7 +222,7 @@
 											/><button
 												type="button"
 												class="ml-auto text-[9px] opacity-60 hover:opacity-100"
-												aria-label="Delete transcript word"
+												aria-label={m.video_editor_transcript_word_delete()}
 												onclick={(event) => {
 													event.stopPropagation();
 													deleteWord(item, cue, word.id);

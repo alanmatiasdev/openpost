@@ -162,7 +162,7 @@
 					<button
 						type="button"
 						class="absolute -right-2 -bottom-2 size-4 cursor-nwse-resize rounded-full border border-black bg-[oklch(0.72_0.16_45)] focus-visible:outline-2 focus-visible:outline-white"
-						aria-label="Resize selected clip"
+						aria-label={m.video_editor_preview_resize_selected()}
 						onpointerdown={(event) => startGizmo(event, 'resize')}
 					></button>
 				</div>
