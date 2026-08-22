@@ -13,4 +13,20 @@ describe('SettingsNavigation', () => {
 			await expect.element(destination).toHaveAttribute('data-cuelume-toggle', 'toggle');
 		}
 	});
+
+	it('shows one section at a time without a second sidebar or search box', async () => {
+		const screen = render(SettingsNavigation, { active: 'general' });
+		const navigation = screen.getByTestId('settings-navigation');
+
+		await expect
+			.element(navigation.getByRole('navigation', { name: 'Settings sections' }))
+			.toBeVisible();
+		await expect
+			.element(navigation.getByRole('link', { name: 'General', exact: true }))
+			.toBeVisible();
+		expect(await navigation.getByRole('link', { name: 'Profile', exact: true }).all()).toHaveLength(
+			0
+		);
+		expect(await navigation.getByRole('textbox').all()).toHaveLength(0);
+	});
 });

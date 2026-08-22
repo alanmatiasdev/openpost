@@ -63,6 +63,7 @@ test("email change keeps the old address until confirmation and explains conflic
 
   await page.goto("/settings?tab=security");
   const card = page.getByTestId("email-change-card");
+  await card.locator("summary").click();
   await expect(card.getByText(oldEmail, { exact: true })).toBeVisible();
 
   await card.getByLabel("New email address").fill(confirmedEmail);
@@ -162,16 +163,15 @@ test("linked identity removal keeps the final sign-in method", async ({ page, re
   );
 
   await page.goto("/settings?tab=security");
-  // Linked identities is now inside a disclosure that is open by default
-  await expect(page.getByRole("heading", { name: "Linked identities" })).toBeVisible();
-  await expect(
-    page
-      .getByText("Before you continue, sign in with a passkey or a linked external account.")
-      .first(),
-  ).toBeVisible();
   const linkedIdentityCard = page.locator("details").filter({
     has: page.getByRole("heading", { name: "Linked identities" }),
   });
+  await linkedIdentityCard.locator("summary").click();
+  await expect(
+    linkedIdentityCard
+      .getByText("Before you continue, sign in with a passkey or a linked external account.")
+      .first(),
+  ).toBeVisible();
   await expect(linkedIdentityCard.getByLabel("Current password")).toHaveCount(0);
   await linkedIdentityCard.getByRole("button", { name: "Unlink" }).click();
   const dialog = page.getByRole("dialog");
@@ -238,12 +238,9 @@ test("API token secret is shown once with explicit expiry and status", async ({
       .getByRole("region", { name: /^Notifications/ })
       .getByText("API token copied.", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator("#tokens").getByText("API token copied.", { exact: true })).toHaveText(
-    "API token copied.",
-  );
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(created.token);
 
-  const tokenSection = page.locator("#tokens");
+  const tokenSection = page.getByTestId("api-token-list");
   await expect(tokenSection.getByText(tokenName, { exact: true })).toBeVisible();
   await expect(tokenSection.getByText("Active", { exact: true })).toBeVisible();
   await expect(tokenSection).toContainText("Expires");

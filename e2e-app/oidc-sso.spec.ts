@@ -180,8 +180,16 @@ test("required SSO sends an unlinked local account to explicit linking", async (
 
   await expect(page).toHaveURL(/\/settings\?tab=security$/);
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
-  const googleLinkButton = page.getByRole("button", { name: "Link Google" });
-  const linkButton = page.getByRole("button", { name: "Link Acme SSO" });
+  const linkedIdentities = page.locator("details").filter({
+    has: page.getByRole("heading", { name: "Linked identities" }),
+  });
+  await linkedIdentities.locator("summary").click();
+  const googleLinkButton = linkedIdentities.getByRole("button", {
+    name: "Link Google",
+  });
+  const linkButton = linkedIdentities.getByRole("button", {
+    name: "Link Acme SSO",
+  });
   await expect(googleLinkButton).toBeVisible();
   await expect(linkButton).toBeVisible();
   await expect(googleLinkButton).toBeDisabled();

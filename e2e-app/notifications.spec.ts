@@ -326,11 +326,11 @@ test("temporary Mutes remain exact and operable on the Notifications route at su
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/notifications");
-    const activeMutes = page.getByRole("list", { name: "Active Mutes" });
+    const activeMutes = page.getByRole("list", { name: "Active mutes" });
     await expect(activeMutes.getByText("All workspaces", { exact: true })).toBeVisible();
     await expect(activeMutes.getByText(`${workspace.name} only`, { exact: true })).toBeVisible();
     await expect(activeMutes.getByText(/^Optional email paused until /)).toHaveCount(2);
-    const notificationStart = page.getByRole("button", { name: "Start Mute" });
+    const notificationStart = page.getByRole("button", { name: "Start mute" });
     const notificationEnd = activeMutes.getByRole("button", { name: "End now" }).first();
     const endTimeBox = await page.getByLabel("End time").boundingBox();
     expect(endTimeBox?.height).toBeGreaterThanOrEqual(44);
@@ -347,10 +347,10 @@ test("temporary Mutes remain exact and operable on the Notifications route at su
     });
 
     await page.goto("/settings?tab=notifications");
-    const settingsMutes = page.getByRole("list", { name: "Active Mutes" });
+    const settingsMutes = page.getByRole("list", { name: "Active mutes" });
     await expect(settingsMutes.getByText("All workspaces", { exact: true })).toBeVisible();
     await expect(settingsMutes.getByText(`${workspace.name} only`, { exact: true })).toBeVisible();
-    const startMute = page.getByRole("button", { name: "Start Mute" });
+    const startMute = page.getByRole("button", { name: "Start mute" });
     const endNow = settingsMutes.getByRole("button", { name: "End now" }).first();
     const savePreferences = page.getByRole("button", { name: "Save preferences" });
     await expect(startMute).toBeVisible();
@@ -386,7 +386,7 @@ test("temporary Mutes remain exact and operable on the Notifications route at su
   await workspaceMute.getByRole("button", { name: "End now" }).click();
   await expect(workspaceMute).toHaveCount(0);
   await expect(
-    page.getByRole("list", { name: "Active Mutes" }).getByText("All workspaces", { exact: true }),
+    page.getByRole("list", { name: "Active mutes" }).getByText("All workspaces", { exact: true }),
   ).toBeVisible();
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);

@@ -330,7 +330,6 @@
 		<p class="text-xs leading-5 text-muted-foreground">{m.notifications_critical_help()}</p>
 
 		<SettingsFormFooter
-			sticky={false}
 			label={m.notifications_save_preferences()}
 			savingLabel={m.notifications_saving_preferences()}
 			{saving}

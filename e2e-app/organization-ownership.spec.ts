@@ -124,16 +124,16 @@ test("Owner and nominee see truthful ownership-transfer boundaries", async ({
   expect((await passwordReauth).ok()).toBeTruthy();
   expect((await ownershipInitiation).ok()).toBeTruthy();
   await expect(page.getByText("Ownership transfer pending")).toBeVisible();
-  expect(browserErrors).toEqual([
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
-  ]);
+  expect(browserErrors).toEqual([]);
   browserErrors.length = 0;
   const transferResponse = await request.get(
     `/api/v1/organizations/${organizationID}/ownership-transfer`,
     { headers: { Authorization: `Bearer ${auth.token}` } },
   );
   expect(transferResponse.ok()).toBeTruthy();
-  const transfer = await transferResponse.json();
+  const ownershipState = await transferResponse.json();
+  expect(ownershipState.pending).toBe(true);
+  const transfer = ownershipState.transfer;
 
   for (const viewport of [
     { name: "desktop", width: 1280, height: 900 },

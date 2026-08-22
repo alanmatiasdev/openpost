@@ -1,26 +1,7 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { resolveAppPath } from '$lib/app-path';
-	import { auth } from '$lib/stores/auth';
-	import { workspaceCtx } from '$lib/stores/workspace.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import PageContainer from '$lib/components/page-container.svelte';
-	import SettingsNavigation from '$lib/components/settings-navigation.svelte';
-	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import WorkspaceDeleteDialog from '$lib/components/workspace-delete-dialog.svelte';
-	import OrganizationDeleteDialog from '$lib/components/organization-delete-dialog.svelte';
-	import { client } from '$lib/api/client';
-	import type { components } from '$lib/api/types';
-	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
-	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
-	import OrganizationAuditSettings from '$lib/components/organization-audit-settings.svelte';
-	import OrganizationOwnershipSettings from '$lib/components/organization-ownership-settings.svelte';
-	import WorkspaceTeamSettings from '$lib/components/workspace-team-settings.svelte';
-	import InstanceConfiguration from '$lib/components/instance-configuration.svelte';
-	import InstanceAdminUsers from '$lib/components/instance-admin-users.svelte';
-	import AccountManagement from '$lib/components/account-management.svelte';
 	import type {
 		AccountManagementContinuation,
 		AccountManagementFeedback
@@ -30,26 +11,39 @@
 		presentAccountManagementFeedback,
 		rememberAccountManagementContinuation
 	} from '$lib/account-management-route';
-	import { ui } from '$lib/stores/ui.svelte';
+	import { resolveAppPath } from '$lib/app-path';
+	import AccountManagement from '$lib/components/account-management.svelte';
+	import InstanceAdminUsers from '$lib/components/instance-admin-users.svelte';
+	import InstanceConfiguration from '$lib/components/instance-configuration.svelte';
+	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
+	import OrganizationAuditSettings from '$lib/components/organization-audit-settings.svelte';
+	import OrganizationOwnershipSettings from '$lib/components/organization-ownership-settings.svelte';
+	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
+	import PageContainer from '$lib/components/page-container.svelte';
 	import RepostAutomationSettings from '$lib/components/repost-automation-settings.svelte';
-	import BrandSettingsTab from '$lib/components/settings/BrandSettingsTab.svelte';
-	import InstanceSettingsTab from '$lib/components/settings/InstanceSettingsTab.svelte';
-	import WorkspacePreferencesSettings from '$lib/components/settings/WorkspacePreferencesSettings.svelte';
-	import ProfileSettingsTab from '$lib/components/settings/ProfileSettingsTab.svelte';
+	import SettingsNavigation from '$lib/components/settings-navigation.svelte';
 	import BillingSettingsTab from '$lib/components/settings/BillingSettingsTab.svelte';
-	import ScheduleSettingsTab from '$lib/components/settings/ScheduleSettingsTab.svelte';
+	import BrandSettingsTab from '$lib/components/settings/BrandSettingsTab.svelte';
 	import DeveloperSettingsTab from '$lib/components/settings/DeveloperSettingsTab.svelte';
+	import InstanceSettingsTab from '$lib/components/settings/InstanceSettingsTab.svelte';
+	import ProfileSettingsTab from '$lib/components/settings/ProfileSettingsTab.svelte';
+	import ScheduleSettingsTab from '$lib/components/settings/ScheduleSettingsTab.svelte';
 	import SecuritySettingsTab from '$lib/components/settings/SecuritySettingsTab.svelte';
-	import { getSettingsDestination, normalizeSettingsTab } from '$lib/settings-navigation';
-	import { showToast } from '$lib/toast';
+	import WorkspacePreferencesSettings from '$lib/components/settings/WorkspacePreferencesSettings.svelte';
+	import WorkspaceDeleteDialog from '$lib/components/workspace-delete-dialog.svelte';
+	import WorkspaceTeamSettings from '$lib/components/workspace-team-settings.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
+	import { getSettingsDestination, normalizeSettingsTab } from '$lib/settings-navigation';
+	import { auth } from '$lib/stores/auth';
+	import { ui } from '$lib/stores/ui.svelte';
+	import { workspaceCtx } from '$lib/stores/workspace.svelte';
+	import { showToast } from '$lib/toast';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 
 	const authState = $derived($auth);
 	let destructiveDialogOpen = $state(false);
-	let organizationDeleteDialogOpen = $state(false);
-	let currentOrganization = $state<components['schemas']['OrganizationResponse'] | null>(null);
-	let organizationRequestSequence = 0;
 	let accountFeedback = $state<AccountManagementFeedback | null>(null);
 	let handledAccountURL = '';
 
@@ -59,19 +53,6 @@
 		billingHref: '/settings?tab=plan',
 		mastodonCallbackHref: '/accounts/mastodon/callback'
 	};
-
-	async function loadCurrentOrganization(organizationID: string) {
-		const sequence = ++organizationRequestSequence;
-		const { data } = await client.GET('/organizations');
-		if (sequence !== organizationRequestSequence) return;
-		currentOrganization = data?.find((organization) => organization.id === organizationID) ?? null;
-	}
-
-	$effect(() => {
-		const organizationID = workspaceCtx.currentWorkspace?.organization_id ?? '';
-		currentOrganization = null;
-		if (organizationID) void loadCurrentOrganization(organizationID);
-	});
 
 	const activeSettingsTab = $derived(
 		normalizeSettingsTab(
@@ -136,18 +117,6 @@
 		showToast(m.workspace_delete_success());
 		await goto(resolve('/'));
 	}
-
-	async function deleteCurrentOrganization(confirmation: {
-		confirmName: string;
-		currentPassword: string;
-		reauthGrant?: string;
-	}) {
-		const organizationID = workspaceCtx.currentWorkspace?.organization_id;
-		if (!organizationID) return;
-		await workspaceCtx.deleteOrganization(organizationID, confirmation);
-		showToast(m.organization_delete_success());
-		await goto(resolve('/'));
-	}
 </script>
 
 <svelte:head>
@@ -175,165 +144,78 @@
 			{/snippet}
 		</InlineNotice>
 	{:else}
-		<div class="grid min-w-0 items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
+		<div class="min-w-0 space-y-8">
 			<SettingsNavigation
 				active={activeSettingsTab}
 				showInstance={Boolean(authState.user?.is_admin)}
 			/>
 
-			<div class="min-w-0 space-y-6">
-				<section id="profile" class:hidden={activeSettingsTab !== 'profile'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'profile'}
-						<ProfileSettingsTab />
-					{/if}
-				</section>
-
-				<section
-					id="notifications"
-					class:hidden={activeSettingsTab !== 'notifications'}
-					class="scroll-mt-24"
-				>
-					{#if activeSettingsTab === 'notifications'}
-						<NotificationPreferences
-							workspaceID={workspaceCtx.currentWorkspace?.id ?? ''}
-							workspaceName={workspaceCtx.currentWorkspace?.name ?? ''}
-						/>
-					{/if}
-				</section>
-
-				<section id="accounts" class:hidden={activeSettingsTab !== 'accounts'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'accounts'}
-						<AccountManagement
-							mode="settings"
-							workspace={workspaceCtx.currentWorkspace}
-							workspaces={workspaceCtx.workspaces}
-							links={accountLinks}
-							feedback={accountFeedback}
-							onFeedbackDismiss={() => (accountFeedback = null)}
-							onContinue={continueAccountConnection}
-							onAccountsChanged={() => ui.refreshWorkspaceSetup()}
-						/>
-					{/if}
-				</section>
-
-				<section id="reposts" class:hidden={activeSettingsTab !== 'reposts'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'reposts'}
-						<RepostAutomationSettings workspaceID={workspaceCtx.currentWorkspace?.id ?? ''} />
-					{/if}
-				</section>
-
-				{#if authState.user?.is_admin}
-					<section id="users" class:hidden={activeSettingsTab !== 'users'} class="scroll-mt-24">
-						{#if activeSettingsTab === 'users'}
-							<InstanceAdminUsers />
-						{/if}
-					</section>
-
-					<section
-						id="instance-audit"
-						class:hidden={activeSettingsTab !== 'instance-audit'}
-						class="scroll-mt-24"
-					>
-						{#if activeSettingsTab === 'instance-audit'}
-							<OrganizationAuditSettings organizationID="" active instanceWide />
-						{/if}
-					</section>
-
-					<section
-						id="instance"
-						class:hidden={activeSettingsTab !== 'instance'}
-						class="scroll-mt-24"
-					>
-						{#if activeSettingsTab === 'instance'}
-							<InstanceSettingsTab userID={authState.user?.id ?? ''} active />
-						{/if}
-					</section>
-
-					<section
-						id="configuration"
-						class:hidden={activeSettingsTab !== 'configuration'}
-						class="scroll-mt-24"
-					>
-						{#if activeSettingsTab === 'configuration'}
-							<InstanceConfiguration active />
-						{/if}
-					</section>
-				{/if}
-
-				{#if activeSettingsTab === 'general'}
-					<WorkspacePreferencesSettings
-						onDelete={() => (destructiveDialogOpen = true)}
-						organizationOwner={currentOrganization?.role === 'owner'}
-						onDeleteOrganization={() => (organizationDeleteDialogOpen = true)}
+			<div class="max-w-5xl min-w-0 space-y-6">
+				{#if activeSettingsTab === 'profile'}
+					<ProfileSettingsTab />
+				{:else if activeSettingsTab === 'notifications'}
+					<NotificationPreferences
+						workspaceID={workspaceCtx.currentWorkspace?.id ?? ''}
+						workspaceName={workspaceCtx.currentWorkspace?.name ?? ''}
 					/>
-				{/if}
-
-				<section id="team" class:hidden={activeSettingsTab !== 'members'} class="scroll-mt-24">
+				{:else if activeSettingsTab === 'security'}
+					<SecuritySettingsTab />
+				{:else if activeSettingsTab === 'developer'}
+					<DeveloperSettingsTab />
+				{:else if activeSettingsTab === 'general'}
+					<WorkspacePreferencesSettings onDelete={() => (destructiveDialogOpen = true)} />
+				{:else if activeSettingsTab === 'brand'}
+					<BrandSettingsTab workspaceID={workspaceCtx.currentWorkspace?.id ?? ''} active />
+				{:else if activeSettingsTab === 'accounts'}
+					<AccountManagement
+						mode="settings"
+						workspace={workspaceCtx.currentWorkspace}
+						workspaces={workspaceCtx.workspaces}
+						links={accountLinks}
+						feedback={accountFeedback}
+						onFeedbackDismiss={() => (accountFeedback = null)}
+						onContinue={continueAccountConnection}
+						onAccountsChanged={() => ui.refreshWorkspaceSetup()}
+					/>
+				{:else if activeSettingsTab === 'reposts'}
+					<RepostAutomationSettings workspaceID={workspaceCtx.currentWorkspace?.id ?? ''} />
+				{:else if activeSettingsTab === 'schedule'}
+					<ScheduleSettingsTab />
+				{:else if activeSettingsTab === 'members'}
 					<WorkspaceTeamSettings
 						workspaceID={workspaceCtx.currentWorkspace?.id ?? ''}
 						currentUserID={authState.user?.id ?? ''}
-						active={activeSettingsTab === 'members'}
+						active
 						onMembershipChanged={() => workspaceCtx.loadWorkspaces()}
 					/>
-				</section>
-
-				<section id="sso" class:hidden={activeSettingsTab !== 'sso'} class="scroll-mt-24">
+				{:else if activeSettingsTab === 'plan'}
+					<BillingSettingsTab />
+				{:else if activeSettingsTab === 'sso'}
 					<OrganizationSSOSettings
 						organizationID={workspaceCtx.currentWorkspace?.organization_id ?? ''}
-						active={activeSettingsTab === 'sso'}
+						active
 					/>
-				</section>
-
-				<section id="audit" class:hidden={activeSettingsTab !== 'audit'} class="scroll-mt-24">
+				{:else if activeSettingsTab === 'audit'}
 					<OrganizationAuditSettings
 						organizationID={workspaceCtx.currentWorkspace?.organization_id ?? ''}
-						active={activeSettingsTab === 'audit'}
+						active
 					/>
-				</section>
-
-				<section
-					id="ownership"
-					class:hidden={activeSettingsTab !== 'ownership'}
-					class="scroll-mt-24"
-				>
-					{#if activeSettingsTab === 'ownership'}
-						<OrganizationOwnershipSettings
-							preferredOrganizationID={page.url.searchParams.get('organization') ?? ''}
-							currentUserID={authState.user?.id ?? ''}
-							active
-						/>
-					{/if}
-				</section>
-
-				<section id="billing" class:hidden={activeSettingsTab !== 'plan'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'plan'}
-						<BillingSettingsTab />
-					{/if}
-				</section>
-
-				<section id="security" class:hidden={activeSettingsTab !== 'security'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'security'}
-						<SecuritySettingsTab />
-					{/if}
-				</section>
-
-				<section id="tokens" class:hidden={activeSettingsTab !== 'developer'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'developer'}
-						<DeveloperSettingsTab />
-					{/if}
-				</section>
-
-				<section id="brand" class:hidden={activeSettingsTab !== 'brand'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'brand'}
-						<BrandSettingsTab workspaceID={workspaceCtx.currentWorkspace?.id ?? ''} active />
-					{/if}
-				</section>
-
-				<section id="schedule" class:hidden={activeSettingsTab !== 'schedule'} class="scroll-mt-24">
-					{#if activeSettingsTab === 'schedule'}
-						<ScheduleSettingsTab />
-					{/if}
-				</section>
+				{:else if activeSettingsTab === 'ownership'}
+					<OrganizationOwnershipSettings
+						preferredOrganizationID={page.url.searchParams.get('organization') ?? ''}
+						currentUserID={authState.user?.id ?? ''}
+						active
+						onDeleted={() => goto(resolve('/'))}
+					/>
+				{:else if authState.user?.is_admin && activeSettingsTab === 'instance'}
+					<InstanceSettingsTab userID={authState.user?.id ?? ''} active />
+				{:else if authState.user?.is_admin && activeSettingsTab === 'configuration'}
+					<InstanceConfiguration active />
+				{:else if authState.user?.is_admin && activeSettingsTab === 'users'}
+					<InstanceAdminUsers />
+				{:else if authState.user?.is_admin && activeSettingsTab === 'instance-audit'}
+					<OrganizationAuditSettings organizationID="" active instanceWide />
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -345,14 +227,4 @@
 	workspaceName={workspaceCtx.currentWorkspace?.name ?? ''}
 	hasPassword={Boolean(authState.user?.password_usable)}
 	onConfirm={deleteCurrentWorkspace}
-/>
-
-<OrganizationDeleteDialog
-	bind:open={organizationDeleteDialogOpen}
-	organizationID={currentOrganization?.id ?? workspaceCtx.currentWorkspace?.organization_id ?? ''}
-	organizationName={currentOrganization?.name ??
-		workspaceCtx.currentWorkspace?.organization_name ??
-		''}
-	hasPassword={Boolean(authState.user?.password_usable)}
-	onConfirm={deleteCurrentOrganization}
 />

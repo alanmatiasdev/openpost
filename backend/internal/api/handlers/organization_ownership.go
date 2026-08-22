@@ -32,6 +32,13 @@ type OwnershipTransferResponse struct {
 }
 
 type OwnershipTransferOutput struct{ Body OwnershipTransferResponse }
+type PendingOwnershipTransferResponse struct {
+	Pending  bool                       `json:"pending" doc:"Whether an ownership transfer is pending"`
+	Transfer *OwnershipTransferResponse `json:"transfer,omitempty" doc:"Pending transfer when one exists"`
+}
+type PendingOwnershipTransferOutput struct {
+	Body PendingOwnershipTransferResponse
+}
 type OwnershipTransferOrganizationInput struct {
 	PathID string `path:"id" doc:"Organization ID"`
 }
@@ -54,7 +61,7 @@ type CompleteOwnershipTransferInput struct {
 
 func (h *OrganizationOwnershipHandler) RegisterRoutes(api huma.API) {
 	auth := middleware.AuthMiddleware(api, h.auth)
-	huma.Register(api, huma.Operation{OperationID: "get-organization-ownership-transfer", Method: http.MethodGet, Path: "/organizations/{id}/ownership-transfer", Summary: "Get the pending Organization ownership transfer", Tags: []string{tagWorkspaces}, Middlewares: huma.Middlewares{auth}, Errors: []int{403, 404}}, h.getForOrganization)
+	huma.Register(api, huma.Operation{OperationID: "get-organization-ownership-transfer", Method: http.MethodGet, Path: "/organizations/{id}/ownership-transfer", Summary: "Get the pending Organization ownership transfer", Description: "Returns pending false when the Organization has no pending ownership transfer.", Tags: []string{tagWorkspaces}, Middlewares: huma.Middlewares{auth}, Errors: []int{403}}, h.getForOrganization)
 	huma.Register(api, huma.Operation{OperationID: "initiate-organization-ownership-transfer", Method: http.MethodPost, Path: "/organizations/{id}/ownership-transfer", Summary: "Nominate a successor Organization Owner", Description: "Requires the current Owner, an unscoped browser session, exact Organization-name confirmation, and recent reauthentication. Authority changes only after acceptance.", Tags: []string{tagWorkspaces}, Middlewares: huma.Middlewares{auth}, Errors: []int{400, 401, 403, 404, 409, 503}}, h.initiate)
 	huma.Register(api, huma.Operation{OperationID: "revoke-organization-ownership-transfer", Method: http.MethodDelete, Path: "/organizations/{id}/ownership-transfer", Summary: "Revoke a pending Organization ownership transfer", Tags: []string{tagWorkspaces}, Middlewares: huma.Middlewares{auth}, Errors: []int{403, 404, 409}}, h.revoke)
 	huma.Register(api, huma.Operation{OperationID: "resolve-organization-ownership-transfer", Method: http.MethodGet, Path: "/organization-ownership-transfers/resolve", Summary: "Review an Organization ownership nomination", Tags: []string{tagWorkspaces}, Middlewares: huma.Middlewares{auth}, Errors: []int{400, 403, 404, 409}}, h.resolve)
@@ -71,12 +78,16 @@ func ownershipCredential(ctx context.Context) organizationownership.Credential {
 	}
 }
 
-func (h *OrganizationOwnershipHandler) getForOrganization(ctx context.Context, input *OwnershipTransferOrganizationInput) (*OwnershipTransferOutput, error) {
+func (h *OrganizationOwnershipHandler) getForOrganization(ctx context.Context, input *OwnershipTransferOrganizationInput) (*PendingOwnershipTransferOutput, error) {
 	transfer, err := h.service.GetForOrganization(ctx, input.PathID, ownershipCredential(ctx))
 	if err != nil {
+		if errors.Is(err, organizationownership.ErrNotFound) {
+			return &PendingOwnershipTransferOutput{Body: PendingOwnershipTransferResponse{}}, nil
+		}
 		return nil, ownershipTransferHTTPError(err)
 	}
-	return ownershipTransferOutput(transfer), nil
+	response := ownershipTransferResponse(transfer)
+	return &PendingOwnershipTransferOutput{Body: PendingOwnershipTransferResponse{Pending: true, Transfer: &response}}, nil
 }
 
 func (h *OrganizationOwnershipHandler) initiate(ctx context.Context, input *InitiateOwnershipTransferInput) (*OwnershipTransferOutput, error) {
@@ -128,7 +139,11 @@ func (h *OrganizationOwnershipHandler) decline(ctx context.Context, input *Compl
 }
 
 func ownershipTransferOutput(transfer organizationownership.Transfer) *OwnershipTransferOutput {
-	return &OwnershipTransferOutput{Body: OwnershipTransferResponse{ID: transfer.ID, OrganizationID: transfer.OrganizationID, OrganizationName: transfer.OrganizationName, PriorOwnerUserID: transfer.PriorOwnerUserID, PriorOwnerEmail: transfer.PriorOwnerEmail, NomineeUserID: transfer.NomineeUserID, NomineeEmail: transfer.NomineeEmail, Status: transfer.Status, ExpiresAt: transfer.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")}}
+	return &OwnershipTransferOutput{Body: ownershipTransferResponse(transfer)}
+}
+
+func ownershipTransferResponse(transfer organizationownership.Transfer) OwnershipTransferResponse {
+	return OwnershipTransferResponse{ID: transfer.ID, OrganizationID: transfer.OrganizationID, OrganizationName: transfer.OrganizationName, PriorOwnerUserID: transfer.PriorOwnerUserID, PriorOwnerEmail: transfer.PriorOwnerEmail, NomineeUserID: transfer.NomineeUserID, NomineeEmail: transfer.NomineeEmail, Status: transfer.Status, ExpiresAt: transfer.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func ownershipTransferHTTPError(err error) error {

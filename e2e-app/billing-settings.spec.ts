@@ -50,9 +50,12 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
 
       const planLabel = scenario.locale === "pt" ? "Plano e utilização" : "Plan & usage";
       if (scenario.width >= 1024) {
-        const planLink = page.locator('[data-settings-tab="plan"]');
-        await planLink.focus();
-        await expect(planLink).toBeFocused();
+        const organizationLink = page.getByTestId("settings-navigation").getByRole("link", {
+          name: scenario.locale === "pt" ? "Organização" : "Organization",
+          exact: true,
+        });
+        await organizationLink.focus();
+        await expect(organizationLink).toBeFocused();
         await page.keyboard.press("Enter");
       } else {
         await page.goto("/settings?tab=plan");
@@ -406,8 +409,6 @@ test("instance admins can review usage, users, and update status", async ({ page
   await expect(status).toContainText("OpenPost never installs updates");
   await expect(status.getByRole("button", { name: /update/i })).toHaveCount(0);
 
-  const settingsSearch = page.getByRole("textbox", { name: "Search settings" });
-  await settingsSearch.fill("users");
   await expect(page.locator('[data-settings-tab="users"]')).toBeVisible();
   await expect(page.locator('[data-settings-tab="profile"]')).toHaveCount(0);
   await page.locator('[data-settings-tab="users"]').click();
@@ -507,10 +508,7 @@ test("settings account tab updates the user profile", async ({ page, request }) 
   await page.goto("/settings?tab=profile");
 
   await expect(page.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
-  await page
-    .locator("section#profile")
-    .getByRole("textbox", { name: "Display name", exact: true })
-    .fill("Profile E2E User");
+  await page.getByRole("textbox", { name: "Display name", exact: true }).fill("Profile E2E User");
   await page.getByRole("button", { name: "Save Profile" }).click();
   await expect(page.getByText("Profile updated")).toBeVisible();
 
@@ -536,15 +534,14 @@ test("settings keeps the active mobile tab visible and exposes dismissible statu
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings?tab=plan");
 
-  const activeTab = page.locator("aside").getByRole("button", {
-    name: "Settings",
-  });
+  const activeTab = page
+    .getByTestId("settings-navigation")
+    .getByRole("button", { name: "Settings" });
   await expect(activeTab).toContainText("Plan & usage");
   await expect(activeTab).toBeInViewport();
 
   await page.goto("/settings?tab=profile");
   await page
-    .locator("section#profile")
     .getByRole("textbox", { name: "Display name", exact: true })
     .fill("Mobile Settings User");
   await page.getByRole("button", { name: "Save Profile" }).click();
@@ -602,7 +599,7 @@ test("settings creates read-only MCP API tokens by default", async ({ page, requ
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=developer");
 
-  await expect(page.getByTestId("api-token-scope")).toContainText("MCP / read only");
+  await expect(page.getByTestId("api-token-scope")).toContainText("MCP read-only");
   await expect(page.getByText(/Best for read-only work/)).toBeVisible();
   await page.locator("#api-token-name").fill("ChatGPT App E2E");
   await page.getByRole("button", { name: "Create Token" }).click();
@@ -611,7 +608,7 @@ test("settings creates read-only MCP API tokens by default", async ({ page, requ
   await expect(page.getByText(/op_cli_[a-f0-9]{8}_/)).toBeVisible();
   const createdToken = page.getByText("ChatGPT App E2E").locator("../..");
   await expect(createdToken).toBeVisible();
-  await expect(createdToken).toContainText("MCP / read only");
+  await expect(createdToken).toContainText("MCP read-only");
 });
 
 test("settings creates and accepts workspace invitations", async ({
@@ -630,7 +627,7 @@ test("settings creates and accepts workspace invitations", async ({
   await authenticatePage(page, adminAuth.token);
   await page.goto("/settings?tab=members");
 
-  await expect(page.locator("#team").getByRole("heading", { name: "Team" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Team members", level: 1 })).toBeVisible();
 
   await page.getByTestId("team-invite-email").fill(inviteEmail);
   await page.locator("#team-invite-role").click();
@@ -1036,7 +1033,9 @@ test("plan selection from signup starts checkout after onboarding", async ({ pag
         () =>
           (
             window as typeof window & {
-              __openpostPaddleTest?: { checkout?: { settings?: { locale?: string } } };
+              __openpostPaddleTest?: {
+                checkout?: { settings?: { locale?: string } };
+              };
             }
           ).__openpostPaddleTest?.checkout?.settings?.locale,
       ),

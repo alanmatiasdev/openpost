@@ -471,7 +471,7 @@
 		{m.settings_no_tokens()}
 	</p>
 {:else if apiTokens.length > 0}
-	<div class="space-y-2">
+	<div class="space-y-2" data-testid="api-token-list">
 		{#each apiTokens as token (token.id)}
 			<div
 				class="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"

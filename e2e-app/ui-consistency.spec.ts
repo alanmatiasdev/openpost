@@ -173,7 +173,7 @@ for (const viewport of viewports) {
         if (route === "/accounts") {
           const settingsNavigation = page.getByTestId("settings-navigation");
           await expect(settingsNavigation).toBeVisible();
-          if (viewport.width < 1024) {
+          if (viewport.width < 768) {
             await expect(settingsNavigation.locator('button[aria-label="Settings"]')).toContainText(
               "Social accounts",
             );
@@ -188,10 +188,11 @@ for (const viewport of viewports) {
 
     await page.goto("/settings");
     await expectConsistentPageFrame(page);
-    const mobileSettingsSelector = page.locator('aside button[aria-label="Settings"]');
+    const settingsNavigation = page.getByTestId("settings-navigation");
+    const mobileSettingsSelector = settingsNavigation.locator('button[aria-label="Settings"]');
     await expect(mobileSettingsSelector).toHaveCount(1);
 
-    if (viewport.width < 1024) {
+    if (viewport.width < 768) {
       await expect(mobileSettingsSelector).toBeVisible();
       await mobileSettingsSelector.click();
       const settingsMenuViewport = page.locator(
@@ -222,7 +223,7 @@ for (const viewport of viewports) {
     await expect(
       scheduleSection.getByRole("heading", {
         level: 2,
-        name: "Posting schedule",
+        name: "Weekly times",
       }),
     ).toBeVisible();
     await scheduleSection.locator("#new-time").scrollIntoViewIfNeeded();
@@ -230,7 +231,7 @@ for (const viewport of viewports) {
     await expect(page.locator("h1")).toHaveCount(1);
     await expectNoDocumentOverflow(page);
 
-    if (viewport.width < 1024) {
+    if (viewport.width < 768) {
       await mobileSettingsSelector.click();
       await page.getByRole("option", { name: "Social accounts" }).click();
     } else {
@@ -285,7 +286,9 @@ test("Portuguese page chrome stays readable across compact portrait widths", asy
       await page.goto("/settings");
       await expectConsistentPageFrame(page);
 
-      const settingsSelector = page.locator('aside button[aria-label="Definições"]');
+      const settingsSelector = page
+        .getByTestId("settings-navigation")
+        .locator('button[aria-label="Definições"]');
       await expect(settingsSelector).toBeVisible();
       await settingsSelector.click();
       await page.getByRole("option", { name: "Horário de publicação" }).click();

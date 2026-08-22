@@ -7,7 +7,6 @@
 	import type { DestructiveActionOutcome } from '$lib/destructive-action-outcome';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import SectionHeader from '$lib/components/section-header.svelte';
 	import { client } from '$lib/api/client';
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
@@ -24,7 +23,6 @@
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
-	import UsersIcon from '@lucide/svelte/icons/users';
 
 	type WorkspaceRole = 'admin' | 'editor' | 'viewer';
 	type InvitationStatus = WorkspaceInvitation['status'];
@@ -490,25 +488,13 @@
 	}
 </script>
 
-{#snippet headerActions()}
-	{#if !loading && team}
-		<div class="rounded-md border bg-muted/20 px-3 py-2 text-sm">
-			<span class="text-muted-foreground">
-				{team.current_seats === 1
-					? m.settings_seat_reserved()
-					: m.settings_seats_reserved({ count: team.current_seats })}
-			</span>
-		</div>
-	{/if}
-{/snippet}
-
-<SectionHeader
-	title={m.settings_team()}
-	description={m.settings_team_body()}
-	icon={UsersIcon}
-	actions={!loading && team ? headerActions : undefined}
-	class="mb-4"
-/>
+{#if !loading && team}
+	<p class="mb-4 text-sm text-muted-foreground">
+		{team.current_seats === 1
+			? m.settings_seat_reserved()
+			: m.settings_seats_reserved({ count: team.current_seats })}
+	</p>
+{/if}
 
 {#if loadError}
 	<div data-testid="team-load-error" class="mb-4">

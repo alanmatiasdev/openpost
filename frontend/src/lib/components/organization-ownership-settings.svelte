@@ -9,11 +9,9 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import OrganizationDeleteDialog from '$lib/components/organization-delete-dialog.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import SectionHeader from '$lib/components/section-header.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
-	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 
 	type Member = components['schemas']['OrganizationMemberResponse'];
 	type Organization = components['schemas']['OrganizationResponse'];
@@ -24,8 +22,9 @@
 		preferredOrganizationID?: string;
 		currentUserID: string;
 		active?: boolean;
+		onDeleted?: () => void | Promise<void>;
 	}
-	let { preferredOrganizationID = '', currentUserID, active = false }: Props = $props();
+	let { preferredOrganizationID = '', currentUserID, active = false, onDeleted }: Props = $props();
 	let loadedOrganizationID = '';
 	let organizationsLoaded = false;
 	let organizationLoadGeneration = 0;
@@ -126,12 +125,7 @@
 		]);
 		if (loadGeneration !== organizationLoadGeneration || expectedOrganizationID !== organizationID)
 			return;
-		if (
-			team.error ||
-			(pending.error && pending.response.status !== 404) ||
-			securityResult.error ||
-			identityResult.error
-		) {
+		if (team.error || pending.error || securityResult.error || identityResult.error) {
 			error =
 				team.error?.detail ||
 				pending.error?.detail ||
@@ -142,7 +136,7 @@
 			return;
 		}
 		members = team.data?.members ?? [];
-		transfer = pending.response.status === 404 ? null : (pending.data ?? null);
+		transfer = pending.data?.transfer ?? null;
 		pendingStateAvailable = true;
 		security = securityResult.data ?? null;
 		identities = identityResult.data ?? [];
@@ -205,16 +199,12 @@
 		organizationID = organizations[0]?.id ?? '';
 		loadedOrganizationID = '';
 		showToast(m.organization_delete_success());
+		await onDeleted?.();
 	}
 </script>
 
 {#if loading}<PageLoading layout="settings" variant="cards" label={m.common_loading()} items={2} />
 {:else}<div class="space-y-6">
-		<SectionHeader
-			title={m.settings_ownership_heading()}
-			description={m.settings_ownership_body()}
-			icon={KeyRoundIcon}
-		/>
 		{#if error}<InlineNotice tone="error" message={error}
 				>{#snippet actions()}<Button variant="outline" size="sm" onclick={() => void retryLoad()}
 						>{m.common_retry()}</Button

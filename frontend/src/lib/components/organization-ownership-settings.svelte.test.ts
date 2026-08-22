@@ -44,7 +44,7 @@ describe('OrganizationOwnershipSettings', () => {
 						: Promise.resolve(team('beta-owner', 'beta-owner@example.com'));
 				}
 				if (path === '/organizations/{id}/ownership-transfer') {
-					return Promise.resolve({ error: { detail: 'not found' }, response: { status: 404 } });
+					return Promise.resolve({ data: { pending: false }, response: { status: 200 } });
 				}
 				if (path === '/auth/security') {
 					return Promise.resolve({ data: { user: { password_usable: true }, passkeys: [] } });
