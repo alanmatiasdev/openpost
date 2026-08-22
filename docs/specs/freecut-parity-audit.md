@@ -231,7 +231,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Render queue: queue jobs, pause/resume, reorder, retry, clear, statuses            | `export/components/render-queue-panel.tsx`, `render-queue-runner.tsx`   | MISSING                                                                                                                                     | M      |
 | Split render into segments / one segment per marker                                | docs p19                                                                | MISSING                                                                                                                                     | M      |
 | Saved exports browser (download/delete from workspace)                             | `exports-dialog.tsx`                                                    | PARTIAL — `workspace-fs/exports.ts` stores/lists/deletes; no UI surfacing it                                                                | S      |
-| Progress phases (prepare/render/encode/finalize) + cancel                          | docs p18                                                                | PRESENT - phase-aware progress source and abort control are wired in the dialog                                                             | -      |
+| Progress phases (prepare/render/encode/finalize) + cancel                          | docs p18                                                                | PARTIAL - abort control and frame progress are wired; the dialog does not label each source phase                                           | S      |
 | Worker-thread export w/ main-thread fallback                                       | `export/workers/export-render.worker.ts`                                | PARTIAL — workers used for probe/proxy/waveform/whisper, export runs on main thread                                                         | M      |
 | GIF export                                                                         | absent in FreeCut (GIF only imported; filmstrip caches)                 | N/A parity                                                                                                                                  | —      |
 | Alpha/transparent export                                                           | absent in FreeCut                                                       | N/A parity                                                                                                                                  | —      |
@@ -253,8 +253,8 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 131** (excluding 2 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 48**
-- **PARTIAL: 43**
+- **PRESENT: 47**
+- **PARTIAL: 44**
 - **MISSING: 38**
 - (N/A parity: 2)
 
