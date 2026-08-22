@@ -1,5 +1,5 @@
 /** Adobe/Resolve .cube parser and WebGL LUT effect. Ported from FreeCut (MIT). */
-import type { GpuParamValues, GpuShaderDefinition } from './types';
+import type { GpuParamValue, GpuParamValues, GpuShaderDefinition } from './types';
 
 export interface EncodedCubeLut {
 	size: number;
@@ -85,7 +85,7 @@ vec4 lutFragment(vec2 vUv) { vec4 source = texture(uInputTex, vUv); return vec4(
 	}
 };
 
-function numeric(value: string | number | undefined, fallback: number): number {
+function numeric(value: GpuParamValue | undefined, fallback: number): number {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : fallback;
 }

@@ -36,6 +36,8 @@
 		type BlendMode
 	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import ColorScopes from './color-scopes.svelte';
+	import GpuParamControl from './gpu-param-control.svelte';
+	import type { GpuParamValue } from '$lib/video-editor/effects/gpu/types';
 	import {
 		clearEffectDragData,
 		setEffectDragData,
@@ -204,15 +206,9 @@
 		delete draftAmounts[effectId];
 	}
 
-	function commitGpuParam(effect: GpuEffect, paramName: string, value: number): void {
+	function commitGpuParam(effect: GpuEffect, paramName: string, value: GpuParamValue): void {
 		if (!itemId) return;
 		if (setGpuEffectParam(itemId, effect.id, paramName, value)) onedit();
-		delete draftAmounts[`${effect.id}:${paramName}`];
-	}
-
-	function numericParam(effect: GpuEffect, name: string, fallback: number): number {
-		const value = Number(effect.params[name]);
-		return Number.isFinite(value) ? value : fallback;
 	}
 
 	async function importLut(effect: GpuEffect): Promise<void> {
@@ -321,27 +317,14 @@
 						{/if}
 						<div class="mt-1 flex flex-col gap-1">
 							{#each gpuDefinition.schema as param (param.name)}
-								<label class="flex items-center gap-2 text-xs">
-									<span
-										class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]"
-										title={param.label}
-									>
-										{param.label}
-									</span>
-									<Slider
-										class="min-w-0 flex-1"
-										min={param.min}
-										max={param.max}
-										step={param.step}
-										value={draftAmounts[`${effect.id}:${param.name}`] ??
-											numericParam(effect, param.name, param.default)}
-										ariaLabel={`${effectLabel(effect)} — ${param.label}`}
-										onValueChange={(value) => {
-											draftAmounts[`${effect.id}:${param.name}`] = value;
-										}}
-										onValueCommit={(value) => commitGpuParam(effect, param.name, value)}
+								{#if !param.visibleWhen || param.visibleWhen(effect.params)}
+									<GpuParamControl
+										{param}
+										value={effect.params[param.name]}
+										effectLabel={effectLabel(effect)}
+										oncommit={(value) => commitGpuParam(effect, param.name, value)}
 									/>
-								</label>
+								{/if}
 							{/each}
 						</div>
 					{/if}

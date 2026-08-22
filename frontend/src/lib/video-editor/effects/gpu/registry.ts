@@ -7,12 +7,10 @@
  * the WGSL -> GLSL ES 3.00 translation rules.
  *
  * Catalog status vs FreeCut's 54-effect catalog:
- * - 51 effects run in the WebGL2 pipeline, including CPU-baked curves and
- *   imported .cube LUTs.
- * - Skipped: gpu-ascii (canvas-rasterized font atlas
- *   data texture), gpu-halftone (Paper Design-derived; vec4 color/select param
- *   model beyond our numeric schema), gpu-pixel-sort-hq (WebGPU compute pass;
- *   WebGL2 fragment pipeline cannot express scatter writes).
+ * - 53 effects run in the WebGL2 pipeline, including the generated ASCII
+ *   atlas, Paper halftone, CPU-baked curves, and imported .cube LUTs.
+ * - The remaining gpu-pixel-sort-hq definition needs a WebGPU compute pass;
+ *   WebGL2 fragment shaders cannot express its scatter writes.
  */
 
 import type { GpuEffectCategory, GpuParamValues, GpuShaderDefinition } from './types';
@@ -21,6 +19,8 @@ import * as colorEffects from './shaders/color';
 import * as blurEffects from './shaders/blur';
 import * as keyingEffects from './shaders/keying';
 import * as stylizeEffects from './shaders/stylize';
+import { ascii } from './shaders/ascii';
+import { halftone } from './shaders/halftone';
 import * as distortEffects from './shaders/distort';
 import { curves } from './curves';
 import { lut } from './lut';
@@ -64,6 +64,8 @@ export const GPU_EFFECT_CATALOG: readonly GpuShaderDefinition[] = [
 	stylizeEffects.threshold,
 	stylizeEffects.vhs,
 	stylizeEffects.ink,
+	halftone,
+	ascii,
 	stylizeEffects.pixelSort,
 	distortEffects.pixelate,
 	distortEffects.rgbSplit,

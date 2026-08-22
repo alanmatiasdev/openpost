@@ -18,7 +18,11 @@ import type {
 } from '$lib/video-editor/effects/types';
 import { EFFECT_DEFINITIONS } from '$lib/video-editor/effects/types';
 import type { BlendMode } from '$lib/video-editor/effects/gpu/blend-modes';
-import { clampGpuParam, defaultGpuParams } from '$lib/video-editor/effects/gpu/types';
+import {
+	defaultGpuParams,
+	normalizeGpuParam,
+	type GpuParamValue
+} from '$lib/video-editor/effects/gpu/types';
 import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
 import type { EffectTemplate } from '$lib/video-editor/timeline/effect-drop';
 import { timelineStore } from '../stores/timeline-store.svelte';
@@ -143,7 +147,7 @@ export function setGpuEffectParam(
 	itemId: string,
 	effectId: string,
 	paramName: string,
-	value: number
+	value: GpuParamValue
 ): boolean {
 	return execute('SET_GPU_EFFECT_PARAM', () => {
 		const effects = timelineStore.itemById.get(itemId)?.effects;
@@ -154,11 +158,11 @@ export function setGpuEffectParam(
 		const definition = getGpuEffect(current.effectId);
 		const schemaParam = definition?.schema.find((entry) => entry.name === paramName);
 		if (!definition || !schemaParam) return false;
-		const clamped = clampGpuParam(schemaParam, value);
-		if (current.params[paramName] === clamped) return false;
+		const normalized = normalizeGpuParam(schemaParam, value);
+		if (current.params[paramName] === normalized) return false;
 		const next: GpuEffect = {
 			...current,
-			params: { ...current.params, [paramName]: clamped }
+			params: { ...current.params, [paramName]: normalized }
 		};
 		timelineStore._updateItems([
 			{ id: itemId, patch: { effects: replaceAt(effects, index, next) } }
@@ -171,7 +175,7 @@ export function setGpuEffectParam(
 export function setGpuEffectData(
 	itemId: string,
 	effectId: string,
-	params: Record<string, string | number>
+	params: Record<string, GpuParamValue>
 ): boolean {
 	return execute('SET_GPU_EFFECT_DATA', () => {
 		const effects = timelineStore.itemById.get(itemId)?.effects;

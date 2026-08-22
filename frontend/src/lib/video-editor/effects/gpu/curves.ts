@@ -1,5 +1,5 @@
 /** CPU-baked RGB curves LUT. Ported from FreeCut (MIT). */
-import type { GpuParamSchema, GpuParamValues, GpuShaderDefinition } from './types';
+import type { GpuParamSchema, GpuParamValue, GpuParamValues, GpuShaderDefinition } from './types';
 
 interface Point {
 	x: number;
@@ -102,7 +102,7 @@ function pointsFor(params: GpuParamValues, channel: (typeof CHANNELS)[number]): 
 	].toSorted((left, right) => left.x - right.x);
 }
 
-function finite(value: string | number | undefined, fallback: number): number {
+function finite(value: GpuParamValue | undefined, fallback: number): number {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : fallback;
 }

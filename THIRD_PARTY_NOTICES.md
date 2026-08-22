@@ -10,3 +10,8 @@ OpenPost dependency licenses remain available through their upstream packages an
 The bundled background-removal runtime, quantized model, content-addressed resource filenames, source reference, and full notices are in `frontend/static/image-editor-models/`. Redistributors must keep those notices with the corresponding assets.
 
 OpenPost Image Editor is an original implementation. It does not redistribute the commercial shadcn Designer package, its components, its CSS, or its generated utilities.
+
+OpenPost Video Editor includes adapted source from:
+
+- FreeCut, Copyright (c) 2025 FreeCut, under the MIT License. See `licenses/FREECUT.txt`.
+- Paper Shaders, Copyright Lost Coast Labs, Inc., under the Apache License 2.0. See `licenses/PAPER_SHADERS.txt` and `licenses/PAPER_SHADERS_NOTICE.txt`.

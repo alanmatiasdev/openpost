@@ -15,6 +15,8 @@ OpenPost Video Editor uses:
 
 - **Mediabunny 1.51.x** for media inspection, bounded sample access, demuxing, and streaming MP4/WebM muxing.
 - **Transformers.js 3.8.1** and **ONNX Runtime Web 1.21.0** for local worker-based analysis.
+- **FreeCut** source adapted under the MIT License. The retained license is in `licenses/FREECUT.txt`.
+- **Paper Shaders** source adapted under the Apache License 2.0. Its retained license and notice are in `licenses/PAPER_SHADERS.txt` and `licenses/PAPER_SHADERS_NOTICE.txt`.
 - **Whisper Tiny multilingual**, pinned to the exact model commit listed in `frontend/static/video-editor-models/THIRD_PARTY_LICENSES.md`, for local transcription under Apache License 2.0.
 - **Silero VAD 6.2** for local voice-activity detection under the MIT License.
 

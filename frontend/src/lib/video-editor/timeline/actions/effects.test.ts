@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { addEffectTemplates } from './effects';
+import { addEffectTemplates, addGpuEffect, setGpuEffectParam } from './effects';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
 	return {
@@ -62,5 +62,36 @@ describe('addEffectTemplates', () => {
 		commandHistory.undo();
 		expect(timelineStore.itemById.get('video')?.effects).toBeUndefined();
 		expect(timelineStore.itemById.get('title')?.effects).toBeUndefined();
+	});
+});
+
+describe('setGpuEffectParam', () => {
+	it('stores typed ASCII controls and rejects values outside the schema', () => {
+		expect(addGpuEffect('video', 'gpu-ascii')).toBe(true);
+		const effect = timelineStore.itemById
+			.get('video')
+			?.effects?.find((entry) => entry.type === 'gpu');
+		if (!effect || effect.type !== 'gpu') throw new Error('ASCII effect missing');
+
+		expect(setGpuEffectParam('video', effect.id, 'matchSourceColor', false)).toBe(true);
+		expect(setGpuEffectParam('video', effect.id, 'charSet', 'custom')).toBe(true);
+		expect(
+			setGpuEffectParam(
+				'video',
+				effect.id,
+				'customChars',
+				'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+			)
+		).toBe(true);
+		expect(setGpuEffectParam('video', effect.id, 'font', 'comic-sans')).toBe(false);
+
+		const updated = timelineStore.itemById
+			.get('video')
+			?.effects?.find((entry) => entry.id === effect.id);
+		if (!updated || updated.type !== 'gpu') throw new Error('updated ASCII effect missing');
+		expect(updated.params.matchSourceColor).toBe(false);
+		expect(updated.params.charSet).toBe('custom');
+		expect([...String(updated.params.customChars)]).toHaveLength(64);
+		expect(updated.params.font).toBe('monospace');
 	});
 });

@@ -123,6 +123,7 @@ export class GpuCompositor {
 	private pingSize: [number, number] = [0, 0];
 	private dataTextureCache = new Map<string, { texture: WebGLTexture; key: string }>();
 	private disposed = false;
+	private lastFailure: string | null = null;
 
 	private constructor(canvas: HTMLCanvasElement | OffscreenCanvas, gl: WebGL2RenderingContext) {
 		this.canvas = canvas;
@@ -238,10 +239,13 @@ export class GpuCompositor {
 		const spec = definition.dataTexture;
 		const gl = this.gl;
 		if (!spec) return;
+		// Keep the input bound on unit 0. Texture creation uses the active unit,
+		// so selecting unit 1 first prevents a cache miss from replacing the
+		// source with the auxiliary LUT or glyph atlas for the current pass.
+		gl.activeTexture(gl.TEXTURE1);
 		const key = spec.key(params);
 		const cached = this.dataTextureCache.get(definition.id);
 		if (cached && cached.key === key) {
-			gl.activeTexture(gl.TEXTURE1);
 			gl.bindTexture(gl.TEXTURE_2D, cached.texture);
 			return;
 		}
@@ -261,7 +265,6 @@ export class GpuCompositor {
 			payload.data
 		);
 		this.dataTextureCache.set(definition.id, { texture, key });
-		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 	}
 
@@ -278,6 +281,7 @@ export class GpuCompositor {
 		options: GpuRenderOptions = {}
 	): boolean {
 		if (this.disposed || width <= 0 || height <= 0) return false;
+		this.lastFailure = null;
 		const gl = this.gl;
 		if (this.canvas.width !== width || this.canvas.height !== height) {
 			this.canvas.width = width;
@@ -352,9 +356,15 @@ export class GpuCompositor {
 			gl.clear(gl.COLOR_BUFFER_BIT);
 			gl.drawArrays(gl.TRIANGLES, 0, 6);
 			return true;
-		} catch {
+		} catch (error) {
+			this.lastFailure = error instanceof Error ? error.message : String(error);
 			return false;
 		}
+	}
+
+	/** Last compile/render failure, exposed for diagnostics and browser tests. */
+	failureReason(): string | null {
+		return this.lastFailure;
 	}
 
 	private neutralBase: WebGLTexture | null = null;

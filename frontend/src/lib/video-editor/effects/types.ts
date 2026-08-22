@@ -2,7 +2,7 @@
  * Clip effect model for the OpenPost Video Editor.
  *
  * Ported from FreeCut (MIT) — types/effects.ts — trimmed to color/blur
- * effects with numeric params that match CSS filter semantics, so the same
+ * effects with params that match CSS filter semantics, so the same
  * spec renders through `style: filter` and canvas `ctx.filter`.
  *
  * Like FreeCut's `ItemEffect`, each instance carries a stable id (so undo
@@ -63,14 +63,14 @@ export interface BlurEffect extends ItemEffectBase {
 }
 
 /**
- * One GPU-pipeline effect instance, addressed by registry id with numeric
+ * One GPU-pipeline effect instance, addressed by registry id with typed
  * params (see effects/gpu/registry.ts). Rendered through the WebGL2
  * compositor; ignored by the CSS-filter fallback path.
  */
 export interface GpuEffect extends ItemEffectBase {
 	type: 'gpu';
 	effectId: string;
-	params: Record<string, number | string>;
+	params: Record<string, number | string | boolean>;
 }
 
 export type ItemEffect =

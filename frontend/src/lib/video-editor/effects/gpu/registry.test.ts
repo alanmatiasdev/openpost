@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BLEND_MODE_INDEX, BLEND_MODE_GROUPS, ALL_BLEND_MODES } from './blend-modes';
 import { GPU_EFFECT_CATALOG, getGpuEffect, getGpuEffectDefaultParams } from './registry';
-import { clampGpuParam, defaultGpuParams } from './types';
+import { clampGpuParam, defaultGpuParams, normalizeGpuParam } from './types';
+import { asciiDataTexture } from './shaders/ascii';
 
 /** FreeCut's 25 blend modes with their exact WGSL dispatch indices (MIT). */
 const FREECUT_BLEND_MODE_INDEX = {
@@ -63,6 +64,7 @@ describe('gpu registry integrity', () => {
 	it('keeps schema defaults inside their own min/max range', () => {
 		for (const definition of GPU_EFFECT_CATALOG) {
 			for (const param of definition.schema) {
+				if (param.type && param.type !== 'number') continue;
 				expect(
 					param.default >= param.min && param.default <= param.max,
 					`${definition.id}.${param.name} default out of range`
@@ -99,6 +101,48 @@ describe('gpu param clamping', () => {
 	it('maps non-finite values to the schema default', () => {
 		expect(clampGpuParam(param, Number.NaN)).toBe(0);
 		expect(clampGpuParam(param, Number.POSITIVE_INFINITY)).toBe(1);
+	});
+});
+
+describe('typed GPU params', () => {
+	it('validates selects, colors, booleans, and bounded text', () => {
+		expect(
+			normalizeGpuParam(
+				{
+					name: 'font',
+					label: 'Font',
+					type: 'select',
+					default: 'mono',
+					options: [{ value: 'mono', label: 'Mono' }]
+				},
+				'unknown'
+			)
+		).toBe('mono');
+		expect(
+			normalizeGpuParam(
+				{ name: 'color', label: 'Color', type: 'color', default: '#ffffff' },
+				'#123456'
+			)
+		).toBe('#123456');
+		expect(
+			normalizeGpuParam({ name: 'enabled', label: 'Enabled', type: 'boolean', default: true }, 1)
+		).toBe(false);
+		expect(
+			normalizeGpuParam(
+				{ name: 'text', label: 'Text', type: 'text', default: '', maxLength: 3 },
+				'ABCDE'
+			)
+		).toBe('ABC');
+	});
+
+	it('keys the ASCII atlas by glyph ramp and font', () => {
+		expect(asciiDataTexture.key({ charSet: 'custom', customChars: '01', font: 'courier' })).toBe(
+			'01|courier'
+		);
+		const payload = asciiDataTexture.build({ charSet: 'binary', font: 'monospace' });
+		expect(payload.width).toBe(48);
+		expect(payload.height).toBe(24);
+		expect(payload.data).toHaveLength(48 * 24 * 4);
 	});
 });
 

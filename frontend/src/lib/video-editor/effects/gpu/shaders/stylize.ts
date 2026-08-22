@@ -1,12 +1,11 @@
 /**
  * Stylize GPU effects.
  *
- * Ported from FreeCut (MIT) — infrastructure/gpu-effects/effects/stylize.ts —
+ * Ported from FreeCut (MIT) - infrastructure/gpu-effects/effects/stylize.ts -
  * WGSL fragment bodies translated to GLSL ES 3.00 with the mechanical rules in
- * ../shader-source.ts; math and structure verbatim. Skipped from the catalog:
- * gpu-halftone (Paper Design-derived, vec4 color/select param model),
- * gpu-ascii (canvas-rasterized font atlas data texture), gpu-pixel-sort-hq
- * (WebGPU compute pass) — see registry.ts.
+ * ../shader-source.ts; math and structure verbatim. ASCII and Paper halftone
+ * live in focused modules because they have a large typed control surface and
+ * an auxiliary texture. gpu-pixel-sort-hq still needs a WebGPU compute pass.
  */
 
 import type { GpuShaderDefinition } from '../types';

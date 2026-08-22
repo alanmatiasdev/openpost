@@ -218,47 +218,49 @@ vec3 blendNormal(vec3 base, vec3 layer) { return layer; }
 vec3 blendDarken(vec3 base, vec3 layer) { return min(base, layer); }
 vec3 blendMultiply(vec3 base, vec3 layer) { return base * layer; }
 vec3 blendColorBurn(vec3 base, vec3 layer) {
-  return (layer == vec3(0.0)) ? vec3(0.0) : 1.0 - min(vec3(1.0), (1.0 - base) / max(layer, vec3(0.001)));
+  vec3 burned = 1.0 - min(vec3(1.0), (1.0 - base) / max(layer, vec3(0.001)));
+  return mix(burned, vec3(0.0), equal(layer, vec3(0.0)));
 }
 vec3 blendLinearBurn(vec3 base, vec3 layer) { return max(base + layer - 1.0, vec3(0.0)); }
 
 vec3 blendLighten(vec3 base, vec3 layer) { return max(base, layer); }
 vec3 blendScreen(vec3 base, vec3 layer) { return 1.0 - (1.0 - base) * (1.0 - layer); }
 vec3 blendColorDodge(vec3 base, vec3 layer) {
-  return (layer == vec3(1.0)) ? vec3(1.0) : min(vec3(1.0), base / max(1.0 - layer, vec3(0.001)));
+  vec3 dodged = min(vec3(1.0), base / max(1.0 - layer, vec3(0.001)));
+  return mix(dodged, vec3(1.0), equal(layer, vec3(1.0)));
 }
 vec3 blendLinearDodge(vec3 base, vec3 layer) { return min(base + layer, vec3(1.0)); }
 
 vec3 blendOverlay(vec3 base, vec3 layer) {
-  return (base <= vec3(0.5))
-    ? 2.0 * base * layer
-    : 1.0 - 2.0 * (1.0 - base) * (1.0 - layer);
+  vec3 low = 2.0 * base * layer;
+  vec3 high = 1.0 - 2.0 * (1.0 - base) * (1.0 - layer);
+  return mix(high, low, lessThanEqual(base, vec3(0.5)));
 }
 vec3 blendSoftLight(vec3 base, vec3 layer) {
-  return (layer <= vec3(0.5))
-    ? base - (1.0 - 2.0 * layer) * base * (1.0 - base)
-    : base + (2.0 * layer - 1.0) * (sqrt(base) - base);
+  vec3 low = base - (1.0 - 2.0 * layer) * base * (1.0 - base);
+  vec3 high = base + (2.0 * layer - 1.0) * (sqrt(base) - base);
+  return mix(high, low, lessThanEqual(layer, vec3(0.5)));
 }
 vec3 blendHardLight(vec3 base, vec3 layer) {
-  return (layer <= vec3(0.5))
-    ? 2.0 * base * layer
-    : 1.0 - 2.0 * (1.0 - base) * (1.0 - layer);
+  vec3 low = 2.0 * base * layer;
+  vec3 high = 1.0 - 2.0 * (1.0 - base) * (1.0 - layer);
+  return mix(high, low, lessThanEqual(layer, vec3(0.5)));
 }
 vec3 blendVividLight(vec3 base, vec3 layer) {
-  return (layer <= vec3(0.5))
-    ? blendColorBurn(base, 2.0 * layer)
-    : blendColorDodge(base, 2.0 * (layer - 0.5));
+  vec3 low = blendColorBurn(base, 2.0 * layer);
+  vec3 high = blendColorDodge(base, 2.0 * (layer - 0.5));
+  return mix(high, low, lessThanEqual(layer, vec3(0.5)));
 }
 vec3 blendLinearLight(vec3 base, vec3 layer) {
   return clamp(base + 2.0 * layer - 1.0, vec3(0.0), vec3(1.0));
 }
 vec3 blendPinLight(vec3 base, vec3 layer) {
-  return (layer <= vec3(0.5))
-    ? min(base, 2.0 * layer)
-    : max(base, 2.0 * (layer - 0.5));
+  vec3 low = min(base, 2.0 * layer);
+  vec3 high = max(base, 2.0 * (layer - 0.5));
+  return mix(high, low, lessThanEqual(layer, vec3(0.5)));
 }
 vec3 blendHardMix(vec3 base, vec3 layer) {
-  return (base + layer >= vec3(1.0)) ? vec3(1.0) : vec3(0.0);
+  return mix(vec3(0.0), vec3(1.0), greaterThanEqual(base + layer, vec3(1.0)));
 }
 
 vec3 blendDifference(vec3 base, vec3 layer) { return abs(base - layer); }
