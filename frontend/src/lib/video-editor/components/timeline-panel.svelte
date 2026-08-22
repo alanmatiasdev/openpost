@@ -59,10 +59,20 @@
 		captureSnapshot,
 		restoreSnapshot,
 		snapshotsEqual
-	} from '$lib/video-editor/timeline/commands/snapshot';
+	} from '$lib/video-editor/timeline/commands/snapshot.svelte';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
-	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import {
+		pruneOrphanedTransitions,
+		transitionsStore
+	} from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import {
+		buildInsertedGapPreviewUpdatesForSyncLockedTracks,
+		buildRemovedIntervalPreviewUpdatesForSyncLockedTracks,
+		propagateInsertedGapToSyncLockedTracks,
+		propagateRemovedIntervalsToSyncLockedTracks,
+		type SyncLockPreviewUpdate
+	} from '$lib/video-editor/timeline/actions/sync-lock-ripple';
 	import { resolveTransitionWindow } from '$lib/video-editor/timeline/transition-planner';
 	import {
 		addTrack,
@@ -189,6 +199,7 @@
 		snapTargets: SnapTarget[];
 		rollingNeighbor: TimelineItem | null;
 		ripple: boolean;
+		rippleMoveIds: string[];
 		stretchHandle: 'start' | 'end';
 		slideLeft: TimelineItem | null;
 		slideRight: TimelineItem | null;
@@ -197,6 +208,7 @@
 		rafId: number | null;
 	} = null;
 	let activeSnapTarget = $state<SnapTarget | null>(null);
+	let syncLockPreviewById = $state<Record<string, SyncLockPreviewUpdate>>({});
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
 	// extraction worker and tiles render as they arrive.
@@ -315,14 +327,41 @@
 		return `left:${timelineX(item.from)}px;width:${frameToPx(item.durationInFrames)}px;background:${fill}`;
 	}
 
+	function previewedItem(item: TimelineItem): TimelineItem {
+		const preview = syncLockPreviewById[item.id];
+		if (!preview) return item;
+		return {
+			...item,
+			from: preview.from ?? item.from,
+			durationInFrames: preview.durationInFrames ?? item.durationInFrames
+		};
+	}
+
+	function setSyncLockPreview(updates: SyncLockPreviewUpdate[]): void {
+		syncLockPreviewById = Object.fromEntries(updates.map((update) => [update.id, update]));
+	}
+
+	function clearSyncLockPreview(): void {
+		syncLockPreviewById = {};
+	}
+
 	function transitionGeometry(
 		transition: TimelineTransition,
 		trackId: string
 	): { left: number; width: number } | null {
-		const outgoing = timelineStore.itemById.get(transition.fromItemId);
-		const incoming = timelineStore.itemById.get(transition.toItemId);
-		if (!outgoing || !incoming || outgoing.trackId !== trackId || incoming.trackId !== trackId)
+		const outgoingItem = timelineStore.itemById.get(transition.fromItemId);
+		const incomingItem = timelineStore.itemById.get(transition.toItemId);
+		if (
+			!outgoingItem ||
+			!incomingItem ||
+			syncLockPreviewById[outgoingItem.id]?.hidden ||
+			syncLockPreviewById[incomingItem.id]?.hidden ||
+			outgoingItem.trackId !== trackId ||
+			incomingItem.trackId !== trackId
+		)
 			return null;
+		const outgoing = previewedItem(outgoingItem);
+		const incoming = previewedItem(incomingItem);
 		const window = resolveTransitionWindow(transition, outgoing, incoming);
 		if (!window) return null;
 		return {
@@ -477,6 +516,7 @@
 
 	function startDrag(event: PointerEvent, id: string, requestedKind: TimelineDragKind): void {
 		if (event.button !== 0) return;
+		clearSyncLockPreview();
 		event.stopPropagation();
 		if (event.metaKey || event.ctrlKey || !selectedItemIds.includes(id)) selectItem(event, id);
 		else selectedItemId = id;
@@ -528,16 +568,17 @@
 			id,
 			pointerId: event.pointerId,
 			startX: event.clientX,
-			original: structuredClone(item),
+			original: $state.snapshot(item),
 			beforeSnapshot,
 			editItems,
 			selectedItemIds: [...moveSelectionIds],
 			snapTargets: snapTargetsFor(excludedIds),
-			rollingNeighbor: rollingNeighbor ? structuredClone(rollingNeighbor) : null,
+			rollingNeighbor: rollingNeighbor ? $state.snapshot(rollingNeighbor) : null,
 			ripple,
+			rippleMoveIds: [],
 			stretchHandle: rateStretchHandle(kind),
-			slideLeft: slideNeighbors?.left ? structuredClone(slideNeighbors.left) : null,
-			slideRight: slideNeighbors?.right ? structuredClone(slideNeighbors.right) : null,
+			slideLeft: slideNeighbors?.left ? $state.snapshot(slideNeighbors.left) : null,
+			slideRight: slideNeighbors?.right ? $state.snapshot(slideNeighbors.right) : null,
 			activated: kind === 'trim-start' || kind === 'trim-end' || isRateStretchKind(kind),
 			latestClientX: event.clientX,
 			rafId: null
@@ -546,6 +587,7 @@
 		window.addEventListener('pointerup', onPointerUp);
 		window.addEventListener('pointercancel', onPointerCancel);
 		window.addEventListener('keydown', onDragKeyDown);
+		window.addEventListener('keyup', onDragKeyUp);
 	}
 
 	function snapThreshold(): number {
@@ -661,6 +703,33 @@
 				...(plan.linkedPatches ?? []),
 				...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
 			]);
+			drag.rippleMoveIds = plan.moves.map((move) => move.id);
+			const durationInFrames = plan.patch.durationInFrames ?? drag.original.durationInFrames;
+			const shift = durationInFrames - drag.original.durationInFrames;
+			const editedTrackIds = new Set(
+				getSynchronizedLinkedItems(drag.editItems, drag.original.id).map(
+					(candidate) => candidate.trackId
+				)
+			);
+			const oldEnd = drag.original.from + drag.original.durationInFrames;
+			setSyncLockPreview(
+				shift < 0
+					? buildRemovedIntervalPreviewUpdatesForSyncLockedTracks({
+							items: drag.beforeSnapshot.items,
+							tracks: drag.beforeSnapshot.tracks,
+							editedTrackIds,
+							intervals: [{ start: oldEnd + shift, end: oldEnd }]
+						})
+					: shift > 0
+						? buildInsertedGapPreviewUpdatesForSyncLockedTracks({
+								items: drag.beforeSnapshot.items,
+								tracks: drag.beforeSnapshot.tracks,
+								editedTrackIds,
+								cutFrame: oldEnd,
+								amount: shift
+							})
+						: []
+			);
 			return;
 		}
 		if (drag.rollingNeighbor) {
@@ -718,7 +787,33 @@
 		if (completed.rafId !== null) cancelAnimationFrame(completed.rafId);
 		if (cancelled) {
 			restoreSnapshot(completed.beforeSnapshot);
-		} else if (!snapshotsEqual(completed.beforeSnapshot, captureSnapshot())) {
+		} else if (completed.ripple) {
+			const current = timelineStore.itemById.get(completed.id);
+			const shift = current ? current.durationInFrames - completed.original.durationInFrames : 0;
+			if (shift !== 0) {
+				const editedTrackIds = new Set(
+					getSynchronizedLinkedItems(completed.editItems, completed.original.id).map(
+						(candidate) => candidate.trackId
+					)
+				);
+				const oldEnd = completed.original.from + completed.original.durationInFrames;
+				if (shift < 0) {
+					propagateRemovedIntervalsToSyncLockedTracks({
+						editedTrackIds,
+						intervals: [{ start: oldEnd + shift, end: oldEnd }]
+					});
+				} else {
+					propagateInsertedGapToSyncLockedTracks({
+						editedTrackIds,
+						cutFrame: oldEnd,
+						amount: shift
+					});
+				}
+				pruneOrphanedTransitions();
+			}
+		}
+		clearSyncLockPreview();
+		if (!cancelled && !snapshotsEqual(completed.beforeSnapshot, captureSnapshot())) {
 			commandHistory.addUndoEntry(
 				{
 					type: commandTypeFor(completed.kind, completed.rollingNeighbor !== null, completed.ripple)
@@ -733,6 +828,7 @@
 		window.removeEventListener('pointerup', onPointerUp);
 		window.removeEventListener('pointercancel', onPointerCancel);
 		window.removeEventListener('keydown', onDragKeyDown);
+		window.removeEventListener('keyup', onDragKeyUp);
 	}
 
 	function onPointerUp(event: PointerEvent): void {
@@ -749,10 +845,42 @@
 		if (drag && event.pointerId === drag.pointerId) finishDrag(true);
 	}
 
+	function setRippleMode(enabled: boolean): void {
+		if (
+			!drag ||
+			(drag.kind !== 'trim-start' && drag.kind !== 'trim-end') ||
+			drag.rollingNeighbor ||
+			drag.ripple === enabled
+		)
+			return;
+		if (!enabled && drag.rippleMoveIds.length > 0) {
+			const originalById = new Map(drag.editItems.map((item) => [item.id, item]));
+			timelineStore._moveItems(
+				drag.rippleMoveIds.flatMap((id) => {
+					const original = originalById.get(id);
+					return original ? [{ id, from: original.from }] : [];
+				})
+			);
+			drag.rippleMoveIds = [];
+		}
+		drag.ripple = enabled;
+		if (!enabled) clearSyncLockPreview();
+		applyPointerFrame(drag.latestClientX);
+	}
+
 	function onDragKeyDown(event: KeyboardEvent): void {
-		if (event.key !== 'Escape') return;
-		event.preventDefault();
-		finishDrag(true);
+		if (event.key === 'Shift') {
+			setRippleMode(true);
+			return;
+		}
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			finishDrag(true);
+		}
+	}
+
+	function onDragKeyUp(event: KeyboardEvent): void {
+		if (event.key === 'Shift') setRippleMode(false);
 	}
 
 	function applyKeyboardEdit(
@@ -1267,90 +1395,94 @@
 					/>
 				</div>
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
-					<div
-						class="group absolute top-1 h-[calc(100%-8px)] touch-none overflow-hidden rounded-sm border text-left {selectedItemIds.includes(
-							item.id
-						)
-							? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
-							: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
-						style={clipStyle(item)}
-					>
-						<button
-							type="button"
-							class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"
-							aria-label={`${item.label}. ${m.video_editor_timing_keyboard()}`}
-							onclick={(event) => {
-								event.stopPropagation();
-								if (event.detail === 0) selectItem(event, item.id);
-							}}
-							onkeydown={(event) => applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
-							onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}
+					{@const displayItem = previewedItem(item)}
+					{#if !syncLockPreviewById[item.id]?.hidden}
+						<div
+							class="group absolute top-1 h-[calc(100%-8px)] touch-none overflow-hidden rounded-sm border text-left {selectedItemIds.includes(
+								item.id
+							)
+								? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
+								: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
+							style={clipStyle(displayItem)}
 						>
-							{#if item.type === 'video' && filmstripTilesFor(item)}
-								<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
-									{#each filmstripTilesFor(item) as tile (tile.index)}
-										<FilmstripTile
-											bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
-											url={tile.url}
-											style="left:{tile.x}px;width:{tile.width}px"
-										/>
-									{/each}
-								</div>
-							{/if}
-							{#if waveformSvgPoints(item)}
-								<svg
-									class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
-									viewBox="0 0 {Math.max(8, frameToPx(item.durationInFrames) - 4)} 80"
-									preserveAspectRatio="none"
-								>
-									<polyline
-										points={waveformSvgPoints(item)}
-										fill="none"
-										stroke="oklch(0.85 0.03 120)"
-										stroke-width="0.6"
-									/>
-								</svg>
-							{/if}
-							<span class="relative z-10 truncate px-2 text-[11px] text-white/90">{item.label}</span
+							<button
+								type="button"
+								class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"
+								aria-label={`${item.label}. ${m.video_editor_timing_keyboard()}`}
+								onclick={(event) => {
+									event.stopPropagation();
+									if (event.detail === 0) selectItem(event, item.id);
+								}}
+								onkeydown={(event) => applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
+								onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}
 							>
-						</button>
-						<button
-							type="button"
-							class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
-							aria-label={m.video_editor_trim_start()}
-							title={m.video_editor_trim_keyboard()}
-							onkeydown={(event) =>
-								applyKeyboardEdit(
-									event,
-									item,
-									activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
-								)}
-							onpointerdown={(event) =>
-								startDrag(
-									event,
-									item.id,
-									activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
-								)}
-						></button>
-						<button
-							type="button"
-							class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
-							aria-label={m.video_editor_trim_end()}
-							title={m.video_editor_trim_keyboard()}
-							onkeydown={(event) =>
-								applyKeyboardEdit(
-									event,
-									item,
-									activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
-								)}
-							onpointerdown={(event) =>
-								startDrag(
-									event,
-									item.id,
-									activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
-								)}
-						></button>
-					</div>
+								{#if item.type === 'video' && filmstripTilesFor(displayItem)}
+									<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
+										{#each filmstripTilesFor(displayItem) as tile (tile.index)}
+											<FilmstripTile
+												bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
+												url={tile.url}
+												style="left:{tile.x}px;width:{tile.width}px"
+											/>
+										{/each}
+									</div>
+								{/if}
+								{#if waveformSvgPoints(displayItem)}
+									<svg
+										class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
+										viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"
+										preserveAspectRatio="none"
+									>
+										<polyline
+											points={waveformSvgPoints(displayItem)}
+											fill="none"
+											stroke="oklch(0.85 0.03 120)"
+											stroke-width="0.6"
+										/>
+									</svg>
+								{/if}
+								<span class="relative z-10 truncate px-2 text-[11px] text-white/90"
+									>{item.label}</span
+								>
+							</button>
+							<button
+								type="button"
+								class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+								aria-label={m.video_editor_trim_start()}
+								title={m.video_editor_trim_keyboard()}
+								onkeydown={(event) =>
+									applyKeyboardEdit(
+										event,
+										item,
+										activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
+									)}
+								onpointerdown={(event) =>
+									startDrag(
+										event,
+										item.id,
+										activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
+									)}
+							></button>
+							<button
+								type="button"
+								class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+								aria-label={m.video_editor_trim_end()}
+								title={m.video_editor_trim_keyboard()}
+								onkeydown={(event) =>
+									applyKeyboardEdit(
+										event,
+										item,
+										activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
+									)}
+								onpointerdown={(event) =>
+									startDrag(
+										event,
+										item.id,
+										activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
+									)}
+							></button>
+						</div>
+					{/if}
 				{/each}
 				{#each transitionsStore.list as transition (transition.id)}
 					{@const geometry = transitionGeometry(transition, track.id)}

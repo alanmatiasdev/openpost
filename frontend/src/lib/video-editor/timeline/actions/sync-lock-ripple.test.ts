@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTrack } from '../../project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { transitionsStore } from './transitions-store.svelte';
 import {
 	buildInsertedGapPreviewUpdatesForSyncLockedTracks,
 	buildRemovedIntervalPreviewUpdatesForSyncLockedTracks,
@@ -41,6 +42,7 @@ function track(id: string, overrides: Partial<TimelineTrack> = {}): TimelineTrac
 
 beforeEach(() => {
 	timelineStore.__resetForTesting();
+	transitionsStore.setAll([]);
 	timelineStore.setAll({
 		tracks: [track('video'), track('audio')],
 		fps: 30
@@ -195,5 +197,92 @@ describe('sync-lock ripple commits', () => {
 		expect(result.affectedIds).toEqual([]);
 		expect(timelineStore.itemById.get('locked')?.from).toBe(100);
 		expect(timelineStore.itemById.get('free')?.from).toBe(100);
+	});
+
+	it('preserves an outgoing transition when a sync-lock removal splits its clip', () => {
+		timelineStore.setAll({
+			tracks: [track('edited'), track('video')]
+		});
+		timelineStore._setItems([
+			item({ id: 'edited-anchor', trackId: 'edited', durationInFrames: 30 }),
+			item({
+				id: 'video-1',
+				trackId: 'video',
+				durationInFrames: 60,
+				sourceStart: 20,
+				sourceEnd: 80,
+				sourceDuration: 120
+			}),
+			item({
+				id: 'video-2',
+				trackId: 'video',
+				from: 60,
+				durationInFrames: 30,
+				sourceStart: 20,
+				sourceEnd: 50,
+				sourceDuration: 120
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video-1',
+				toItemId: 'video-2'
+			}
+		]);
+
+		propagateRemovedIntervalsToSyncLockedTracks({
+			editedTrackIds: new Set(['edited']),
+			intervals: [{ start: 20, end: 40 }]
+		});
+
+		const splitTail = timelineStore.items.find(
+			(candidate) =>
+				candidate.trackId === 'video' && candidate.id !== 'video-1' && candidate.id !== 'video-2'
+		);
+		expect(splitTail).toMatchObject({ from: 20, durationInFrames: 20 });
+		expect(transitionsStore.list).toEqual([
+			expect.objectContaining({ fromItemId: splitTail?.id, toItemId: 'video-2' })
+		]);
+	});
+
+	it('clears a linked group when sync lock splits only one group member', () => {
+		timelineStore.setAll({
+			tracks: [track('edited'), track('audio')]
+		});
+		timelineStore._setItems([
+			item({ id: 'edited-anchor', trackId: 'edited', durationInFrames: 30 }),
+			item({
+				id: 'music-bed',
+				trackId: 'audio',
+				type: 'audio',
+				durationInFrames: 60,
+				linkedGroupId: 'group-1'
+			})
+		]);
+
+		propagateInsertedGapToSyncLockedTracks({
+			editedTrackIds: new Set(['edited']),
+			cutFrame: 20,
+			amount: 10
+		});
+
+		const segments = timelineStore.items
+			.filter((candidate) => candidate.trackId === 'audio')
+			.sort((left, right) => left.from - right.from);
+		expect(segments).toHaveLength(2);
+		expect(segments[0]).toMatchObject({
+			id: 'music-bed',
+			from: 0,
+			durationInFrames: 20,
+			linkedGroupId: undefined
+		});
+		expect(segments[1]).toMatchObject({
+			from: 30,
+			durationInFrames: 40,
+			linkedGroupId: undefined
+		});
 	});
 });

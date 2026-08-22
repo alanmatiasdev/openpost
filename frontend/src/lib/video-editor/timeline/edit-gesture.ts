@@ -745,9 +745,7 @@ export function planRippleTrimGesture(
 	const shift = handle === 'end' ? amount : -amount;
 	const movedById = new Map<string, number>();
 	const addMove = (candidate: TimelineItem): void => {
-		for (const linked of getLinkedItems(items, candidate.id)) {
-			if (!participantIds.has(linked.id)) movedById.set(linked.id, linked.from + shift);
-		}
+		if (!participantIds.has(candidate.id)) movedById.set(candidate.id, candidate.from + shift);
 	};
 	if (shift !== 0) {
 		for (const participant of participants) {

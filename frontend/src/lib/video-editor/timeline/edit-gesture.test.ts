@@ -691,6 +691,25 @@ describe('timeline edit gestures', () => {
 		});
 	});
 
+	it('leaves other tracks to sync-lock propagation when a downstream clip is linked', () => {
+		const item = mediaItem({ from: 0, durationInFrames: 100, sourceStart: 0, sourceEnd: 100 });
+		const nextVideo = mediaItem({
+			id: 'next-video',
+			from: 100,
+			linkedGroupId: 'next'
+		});
+		const nextAudio = mediaItem({
+			...nextVideo,
+			id: 'next-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+
+		expect(
+			planRippleTrimGesture(item, 'end', -20, [nextVideo, nextAudio], 30, [], 2).moves
+		).toEqual([{ id: 'next-video', from: 80 }]);
+	});
+
 	it('slides the synchronized companion and both cuts on its track', () => {
 		const chainItem = (
 			id: string,
