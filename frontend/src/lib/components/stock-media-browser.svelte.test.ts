@@ -60,7 +60,7 @@ describe('StockMediaBrowser', () => {
 		await expect.element(screen.getByText('Collection IDs', { exact: true })).toBeVisible();
 		await expect.element(screen.getByText('Minimum size', { exact: true })).not.toBeInTheDocument();
 
-		await screen.getByRole('button', { name: 'Media type' }).click();
+		await screen.getByRole('button', { name: 'Type' }).click();
 		await screen.getByRole('option', { name: 'Videos' }).click();
 		await expect.element(provider).toHaveTextContent('Pexels · Photos and videos');
 		await provider.click();
