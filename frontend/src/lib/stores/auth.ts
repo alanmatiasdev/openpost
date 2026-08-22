@@ -1,9 +1,8 @@
 import { browser } from '$app/environment';
 import { identifyTelemetryUser, resetTelemetryIdentity } from '@openpost/telemetry';
 import { writable } from 'svelte/store';
-import { client, setToken, recreateClient, type User } from '$lib/api/client';
+import { client, type User } from '$lib/api/client';
 import { getPasskeyAssertion } from '$lib/auth/webauthn';
-import { IS_CAPACITOR } from '$lib/env';
 import { notificationInbox } from '$lib/stores/notifications.svelte';
 
 interface AuthState {
@@ -18,9 +17,6 @@ interface AuthActionResult {
 	requiresMfa?: boolean;
 	mfaToken?: string;
 	mfaMethods?: string[];
-	purpose?: 'login' | 'reauth' | 'link';
-	action?: string;
-	reauthGrant?: string;
 	requiresEmailVerification?: boolean;
 	emailVerificationID?: string;
 	emailVerificationEmail?: string;
@@ -37,10 +33,7 @@ interface RegisterInput {
 
 export interface AuthStoreDependencies {
 	client: Pick<typeof client, 'GET' | 'POST'>;
-	setToken: typeof setToken;
-	recreateClient: typeof recreateClient;
 	getPasskeyAssertion: typeof getPasskeyAssertion;
-	isCapacitor: boolean;
 	notificationInbox: Pick<typeof notificationInbox, 'clear'>;
 	identifyTelemetryUser: typeof identifyTelemetryUser;
 	resetTelemetryIdentity: typeof resetTelemetryIdentity;
@@ -48,10 +41,7 @@ export interface AuthStoreDependencies {
 
 const defaultAuthStoreDependencies: AuthStoreDependencies = {
 	client,
-	setToken,
-	recreateClient,
 	getPasskeyAssertion,
-	isCapacitor: IS_CAPACITOR,
 	notificationInbox,
 	identifyTelemetryUser,
 	resetTelemetryIdentity
@@ -62,14 +52,11 @@ export function createAuthStore(
 ) {
 	const {
 		client,
-		setToken,
-		recreateClient,
 		getPasskeyAssertion,
 		notificationInbox,
 		identifyTelemetryUser,
 		resetTelemetryIdentity
 	} = dependencies;
-	const isCapacitor = dependencies.isCapacitor;
 	const { subscribe, set, update } = writable<AuthState>({
 		user: null,
 		isLoading: true,
@@ -80,7 +67,6 @@ export function createAuthStore(
 		resetTelemetryIdentity();
 		activeUserID = null;
 		notificationInbox.clear();
-		setToken(null);
 		set({ user: null, isLoading: false, isAuthenticated: false });
 	};
 	const setAuthenticatedUser = (user: User | null) => {
@@ -98,9 +84,6 @@ export function createAuthStore(
 		subscribe,
 		async initialize(options: { optional?: boolean } = {}) {
 			if (!browser) return;
-
-			// Recreate client in case instance URL was just set
-			recreateClient();
 
 			try {
 				if (options.optional) {
@@ -138,7 +121,6 @@ export function createAuthStore(
 					clearAccountState();
 					return emailVerificationResult(data);
 				}
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -167,7 +149,6 @@ export function createAuthStore(
 					clearAccountState();
 					return emailVerificationResult(data);
 				}
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -180,7 +161,6 @@ export function createAuthStore(
 					body: { challenge_id: challengeID, code }
 				});
 				if (error || !data?.user) throw new Error(error?.detail ?? 'Email verification failed');
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user);
 				return { success: true };
 			} catch (e) {
@@ -206,7 +186,6 @@ export function createAuthStore(
 					body: { mfa_token: mfaToken, code }
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Authenticator verification failed');
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -219,7 +198,6 @@ export function createAuthStore(
 					body: { mfa_token: mfaToken, code }
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Recovery code verification failed');
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -247,32 +225,8 @@ export function createAuthStore(
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Passkey verification failed');
 
-				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
-			} catch (e) {
-				return { success: false, error: errorMessage(e) };
-			}
-		},
-		async consumeOIDCHandoff(code: string): Promise<AuthActionResult> {
-			try {
-				const { data, error } = await client.POST('/auth/oidc/handoff', {
-					body: { code }
-				});
-				if (error || !data?.purpose) {
-					throw new Error(error?.detail ?? 'Single sign-on could not be completed');
-				}
-				if (data.purpose === 'login') {
-					if (!data.token || !data.user) throw new Error('Single sign-on response is incomplete');
-					setToken(data.token);
-					setAuthenticatedUser(data.user);
-				}
-				return {
-					success: true,
-					purpose: data.purpose,
-					action: data.action,
-					reauthGrant: data.reauth_grant
-				};
 			} catch (e) {
 				return { success: false, error: errorMessage(e) };
 			}

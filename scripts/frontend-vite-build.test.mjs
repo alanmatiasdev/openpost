@@ -70,12 +70,6 @@ describe("frontend Vite build arguments", () => {
     expect(parseFrontendBuildArguments([])).toEqual({});
   });
 
-  test("accepts the Capacitor application mode", () => {
-    expect(parseFrontendBuildArguments(["--app-mode=capacitor"])).toEqual({
-      appMode: "capacitor",
-    });
-  });
-
   test("rejects arguments that could silently change the canonical build", () => {
     expect(() => parseFrontendBuildArguments(["--mode=development"])).toThrow(
       "Unsupported frontend build arguments",

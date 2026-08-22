@@ -487,18 +487,6 @@
       "source_refs": ["frontend/src/lib/stores/workspace.svelte.ts"]
     },
     {
-      "id": "local-instance-url",
-      "technology": "localStorage",
-      "owner": "OpenPost installed mobile application",
-      "identifier_kind": "exact",
-      "identifier": "openpost_instance_url",
-      "purpose": "Keeps the self-hosted server address selected by the installed mobile application.",
-      "scope": "Installed application WebView storage; not needed by the ordinary web app.",
-      "duration": "Until the server is changed, disconnected, or application site data is cleared.",
-      "necessity": "functional",
-      "source_refs": ["frontend/src/lib/stores/instance.svelte.ts"]
-    },
-    {
       "id": "local-interface-sounds",
       "technology": "localStorage",
       "owner": "OpenPost application shell",

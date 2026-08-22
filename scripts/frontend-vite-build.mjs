@@ -28,14 +28,11 @@ export function frontendBuildNodeOptions(nodeOptions = "") {
 
 export function parseFrontendBuildArguments(args) {
   if (args.length === 0) return {};
-  if (args.length === 1 && args[0] === "--app-mode=capacitor") {
-    return { appMode: "capacitor" };
-  }
 
   throw new Error(`Unsupported frontend build arguments: ${args.join(" ") || "(none)"}`);
 }
 
-export async function runFrontendViteBuild({ appMode } = {}) {
+export async function runFrontendViteBuild() {
   const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const staticDirectory = path.join(repositoryRoot, "frontend/static");
   await validateImmutableFrontendAssets(staticDirectory);
@@ -55,7 +52,6 @@ export async function runFrontendViteBuild({ appMode } = {}) {
       OPENPOST_BUILD_PUBLIC_DIR: publicDirectory,
       OPENPOST_PARAGLIDE_PRECOMPILED: "1",
     };
-    if (appMode) environment.VITE_APP_MODE = appMode;
     const result = spawnSync(
       process.execPath,
       [path.join(path.dirname(vitePackage), "bin/vite.js"), "build"],

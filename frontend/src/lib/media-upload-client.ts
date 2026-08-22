@@ -1,6 +1,5 @@
 import { applyAPIRequestHeaders } from '$lib/api/client';
 import type { components } from '$lib/api/types';
-import { getApiBase } from '$lib/stores/instance.svelte';
 import type { VideoConstraint, VideoPreparationProgress } from '$lib/video/types';
 import type { StockMediaProvenance } from '$lib/stock-media';
 import { isSVGFile, rasterizeSVGToPNG } from '$lib/media/svg-rasterize';
@@ -265,7 +264,7 @@ export function normalizedUploadErrorMessage(
 }
 
 async function mediaStorageSupportsDirectUploads(workspaceId: string): Promise<boolean> {
-	const cacheKey = `${getApiBase()}:${workspaceId}`;
+	const cacheKey = workspaceId;
 	const cached = directUploadCapabilityByWorkspace.get(cacheKey);
 	if (cached) return cached;
 
@@ -543,7 +542,7 @@ function apiURL(path: string): string {
 		return path;
 	}
 	const apiPath = path.startsWith('/api/v1/') ? path.slice('/api/v1'.length) : path;
-	return `${getApiBase()}${apiPath.startsWith('/') ? apiPath : `/${apiPath}`}`;
+	return `/api/v1${apiPath.startsWith('/') ? apiPath : `/${apiPath}`}`;
 }
 
 function apiHeaders(json: boolean): Headers {

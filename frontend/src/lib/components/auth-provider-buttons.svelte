@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { getApiBase } from '$lib/stores/instance.svelte';
-	import { IS_CAPACITOR } from '$lib/env';
 	import type { OIDCProvider } from '$lib/api/client';
 	import type { PurchaseSelection } from '$lib/purchase-choice';
 	import { m } from '$lib/paraglide/messages';
@@ -30,7 +28,6 @@
 	let loadingProviderID = $state('');
 
 	function startURL(provider: OIDCProvider) {
-		const base = getApiBase().replace(/\/$/, '');
 		const query = new URLSearchParams({ return_path: returnPath });
 		if (signup) {
 			query.set('signup', 'true');
@@ -39,8 +36,7 @@
 			query.set('purchase_choice_token', purchaseChoice?.token ?? '');
 			query.set('telemetry_id', telemetryDistinctID());
 		}
-		if (IS_CAPACITOR) query.set('native', 'true');
-		return `${base}/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
+		return `/api/v1/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
 	}
 
 	async function start(provider: OIDCProvider) {
@@ -48,11 +44,6 @@
 		onstart?.();
 		try {
 			const url = startURL(provider);
-			if (IS_CAPACITOR) {
-				const { Browser } = await import('@capacitor/browser');
-				await Browser.open({ url });
-				return;
-			}
 			window.location.assign(url);
 		} catch (cause) {
 			loadingProviderID = '';

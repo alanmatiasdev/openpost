@@ -165,43 +165,24 @@ for (const checkInput of [
   );
 }
 
-const [
-  adapterConfig,
-  capacitorConfig,
-  assetSync,
-  dockerfile,
-  devenv,
-  frontendDevenv,
-  ci,
-  appPlaywright,
-] = await Promise.all(
-  [
-    "frontend/svelte.config.js",
-    "frontend/capacitor.config.ts",
-    "scripts/sync-assets.mjs",
-    "docker/Dockerfile",
-    "devenv.nix",
-    "frontend/devenv.nix",
-    ".github/workflows/ci.yml",
-    "playwright.app.config.ts",
-  ].map((relativePath) => readFile(path.join(root, relativePath), "utf8")),
-);
+const [adapterConfig, assetSync, dockerfile, devenv, frontendDevenv, ci, appPlaywright] =
+  await Promise.all(
+    [
+      "frontend/svelte.config.js",
+      "scripts/sync-assets.mjs",
+      "docker/Dockerfile",
+      "devenv.nix",
+      "frontend/devenv.nix",
+      ".github/workflows/ci.yml",
+      "playwright.app.config.ts",
+    ].map((relativePath) => readFile(path.join(root, relativePath), "utf8")),
+  );
 requireIncludes(adapterConfig, "pages: 'build'", "frontend adapter");
 requireIncludes(adapterConfig, "assets: 'build'", "frontend adapter");
 requireIncludes(
   adapterConfig,
   "assets: process.env.OPENPOST_BUILD_PUBLIC_DIR || 'static'",
   "frontend build asset input",
-);
-requireIncludes(
-  capacitorConfig,
-  "webDir: process.env.OPENPOST_CAPACITOR_WEB_DIR || 'build'",
-  "Capacitor config",
-);
-requireIncludes(
-  frontendPackage.scripts?.["build:capacitor"],
-  "capacitor-sync.mjs android",
-  "Capacitor build",
 );
 requireCondition(
   !assetSync.includes("generateSocialCatalog"),

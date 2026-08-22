@@ -72,10 +72,10 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch.
 
 ### MOBILE-001 — Publish and prove an installable Android candidate
 
-- [ ] **Problem — Partial/release acceptance required:** the workflow now fails instead of publishing an unsigned APK as the installable asset. Placeholder tests were replaced with the `com.openpost.app` package contract and an OIDC deep-link resolution instrumentation test, and the JVM contract compiles and passes. The exact published signed APK still needs install/certificate/version/revision and native lifecycle/permission/restore proof in candidate/release automation and on the bounded device matrix.
-- **Fix delivered locally:** enforce signing-secret availability before the public Android asset is produced; enable the generated BuildConfig contract; replace template package tests; align installation docs and release-contract tests. Complete exact-byte emulator/device acceptance in the release lane before checking this item off.
+- [ ] **Problem — Partial/release acceptance required:** candidate CI builds the standalone Expo app and the release workflow fails instead of publishing an unsigned APK as the installable asset. The exact published signed APK still needs install/certificate/version/revision and native lifecycle/permission/restore proof in candidate/release automation and on the bounded device matrix.
+- **Fix delivered locally:** make `mobile/` the only Android app, remove the obsolete web wrapper, build and check the Expo candidate in CI, retain its SHA-256 digest, require the signing secret, sign and verify the same candidate bytes, and align installation docs and release-contract tests. Complete exact-byte emulator/device acceptance in the release lane before checking this item off.
 - **Done when:** the release matrix installs the exact published signed artifact, asserts its certificate/package/version/revision, and fails or omits Android publication when signing is unavailable; native navigation, permission, deep-link, or restore regressions fail without rebuilding different application bytes.
-- **Evidence:** `frontend/android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java:1`, `frontend/capacitor.config.ts:3`, `.github/workflows/release.yml:329`, `docs-site/installation/android.md:5`.
+- **Evidence:** `mobile/app.json`, `mobile/plugins/with-android-release-signing.js`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, and `docs-site/installation/android.md`.
 
 ### Shared provider kernel — required before new provider delivery
 
@@ -543,7 +543,7 @@ Do not delete or rewrite these merely because they look old or unused:
 - `/studio` and `/video-studio` redirects; `/posts/[id]`; `GET/DELETE /posts`; `/posts/thread`.
 - historical/no-op migrations; use new forward migrations.
 - generated OpenAPI, Paraglide, CLI docs, social catalogues, or embedded frontend output.
-- Capacitor plugins, ONNX declarations/models, dynamically imported lossless-export workers, or runtime asset manifests.
+- ONNX declarations/models, dynamically imported lossless-export workers, or runtime asset manifests.
 - intentional transitive pins such as `estree-walker` and `svelte-toolbelt` without rechecking their recorded reason.
 - capability-asserted provider adapters/interfaces and navigation-menu primitives reached through dynamic/shared imports.
 - the `/prompts` backend/random API.

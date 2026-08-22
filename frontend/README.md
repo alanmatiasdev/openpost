@@ -1,6 +1,6 @@
 # OpenPost Frontend
 
-The OpenPost web app is a Svelte 5 and SvelteKit application embedded in the Go server. The same responsive build is packaged as a Capacitor Android app.
+The OpenPost web app is a Svelte 5 and SvelteKit application embedded in the Go server. The standalone Expo app in `mobile/` owns native Android delivery.
 
 Use the repository-owned commands from the project root:
 

@@ -1,7 +1,6 @@
 import { browser } from '$app/environment';
 import { client } from '$lib/api/client';
 import { getPasskeyAssertion } from '$lib/auth/webauthn';
-import { IS_CAPACITOR } from '$lib/env';
 
 const PENDING_ACTION_KEY = 'openpost_reauth_pending_action';
 const GRANTS_KEY = 'openpost_reauth_grants';
@@ -121,11 +120,6 @@ async function passwordGrant(action: string, password: string): Promise<string> 
 }
 
 async function openAuthorizationURL(url: string) {
-	if (IS_CAPACITOR) {
-		const { Browser } = await import('@capacitor/browser');
-		await Browser.open({ url });
-		return;
-	}
 	window.location.assign(url);
 }
 
@@ -134,7 +128,7 @@ async function startOIDCReauth(action: string, providerID: string): Promise<void
 	sessionStorage.setItem(PENDING_ACTION_KEY, action);
 	const { data, error } = await client.POST('/auth/oidc/{provider_id}/reauth', {
 		params: { path: { provider_id: providerID } },
-		body: { action, return_path: returnPath, native: IS_CAPACITOR }
+		body: { action, return_path: returnPath, native: false }
 	});
 	if (error || !data?.authorization_url) {
 		sessionStorage.removeItem(PENDING_ACTION_KEY);
@@ -150,7 +144,7 @@ export async function startOIDCIdentityLink(
 	const returnPath = `${window.location.pathname}${window.location.search}`;
 	const { data, error } = await client.POST('/auth/oidc/{provider_id}/link', {
 		params: { path: { provider_id: providerID } },
-		body: { reauth_grant: reauthGrant, return_path: returnPath, native: IS_CAPACITOR }
+		body: { reauth_grant: reauthGrant, return_path: returnPath, native: false }
 	});
 	if (error || !data?.authorization_url) {
 		throw new Error(error?.detail ?? 'Unable to start identity linking');

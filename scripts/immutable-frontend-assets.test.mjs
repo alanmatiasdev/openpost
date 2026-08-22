@@ -88,9 +88,7 @@ test("frontend asset materialization targets only generated surface trees", () =
     "/work/openpost/frontend/.svelte-kit/output/client",
     "/work/openpost/frontend/build",
   ]);
-  assert.deepEqual(frontendAssetOutputDirectories("android", "/work/openpost"), [
-    "/work/openpost/frontend/android/app/src/main/assets/public",
-  ]);
+  assert.throws(() => frontendAssetOutputDirectories("android", "/work/openpost"));
 });
 
 test("missing canonical asset directories fail without changing generated copies", async (t) => {

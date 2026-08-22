@@ -258,7 +258,7 @@ test("candidate CI embeds one stable version and exact-revision manifest", () =>
     android,
     /cp candidate-android\/openpost-app-android-unsigned\.apk openpost-app-android\.apk/,
   );
-  assert.doesNotMatch(android, /build:capacitor|assembleRelease|gradlew/);
+  assert.doesNotMatch(android, /frontend\/android/);
   assert.doesNotMatch(release, /CI_RUN_ATTEMPT|ci_run_attempt/);
   assert.match(
     localRelease,

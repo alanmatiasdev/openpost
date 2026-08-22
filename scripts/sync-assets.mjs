@@ -15,12 +15,9 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..");
 const source = assetSourceDirectory;
-const frontendRoot = path.join(root, "frontend");
 
 const targets = new Map(Object.entries(assetTargetDirectories));
 
-const brandIconSource = path.join(source, "brand", "icon.svg");
-const capacitorAssetsTarget = path.join(frontendRoot, "assets");
 const lockDir = path.join(root, ".sync-assets.lock");
 
 export async function syncAssets({ surface = "all" } = {}) {
@@ -53,15 +50,6 @@ export async function syncAssets({ surface = "all" } = {}) {
       console.log(
         `Synced ${assetSurfaceManifest[surfaceName].length} declared assets -> ${path.relative(root, target)}`,
       );
-    }
-
-    if (surface === "all" || surface === "frontend") {
-      if (!existsSync(brandIconSource)) {
-        throw new Error("Missing brand icon at assets/brand/icon.svg");
-      }
-      await mkdir(capacitorAssetsTarget, { recursive: true });
-      await cp(brandIconSource, path.join(capacitorAssetsTarget, "logo.svg"));
-      console.log("Prepared frontend/assets/logo.svg for Capacitor asset generation");
     }
   } finally {
     await rm(lockDir, { recursive: true, force: true });

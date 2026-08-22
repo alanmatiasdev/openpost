@@ -505,7 +505,6 @@ func buildCORSOrigins(edition, frontendURL, extraRaw string) []string {
 	addOrigin(frontendURL)
 	if edition != EditionCloud {
 		addOrigin("http://localhost:5173")
-		addOrigin("capacitor://localhost")
 		addOrigin("http://localhost")
 		addOrigin("https://localhost")
 	}

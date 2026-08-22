@@ -10,7 +10,6 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { m } from '$lib/paraglide/messages';
-	import { Capacitor } from '@capacitor/core';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import FilterIcon from '@lucide/svelte/icons/filter';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -252,7 +251,7 @@
 
 	async function saveExport(blob: Blob, filename: string) {
 		const file = new File([blob], filename, { type: blob.type });
-		if (Capacitor.isNativePlatform() && navigator.canShare?.({ files: [file] })) {
+		if (navigator.canShare?.({ files: [file] })) {
 			await navigator.share({ files: [file], title: filename });
 			return;
 		}

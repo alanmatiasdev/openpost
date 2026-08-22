@@ -1,5 +1,4 @@
 import { configureTelemetry } from '@openpost/telemetry';
-import { getApiBase } from '$lib/stores/instance.svelte';
 
 interface RuntimeTelemetryConfig {
 	enabled: boolean;
@@ -52,7 +51,7 @@ function parseRuntimeTelemetryConfig(value: RuntimeTelemetryValue): RuntimeTelem
 
 export async function initializeAppTelemetry(): Promise<void> {
 	try {
-		const response = await fetch(`${getApiBase()}/telemetry/config`, {
+		const response = await fetch('/api/v1/telemetry/config', {
 			credentials: 'include',
 			headers: { Accept: 'application/json' }
 		});

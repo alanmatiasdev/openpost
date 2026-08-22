@@ -15,7 +15,6 @@
 	} from '$lib/api/client';
 	import { loadCapabilityCatalog, loadWorkspaceAccounts } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
-	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';
 	import {
 		MAX_COMPOSER_DRAFT_MEDIA,
@@ -2582,7 +2581,7 @@
 
 		try {
 			const resp = await fetch(
-				`${getApiBase()}/media/metadata?workspace_id=${encodeURIComponent(
+				`/api/v1/media/metadata?workspace_id=${encodeURIComponent(
 					workspaceId
 				)}&media_ids=${encodeURIComponent(missingIds.join(','))}`,
 				{

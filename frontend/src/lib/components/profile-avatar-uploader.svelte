@@ -5,7 +5,6 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import CameraCapture from '$lib/components/camera-capture.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { applyAPIRequestHeaders } from '$lib/api/client';
 	import {
 		parseAvatarUploadErrorDetail,
@@ -156,7 +155,7 @@
 	): Promise<{ avatar_url?: string }> {
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
-			xhr.open('POST', `${getApiBase()}/auth/profile/avatar`);
+			xhr.open('POST', '/api/v1/auth/profile/avatar');
 			xhr.withCredentials = true;
 			for (const [name, value] of applyAPIRequestHeaders(new Headers())) {
 				xhr.setRequestHeader(name, value);

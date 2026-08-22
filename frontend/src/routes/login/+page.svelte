@@ -17,8 +17,6 @@
 	import { client, type AuthConfiguration } from '$lib/api/client';
 	import type { OIDCProvider } from '$lib/api/client';
 	import AuthProviderButtons from '$lib/components/auth-provider-buttons.svelte';
-	import { getApiBase } from '$lib/stores/instance.svelte';
-	import { IS_CAPACITOR } from '$lib/env';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
 	import { resolveAppPath } from '$lib/app-path';
 
@@ -165,21 +163,14 @@
 	}
 
 	function oidcStartURL(provider: OIDCProvider) {
-		const base = getApiBase().replace(/\/$/, '');
 		const query = new URLSearchParams({ return_path: loginTarget() });
-		if (IS_CAPACITOR) query.set('native', 'true');
-		return `${base}/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
+		return `/api/v1/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
 	}
 
 	async function startOIDC(provider: OIDCProvider) {
 		error = '';
 		ssoLoading = provider.id;
 		const url = oidcStartURL(provider);
-		if (IS_CAPACITOR) {
-			const { Browser } = await import('@capacitor/browser');
-			await Browser.open({ url });
-			return;
-		}
 		window.location.assign(url);
 	}
 

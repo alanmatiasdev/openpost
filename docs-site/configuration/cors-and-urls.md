@@ -12,9 +12,10 @@ The public URL users visit in the browser. This is also part of the default CORS
 
 Extra origins to allow, as a comma-separated list. Use this if you have alternate domains, admin origins, or a separate dev frontend.
 
-Self-hosted mode also allows local development and Capacitor origins by
-default. Cloud mode is stricter: it allows `OPENPOST_APP_URL` and explicit
-extra origins only, and rejects wildcard `*` origins at startup.
+Self-hosted mode also allows local browser development origins by default.
+Cloud mode is stricter: it allows `OPENPOST_APP_URL` and explicit extra origins
+only, and rejects wildcard `*` origins at startup. The native Expo app calls the
+HTTP API directly and does not need a browser CORS origin.
 
 ## `OPENPOST_MEDIA_URL`
 

@@ -3,16 +3,12 @@ import { client } from '$lib/api/client';
 import { createAuthStore } from './auth';
 
 const apiMocks = {
-	post: vi.fn(),
-	setToken: vi.fn()
+	post: vi.fn()
 };
 
 const auth = createAuthStore({
 	client: { GET: client.GET, POST: apiMocks.post },
-	setToken: apiMocks.setToken,
-	recreateClient: vi.fn(),
 	getPasskeyAssertion: vi.fn(),
-	isCapacitor: false,
 	notificationInbox: { clear: vi.fn() },
 	identifyTelemetryUser: vi.fn(),
 	resetTelemetryIdentity: vi.fn()
@@ -22,7 +18,6 @@ describe('auth recovery-code verification', () => {
 	afterEach(() => {
 		auth.clearLocal();
 		apiMocks.post.mockReset();
-		apiMocks.setToken.mockReset();
 	});
 
 	it('submits the pending MFA token and authenticates after a valid recovery code', async () => {
@@ -49,8 +44,6 @@ describe('auth recovery-code verification', () => {
 				code: 'ABCD-EFGH-JKMP-QRST'
 			}
 		});
-		expect(apiMocks.setToken).toHaveBeenCalledWith(null);
-
 		let current: { isAuthenticated: boolean; user: { id: string } | null } | undefined;
 		const unsubscribe = auth.subscribe((state) => {
 			current = state;
@@ -67,6 +60,5 @@ describe('auth recovery-code verification', () => {
 		const result = await auth.verifyRecoveryCode('mfa-challenge', 'USED-CODE');
 
 		expect(result).toEqual({ success: false, error: 'invalid recovery code' });
-		expect(apiMocks.setToken).not.toHaveBeenCalled();
 	});
 });

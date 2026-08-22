@@ -3,9 +3,6 @@
 	import { resolve } from '$app/paths';
 	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
-	import { instanceStore } from '$lib/stores/instance.svelte';
-	import { recreateClient } from '$lib/api/client';
-	import { IS_CAPACITOR } from '$lib/env';
 	import { m } from '$lib/paraglide/messages';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -22,7 +19,6 @@
 	import UserIcon from '@lucide/svelte/icons/user-round';
 	import PaletteIcon from '@lucide/svelte/icons/palette';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
-	import ServerIcon from '@lucide/svelte/icons/server';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import Volume2Icon from '@lucide/svelte/icons/volume-2';
 	import MessageSquareIcon from '@lucide/svelte/icons/message-square-text';
@@ -71,14 +67,6 @@
 		onNavigate?.();
 		await auth.logout();
 		await goto(resolveAppPath('/login'));
-	}
-
-	async function handleSwitchServer() {
-		onNavigate?.();
-		await auth.logout();
-		instanceStore().clearInstanceUrl();
-		recreateClient();
-		await goto(resolveAppPath('/connect'));
 	}
 </script>
 
@@ -270,13 +258,6 @@
 	<MessageSquareIcon class="size-4 text-muted-foreground" />
 	{m.feedback_open()}
 </DropdownMenu.Item>
-{#if IS_CAPACITOR}
-	<DropdownMenu.Separator />
-	<DropdownMenu.Item class={menuItemClass} onclick={handleSwitchServer}>
-		<ServerIcon class="mr-2 size-4 text-muted-foreground" />
-		{m.sidebar_change_server()}
-	</DropdownMenu.Item>
-{/if}
 <DropdownMenu.Separator />
 <DropdownMenu.Item class={menuItemClass} onclick={handleLogout}>
 	<LogOutIcon class="mr-2 size-4 text-muted-foreground" />

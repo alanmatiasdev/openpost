@@ -14,8 +14,6 @@
 	import DayPostsModal from '$lib/components/day-posts-modal.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
-	import { IS_CAPACITOR } from '$lib/env';
-	import { instanceStore, isInstanceConfigured } from '$lib/stores/instance.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import AppLoading from '$lib/components/app-loading.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -26,7 +24,7 @@
 	import FeedbackDialog from '$lib/components/feedback-dialog.svelte';
 	import BillingRecoveryNotice from '$lib/components/billing-recovery-notice.svelte';
 	import ConnectivityNotice from '$lib/components/connectivity-notice.svelte';
-	import { captureWebReauthGrant, storeReauthGrant } from '$lib/auth/reauth';
+	import { captureWebReauthGrant } from '$lib/auth/reauth';
 	import { client } from '$lib/api/client';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { setUnsavedChanges, UnsavedChangesContext } from '$lib/unsaved-changes.svelte';
@@ -54,8 +52,6 @@
 		event.returnValue = '';
 	}
 
-	const instance = instanceStore();
-
 	let authState = $derived($auth);
 	let currentPath = $derived($page.url.pathname);
 	let isPreviewRoute = $derived(currentPath === '/preview');
@@ -69,7 +65,6 @@
 		'/forgot-password',
 		'/reset-password',
 		'/account-deleted',
-		'/connect',
 		'/demo',
 		'/demo/paraglide',
 		'/preview',
@@ -89,7 +84,6 @@
 		'/legal-acceptance',
 		'/preview',
 		'/account-deleted',
-		'/connect',
 		'/invite',
 		'/ownership-transfer',
 		'/impersonate',
@@ -171,11 +165,7 @@
 	}
 
 	let pendingRedirect = $derived.by(() => {
-		if (instance.isLoading || authState.isLoading) return null;
-
-		if (IS_CAPACITOR && !isInstanceConfigured() && currentPath !== '/connect') {
-			return '/connect';
-		}
+		if (authState.isLoading) return null;
 
 		const isOnboardingPage = currentPath === '/onboarding';
 		if (!authState.isAuthenticated && !isPublicRoute && !isOnboardingPage) {
@@ -227,20 +217,8 @@
 		captureWebReauthGrant();
 		feedbackDiagnostics.initialize();
 		soundPreferences.initialize();
-		instance.initialize();
 		void initializeAppTelemetry();
 		auth.initialize({ optional: isPublicRoute });
-		if (!IS_CAPACITOR) return;
-		let removeURLListener: (() => Promise<void>) | undefined;
-		void import('@capacitor/app').then(async ({ App }) => {
-			const listener = await App.addListener('appUrlOpen', ({ url }) => {
-				void completeNativeOIDC(url);
-			});
-			removeURLListener = () => listener.remove();
-		});
-		return () => {
-			void removeURLListener?.();
-		};
 	});
 
 	$effect(() => {
@@ -248,7 +226,7 @@
 	});
 
 	$effect(() => {
-		if (currentPath !== '/' || instance.isLoading || authState.isLoading) return;
+		if (currentPath !== '/' || authState.isLoading) return;
 		document.getElementById('openpost-managed-public-home')?.remove();
 		document
 			.querySelectorAll<HTMLElement>('[data-openpost-managed-home]')
@@ -305,56 +283,14 @@
 			body: {
 				action: `organization.access:${workspaceID}`,
 				return_path: returnPath,
-				native: IS_CAPACITOR
+				native: false
 			}
 		});
 		if (error || !data?.authorization_url) {
 			ssoChallengeInFlight = false;
 			return;
 		}
-		if (IS_CAPACITOR) {
-			const { Browser } = await import('@capacitor/browser');
-			await Browser.open({ url: data.authorization_url });
-			return;
-		}
 		window.location.assign(data.authorization_url);
-	}
-
-	async function completeNativeOIDC(url: string) {
-		let callback: URL;
-		try {
-			callback = new URL(url);
-		} catch {
-			return;
-		}
-		const code = callback.searchParams.get('code');
-		if (!code) return;
-		const { Browser } = await import('@capacitor/browser');
-		await Browser.close();
-		const result = await auth.consumeOIDCHandoff(code);
-		if (!result.success) {
-			ssoChallengeInFlight = false;
-			return;
-		}
-		if (result.purpose === 'reauth' && result.action && result.reauthGrant) {
-			storeReauthGrant(result.action, result.reauthGrant);
-			if (result.action.startsWith('organization.access:')) {
-				workspaceCtx.reset();
-				onboardingChecked = false;
-			}
-			ssoChallengeInFlight = false;
-			return;
-		}
-		if (result.purpose === 'link') {
-			ssoChallengeInFlight = false;
-			window.location.reload();
-			return;
-		}
-		workspaceCtx.reset();
-		onboardingChecked = false;
-		if (currentPath === '/login') {
-			await goto(resolveAppPath(authenticatedPublicTarget()));
-		}
 	}
 
 	$effect(() => {
@@ -394,7 +330,7 @@
 {#if !isPreviewRoute && !isErrorRoute}<ConnectivityNotice />{/if}
 {#if isPreviewRoute}
 	{@render children()}
-{:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeSkipsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
+{:else if authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeSkipsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
 	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !isPublicLocalEditorRoute}

@@ -202,9 +202,6 @@ export function frontendAssetOutputDirectories(surface, root = repositoryRoot) {
       path.join(root, "frontend/build"),
     ];
   }
-  if (surface === "android") {
-    return [path.join(root, "frontend/android/app/src/main/assets/public")];
-  }
   throw new Error(`Unsupported immutable frontend asset surface: ${surface}`);
 }
 
@@ -218,7 +215,7 @@ export async function materializeFrontendSurfaceAssets(surface, root = repositor
 if (import.meta.main) {
   const [surface, ...rest] = process.argv.slice(2);
   if (!surface || rest.length > 0) {
-    throw new Error("Usage: bun scripts/immutable-frontend-assets.mjs <web|android>");
+    throw new Error("Usage: bun scripts/immutable-frontend-assets.mjs web");
   }
   await materializeFrontendSurfaceAssets(surface);
 }

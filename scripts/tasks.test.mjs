@@ -62,14 +62,11 @@ test("workspace manifests keep implementation tasks without old public aliases",
   assert.deepEqual(Object.keys(frontend.scripts).sort(), [
     "assets:sync",
     "build",
-    "build:capacitor",
     "check",
     "check:i18n",
     "check:types",
     "check:watch",
-    "configure:camera",
     "dev",
-    "generate:app-assets:android",
     "generate:i18n",
     "generate:i18n:build",
     "generate:types",
@@ -86,8 +83,6 @@ test("workspace manifests keep implementation tasks without old public aliases",
   assert.equal(frontend.scripts["test:watch"], "vitest");
   assert.equal(frontend.scripts["test:server"], "vitest run --project server");
   assert.match(frontend.scripts.build, /immutable-frontend-assets\.mjs web/u);
-  assert.match(frontend.scripts["build:capacitor"], /capacitor-sync\.mjs android/u);
-  assert.match(frontend.scripts["build:capacitor"], /immutable-frontend-assets\.mjs android/u);
 
   const docs = manifest("docs-site/package.json");
   assert.deepEqual(Object.keys(docs.scripts).sort(), ["build", "dev", "preview"]);

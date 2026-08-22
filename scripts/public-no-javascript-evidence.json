@@ -177,7 +177,7 @@
   },
   "https://docs.openpost.social/configuration/cors-and-urls": {
     "audience": "This page is for operators configuring public URLs and allowed browser origins.",
-    "boundary": "Self-hosted mode also allows local development and Capacitor origins by default. Cloud mode is stricter: it allows OPENPOST_APP_URL and explicit extra origins only, and rejects wildcard * origins at startup."
+    "boundary": "Self-hosted mode also allows local browser development origins by default. Cloud mode is stricter: it allows OPENPOST_APP_URL and explicit extra origins only, and rejects wildcard * origins at startup. The native Expo app calls the HTTP API directly and does not need a browser CORS origin."
   },
   "https://docs.openpost.social/configuration/database": {
     "audience": "OpenPost uses SQLite by default when you run it yourself. Hosted installs can use Postgres by changing the database driver.",

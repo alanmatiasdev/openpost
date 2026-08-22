@@ -526,18 +526,16 @@ func TestLoadSupportsFileBackedProviderApps(t *testing.T) {
 
 func TestLoadSelfHostedCORSOriginsIncludeLocalDevelopmentDefaults(t *testing.T) {
 	t.Setenv("OPENPOST_APP_URL", "https://openpost.example.com/")
-	t.Setenv("OPENPOST_EXTRA_CORS_ORIGINS", "https://admin.openpost.example.com/, capacitor://preview")
+	t.Setenv("OPENPOST_EXTRA_CORS_ORIGINS", "https://admin.openpost.example.com/")
 
 	cfg := Load()
 
 	require.Equal(t, []string{
 		"https://openpost.example.com",
 		"http://localhost:5173",
-		"capacitor://localhost",
 		"http://localhost",
 		"https://localhost",
 		"https://admin.openpost.example.com",
-		"capacitor://preview",
 	}, cfg.CORSOrigins)
 }
 
@@ -553,7 +551,6 @@ func TestLoadCloudCORSOriginsExcludeLocalDevelopmentDefaults(t *testing.T) {
 		"https://admin.openpost.social",
 	}, cfg.CORSOrigins)
 	require.NotContains(t, cfg.CORSOrigins, "http://localhost:5173")
-	require.NotContains(t, cfg.CORSOrigins, "capacitor://localhost")
 }
 
 func TestValidateRuntimeAllowsSelfHostedLocalDefaults(t *testing.T) {

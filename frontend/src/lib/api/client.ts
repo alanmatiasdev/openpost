@@ -1,6 +1,5 @@
 import createClient from 'openapi-fetch';
 import type { paths, components } from './types';
-import { getApiBase } from '$lib/stores/instance.svelte';
 import { feedbackDiagnostics } from '$lib/feedback-diagnostics';
 import { applyTelemetryRequestHeaders } from '@openpost/telemetry';
 
@@ -14,26 +13,13 @@ export type AccountDeletionImpact = components['schemas']['AccountDeletionImpact
 export type OIDCProvider = components['schemas']['OIDCProviderSummary'];
 export type PublicProfile = components['schemas']['PublicProfileOutputBody'];
 
-let token: string | null = null;
-
-export function setToken(newToken: string | null | undefined) {
-	token = newToken ?? null;
-}
-
-export function getToken(): string | null {
-	return token;
-}
-
 export function applyAPIRequestHeaders(headers: Headers): Headers {
 	applyTelemetryRequestHeaders(headers);
-	if (token) {
-		headers.set('Authorization', `Bearer ${token}`);
-	}
 	return headers;
 }
 
 function createApiClient() {
-	const c = createClient<paths>({ baseUrl: getApiBase(), credentials: 'include' });
+	const c = createClient<paths>({ baseUrl: '/api/v1', credentials: 'include' });
 	c.use({
 		async onRequest({ request }) {
 			feedbackDiagnostics.recordRequestStart(request);
@@ -51,11 +37,7 @@ function createApiClient() {
 type APIClient = ReturnType<typeof createApiClient>;
 type APIClientMethods = Pick<APIClient, 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'>;
 
-let rawClient = createApiClient();
-
-export function recreateClient() {
-	rawClient = createApiClient();
-}
+const rawClient = createApiClient();
 
 export const client: APIClientMethods = {
 	get GET() {
