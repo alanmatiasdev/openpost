@@ -35,6 +35,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- OpenPost Video Editor now supports ripple trim, rate stretch from either edge, linked-selection controls and shortcuts, multi-clip link and unlink actions, group moves and deletes, visible transition spans, and explicit transition removal.
 - Video Editor move, trim, slip, and slide tools now keep synchronized audio and video companions aligned across every affected track.
 - Timeline edits now preserve valid transition handles and keyframes instead of leaving broken cuts or moving keys into blend-owned frames.
 - **OpenPost Video Editor** (`/video-editor`, Chromium-only): workspace folder on your disk is the source of truth (projects, media, caches, exports as plain files). The editor includes a layered multi-track preview, undo/redo, text and subtitle editing, broad clip keyframes with cubic and spring easing, a WebGL2 effects and color stack, cached waveforms and filmstrips, proxies, scene and silence tools, and transcript word editing. Rendered export supports MP4, MOV, WebM, MKV, MP3, AAC, and WAV with codec, size, quality, range, subtitle, progress, and cancel controls. Send to OpenPost uploads the finished export to the media library.
