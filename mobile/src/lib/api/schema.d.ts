@@ -3081,7 +3081,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get the pending Organization ownership transfer */
+    /**
+     * Get the pending Organization ownership transfer
+     * @description Returns pending false when the Organization has no pending ownership transfer.
+     */
     get: operations["get-organization-ownership-transfer"];
     put?: never;
     /**
@@ -8470,6 +8473,18 @@ export interface components {
       readonly $schema?: string;
       action: string;
       password: string;
+    };
+    PendingOwnershipTransferResponse: {
+      /**
+       * Format: uri
+       * @description A URL to the JSON Schema for this object.
+       * @example https://example.com/schemas/PendingOwnershipTransferResponse.json
+       */
+      readonly $schema?: string;
+      /** @description Whether an ownership transfer is pending */
+      pending: boolean;
+      /** @description Pending transfer when one exists */
+      transfer?: components["schemas"]["OwnershipTransferResponse"];
     };
     Policy: {
       /**
@@ -22928,20 +22943,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["OwnershipTransferResponse"];
+          "application/json": components["schemas"]["PendingOwnershipTransferResponse"];
         };
       };
       /** @description Forbidden */
       403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["ErrorModel"];
-        };
-      };
-      /** @description Not Found */
-      404: {
         headers: {
           [name: string]: unknown;
         };
