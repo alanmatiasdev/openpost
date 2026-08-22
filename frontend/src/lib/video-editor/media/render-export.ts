@@ -10,6 +10,7 @@
 
 import {
 	ALL_FORMATS,
+	AdtsOutputFormat,
 	AudioSample,
 	AudioSampleSink,
 	AudioSampleSource,
@@ -19,12 +20,14 @@ import {
 	Input,
 	MkvOutputFormat,
 	MovOutputFormat,
+	Mp3OutputFormat,
 	Mp4OutputFormat,
 	Output,
 	type OutputFormat,
 	TextSubtitleSource,
 	VideoSample,
 	VideoSampleSource,
+	WavOutputFormat,
 	WebMOutputFormat
 } from 'mediabunny';
 import { saveExportFile } from '../workspace-fs/exports';
@@ -69,6 +72,12 @@ export interface RenderExportResult {
 	fileName: string;
 	relPath: string;
 	blob: Blob;
+}
+
+export interface AudioExportOptions {
+	format: 'mp3' | 'aac' | 'wav';
+	range?: { startFrame: number; endFrame: number };
+	signal?: AbortSignal;
 }
 
 const MIX_SAMPLE_RATE = 48_000;
@@ -380,10 +389,11 @@ export async function renderMultiTrackVideo(
 		latencyMode: 'quality'
 	});
 	output.addVideoTrack(videoSource, { frameRate: fps });
-	const subtitleMode = options.subtitleMode ?? (options.burnSubtitles === false ? 'none' : 'burn');
+	const requestedSubtitleMode =
+		options.subtitleMode ?? (options.burnSubtitles === false ? 'none' : 'burn');
+	const subtitleMode = resolveSubtitleMode(requestedSubtitleMode, format);
 	let subtitleSource: TextSubtitleSource | null = null;
 	if (subtitleMode === 'embedded') {
-		if (format === 'mov') throw new Error('MOV does not support embedded WebVTT subtitles.');
 		subtitleSource = new TextSubtitleSource('webvtt');
 		output.addSubtitleTrack(subtitleSource);
 	}
@@ -563,6 +573,61 @@ export async function renderMultiTrackVideo(
 	return { ...saved, blob };
 }
 
+/** Render the audible timeline mix without a video track. */
+export async function renderTimelineAudio(
+	project: Project,
+	options: AudioExportOptions
+): Promise<RenderExportResult> {
+	const fps = project.metadata.fps;
+	const items = project.timeline?.items ?? [];
+	const tracks = project.timeline?.tracks ?? [];
+	const fullDuration = outputDurationFrames(items);
+	const startFrame = Math.max(0, Math.floor(options.range?.startFrame ?? 0));
+	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
+	const entries = sliceMixEntries(
+		planMixdown(items, tracks, fps),
+		startFrame / fps,
+		endFrame / fps
+	);
+	if (entries.length === 0) throw new Error('The selected range has no audible clips.');
+	const decoded = new Map<string, AudioBuffer>();
+	for (const mediaId of new Set(entries.map((entry) => entry.mediaId))) {
+		throwIfAborted(options.signal);
+		const media = mediaPool.get(mediaId);
+		if (media) decoded.set(mediaId, await decodeAudioBuffer(await resolveMediaBlob(media)));
+	}
+	const mixed = await renderMixdown(entries, decoded, mixDurationSeconds(entries));
+	if (!mixed) throw new Error('The audio mix is empty.');
+	const format = audioOutputFormatFor(options.format);
+	const target = new BufferTarget();
+	const output = new Output({ format, target });
+	const codec = options.format === 'mp3' ? 'mp3' : options.format === 'aac' ? 'aac' : 'pcm-s16';
+	const source = new AudioSampleSource({
+		codec,
+		bitrate: options.format === 'wav' ? undefined : 192_000
+	});
+	output.addAudioTrack(source);
+	await output.start();
+	try {
+		throwIfAborted(options.signal);
+		await feedEncodedAudio(source, mixed, () => throwIfAborted(options.signal));
+		source.close();
+		await output.finalize();
+	} catch (error) {
+		try {
+			if (output.state === 'started') await output.cancel();
+		} catch {
+			// Keep the first failure.
+		}
+		throw error;
+	}
+	if (!target.buffer) throw new Error('Audio render produced no data.');
+	const blob = new Blob([target.buffer], { type: format.mimeType });
+	const fileName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${options.format}`;
+	const saved = await saveExportFile(project.id, fileName, blob);
+	return { ...saved, blob };
+}
+
 function outputFormatFor(format: NonNullable<RenderExportOptions['format']>): OutputFormat {
 	switch (format) {
 		case 'webm':
@@ -573,6 +638,25 @@ function outputFormatFor(format: NonNullable<RenderExportOptions['format']>): Ou
 			return new MovOutputFormat();
 		case 'mkv':
 			return new MkvOutputFormat();
+	}
+}
+
+export function resolveSubtitleMode(
+	mode: NonNullable<RenderExportOptions['subtitleMode']>,
+	format: NonNullable<RenderExportOptions['format']>
+): NonNullable<RenderExportOptions['subtitleMode']> {
+	if (mode === 'embedded' && format !== 'webm' && format !== 'mkv') return 'burn';
+	return mode;
+}
+
+function audioOutputFormatFor(format: AudioExportOptions['format']): OutputFormat {
+	switch (format) {
+		case 'mp3':
+			return new Mp3OutputFormat();
+		case 'aac':
+			return new AdtsOutputFormat();
+		case 'wav':
+			return new WavOutputFormat();
 	}
 }
 

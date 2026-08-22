@@ -5,6 +5,7 @@
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
 		renderMultiTrackVideo,
+		renderTimelineAudio,
 		type RenderExportOptions,
 		type RenderExportResult
 	} from '$lib/video-editor/media/render-export';
@@ -24,7 +25,7 @@
 
 	let open = $state(false);
 	let rendering = $state(false);
-	let format = $state<NonNullable<RenderExportOptions['format']>>('webm');
+	let format = $state<NonNullable<RenderExportOptions['format']> | 'mp3' | 'aac' | 'wav'>('webm');
 	let quality = $state<NonNullable<RenderExportOptions['quality']>>('standard');
 	let resolution = $state('source');
 	let useRange = $state(false);
@@ -42,21 +43,25 @@
 				? [project.metadata.width, project.metadata.height]
 				: resolution.split('x').map(Number);
 		try {
-			const result = await renderMultiTrackVideo(project, {
-				format,
-				quality,
-				width,
-				height,
-				subtitleMode,
-				range:
-					useRange && timelineStore.inPoint !== null && timelineStore.outPoint !== null
-						? { startFrame: timelineStore.inPoint, endFrame: timelineStore.outPoint }
-						: undefined,
-				signal: controller.signal,
-				onProgress: (value) => {
-					progress = { done: value.framesDone, total: value.totalFrames };
-				}
-			});
+			const range =
+				useRange && timelineStore.inPoint !== null && timelineStore.outPoint !== null
+					? { startFrame: timelineStore.inPoint, endFrame: timelineStore.outPoint }
+					: undefined;
+			const result =
+				format === 'mp3' || format === 'aac' || format === 'wav'
+					? await renderTimelineAudio(project, { format, range, signal: controller.signal })
+					: await renderMultiTrackVideo(project, {
+							format,
+							quality,
+							width,
+							height,
+							subtitleMode,
+							range,
+							signal: controller.signal,
+							onProgress: (value) => {
+								progress = { done: value.framesDone, total: value.totalFrames };
+							}
+						});
 			ondone(result);
 			open = false;
 		} catch (cause) {
@@ -98,7 +103,11 @@
 						disabled={rendering}
 						><option value="mp4">MP4</option><option value="mov">MOV</option><option value="webm"
 							>WebM</option
-						><option value="mkv">MKV</option></select
+						><option value="mkv">MKV</option><optgroup label="Audio only"
+							><option value="mp3">MP3</option><option value="aac">AAC</option><option value="wav"
+								>WAV</option
+							></optgroup
+						></select
 					></label
 				>
 				<label class="text-xs text-[oklch(0.7_0.01_55)]"

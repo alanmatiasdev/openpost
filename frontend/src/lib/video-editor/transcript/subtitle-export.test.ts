@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import { collectSubtitleCues, subtitleSidecarSrt, subtitleWebVtt } from './subtitle-export';
+import { resolveSubtitleMode } from '../media/render-export';
 
 const subtitles: TimelineItem[] = [
 	{
@@ -24,5 +25,14 @@ describe('subtitle export', () => {
 	it('writes SRT and WebVTT timestamp forms', () => {
 		expect(subtitleSidecarSrt(subtitles, 10)).toContain('00:00:02,000 --> 00:00:05,000');
 		expect(subtitleWebVtt(subtitles, 10)).toContain('00:00:02.000 --> 00:00:05.000');
+	});
+});
+
+describe('embedded subtitle compatibility', () => {
+	it('keeps soft tracks in Matroska and burns them into ISOBMFF', () => {
+		expect(resolveSubtitleMode('embedded', 'mkv')).toBe('embedded');
+		expect(resolveSubtitleMode('embedded', 'webm')).toBe('embedded');
+		expect(resolveSubtitleMode('embedded', 'mp4')).toBe('burn');
+		expect(resolveSubtitleMode('embedded', 'mov')).toBe('burn');
 	});
 });
