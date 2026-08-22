@@ -128,6 +128,15 @@ describe('planMixdown', () => {
 		expect(entries).toEqual([]);
 	});
 
+	it('drops audio from hidden video tracks', () => {
+		const entries = planMixdown(
+			[item({ mediaId: 'hidden-video-audio' })],
+			[track('track-video-main', 'video', 1, { visible: false })],
+			30
+		);
+		expect(entries).toEqual([]);
+	});
+
 	it('mutes non-soloed tracks when any track is soloed', () => {
 		const tracks = [
 			track('track-video-main', 'video', 1),
@@ -215,6 +224,18 @@ describe('paintOrder', () => {
 			tracks
 		);
 		expect(ordered.map((entry) => entry.id)).toEqual(['base', 'top']);
+	});
+
+	it('omits items on hidden tracks from the visual plan', () => {
+		const tracks = [track('shown', 'video', 0), track('hidden', 'video', 1, { visible: false })];
+		const ordered = paintOrder(
+			[
+				item({ id: 'shown-item', trackId: 'shown' }),
+				item({ id: 'hidden-item', trackId: 'hidden' })
+			],
+			tracks
+		);
+		expect(ordered.map((entry) => entry.id)).toEqual(['shown-item']);
 	});
 });
 

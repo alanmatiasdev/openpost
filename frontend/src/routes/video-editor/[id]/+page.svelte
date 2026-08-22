@@ -292,13 +292,17 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	function onKeydown(event: KeyboardEvent): void {
 		// SAFETY: event targets in this page are HTML elements.
-		if ((event.target as HTMLElement)?.tagName === 'INPUT') return;
+		const target = event.target as HTMLElement;
+		if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
 		if (event.code === 'Space') {
 			event.preventDefault();
 			togglePlay();
 		} else if (event.key === 's' && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
 			void editorSession.saveNow();
+		} else if ((event.key === 's' || event.key === 'S') && !event.altKey) {
+			event.preventDefault();
+			timelineStore._setSnapEnabled(!timelineStore.snapEnabled);
 		} else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedItemId) {
 			event.preventDefault();
 			handleDelete();

@@ -18,13 +18,13 @@ export function clampMonitorVolume(value: number): number {
 
 export function previewItemVolume(
 	item: Pick<TimelineItem, 'trackId' | 'volume'>,
-	tracks: Array<Pick<TimelineTrack, 'id' | 'muted' | 'solo' | 'volume'>>,
+	tracks: Array<Pick<TimelineTrack, 'id' | 'muted' | 'solo' | 'volume' | 'visible'>>,
 	monitorVolume: number,
 	monitorMuted: boolean
 ): number {
 	if (monitorMuted) return 0;
 	const track = tracks.find((candidate) => candidate.id === item.trackId);
-	if (!track || track.muted) return 0;
+	if (!track || track.muted || track.visible === false) return 0;
 	const anySolo = tracks.some((candidate) => candidate.solo);
 	if (anySolo && !track.solo) return 0;
 	return clampMonitorVolume((item.volume ?? 1) * (track.volume ?? 1) * monitorVolume);

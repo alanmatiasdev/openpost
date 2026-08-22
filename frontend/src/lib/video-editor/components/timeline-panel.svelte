@@ -4,6 +4,7 @@
 	FreeCut (MIT).
 -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -12,7 +13,6 @@
 		toggleMarkerAtPlayhead,
 		removeMarker
 	} from '$lib/video-editor/timeline/actions/items';
-	import { moveItems } from '$lib/video-editor/timeline/actions/items';
 	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
@@ -37,6 +37,42 @@
 	} from '$lib/video-editor/project/types';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
+	import {
+		planRollingTrimGesture,
+		planSlipGesture,
+		planTrimGesture
+	} from '$lib/video-editor/timeline/edit-gesture';
+	import {
+		buildSnapTargets,
+		calculateAdaptiveSnapThreshold,
+		calculateMoveSnap,
+		type SnapTarget
+	} from '$lib/video-editor/timeline/snapping';
+	import {
+		captureSnapshot,
+		restoreSnapshot,
+		snapshotsEqual
+	} from '$lib/video-editor/timeline/commands/snapshot';
+	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
+	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import {
+		addTrack,
+		removeTrack,
+		toggleTrackLock,
+		toggleTrackMute,
+		toggleTrackSolo,
+		toggleTrackSyncLock,
+		toggleTrackVisibility,
+		type TrackKind
+	} from '$lib/video-editor/timeline/actions/tracks';
+	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import MagnetIcon from '@lucide/svelte/icons/magnet';
+	import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import VideoIcon from '@lucide/svelte/icons/video';
+	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 
@@ -89,14 +125,21 @@
 		}
 		return points.join(' ');
 	}
+	type TimelineDragKind = 'move' | 'trim-start' | 'trim-end' | 'slip';
 	let drag: null | {
-		kind: 'move' | 'trim-end';
+		kind: TimelineDragKind;
 		id: string;
-		startFrame: number;
+		pointerId: number;
 		startX: number;
-		origFrom: number;
-		origDuration: number;
+		original: TimelineItem;
+		beforeSnapshot: TimelineSnapshot;
+		snapTargets: SnapTarget[];
+		rollingNeighbor: TimelineItem | null;
+		activated: boolean;
+		latestClientX: number;
+		rafId: number | null;
 	} = null;
+	let activeSnapTarget = $state<SnapTarget | null>(null);
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
 	// extraction worker and tiles render as they arrive.
@@ -156,8 +199,10 @@
 	const fps = $derived(editorSession.fps);
 	const zoom = $derived(timelineStore.zoomLevel);
 	const pxPerFrame = $derived(Math.max(0.25, 4 * zoom));
+	const TRACK_HEADER_WIDTH = 180;
+	const DRAG_THRESHOLD_PIXELS = 3;
 	const timelineWidth = $derived(
-		Math.max(800, (timelineStore.maxItemEndFrame + fps * 10) * pxPerFrame)
+		TRACK_HEADER_WIDTH + Math.max(800, (timelineStore.maxItemEndFrame + fps * 10) * pxPerFrame)
 	);
 
 	function frameToPx(frame: number): number {
@@ -168,13 +213,22 @@
 		return Math.max(0, Math.round(px / pxPerFrame));
 	}
 
+	function pxDeltaToFrames(px: number): number {
+		return Math.round(px / pxPerFrame);
+	}
+
+	function timelineX(frame: number): number {
+		return TRACK_HEADER_WIDTH + frameToPx(frame);
+	}
+
 	function rulerTicks(): number[] {
 		// Aim for one label every ~80px.
 		const framesPerTickOptions = [1, 5, 10, 30, 60, 150, 300, 600, 1800, 3600];
 		const target = Math.ceil(80 / pxPerFrame);
 		const step = framesPerTickOptions.find((option) => option >= target) ?? 3600;
 		const ticks: number[] = [];
-		for (let f = 0; f <= timelineWidth / pxPerFrame; f += step) ticks.push(f);
+		for (let f = 0; f <= (timelineWidth - TRACK_HEADER_WIDTH) / pxPerFrame; f += step)
+			ticks.push(f);
 		return ticks;
 	}
 
@@ -201,77 +255,293 @@
 		};
 		// SAFETY: item.type values are exactly the ClipPalette keys.
 		const fill = palette[item.type as keyof ClipPalette] ?? palette.video;
-		return `left:${frameToPx(item.from)}px;width:${frameToPx(item.durationInFrames)}px;background:${fill}`;
+		return `left:${timelineX(item.from)}px;width:${frameToPx(item.durationInFrames)}px;background:${fill}`;
 	}
 
 	function seekFromEvent(event: MouseEvent): void {
 		if (!scrollContainer) return;
 		const rect = scrollContainer.getBoundingClientRect();
-		setCurrentFrame(pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft));
+		setCurrentFrame(
+			pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH)
+		);
 	}
 
-	function startMove(event: MouseEvent, id: string): void {
-		event.stopPropagation();
-		selectedItemId = id;
-		const item = timelineStore.itemById.get(id);
-		if (!item) return;
-		drag = {
-			kind: 'move',
-			id,
-			startFrame: item.from,
-			startX: event.clientX,
-			origFrom: item.from,
-			origDuration: item.durationInFrames
-		};
-		window.addEventListener('mousemove', onMouseMove);
-		window.addEventListener('mouseup', onMouseUp);
+	function trackForItem(item: TimelineItem) {
+		return timelineStore.tracks.find((track) => track.id === item.trackId);
 	}
 
-	function startTrimEnd(event: MouseEvent, id: string): void {
-		event.stopPropagation();
-		const item = timelineStore.itemById.get(id);
-		if (!item) return;
-		selectedItemId = id;
-		drag = {
-			kind: 'trim-end',
-			id,
-			startFrame: item.from,
-			startX: event.clientX,
-			origFrom: item.from,
-			origDuration: item.durationInFrames
-		};
-		window.addEventListener('mousemove', onMouseMove);
-		window.addEventListener('mouseup', onMouseUp);
+	function snapTargetsFor(ids: string[]): SnapTarget[] {
+		return buildSnapTargets({
+			items: timelineStore.items,
+			tracks: timelineStore.tracks,
+			transitions: transitionsStore.list,
+			markers: timelineStore.markers,
+			currentFrame: timelineStore.currentFrame,
+			durationInFrames: timelineStore.maxItemEndFrame + fps * 10,
+			fps,
+			zoomLevel: zoom,
+			excludeItemIds: ids
+		});
 	}
 
-	function onMouseMove(event: MouseEvent): void {
-		if (!drag) return;
-		const deltaFrames = pxToFrame(event.clientX - drag.startX);
-		if (drag.kind === 'move') {
-			timelineStore._moveItems([{ id: drag.id, from: Math.max(0, drag.origFrom + deltaFrames) }]);
-		} else {
-			const nextDuration = Math.max(1, drag.origDuration + deltaFrames);
-			timelineStore._updateItems([{ id: drag.id, patch: { durationInFrames: nextDuration } }]);
+	function findRollingNeighbor(item: TimelineItem, kind: TimelineDragKind): TimelineItem | null {
+		if (kind === 'trim-end') {
+			const end = item.from + item.durationInFrames;
+			return (
+				timelineStore.items.find(
+					(candidate) =>
+						candidate.id !== item.id && candidate.trackId === item.trackId && candidate.from === end
+				) ?? null
+			);
 		}
+		if (kind === 'trim-start') {
+			return (
+				timelineStore.items.find(
+					(candidate) =>
+						candidate.id !== item.id &&
+						candidate.trackId === item.trackId &&
+						candidate.from + candidate.durationInFrames === item.from
+				) ?? null
+			);
+		}
+		return null;
 	}
 
-	function onMouseUp(): void {
+	function startDrag(event: PointerEvent, id: string, requestedKind: TimelineDragKind): void {
+		if (event.button !== 0) return;
+		event.stopPropagation();
+		selectedItemId = id;
+		const item = timelineStore.itemById.get(id);
+		if (!item || trackForItem(item)?.locked) return;
+		const kind = requestedKind === 'move' && event.altKey ? 'slip' : requestedKind;
+		if (kind === 'slip' && item.type !== 'video' && item.type !== 'audio') return;
+		const rollingNeighbor =
+			(kind === 'trim-start' || kind === 'trim-end') && event.altKey && !event.shiftKey
+				? findRollingNeighbor(item, kind)
+				: null;
+		if ((kind === 'trim-start' || kind === 'trim-end') && event.altKey && !rollingNeighbor) return;
+		event.preventDefault();
+		drag = {
+			kind,
+			id,
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			original: structuredClone(item),
+			beforeSnapshot: captureSnapshot(),
+			snapTargets: snapTargetsFor([id, ...(rollingNeighbor ? [rollingNeighbor.id] : [])]),
+			rollingNeighbor: rollingNeighbor ? structuredClone(rollingNeighbor) : null,
+			activated: kind === 'trim-start' || kind === 'trim-end',
+			latestClientX: event.clientX,
+			rafId: null
+		};
+		window.addEventListener('pointermove', onPointerMove);
+		window.addEventListener('pointerup', onPointerUp);
+		window.addEventListener('pointercancel', onPointerCancel);
+		window.addEventListener('keydown', onDragKeyDown);
+	}
+
+	function snapThreshold(): number {
+		return calculateAdaptiveSnapThreshold(zoom, pxPerFrame);
+	}
+
+	function onPointerMove(event: PointerEvent): void {
+		if (!drag || event.pointerId !== drag.pointerId) return;
+		drag.latestClientX = event.clientX;
+		if (drag.rafId !== null) return;
+		drag.rafId = requestAnimationFrame(() => {
+			if (!drag) return;
+			drag.rafId = null;
+			applyPointerFrame(drag.latestClientX);
+		});
+	}
+
+	function applyPointerFrame(clientX: number): void {
 		if (!drag) return;
-		const item = timelineStore.itemById.get(drag.id);
-		if (item && (item.from !== drag.origFrom || item.durationInFrames !== drag.origDuration)) {
-			if (drag.kind === 'move') {
-				moveItems([{ id: drag.id, from: item.from }]);
-			} else if (drag.kind === 'trim-end' && item.sourceFps && item.mediaId === undefined) {
-				onedit();
-			} else {
-				// Trim committed directly; media source windows stay aligned at 1x.
-				onedit();
+		const pixelDelta = clientX - drag.startX;
+		if (!drag.activated && Math.abs(pixelDelta) < DRAG_THRESHOLD_PIXELS) return;
+		drag.activated = true;
+		const deltaFrames = pxDeltaToFrames(pixelDelta);
+		if (drag.kind === 'move') {
+			const proposed = Math.max(0, drag.original.from + deltaFrames);
+			const snap = timelineStore.snapEnabled
+				? calculateMoveSnap(
+						proposed,
+						drag.original.durationInFrames,
+						drag.snapTargets,
+						snapThreshold()
+					)
+				: { snappedFrame: proposed, snapTarget: null, didSnap: false };
+			const from = Math.max(0, snap.snappedFrame);
+			activeSnapTarget = from === snap.snappedFrame ? snap.snapTarget : null;
+			timelineStore._moveItems([{ id: drag.id, from }]);
+			return;
+		}
+		if (drag.kind === 'slip') {
+			activeSnapTarget = null;
+			const patch = planSlipGesture(drag.original, deltaFrames, fps);
+			if (patch) timelineStore._updateItems([{ id: drag.id, patch }]);
+			return;
+		}
+		if (drag.rollingNeighbor) {
+			const left = drag.kind === 'trim-end' ? drag.original : drag.rollingNeighbor;
+			const right = drag.kind === 'trim-start' ? drag.original : drag.rollingNeighbor;
+			const plan = planRollingTrimGesture(
+				left,
+				right,
+				deltaFrames,
+				timelineStore.items.filter((item) => item.id !== left.id && item.id !== right.id),
+				fps,
+				timelineStore.snapEnabled ? drag.snapTargets : [],
+				snapThreshold()
+			);
+			if (plan) {
+				activeSnapTarget = plan.snapTarget;
+				timelineStore._updateItems([
+					{ id: left.id, patch: plan.leftPatch },
+					{ id: right.id, patch: plan.rightPatch }
+				]);
 			}
+			return;
+		}
+		const handle = drag.kind === 'trim-start' ? 'start' : 'end';
+		const plan = planTrimGesture(
+			drag.original,
+			handle,
+			deltaFrames,
+			timelineStore.items.filter((item) => item.id !== drag?.id),
+			fps,
+			timelineStore.snapEnabled ? drag.snapTargets : [],
+			snapThreshold()
+		);
+		activeSnapTarget = plan.snapTarget;
+		timelineStore._updateItems([{ id: drag.id, patch: plan.patch }]);
+	}
+
+	function commandTypeFor(kind: TimelineDragKind, rolling = false): string {
+		if (rolling) return 'ROLLING_EDIT';
+		if (kind === 'trim-start') return 'TRIM_ITEM_START';
+		if (kind === 'trim-end') return 'TRIM_ITEM_END';
+		if (kind === 'slip') return 'SLIP_ITEM';
+		return 'MOVE_ITEMS';
+	}
+
+	function finishDrag(cancelled: boolean): void {
+		if (!drag) return;
+		const completed = drag;
+		if (completed.rafId !== null) cancelAnimationFrame(completed.rafId);
+		if (cancelled) {
+			restoreSnapshot(completed.beforeSnapshot);
+		} else if (!snapshotsEqual(completed.beforeSnapshot, captureSnapshot())) {
+			commandHistory.addUndoEntry(
+				{ type: commandTypeFor(completed.kind, completed.rollingNeighbor !== null) },
+				completed.beforeSnapshot
+			);
+			onedit();
 		}
 		drag = null;
-		window.removeEventListener('mousemove', onMouseMove);
-		window.removeEventListener('mouseup', onMouseUp);
+		activeSnapTarget = null;
+		window.removeEventListener('pointermove', onPointerMove);
+		window.removeEventListener('pointerup', onPointerUp);
+		window.removeEventListener('pointercancel', onPointerCancel);
+		window.removeEventListener('keydown', onDragKeyDown);
 	}
+
+	function onPointerUp(event: PointerEvent): void {
+		if (!drag || event.pointerId !== drag.pointerId) return;
+		if (drag.rafId !== null) {
+			cancelAnimationFrame(drag.rafId);
+			drag.rafId = null;
+		}
+		applyPointerFrame(drag.latestClientX);
+		finishDrag(false);
+	}
+
+	function onPointerCancel(event: PointerEvent): void {
+		if (drag && event.pointerId === drag.pointerId) finishDrag(true);
+	}
+
+	function onDragKeyDown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		finishDrag(true);
+	}
+
+	function applyKeyboardEdit(
+		event: KeyboardEvent,
+		item: TimelineItem,
+		kind: TimelineDragKind
+	): void {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		if (trackForItem(item)?.locked) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const direction = event.key === 'ArrowLeft' ? -1 : 1;
+		const delta = direction * (event.shiftKey ? 10 : 1);
+		const before = captureSnapshot();
+		if (kind === 'move') {
+			timelineStore._moveItems([{ id: item.id, from: Math.max(0, item.from + delta) }]);
+		} else if (kind === 'slip') {
+			const patch = planSlipGesture(item, delta, fps);
+			if (patch) timelineStore._updateItems([{ id: item.id, patch }]);
+		} else if (event.altKey) {
+			const neighbor = findRollingNeighbor(item, kind);
+			if (!neighbor) return;
+			const left = kind === 'trim-end' ? item : neighbor;
+			const right = kind === 'trim-start' ? item : neighbor;
+			const plan = planRollingTrimGesture(
+				left,
+				right,
+				delta,
+				timelineStore.items.filter(
+					(candidate) => candidate.id !== left.id && candidate.id !== right.id
+				),
+				fps,
+				[],
+				1
+			);
+			if (plan) {
+				timelineStore._updateItems([
+					{ id: left.id, patch: plan.leftPatch },
+					{ id: right.id, patch: plan.rightPatch }
+				]);
+			}
+		} else {
+			const plan = planTrimGesture(
+				item,
+				kind === 'trim-start' ? 'start' : 'end',
+				delta,
+				timelineStore.items.filter((candidate) => candidate.id !== item.id),
+				fps,
+				[],
+				1
+			);
+			timelineStore._updateItems([{ id: item.id, patch: plan.patch }]);
+		}
+		if (!snapshotsEqual(before, captureSnapshot())) {
+			commandHistory.addUndoEntry({ type: commandTypeFor(kind, event.altKey) }, before);
+			onedit();
+		}
+	}
+
+	function addNamedTrack(kind: TrackKind): void {
+		const number = timelineStore.tracks.filter((track) => track.kind === kind).length + 1;
+		addTrack(
+			kind,
+			kind === 'video'
+				? m.video_editor_track_video_name({ number })
+				: m.video_editor_track_audio_name({ number })
+		);
+		onedit();
+	}
+
+	function editTrack(action: () => boolean): void {
+		if (action()) onedit();
+	}
+
+	onDestroy(() => {
+		if (drag) finishDrag(true);
+		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
+	});
 
 	function zoomBy(factor: number): void {
 		timelineStore._setZoomLevel(zoom * factor);
@@ -428,6 +698,46 @@
 
 <div class="flex items-center gap-2 px-3 py-1">
 	<span class="text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_timeline()}</span>
+	<div class="flex items-center gap-0.5 border-l border-[oklch(0.25_0.015_55)] pl-2">
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded"
+			aria-label={m.video_editor_track_add_video()}
+			title={m.video_editor_track_add_video()}
+			onclick={() => addNamedTrack('video')}
+		>
+			<VideoIcon class="size-3.5" />
+			<PlusIcon class="-ml-1 size-2.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded"
+			aria-label={m.video_editor_track_add_audio()}
+			title={m.video_editor_track_add_audio()}
+			onclick={() => addNamedTrack('audio')}
+		>
+			<AudioLinesIcon class="size-3.5" />
+			<PlusIcon class="-ml-1 size-2.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+			data-active={timelineStore.snapEnabled}
+			aria-pressed={timelineStore.snapEnabled}
+			aria-label={timelineStore.snapEnabled
+				? m.video_editor_snap_disable()
+				: m.video_editor_snap_enable()}
+			title={timelineStore.snapEnabled
+				? m.video_editor_snap_disable()
+				: m.video_editor_snap_enable()}
+			onclick={() => timelineStore._setSnapEnabled(!timelineStore.snapEnabled)}
+		>
+			<MagnetIcon class="size-3.5" />
+		</Button>
+	</div>
 	<div class="ml-auto flex items-center gap-1">
 		{#if selectedItem}
 			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
@@ -487,10 +797,14 @@
 			class="sticky top-0 z-20 h-6 cursor-pointer border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"
 			onclick={seekFromEvent}
 		>
+			<div
+				class="sticky left-0 z-30 h-full border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"
+				style="width:{TRACK_HEADER_WIDTH}px"
+			></div>
 			{#each rulerTicks() as tick (tick)}
 				<span
 					class="absolute bottom-0 border-l border-[oklch(0.3_0.01_55)] pl-1 font-mono text-[9px] text-[oklch(0.65_0.015_55)]"
-					style="left:{frameToPx(tick)}px"
+					style="left:{timelineX(tick)}px"
 				>
 					{tickLabel(tick)}
 				</span>
@@ -498,66 +812,103 @@
 		</div>
 
 		<!-- Tracks -->
-		{#each [...timelineStore.tracks].sort((a, b) => b.order - a.order) as track (track.id)}
+		{#each [...timelineStore.tracks].sort((a, b) => a.order - b.order) as track (track.id)}
 			<div
-				class="relative border-b border-[oklch(0.22_0.01_50)]"
+				class="relative border-b border-[oklch(0.22_0.01_50)] {track.visible === false ||
+				(track.kind === 'audio' && track.muted)
+					? 'bg-[oklch(0.13_0.006_55)]'
+					: ''}"
 				style="height:{track.height}px"
 				data-track={track.id}
 			>
-				<span
-					class="pointer-events-none absolute top-0.5 left-1 z-10 text-[9px] text-[oklch(0.65_0.015_55)] uppercase"
-				>
-					{track.name}
-				</span>
+				<div class="sticky left-0 z-30 h-full" style="width:{TRACK_HEADER_WIDTH}px">
+					<TimelineTrackHeader
+						{track}
+						itemCount={(timelineStore.itemsByTrackId.get(track.id) ?? []).length}
+						canDelete={timelineStore.tracks.length > 1}
+						onvisibility={() => editTrack(() => toggleTrackVisibility(track.id))}
+						onmute={() => editTrack(() => toggleTrackMute(track.id))}
+						onsolo={() => editTrack(() => toggleTrackSolo(track.id))}
+						onlock={() => editTrack(() => toggleTrackLock(track.id))}
+						onsynclock={() => editTrack(() => toggleTrackSyncLock(track.id))}
+						ondelete={() => editTrack(() => removeTrack(track.id))}
+					/>
+				</div>
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
 					<div
-						role="button"
-						tabindex="0"
-						class="absolute top-1 flex h-[calc(100%-8px)] cursor-grab items-center overflow-hidden rounded-sm border text-left active:cursor-grabbing {selectedItemId ===
+						class="group absolute top-1 h-[calc(100%-8px)] touch-none overflow-hidden rounded-sm border text-left {selectedItemId ===
 						item.id
 							? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
-							: 'border-transparent'}"
+							: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
 						style={clipStyle(item)}
-						onclick={(event) => {
-							event.stopPropagation();
-							selectedItemId = item.id;
-						}}
-						onkeydown={(event) => {
-							if (event.key === 'Enter') selectedItemId = item.id;
-						}}
-						onmousedown={(event) => startMove(event, item.id)}
 					>
-						{#if item.type === 'video' && filmstripTilesFor(item)}
-							<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
-								{#each filmstripTilesFor(item) as tile (tile.index)}
-									<FilmstripTile
-										bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
-										url={tile.url}
-										style="left:{tile.x}px;width:{tile.width}px"
+						<button
+							type="button"
+							class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"
+							aria-label={`${item.label}. ${m.video_editor_timing_keyboard()}`}
+							onclick={(event) => {
+								event.stopPropagation();
+								selectedItemId = item.id;
+							}}
+							onkeydown={(event) => applyKeyboardEdit(event, item, 'move')}
+							onpointerdown={(event) => startDrag(event, item.id, 'move')}
+						>
+							{#if item.type === 'video' && filmstripTilesFor(item)}
+								<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
+									{#each filmstripTilesFor(item) as tile (tile.index)}
+										<FilmstripTile
+											bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
+											url={tile.url}
+											style="left:{tile.x}px;width:{tile.width}px"
+										/>
+									{/each}
+								</div>
+							{/if}
+							{#if waveformSvgPoints(item)}
+								<svg
+									class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
+									viewBox="0 0 {Math.max(8, frameToPx(item.durationInFrames) - 4)} 80"
+									preserveAspectRatio="none"
+								>
+									<polyline
+										points={waveformSvgPoints(item)}
+										fill="none"
+										stroke="oklch(0.85 0.03 120)"
+										stroke-width="0.6"
 									/>
-								{/each}
-							</div>
-						{/if}
-						{#if waveformSvgPoints(item)}
-							<svg
-								class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
-								viewBox="0 0 {Math.max(8, frameToPx(item.durationInFrames) - 4)} 80"
-								preserveAspectRatio="none"
+								</svg>
+							{/if}
+							<span class="relative z-10 truncate px-2 text-[11px] text-white/90">{item.label}</span
 							>
-								<polyline
-									points={waveformSvgPoints(item)}
-									fill="none"
-									stroke="oklch(0.85 0.03 120)"
-									stroke-width="0.6"
-								/>
-							</svg>
+						</button>
+						<button
+							type="button"
+							class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+							aria-label={m.video_editor_trim_start()}
+							title={m.video_editor_trim_keyboard()}
+							onkeydown={(event) => applyKeyboardEdit(event, item, 'trim-start')}
+							onpointerdown={(event) => startDrag(event, item.id, 'trim-start')}
+						></button>
+						{#if item.type === 'video' || item.type === 'audio'}
+							<button
+								type="button"
+								class="absolute top-1/2 left-1/2 z-20 flex size-6 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded bg-black/60 text-white/75 opacity-0 group-hover:opacity-100 hover:bg-black/80 hover:text-white focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+								aria-label={m.video_editor_slip()}
+								title={m.video_editor_slip()}
+								onkeydown={(event) => applyKeyboardEdit(event, item, 'slip')}
+								onpointerdown={(event) => startDrag(event, item.id, 'slip')}
+							>
+								<MoveHorizontalIcon class="size-3.5" />
+							</button>
 						{/if}
-						<span class="truncate px-1.5 text-[11px] text-white/90">{item.label}</span>
-						<span
-							role="presentation"
-							class="absolute top-0 right-0 h-full w-1.5 cursor-ew-resize bg-white/20 hover:bg-white/40"
-							onmousedown={(event) => startTrimEnd(event, item.id)}
-						></span>
+						<button
+							type="button"
+							class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+							aria-label={m.video_editor_trim_end()}
+							title={m.video_editor_trim_keyboard()}
+							onkeydown={(event) => applyKeyboardEdit(event, item, 'trim-end')}
+							onpointerdown={(event) => startDrag(event, item.id, 'trim-end')}
+						></button>
 					</div>
 				{/each}
 			</div>
@@ -582,7 +933,7 @@
 							<button
 								type="button"
 								class="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[oklch(0.66_0.14_45)] hover:bg-[oklch(0.78_0.14_45)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-								style="left:{frameToPx(selectedItem.from + frame)}px"
+								style="left:{timelineX(selectedItem.from + frame)}px"
 								title="{keyframeLabel(property)} — {m.video_editor_marker_remove_hint()}"
 								onclick={() => setCurrentFrame(selectedItem.from + frame)}
 								onfocus={() => (selectedKeyframe = { property, frame })}
@@ -646,16 +997,30 @@
 			</div>
 		{/if}
 
+		{#if activeSnapTarget}
+			<div
+				class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-cyan-300/90"
+				style="left:{timelineX(activeSnapTarget.frame)}px"
+				data-snap-guideline={activeSnapTarget.type}
+			>
+				<span
+					class="absolute top-6 left-1 rounded bg-[oklch(0.18_0.015_220)] px-1.5 py-0.5 font-mono text-[9px] whitespace-nowrap text-cyan-100"
+				>
+					{m.video_editor_snapped_to({ time: tickLabel(activeSnapTarget.frame) })}
+				</span>
+			</div>
+		{/if}
+
 		<!-- Playhead -->
 		<div
 			class="pointer-events-none absolute top-0 bottom-0 z-30 w-px bg-[oklch(0.66_0.14_45)]"
-			style="left:{frameToPx(timelineStore.currentFrame)}px"
+			style="left:{timelineX(timelineStore.currentFrame)}px"
 		></div>
 		<!-- In/out range shade -->
 		{#if timelineStore.inPoint !== null && timelineStore.outPoint !== null}
 			<div
 				class="pointer-events-none absolute top-6 bottom-0 z-10 bg-[oklch(0.66_0.14_45_/_0.08)]"
-				style="left:{frameToPx(timelineStore.inPoint)}px;width:{frameToPx(
+				style="left:{timelineX(timelineStore.inPoint)}px;width:{frameToPx(
 					(timelineStore.outPoint ?? 0) - (timelineStore.inPoint ?? 0)
 				)}px"
 			></div>

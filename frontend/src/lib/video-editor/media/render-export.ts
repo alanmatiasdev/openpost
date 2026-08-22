@@ -398,7 +398,10 @@ export class TimelineFrameRenderer {
 		this.orderedItems = paintOrder(items, tracks).filter(
 			(item) => item.type === 'video' || item.type === 'image' || item.type === 'text'
 		);
-		this.subtitleItems = items.filter((item) => item.type === 'subtitle');
+		this.subtitleItems = paintOrder(
+			items.filter((item) => item.type === 'subtitle'),
+			tracks
+		);
 		this.transitions = project.timeline?.transitions ?? [];
 		this.itemsById = new Map(items.map((item) => [item.id, item]));
 		this.burnSubtitles = options.burnSubtitles ?? true;

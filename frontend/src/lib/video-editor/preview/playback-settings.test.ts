@@ -10,6 +10,7 @@ const item = { trackId: 'main', volume: 0.5 };
 const track = {
 	id: 'main',
 	muted: false,
+	visible: true,
 	solo: false,
 	volume: 0.8
 };
@@ -37,6 +38,7 @@ describe('preview playback settings', () => {
 	it('keeps monitor gain separate from clip and track gain', () => {
 		expect(previewItemVolume(item, [track], 0.5, false)).toBeCloseTo(0.2);
 		expect(previewItemVolume(item, [{ ...track, muted: true }], 1, false)).toBe(0);
+		expect(previewItemVolume(item, [{ ...track, visible: false }], 1, false)).toBe(0);
 		expect(previewItemVolume(item, [track], 1, true)).toBe(0);
 		expect(previewItemVolume(item, [track, { ...track, id: 'solo', solo: true }], 1, false)).toBe(
 			0

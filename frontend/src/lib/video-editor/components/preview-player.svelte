@@ -50,6 +50,11 @@
 	const selectedResolved = $derived(
 		selectedItem ? resolveAnimatedItemAt(selectedItem, timelineStore.currentFrame) : undefined
 	);
+	const selectedTrackLocked = $derived(
+		selectedItem
+			? (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked ?? false)
+			: false
+	);
 
 	$effect(() => {
 		for (const media of mediaPool.mediaList) {
@@ -151,7 +156,7 @@
 					onselect={() => (selectedItemId = item.id)}
 				/>
 			{/each}
-			{#if selectedResolved}
+			{#if selectedResolved && !selectedTrackLocked}
 				{@const transform = draftTransform ?? selectedResolved.transform ?? {}}
 				{@const width = transform.width ?? canvasWidth}
 				{@const height = transform.height ?? canvasHeight}

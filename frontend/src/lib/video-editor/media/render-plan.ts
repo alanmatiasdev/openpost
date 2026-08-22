@@ -59,7 +59,7 @@ export function frameToSourceSeconds(item: TimelineItem, frame: number, fps: num
 }
 
 function isAudible(track: TimelineTrack, anySolo: boolean): boolean {
-	if (track.muted) return false;
+	if (track.muted || track.visible === false) return false;
 	if (!anySolo) return true;
 	return track.solo;
 }
@@ -145,10 +145,12 @@ export function transitionBlendAtFrame(
  * list paint first, so the overlay track (order 0) ends up topmost.
  */
 export function paintOrder(items: TimelineItem[], tracks: TimelineTrack[]): TimelineItem[] {
-	const orderByTrackId = new Map(tracks.map((track) => [track.id, track.order]));
-	return [...items].sort(
-		(a, b) => (orderByTrackId.get(b.trackId) ?? 0) - (orderByTrackId.get(a.trackId) ?? 0)
-	);
+	const trackById = new Map(tracks.map((track) => [track.id, track]));
+	return items
+		.filter((item) => trackById.get(item.trackId)?.visible !== false)
+		.sort(
+			(a, b) => (trackById.get(b.trackId)?.order ?? 0) - (trackById.get(a.trackId)?.order ?? 0)
+		);
 }
 
 /** The cue(s) showing at an absolute timeline frame (normally zero or one). */
