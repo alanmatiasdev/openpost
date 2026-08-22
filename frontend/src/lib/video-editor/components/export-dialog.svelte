@@ -1,11 +1,14 @@
 <!-- Export controls for container, quality, range, subtitles, progress, and cancel. -->
 <script lang="ts">
+	import { canEncodeVideo, type VideoCodec } from 'mediabunny';
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
 		renderMultiTrackVideo,
 		renderTimelineAudio,
+		defaultVideoCodec,
+		supportedExportVideoCodecs,
 		type RenderExportOptions,
 		type RenderExportResult
 	} from '$lib/video-editor/media/render-export';
@@ -27,11 +30,43 @@
 	let rendering = $state(false);
 	let format = $state<NonNullable<RenderExportOptions['format']> | 'mp3' | 'aac' | 'wav'>('webm');
 	let quality = $state<NonNullable<RenderExportOptions['quality']>>('standard');
+	let codec = $state<VideoCodec>('vp9');
+	let codecSupport = $state<Partial<Record<VideoCodec, boolean>>>({});
 	let resolution = $state('source');
 	let useRange = $state(false);
 	let subtitleMode = $state<NonNullable<RenderExportOptions['subtitleMode']>>('burn');
 	let progress = $state<{ done: number; total: number } | null>(null);
 	let controller = $state<AbortController | null>(null);
+	const videoFormat = $derived(
+		format === 'mp3' || format === 'aac' || format === 'wav' ? null : format
+	);
+	const codecs = $derived(videoFormat ? supportedExportVideoCodecs(videoFormat) : []);
+
+	$effect(() => {
+		const selectedFormat = videoFormat;
+		const selectedResolution = resolution;
+		if (!selectedFormat || !project) return;
+		const [width, height] =
+			selectedResolution === 'source'
+				? [project.metadata.width, project.metadata.height]
+				: selectedResolution.split('x').map(Number);
+		const availableCodecs = supportedExportVideoCodecs(selectedFormat);
+		if (!availableCodecs.includes(codec)) codec = defaultVideoCodec(selectedFormat);
+		const requestFormat = selectedFormat;
+		void Promise.all(
+			availableCodecs.map(
+				async (candidate) =>
+					[candidate, await canEncodeVideo(candidate, { width, height })] as const
+			)
+		).then((results) => {
+			if (videoFormat !== requestFormat) return;
+			codecSupport = Object.fromEntries(results);
+			if (codecSupport[codec] === false) {
+				const fallback = results.find(([, supported]) => supported)?.[0];
+				if (fallback) codec = fallback;
+			}
+		});
+	});
 
 	async function start(): Promise<void> {
 		if (!project || rendering) return;
@@ -52,6 +87,7 @@
 					? await renderTimelineAudio(project, { format, range, signal: controller.signal })
 					: await renderMultiTrackVideo(project, {
 							format,
+							codec,
 							quality,
 							width,
 							height,
@@ -103,13 +139,29 @@
 						disabled={rendering}
 						><option value="mp4">MP4</option><option value="mov">MOV</option><option value="webm"
 							>WebM</option
-						><option value="mkv">MKV</option><optgroup label="Audio only"
+						><option value="mkv">MKV</option><optgroup label={m.video_editor_export_audio_only()}
 							><option value="mp3">MP3</option><option value="aac">AAC</option><option value="wav"
 								>WAV</option
 							></optgroup
 						></select
 					></label
 				>
+				{#if videoFormat}
+					<label class="text-xs text-[oklch(0.7_0.01_55)]"
+						>{m.video_editor_export_codec()}<select
+							class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
+							bind:value={codec}
+							disabled={rendering}
+							>{#each codecs as candidate}
+								<option value={candidate} disabled={codecSupport[candidate] === false}>
+									{candidate.toUpperCase()}{codecSupport[candidate] === false
+										? ` ${m.video_editor_export_codec_unavailable()}`
+										: ''}
+								</option>
+							{/each}</select
+						></label
+					>
+				{/if}
 				<label class="text-xs text-[oklch(0.7_0.01_55)]"
 					>{m.video_editor_export_quality()}<select
 						class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"

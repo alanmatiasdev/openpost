@@ -17,6 +17,8 @@ import {
 	BlobSource,
 	BufferTarget,
 	CanvasSink,
+	canEncodeVideo,
+	getFirstEncodableVideoCodec,
 	Input,
 	MkvOutputFormat,
 	MovOutputFormat,
@@ -24,6 +26,7 @@ import {
 	Mp4OutputFormat,
 	Output,
 	type OutputFormat,
+	type VideoCodec,
 	TextSubtitleSource,
 	VideoSample,
 	VideoSampleSource,
@@ -58,6 +61,7 @@ export interface RenderExportProgress {
 
 export interface RenderExportOptions {
 	format?: 'webm' | 'mp4' | 'mov' | 'mkv';
+	codec?: VideoCodec;
 	quality?: 'draft' | 'standard' | 'high';
 	width?: number;
 	height?: number;
@@ -387,11 +391,21 @@ export async function renderMultiTrackVideo(
 
 	const format = options.format ?? 'webm';
 	const outputFormat = outputFormatFor(format);
+	const requestedCodec = options.codec ?? defaultVideoCodec(format);
+	const supportedCodecs = supportedExportVideoCodecs(format);
+	if (!supportedCodecs.includes(requestedCodec)) {
+		throw new Error(`${requestedCodec} cannot be stored in ${format.toUpperCase()}.`);
+	}
+	const bitrate = VIDEO_BITRATES[options.quality ?? 'standard'];
+	const codec = (await canEncodeVideo(requestedCodec, { width, height, bitrate }))
+		? requestedCodec
+		: await getFirstEncodableVideoCodec(supportedCodecs, { width, height, bitrate });
+	if (!codec) throw new Error(`This browser cannot encode video for ${format.toUpperCase()}.`);
 	const target = new BufferTarget();
 	const output = new Output({ format: outputFormat, target });
 	const videoSource = new VideoSampleSource({
-		codec: format === 'webm' || format === 'mkv' ? 'vp9' : 'avc',
-		bitrate: VIDEO_BITRATES[options.quality ?? 'standard'],
+		codec,
+		bitrate,
 		keyFrameInterval: 2,
 		latencyMode: 'quality'
 	});
@@ -653,6 +667,18 @@ function outputFormatFor(format: NonNullable<RenderExportOptions['format']>): Ou
 		case 'mkv':
 			return new MkvOutputFormat();
 	}
+}
+
+export function supportedExportVideoCodecs(
+	format: NonNullable<RenderExportOptions['format']>
+): VideoCodec[] {
+	return outputFormatFor(format)
+		.getSupportedVideoCodecs()
+		.filter((codec) => codec !== 'prores');
+}
+
+export function defaultVideoCodec(format: NonNullable<RenderExportOptions['format']>): VideoCodec {
+	return format === 'webm' ? 'vp9' : 'avc';
 }
 
 export function resolveSubtitleMode(
