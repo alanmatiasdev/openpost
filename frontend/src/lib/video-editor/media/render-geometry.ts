@@ -14,6 +14,46 @@ export interface MediaDrawGeometry {
 	anchorY: number;
 }
 
+/** Scale project-space geometry and text metrics to a different export size. */
+export function scaleItemForCanvas(
+	item: TimelineItem,
+	scaleX: number,
+	scaleY: number
+): TimelineItem {
+	const radiusScale = Math.min(scaleX, scaleY);
+	const transform = item.transform;
+	return {
+		...item,
+		transform: transform
+			? {
+					...transform,
+					x: transform.x === undefined ? undefined : transform.x * scaleX,
+					y: transform.y === undefined ? undefined : transform.y * scaleY,
+					width: transform.width === undefined ? undefined : transform.width * scaleX,
+					height: transform.height === undefined ? undefined : transform.height * scaleY,
+					anchorX: transform.anchorX === undefined ? undefined : transform.anchorX * scaleX,
+					anchorY: transform.anchorY === undefined ? undefined : transform.anchorY * scaleY,
+					cornerRadius:
+						transform.cornerRadius === undefined ? undefined : transform.cornerRadius * radiusScale
+				}
+			: undefined,
+		fontSize: item.fontSize === undefined ? undefined : item.fontSize * scaleY,
+		letterSpacing: item.letterSpacing === undefined ? undefined : item.letterSpacing * scaleX,
+		strokeWidth: item.strokeWidth === undefined ? undefined : item.strokeWidth * radiusScale,
+		paddingX: item.paddingX === undefined ? undefined : item.paddingX * scaleX,
+		paddingY: item.paddingY === undefined ? undefined : item.paddingY * scaleY,
+		borderRadius: item.borderRadius === undefined ? undefined : item.borderRadius * radiusScale,
+		textShadow: item.textShadow
+			? {
+					...item.textShadow,
+					blur: item.textShadow.blur * radiusScale,
+					offsetX: item.textShadow.offsetX * scaleX,
+					offsetY: item.textShadow.offsetY * scaleY
+				}
+			: undefined
+	};
+}
+
 export function mediaDrawGeometry(
 	item: TimelineItem,
 	sourceWidth: number,

@@ -15,6 +15,7 @@
 	import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
 	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
+	import { selectCuesAtFrame } from '$lib/video-editor/media/render-plan';
 
 	let {
 		item,
@@ -72,6 +73,26 @@
 			`filter:${effectsToCssFilter(resolved.effects)}`
 		].join(';');
 	});
+	const mediaCropStyle = $derived.by(() => {
+		const crop = resolved.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+		const left = Math.min(0.999, Math.max(0, crop.left));
+		const right = Math.min(0.999, Math.max(0, crop.right));
+		const top = Math.min(0.999, Math.max(0, crop.top));
+		const bottom = Math.min(0.999, Math.max(0, crop.bottom));
+		const visibleWidth = Math.max(0.001, 1 - left - right);
+		const visibleHeight = Math.max(0.001, 1 - top - bottom);
+		return [
+			`left:${(-left / visibleWidth) * 100}%`,
+			`top:${(-top / visibleHeight) * 100}%`,
+			`width:${100 / visibleWidth}%`,
+			`height:${100 / visibleHeight}%`
+		].join(';');
+	});
+	const activeSubtitle = $derived(
+		resolved.type === 'subtitle'
+			? selectCuesAtFrame(resolved.cues ?? [], timelineStore.currentFrame)[0]
+			: undefined
+	);
 
 	$effect(() => {
 		const video = mediaElement;
@@ -165,11 +186,21 @@
 >
 	{#if resolved.type === 'video' && url}
 		<!-- svelte-ignore a11y_media_has_caption -- captions render as separate layers -->
-		<video bind:this={mediaElement} src={url} class="size-full object-fill" playsinline></video>
-		{#if needsGpu}<canvas bind:this={gpuCanvas} class="absolute inset-0 size-full" hidden
+		<video
+			bind:this={mediaElement}
+			src={url}
+			class="absolute object-fill"
+			style={mediaCropStyle}
+			playsinline
+		></video>
+		{#if needsGpu}<canvas
+				bind:this={gpuCanvas}
+				class="absolute object-fill"
+				style={mediaCropStyle}
+				hidden
 			></canvas>{/if}
 	{:else if resolved.type === 'image' && url}
-		<img src={url} alt="" class="size-full object-fill" />
+		<img src={url} alt="" class="absolute object-fill" style={mediaCropStyle} />
 	{:else if resolved.type === 'text'}
 		<div
 			class="flex size-full whitespace-pre-wrap"
@@ -193,6 +224,17 @@
 			style:padding={`${resolved.paddingY ?? 0}px ${resolved.paddingX ?? 0}px`}
 		>
 			{resolved.text ?? resolved.label}
+		</div>
+	{:else if resolved.type === 'subtitle' && activeSubtitle}
+		<div class="flex size-full items-end justify-center p-[5%] text-center">
+			<span
+				class="font-semibold whitespace-pre-wrap text-white [text-shadow:0_2px_8px_rgb(0_0_0/0.9)]"
+				style:font-size={`${
+					(((canvasHeight / 18) * (resolved.subtitleStyleScale ?? 1)) / canvasHeight) * 100
+				}cqh`}
+			>
+				{activeSubtitle.text}
+			</span>
 		</div>
 	{/if}
 </div>

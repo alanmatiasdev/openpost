@@ -35,7 +35,7 @@ import type { Project, TimelineItem } from '../project/types';
 import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
-import { mediaDrawGeometry } from './render-geometry';
+import { mediaDrawGeometry, scaleItemForCanvas } from './render-geometry';
 import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
 import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
@@ -83,7 +83,11 @@ export interface AudioExportOptions {
 const MIX_SAMPLE_RATE = 48_000;
 const MIX_CHANNELS = 2;
 const AUDIO_ENCODE_CHUNK_FRAMES = 48_000;
-const VIDEO_BITRATES = { draft: 4_000_000, standard: 8_000_000, high: 16_000_000 } as const;
+const VIDEO_BITRATES = {
+	draft: 4_000_000,
+	standard: 8_000_000,
+	high: 16_000_000
+} as const;
 
 interface VideoDecoder {
 	input: Input;
@@ -106,7 +110,10 @@ function report(
 
 /** Decode the primary audio track to an AudioBuffer at its native rate. */
 async function decodeAudioBuffer(blob: Blob): Promise<AudioBuffer> {
-	const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+	const input = new Input({
+		source: new BlobSource(blob),
+		formats: ALL_FORMATS
+	});
 	try {
 		const track = await input.getPrimaryAudioTrack();
 		if (!track) throw new Error('Clip has no audio to mix');
@@ -448,7 +455,10 @@ export async function renderMultiTrackVideo(
 		const media = mediaPool.get(mediaId);
 		if (!media) return null;
 		const blob = await resolveMediaBlob(media);
-		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		const input = new Input({
+			source: new BlobSource(blob),
+			formats: ALL_FORMATS
+		});
 		inputs.push(input);
 		const videoTrack = await input.getPrimaryVideoTrack();
 		if (!videoTrack) return null;
@@ -471,7 +481,11 @@ export async function renderMultiTrackVideo(
 			const blend = transitionBlendAtFrame(transitions, itemsById, frame);
 			for (const item of orderedItems) {
 				if (!isVisibleAtFrame(item, frame)) continue;
-				const resolvedItem = resolveAnimatedItemAt(item, frame);
+				const resolvedItem = scaleItemForCanvas(
+					resolveAnimatedItemAt(item, frame),
+					width / project.metadata.width,
+					height / project.metadata.height
+				);
 				if (resolvedItem.type === 'text') {
 					drawTextItem(ctx, resolvedItem, width, height);
 					continue;
@@ -679,7 +693,10 @@ function sliceMixEntries(
 				durationSeconds: overlapEnd - overlapStart,
 				gainPoints: entry.gainPoints
 					.filter((point) => point.whenSeconds >= overlapStart && point.whenSeconds <= overlapEnd)
-					.map((point) => ({ ...point, whenSeconds: point.whenSeconds - startSeconds }))
+					.map((point) => ({
+						...point,
+						whenSeconds: point.whenSeconds - startSeconds
+					}))
 			}
 		];
 	});
