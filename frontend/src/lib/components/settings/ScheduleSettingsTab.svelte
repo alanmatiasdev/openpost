@@ -391,7 +391,7 @@
 
 <section id="posting-schedule" class="scroll-mt-24">
 	<SectionHeader
-		title={m.settings_posting_schedule()}
+		title={m.settings_weekly_times()}
 		description={m.settings_schedule_body()}
 		icon={CalendarIcon}
 		class="mb-4"

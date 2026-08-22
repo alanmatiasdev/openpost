@@ -26,7 +26,6 @@
 	import InstanceUserSortHeader from '$lib/components/instance-user-sort-header.svelte';
 	import InstanceUserPlanDialog from '$lib/components/instance-user-plan-dialog.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import SectionHeader from '$lib/components/section-header.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { createSvelteTable, FlexRender, renderComponent } from '$lib/components/ui/data-table';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -386,12 +385,6 @@
 </script>
 
 <div class="space-y-4" data-testid="instance-admin-users">
-	<SectionHeader
-		title={m.settings_instance_users()}
-		description={m.settings_instance_users_body()}
-		icon={UserRoundIcon}
-	/>
-
 	<form
 		class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
 		onsubmit={searchUsers}

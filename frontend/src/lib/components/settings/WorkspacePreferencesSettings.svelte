@@ -235,16 +235,6 @@
 	</div>
 </section>
 
-<section id="media-cleanup" class="scroll-mt-24">
-	<SectionHeader title={m.settings_media_cleanup()} icon={ImageIcon} class="mb-4" />
-	<div class="rounded-lg border bg-muted/20 p-4">
-		<p class="text-sm font-medium">{m.settings_media_lifecycle_title()}</p>
-		<p class="mt-1 text-sm leading-relaxed text-muted-foreground">
-			{m.settings_media_lifecycle_body()}
-		</p>
-	</div>
-</section>
-
 {#if workspaceCtx.currentWorkspace?.role === 'admin'}
 	<section id="workspace-danger" class="scroll-mt-24">
 		<details class="group rounded-lg border border-destructive/30">

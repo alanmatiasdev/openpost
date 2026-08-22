@@ -9,11 +9,9 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import OrganizationDeleteDialog from '$lib/components/organization-delete-dialog.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import SectionHeader from '$lib/components/section-header.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
-	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 
 	type Member = components['schemas']['OrganizationMemberResponse'];
 	type Organization = components['schemas']['OrganizationResponse'];
@@ -210,11 +208,6 @@
 
 {#if loading}<PageLoading layout="settings" variant="cards" label={m.common_loading()} items={2} />
 {:else}<div class="space-y-6">
-		<SectionHeader
-			title={m.settings_ownership_heading()}
-			description={m.settings_ownership_body()}
-			icon={KeyRoundIcon}
-		/>
 		{#if error}<InlineNotice tone="error" message={error}
 				>{#snippet actions()}<Button variant="outline" size="sm" onclick={() => void retryLoad()}
 						>{m.common_retry()}</Button

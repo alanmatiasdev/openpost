@@ -4,7 +4,6 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import SectionHeader from '$lib/components/section-header.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
@@ -13,7 +12,6 @@
 	import { Capacitor } from '@capacitor/core';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import FilterIcon from '@lucide/svelte/icons/filter';
-	import HistoryIcon from '@lucide/svelte/icons/history';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 
 	type AuditEvent = components['schemas']['AuditEvent'];
@@ -60,8 +58,6 @@
 					key: 'instance',
 					testID: 'instance-audit-settings',
 					eventsTestID: 'instance-audit-events',
-					title: m.settings_instance_audit_title(),
-					description: m.settings_instance_audit_description(),
 					privacyNotice: m.settings_instance_audit_privacy_notice(),
 					accessError: m.settings_instance_audit_admin_required(),
 					loadError: m.settings_instance_audit_load_failed(),
@@ -72,8 +68,6 @@
 					key: selectedOrganizationID,
 					testID: 'organization-audit-settings',
 					eventsTestID: 'organization-audit-events',
-					title: m.settings_audit_title(),
-					description: m.settings_audit_description(),
 					privacyNotice: m.settings_audit_privacy_notice(),
 					accessError: m.settings_audit_owner_required(),
 					loadError: m.settings_audit_load_failed(),
@@ -283,7 +277,6 @@
 </script>
 
 <div class="space-y-6" data-testid={scope.testID}>
-	<SectionHeader title={scope.title} description={scope.description} icon={HistoryIcon} />
 	<InlineNotice tone="info" message={scope.privacyNotice} />
 	{#if instanceWide}
 		<div class="max-w-md space-y-2">

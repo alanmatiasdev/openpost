@@ -96,7 +96,7 @@
 	let toastTone = $state<'neutral' | 'error'>('neutral');
 	let lastFailedProvider = $state.raw<ProviderEntry | null>(null);
 	let lastFailedMessage = $state('');
-	let setupRequiredOpen = $state(true);
+	let setupRequiredOpen = $state(false);
 
 	let blueskyModalOpen = $state(false);
 	let blueskyHandle = $state('');
@@ -1396,7 +1396,6 @@
 							{#if setupRequiredProviders.length > 0}
 								<details
 									class="mt-4 rounded-lg border bg-muted/10"
-									open
 									ontoggle={(e) =>
 										(setupRequiredOpen = (e.currentTarget as HTMLDetailsElement).open)}
 								>
@@ -1407,7 +1406,9 @@
 											>{m.accounts_provider_admin_required()} · {setupRequiredProviders.length}</span
 										>
 										<span class="text-xs text-muted-foreground"
-											>{setupRequiredOpen ? m.common_dismiss() : m.common_edit()}</span
+											>{setupRequiredOpen
+												? m.accounts_provider_admin_hide()
+												: m.accounts_provider_admin_show()}</span
 										>
 									</summary>
 									<div class="border-t px-3 py-3">
