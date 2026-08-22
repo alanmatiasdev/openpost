@@ -21,6 +21,9 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Timeline selections no longer retain clips removed by an edit or undo state change.
+- Ripple trims now preview and apply the same inserted or removed time across unlocked sync-locked tracks while preserving split media source ranges.
+- Video Editor drag, undo, save, and export flows now snapshot reactive timeline state without browser cloning failures.
 - Improved the Android app's large-text layout, screen-reader labels, workspace selection, draft menu, attachment retries, destination removal errors, post rescheduling, and delete failure handling.
 - Load only the active settings page so hidden pages no longer fetch data or update in the background.
 - Keep Settings usable without horizontal overflow at narrow mobile widths.
