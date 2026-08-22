@@ -25,6 +25,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import {
 		addTransition,
+		removeTransition,
 		transitionsStore
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
@@ -50,6 +51,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
+	let selectedItemIds = $state<string[]>([]);
 
 	$effect(() => {
 		if (projectId) void editorSession.load(projectId);
@@ -72,8 +74,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	function handleDelete(): void {
 		if (!selectedItemId) return;
-		rippleDeleteItems([selectedItemId]);
+		rippleDeleteItems(
+			selectedItemIds.length > 0 ? selectedItemIds : [selectedItemId],
+			timelineStore.linkedSelectionEnabled
+		);
 		selectedItemId = null;
+		selectedItemIds = [];
 		editorSession.scheduleAutosave();
 	}
 
@@ -207,6 +213,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	const selectedIsVideo = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
 	);
+	const selectedTransition = $derived(
+		selectedItemId ? transitionsStore.forItem(selectedItemId) : undefined
+	);
 
 	let showTranscript = $state(false);
 
@@ -228,6 +237,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		}
+	}
+
+	function handleRemoveTransition(): void {
+		if (!selectedTransition) return;
+		removeTransition(selectedTransition.id);
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_transition_removed(), 'info');
 	}
 
 	let removingSilence = $state(false);
@@ -300,6 +316,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} else if (event.key === 's' && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
 			void editorSession.saveNow();
+		} else if (
+			(event.key === 'l' || event.key === 'L') &&
+			event.shiftKey &&
+			!event.altKey &&
+			!event.ctrlKey &&
+			!event.metaKey
+		) {
+			event.preventDefault();
+			timelineStore._setLinkedSelectionEnabled(!timelineStore.linkedSelectionEnabled);
 		} else if ((event.key === 's' || event.key === 'S') && !event.altKey) {
 			event.preventDefault();
 			timelineStore._setSnapEnabled(!timelineStore.snapEnabled);
@@ -396,14 +421,20 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleDelete}>
 						{m.video_editor_delete_clip()}
 					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!selectedItemId}
-						onclick={handleAddCrossfade}
-					>
-						{m.video_editor_crossfade()}
-					</Button>
+					{#if selectedTransition}
+						<Button size="sm" variant="outline" onclick={handleRemoveTransition}>
+							{m.video_editor_break_transition()}
+						</Button>
+					{:else}
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={!selectedItemId}
+							onclick={handleAddCrossfade}
+						>
+							{m.video_editor_crossfade()}
+						</Button>
+					{/if}
 					<Button size="sm" variant="outline" onclick={handleAddText}>
 						{m.video_editor_add_text()}
 					</Button>
@@ -495,7 +526,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			</div>
 
 			<footer class="border-t border-[oklch(0.25_0.015_55)]">
-				<TimelinePanel bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
+				<TimelinePanel
+					bind:selectedItemId
+					bind:selectedItemIds
+					onedit={() => editorSession.scheduleAutosave()}
+				/>
 			</footer>
 		{/key}
 	{/if}

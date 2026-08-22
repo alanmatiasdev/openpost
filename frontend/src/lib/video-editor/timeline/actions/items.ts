@@ -9,7 +9,11 @@
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
-import { expandSelectionWithLinkedItems } from '../utils/linked-items';
+import {
+	canLinkSelection,
+	expandSelectionWithLinkedItems,
+	getLinkedItemIds
+} from '../utils/linked-items';
 import { pruneOrphanedTransitions } from './transitions.svelte';
 
 export function addItems(newItems: TimelineItem[]): void {
@@ -85,17 +89,36 @@ export function duplicateItems(ids: string[]): string[] {
 	});
 }
 
-export function linkItems(ids: string[]): void {
+export function linkItems(ids: string[]): boolean {
+	const items = timelineStore.items;
+	if (!canLinkSelection(items, ids)) return false;
+	const expandedIds = expandSelectionWithLinkedItems(items, ids);
+	const selectedIds = expandedIds.filter((id) => timelineStore.itemById.has(id));
+	if (selectedIds.length < 2) return false;
+
 	execute('LINK_ITEMS', () => {
 		const linkedGroupId = crypto.randomUUID();
-		timelineStore._updateItems(ids.map((id) => ({ id, patch: { linkedGroupId } })));
+		timelineStore._updateItems(selectedIds.map((id) => ({ id, patch: { linkedGroupId } })));
 	});
+	return true;
 }
 
-export function unlinkItems(ids: string[]): void {
+export function unlinkItems(ids: string[]): boolean {
+	const unlinkIds = new Set<string>();
+	for (const id of ids) {
+		for (const linkedId of getLinkedItemIds(timelineStore.items, id)) unlinkIds.add(linkedId);
+	}
+	const linkedIds = [...unlinkIds].filter(
+		(id) => timelineStore.itemById.get(id)?.linkedGroupId !== undefined
+	);
+	if (linkedIds.length === 0) return false;
+
 	execute('UNLINK_ITEMS', () => {
-		timelineStore._updateItems(ids.map((id) => ({ id, patch: { linkedGroupId: undefined } })));
+		timelineStore._updateItems(
+			linkedIds.map((id) => ({ id, patch: { linkedGroupId: undefined } }))
+		);
 	});
+	return true;
 }
 
 /**
@@ -147,7 +170,10 @@ export function trimItemStart(id: string, newFrom: number, newSourceStart?: numb
 		const delta = newFrom - item.from;
 		const nextDuration = item.durationInFrames - delta;
 		if (nextDuration <= 0 || delta < 0) return false;
-		const patch: Partial<TimelineItem> = { from: newFrom, durationInFrames: nextDuration };
+		const patch: Partial<TimelineItem> = {
+			from: newFrom,
+			durationInFrames: nextDuration
+		};
 		if ((item.type === 'video' || item.type === 'audio') && newSourceStart !== undefined) {
 			patch.sourceStart = newSourceStart;
 		}
@@ -172,10 +198,10 @@ export function trimItemEnd(id: string, newEnd: number, newSourceEnd?: number): 
 }
 
 /** Ripple delete: remove items and pull later items on the same track left. */
-export function rippleDeleteItems(ids: string[]): void {
+export function rippleDeleteItems(ids: string[], expandLinked = true): void {
 	execute('RIPPLE_DELETE', () => {
 		const items = timelineStore.items;
-		const expanded = new Set(expandSelectionWithLinkedItems(items, ids));
+		const expanded = new Set(expandLinked ? expandSelectionWithLinkedItems(items, ids) : ids);
 		const removedIntervals = items
 			.filter((item) => expanded.has(item.id))
 			.map((item) => ({
@@ -213,7 +239,10 @@ export function closeGapAtPosition(trackId: string, position: number): void {
 		const updates: Array<{ id: string; from: number }> = [];
 		for (const item of trackItems) {
 			if (item.from >= position) {
-				updates.push({ id: item.id, from: Math.max(item.from - (position - leftEnd), leftEnd) });
+				updates.push({
+					id: item.id,
+					from: Math.max(item.from - (position - leftEnd), leftEnd)
+				});
 			}
 		}
 		timelineStore._moveItems(updates);

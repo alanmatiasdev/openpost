@@ -8,11 +8,10 @@ import {
 	type TrimHandle
 } from './utils/trim-utils';
 import {
-	calculateSpeed,
-	MAX_SPEED,
-	MIN_SPEED,
+	getClampedRateStretchSpeed,
+	getRateStretchDurationLimits,
 	getSourceProperties,
-	sourceToTimelineFrames,
+	resolveRateStretchDurationAndSpeed,
 	timelineToSourceFrames
 } from './utils/source-calculations';
 import { calculateEdgeSnap, calculateMoveSnap, type SnapTarget } from './snapping';
@@ -55,6 +54,13 @@ export interface RateStretchGesturePlan {
 	linkedPatches?: TimelineEditUpdate[];
 }
 
+export interface RippleTrimGesturePlan {
+	patch: Partial<TimelineItem>;
+	moves: Array<{ id: string; from: number }>;
+	snapTarget: SnapTarget | null;
+	linkedPatches?: TimelineEditUpdate[];
+}
+
 export interface TimelineMove {
 	id: string;
 	from: number;
@@ -64,7 +70,8 @@ type LinkedPatchPlan =
 	| TrimGesturePlan
 	| RollingTrimGesturePlan
 	| SlideGesturePlan
-	| RateStretchGesturePlan;
+	| RateStretchGesturePlan
+	| RippleTrimGesturePlan;
 
 function withAnchor(item: TimelineItem, allItems: TimelineItem[]): TimelineItem[] {
 	const byId = new Map(allItems.map((candidate) => [candidate.id, candidate]));
@@ -80,9 +87,19 @@ function synchronizedParticipants(item: TimelineItem, allItems: TimelineItem[]):
 export function planLinkedMoveGesture(
 	item: TimelineItem,
 	proposedFrom: number,
-	allItems: TimelineItem[]
+	allItems: TimelineItem[],
+	selectedItemIds: string[] = [item.id]
 ): TimelineMove[] {
-	const participants = synchronizedParticipants(item, allItems);
+	const items = withAnchor(item, allItems);
+	const participantById = new Map<string, TimelineItem>();
+	const anchors = selectedItemIds.includes(item.id) ? selectedItemIds : [item.id];
+	for (const anchorId of anchors) {
+		for (const participant of getSynchronizedLinkedItems(items, anchorId)) {
+			participantById.set(participant.id, participant);
+		}
+	}
+	participantById.set(item.id, item);
+	const participants = [...participantById.values()];
 	let delta = proposedFrom - item.from;
 	for (const participant of participants) delta = Math.max(delta, -participant.from);
 	return participants.map((participant) => ({
@@ -168,7 +185,10 @@ export function planTrimGesture(
 	const finalEdge = originalEdge + amount;
 	const snapTarget = snap.snapTarget?.frame === finalEdge ? snap.snapTarget : null;
 	return appendLinkedPatches(
-		{ patch: trimPatchForAmount(item, handle, amount, timelineFps), snapTarget },
+		{
+			patch: trimPatchForAmount(item, handle, amount, timelineFps),
+			snapTarget
+		},
 		participants
 			.filter((participant) => participant.id !== item.id)
 			.map((participant) => ({
@@ -517,6 +537,7 @@ export function planSlideGesture(
 
 export function planRateStretchGesture(
 	item: TimelineItem,
+	handle: TrimHandle,
 	deltaTimelineFrames: number,
 	allItems: TimelineItem[],
 	timelineFps: number,
@@ -532,51 +553,80 @@ export function planRateStretchGesture(
 			: (item.sourceDuration ?? sourceStart) - sourceStart;
 	if (sourceFrames <= 0) return null;
 	const sourceFps = item.sourceFps ?? timelineFps;
+	const originalFrom = item.from;
 	const originalEnd = item.from + item.durationInFrames;
+	const originalEdge = handle === 'start' ? originalFrom : originalEnd;
 	const snap = calculateEdgeSnap(
-		originalEnd + deltaTimelineFrames,
+		originalEdge + deltaTimelineFrames,
 		snapTargets,
 		snapThresholdFrames
 	);
-	const proposedDuration = snap.snappedFrame - item.from;
-	const minDuration = Math.max(
-		1,
-		Math.ceil((sourceFrames * timelineFps) / (sourceFps * MAX_SPEED))
+	const proposedDuration =
+		handle === 'start'
+			? item.durationInFrames - (snap.snappedFrame - originalFrom)
+			: snap.snappedFrame - originalFrom;
+	const { min: minDuration, max: maxDuration } = getRateStretchDurationLimits(
+		sourceFrames,
+		sourceFps,
+		timelineFps
 	);
-	const maxDuration = Math.max(
-		minDuration,
-		sourceToTimelineFrames(sourceFrames, MIN_SPEED, sourceFps, timelineFps)
-	);
-	const boundedDuration = Math.min(
+	const startBoundedMaxDuration =
+		handle === 'start' ? Math.min(maxDuration, originalEnd) : maxDuration;
+	const boundedDuration = resolveRateStretchDurationAndSpeed(
+		sourceFrames,
 		Math.max(Math.round(proposedDuration), minDuration),
-		maxDuration
-	);
+		sourceFps,
+		timelineFps
+	).duration;
+	const finalBoundedDuration = Math.min(boundedDuration, startBoundedMaxDuration);
 	const items = withAnchor(item, allItems);
 	const participants = synchronizedParticipants(item, items);
 	const participantIds = new Set(participants.map((participant) => participant.id));
 	const touchedTrackIds = new Set(participants.map((participant) => participant.trackId));
-	const buildMoves = (endDelta: number): Array<{ id: string; from: number }> => {
+	const buildMoves = (durationDelta: number): Array<{ id: string; from: number }> => {
+		const edgeDelta = handle === 'start' ? -durationDelta : durationDelta;
 		const movedById = new Map<string, number>();
-		for (const candidate of items) {
-			if (
-				participantIds.has(candidate.id) ||
-				!touchedTrackIds.has(candidate.trackId) ||
-				candidate.from < originalEnd
-			)
-				continue;
+		const addMove = (candidate: TimelineItem): void => {
 			for (const linked of getLinkedItems(items, candidate.id)) {
-				if (!participantIds.has(linked.id)) movedById.set(linked.id, linked.from + endDelta);
+				if (!participantIds.has(linked.id)) {
+					movedById.set(linked.id, linked.from + edgeDelta);
+				}
 			}
+		};
+		for (const candidate of items) {
+			if (participantIds.has(candidate.id) || !touchedTrackIds.has(candidate.trackId)) continue;
+			const candidateEnd = candidate.from + candidate.durationInFrames;
+			if (handle === 'end' ? candidate.from >= originalEnd : candidateEnd <= originalFrom) {
+				addMove(candidate);
+			}
+		}
+		for (const transition of transitions) {
+			const neighborId =
+				handle === 'end' && participantIds.has(transition.fromItemId)
+					? transition.toItemId
+					: handle === 'start' && participantIds.has(transition.toItemId)
+						? transition.fromItemId
+						: null;
+			if (!neighborId || participantIds.has(neighborId)) continue;
+			const neighbor = items.find((candidate) => candidate.id === neighborId);
+			if (neighbor) addMove(neighbor);
 		}
 		return [...movedById].map(([id, from]) => ({ id, from }));
 	};
-	const buildUpdates = (endDelta: number): TimelineEditUpdate[] => {
-		const durationInFrames = item.durationInFrames + endDelta;
-		const speed = calculateSpeed(sourceFrames, durationInFrames, sourceFps, timelineFps);
+	const buildUpdates = (durationDelta: number): TimelineEditUpdate[] => {
+		const durationInFrames = item.durationInFrames + durationDelta;
+		const fromDelta = handle === 'start' ? -durationDelta : 0;
+		const speed = getClampedRateStretchSpeed(
+			sourceFrames,
+			durationInFrames,
+			sourceFps,
+			timelineFps
+		);
 		return [
 			...participants.map((participant) => ({
 				id: participant.id,
 				patch: {
+					from: participant.from + fromDelta,
 					durationInFrames,
 					speed,
 					keyframes: scaleItemKeyframes(
@@ -586,37 +636,51 @@ export function planRateStretchGesture(
 					)
 				}
 			})),
-			...buildMoves(endDelta).map((move) => ({ id: move.id, patch: { from: move.from } }))
+			...buildMoves(durationDelta).map((move) => ({
+				id: move.id,
+				patch: { from: move.from }
+			}))
 		];
 	};
-	let endDelta = boundedDuration - item.durationInFrames;
-	endDelta = clampEditDeltaToPreserveState({
-		requestedDelta: endDelta,
+	let durationDelta = finalBoundedDuration - item.durationInFrames;
+	if (handle === 'start' && durationDelta > 0) {
+		const itemsById = new Map(items.map((candidate) => [candidate.id, candidate]));
+		const availableUpstreamRoom = buildMoves(durationDelta).reduce(
+			(available, move) => Math.min(available, itemsById.get(move.id)?.from ?? available),
+			durationDelta
+		);
+		durationDelta = Math.min(durationDelta, availableUpstreamRoom);
+	}
+	durationDelta = clampEditDeltaToPreserveState({
+		requestedDelta: durationDelta,
 		items,
 		transitions,
-		affectedIds: new Set([...participantIds, ...buildMoves(endDelta).map((move) => move.id)]),
+		affectedIds: new Set([...participantIds, ...buildMoves(durationDelta).map((move) => move.id)]),
 		buildUpdates,
 		preserveKeyframes: false,
 		timelineFps
 	});
-	const durationInFrames = item.durationInFrames + endDelta;
-	const speed = calculateSpeed(sourceFrames, durationInFrames, sourceFps, timelineFps);
-	const moves = buildMoves(endDelta);
+	const durationInFrames = item.durationInFrames + durationDelta;
+	const fromDelta = handle === 'start' ? -durationDelta : 0;
+	const speed = getClampedRateStretchSpeed(sourceFrames, durationInFrames, sourceFps, timelineFps);
+	const moves = buildMoves(durationDelta);
+	const finalEdge = handle === 'start' ? item.from + fromDelta : item.from + durationInFrames;
+	const anchorPatch: Partial<TimelineItem> = {
+		durationInFrames,
+		speed,
+		keyframes: scaleItemKeyframes(item.keyframes, item.durationInFrames, durationInFrames)
+	};
+	if (handle === 'start') anchorPatch.from = item.from + fromDelta;
 	return appendLinkedPatches(
 		{
-			patch: {
-				durationInFrames,
-				speed,
-				keyframes: scaleItemKeyframes(item.keyframes, item.durationInFrames, durationInFrames)
-			},
+			patch: anchorPatch,
 			moves,
-			snapTarget: item.from + durationInFrames === snap.snappedFrame ? snap.snapTarget : null
+			snapTarget: finalEdge === snap.snappedFrame ? snap.snapTarget : null
 		},
 		participants
 			.filter((participant) => participant.id !== item.id)
-			.map((participant) => ({
-				id: participant.id,
-				patch: {
+			.map((participant) => {
+				const patch: Partial<TimelineItem> = {
 					durationInFrames,
 					speed,
 					keyframes: scaleItemKeyframes(
@@ -624,7 +688,91 @@ export function planRateStretchGesture(
 						participant.durationInFrames,
 						durationInFrames
 					)
-				}
-			}))
+				};
+				if (handle === 'start') patch.from = participant.from + fromDelta;
+				return { id: participant.id, patch };
+			})
+	);
+}
+
+/**
+ * Trim one edge and ripple every later item on the synchronized clips' tracks.
+ * Start trims keep the clip's timeline start anchored, matching FreeCut's
+ * ripple-start model. End trims move the edit point directly.
+ */
+export function planRippleTrimGesture(
+	item: TimelineItem,
+	handle: TrimHandle,
+	deltaTimelineFrames: number,
+	allItems: TimelineItem[],
+	timelineFps: number,
+	snapTargets: SnapTarget[],
+	snapThresholdFrames: number,
+	transitions: TimelineTransition[] = []
+): RippleTrimGesturePlan {
+	const items = withAnchor(item, allItems);
+	const participants = synchronizedParticipants(item, items);
+	const participantIds = new Set(participants.map((participant) => participant.id));
+	const originalEdge = handle === 'start' ? item.from : item.from + item.durationInFrames;
+	const snap = calculateEdgeSnap(
+		originalEdge + deltaTimelineFrames,
+		snapTargets,
+		snapThresholdFrames
+	);
+	let amount = snap.snappedFrame - originalEdge;
+	for (const participant of participants) {
+		amount = tighterDelta(
+			amount,
+			clampTrimAmount(participant, handle, amount, timelineFps).clampedAmount
+		);
+	}
+
+	const buildTrimUpdates = (delta: number): TimelineEditUpdate[] =>
+		participants.map((participant) => {
+			const patch = trimPatchForAmount(participant, handle, delta, timelineFps);
+			if (handle === 'start') patch.from = participant.from;
+			return { id: participant.id, patch };
+		});
+	amount = clampEditDeltaToPreserveState({
+		requestedDelta: amount,
+		items,
+		transitions,
+		affectedIds: participantIds,
+		buildUpdates: buildTrimUpdates,
+		timelineFps
+	});
+
+	const shift = handle === 'end' ? amount : -amount;
+	const movedById = new Map<string, number>();
+	const addMove = (candidate: TimelineItem): void => {
+		for (const linked of getLinkedItems(items, candidate.id)) {
+			if (!participantIds.has(linked.id)) movedById.set(linked.id, linked.from + shift);
+		}
+	};
+	if (shift !== 0) {
+		for (const participant of participants) {
+			const oldEnd = participant.from + participant.durationInFrames;
+			const transitionNeighbors = new Set(
+				transitions
+					.filter((transition) => transition.fromItemId === participant.id)
+					.map((transition) => transition.toItemId)
+			);
+			for (const candidate of items) {
+				if (participantIds.has(candidate.id) || candidate.trackId !== participant.trackId) continue;
+				if (candidate.from >= oldEnd || transitionNeighbors.has(candidate.id)) addMove(candidate);
+			}
+		}
+	}
+
+	const trimUpdates = buildTrimUpdates(amount);
+	const anchorPatch = trimUpdates.find((update) => update.id === item.id)?.patch ?? {};
+	const finalDraggedEdge = originalEdge + amount;
+	return appendLinkedPatches(
+		{
+			patch: anchorPatch,
+			moves: [...movedById].map(([id, from]) => ({ id, from })),
+			snapTarget: finalDraggedEdge === snap.snappedFrame ? snap.snapTarget : null
+		},
+		trimUpdates.filter((update) => update.id !== item.id)
 	);
 }

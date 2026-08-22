@@ -139,6 +139,84 @@ export function clampSpeed(speed: number): number {
 	return Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));
 }
 
+function exactTimelineDurationForSource(
+	sourceDuration: number,
+	speed: number,
+	sourceFps: number,
+	timelineFps: number
+): number {
+	if (speed <= 0 || sourceFps <= 0 || timelineFps <= 0) return 1;
+	return ((sourceDuration / sourceFps) * timelineFps) / speed;
+}
+
+/** Duration bounds that keep a rate stretch inside the speed range. */
+export function getRateStretchDurationLimits(
+	sourceDuration: number,
+	sourceFps: number,
+	timelineFps: number
+) {
+	const min = Math.max(
+		1,
+		Math.ceil(exactTimelineDurationForSource(sourceDuration, MAX_SPEED, sourceFps, timelineFps))
+	);
+	return {
+		min,
+		max: Math.max(min, sourceToTimelineFrames(sourceDuration, MIN_SPEED, sourceFps, timelineFps))
+	};
+}
+
+export function getClampedRateStretchSpeed(
+	sourceDuration: number,
+	timelineDuration: number,
+	sourceFps: number,
+	timelineFps: number
+): number {
+	return clampSpeed(calculateSpeed(sourceDuration, timelineDuration, sourceFps, timelineFps));
+}
+
+/**
+ * Normalize a duration and speed pair so frame rounding never drops part of
+ * the fixed source span. Ported from FreeCut's use-rate-stretch helper.
+ */
+export function resolveRateStretchDurationAndSpeed(
+	sourceDuration: number,
+	proposedDuration: number,
+	sourceFps: number,
+	timelineFps: number
+) {
+	let duration = Math.max(1, Math.round(proposedDuration));
+	let speed = getClampedRateStretchSpeed(sourceDuration, duration, sourceFps, timelineFps);
+
+	for (let iteration = 0; iteration < 5; iteration += 1) {
+		const sourceFramesNeeded = timelineToSourceFrames(duration, speed, timelineFps, sourceFps);
+		if (sourceFramesNeeded > sourceDuration) {
+			const boundedDuration = Math.max(
+				1,
+				sourceToTimelineFrames(sourceDuration, speed, sourceFps, timelineFps)
+			);
+			if (boundedDuration === duration) break;
+			duration = boundedDuration;
+			speed = getClampedRateStretchSpeed(sourceDuration, duration, sourceFps, timelineFps);
+			continue;
+		}
+
+		if (sourceFramesNeeded < sourceDuration && Math.abs(speed - MAX_SPEED) < 1e-6) {
+			const minimumAtCurrentSpeed = Math.max(
+				1,
+				Math.ceil(exactTimelineDurationForSource(sourceDuration, speed, sourceFps, timelineFps))
+			);
+			if (minimumAtCurrentSpeed === duration) break;
+			duration = minimumAtCurrentSpeed;
+			speed = getClampedRateStretchSpeed(sourceDuration, duration, sourceFps, timelineFps);
+			continue;
+		}
+
+		break;
+	}
+
+	return { duration, speed };
+}
+
 /** A media item is one with source boundaries (video or audio). */
 export function isMediaItem(item: SourceCalculationItem): boolean {
 	return item.type === 'video' || item.type === 'audio';

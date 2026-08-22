@@ -4,6 +4,7 @@ import {
 	planLinkedMoveGesture,
 	planLinkedSlipGesture,
 	planRateStretchGesture,
+	planRippleTrimGesture,
 	planRollingTrimGesture,
 	planSlideGesture,
 	planSlipGesture,
@@ -44,7 +45,12 @@ describe('timeline edit gestures', () => {
 	});
 
 	it('clamps end extension to the source and the next clip', () => {
-		const next = mediaItem({ id: 'next', from: 175, sourceStart: 0, sourceEnd: 20 });
+		const next = mediaItem({
+			id: 'next',
+			from: 175,
+			sourceStart: 0,
+			sourceEnd: 20
+		});
 		expect(planTrimGesture(mediaItem(), 'end', 100, [next], 30, [], 2).patch).toEqual({
 			durationInFrames: 75,
 			sourceEnd: 105
@@ -61,8 +67,16 @@ describe('timeline edit gestures', () => {
 			[{ frame: 90, type: 'item-end', itemId: 'left' }],
 			4
 		);
-		expect(result.patch).toEqual({ from: 90, durationInFrames: 70, sourceStart: 20 });
-		expect(result.snapTarget).toEqual({ frame: 90, type: 'item-end', itemId: 'left' });
+		expect(result.patch).toEqual({
+			from: 90,
+			durationInFrames: 70,
+			sourceStart: 20
+		});
+		expect(result.snapTarget).toEqual({
+			frame: 90,
+			type: 'item-end',
+			itemId: 'left'
+		});
 	});
 
 	it('rolls one cut while preserving both clip windows and the total duration', () => {
@@ -102,8 +116,14 @@ describe('timeline edit gestures', () => {
 
 	it('slips source content in source-native frames without moving the clip', () => {
 		const item = mediaItem({ sourceDuration: 240, speed: 2 });
-		expect(planSlipGesture(item, -20, 30)).toEqual({ sourceStart: 70, sourceEnd: 130 });
-		expect(planSlipGesture(item, 100, 30)).toEqual({ sourceStart: 0, sourceEnd: 60 });
+		expect(planSlipGesture(item, -20, 30)).toEqual({
+			sourceStart: 70,
+			sourceEnd: 130
+		});
+		expect(planSlipGesture(item, 100, 30)).toEqual({
+			sourceStart: 0,
+			sourceEnd: 60
+		});
 	});
 
 	it('requires an explicit source end before slipping', () => {
@@ -169,7 +189,11 @@ describe('timeline edit gestures', () => {
 			sourceEnd: 100,
 			sourceDuration: 200
 		});
-		const middle = mediaItem({ id: 'middle', from: 100, durationInFrames: 100 });
+		const middle = mediaItem({
+			id: 'middle',
+			from: 100,
+			durationInFrames: 100
+		});
 		const right = mediaItem({
 			id: 'right',
 			from: 200,
@@ -235,7 +259,7 @@ describe('timeline edit gestures', () => {
 			speed: 1
 		});
 		const following = mediaItem({ id: 'following', from: 200 });
-		expect(planRateStretchGesture(item, 100, [following], 30, [], 2)).toEqual({
+		expect(planRateStretchGesture(item, 'end', 100, [following], 30, [], 2)).toEqual({
 			patch: { durationInFrames: 200, speed: 0.5 },
 			moves: [{ id: 'following', from: 300 }],
 			snapTarget: null
@@ -243,10 +267,16 @@ describe('timeline edit gestures', () => {
 	});
 
 	it('snaps a rate-stretched end before resolving speed', () => {
-		const item = mediaItem({ from: 0, durationInFrames: 100, sourceStart: 0, sourceEnd: 100 });
+		const item = mediaItem({
+			from: 0,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100
+		});
 		expect(
 			planRateStretchGesture(
 				item,
+				'end',
 				48,
 				[],
 				30,
@@ -294,8 +324,40 @@ describe('timeline edit gestures', () => {
 		]);
 	});
 
+	it('moves every explicitly selected linked group by one shared delta', () => {
+		const firstVideo = mediaItem({
+			id: 'first-video',
+			from: 10,
+			linkedGroupId: 'first'
+		});
+		const firstAudio = mediaItem({
+			...firstVideo,
+			id: 'first-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const second = mediaItem({ id: 'second', from: 100 });
+
+		expect(
+			planLinkedMoveGesture(
+				firstVideo,
+				30,
+				[firstVideo, firstAudio, second],
+				['first-video', 'second']
+			)
+		).toEqual([
+			{ id: 'first-video', from: 30 },
+			{ id: 'first-audio', from: 30 },
+			{ id: 'second', from: 120 }
+		]);
+	});
+
 	it('slips synchronized linked media in one source-space edit', () => {
-		const video = mediaItem({ id: 'video', linkedGroupId: 'group', sourceDuration: 240 });
+		const video = mediaItem({
+			id: 'video',
+			linkedGroupId: 'group',
+			sourceDuration: 240
+		});
 		const audio = mediaItem({
 			id: 'audio',
 			trackId: 'audio',
@@ -394,7 +456,12 @@ describe('timeline edit gestures', () => {
 			sourceEnd: 60,
 			keyframes: { opacity: { frames: [40], values: [1] } }
 		});
-		const right = mediaItem({ id: 'right', from: 60, sourceStart: 60, sourceEnd: 120 });
+		const right = mediaItem({
+			id: 'right',
+			from: 60,
+			sourceStart: 60,
+			sourceEnd: 120
+		});
 		const transition = {
 			id: 'transition',
 			type: 'crossfade' as const,
@@ -442,6 +509,7 @@ describe('timeline edit gestures', () => {
 		});
 		const plan = planRateStretchGesture(
 			video,
+			'end',
 			100,
 			[video, audio, nextVideo, nextAudio],
 			30,
@@ -468,6 +536,113 @@ describe('timeline edit gestures', () => {
 			{ id: 'next-video', from: 200 },
 			{ id: 'next-audio', from: 200 }
 		]);
+	});
+
+	it('rate stretches from the start without moving upstream clips before frame zero', () => {
+		const item = mediaItem({
+			from: 100,
+			durationInFrames: 100,
+			sourceStart: 50,
+			sourceEnd: 150,
+			sourceFps: 30,
+			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } }
+		});
+		const preceding = mediaItem({
+			id: 'preceding',
+			from: 40,
+			durationInFrames: 60
+		});
+
+		expect(planRateStretchGesture(item, 'start', -100, [preceding], 30, [], 2)).toEqual({
+			patch: {
+				from: 60,
+				durationInFrames: 140,
+				speed: 100 / 140,
+				keyframes: { opacity: { frames: [0, 70, 139], values: [0, 0.5, 1] } }
+			},
+			moves: [{ id: 'preceding', from: 0 }],
+			snapTarget: null
+		});
+	});
+
+	it('snaps a start-handle rate stretch and keeps its original end fixed', () => {
+		const item = mediaItem({
+			from: 100,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100
+		});
+		expect(
+			planRateStretchGesture(
+				item,
+				'start',
+				48,
+				[],
+				30,
+				[{ frame: 150, type: 'item-end', itemId: 'previous' }],
+				3
+			)
+		).toEqual({
+			patch: { from: 150, durationInFrames: 50, speed: 2 },
+			moves: [],
+			snapTarget: { frame: 150, type: 'item-end', itemId: 'previous' }
+		});
+	});
+
+	it('ripple trims an end and moves all later linked groups on touched tracks', () => {
+		const video = mediaItem({
+			id: 'video',
+			from: 0,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100,
+			linkedGroupId: 'current'
+		});
+		const audio = mediaItem({
+			...video,
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const nextVideo = mediaItem({
+			id: 'next-video',
+			from: 100,
+			linkedGroupId: 'next'
+		});
+		const nextAudio = mediaItem({
+			...nextVideo,
+			id: 'next-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+
+		expect(
+			planRippleTrimGesture(video, 'end', -20, [video, audio, nextVideo, nextAudio], 30, [], 2)
+		).toEqual({
+			patch: { durationInFrames: 80, sourceEnd: 80 },
+			linkedPatches: [{ id: 'audio', patch: { durationInFrames: 80, sourceEnd: 80 } }],
+			moves: [
+				{ id: 'next-video', from: 80 },
+				{ id: 'next-audio', from: 80 }
+			],
+			snapTarget: null
+		});
+	});
+
+	it('ripple trims a start in place and shifts later clips by the duration change', () => {
+		const item = mediaItem({
+			from: 100,
+			durationInFrames: 60,
+			sourceStart: 30,
+			sourceEnd: 90
+		});
+		const following = mediaItem({ id: 'following', from: 160 });
+
+		expect(planRippleTrimGesture(item, 'start', 10, [following], 30, [], 2)).toEqual({
+			patch: { from: 100, durationInFrames: 50, sourceStart: 40 },
+			moves: [{ id: 'following', from: 150 }],
+			snapTarget: null
+		});
 	});
 
 	it('slides the synchronized companion and both cuts on its track', () => {

@@ -16,6 +16,7 @@ import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/type
 export interface TimelineSettings {
 	fps: number;
 	snapEnabled: boolean;
+	linkedSelectionEnabled: boolean;
 	currentFrame: number;
 	scrollPosition: number;
 	maxUndoHistory: number;
@@ -68,6 +69,7 @@ const state = $state<TimelineState>({
 	settings: {
 		fps: 30,
 		snapEnabled: true,
+		linkedSelectionEnabled: true,
 		currentFrame: 0,
 		scrollPosition: 0,
 		maxUndoHistory: 100
@@ -104,6 +106,9 @@ export const timelineStore = {
 	},
 	get snapEnabled(): boolean {
 		return state.settings.snapEnabled;
+	},
+	get linkedSelectionEnabled(): boolean {
+		return state.settings.linkedSelectionEnabled;
 	},
 	get currentFrame(): number {
 		return state.settings.currentFrame;
@@ -259,6 +264,10 @@ export const timelineStore = {
 		state.settings.snapEnabled = enabled;
 	},
 
+	_setLinkedSelectionEnabled(enabled: boolean): void {
+		state.settings.linkedSelectionEnabled = enabled;
+	},
+
 	_setZoomLevel(level: number): void {
 		state.zoomLevel = Math.min(50, Math.max(0.01, level));
 	},
@@ -291,6 +300,7 @@ export const timelineStore = {
 		timelineStore.clear();
 		timelineStore._setZoomLevel(1);
 		state.settings.snapEnabled = true;
+		state.settings.linkedSelectionEnabled = true;
 		state.settings.maxUndoHistory = 100;
 		state.markers = [];
 	}
