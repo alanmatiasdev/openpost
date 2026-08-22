@@ -4033,6 +4033,8 @@
 	"video_editor_scene_split": "Auto-split at scene changes",
 	"video_editor_scene_done": "Split into clips at {count} scene changes.",
 	"video_editor_scene_none": "No scene changes detected.",
+	"video_editor_proxy_generate": "Generate proxy",
+	"video_editor_proxy_done": "Proxy ready for smoother scrubbing.",
 	"video_editor_export": "Export MP4",
 	"video_editor_export_render": "Render full video",
 	"video_editor_render_progress": "Rendering frame {done} / {total}",

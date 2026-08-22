@@ -4033,6 +4033,8 @@
 	"video_editor_scene_split": "Divisão automática nas mudanças de cena",
 	"video_editor_scene_done": "Dividido em clipes em {count} mudanças de cena.",
 	"video_editor_scene_none": "Nenhuma mudança de cena detectada.",
+	"video_editor_proxy_generate": "Gerar proxy",
+	"video_editor_proxy_done": "Proxy pronto para navegação mais suave.",
 	"video_editor_export": "Exportar MP4",
 	"video_editor_export_render": "Renderizar vídeo completo",
 	"video_editor_render_progress": "A renderizar fotograma {done} / {total}",
