@@ -3831,6 +3831,8 @@
 	"video_editor_snap_enable": "Enable snapping (S)",
 	"video_editor_snap_disable": "Disable snapping (S)",
 	"video_editor_slip": "Slip clip source",
+	"video_editor_slide": "Slide clip between adjacent edits",
+	"video_editor_rate_stretch": "Rate stretch clip",
 	"video_editor_primary_sequence": "Primary sequence",
 	"video_editor_captions_lane": "Captions",
 	"video_editor_play": "Play",

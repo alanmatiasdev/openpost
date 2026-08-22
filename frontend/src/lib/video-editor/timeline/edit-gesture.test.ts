@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '../project/types';
-import { planRollingTrimGesture, planSlipGesture, planTrimGesture } from './edit-gesture';
+import {
+	planRateStretchGesture,
+	planRollingTrimGesture,
+	planSlideGesture,
+	planSlipGesture,
+	planTrimGesture
+} from './edit-gesture';
 
 function mediaItem(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
@@ -104,5 +110,105 @@ describe('timeline edit gestures', () => {
 
 	it('does not offer slip for generated timeline items', () => {
 		expect(planSlipGesture({ ...mediaItem(), type: 'text' }, 10, 30)).toBeNull();
+	});
+
+	it('slides a clip while trimming both adjacent source windows', () => {
+		const left = mediaItem({
+			id: 'left',
+			from: 0,
+			durationInFrames: 100,
+			mediaId: 'media',
+			originId: 'origin',
+			sourceStart: 0,
+			sourceEnd: 100,
+			sourceDuration: 400
+		});
+		const middle = mediaItem({
+			id: 'middle',
+			from: 100,
+			durationInFrames: 100,
+			mediaId: 'media',
+			originId: 'origin',
+			sourceStart: 100,
+			sourceEnd: 200,
+			sourceDuration: 400
+		});
+		const right = mediaItem({
+			id: 'right',
+			from: 200,
+			durationInFrames: 100,
+			mediaId: 'media',
+			originId: 'origin',
+			sourceStart: 200,
+			sourceEnd: 300,
+			sourceDuration: 400
+		});
+		expect(planSlideGesture(middle, left, right, 20, [], 30, [], 2)).toEqual({
+			itemPatch: { from: 120, sourceStart: 120, sourceEnd: 220 },
+			leftPatch: { durationInFrames: 120, sourceEnd: 120 },
+			rightPatch: { from: 220, durationInFrames: 80, sourceStart: 220 },
+			snapTarget: null
+		});
+	});
+
+	it('uses one constrained delta for every slide participant', () => {
+		const left = mediaItem({
+			id: 'left',
+			from: 0,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100,
+			sourceDuration: 200
+		});
+		const middle = mediaItem({ id: 'middle', from: 100, durationInFrames: 100 });
+		const right = mediaItem({
+			id: 'right',
+			from: 200,
+			durationInFrames: 100,
+			sourceStart: 50,
+			sourceEnd: 150,
+			sourceDuration: 200
+		});
+		expect(planSlideGesture(middle, left, right, -80, [], 30, [], 2)).toEqual({
+			itemPatch: { from: 50 },
+			leftPatch: { durationInFrames: 50, sourceEnd: 50 },
+			rightPatch: { from: 150, durationInFrames: 150, sourceStart: 0 },
+			snapTarget: null
+		});
+	});
+
+	it('rate stretches the full source window and ripples following clips', () => {
+		const item = mediaItem({
+			from: 100,
+			durationInFrames: 100,
+			sourceStart: 50,
+			sourceEnd: 150,
+			sourceFps: 30,
+			speed: 1
+		});
+		const following = mediaItem({ id: 'following', from: 200 });
+		expect(planRateStretchGesture(item, 100, [following], 30, [], 2)).toEqual({
+			patch: { durationInFrames: 200, speed: 0.5 },
+			moves: [{ id: 'following', from: 300 }],
+			snapTarget: null
+		});
+	});
+
+	it('snaps a rate-stretched end before resolving speed', () => {
+		const item = mediaItem({ from: 0, durationInFrames: 100, sourceStart: 0, sourceEnd: 100 });
+		expect(
+			planRateStretchGesture(
+				item,
+				48,
+				[],
+				30,
+				[{ frame: 150, type: 'item-start', itemId: 'next' }],
+				3
+			)
+		).toEqual({
+			patch: { durationInFrames: 150, speed: 2 / 3 },
+			moves: [],
+			snapTarget: { frame: 150, type: 'item-start', itemId: 'next' }
+		});
 	});
 });

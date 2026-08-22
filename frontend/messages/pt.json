@@ -3831,6 +3831,8 @@
 	"video_editor_snap_enable": "Ativar alinhamento (S)",
 	"video_editor_snap_disable": "Desativar alinhamento (S)",
 	"video_editor_slip": "Deslizar origem do clipe",
+	"video_editor_slide": "Deslizar clipe entre cortes adjacentes",
+	"video_editor_rate_stretch": "Ajustar duração e velocidade do clipe",
 	"video_editor_primary_sequence": "Sequência principal",
 	"video_editor_captions_lane": "Legendas",
 	"video_editor_play": "Reproduzir",
