@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { activeValueAt, interpolateAt, removeKeyframe, setKeyframe } from './keyframes';
+import {
+	activeValueAt,
+	interpolateAt,
+	removeKeyframe,
+	setKeyframe,
+	setKeyframeEasing
+} from './keyframes';
 
 function getItem(id: string): TimelineItem {
 	const item = timelineStore.itemById.get(id);
@@ -41,7 +47,7 @@ describe('setKeyframe', () => {
 		setKeyframe('a', 'opacity', 10, 0);
 		setKeyframe('a', 'opacity', 25, 0.25);
 		const item = getItem('a');
-		expect(trackOf(item, 'opacity')).toEqual({
+		expect(trackOf(item, 'opacity')).toMatchObject({
 			frames: [10, 25, 40],
 			values: [0, 0.25, 0.5]
 		});
@@ -74,6 +80,27 @@ describe('setKeyframe', () => {
 	it('returns false and records nothing for a missing item', () => {
 		expect(setKeyframe('missing', 'opacity', 0, 1)).toBe(false);
 		expect(commandHistory.undoStack.length).toBe(0);
+	});
+
+	it('changes one outgoing segment to a configured spring and restores it on undo', () => {
+		setKeyframe('a', 'opacity', 10, 0);
+		setKeyframe('a', 'opacity', 40, 1);
+		const config = {
+			type: 'spring' as const,
+			spring: { tension: 220, friction: 18, mass: 0.9 }
+		};
+
+		expect(setKeyframeEasing('a', 'opacity', 10, 'spring', config)).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			easings: ['spring', 'linear'],
+			easingConfigs: [config, null]
+		});
+
+		commandHistory.undo();
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			easings: ['linear', 'linear'],
+			easingConfigs: [null, null]
+		});
 	});
 });
 
@@ -114,7 +141,7 @@ describe('removeKeyframe', () => {
 		setKeyframe('a', 'volume', 12, 0.4);
 		removeKeyframe('a', 'volume', 12);
 		commandHistory.undo();
-		expect(trackOf(getItem('a'), 'volume')).toEqual({ frames: [12], values: [0.4] });
+		expect(trackOf(getItem('a'), 'volume')).toMatchObject({ frames: [12], values: [0.4] });
 	});
 
 	it('returns false for absent tracks or frames', () => {
@@ -176,6 +203,35 @@ describe('interpolateAt', () => {
 		expect(interpolateAt(item, 'opacity', 50)).toBe(0.6);
 		expect(interpolateAt(item, 'opacity', 30)).toBeCloseTo(0.4, 12);
 		expect(interpolateAt(item, 'opacity', 20)).toBeCloseTo(0.3, 12);
+	});
+
+	it('uses the outgoing easing stored on each keyframe segment', () => {
+		const item: TimelineItem = {
+			id: 'eased',
+			trackId: 't',
+			from: 0,
+			durationInFrames: 20,
+			label: '',
+			type: 'video',
+			keyframes: {
+				opacity: {
+					frames: [0, 10, 20],
+					values: [0, 1, 0],
+					easings: ['hold', 'cubic-bezier', 'linear'],
+					easingConfigs: [
+						null,
+						{
+							type: 'cubic-bezier',
+							bezier: { x1: 0.1, y1: 0.9, x2: 0.2, y2: 1 }
+						},
+						null
+					]
+				}
+			}
+		};
+
+		expect(interpolateAt(item, 'opacity', 5)).toBe(0);
+		expect(interpolateAt(item, 'opacity', 15)).toBeLessThan(0.2);
 	});
 });
 

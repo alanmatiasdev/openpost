@@ -265,8 +265,9 @@
 	}
 
 	const KEYFRAME_PROPERTIES = ['opacity', 'volume'] as const satisfies readonly KeyframeProperty[];
+	type DopesheetProperty = (typeof KEYFRAME_PROPERTIES)[number];
 	const DEFAULT_KEYFRAME_VALUES = { opacity: 1, volume: 1 } satisfies Record<
-		KeyframeProperty,
+		DopesheetProperty,
 		number
 	>;
 
@@ -280,13 +281,13 @@
 		);
 	});
 
-	function keyframeLabel(property: KeyframeProperty): string {
+	function keyframeLabel(property: DopesheetProperty): string {
 		return property === 'opacity'
 			? m.video_editor_keyframe_opacity()
 			: m.video_editor_keyframe_volume();
 	}
 
-	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
+	function addKeyframeAtPlayhead(property: DopesheetProperty): void {
 		const item = selectedItem;
 		if (!item) return;
 		const frame = Math.max(0, timelineStore.currentFrame - item.from);
@@ -296,7 +297,7 @@
 		if (setKeyframe(item.id, property, frame, value)) onedit();
 	}
 
-	function removeKeyframeAt(property: KeyframeProperty, frame: number): void {
+	function removeKeyframeAt(property: DopesheetProperty, frame: number): void {
 		const item = selectedItem;
 		if (!item) return;
 		if (removeKeyframe(item.id, property, frame)) onedit();

@@ -4,19 +4,22 @@
  * Keyframe tracks are parallel frame/value arrays stored on the item
  * (`item.keyframes[property]`), so undo/redo captures them through the
  * regular snapshot clone. Frames are relative to item start; interpolation
- * is linear with constant clamping outside the keyed range.
+ * applies the outgoing easing stored on the previous keyframe and clamps
+ * outside the keyed range.
  *
  * Ported from FreeCut (MIT) — types/keyframe.ts and
- * runtime/player/composition/interpolate.ts, trimmed to linear-only,
- * clamped-extrapolation tracks over opacity/volume.
+ * features/keyframes/utils/interpolation.ts.
  */
 
 import type {
+	EasingConfig,
+	EasingType,
 	ItemKeyframes,
 	KeyframeProperty,
 	KeyframeTrack,
 	TimelineItem
 } from '$lib/video-editor/project/types';
+import { applyEasing, applyEasingConfig } from '../easing';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 
@@ -39,8 +42,12 @@ export function interpolateAt(
 	if (frame >= frames[last]) return values[last];
 	for (let i = 1; i <= last; i++) {
 		if (frame <= frames[i]) {
-			const t = (frame - frames[i - 1]) / (frames[i] - frames[i - 1]);
-			return values[i - 1] + t * (values[i] - values[i - 1]);
+			const progress = (frame - frames[i - 1]) / (frames[i] - frames[i - 1]);
+			const easingConfig = track.easingConfigs?.[i - 1] ?? undefined;
+			const easedProgress = easingConfig
+				? applyEasingConfig(progress, easingConfig)
+				: applyEasing(progress, track.easings?.[i - 1] ?? 'linear');
+			return values[i - 1] + easedProgress * (values[i] - values[i - 1]);
 		}
 	}
 	return values[last];
@@ -71,6 +78,34 @@ export function setKeyframe(
 	});
 }
 
+/** Change the outgoing interpolation for the segment that starts at `frame`. */
+export function setKeyframeEasing(
+	itemId: string,
+	property: KeyframeProperty,
+	frame: number,
+	easing: EasingType,
+	easingConfig?: EasingConfig
+): boolean {
+	return execute('SET_KEYFRAME_EASING', () => {
+		const item = timelineStore.itemById.get(itemId);
+		const track = item?.keyframes?.[property];
+		if (!item || !track) return false;
+		const index = track.frames.indexOf(frame);
+		if (index === -1) return false;
+
+		const nextTrack = withCompleteMetadata(track);
+		nextTrack.easings[index] = easing;
+		nextTrack.easingConfigs[index] = easingConfig ?? null;
+		timelineStore._updateItems([
+			{
+				id: itemId,
+				patch: { keyframes: { ...item.keyframes, [property]: nextTrack } }
+			}
+		]);
+		return true;
+	});
+}
+
 /** Remove the keyframe at exactly `frame`; drops empty tracks. One undoable step. */
 export function removeKeyframe(itemId: string, property: KeyframeProperty, frame: number): boolean {
 	return execute('REMOVE_KEYFRAME', () => {
@@ -81,7 +116,12 @@ export function removeKeyframe(itemId: string, property: KeyframeProperty, frame
 		if (index === -1) return false;
 		const nextTrack: KeyframeTrack = {
 			frames: withoutIndex(track.frames, index),
-			values: withoutIndex(track.values, index)
+			values: withoutIndex(track.values, index),
+			...(track.ids && { ids: withoutIndex(track.ids, index) }),
+			...(track.easings && { easings: withoutIndex(track.easings, index) }),
+			...(track.easingConfigs && {
+				easingConfigs: withoutIndex(track.easingConfigs, index)
+			})
 		};
 		timelineStore._updateItems([
 			{ id: itemId, patch: { keyframes: pruneTrack(item.keyframes ?? {}, property, nextTrack) } }
@@ -97,8 +137,8 @@ function upsertTrack(
 	value: number
 ): ItemKeyframes {
 	const source = keyframes[property];
-	const frames = source ? [...source.frames] : [];
-	const values = source ? [...source.values] : [];
+	const complete = withCompleteMetadata(source ?? { frames: [], values: [] });
+	const { frames, values, ids, easings, easingConfigs } = complete;
 	const index = frames.indexOf(frame);
 	if (index !== -1) {
 		values[index] = value;
@@ -112,8 +152,24 @@ function upsertTrack(
 		}
 		frames.splice(insertAt, 0, frame);
 		values.splice(insertAt, 0, value);
+		ids.splice(insertAt, 0, crypto.randomUUID());
+		easings.splice(insertAt, 0, 'linear');
+		easingConfigs.splice(insertAt, 0, null);
 	}
-	return { ...keyframes, [property]: { frames, values } };
+	return {
+		...keyframes,
+		[property]: { frames, values, ids, easings, easingConfigs }
+	};
+}
+
+function withCompleteMetadata(track: KeyframeTrack): Required<KeyframeTrack> {
+	return {
+		frames: [...track.frames],
+		values: [...track.values],
+		ids: track.frames.map((_, index) => track.ids?.[index] ?? crypto.randomUUID()),
+		easings: track.frames.map((_, index) => track.easings?.[index] ?? 'linear'),
+		easingConfigs: track.frames.map((_, index) => track.easingConfigs?.[index] ?? null)
+	};
 }
 
 function pruneTrack(
@@ -127,6 +183,6 @@ function pruneTrack(
 	return Object.keys(next).length > 0 ? next : undefined;
 }
 
-function withoutIndex(source: number[], index: number): number[] {
+function withoutIndex<T>(source: T[], index: number): T[] {
 	return [...source.slice(0, index), ...source.slice(index + 1)];
 }

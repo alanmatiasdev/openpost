@@ -1,7 +1,7 @@
 /**
  * Project document model for the OpenPost Video Editor.
  *
- * Ported from FreeCut (MIT) — types/project.ts — trimmed to the v1 surface:
+ * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
  * video / audio / image / text / subtitle items, one top-level sequence,
  * no compositions, shapes, masks, or per-band EQ.
  */
@@ -28,10 +28,81 @@ export interface CropSettings {
 	right: number;
 	bottom: number;
 	left: number;
+	softness?: number;
 }
 
+/**
+ * Ported from FreeCut (MIT) - types/keyframe.ts.
+ */
+export type EasingType =
+	| 'linear'
+	| 'ease-in'
+	| 'ease-out'
+	| 'ease-in-out'
+	| 'hold'
+	| 'cubic-bezier'
+	| 'spring';
+
+export interface BezierControlPoints {
+	x1: number;
+	y1: number;
+	x2: number;
+	y2: number;
+}
+
+export interface SpringParameters {
+	tension: number;
+	friction: number;
+	mass: number;
+}
+
+export interface EasingConfig {
+	type: EasingType;
+	bezier?: BezierControlPoints;
+	spring?: SpringParameters;
+}
+
+export const DEFAULT_SPRING_PARAMS: SpringParameters = {
+	tension: 170,
+	friction: 26,
+	mass: 1
+};
+
+export const DEFAULT_BEZIER_POINTS: BezierControlPoints = {
+	x1: 0.42,
+	y1: 0,
+	x2: 0.58,
+	y2: 1
+};
+
 /** Property that can be animated with per-item keyframes. */
-export type KeyframeProperty = 'opacity' | 'volume';
+export type KeyframeProperty =
+	| 'x'
+	| 'y'
+	| 'width'
+	| 'height'
+	| 'anchorX'
+	| 'anchorY'
+	| 'rotation'
+	| 'opacity'
+	| 'cornerRadius'
+	| 'cropLeft'
+	| 'cropRight'
+	| 'cropTop'
+	| 'cropBottom'
+	| 'cropSoftness'
+	| 'volume'
+	| 'fontSize'
+	| 'fontWeight'
+	| 'lineHeight'
+	| 'letterSpacing'
+	| 'paddingX'
+	| 'paddingY'
+	| 'borderRadius'
+	| 'textShadowOffsetX'
+	| 'textShadowOffsetY'
+	| 'textShadowBlur'
+	| 'strokeWidth';
 
 /**
  * Parallel frame/value arrays for one animated property. Frames ascend and
@@ -40,13 +111,14 @@ export type KeyframeProperty = 'opacity' | 'volume';
 export interface KeyframeTrack {
 	frames: number[];
 	values: number[];
+	/** Stable IDs and outgoing segment easing. Missing arrays mean legacy linear tracks. */
+	ids?: string[];
+	easings?: EasingType[];
+	easingConfigs?: Array<EasingConfig | null>;
 }
 
 /** Per-property keyframe tracks stored on a timeline item. */
-export interface ItemKeyframes {
-	opacity?: KeyframeTrack;
-	volume?: KeyframeTrack;
-}
+export type ItemKeyframes = Partial<Record<KeyframeProperty, KeyframeTrack>>;
 
 /** Styling for text items and caption rendering. */
 export interface TextStyleFields {
