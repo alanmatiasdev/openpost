@@ -4,6 +4,43 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-08-22
+
+### Changed
+
+- Made the standalone Expo app the only Android app. GitHub releases now publish its signed `openpost-app-android.apk`; the old web wrapper and its server chooser are gone.
+- Reorganized Settings into clear Personal, Workspace, Organization, and Instance groups with compact desktop tabs and one mobile selector.
+- Rewrote settings labels and help text so controls describe their scope and effect consistently.
+- Kept save actions in the page flow instead of moving them over page content.
+- Documented optional account features as per connected account in Accounts, Analytics, Engagement and Inbox, and provider docs. Direct messages, Comments and replies, Analytics, and Grow start off for new accounts. Users choose them after connection or in Account details. Disabling a feature stops future provider reads and writes without deleting history or revoking provider authorization. Provider support, required scopes, and plan access remain distinct. Grow never follows automatically.
+- Updated the platform overview to clarify that Grow is available only for Bluesky and Mastodon, Direct messages for X, Bluesky, Facebook Pages, Instagram Professional accounts, and Mastodon, Engagement comments and replies for X, Mastodon, Bluesky, LinkedIn, Threads, Facebook Pages, Instagram, and YouTube, and Analytics for X, Mastodon, Bluesky, LinkedIn, Threads, Facebook, Instagram, TikTok, and YouTube. Discord webhooks support none of these optional features.
+- Clarified per-provider support notes for Bluesky, Mastodon, X, Facebook, Instagram, LinkedIn, Threads, YouTube, TikTok, and Discord so provider docs list only implemented optional features and their required scopes, and note that each feature starts off and is controlled per account.
+- Added upgrade notes to Accounts and Upgrades explaining that existing accounts keep current behavior: previous Inbox opt-ins become Direct messages choices, current Analytics and Engagement behavior remains enabled, Grow is enabled only where stored Grow sync state exists, and other accounts receive explicit off choices so routine reauthorization does not retrigger the setup prompt.
+
+### Fixed
+
+- Improved the Android app's large-text layout, screen-reader labels, workspace selection, draft menu, attachment retries, destination removal errors, post rescheduling, and delete failure handling.
+- Load only the active settings page so hidden pages no longer fetch data or update in the background.
+- Keep Settings usable without horizontal overflow at narrow mobile widths.
+- Treat the absence of a pending Organization ownership transfer as a normal empty state instead of a browser error.
+- Keep provider retry and reconnect actions visible instead of grouping them with providers that need administrator setup.
+
+### Removed
+
+- The entire cloud-synced OpenPost Video Editor: frontend editor (~23k lines), `/video-editor/*` sync API, `videoproject` package, `VideoProject*`/`VideoReturnToken` models, bundled editor model packs and audio assets, and the `@openpost/video-project` package. Migration 107 drops `video_projects`, `video_project_assets`, `video_project_revisions`, `video_return_tokens`, and `media_attachments.video_project_id`.
+- Composer return-token handoff. "Edit video" now links to `/video-editor` via plain URL parameters.
+- Removed the unused settings search, duplicate media-retention information, and the duplicate Organization deletion control from Workspace settings.
+
+### Added
+
+- **OpenPost Video Editor** (`/video-editor`, Chromium-only): workspace folder on your disk is the source of truth (projects, media, caches, exports as plain files). The editor includes a layered multi-track preview, undo/redo, text and subtitle editing, broad clip keyframes with cubic and spring easing, a WebGL2 effects and color stack, cached waveforms and filmstrips, proxies, scene and silence tools, and transcript word editing. Rendered export supports MP4, MOV, WebM, MKV, MP3, AAC, and WAV with codec, size, quality, range, subtitle, progress, and cancel controls. Send to OpenPost uploads the finished export to the media library.
+- Preview controls now match FreeCut's device-only monitor gain and mute, fit and fixed zoom presets, native fullscreen, audio-only playback, and full-resolution frame capture. Captured frames download and also join the project's media pool.
+- Timeline editing now exposes ordered video and audio track creation, safe track removal, sticky lock/visibility/mute/solo/sync-lock controls, adaptive snapping, trim-start and trim-end handles, rolling cuts, source slip, neighbor-aware slide, and source-bound rate stretch. Pointer work is frame-accurate, cancelable, and grouped into one undo step; the same tools support one-frame and ten-frame keyboard edits.
+- **Quick Cut** (`/quick-cut`): fast lossless trimming - mark I/O segments, save each without re-encoding via stream-copy. Inspired by LosslessCut's segment flow (behavioral reference only).
+- **Recorder** (`/record`): screen, camera, microphone, and screen+camera PiP-composited capture saved locally.
+- Stock-media client re-homed from the deleted editor to `$lib/stock-media`.
+- Added Grow usage guide at `/usage/grow` describing discovery and follow as an optional feature per connected Bluesky and Mastodon account. It starts off, uses an explicit per-account choice, never follows automatically, and shows how enabling queues discovery while disabling stops future provider calls without deleting history or revoking provider authorization.
+
 ## [3.14.0] - 2026-08-20
 
 ### Added
