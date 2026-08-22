@@ -13,7 +13,7 @@ import {
 	releaseLocalImageEditorMedia
 } from './local-media-url';
 import { m } from '$lib/paraglide/messages';
-import type { StockMediaProvenance } from '@openpost/video-project';
+import type { StockMediaProvenance } from '$lib/stock-media';
 import type {
 	ImageEditorDocument,
 	ImageEditorDocumentResponse,

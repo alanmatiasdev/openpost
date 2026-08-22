@@ -1,8 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 const tinyPNG = Buffer.from(
@@ -13,15 +9,6 @@ const tinyPNG = Buffer.from(
 const tinySVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="18"><rect width="32" height="18" fill="#f97316"/></svg>',
 );
-
-const ffmpegAvailable = (() => {
-  try {
-    execFileSync("ffmpeg", ["-version"]);
-    return true;
-  } catch {
-    return false;
-  }
-})();
 
 test("custom media chooser pastes a file with a local thumbnail and upload progress", async ({
   page,
@@ -57,106 +44,6 @@ test("custom media chooser pastes a file with a local thumbnail and upload progr
   await expect(uploadDialog).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByText("pasted-launch.png")).toBeVisible();
 });
-
-function createVideoFixture(): Buffer {
-  const directory = mkdtempSync(join(tmpdir(), "openpost-video-e2e-"));
-  const filename = join(directory, "clip.mp4");
-  try {
-    execFileSync("ffmpeg", [
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      "color=c=0x2563eb:s=160x90:d=1",
-      "-f",
-      "lavfi",
-      "-i",
-      "anullsrc=r=44100:cl=stereo",
-      "-shortest",
-      "-c:v",
-      "libx264",
-      "-profile:v",
-      "baseline",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "32k",
-      filename,
-    ]);
-    return readFileSync(filename);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
-
-function emptyVideoProjectDocument(title: string) {
-  return {
-    schema_version: 1,
-    title,
-    timebase: {
-      ticks_per_second: 1_000_000,
-      fps_numerator: 30,
-      fps_denominator: 1,
-    },
-    sources: {},
-    primary_sequence: [],
-    visual_tracks: [],
-    audio_tracks: [],
-    caption_tracks: [],
-    variants: [
-      {
-        id: "portrait",
-        name: "Portrait",
-        width: 1080,
-        height: 1920,
-        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
-        background_color: "#000000",
-      },
-      {
-        id: "feed-portrait",
-        name: "Feed portrait",
-        width: 1080,
-        height: 1350,
-        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
-        background_color: "#000000",
-      },
-      {
-        id: "square",
-        name: "Square",
-        width: 1080,
-        height: 1080,
-        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
-        background_color: "#000000",
-      },
-      {
-        id: "landscape",
-        name: "Landscape",
-        width: 1920,
-        height: 1080,
-        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
-        background_color: "#000000",
-      },
-    ],
-    markers: [],
-    export_defaults: {
-      variant_ids: ["portrait"],
-      format: "mp4",
-      video_codec: "avc",
-      audio_codec: "aac",
-      frame_rate: { numerator: 30, denominator: 1 },
-      video_bitrate: 8_000_000,
-      audio_bitrate: 128_000,
-      loudness_normalization: false,
-    },
-  };
-}
 
 test("media library uploads and lists a local media file", async ({ page, request }) => {
   const unique = Date.now().toString(36);
@@ -266,43 +153,6 @@ test("media library uploads and lists a local media file", async ({ page, reques
   await expect(page.getByText("No media found")).toBeVisible();
 });
 
-test("editors renames cloud video projects from the context menu", async ({ page, request }) => {
-  const unique = Date.now().toString(36);
-  const auth = await registerUser(request, `editor-rename-${unique}@example.com`);
-  const workspace = await createWorkspace(request, auth.token, "Editor Rename E2E");
-  const created = await request.post("/api/v1/video-editor/projects", {
-    headers: { Authorization: `Bearer ${auth.token}` },
-    data: {
-      workspace_id: workspace.id,
-      client_request_id: `editor-rename-${unique}`,
-      document: emptyVideoProjectDocument("Launch video"),
-    },
-  });
-  expect(created.ok()).toBeTruthy();
-  const project = (await created.json()) as { id: string };
-
-  await authenticatePage(page, auth.token);
-  await page.goto("/editors");
-  const projectCard = page.locator(
-    `a[href="/video-editor?cloud=${encodeURIComponent(project.id)}"]`,
-  );
-  await expect(projectCard.getByText("Launch video", { exact: true })).toBeVisible();
-  await projectCard.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-  const renameDialog = page.getByRole("dialog", {
-    name: "Rename video project",
-  });
-  await renameDialog.getByLabel("Project name").fill("Launch recap");
-  await renameDialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(projectCard.getByText("Launch recap", { exact: true })).toBeVisible();
-
-  const saved = await request.get(`/api/v1/video-editor/projects/${project.id}`, {
-    headers: { Authorization: `Bearer ${auth.token}` },
-  });
-  expect(saved.ok()).toBeTruthy();
-  expect((await saved.json()).document.title).toBe("Launch recap");
-});
-
 test("media tags combine with type filters while new uploads remain untagged", async ({
   page,
   request,
@@ -407,94 +257,6 @@ test("media tags combine with type filters while new uploads remain untagged", a
   await page.getByRole("option", { name: "Images", exact: true }).click();
   await filterDialog.getByRole("button", { name: "Apply filters" }).click();
   await expect(page.getByTestId("media-library-grid").getByText("tagged-launch.png")).toBeVisible();
-});
-
-test("video upload edits in the browser and becomes a verified media asset", async ({
-  page,
-  request,
-}) => {
-  test.skip(!ffmpegAvailable, "ffmpeg is required to generate video fixture");
-
-  test.setTimeout(120_000);
-  const unique = Date.now().toString(36);
-  const auth = await registerUser(request, `media-video-${unique}@example.com`);
-  const workspace = await createWorkspace(request, auth.token, "Video Media E2E");
-  const browserErrors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push(message.text());
-  });
-  page.on("pageerror", (error) => browserErrors.push(error.message));
-
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await authenticatePage(page, auth.token);
-  await page.goto("/media");
-  await page.getByRole("button", { name: "Add media", exact: true }).click();
-  const uploadDialog = page.getByRole("dialog", { name: "Upload media" });
-  await uploadDialog.locator('input[type="file"]').first().setInputFiles({
-    name: "launch-video.mp4",
-    mimeType: "video/mp4",
-    buffer: createVideoFixture(),
-  });
-
-  await uploadDialog.getByRole("button", { name: "Upload 1 file", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "Edit video" });
-  await expect(editor).toBeVisible();
-  await expect(editor.getByText("160×90")).toBeVisible();
-  await editor.locator('input[type="number"]').nth(1).fill("0.5");
-  await editor.getByRole("button", { name: "Apply edit" }).click();
-  await expect(editor).toBeHidden({ timeout: 30_000 });
-
-  await expect(
-    page.locator("[data-sonner-toast]").filter({ hasText: "Uploaded 1 file" }),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    page.getByTestId("media-library-grid").getByText("launch-video-edited.mp4"),
-  ).toBeVisible();
-
-  const mediaResponse = await request.get(`/api/v1/media?workspace_id=${workspace.id}&type=video`, {
-    headers: { Authorization: `Bearer ${auth.token}` },
-  });
-  expect(mediaResponse.ok()).toBeTruthy();
-  const mediaBody = (await mediaResponse.json()) as {
-    total: number;
-    media: Array<Record<string, unknown>>;
-  };
-  expect(mediaBody.total).toBe(1);
-  expect(mediaBody.media[0]).toMatchObject({
-    original_filename: "launch-video-edited.mp4",
-    mime_type: "video/mp4",
-    processing_status: "ready",
-    analysis_status: "ready",
-    container_format: "mov",
-    video_codec: "h264",
-    audio_codec: "aac",
-  });
-  expect(Number(mediaBody.media[0].duration_ms)).toBeGreaterThan(0);
-  expect(String(mediaBody.media[0].poster_thumbnail_url)).toContain("/poster");
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Add media", exact: true }).click();
-  await uploadDialog.locator('input[type="file"]').first().setInputFiles({
-    name: "phone-video.mp4",
-    mimeType: "video/mp4",
-    buffer: createVideoFixture(),
-  });
-  await uploadDialog.getByRole("button", { name: "Upload 1 file", exact: true }).click();
-  await expect(editor).toBeVisible();
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - window.innerWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(1);
-  for (const label of ["Original", "Upload without editing", "Cancel", "Apply edit"]) {
-    const button = editor.getByRole("button", { name: label, exact: true });
-    if (!(await button.isVisible())) continue;
-    const box = await button.boundingBox();
-    if (box) {
-      expect(box.height).toBeGreaterThanOrEqual(44);
-    }
-  }
-  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect(browserErrors).toEqual([]);
 });
 
 test("brand kit inputs keep focus while editing", async ({ page, request }) => {

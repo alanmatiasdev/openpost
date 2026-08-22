@@ -23,9 +23,8 @@ function mediaSummary(id: string, filename: string) {
 }
 
 const originalVideo = mediaSummary("video-old", "launch-original.mp4");
-const returnedVideo = mediaSummary("video-new", "launch-landscape.mp4");
 
-test("composer preserves its draft through Image cancel and Video replacement", async ({
+test("composer preserves its draft through Image cancel and links out to the Video Editor", async ({
   page,
   request,
 }) => {
@@ -35,8 +34,6 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   await authenticatePage(page, auth.token);
 
   const pageErrors: Error[] = [];
-  const draftWrites: Array<Record<string, unknown>> = [];
-  const videoTokenBodies: Array<Record<string, unknown>> = [];
   let nextRevision = 4;
 
   const publication = {
@@ -193,7 +190,6 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   });
   await page.route(/\/api\/v1\/publications\/publication-handoff(?:\?.*)?$/, async (route) => {
     if (route.request().method() === "PUT") {
-      draftWrites.push(route.request().postDataJSON() as Record<string, unknown>);
       await route.fulfill({
         contentType: "application/json",
         json: { ...publication, revision: nextRevision++ },
@@ -219,7 +215,7 @@ test("composer preserves its draft through Image cancel and Video replacement", 
       await route.fulfill({
         contentType: "application/json",
         json: {
-          media: [originalVideo, returnedVideo].filter((item) => requestedIDs.includes(item.id)),
+          media: [originalVideo].filter((item) => requestedIDs.includes(item.id)),
         },
       });
       return;
@@ -261,47 +257,6 @@ test("composer preserves its draft through Image cancel and Video replacement", 
       },
     });
   });
-  await page.route("**/api/v1/video-editor/return-tokens", async (route) => {
-    videoTokenBodies.push(route.request().postDataJSON() as Record<string, unknown>);
-    await route.fulfill({
-      contentType: "application/json",
-      json: {
-        token: "video-handoff-token",
-        expires_at: "2099-08-09T12:00:00Z",
-      },
-    });
-  });
-  await page.route(
-    "**/api/v1/video-editor/return-tokens/video-handoff-token/consume",
-    async (route) => {
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          workspace_id: workspace.id,
-          return_url: "/publications/publication-handoff",
-          purpose: "post_media",
-          constraints: {
-            thread_segment: 0,
-            rendition_ids: ["rendition-youtube"],
-            required_variants: ["landscape"],
-          },
-          result: {
-            project_id: "video-project-handoff",
-            exports: [
-              {
-                variant_id: "landscape",
-                media_id: "video-new",
-                width: 1920,
-                height: 1080,
-                duration_ms: 12_000,
-                rendition_ids: ["rendition-youtube"],
-              },
-            ],
-          },
-        },
-      });
-    },
-  );
 
   await page.goto("/publications/publication-handoff");
   const composer = page.getByTestId("text-thread-composer-content");
@@ -326,43 +281,8 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   await picker.getByRole("tab", { name: "Library" }).click();
   await picker.getByRole("button", { name: "Edit in OpenPost Video Editor" }).click();
   await expect(page).toHaveURL(/\/video-editor\/new\?/u);
-  expect(new URL(page.url()).searchParams.get("source_media")).toBe("video-old");
-  expect(new URL(page.url()).searchParams.get("required_variants")).toBe("landscape");
-  expect(videoTokenBodies).toHaveLength(1);
-  expect(videoTokenBodies[0]).toMatchObject({
-    workspace_id: workspace.id,
-    return_url: "/publications/publication-handoff",
-    purpose: "post_media",
-    constraints: {
-      replace_media_id: "video-old",
-      rendition_ids: ["rendition-youtube"],
-      required_variants: ["landscape"],
-    },
-  });
-
-  await page.goto("/publications/publication-handoff?video_editor_return=video-handoff-token");
-  await expect(page).toHaveURL(/\/publications\/publication-handoff$/u);
-  await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue(
-    "Edited launch copy survives both editors.",
-  );
-  await expect(page.getByTestId("composer-account-icon")).toHaveCount(1);
-  await expect
-    .poll(
-      () => {
-        const last = draftWrites.at(-1);
-        const segmentMedia = (
-          last?.segments as Array<{ media?: Array<{ media_id: string }> }> | undefined
-        )?.[0]?.media;
-        return segmentMedia?.map((m) => m.media_id);
-      },
-      { timeout: 10_000 },
-    )
-    .toEqual(["video-new"]);
-  expect(
-    (draftWrites.at(-1)?.renditions as Array<{ social_account_id: string }> | undefined)?.map(
-      (r) => r.social_account_id,
-    ),
-  ).toEqual(["youtube-main"]);
-  expect(Date.parse(String(draftWrites.at(-1)?.scheduled_at))).toBe(Date.parse(scheduledAt));
+  const handoffParams = new URL(page.url()).searchParams;
+  expect(handoffParams.get("source")).toBe("media:video-old");
+  expect(handoffParams.get("return")).toBe("publication-handoff");
   expect(pageErrors).toEqual([]);
 });

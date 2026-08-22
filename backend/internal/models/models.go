@@ -1858,7 +1858,6 @@ type MediaAttachment struct {
 	ParentMediaID      string    `bun:"parent_media_id,nullzero" json:"parent_media_id,omitempty"`
 	DesignDocumentID   string    `bun:"design_document_id,nullzero" json:"design_document_id,omitempty"`
 	DesignPageID       string    `bun:"design_page_id,nullzero" json:"design_page_id,omitempty"`
-	VideoProjectID     string    `bun:"video_project_id,notnull,default:''" json:"video_project_id,omitempty"`
 	AltText            string    `json:"alt_text"`
 	IsFavorite         bool      `bun:",default:false" json:"is_favorite"`
 	RetentionClass     string    `bun:"retention_class,notnull,default:'library'" json:"retention_class"`
@@ -1987,80 +1986,6 @@ type DesignReturnToken struct {
 	ConstraintsJSON string    `bun:"constraints_json,notnull" json:"constraints_json"`
 	ResultMediaIDs  string    `bun:"result_media_ids,notnull" json:"result_media_ids"`
 	DesignID        string    `bun:"design_id" json:"design_id"`
-	CreatedAt       time.Time `bun:",notnull,default:current_timestamp" json:"created_at"`
-	ExpiresAt       time.Time `bun:",notnull" json:"expires_at"`
-	CompletedAt     time.Time `bun:"completed_at,nullzero" json:"completed_at,omitempty"`
-	ConsumedAt      time.Time `bun:"consumed_at,nullzero" json:"consumed_at,omitempty"`
-}
-
-// VideoProject is the small cloud-synced head for a local-first OpenPost Video Editor
-// project. Source bytes remain normal Media library assets and are linked
-// through VideoProjectAsset.
-type VideoProject struct {
-	bun.BaseModel `bun:"table:video_projects"`
-
-	ID                  string    `bun:",pk" json:"id"`
-	WorkspaceID         string    `bun:",notnull" json:"workspace_id"`
-	CreatedByID         string    `bun:"created_by_id,notnull" json:"created_by_id"`
-	Title               string    `bun:",notnull" json:"title"`
-	SchemaVersion       int       `bun:"schema_version,notnull,default:1" json:"schema_version"`
-	Revision            int       `bun:",notnull,default:1" json:"revision"`
-	DocumentJSON        string    `bun:"document_json,notnull" json:"-"`
-	DurationMS          int64     `bun:"duration_ms,notnull,default:0" json:"duration_ms"`
-	CoverPreviewMediaID string    `bun:"cover_preview_media_id,nullzero" json:"cover_preview_media_id,omitempty"`
-	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
-	DeletedAt           time.Time `bun:",nullzero" json:"deleted_at,omitempty"`
-}
-
-type VideoProjectAsset struct {
-	bun.BaseModel `bun:"table:video_project_assets"`
-
-	VideoProjectID string    `bun:"video_project_id,pk" json:"video_project_id"`
-	SourceID       string    `bun:"source_id,pk" json:"source_id"`
-	RevisionID     string    `bun:"revision_id,nullzero" json:"revision_id,omitempty"`
-	MediaID        string    `bun:"media_id,notnull" json:"media_id"`
-	Usage          string    `bun:",notnull,default:'source'" json:"usage"`
-	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-}
-
-type VideoProjectRevision struct {
-	bun.BaseModel `bun:"table:video_project_revisions"`
-
-	ID             string    `bun:",pk" json:"id"`
-	VideoProjectID string    `bun:"video_project_id,notnull" json:"video_project_id"`
-	Revision       int       `bun:",notnull" json:"revision"`
-	Kind           string    `bun:",notnull" json:"kind"`
-	Name           string    `bun:",notnull,default:''" json:"name"`
-	Snapshot       []byte    `bun:",notnull" json:"-"`
-	CreatedByID    string    `bun:"created_by_id,notnull" json:"created_by_id"`
-	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	ExpiresAt      time.Time `bun:",nullzero" json:"expires_at,omitempty"`
-}
-
-type VideoRevisionMediaIndexState struct {
-	bun.BaseModel `bun:"table:video_revision_media_index_state"`
-
-	RevisionID        string    `bun:"revision_id,pk" json:"revision_id"`
-	MediaCount        int       `bun:"media_count,notnull,default:0" json:"media_count"`
-	MissingMediaCount int       `bun:"missing_media_count,notnull,default:0" json:"missing_media_count"`
-	Status            string    `bun:",notnull,default:'complete'" json:"status"`
-	FailureCode       string    `bun:"failure_code,notnull,default:''" json:"failure_code,omitempty"`
-	ProcessedAt       time.Time `bun:"processed_at,nullzero,notnull,default:current_timestamp" json:"processed_at"`
-}
-
-type VideoReturnToken struct {
-	bun.BaseModel `bun:"table:video_return_tokens"`
-
-	ID              string    `bun:",pk" json:"id"`
-	TokenHash       string    `bun:",notnull,unique" json:"-"`
-	WorkspaceID     string    `bun:",notnull" json:"workspace_id"`
-	UserID          string    `bun:",notnull" json:"user_id"`
-	ReturnURL       string    `bun:",notnull" json:"return_url"`
-	Purpose         string    `bun:",notnull" json:"purpose"`
-	ConstraintsJSON string    `bun:"constraints_json,notnull" json:"constraints_json"`
-	ResultJSON      string    `bun:"result_json,notnull" json:"result_json"`
-	ProjectID       string    `bun:"project_id,notnull,default:''" json:"project_id"`
 	CreatedAt       time.Time `bun:",notnull,default:current_timestamp" json:"created_at"`
 	ExpiresAt       time.Time `bun:",notnull" json:"expires_at"`
 	CompletedAt     time.Time `bun:"completed_at,nullzero" json:"completed_at,omitempty"`

@@ -387,8 +387,6 @@ function testPlan(requestedScope, requestedOptions) {
       "--filter",
       "@openpost/web",
       "--filter",
-      "@openpost/video-project",
-      "--filter",
       "@openpost/telemetry",
       "--filter",
       "@openpost/social-preview",

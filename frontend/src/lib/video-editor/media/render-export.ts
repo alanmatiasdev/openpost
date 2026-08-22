@@ -1,0 +1,436 @@
+/**
+ * Multi-track rendered export: flattens every visible/audible timeline item
+ * into one composed video file.
+ *
+ * Ported from FreeCut (MIT) — features/export/utils/canvas-render-orchestrator.ts,
+ * client-renderer.ts, and canvas-audio.ts — retargeted to OpenPost's
+ * TimelineItem model and trimmed to a single main-thread render loop with a
+ * whole-timeline OfflineAudioContext mixdown (48 kHz stereo).
+ */
+
+import {
+	ALL_FORMATS,
+	AudioSample,
+	AudioSampleSink,
+	AudioSampleSource,
+	BlobSource,
+	BufferTarget,
+	CanvasSink,
+	Input,
+	Mp4OutputFormat,
+	Output,
+	VideoSample,
+	VideoSampleSource,
+	WebMOutputFormat
+} from 'mediabunny';
+import { saveExportFile } from '../workspace-fs/exports';
+import type { Project, TimelineItem } from '../project/types';
+import { mediaPool } from './pool.svelte';
+import { resolveMediaBlob } from './import.svelte';
+import { activeValueAt } from '../timeline/actions/keyframes';
+import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
+import {
+	frameToSourceSeconds,
+	isVisibleAtFrame,
+	outputDurationFrames,
+	paintOrder,
+	planMixdown,
+	selectCuesAtFrame,
+	transitionBlendAtFrame,
+	type MixEntry
+} from './render-plan';
+
+export interface RenderExportProgress {
+	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
+	framesDone: number;
+	totalFrames: number;
+	progress: number;
+}
+
+export interface RenderExportOptions {
+	format?: 'webm' | 'mp4';
+	onProgress?: (progress: RenderExportProgress) => void;
+}
+
+export interface RenderExportResult {
+	fileName: string;
+	relPath: string;
+	blob: Blob;
+}
+
+const MIX_SAMPLE_RATE = 48_000;
+const MIX_CHANNELS = 2;
+const AUDIO_ENCODE_CHUNK_FRAMES = 48_000;
+
+interface VideoDecoder {
+	input: Input;
+	sink: CanvasSink;
+}
+
+function report(
+	options: RenderExportOptions,
+	phase: RenderExportProgress['phase'],
+	framesDone: number,
+	totalFrames: number
+): void {
+	options.onProgress?.({
+		phase,
+		framesDone,
+		totalFrames,
+		progress: totalFrames > 0 ? framesDone / totalFrames : 0
+	});
+}
+
+/** Decode the primary audio track to an AudioBuffer at its native rate. */
+async function decodeAudioBuffer(blob: Blob): Promise<AudioBuffer> {
+	const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+	try {
+		const track = await input.getPrimaryAudioTrack();
+		if (!track) throw new Error('Clip has no audio to mix');
+		const sink = new AudioSampleSink(track);
+		const channels: Float32Array[][] = [];
+		let totalFrames = 0;
+		let sampleRate = track.sampleRate || MIX_SAMPLE_RATE;
+		for await (const sample of sink.samples()) {
+			try {
+				sampleRate = sample.sampleRate || sampleRate;
+				const frameCount = sample.numberOfFrames;
+				const planes: Float32Array[] = [];
+				for (let c = 0; c < sample.numberOfChannels; c++) {
+					// SAFETY: copyTo fills a planar f32 view of the decoded sample.
+					const plane = new Float32Array(frameCount);
+					sample.copyTo(plane, { planeIndex: c, format: 'f32-planar' });
+					planes.push(plane);
+				}
+				channels.push(planes);
+				totalFrames += frameCount;
+			} finally {
+				sample.close();
+			}
+		}
+		const outChannels = Math.min(MIX_CHANNELS, Math.max(1, channels[0]?.length ?? 1));
+		const context = new OfflineAudioContext(outChannels, Math.max(1, totalFrames), sampleRate);
+		const buffer = context.createBuffer(outChannels, Math.max(1, totalFrames), sampleRate);
+		for (let c = 0; c < outChannels; c++) {
+			const data = buffer.getChannelData(c);
+			let offset = 0;
+			for (const planes of channels) {
+				data.set(planes[c] ?? planes[0] ?? new Float32Array(0), offset);
+				offset += planes[0]?.length ?? 0;
+			}
+		}
+		return buffer;
+	} finally {
+		input.dispose?.();
+	}
+}
+
+function mixDurationSeconds(entries: MixEntry[]): number {
+	return entries.reduce(
+		(max, entry) => Math.max(max, entry.whenSeconds + entry.durationSeconds),
+		0
+	);
+}
+
+async function renderMixdown(
+	entries: MixEntry[],
+	decoded: Map<string, AudioBuffer>,
+	durationSeconds: number
+): Promise<AudioBuffer | null> {
+	if (entries.length === 0) return null;
+	const length = Math.max(1, Math.ceil(durationSeconds * MIX_SAMPLE_RATE));
+	const context = new OfflineAudioContext(MIX_CHANNELS, length, MIX_SAMPLE_RATE);
+	for (const entry of entries) {
+		const buffer = decoded.get(entry.mediaId);
+		if (!buffer) continue;
+		const source = context.createBufferSource();
+		source.buffer = buffer;
+		source.playbackRate.value = entry.playbackRate;
+		const gain = context.createGain();
+		for (const point of entry.gainPoints) {
+			gain.gain.setValueAtTime(Math.max(0, point.value), point.whenSeconds);
+		}
+		source.connect(gain).connect(context.destination);
+		source.start(
+			entry.whenSeconds,
+			entry.sourceOffsetSeconds,
+			entry.durationSeconds * entry.playbackRate
+		);
+	}
+	return context.startRendering();
+}
+
+/** Ported from FreeCut (MIT) addAudioDataInChunks — feeds f32-planar chunks. */
+async function feedEncodedAudio(
+	audioSource: AudioSampleSource,
+	buffer: AudioBuffer,
+	onChunk?: () => void
+): Promise<void> {
+	const channelCount = buffer.numberOfChannels;
+	const channelData: Float32Array[] = [];
+	for (let c = 0; c < channelCount; c++) channelData.push(buffer.getChannelData(c));
+	for (let offset = 0; offset < buffer.length; offset += AUDIO_ENCODE_CHUNK_FRAMES) {
+		const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, buffer.length - offset);
+		const planar = new Float32Array(frameCount * channelCount);
+		for (let c = 0; c < channelCount; c++) {
+			const samples = channelData[c];
+			if (samples) planar.set(samples.subarray(offset, offset + frameCount), c * frameCount);
+		}
+		const sample = new AudioSample({
+			data: planar,
+			format: 'f32-planar',
+			numberOfChannels: channelCount,
+			sampleRate: buffer.sampleRate,
+			timestamp: offset / buffer.sampleRate
+		});
+		try {
+			await audioSource.add(sample);
+			onChunk?.();
+		} finally {
+			sample.close();
+		}
+	}
+}
+
+function baseOpacity(item: TimelineItem, frame: number): number {
+	const keyframed = activeValueAt(item, 'opacity', frame);
+	if (keyframed !== null) return Math.min(1, Math.max(0, keyframed));
+	return Math.min(1, Math.max(0, item.transform?.opacity ?? 1));
+}
+
+function drawTransformed(
+	ctx: OffscreenCanvasRenderingContext2D,
+	image: CanvasImageSource,
+	sourceWidth: number,
+	sourceHeight: number,
+	item: TimelineItem,
+	canvasWidth: number,
+	canvasHeight: number,
+	alpha: number
+): void {
+	const transform = item.transform ?? {};
+	const fit = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+	const drawWidth = sourceWidth * fit;
+	const drawHeight = sourceHeight * fit;
+	const centerX = canvasWidth / 2 + (transform.x ?? 0) * canvasWidth;
+	const centerY = canvasHeight / 2 + (transform.y ?? 0) * canvasHeight;
+	ctx.save();
+	ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
+	ctx.translate(centerX, centerY);
+	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
+	ctx.scale(transform.flipHorizontal === true ? -1 : 1, transform.flipVertical === true ? -1 : 1);
+	ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+	ctx.restore();
+}
+
+function drawSubtitleText(
+	ctx: OffscreenCanvasRenderingContext2D,
+	text: string,
+	canvasWidth: number,
+	canvasHeight: number,
+	scale: number
+): void {
+	const fontSize = Math.round((canvasHeight / 18) * Math.max(0.1, scale ?? 1));
+	ctx.save();
+	ctx.font = `600 ${fontSize}px sans-serif`;
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'bottom';
+	ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+	ctx.shadowBlur = fontSize / 6;
+	ctx.fillStyle = '#ffffff';
+	const lines = text.split('\n');
+	const lineHeight = fontSize * 1.25;
+	const bottomOffset = canvasHeight / 16;
+	lines.forEach((line, index) => {
+		const y = canvasHeight - bottomOffset - (lines.length - 1 - index) * lineHeight;
+		ctx.fillText(line, canvasWidth / 2, y);
+	});
+	ctx.restore();
+}
+
+/** Render the full timeline into one composed file and save it to exports. */
+export async function renderMultiTrackVideo(
+	project: Project,
+	options: RenderExportOptions = {}
+): Promise<RenderExportResult> {
+	const fps = project.metadata.fps;
+	const width = project.metadata.width;
+	const height = project.metadata.height;
+	const timeline = project.timeline;
+	const items = timeline?.items ?? [];
+	if (items.length === 0) throw new Error('This timeline has nothing to render.');
+	const tracks = timeline?.tracks ?? [];
+	const transitions = timeline?.transitions ?? [];
+	const itemsById = new Map(items.map((item) => [item.id, item]));
+	const totalFrames = outputDurationFrames(items);
+
+	report(options, 'preparing', 0, totalFrames);
+
+	const mixEntries = planMixdown(items, tracks, fps);
+	const decodedAudio = new Map<string, AudioBuffer>();
+	for (const mediaId of new Set(mixEntries.map((entry) => entry.mediaId))) {
+		const media = mediaPool.get(mediaId);
+		if (!media) continue;
+		try {
+			decodedAudio.set(mediaId, await decodeAudioBuffer(await resolveMediaBlob(media)));
+		} catch {
+			// Silent or unreadable audio drops out of the mix rather than failing export.
+		}
+	}
+	report(options, 'mixing', 0, totalFrames);
+	const mixed =
+		mixEntries.length > 0
+			? await renderMixdown(mixEntries, decodedAudio, mixDurationSeconds(mixEntries))
+			: null;
+
+	const format = options.format ?? 'webm';
+	const isWebM = format === 'webm';
+	const outputFormat = isWebM ? new WebMOutputFormat() : new Mp4OutputFormat();
+	const target = new BufferTarget();
+	const output = new Output({ format: outputFormat, target });
+	const videoSource = new VideoSampleSource({
+		codec: isWebM ? 'vp9' : 'avc',
+		bitrate: 8_000_000,
+		keyFrameInterval: 2,
+		latencyMode: 'quality'
+	});
+	output.addVideoTrack(videoSource, { frameRate: fps });
+
+	let audioSource: AudioSampleSource | null = null;
+	if (mixed) {
+		audioSource = new AudioSampleSource({ codec: isWebM ? 'opus' : 'aac', bitrate: 192_000 });
+		output.addAudioTrack(audioSource);
+	}
+
+	await output.start();
+
+	async function runFeed(): Promise<void> {
+		if (!mixed || !audioSource) return;
+		const source = audioSource;
+		try {
+			await feedEncodedAudio(source, mixed);
+		} finally {
+			source.close();
+			audioSource = null;
+		}
+	}
+	const feedTask = runFeed();
+	feedTask.catch(() => undefined);
+
+	const canvas = new OffscreenCanvas(width, height);
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error('Failed to create the render canvas context.');
+	ctx.imageSmoothingEnabled = true;
+	ctx.imageSmoothingQuality = 'high';
+
+	const backgroundColor = project.metadata.backgroundColor ?? '#000000';
+	const orderedItems = paintOrder(items, tracks).filter(
+		(item) => item.type === 'video' || item.type === 'image'
+	);
+	const subtitleItems = items.filter((item) => item.type === 'subtitle');
+
+	const decoders = new Map<string, VideoDecoder>();
+	const imageCache = new Map<string, ImageBitmap>();
+	const inputs: Input[] = [];
+
+	async function getDecoder(mediaId: string): Promise<VideoDecoder | null> {
+		const existing = decoders.get(mediaId);
+		if (existing) return existing;
+		const media = mediaPool.get(mediaId);
+		if (!media) return null;
+		const blob = await resolveMediaBlob(media);
+		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		inputs.push(input);
+		const videoTrack = await input.getPrimaryVideoTrack();
+		if (!videoTrack) return null;
+		const decoder: VideoDecoder = {
+			input,
+			sink: new CanvasSink(videoTrack, { width, height, fit: 'contain' })
+		};
+		decoders.set(mediaId, decoder);
+		return decoder;
+	}
+
+	try {
+		for (let frame = 0; frame < totalFrames; frame++) {
+			ctx.globalAlpha = 1;
+			ctx.fillStyle = backgroundColor;
+			ctx.fillRect(0, 0, width, height);
+
+			const blend = transitionBlendAtFrame(transitions, itemsById, frame);
+			for (const item of orderedItems) {
+				if (!isVisibleAtFrame(item, frame) || !item.mediaId) continue;
+				let alpha = baseOpacity(item, frame);
+				if (blend) {
+					if (item.id === blend.outgoingId) {
+						alpha *= outgoingOpacity(blend.type, blend.progress);
+					} else if (item.id === blend.incomingId) {
+						alpha *= incomingOpacity(blend.type, blend.progress);
+					}
+				}
+				if (alpha <= 0) continue;
+
+				if (item.type === 'video') {
+					const decoder = await getDecoder(item.mediaId);
+					if (!decoder) continue;
+					const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, fps));
+					if (!wrapped) continue;
+					drawTransformed(
+						ctx,
+						wrapped.canvas,
+						wrapped.canvas.width,
+						wrapped.canvas.height,
+						item,
+						width,
+						height,
+						alpha
+					);
+				} else {
+					let bitmap = imageCache.get(item.mediaId);
+					if (!bitmap) {
+						const media = mediaPool.get(item.mediaId);
+						if (!media) continue;
+						bitmap = await createImageBitmap(await resolveMediaBlob(media));
+						imageCache.set(item.mediaId, bitmap);
+					}
+					drawTransformed(ctx, bitmap, bitmap.width, bitmap.height, item, width, height, alpha);
+				}
+			}
+
+			for (const item of subtitleItems) {
+				if (!isVisibleAtFrame(item, frame)) continue;
+				const cue = selectCuesAtFrame(item.cues ?? [], frame)[0];
+				if (cue) drawSubtitleText(ctx, cue.text, width, height, item.subtitleStyleScale ?? 1);
+			}
+
+			const sample = new VideoSample(canvas, { timestamp: frame / fps, duration: 1 / fps });
+			await videoSource.add(sample);
+			sample.close();
+
+			report(options, 'rendering', frame + 1, totalFrames);
+		}
+
+		videoSource.close();
+		await feedTask;
+		report(options, 'finalizing', totalFrames, totalFrames);
+		await output.finalize();
+	} catch (error) {
+		try {
+			if (output.state === 'started') await output.cancel();
+		} catch {
+			// The original failure below matters more than cancel errors.
+		}
+		throw error;
+	} finally {
+		for (const input of inputs) input.dispose?.();
+		for (const bitmap of imageCache.values()) bitmap.close();
+		imageCache.clear();
+	}
+
+	const buffer = target.buffer;
+	if (!buffer) throw new Error('Render produced no data.');
+	const blob = new Blob([buffer], { type: isWebM ? 'video/webm' : 'video/mp4' });
+	const baseName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${format}`;
+	const saved = await saveExportFile(project.id, baseName, blob);
+	return { ...saved, blob };
+}

@@ -70,11 +70,7 @@ export const composerErrorCodes = [
 	'session_request_failed',
 	'image_editor_return_inactive',
 	'image_editor_return_workspace_mismatch',
-	'video_editor_return_inactive',
-	'video_editor_return_workspace_mismatch',
-	'video_editor_return_metadata_missing',
-	'editor_origin_segment_missing',
-	'video_editor_return_export_missing'
+	'editor_origin_segment_missing'
 ] as const;
 
 export type ComposerErrorCode = (typeof composerErrorCodes)[number];

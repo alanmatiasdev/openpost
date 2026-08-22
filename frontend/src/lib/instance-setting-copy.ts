@@ -209,11 +209,6 @@ const portugueseCopyDefinitions = {
 		description:
 			'URL ou caminho da aplicação usado para carregar os modelos do Editor de Imagens OpenPost.'
 	},
-	OPENPOST_VIDEO_MODEL_BASE_URL: {
-		label: 'Caminho dos modelos de vídeo',
-		description:
-			'URL ou caminho da aplicação usado para carregar os modelos do Editor de Vídeo OpenPost.'
-	},
 	OPENPOST_STOCK_MEDIA_ENABLED: {
 		label: 'Pesquisa de multimédia de stock',
 		description:

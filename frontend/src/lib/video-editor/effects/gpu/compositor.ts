@@ -1,0 +1,403 @@
+/**
+ * WebGL2 GPU compositor.
+ *
+ * Ported from FreeCut (MIT) — infrastructure/gpu-effects/effects-pipeline.ts
+ * and infrastructure/gpu-media/media-blend-pipeline.ts — adapted from WebGPU
+ * to WebGL2: same fullscreen-quad contract, ping-pong framebuffers chaining
+ * multiple effects, per-effect uniform binding from param values, and the
+ * verbatim 25-mode blend pass as the final composite against an optional
+ * second source texture.
+ *
+ * The engine is intentionally standalone (no Svelte imports) so the export
+ * canvas compositor can adopt the same shaders later.
+ */
+
+import { BLEND_MODE_INDEX, type BlendMode } from "./blend-modes";
+import { BLEND_MODES_GLSL, EFFECT_COMMON_GLSL, FULLSCREEN_VERTEX_GLSL } from "./shader-source";
+import { getGpuEffect } from "./registry";
+import type { GpuParamValues, GpuShaderDefinition } from "./types";
+
+/** One resolved effect instance handed to `render`. */
+export interface GpuRenderEffect {
+  effectId: string;
+  params: GpuParamValues;
+}
+
+export interface GpuRenderOptions {
+  /** Seconds on the session clock; drives time-based effects (grain, glitch…). */
+  time?: number;
+  /** Final composite mode against the backdrop (default 'normal'). */
+  blendMode?: BlendMode;
+  /** Second source texture for the blend pass; opaque black when absent. */
+  backdrop?: TexImageSource | null;
+}
+
+interface ProgramBundle {
+  program: WebGLProgram;
+  uniformLocations: Map<string, WebGLUniformLocation | null>;
+  samplerUnits: Map<string, number>;
+}
+
+const VERTEX_SHADER = FULLSCREEN_VERTEX_GLSL;
+
+function fragmentShaderSource(definition: GpuShaderDefinition): string {
+  return `#version 300 es
+precision highp float;
+uniform sampler2D uInputTex;
+in vec2 vUv;
+out vec4 fragColor;
+${EFFECT_COMMON_GLSL}
+${definition.fragmentSource}
+void main() {
+  fragColor = ${definition.entryPoint}(vUv);
+}
+`;
+}
+
+const BLEND_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+uniform sampler2D uLayerTex;
+uniform sampler2D uBaseTex;
+uniform float uOpacity;
+uniform float uDissolveAlpha;
+uniform int uMode;
+in vec2 vUv;
+out vec4 fragColor;
+${BLEND_MODES_GLSL}
+void main() {
+  vec4 layer = texture(uLayerTex, vUv);
+  vec4 base = texture(uBaseTex, vUv);
+  fragColor = compositeBlendSourceOver(
+    base,
+    layer,
+    layer.a * uOpacity,
+    1.0,
+    uMode,
+    vUv * 1024.0,
+    uDissolveAlpha
+  );
+}
+`;
+
+function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
+  const shader = gl.createShader(type);
+  if (!shader) throw new Error("GPU compositor: shader allocation failed");
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(shader) ?? "";
+    gl.deleteShader(shader);
+    throw new Error(`GPU compositor: shader compile failed: ${log}`);
+  }
+  return shader;
+}
+
+function linkProgram(
+  gl: WebGL2RenderingContext,
+  vertex: WebGLShader,
+  fragment: WebGLShader,
+): WebGLProgram {
+  const program = gl.createProgram();
+  if (!program) throw new Error("GPU compositor: program allocation failed");
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const log = gl.getProgramInfoLog(program) ?? "";
+    gl.deleteProgram(program);
+    throw new Error(`GPU compositor: program link failed: ${log}`);
+  }
+  return program;
+}
+
+export class GpuCompositor {
+  private readonly gl: WebGL2RenderingContext;
+  private readonly canvas: HTMLCanvasElement | OffscreenCanvas;
+  private readonly vertexShader: WebGLShader;
+  private readonly programs = new Map<string, ProgramBundle>();
+  private blendProgram: ProgramBundle | null = null;
+  private sourceTexture: WebGLTexture | null = null;
+  private backdropTexture: WebGLTexture | null = null;
+  private pingTextures: [WebGLTexture | null, WebGLTexture | null] = [null, null];
+  private framebuffers: [WebGLFramebuffer | null, WebGLFramebuffer | null] = [null, null];
+  private pingSize: [number, number] = [0, 0];
+  private dataTextureCache = new Map<string, { texture: WebGLTexture; key: string }>();
+  private disposed = false;
+
+  private constructor(canvas: HTMLCanvasElement | OffscreenCanvas, gl: WebGL2RenderingContext) {
+    this.canvas = canvas;
+    this.gl = gl;
+    this.vertexShader = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+    this.sourceTexture = this.createTexture();
+    this.backdropTexture = this.createTexture();
+  }
+
+  /** Create a compositor for a canvas; null when WebGL2 is unavailable. */
+  static create(canvas: HTMLCanvasElement | OffscreenCanvas): GpuCompositor | null {
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "low-power",
+    });
+    if (!gl) return null;
+    try {
+      return new GpuCompositor(canvas, gl);
+    } catch {
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      return null;
+    }
+  }
+
+  private createTexture(): WebGLTexture {
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    if (!texture) throw new Error("GPU compositor: texture allocation failed");
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return texture;
+  }
+
+  private getProgram(definition: GpuShaderDefinition): ProgramBundle {
+    const cached = this.programs.get(definition.id);
+    if (cached) return cached;
+    const gl = this.gl;
+    const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource(definition));
+    const program = linkProgram(gl, this.vertexShader, fragment);
+    gl.deleteShader(fragment);
+
+    const bundle: ProgramBundle = { program, uniformLocations: new Map(), samplerUnits: new Map() };
+    // SAFETY: getProgramParameter is typed any; ACTIVE_UNIFORMS returns the
+    // GLint uniform count for this linked program.
+    const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
+    let nextSamplerUnit = 1;
+    for (let i = 0; i < uniformCount; i++) {
+      const info = gl.getActiveUniform(program, i);
+      if (!info) continue;
+      const name = info.name.replace(/\[0\]$/, "");
+      if (info.type === gl.SAMPLER_2D) {
+        bundle.samplerUnits.set(name, name === "uInputTex" ? 0 : nextSamplerUnit++);
+      }
+    }
+    this.programs.set(definition.id, bundle);
+    return bundle;
+  }
+
+  private getBlendProgram(): ProgramBundle {
+    if (this.blendProgram) return this.blendProgram;
+    const gl = this.gl;
+    const fragment = compileShader(gl, gl.FRAGMENT_SHADER, BLEND_FRAGMENT_SOURCE);
+    const program = linkProgram(gl, this.vertexShader, fragment);
+    gl.deleteShader(fragment);
+    this.blendProgram = { program, uniformLocations: new Map(), samplerUnits: new Map() };
+    return this.blendProgram;
+  }
+
+  private location(bundle: ProgramBundle, name: string): WebGLUniformLocation | null {
+    if (!bundle.uniformLocations.has(name)) {
+      bundle.uniformLocations.set(name, this.gl.getUniformLocation(bundle.program, name));
+    }
+    return bundle.uniformLocations.get(name) ?? null;
+  }
+
+  private ensurePingTargets(width: number, height: number): void {
+    const gl = this.gl;
+    if (this.pingSize[0] === width && this.pingSize[1] === height) return;
+    for (let i = 0; i < 2; i++) {
+      if (this.pingTextures[i]) gl.deleteTexture(this.pingTextures[i]);
+      if (this.framebuffers[i]) gl.deleteFramebuffer(this.framebuffers[i]);
+      const texture = this.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const framebuffer = gl.createFramebuffer();
+      if (!framebuffer) throw new Error("GPU compositor: framebuffer allocation failed");
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      this.pingTextures[i] = texture;
+      this.framebuffers[i] = framebuffer;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.pingSize = [width, height];
+  }
+
+  private uploadTexture(texture: WebGLTexture | null, source: TexImageSource): void {
+    const gl = this.gl;
+    if (!texture) return;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  }
+
+  private ensureDataTexture(definition: GpuShaderDefinition, params: GpuParamValues): void {
+    const spec = definition.dataTexture;
+    const gl = this.gl;
+    if (!spec) return;
+    const key = spec.key(params);
+    const cached = this.dataTextureCache.get(definition.id);
+    if (cached && cached.key === key) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, cached.texture);
+      return;
+    }
+    if (cached) gl.deleteTexture(cached.texture);
+    const payload = spec.build(params);
+    const texture = this.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      payload.width,
+      payload.height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      payload.data,
+    );
+    this.dataTextureCache.set(definition.id, { texture, key });
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+  }
+
+  /**
+   * Render `source` through the ordered effect chain onto the canvas.
+   * Returns false when the GPU work could not complete (caller should fall
+   * back to the DOM/CSS-filter path).
+   */
+  render(
+    source: TexImageSource,
+    width: number,
+    height: number,
+    effects: readonly GpuRenderEffect[],
+    options: GpuRenderOptions = {},
+  ): boolean {
+    if (this.disposed || width <= 0 || height <= 0) return false;
+    const gl = this.gl;
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+
+    try {
+      this.uploadTexture(this.sourceTexture, source);
+      if (options.backdrop) {
+        this.uploadTexture(this.backdropTexture, options.backdrop);
+      }
+      this.ensurePingTargets(width, height);
+
+      let currentTexture = this.sourceTexture;
+      let passIndex = 0;
+
+      for (const entry of effects) {
+        const definition = getGpuEffect(entry.effectId);
+        if (!definition) continue;
+        const bundle = this.getProgram(definition);
+        const target = this.framebuffers[passIndex % 2];
+        const targetTexture = this.pingTextures[passIndex % 2];
+        if (!target || !targetTexture) return false;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target);
+        gl.viewport(0, 0, width, height);
+        gl.useProgram(bundle.program);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+        for (const [name, unit] of bundle.samplerUnits) {
+          if (name === "uInputTex") continue;
+          gl.uniform1i(this.location(bundle, name), unit);
+        }
+        this.ensureDataTexture(definition, entry.params);
+
+        const values = definition.uniformValues(entry.params, width, height, options.time ?? 0);
+        for (const [name, value] of Object.entries(values)) {
+          const loc = this.location(bundle, name);
+          if (loc) gl.uniform1f(loc, value);
+        }
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        currentTexture = targetTexture;
+        passIndex++;
+      }
+
+      // Final blend pass to the canvas: processed clip over the backdrop
+      // (opaque black when none) with the clip's blend mode.
+      const blend = this.getBlendProgram();
+      const mode = BLEND_MODE_INDEX[options.blendMode ?? "normal"] ?? 0;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, width, height);
+      gl.useProgram(blend.program);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+      gl.activeTexture(gl.TEXTURE1);
+      if (options.backdrop && this.backdropTexture) {
+        gl.bindTexture(gl.TEXTURE_2D, this.backdropTexture);
+      } else {
+        // No backdrop: a transparent-black base keeps 'normal' a straight
+        // blit and lets non-normal modes operate against empty alpha.
+        if (!this.neutralBase) this.neutralBase = this.createNeutralBase();
+        gl.bindTexture(gl.TEXTURE_2D, this.neutralBase);
+      }
+      gl.uniform1i(this.location(blend, "uLayerTex"), 0);
+      gl.uniform1i(this.location(blend, "uBaseTex"), 1);
+      gl.uniform1f(this.location(blend, "uOpacity"), 1);
+      gl.uniform1f(this.location(blend, "uDissolveAlpha"), 0);
+      gl.uniform1i(this.location(blend, "uMode"), mode);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private neutralBase: WebGLTexture | null = null;
+
+  private createNeutralBase(): WebGLTexture {
+    const gl = this.gl;
+    const texture = this.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 0]),
+    );
+    return texture;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const gl = this.gl;
+    for (const bundle of this.programs.values()) gl.deleteProgram(bundle.program);
+    if (this.blendProgram) gl.deleteProgram(this.blendProgram.program);
+    for (const texture of this.pingTextures) if (texture) gl.deleteTexture(texture);
+    for (const framebuffer of this.framebuffers) if (framebuffer) gl.deleteFramebuffer(framebuffer);
+    if (this.sourceTexture) gl.deleteTexture(this.sourceTexture);
+    if (this.backdropTexture) gl.deleteTexture(this.backdropTexture);
+    if (this.neutralBase) gl.deleteTexture(this.neutralBase);
+    for (const cached of this.dataTextureCache.values()) gl.deleteTexture(cached.texture);
+    this.dataTextureCache.clear();
+    gl.deleteShader(this.vertexShader);
+    this.programs.clear();
+  }
+}
+
+/** Create a compositor for a canvas; null when WebGL2 is unavailable. */
+export function createGpuCompositor(
+  canvas: HTMLCanvasElement | OffscreenCanvas,
+): GpuCompositor | null {
+  return GpuCompositor.create(canvas);
+}

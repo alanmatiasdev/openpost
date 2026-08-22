@@ -121,27 +121,17 @@
 		consumeImageEditorReturnToken,
 		createImageEditorReturnToken
 	} from '$lib/image-editor/api';
-	import { consumeVideoReturnToken, createVideoReturnToken } from '$lib/video-editor/api';
 	import {
 		clearEditorHandoff,
 		loadEditorHandoff,
 		storeEditorHandoff,
-		type ComposerRecoverySnapshot,
-		type EditorHandoffKind
+		type ComposerRecoverySnapshot
 	} from '$lib/editor-handoff';
 	import {
 		parseComposerHandoffPayload,
 		type ComposerHandoffPayload
 	} from '$lib/composer/handoff-payload';
-	import {
-		planVideoComposerHandoff,
-		replaceOrAppendMediaID,
-		videoReturnConstraints,
-		type VideoHandoffPlan,
-		type VideoReturnConstraintOverrides
-	} from '$lib/video-editor/composer-handoff';
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
-	import type { VideoConstraint } from '$lib/video/types';
 	import type { DraftConflictProblem } from '$lib/draft-conflict';
 	import {
 		ComposerSession,
@@ -1985,13 +1975,13 @@
 				: $page.url,
 			$page.url
 		);
-		for (const key of ['image_editor_return', 'video_editor_return', 'editor_handoff_cancelled']) {
+		for (const key of ['image_editor_return', 'editor_handoff_cancelled']) {
 			returnURL.searchParams.delete(key);
 		}
 		return returnURL;
 	}
 
-	function composerHandoffPayload(video?: ComposerHandoffPayload['video']): ComposerHandoffPayload {
+	function composerHandoffPayload(): ComposerHandoffPayload {
 		const payload: ComposerHandoffPayload = {
 			posts: $state.snapshot(posts),
 			variants: Array.from(variants.entries()),
@@ -2016,7 +2006,6 @@
 			repost_override: $state.snapshot(repostOverride),
 			revision
 		};
-		if (video) payload.video = video;
 		return payload;
 	}
 
@@ -2081,10 +2070,10 @@
 		return payload;
 	}
 
-	function finishEditorHandoff(token: string, editor: EditorHandoffKind): void {
+	function finishEditorHandoff(token: string): void {
 		clearEditorHandoff(token);
 		const clean = new URL($page.url);
-		clean.searchParams.delete(editor === 'image' ? 'image_editor_return' : 'video_editor_return');
+		clean.searchParams.delete('image_editor_return');
 		clean.searchParams.delete('editor_handoff_cancelled');
 		replaceState(resolveAppPath(`${clean.pathname}${clean.search}${clean.hash}`), {});
 	}
@@ -2143,7 +2132,7 @@
 			if (!snapshot) throw new ComposerSessionError('image_editor_return_inactive');
 			await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
-				finishEditorHandoff(token, 'image');
+				finishEditorHandoff(token);
 				return;
 			}
 			const result = await consumeImageEditorReturnToken(token);
@@ -2167,10 +2156,10 @@
 				getEditorContentForPost(posts[targetIndex])
 			);
 			scheduleAutoSave();
-			finishEditorHandoff(token, 'image');
+			finishEditorHandoff(token);
 			notifyImageEditorReturn(result.media_ids.length);
 		} catch (cause) {
-			finishEditorHandoff(token, 'image');
+			finishEditorHandoff(token);
 			error =
 				cause instanceof Error
 					? m.compose_image_editor_return_error({ detail: composerErrorMessage(cause) })
@@ -2195,197 +2184,15 @@
 		await requireSavedComposerBeforeHandoff();
 		await resolveCapabilities();
 		const publication = await canonicalPublicationForHandoff();
-		const scopeAccountID =
-			activeVariantAccountId && activeVariantIsUnsynced ? activeVariantAccountId : undefined;
-		const targetAccountIDs = scopeAccountID ? [scopeAccountID] : selectedAccountIds;
-		const targetRenditions = (publication?.renditions ?? []).filter((rendition) =>
-			targetAccountIDs.includes(rendition.social_account_id)
-		);
-		if (
-			publication &&
-			(targetRenditions.length !== targetAccountIDs.length ||
-				new Set(targetRenditions.map((rendition) => rendition.social_account_id)).size !==
-					targetAccountIDs.length)
-		) {
-			throw new Error(m.compose_load_composer_failed());
-		}
-		const renditionByAccount = new Map(
-			targetRenditions.map((rendition) => [rendition.social_account_id, rendition])
-		);
-		const plan = planVideoComposerHandoff(
-			targetAccountIDs.map((accountID) => ({
-				account_id: accountID,
-				rendition_id: renditionByAccount.get(accountID)?.id,
-				output_profile:
-					renditionByAccount.get(accountID)?.output_profile ||
-					requestedOutputProfiles[accountID] ||
-					resolvedCapabilities[accountID]?.output_profile ||
-					'',
-				aspect_ratios: resolvedCapabilities[accountID]?.media.aspect_ratios ?? []
-			})),
-			{ width: selectedVideo?.width, height: selectedVideo?.height }
-		);
-		const destinationConstraints = targetAccountIDs
-			.map((accountID) => resolvedCapabilities[accountID]?.media)
-			.filter((constraint): constraint is VideoConstraint => Boolean(constraint));
-		const returnURL = composerHandoffReturnURL();
-		const purpose = isThread ? 'thread_segment' : 'post_media';
-		const constraintOverrides: VideoReturnConstraintOverrides = {
-			thread_segment: mediaPickerPostIndex
-		};
-		if (selectedVideo) constraintOverrides.replace_media_id = selectedVideo.id;
-		const token = await createVideoReturnToken({
-			workspace_id: selectedWorkspaceId,
-			return_url: `${returnURL.pathname}${returnURL.search}`,
-			purpose,
-			constraints: videoReturnConstraints(destinationConstraints, plan, constraintOverrides)
-		});
-		const binding = (await sessionFor(selectedWorkspaceId, publicationId)).bindEditorHandoff(
-			token.token
-		);
-		storeEditorHandoff(token.token, {
-			version: 2,
-			editor: 'video',
-			workspace_id: binding.workspaceId,
-			publication_id: binding.publicationId,
-			publication_revision: binding.revision,
-			return_token: binding.returnToken,
-			return_url: `${returnURL.pathname}${returnURL.search}`,
-			purpose,
-			created_at: new Date().toISOString(),
-			expires_at: token.expires_at,
-			payload: composerHandoffPayload({
-				replace_media_id: selectedVideo?.id,
-				scope_account_id: scopeAccountID,
-				plan
-			})
-		});
 		const query = new URLSearchParams({
-			workspace: selectedWorkspaceId,
-			return_token: token.token,
-			required_variants: plan.required_variants.join(','),
-			variant_renditions: JSON.stringify(plan.variant_renditions)
+			return: publication?.id ?? publicationId
 		});
-		if (selectedVideo) {
-			query.set('source_media', selectedVideo.id);
-			if (selectedVideo.original_filename) {
-				query.set('source_name', selectedVideo.original_filename);
-			}
-		}
+		if (selectedVideo) query.set('source', `media:${selectedVideo.id}`);
 		await goto(resolveAppPath(`/video-editor/new?${query.toString()}`));
-	}
-
-	function applyVideoEditorReturn(
-		payload: ComposerHandoffPayload,
-		result: components['schemas']['VideoReturnResult'],
-		constraints: components['schemas']['ConsumeVideoReturnTokenOutputBody']['constraints']
-	): string[] {
-		if (!payload.video) {
-			throw new ComposerSessionError('video_editor_return_metadata_missing');
-		}
-		const targetIndex = Math.max(
-			0,
-			Math.min(
-				Number(constraints.thread_segment ?? payload.active_post_index),
-				Math.max(0, posts.length - 1)
-			)
-		);
-		const targetPost = posts[targetIndex];
-		if (!targetPost) throw new ComposerSessionError('editor_origin_segment_missing');
-		const exports = result.exports ?? [];
-		const exportByVariant = new Map(exports.map((item) => [item.variant_id, item.media_id]));
-		const primaryMediaID =
-			exportByVariant.get(payload.video.plan.primary_variant) ?? exports[0]?.media_id;
-		if (!primaryMediaID) {
-			throw new ComposerSessionError('video_editor_return_export_missing');
-		}
-		const previousCanonical = [...targetPost.mediaIds];
-		const replacementID = payload.video.replace_media_id;
-		const scopeAccountID = payload.video.scope_account_id;
-		if (scopeAccountID) {
-			const scopedMedia = getVariantMediaIds(scopeAccountID, targetPost.key) ?? previousCanonical;
-			setVariantMediaIds(
-				scopeAccountID,
-				targetIndex,
-				replaceOrAppendMediaID(scopedMedia, replacementID, primaryMediaID, composerMediaLimit)
-			);
-		} else {
-			posts = posts.map((post, index) =>
-				index === targetIndex
-					? {
-							...post,
-							mediaIds: replaceOrAppendMediaID(
-								post.mediaIds,
-								replacementID,
-								primaryMediaID,
-								composerMediaLimit
-							)
-						}
-					: post
-			);
-		}
-		for (const variantID of payload.video.plan.required_variants) {
-			const accountIDs = payload.video.plan.variant_accounts[variantID];
-			const variantMediaID = exportByVariant.get(variantID);
-			if (!variantMediaID) continue;
-			for (const accountID of accountIDs) {
-				if (scopeAccountID && accountID !== scopeAccountID) continue;
-				const existingOverride = getVariantMediaIds(accountID, targetPost.key);
-				if (!scopeAccountID && variantMediaID === primaryMediaID && !existingOverride) continue;
-				setVariantMediaIds(
-					accountID,
-					targetIndex,
-					replaceOrAppendMediaID(
-						existingOverride ?? previousCanonical,
-						replacementID,
-						variantMediaID,
-						composerMediaLimit
-					)
-				);
-			}
-		}
-		return Array.from(new Set(exports.map((item) => item.media_id)));
-	}
-
-	async function restoreVideoEditorReturn() {
-		if (!$page?.url) return;
-		const token = $page.url.searchParams.get('video_editor_return');
-		if (!token) return;
-		try {
-			const snapshot = loadEditorHandoff(token, 'video');
-			if (!snapshot) throw new ComposerSessionError('video_editor_return_inactive');
-			const payload = await restoreComposerHandoff(snapshot, token);
-			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
-				finishEditorHandoff(token, 'video');
-				return;
-			}
-			const returned = await consumeVideoReturnToken(token);
-			if (snapshot.workspace_id !== returned.workspace_id) {
-				throw new ComposerSessionError('video_editor_return_workspace_mismatch');
-			}
-			const mediaIDs = applyVideoEditorReturn(payload, returned.result, returned.constraints);
-			await hydrateMediaMetadata(returned.workspace_id, mediaIDs, true);
-			scheduleAutoSave();
-			scheduleCapabilityResolve();
-			finishEditorHandoff(token, 'video');
-			notifyVideoEditorReturn(mediaIDs.length);
-		} catch (cause) {
-			finishEditorHandoff(token, 'video');
-			error =
-				cause instanceof Error
-					? m.compose_video_editor_return_error({ detail: composerErrorMessage(cause) })
-					: m.video_editor_return_recovery();
-		}
 	}
 
 	function notifyImageEditorReturn(count: number) {
 		error = '';
-		if (count > 0) soundPreferences.play('success');
-	}
-
-	function notifyVideoEditorReturn(count: number) {
-		error = '';
-		success = m.video_editor_return_success({ count });
 		if (count > 0) soundPreferences.play('success');
 	}
 
@@ -2607,7 +2414,6 @@
 		void (async () => {
 			await initializeComposer();
 			await restoreImageEditorReturn();
-			await restoreVideoEditorReturn();
 		})();
 		return () => {
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -5765,7 +5571,9 @@
 		background-color: color-mix(in oklch, var(--foreground) 22%, transparent);
 	}
 
-	.destination-tabs-scrollbar::-webkit-scrollbar-thumb:hover {
-		background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+	@media (hover: hover) and (pointer: fine) {
+		.destination-tabs-scrollbar::-webkit-scrollbar-thumb:hover {
+			background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+		}
 	}
 </style>

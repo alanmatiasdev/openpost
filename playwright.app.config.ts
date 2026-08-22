@@ -19,7 +19,7 @@ const firstUseDBPath = `/tmp/openpost-app-e2e-${firstUsePort}.db`;
 const dailyDBPath = `/tmp/openpost-app-e2e-${dailyPort}.db`;
 const reuseExistingServer = process.env.OPENPOST_APP_E2E_REUSE_SERVER === "1";
 const usePrebuiltArtifact = process.env.OPENPOST_E2E_PREBUILT === "1";
-const workers = Number(process.env.OPENPOST_APP_E2E_WORKERS ?? 2);
+const workers = Number(process.env.OPENPOST_APP_E2E_WORKERS ?? (process.env.CI ? 1 : 2));
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const chromiumUse = {
   launchOptions: {

@@ -141,9 +141,23 @@
 	}
 	html {
 		@apply font-sans;
+		-webkit-tap-highlight-color: transparent;
+		overscroll-behavior-y: none;
 		@media (min-width: 48rem) {
 			scrollbar-gutter: stable;
 		}
+	}
+	button,
+	a,
+	[role='button'],
+	[role='menuitem'],
+	[role='option'],
+	[role='tab'],
+	label,
+	input,
+	select,
+	textarea {
+		touch-action: manipulation;
 	}
 }
 
@@ -215,6 +229,12 @@
 	}
 }
 
+@layer utilities {
+	.overflow-x-auto {
+		overscroll-behavior-x: contain;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
@@ -241,6 +261,17 @@
 	[role='menuitem'],
 	[role='option'] {
 		min-width: 44px;
+	}
+
+	button,
+	a,
+	[data-slot='button'],
+	[role='button'],
+	[role='menuitem'],
+	[role='option'],
+	[role='tab'] {
+		user-select: none;
+		-webkit-user-select: none;
 	}
 }
 textarea[data-fabric='textarea'] {

@@ -180,6 +180,25 @@ test("maintained workflows pin every external action and receive weekly updates"
   );
 });
 
+test("native Android CI provisions the complete SDK before building", () => {
+  const android = workflowJob(ci, "android");
+  const sdkSetup = android.indexOf("android-actions/setup-android@");
+  const candidateBuild = android.indexOf("bun run build:android:candidate");
+
+  assert.ok(sdkSetup >= 0 && sdkSetup < candidateBuild);
+  assert.match(android, /android-actions\/setup-android@[a-f0-9]{40} # v4\.0\.1/u);
+  for (const sdkPackage of [
+    "platform-tools",
+    "platforms;android-36",
+    "build-tools;36.0.0",
+    "ndk;27.1.12297006",
+    "cmake;3.22.1",
+  ]) {
+    assert.ok(android.includes(sdkPackage), `Android CI must install ${sdkPackage}`);
+  }
+  assert.doesNotMatch(android, /run: sdkmanager/u);
+});
+
 test("tag releases stay draft until every artifact, promotion, and deployment succeeds", () => {
   assertFailureAtomicReleaseWorkflow(release);
 });
@@ -326,7 +345,7 @@ test("non-build CI jobs omit immutable editor assets from partial checkouts", ()
   ]) {
     const job = workflowJob(ci, jobName);
     assert.match(job, /sparse-checkout-cone-mode: false/u, jobName);
-    for (const directory of ["image-editor-models", "video-editor-audio", "video-editor-models"]) {
+    for (const directory of ["image-editor-models"]) {
       assert.match(job, new RegExp(`!/frontend/static/${directory}/`, "u"), jobName);
     }
   }

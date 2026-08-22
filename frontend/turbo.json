@@ -15,8 +15,6 @@
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				"!static/image-editor-models/**",
-				"!static/video-editor-audio/**",
-				"!static/video-editor-models/**",
 				"$TURBO_ROOT$/assets/**",
 				"$TURBO_ROOT$/scripts/asset-surfaces.mjs",
 				"$TURBO_ROOT$/scripts/asset-surfaces.ts",
@@ -26,12 +24,7 @@
 				"$TURBO_ROOT$/scripts/precompress-static.mjs",
 				"$TURBO_ROOT$/scripts/posthog-source-maps.ts"
 			],
-			"outputs": [
-				"build/**",
-				"!build/image-editor-models/**",
-				"!build/video-editor-audio/**",
-				"!build/video-editor-models/**"
-			],
+			"outputs": ["build/**", "!build/image-editor-models/**"],
 			"env": [
 				"NODE_OPTIONS",
 				"VITE_APP_MODE",

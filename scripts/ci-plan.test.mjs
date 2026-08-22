@@ -28,13 +28,25 @@ test("shared Agent-readable generator changes run both public builds", () => {
   assert.equal(plan.marketing, true);
 });
 
-test("frontend changes run the application build, browser, image, and Android paths", () => {
+test("frontend changes run the application build, browser, and image paths", () => {
   const plan = planCI(["frontend/src/routes/+page.svelte"], manifest);
   assert.equal(plan.application, true);
   assert.equal(plan.frontend, true);
   assert.equal(plan.image, true);
-  assert.equal(plan.android, true);
+  assert.equal(plan.android, false);
   assert.equal(plan.backend, false);
+});
+
+test("standalone mobile changes run the native Android path", () => {
+  const plan = planCI(["mobile/src/app/(tabs)/drafts.tsx"], manifest);
+  assert.equal(plan.android, true);
+  assert.equal(plan.frontend, false);
+  assert.equal(plan.image, false);
+});
+
+test("mobile API contract changes run the native Android path", () => {
+  const plan = planCI(["frontend/openapi.json"], manifest);
+  assert.equal(plan.android, true);
 });
 
 test("delivery changes fail closed to the complete matrix", () => {

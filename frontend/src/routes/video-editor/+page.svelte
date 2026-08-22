@@ -1,682 +1,302 @@
 <!--
-THESIS: OpenPost Video Editor starts as a trustworthy local workbench, not an account funnel.
-OWN-WORLD: OpenPost warm neutrals, compact Geist controls, structural borders, and one scarce orange action signal.
-STORY: Import or record, reopen resilient local work, then choose when cloud save or composer handoff matters.
-FIRST VIEWPORT: A direct privacy promise, import action, recording option, storage truth, and recent work for returning creators.
-FORM: Operate surface extending the OpenPost Video Editor start screen; no watermark pitch, decorative hero effects, or automatic upload.
+Local-first OpenPost Video Editor entry.
+OWN-WORLD: dark editing chrome over OpenPost warm neutrals; the workspace folder on disk is the source of truth.
+STORY: pick (or reconnect) a workspace folder once, then work with projects that never leave the machine.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { resolveAppPath } from '$lib/app-path';
-	import { auth } from '$lib/stores/auth';
-	import { workspaceCtx } from '$lib/stores/workspace.svelte';
+	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
-	import type { DestructiveActionOutcome } from '$lib/destructive-action-outcome';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
 	import Logo from '$lib/components/Logo.svelte';
-	import { m } from '$lib/paraglide/messages';
-	import { detectVideoEditorCapabilities } from '$lib/video-editor/capabilities';
-	import {
-		getCloudVideoProject,
-		listCloudVideoProjects,
-		loadVideoEditorConfig,
-		type CloudVideoProjectSummary
-	} from '$lib/video-editor/api';
-	import {
-		deleteLocalVideoProject,
-		estimateStorageBudget,
-		createLocalVideoProject,
-		listLocalVideoProjects,
-		persistentVideoStorageState,
-		requestPersistentVideoStorage,
-		saveLocalVideoProject
-	} from '$lib/video-editor/storage';
-	import {
-		defaultCaptionStyle,
-		migrateVideoProjectDocument,
-		projectDurationUS,
-		type CaptionStyle
-	} from '@openpost/video-project';
-	import {
-		createBlankLocalVideoProject,
-		cloudVideoSourceIDForMedia,
-		createLocalVideoProjectFromFiles,
-		formatBytes
-	} from '$lib/video-editor/project';
-	import type { LocalVideoProject, VideoEditorCapabilities } from '$lib/video-editor/types';
-	import CameraIcon from '@lucide/svelte/icons/video';
-	import CloudIcon from '@lucide/svelte/icons/cloud';
-	import FolderIcon from '@lucide/svelte/icons/folder-open';
-	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
-	import LoaderIcon from '@lucide/svelte/icons/loader-2';
-	import PlusIcon from '@lucide/svelte/icons/plus';
-	import ShieldIcon from '@lucide/svelte/icons/shield-check';
-	import SparklesIcon from '@lucide/svelte/icons/sparkles';
-	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import { showToast } from '$lib/toast';
+	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
+	import {
+		createProject,
+		deleteProject,
+		getAllProjects,
+		updateProject
+	} from '$lib/video-editor/workspace-fs/projects';
+	import { softDeleteProject } from '$lib/video-editor/workspace-fs/trash';
+	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
+	import type { Project } from '$lib/video-editor/project/types';
+	import FolderIcon from '@lucide/svelte/icons/folder-open';
+	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import { onMount } from 'svelte';
 
-	let authState = $derived($auth);
-	let loading = $state(true);
+	const gate = createWorkspaceGate();
+
+	let projects = $state.raw<Project[]>([]);
+	let loadingProjects = $state(false);
+	let projectsError = $state('');
 	let creating = $state(false);
-	let enabled = $state(true);
-	let error = $state('');
-	let loadError = $state('');
-	let recentProjects = $state.raw<LocalVideoProject[]>([]);
-	let capabilities = $state<VideoEditorCapabilities | null>(null);
-	let persistentStorage = $state<boolean | undefined>(undefined);
-	let storageLabel = $state('');
-	let storageRequesting = $state(false);
-	let storageMessage = $state('');
-	let storageMessageTone = $state<'success' | 'warning'>('success');
-	let pendingDelete = $state<LocalVideoProject | null>(null);
+	let newProjectName = $state('');
+	let showNewProject = $state(false);
+	let pendingDelete = $state<Project | null>(null);
 	let deleteDialogOpen = $state(false);
-	let pageHeading = $state<HTMLHeadingElement | null>(null);
-	let recentHeading = $state<HTMLHeadingElement | null>(null);
-	let deleteReturnFocus = $state<HTMLElement | null>(null);
-	let cloudProjects = $state.raw<CloudVideoProjectSummary[]>([]);
-	let cloudLoading = $state(false);
-	let cloudLoadError = $state('');
-	let cloudWorkspaceID = '';
-	let cloudRequestSequence = 0;
-	let openingCloudID = $state('');
-	type TemplateID = 'clean-captions' | 'product-demo' | 'talking-head' | 'announcement';
-	const templates: Array<{
-		id: TemplateID;
-		name: () => string;
-		description: () => string;
-	}> = [
-		{
-			id: 'clean-captions',
-			name: () => m.video_editor_template_clean(),
-			description: () => m.video_editor_template_clean_description()
-		},
-		{
-			id: 'product-demo',
-			name: () => m.video_editor_template_product(),
-			description: () => m.video_editor_template_product_description()
-		},
-		{
-			id: 'talking-head',
-			name: () => m.video_editor_template_talking(),
-			description: () => m.video_editor_template_talking_description()
-		},
-		{
-			id: 'announcement',
-			name: () => m.video_editor_template_announcement(),
-			description: () => m.video_editor_template_announcement_description()
-		}
-	];
 
-	onMount(() => {
-		void initialize();
+	async function loadProjects(): Promise<void> {
+		if (gate.state !== 'ready') return;
+		loadingProjects = true;
+		projectsError = '';
+		try {
+			projects = await getAllProjects();
+		} catch (err) {
+			projectsError = err instanceof Error ? err.message : String(err);
+		} finally {
+			loadingProjects = false;
+		}
+	}
+
+	$effect(() => {
+		if (gate.state === 'ready') void loadProjects();
 	});
 
-	async function initialize(): Promise<void> {
-		loading = true;
-		loadError = '';
-		try {
-			await auth.initialize({ optional: true });
-			const [config, localProjects, detected, persisted, storage] = await Promise.all([
-				loadVideoEditorConfig(),
-				listLocalVideoProjects(),
-				detectVideoEditorCapabilities(),
-				persistentVideoStorageState(),
-				estimateStorageBudget(0)
-			]);
-			enabled = config.enabled;
-			recentProjects = localProjects;
-			capabilities = detected;
-			persistentStorage = persisted;
-			storageLabel =
-				storage.quota_bytes > 0
-					? m.video_editor_storage_estimate({
-							used: formatBytes(storage.usage_bytes),
-							quota: formatBytes(storage.quota_bytes)
-						})
-					: m.video_editor_storage_unknown();
-			if ($auth.isAuthenticated) await loadCloudProjects(localProjects, true);
-		} catch (cause) {
-			loadError = cause instanceof Error ? cause.message : m.video_editor_load_failed();
-		} finally {
-			loading = false;
-		}
+	onMount(() =>
+		onPermissionLost(() => {
+			showToast(m.video_editor_gate_permission_lost());
+		})
+	);
+
+	function openProject(project: Project): void {
+		void goto(`/video-editor/${project.id}`);
 	}
 
-	async function loadCloudProjects(
-		localProjects = recentProjects,
-		openRequestedProject = false
-	): Promise<void> {
-		const request = ++cloudRequestSequence;
-		cloudLoading = true;
-		cloudLoadError = '';
-		try {
-			await workspaceCtx.initialize();
-			const workspaceID = workspaceCtx.currentWorkspace?.id ?? '';
-			if (!workspaceID) {
-				cloudProjects = [];
-				cloudWorkspaceID = '';
-				return;
-			}
-			if (cloudWorkspaceID !== workspaceID) cloudProjects = [];
-			cloudWorkspaceID = workspaceID;
-			const cloud = await listCloudVideoProjects(workspaceID);
-			if (request !== cloudRequestSequence || cloudWorkspaceID !== workspaceID) return;
-			const mirrored = new Set(localProjects.map((project) => project.cloud_project_id));
-			cloudProjects = cloud.projects.filter((project) => !mirrored.has(project.id));
-			const requestedCloudProject = openRequestedProject
-				? page.url.searchParams.get('cloud')
-				: null;
-			if (requestedCloudProject) await openCloudProject(requestedCloudProject);
-		} catch (cause) {
-			if (request !== cloudRequestSequence) return;
-			cloudLoadError =
-				cause instanceof Error && cause.message
-					? cause.message
-					: m.video_editor_cloud_projects_load_failed();
-		} finally {
-			if (request === cloudRequestSequence) cloudLoading = false;
-		}
-	}
-
-	async function openFiles(event: Event): Promise<void> {
-		const input = event.currentTarget;
-		if (!(input instanceof HTMLInputElement)) return;
-		const files = Array.from(input.files ?? []);
-		input.value = '';
-		if (!enabled || !capabilities?.supported || files.length === 0 || creating) return;
+	async function handleCreateProject(): Promise<void> {
+		if (creating) return;
 		creating = true;
-		error = '';
 		try {
-			const project = await createLocalVideoProjectFromFiles(files);
-			await goto(resolveAppPath(`/video-editor/${project.id}`));
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
+			const { createBlankProject } = await import('$lib/video-editor/project/defaults');
+			const project = createBlankProject(newProjectName.trim() || 'Untitled project');
+			await createProject(project);
+			newProjectName = '';
+			showNewProject = false;
+			await loadProjects();
+			openProject(project);
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
 			creating = false;
 		}
 	}
 
-	async function protectStorage(): Promise<void> {
-		if (storageRequesting) return;
-		storageRequesting = true;
-		storageMessage = '';
+	async function handleRename(project: Project): Promise<void> {
+		const name = window.prompt(m.video_editor_project_rename_prompt(), project.name);
+		if (name === null) return;
+		const trimmed = name.trim();
+		if (!trimmed || trimmed === project.name) return;
 		try {
-			persistentStorage = await requestPersistentVideoStorage();
-			storageMessageTone = persistentStorage ? 'success' : 'warning';
-			storageMessage = persistentStorage
-				? m.video_editor_storage_granted()
-				: m.video_editor_storage_denied();
-		} finally {
-			storageRequesting = false;
+			await updateProject(project.id, { name: trimmed });
+			await loadProjects();
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
 		}
 	}
 
-	function requestDelete(project: LocalVideoProject): void {
+	function confirmDelete(project: Project): void {
 		pendingDelete = project;
-		deleteReturnFocus = recentHeading ?? pageHeading;
 		deleteDialogOpen = true;
 	}
 
-	async function confirmDelete(): Promise<DestructiveActionOutcome> {
-		if (!pendingDelete) return { ok: false };
-		await deleteLocalVideoProject(pendingDelete.id);
-		recentProjects = recentProjects.filter((project) => project.id !== pendingDelete?.id);
-		pendingDelete = null;
-		showToast(m.video_editor_project_deleted(), 'success');
-		return { ok: true };
-	}
-
-	function projectDuration(project: LocalVideoProject): string {
-		const durationUS = projectDurationUS(project.document);
-		const seconds = Math.round(durationUS / 1_000_000);
-		return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-	}
-
-	function chooseFiles(): void {
-		if (!enabled || !capabilities?.supported) return;
-		document.querySelector<HTMLInputElement>('#video-editor-import')?.click();
-	}
-
-	async function openCloudProject(projectID: string): Promise<void> {
-		if (!enabled || !capabilities?.supported || openingCloudID) return;
-		openingCloudID = projectID;
-		error = '';
+	async function handleDelete(): Promise<void> {
+		if (!pendingDelete) return;
 		try {
-			const response = await getCloudVideoProject(projectID);
-			const document = migrateVideoProjectDocument(response.document).document;
-			const created = await createLocalVideoProject(`local_video_${crypto.randomUUID()}`, document);
-			const mirrored = await saveLocalVideoProject({
-				...created,
-				cloud_project_id: response.id,
-				cloud_revision: response.revision,
-				cover_source_id: cloudVideoSourceIDForMedia(document, response.cover_preview_media_id),
-				cloud_cover_preview_media_id: response.cover_preview_media_id || undefined,
-				state: 'cloud'
-			});
-			await goto(resolveAppPath(`/video-editor/${mirrored.id}`));
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.video_editor_load_failed();
-			openingCloudID = '';
-		}
-	}
-
-	async function createFromTemplate(templateID: TemplateID): Promise<void> {
-		if (!enabled || !capabilities?.supported || creating) return;
-		creating = true;
-		error = '';
-		try {
-			const name = templates.find((template) => template.id === templateID)?.name() ?? 'Video';
-			const project = await createBlankLocalVideoProject(name);
-			const style: CaptionStyle = {
-				...defaultCaptionStyle(),
-				...(templateID === 'product-demo'
-					? {
-							preset: 'boxed' as const,
-							font_size: 52,
-							background_color: '#151515e6',
-							emphasis_color: '#fb923c'
-						}
-					: templateID === 'talking-head'
-						? {
-								preset: 'karaoke' as const,
-								font_size: 62,
-								background_color: '#00000000',
-								emphasis_color: '#f97316'
-							}
-						: templateID === 'announcement'
-							? {
-									preset: 'bold' as const,
-									font_size: 68,
-									font_weight: 800,
-									background_color: '#7c2d12e6',
-									emphasis_color: '#fed7aa'
-								}
-							: {})
-			};
-			project.document.caption_tracks = [
-				{
-					id: `captions_${crypto.randomUUID()}`,
-					name: m.video_editor_tool_captions(),
-					language: 'und',
-					visible: true,
-					style,
-					cues: []
-				}
-			];
-			if (templateID === 'product-demo') {
-				for (const variant of project.document.variants) variant.background_color = '#f5f1ea';
-			}
-			if (templateID === 'announcement') {
-				for (const variant of project.document.variants) variant.background_color = '#1c1917';
-			}
-			const saved = await saveLocalVideoProject(project);
-			await goto(resolveAppPath(`/video-editor/${saved.id}`));
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
-			creating = false;
+			await softDeleteProject(pendingDelete.id);
+			await deleteProject(pendingDelete.id).catch(() => undefined);
+			await loadProjects();
+			showToast(m.video_editor_project_deleted(), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			pendingDelete = null;
+			deleteDialogOpen = false;
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>{m.video_editor_meta_title()}</title>
-	<meta name="description" content={m.video_editor_meta_description()} />
+	<title>{m.video_editor_title()}</title>
 </svelte:head>
 
-<div class="video-editor-theme min-h-dvh bg-background text-foreground">
-	<header class="border-b bg-background">
-		<div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-			<a href="/" class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
-				<Logo width={112} height={33} />
-			</a>
-			<span class="hidden text-sm text-muted-foreground sm:inline">/ {m.video_editor_title()}</span>
-			<div class="ml-auto flex items-center gap-1.5">
-				<LanguageSwitcher compact />
-				{#if authState.isAuthenticated}
-					<Button href="/media" variant="outline" size="sm">
-						{m.video_editor_openpost_media()}
-					</Button>
-				{:else}
-					<Button href="/login?redirect=%2Fvideo-editor" variant="ghost" size="sm">
-						{m.landing_sign_in()}
-					</Button>
-				{/if}
-			</div>
-		</div>
+<div class="flex min-h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]">
+	<header
+		class="flex items-center justify-between border-b border-[oklch(0.25_0.015_55)] px-4 py-2"
+	>
+		<a
+			href="/editors"
+			class="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+		>
+			<Logo class="h-5 w-auto" />
+			<span class="text-sm font-semibold">{m.video_editor_title()}</span>
+		</a>
+		{#if gate.state === 'ready'}
+			<span class="hidden items-center gap-1.5 text-xs text-[oklch(0.65_0.015_55)] sm:flex">
+				<FolderIcon class="size-3.5" aria-hidden="true" />
+				{gate.workspaceName}
+			</span>
+		{/if}
 	</header>
 
-	<main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-		<div class="max-w-3xl">
-			<p class="text-sm font-medium text-primary">{m.video_editor_free_tool()}</p>
-			<h1
-				bind:this={pageHeading}
-				tabindex="-1"
-				class="mt-2 text-3xl leading-tight font-semibold tracking-tight text-balance outline-none sm:text-4xl"
+	<main class="flex flex-1 flex-col items-center justify-center px-4 py-10">
+		{#if gate.state === 'initializing'}
+			<PageLoading label={m.editors_loading()} />
+		{:else if gate.state === 'unavailable'}
+			<div class="max-w-md text-center">
+				<h1 class="text-lg font-semibold">{m.video_editor_gate_unavailable_title()}</h1>
+				<p class="mt-2 text-sm text-[oklch(0.65_0.015_55)]">
+					{m.video_editor_gate_unavailable_body()}
+				</p>
+				<Button class="mt-6" onclick={() => history.back()}>{m.video_editor_go_back()}</Button>
+			</div>
+		{:else if gate.state === 'pick' || gate.state === 'reconnect'}
+			<div
+				class="w-full max-w-md rounded-xl border border-[oklch(0.25_0.015_55)] bg-[oklch(0.2_0.01_50)] p-8 text-center"
 			>
-				{m.video_editor_heading()}
-			</h1>
-			<p class="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-				{m.video_editor_intro()}
-			</p>
-			<div class="mt-4 flex items-start gap-2 text-sm leading-6 text-muted-foreground">
-				<ShieldIcon class="mt-1 size-4 shrink-0 text-primary" />
-				<p>{m.video_editor_privacy()}</p>
-			</div>
-		</div>
-
-		{#if loading}
-			<div class="mt-10">
-				<PageLoading layout="grid" label={m.video_editor_loading()} items={8} />
-			</div>
-		{:else if loadError}
-			<InlineNotice tone="error" message={loadError} class="mt-10 max-w-3xl">
-				{#snippet actions()}
-					<Button size="sm" onclick={() => void initialize()}>{m.common_retry()}</Button>
-				{/snippet}
-			</InlineNotice>
-		{:else}
-			<div class="mt-8 space-y-4">
-				{#if error}<InlineNotice tone="error" message={error} />{/if}
-				{#if !enabled}<InlineNotice tone="warning" message={m.video_editor_disabled()} />{/if}
-				{#if capabilities && !capabilities.supported}
-					<InlineNotice tone="warning">
-						<div class="space-y-1">
-							<p class="font-medium">{m.video_editor_unsupported()}</p>
-							<p class="text-current/80">{m.video_editor_unsupported_body()}</p>
-							<a
-								href={resolveAppPath('/video-editor/unsupported')}
-								class="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4"
-							>
-								{m.video_editor_capability_details()}
-							</a>
-						</div>
-					</InlineNotice>
-				{:else if capabilities?.editorMode === 'preview'}
-					<InlineNotice tone="info" message={m.video_editor_unsupported_mobile()} />
+				<FolderPlusIcon class="mx-auto size-10 text-[oklch(0.66_0.14_45)]" aria-hidden="true" />
+				<h1 class="mt-4 text-lg font-semibold">
+					{gate.state === 'pick'
+						? m.video_editor_gate_pick_title()
+						: m.video_editor_gate_reconnect_title()}
+				</h1>
+				<p class="mt-2 text-sm text-[oklch(0.65_0.015_55)]">
+					{gate.state === 'pick'
+						? m.video_editor_gate_pick_body()
+						: m.video_editor_gate_reconnect_body({ folder: gate.workspaceName })}
+				</p>
+				{#if gate.error}
+					<InlineNotice tone="error" class="mt-4 text-left">{gate.error}</InlineNotice>
 				{/if}
-			</div>
-
-			<section class="mt-8 border-y py-6" aria-labelledby="video-start-heading">
-				<h2 id="video-start-heading" class="sr-only">{m.video_editor_new_heading()}</h2>
-				<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-					<button
-						type="button"
-						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
-						disabled={!enabled || creating || !capabilities?.supported}
-						onclick={chooseFiles}
-					>
-						<FolderIcon class="size-5 text-primary" />
-						<span class="mt-8 block font-medium">{m.video_editor_import()}</span>
-						<span class="mt-1 block text-sm text-muted-foreground"
-							>{m.video_editor_file_hint()}</span
-						>
-					</button>
-					<a
-						href={resolveAppPath('/video-editor/new?mode=record')}
-						aria-disabled={!enabled || !capabilities?.supported}
-						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
-						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
-						onclick={(event) => {
-							if (!enabled || !capabilities?.supported) event.preventDefault();
-						}}
-					>
-						<CameraIcon class="size-5 text-foreground" />
-						<span class="mt-8 block font-medium">{m.video_editor_record()}</span>
-						<span class="mt-1 block text-sm text-muted-foreground"
-							>{m.video_editor_record_screen_description()}</span
-						>
-					</a>
-					<a
-						href={resolveAppPath('/video-editor/new?mode=stock')}
-						aria-disabled={!enabled || !capabilities?.supported}
-						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
-						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
-						onclick={(event) => {
-							if (!enabled || !capabilities?.supported) event.preventDefault();
-						}}
-					>
-						<SparklesIcon class="size-5 text-foreground" />
-						<span class="mt-8 block font-medium">{m.video_editor_stock()}</span>
-						<span class="mt-1 block text-sm text-muted-foreground"
-							>{m.video_editor_stock_description()}</span
-						>
-					</a>
-					<a
-						href={resolveAppPath('/video-editor/new?mode=blank')}
-						aria-disabled={!enabled || !capabilities?.supported}
-						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
-						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
-						onclick={(event) => {
-							if (!enabled || !capabilities?.supported) event.preventDefault();
-						}}
-					>
-						<PlusIcon class="size-5 text-foreground" />
-						<span class="mt-8 block font-medium">{m.video_editor_blank()}</span>
-						<span class="mt-1 block text-sm text-muted-foreground"
-							>{m.video_editor_blank_description()}</span
-						>
-					</a>
+				<div class="mt-6 flex flex-col items-center gap-2">
+					{#if gate.state === 'pick'}
+						<Button onclick={() => gate.pickFolder()} disabled={gate.busy}>
+							{#if gate.busy}
+								<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+							{:else}
+								<FolderPlusIcon class="size-4" aria-hidden="true" />
+							{/if}
+							{m.video_editor_gate_pick_cta()}
+						</Button>
+					{:else}
+						<Button onclick={() => gate.reconnect()} disabled={gate.busy}>
+							{#if gate.busy}
+								<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+							{:else}
+								<RefreshCwIcon class="size-4" aria-hidden="true" />
+							{/if}
+							{m.video_editor_gate_reconnect_cta()}
+						</Button>
+						<Button variant="ghost" size="sm" onclick={() => gate.chooseDifferentFolder()}>
+							{m.video_editor_gate_different_folder()}
+						</Button>
+					{/if}
 				</div>
-				<Input
-					id="video-editor-import"
-					type="file"
-					multiple
-					accept="video/*,audio/*,image/jpeg,image/png,image/webp,image/gif"
-					class="sr-only !size-px !p-0"
-					aria-hidden="true"
-					tabindex={-1}
-					onchange={openFiles}
-				/>
-			</section>
+			</div>
+		{:else if gate.state === 'ready'}
+			<div class="w-full max-w-5xl">
+				<div class="flex items-center justify-between">
+					<h1 class="text-base font-semibold">{m.video_editor_projects_title()}</h1>
+					<Button size="sm" onclick={() => (showNewProject = !showNewProject)}>
+						<PlusIcon class="size-4" aria-hidden="true" />
+						{m.video_editor_project_new()}
+					</Button>
+				</div>
 
-			<section class="mt-8" aria-labelledby="templates-heading">
-				<div>
-					<h2 id="templates-heading" class="text-lg font-semibold">
-						{m.video_editor_templates()}
-					</h2>
-					<p class="mt-1 text-sm text-muted-foreground">
-						{m.video_editor_templates_description()}
+				{#if showNewProject}
+					<form
+						class="mt-4 flex gap-2"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void handleCreateProject();
+						}}
+					>
+						<Input
+							type="text"
+							bind:value={newProjectName}
+							placeholder={m.editors_project_name()}
+							aria-label={m.editors_project_name()}
+							class="bg-[oklch(0.16_0.008_55)]"
+						/>
+						<Button type="submit" disabled={creating}>
+							{#if creating}
+								<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+							{/if}
+							{m.video_editor_project_create()}
+						</Button>
+					</form>
+				{/if}
+
+				{#if projectsError}
+					<InlineNotice tone="error" class="mt-4">{projectsError}</InlineNotice>
+				{/if}
+
+				{#if loadingProjects}
+					<PageLoading label={m.editors_loading()} />
+				{:else if projects.length === 0}
+					<p class="mt-10 text-center text-sm text-[oklch(0.65_0.015_55)]">
+						{m.video_editor_projects_empty()}
 					</p>
-				</div>
-				<div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-					{#each templates as template (template.id)}
-						<button
-							type="button"
-							class="min-h-28 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
-							disabled={!enabled || creating || !capabilities?.supported}
-							onclick={() => void createFromTemplate(template.id)}
-						>
-							<span class="block font-medium">{template.name()}</span>
-							<span class="mt-2 block text-sm leading-5 text-muted-foreground">
-								{template.description()}
-							</span>
-						</button>
-					{/each}
-				</div>
-			</section>
-
-			<section class="mt-8" aria-labelledby="storage-heading">
-				<div class="flex flex-wrap items-start justify-between gap-4">
-					<div>
-						<h2 id="storage-heading" class="text-base font-semibold">{m.video_editor_storage()}</h2>
-						<p class="mt-1 text-sm text-muted-foreground">{storageLabel}</p>
-					</div>
-					<div class="flex items-center gap-2">
-						<HardDriveIcon class="size-4 text-muted-foreground" />
-						<span class="text-sm">
-							{persistentStorage
-								? m.video_editor_storage_persistent()
-								: m.video_editor_storage_not_persistent()}
-						</span>
-						{#if persistentStorage === false || persistentStorage === undefined}
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={storageRequesting}
-								onclick={protectStorage}
-							>
-								{#if storageRequesting}<LoaderIcon class="size-4 animate-spin" />{/if}
-								{storageRequesting
-									? m.video_editor_storage_requesting()
-									: m.video_editor_storage_request()}
-							</Button>
-						{/if}
-					</div>
-				</div>
-				{#if storageMessage}
-					<InlineNotice class="mt-4" tone={storageMessageTone} message={storageMessage} />
-				{/if}
-			</section>
-
-			<section class="mt-10" aria-labelledby="recent-heading">
-				<div>
-					<h2
-						bind:this={recentHeading}
-						id="recent-heading"
-						tabindex="-1"
-						class="text-lg font-semibold outline-none"
-					>
-						{m.video_editor_recent()}
-					</h2>
-					<p class="mt-1 text-sm text-muted-foreground">{m.video_editor_recent_description()}</p>
-				</div>
-				{#if recentProjects.length === 0}
-					<div
-						class="mt-4 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground"
-					>
-						{m.video_editor_no_recent()}
-					</div>
 				{:else}
-					<div class="mt-4 divide-y rounded-lg border">
-						{#each recentProjects as project (project.id)}
-							<div class="flex min-w-0 items-center gap-4 p-3 sm:p-4">
+					<ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" role="list">
+						{#each projects as project (project.id)}
+							<li>
 								<div
-									class="flex aspect-video w-24 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-zinc-500"
-									aria-hidden="true"
+									class="group relative rounded-xl border border-[oklch(0.25_0.015_55)] bg-[oklch(0.2_0.01_50)] p-4 transition-colors hover:border-[oklch(0.35_0.02_55)]"
 								>
-									<CameraIcon class="size-5" />
-								</div>
-								<div class="min-w-0 flex-1">
-									<p class="truncate font-medium">{project.document.title}</p>
-									<div
-										class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+									<button
+										type="button"
+										class="block w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+										onclick={() => openProject(project)}
 									>
-										<span class="font-mono">{projectDuration(project)}</span>
-										<span>
-											{project.state === 'cloud'
-												? m.video_editor_saved_cloud()
-												: m.video_editor_local_only()}
+										<span class="block truncate font-medium">{project.name}</span>
+										<span class="mt-1 block text-xs text-[oklch(0.65_0.015_55)]">
+											{new Date(project.updatedAt).toLocaleDateString()}
 										</span>
-										{#if project.state === 'cloud'}<CloudIcon class="size-3.5" />{/if}
-									</div>
-								</div>
-								<div class="flex shrink-0 items-center gap-1">
-									<Button
-										href={`/video-editor/${project.id}`}
-										variant="outline"
-										size="sm"
-										disabled={!enabled || !capabilities?.supported}
-									>
-										{m.video_editor_open_project()}
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										onclick={() => requestDelete(project)}
-										aria-label={m.video_editor_delete_project()}
-									>
-										<TrashIcon class="size-4" />
-									</Button>
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</section>
-
-			{#if authState.isAuthenticated}
-				<section class="mt-10" aria-labelledby="cloud-heading">
-					<div>
-						<h2 id="cloud-heading" class="text-lg font-semibold">
-							{m.video_editor_cloud_projects()}
-						</h2>
-						<p class="mt-1 text-sm text-muted-foreground">
-							{m.video_editor_cloud_projects_description()}
-						</p>
-					</div>
-					{#if cloudLoadError}
-						<InlineNotice tone="error" message={cloudLoadError} class="mt-4">
-							{#snippet actions()}
-								<Button size="sm" onclick={() => void loadCloudProjects(recentProjects, true)}>
-									{m.common_retry()}
-								</Button>
-							{/snippet}
-						</InlineNotice>
-					{/if}
-					{#if cloudLoading && cloudProjects.length === 0}
-						<div class="mt-4">
-							<PageLoading
-								layout="list"
-								label={m.video_editor_cloud_projects_loading()}
-								items={3}
-							/>
-						</div>
-					{:else if cloudProjects.length === 0 && !cloudLoadError}
-						<div
-							class="mt-4 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
-						>
-							{m.video_editor_cloud_empty()}
-						</div>
-					{:else if cloudProjects.length > 0}
-						{#if cloudLoading}
-							<span class="sr-only" role="status">{m.video_editor_cloud_projects_loading()}</span>
-						{/if}
-						<div class="mt-4 divide-y rounded-lg border">
-							{#each cloudProjects as project (project.id)}
-								<div class="flex items-center gap-4 p-3 sm:p-4">
+									</button>
 									<div
-										class="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted"
+										class="absolute top-3 right-3 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 									>
-										<CloudIcon class="size-4 text-muted-foreground" />
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											aria-label={m.video_editor_project_rename()}
+											onclick={() => handleRename(project)}
+										>
+											<PencilIcon class="size-4" aria-hidden="true" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon-xs"
+											aria-label={m.video_editor_project_delete()}
+											onclick={() => confirmDelete(project)}
+										>
+											<TrashIcon class="size-4" aria-hidden="true" />
+										</Button>
 									</div>
-									<div class="min-w-0 flex-1">
-										<p class="truncate font-medium">{project.title}</p>
-										<p class="mt-1 text-xs text-muted-foreground">
-											{m.video_editor_sources_count({ count: project.source_count })}
-										</p>
-									</div>
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={!enabled || !capabilities?.supported || Boolean(openingCloudID)}
-										onclick={() => void openCloudProject(project.id)}
-									>
-										{#if openingCloudID === project.id}
-											<LoaderIcon class="size-4 animate-spin" />
-											{m.video_editor_opening_cloud()}
-										{:else}
-											{m.video_editor_open_project()}
-										{/if}
-									</Button>
 								</div>
-							{/each}
-						</div>
-					{/if}
-				</section>
-			{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 		{/if}
 	</main>
 </div>
 
 <DestructiveConfirmDialog
 	bind:open={deleteDialogOpen}
-	title={m.video_editor_delete_title()}
-	description={m.video_editor_delete_body()}
-	onConfirm={confirmDelete}
-	returnFocus={deleteReturnFocus}
+	title={m.video_editor_project_delete()}
+	description={m.video_editor_project_delete_body({ name: pendingDelete?.name ?? '' })}
+	confirmLabel={m.video_editor_project_delete()}
+	onConfirm={async () => {
+		await handleDelete();
+		return { ok: true };
+	}}
 />
