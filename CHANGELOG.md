@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Rate stretch now scales keyframe timing and ripples linked downstream clips on each synchronized track.
+- Crossfades now span both sides of the cut and render both clips in preview and export using validated hidden source handles.
 - Made the standalone Expo app the only Android app. GitHub releases now publish its signed `openpost-app-android.apk`; the old web wrapper and its server chooser are gone.
 - Reorganized Settings into clear Personal, Workspace, Organization, and Instance groups with compact desktop tabs and one mobile selector.
 - Rewrote settings labels and help text so controls describe their scope and effect consistently.
@@ -33,6 +35,8 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Video Editor move, trim, slip, and slide tools now keep synchronized audio and video companions aligned across every affected track.
+- Timeline edits now preserve valid transition handles and keyframes instead of leaving broken cuts or moving keys into blend-owned frames.
 - **OpenPost Video Editor** (`/video-editor`, Chromium-only): workspace folder on your disk is the source of truth (projects, media, caches, exports as plain files). The editor includes a layered multi-track preview, undo/redo, text and subtitle editing, broad clip keyframes with cubic and spring easing, a WebGL2 effects and color stack, cached waveforms and filmstrips, proxies, scene and silence tools, and transcript word editing. Rendered export supports MP4, MOV, WebM, MKV, MP3, AAC, and WAV with codec, size, quality, range, subtitle, progress, and cancel controls. Send to OpenPost uploads the finished export to the media library.
 - Preview controls now match FreeCut's device-only monitor gain and mute, fit and fixed zoom presets, native fullscreen, audio-only playback, and full-resolution frame capture. Captured frames download and also join the project's media pool.
 - Timeline editing now exposes ordered video and audio track creation, safe track removal, sticky lock/visibility/mute/solo/sync-lock controls, adaptive snapping, trim-start and trim-end handles, rolling cuts, source slip, neighbor-aware slide, and source-bound rate stretch. Pointer work is frame-accurate, cancelable, and grouped into one undo step; the same tools support one-frame and ten-frame keyboard edits.
