@@ -6,6 +6,7 @@ import {
 	activeValueAt,
 	interpolateAt,
 	removeKeyframe,
+	setAnimatedProperties,
 	setAnimatedProperty,
 	setKeyframe,
 	setKeyframeEasing
@@ -276,6 +277,12 @@ describe('setAnimatedProperty', () => {
 	it('rejects keys outside the clip bounds', () => {
 		expect(setAnimatedProperty('animated', 'x', 40, 1, true)).toBe(false);
 		expect(getItem('animated').keyframes).toBeUndefined();
+	});
+
+	it('commits a gizmo transform as one undo entry', () => {
+		setAnimatedProperties('animated', 15, { x: 12, y: -8 }, () => false);
+		expect(getItem('animated').transform).toMatchObject({ x: 12, y: -8 });
+		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });
 

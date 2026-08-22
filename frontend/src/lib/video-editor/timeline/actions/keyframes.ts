@@ -107,6 +107,36 @@ export function setAnimatedProperty(
 	});
 }
 
+/** Commit several inspector or gizmo values as one undo entry. */
+export function setAnimatedProperties(
+	itemId: string,
+	absoluteFrame: number,
+	values: Partial<Record<KeyframeProperty, number>>,
+	isAutoKeyEnabled: (property: KeyframeProperty) => boolean
+): boolean {
+	return execute('SET_ANIMATED_PROPERTIES', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || absoluteFrame < item.from || absoluteFrame >= item.from + item.durationInFrames) {
+			return false;
+		}
+		let keyframes = item.keyframes;
+		let patch: Partial<TimelineItem> = {};
+		for (const [rawProperty, value] of Object.entries(values)) {
+			if (value === undefined) continue;
+			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
+			const property = rawProperty as KeyframeProperty;
+			if (item.keyframes?.[property] || isAutoKeyEnabled(property)) {
+				keyframes = upsertTrack(keyframes ?? {}, property, absoluteFrame - item.from, value);
+			} else {
+				patch = mergeItemPatches(patch, basePropertyPatch({ ...item, ...patch }, property, value));
+			}
+		}
+		if (keyframes !== item.keyframes) patch.keyframes = keyframes;
+		timelineStore._updateItems([{ id: itemId, patch }]);
+		return true;
+	});
+}
+
 /** Change the outgoing interpolation for the segment that starts at `frame`. */
 export function setKeyframeEasing(
 	itemId: string,
@@ -252,4 +282,32 @@ function basePropertyPatch(
 		};
 	}
 	return { [property]: value };
+}
+
+function mergeItemPatches(
+	left: Partial<TimelineItem>,
+	right: Partial<TimelineItem>
+): Partial<TimelineItem> {
+	const merged: Partial<TimelineItem> = { ...left, ...right };
+	if (left.transform || right.transform) {
+		merged.transform = { ...left.transform, ...right.transform };
+	}
+	if (left.crop || right.crop) {
+		merged.crop = {
+			top: right.crop?.top ?? left.crop?.top ?? 0,
+			right: right.crop?.right ?? left.crop?.right ?? 0,
+			bottom: right.crop?.bottom ?? left.crop?.bottom ?? 0,
+			left: right.crop?.left ?? left.crop?.left ?? 0,
+			softness: right.crop?.softness ?? left.crop?.softness
+		};
+	}
+	if (left.textShadow || right.textShadow) {
+		merged.textShadow = {
+			blur: right.textShadow?.blur ?? left.textShadow?.blur ?? 0,
+			color: right.textShadow?.color ?? left.textShadow?.color ?? '#000000',
+			offsetX: right.textShadow?.offsetX ?? left.textShadow?.offsetX ?? 0,
+			offsetY: right.textShadow?.offsetY ?? left.textShadow?.offsetY ?? 0
+		};
+	}
+	return merged;
 }

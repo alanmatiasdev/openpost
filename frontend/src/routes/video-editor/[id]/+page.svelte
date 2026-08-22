@@ -372,7 +372,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				</aside>
 
 				<section class="flex min-w-0 flex-1 flex-col">
-					<PreviewPlayer />
+					<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
 					<TransportBar />
 				</section>
 
