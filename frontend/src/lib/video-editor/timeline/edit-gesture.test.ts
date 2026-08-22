@@ -108,6 +108,13 @@ describe('timeline edit gestures', () => {
 		expect(planSlipGesture(mediaItem({ sourceEnd: undefined }), 10, 30)).toBeNull();
 	});
 
+	it('allows forward slip while the source duration is still unknown', () => {
+		expect(planSlipGesture(mediaItem({ sourceDuration: undefined }), -10, 30)).toEqual({
+			sourceStart: 40,
+			sourceEnd: 100
+		});
+	});
+
 	it('does not offer slip for generated timeline items', () => {
 		expect(planSlipGesture({ ...mediaItem(), type: 'text' }, 10, 30)).toBeNull();
 	});
@@ -174,6 +181,45 @@ describe('timeline edit gestures', () => {
 			leftPatch: { durationInFrames: 50, sourceEnd: 50 },
 			rightPatch: { from: 150, durationInFrames: 150, sourceStart: 0 },
 			snapTarget: null
+		});
+	});
+
+	it('preserves slide source continuity while the source duration is still unknown', () => {
+		const shared = {
+			trackId: 'video',
+			mediaId: 'media',
+			originId: 'origin',
+			sourceDuration: undefined
+		};
+		const left = mediaItem({
+			...shared,
+			id: 'left',
+			from: 0,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100
+		});
+		const middle = mediaItem({
+			...shared,
+			id: 'middle',
+			from: 100,
+			durationInFrames: 100,
+			sourceStart: 100,
+			sourceEnd: 200
+		});
+		const right = mediaItem({
+			...shared,
+			id: 'right',
+			from: 200,
+			durationInFrames: 100,
+			sourceStart: 200,
+			sourceEnd: 300
+		});
+
+		expect(planSlideGesture(middle, left, right, 20, [], 30, [], 2).itemPatch).toEqual({
+			from: 120,
+			sourceStart: 120,
+			sourceEnd: 220
 		});
 	});
 

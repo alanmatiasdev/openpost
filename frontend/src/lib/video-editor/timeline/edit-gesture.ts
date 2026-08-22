@@ -138,7 +138,10 @@ export function planSlipGesture(
 		timelineFps,
 		effectiveSourceFps
 	);
-	const maxStart = Math.max(0, (sourceDuration ?? sourceEnd) - windowFrames);
+	const maxStart =
+		sourceDuration === undefined
+			? Number.POSITIVE_INFINITY
+			: Math.max(0, sourceDuration - windowFrames);
 	const nextStart = Math.min(Math.max(sourceStart + requestedDelta, 0), maxStart);
 	return { sourceStart: nextStart, sourceEnd: nextStart + windowFrames };
 }
@@ -179,7 +182,10 @@ function slideContinuityPatch(
 		timelineFps,
 		item.sourceFps ?? timelineFps
 	);
-	const maxStart = Math.max(0, (item.sourceDuration ?? sourceEnd) - sourceWindow);
+	const maxStart =
+		item.sourceDuration === undefined
+			? Number.POSITIVE_INFINITY
+			: Math.max(0, item.sourceDuration - sourceWindow);
 	const nextStart = Math.min(Math.max(sourceStart + sourceDelta, 0), maxStart);
 	return { sourceStart: nextStart, sourceEnd: nextStart + sourceWindow };
 }
