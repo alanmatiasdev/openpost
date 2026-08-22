@@ -2798,7 +2798,7 @@
 	"settings_time": "Hora",
 	"settings_no_posting_times": "Ainda não existem horas. Adiciona uma linha ou gera um padrão semanal sugerido.",
 	"settings_advanced_scheduling": "Variação do horário",
-	"settings_advanced_scheduling_body": "Publica cada publicação agendada a uma hora aleatória dentro do número escolhido de minutos antes ou depois da hora definida.",
+	"settings_advanced_scheduling_body": "Cada publicação agendada sai a uma hora aleatória dentro do número escolhido de minutos antes ou depois da hora definida.",
 	"settings_time_variation": "Desvio aleatório",
 	"settings_no_delay": "Sem desvio (hora exata)",
 	"settings_time_picker_range": "Seletor de hora do compositor",

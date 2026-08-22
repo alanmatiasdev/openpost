@@ -125,12 +125,7 @@
 		]);
 		if (loadGeneration !== organizationLoadGeneration || expectedOrganizationID !== organizationID)
 			return;
-		if (
-			team.error ||
-			(pending.error && pending.response.status !== 404) ||
-			securityResult.error ||
-			identityResult.error
-		) {
+		if (team.error || pending.error || securityResult.error || identityResult.error) {
 			error =
 				team.error?.detail ||
 				pending.error?.detail ||
@@ -141,7 +136,7 @@
 			return;
 		}
 		members = team.data?.members ?? [];
-		transfer = pending.response.status === 404 ? null : (pending.data ?? null);
+		transfer = pending.data?.transfer ?? null;
 		pendingStateAvailable = true;
 		security = securityResult.data ?? null;
 		identities = identityResult.data ?? [];

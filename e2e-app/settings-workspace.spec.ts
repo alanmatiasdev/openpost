@@ -36,10 +36,7 @@ test("settings use one grouped navigation and mount only the active page", async
   await expect(page.getByRole("heading", { name: "Ownership", level: 1 })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Delete Organization" })).toBeVisible();
 
-  expect(consoleErrors).toEqual([
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
-  ]);
-  consoleErrors.length = 0;
+  expect(consoleErrors).toEqual([]);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
@@ -281,10 +278,7 @@ test("Organization Owner reviews and permanently deletes the complete Organizati
     dialog.getByText("Minimum audit evidence without deleted content or credentials"),
   ).toBeVisible();
 
-  expect(consoleErrors).toEqual([
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
-  ]);
-  consoleErrors.length = 0;
+  expect(consoleErrors).toEqual([]);
   await expect(dialog.getByText(/cannot be recovered/)).toBeVisible();
   await page.setViewportSize({ width: 320, height: 760 });
   await expect(dialog).toBeVisible();
