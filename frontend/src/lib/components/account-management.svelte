@@ -310,12 +310,10 @@
 		}
 	}
 
-	let availableProviders = $derived(
-		connectionProviderEntries.filter((provider) => providerCanConnect(provider))
+	let directProviders = $derived(
+		connectionProviderEntries.filter((provider) => !providerNeedsAdminSetup(provider))
 	);
-	let setupRequiredProviders = $derived(
-		connectionProviderEntries.filter((provider) => !providerCanConnect(provider))
-	);
+	let setupRequiredProviders = $derived(connectionProviderEntries.filter(providerNeedsAdminSetup));
 	let hasConnectionFailure = $derived(Boolean(lastFailedMessage || providersLoadError));
 
 	function requestAccountRemoval(account: SocialAccount, kind: AccountRemovalKind) {
@@ -863,6 +861,12 @@
 		return provider.status !== 'planned' && providerReadiness(provider).canProceed;
 	}
 
+	function providerNeedsAdminSetup(provider: ProviderEntry): boolean {
+		if (provider.status === 'planned') return true;
+		const action = providerReadiness(provider).action;
+		return action === 'configure' || action === 'contact_admin';
+	}
+
 	function providerActionEnabled(provider: ProviderEntry): boolean {
 		return providerCanConnect(provider) || providerReadiness(provider).action === 'retry';
 	}
@@ -1336,9 +1340,9 @@
 						{#if providersLoading && providerEntries.length === 0}
 							<PageLoading layout="grid" label={m.common_loading()} items={4} />
 						{:else if providerEntries.length > 0}
-							{#if availableProviders.length > 0}
+							{#if directProviders.length > 0}
 								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-									{#each availableProviders as provider (providerKey(provider))}
+									{#each directProviders as provider (providerKey(provider))}
 										<div
 											data-testid={`provider-card-${provider.platform}`}
 											class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(

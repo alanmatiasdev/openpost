@@ -42,14 +42,17 @@ test("settings actions emit one cue per gesture and respect mute", async ({ page
   const workspace = await createWorkspace(request, auth.token, "Interaction Sounds E2E");
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/settings?tab=profile&workspace=${workspace.id}`);
-  await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+  await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
 
   await page.locator('[data-settings-tab="schedule"]').click();
   await expect(page).toHaveURL(/\/settings\?tab=schedule$/);
   await expect.poll(() => cueCount(page)).toBe(1);
 
-  await page.locator('[data-settings-tab="profile"]').click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("link", { name: "Personal", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/settings\?tab=profile$/);
   await expect.poll(() => cueCount(page)).toBe(2);
 
@@ -60,6 +63,10 @@ test("settings actions emit one cue per gesture and respect mute", async ({ page
   await page.evaluate(() => localStorage.setItem("openpost:interface-sounds", "off"));
   await page.reload();
   await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("link", { name: "Workspace", exact: true })
+    .click();
   await page.locator('[data-settings-tab="schedule"]').click();
   await expect(page).toHaveURL(/\/settings\?tab=schedule$/);
   await expect.poll(() => cueCount(page)).toBe(0);

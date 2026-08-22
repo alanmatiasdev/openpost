@@ -200,6 +200,7 @@ test("workspace settings delete the active workspace and keep another", async ({
   });
   expect(renameResponse.ok()).toBeTruthy();
 
+  await page.getByText("Danger zone", { exact: true }).click();
   await page.getByRole("button", { name: "Delete workspace" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Delete this workspace?" })).toBeVisible();

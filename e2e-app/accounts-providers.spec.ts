@@ -139,6 +139,9 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
     page.getByTestId("provider-card-bluesky").getByRole("button", { name: "Connect" }),
   ).toBeEnabled();
 
+  const setupRequired = page.locator("details").filter({ hasText: "Admin setup required" });
+  await setupRequired.locator("summary").click();
+
   for (const platform of [
     "x",
     "mastodon",
@@ -336,10 +339,17 @@ for (const viewport of [
     await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
     await page.waitForLoadState("networkidle");
 
-    const settingsSearch = page.getByLabel("Search settings");
-    await settingsSearch.focus();
-    await page.keyboard.type("social");
-    await expect(settingsSearch).toHaveValue("social");
+    const settingsNavigation = page.getByTestId("settings-navigation");
+    if (viewport.width < 768) {
+      await expect(settingsNavigation.getByRole("button", { name: "Settings" })).toContainText(
+        "Social accounts",
+      );
+    } else {
+      await expect(settingsNavigation.locator('[data-settings-tab="accounts"]')).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    }
     await page.goto("/accounts");
     const connectBluesky = page
       .getByTestId("provider-card-bluesky")
