@@ -107,10 +107,12 @@
 
 	let {
 		onedit,
+		ontransitionbreak = () => {},
 		selectedItemId = $bindable(null),
 		selectedItemIds = $bindable([])
 	}: {
 		onedit: () => void;
+		ontransitionbreak?: (count: number) => void;
 		selectedItemId?: string | null;
 		selectedItemIds?: string[];
 	} = $props();
@@ -200,6 +202,7 @@
 		rollingNeighbor: TimelineItem | null;
 		ripple: boolean;
 		rippleMoveIds: string[];
+		breakingTransitionIds: string[];
 		stretchHandle: 'start' | 'end';
 		slideLeft: TimelineItem | null;
 		slideRight: TimelineItem | null;
@@ -209,6 +212,7 @@
 	} = null;
 	let activeSnapTarget = $state<SnapTarget | null>(null);
 	let syncLockPreviewById = $state<Record<string, SyncLockPreviewUpdate>>({});
+	let breakingTransitionPreviewIds = $state<string[]>([]);
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
 	// extraction worker and tiles render as they arrive.
@@ -517,6 +521,7 @@
 	function startDrag(event: PointerEvent, id: string, requestedKind: TimelineDragKind): void {
 		if (event.button !== 0) return;
 		clearSyncLockPreview();
+		breakingTransitionPreviewIds = [];
 		event.stopPropagation();
 		if (event.metaKey || event.ctrlKey || !selectedItemIds.includes(id)) selectItem(event, id);
 		else selectedItemId = id;
@@ -535,7 +540,18 @@
 				: null;
 		if ((kind === 'trim-start' || kind === 'trim-end') && event.altKey && !rollingNeighbor) return;
 		const ripple = (kind === 'trim-start' || kind === 'trim-end') && event.shiftKey;
+		const breakingTransitionIds =
+			(kind === 'trim-start' || kind === 'trim-end') && !event.shiftKey && !event.altKey
+				? transitionsStore.list
+						.filter((transition) =>
+							kind === 'trim-start'
+								? transition.toItemId === item.id
+								: transition.fromItemId === item.id
+						)
+						.map((transition) => transition.id)
+				: [];
 		const slideNeighbors = kind === 'slide' ? findSlideNeighbors(item) : null;
+		breakingTransitionPreviewIds = breakingTransitionIds;
 		const beforeSnapshot = captureSnapshot();
 		const editItems = unlockedEditItems(beforeSnapshot);
 		const moveSelectionIds = selectedItemIds.includes(id) ? selectedItemIds : [id];
@@ -576,6 +592,7 @@
 			rollingNeighbor: rollingNeighbor ? $state.snapshot(rollingNeighbor) : null,
 			ripple,
 			rippleMoveIds: [],
+			breakingTransitionIds,
 			stretchHandle: rateStretchHandle(kind),
 			slideLeft: slideNeighbors?.left ? $state.snapshot(slideNeighbors.left) : null,
 			slideRight: slideNeighbors?.right ? $state.snapshot(slideNeighbors.right) : null,
@@ -756,6 +773,7 @@
 			return;
 		}
 		const handle = drag.kind === 'trim-start' ? 'start' : 'end';
+		const breakingTransitionIds = drag.breakingTransitionIds;
 		const plan = planTrimGesture(
 			drag.original,
 			handle,
@@ -764,7 +782,9 @@
 			fps,
 			timelineStore.snapEnabled ? drag.snapTargets : [],
 			snapThreshold(),
-			drag.beforeSnapshot.transitions
+			drag.beforeSnapshot.transitions.filter(
+				(transition) => !breakingTransitionIds.includes(transition.id)
+			)
 		);
 		activeSnapTarget = plan.snapTarget;
 		timelineStore._updateItems([{ id: drag.id, patch: plan.patch }, ...(plan.linkedPatches ?? [])]);
@@ -812,7 +832,22 @@
 				pruneOrphanedTransitions();
 			}
 		}
+		const completedItem = timelineStore.itemById.get(completed.id);
+		const didTrim =
+			completedItem !== undefined &&
+			(completedItem.from !== completed.original.from ||
+				completedItem.durationInFrames !== completed.original.durationInFrames);
+		if (!cancelled && didTrim && completed.breakingTransitionIds.length > 0) {
+			const breakingIds = new Set(completed.breakingTransitionIds);
+			const previousCount = transitionsStore.list.length;
+			transitionsStore.setAll(
+				transitionsStore.list.filter((transition) => !breakingIds.has(transition.id))
+			);
+			const removedCount = previousCount - transitionsStore.list.length;
+			if (removedCount > 0) ontransitionbreak(removedCount);
+		}
 		clearSyncLockPreview();
+		breakingTransitionPreviewIds = [];
 		if (!cancelled && !snapshotsEqual(completed.beforeSnapshot, captureSnapshot())) {
 			commandHistory.addUndoEntry(
 				{
@@ -850,6 +885,7 @@
 			!drag ||
 			(drag.kind !== 'trim-start' && drag.kind !== 'trim-end') ||
 			drag.rollingNeighbor ||
+			drag.breakingTransitionIds.length > 0 ||
 			drag.ripple === enabled
 		)
 			return;
@@ -1486,7 +1522,7 @@
 				{/each}
 				{#each transitionsStore.list as transition (transition.id)}
 					{@const geometry = transitionGeometry(transition, track.id)}
-					{#if geometry}
+					{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
 						<div
 							class="pointer-events-none absolute top-1 z-10 flex h-[calc(100%-8px)] items-start justify-center overflow-hidden rounded-sm border border-[oklch(0.76_0.14_45_/_0.7)] bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)]"
 							style="left:{geometry.left}px;width:{geometry.width}px"

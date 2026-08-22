@@ -176,4 +176,67 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		]);
 		expect(commandHistory.undoStack).toHaveLength(0);
 	});
+
+	it('hides and removes a transition when its clip edge is trimmed directly', async () => {
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'next-video',
+				from: 60,
+				label: 'Next video',
+				sourceStart: 10,
+				sourceEnd: 70
+			}),
+			item({
+				id: 'music-bed',
+				trackId: 'audio-track',
+				label: 'Music',
+				type: 'audio',
+				durationInFrames: 120,
+				sourceEnd: 120
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			}
+		]);
+		const ontransitionbreak = vi.fn();
+		const screen = await render(TimelinePanel, { onedit: vi.fn(), ontransitionbreak });
+		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement;
+		const trimEnd = videoClip?.querySelector<HTMLButtonElement>(
+			'button[aria-label="Trim clip end"]'
+		);
+		expect(trimEnd).not.toBeNull();
+		expect(document.querySelector('[data-transition-id="transition"]')).not.toBeNull();
+		dispatchPointer(trimEnd!, 'pointerdown', 400);
+		dispatchPointer(window, 'pointerup', 400);
+		await nextAnimationFrame();
+		expect(transitionsStore.list).toHaveLength(1);
+		expect(ontransitionbreak).not.toHaveBeenCalled();
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		dispatchPointer(trimEnd!, 'pointerdown', 400);
+		dispatchPointer(window, 'pointermove', 360);
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-transition-id="transition"]')).toBeNull();
+
+		dispatchPointer(window, 'pointerup', 360);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 50 });
+		expect(transitionsStore.list).toEqual([]);
+		expect(ontransitionbreak).toHaveBeenCalledOnce();
+		expect(ontransitionbreak).toHaveBeenCalledWith(1);
+		expect(commandHistory.getLastCommandType()).toBe('TRIM_ITEM_END');
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 60 });
+		expect(transitionsStore.list).toEqual([
+			expect.objectContaining({ id: 'transition', fromItemId: 'video', toItemId: 'next-video' })
+		]);
+	});
 });

@@ -530,6 +530,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					bind:selectedItemId
 					bind:selectedItemIds
 					onedit={() => editorSession.scheduleAutosave()}
+					ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
 				/>
 			</footer>
 		{/key}
