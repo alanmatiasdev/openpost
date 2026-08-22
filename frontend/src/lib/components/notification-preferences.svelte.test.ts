@@ -102,9 +102,9 @@ describe('NotificationPreferences', () => {
 			.mockResolvedValue({ data: { mutes: [] } });
 
 		const screen = await render(NotificationMutes, { notify: mocks.showToast });
-		await expect.element(screen.getByLabelText('Active Mutes')).toBeVisible();
+		await expect.element(screen.getByLabelText('Active mutes')).toBeVisible();
 		await vi.advanceTimersByTimeAsync(1_100);
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 		expect(mocks.get).toHaveBeenCalledTimes(2);
 	});
 
@@ -139,7 +139,7 @@ describe('NotificationPreferences', () => {
 			}
 		});
 
-		await vi.waitFor(() => expect(screen.getByLabelText('Active Mutes').query()).toBeNull());
+		await vi.waitFor(() => expect(screen.getByLabelText('Active mutes').query()).toBeNull());
 	});
 
 	it('does not restore a Mute from a stale expiry refresh response', async () => {
@@ -180,15 +180,15 @@ describe('NotificationPreferences', () => {
 		mocks.delete.mockResolvedValue({ data: { mutes: [] } });
 
 		const screen = await render(NotificationMutes, { notify: mocks.showToast });
-		await expect.element(screen.getByLabelText('Active Mutes')).toBeVisible();
+		await expect.element(screen.getByLabelText('Active mutes')).toBeVisible();
 		await vi.advanceTimersByTimeAsync(1_100);
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
 		await screen.getByRole('button', { name: 'End now' }).click();
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 
 		staleRefresh.resolve({ data: { mutes: [lastingMute] } });
 		await vi.waitFor(() => expect(mocks.delete).toHaveBeenCalledTimes(1));
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 	});
 
 	it('keeps concurrent End now actions independent and reconciles each completion', async () => {
@@ -232,7 +232,7 @@ describe('NotificationPreferences', () => {
 		serverMutes = [];
 		firstEnd.resolve({ data: { mutes: [] } });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 	});
 
 	it('reconciles an out-of-order Create and End now from authoritative reads', async () => {
@@ -257,12 +257,12 @@ describe('NotificationPreferences', () => {
 		serverMutes = [];
 		endResponse.resolve({ data: { mutes: [] } });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 
 		serverMutes = [replacementMute];
 		createResponse.resolve({ data: { mutes: [] } });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
-		await expect.element(screen.getByLabelText('Active Mutes')).toBeVisible();
+		await expect.element(screen.getByLabelText('Active mutes')).toBeVisible();
 		await expect.element(screen.getByText(/2036/)).toBeVisible();
 	});
 
@@ -352,14 +352,14 @@ describe('NotificationPreferences', () => {
 				ends_at: expect.any(String)
 			}
 		});
-		const activeMutes = screen.getByLabelText('Active Mutes');
+		const activeMutes = screen.getByLabelText('Active mutes');
 		await expect.element(activeMutes.getByText('Launch only')).toBeVisible();
 		await expect.element(screen.getByText(/Optional email paused until/)).toBeVisible();
 		await screen.getByRole('button', { name: 'End now' }).click();
 		expect(mocks.delete).toHaveBeenCalledWith('/notifications/mutes/{id}', {
 			params: { path: { id: 'mute-workspace' } }
 		});
-		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
+		await expect.element(screen.getByLabelText('Active mutes')).not.toBeInTheDocument();
 		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
 	});
 

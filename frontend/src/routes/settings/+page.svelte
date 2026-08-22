@@ -205,6 +205,7 @@
 						preferredOrganizationID={page.url.searchParams.get('organization') ?? ''}
 						currentUserID={authState.user?.id ?? ''}
 						active
+						onDeleted={() => goto(resolve('/'))}
 					/>
 				{:else if authState.user?.is_admin && activeSettingsTab === 'instance'}
 					<InstanceSettingsTab userID={authState.user?.id ?? ''} active />

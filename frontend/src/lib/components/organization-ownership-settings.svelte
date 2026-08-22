@@ -22,8 +22,9 @@
 		preferredOrganizationID?: string;
 		currentUserID: string;
 		active?: boolean;
+		onDeleted?: () => void | Promise<void>;
 	}
-	let { preferredOrganizationID = '', currentUserID, active = false }: Props = $props();
+	let { preferredOrganizationID = '', currentUserID, active = false, onDeleted }: Props = $props();
 	let loadedOrganizationID = '';
 	let organizationsLoaded = false;
 	let organizationLoadGeneration = 0;
@@ -203,6 +204,7 @@
 		organizationID = organizations[0]?.id ?? '';
 		loadedOrganizationID = '';
 		showToast(m.organization_delete_success());
+		await onDeleted?.();
 	}
 </script>
 

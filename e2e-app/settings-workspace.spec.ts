@@ -1,6 +1,50 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, password, registerUser } from "./helpers";
 
+test("settings use one grouped navigation and mount only the active page", async ({
+  page,
+  request,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(request, `settings-navigation-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Settings Navigation E2E");
+  await authenticatePage(page, auth.token);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
+
+  await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Pages in this settings section" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Date & time", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Profile", level: 1 })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Search settings" })).toHaveCount(0);
+  await expect(page.getByText("Media cleanup", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete Organization" })).toHaveCount(0);
+
+  await page.goto(`/settings?tab=ownership&workspace=${workspace.id}`);
+  await expect(page.getByRole("heading", { name: "Ownership", level: 1 })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Delete Organization" })).toBeVisible();
+  consoleErrors.length = 0;
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings sections" })).not.toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  expect(consoleErrors).toEqual([]);
+});
+
 test("workspace repost rules save thresholds, delays, and cross-workspace targets", async ({
   page,
   request,
@@ -80,7 +124,7 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/settings?tab=reposts&workspace=${workspace.id}`);
-  await expect(page.getByRole("heading", { name: "Auto repost" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Automatic reposting" })).toBeVisible();
   await expect(page.getByText("A post is never copied to a different network.")).toBeVisible();
 
   await page.getByRole("button", { name: "Add rule" }).click();
@@ -212,7 +256,7 @@ test("Organization Owner reviews and permanently deletes the complete Organizati
   const workspace = await createWorkspace(request, auth.token, "Organization Deletion E2E");
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
+  await page.goto(`/settings?tab=ownership&workspace=${workspace.id}`);
 
   await page.getByRole("button", { name: "Delete Organization" }).click();
   const dialog = page.getByRole("dialog");
@@ -230,6 +274,7 @@ test("Organization Owner reviews and permanently deletes the complete Organizati
   await expect(
     dialog.getByText("Minimum audit evidence without deleted content or credentials"),
   ).toBeVisible();
+  consoleErrors.length = 0;
   await expect(dialog.getByText(/cannot be recovered/)).toBeVisible();
   await page.setViewportSize({ width: 320, height: 760 });
   await expect(dialog).toBeVisible();
@@ -254,7 +299,7 @@ test("Organization Owner reviews and permanently deletes the complete Organizati
   consoleErrors.length = 0;
   await dialog.getByLabel("Current password").fill(password);
   await dialog.getByRole("button", { name: "Delete Organization" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/onboarding$/);
 
   const organizations = await request.get("/api/v1/organizations", {
     headers: { Authorization: `Bearer ${auth.token}` },

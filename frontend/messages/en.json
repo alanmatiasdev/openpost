@@ -3444,7 +3444,7 @@
 	"notifications_mute_end_time": "End time",
 	"notifications_mute_create": "Start mute",
 	"notifications_mute_creating": "Starting Mute…",
-	"notifications_active_mutes": "Active Mutes",
+	"notifications_active_mutes": "Active mutes",
 	"notifications_muted_until": "Optional email paused until {end}.",
 	"notifications_mute_end_now": "End now",
 	"notifications_mute_ending": "Ending…",
