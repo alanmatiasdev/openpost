@@ -21,6 +21,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Directly trimming a transitioned clip edge now previews the break, removes the transition with a toast, and restores it with the same undo step.
 - Timeline selections no longer retain clips removed by an edit or undo state change.
 - Ripple trims now preview and apply the same inserted or removed time across unlocked sync-locked tracks while preserving split media source ranges.
 - Video Editor drag, undo, save, and export flows now snapshot reactive timeline state without browser cloning failures.
