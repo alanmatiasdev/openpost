@@ -538,18 +538,49 @@ describe('timeline edit gestures', () => {
 		]);
 	});
 
-	it('rate stretches from the start and clamps each upstream track at frame zero', () => {
+	it('rate stretches from the start without moving upstream clips before frame zero', () => {
 		const item = mediaItem({
 			from: 100,
 			durationInFrames: 100,
 			sourceStart: 50,
 			sourceEnd: 150,
 			sourceFps: 30,
-			linkedGroupId: 'current',
 			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } }
 		});
 		const preceding = mediaItem({
 			id: 'preceding',
+			from: 40,
+			durationInFrames: 60
+		});
+		expect(planRateStretchGesture(item, 'start', -100, [preceding], 30, [], 2)).toEqual({
+			patch: {
+				from: 60,
+				durationInFrames: 140,
+				speed: 100 / 140,
+				keyframes: { opacity: { frames: [0, 70, 139], values: [0, 0.5, 1] } }
+			},
+			moves: [{ id: 'preceding', from: 0 }],
+			snapTarget: null
+		});
+	});
+
+	it('uses the tightest upstream track limit for a linked start-edge stretch', () => {
+		const item = mediaItem({
+			from: 100,
+			durationInFrames: 100,
+			sourceStart: 50,
+			sourceEnd: 150,
+			sourceFps: 30,
+			linkedGroupId: 'current'
+		});
+		const linkedAudio = mediaItem({
+			...item,
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const precedingVideo = mediaItem({
+			id: 'preceding-video',
 			from: 40,
 			durationInFrames: 60
 		});
@@ -560,48 +591,24 @@ describe('timeline edit gestures', () => {
 			from: 5,
 			durationInFrames: 95
 		});
-		const linkedAudio = mediaItem({
-			...item,
-			id: 'audio',
-			trackId: 'audio',
-			type: 'audio',
-			linkedGroupId: 'current'
-		});
 
-		expect(
-			planRateStretchGesture(
-				item,
-				'start',
-				-100,
-				[preceding, precedingAudio, linkedAudio],
-				30,
-				[],
-				2
-			)
-		).toEqual({
-			patch: {
-				from: 0,
-				durationInFrames: 200,
-				speed: 0.5,
-				keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
-			},
-			linkedPatches: [
-				{
-					id: 'audio',
-					patch: {
-						from: 0,
-						durationInFrames: 200,
-						speed: 0.5,
-						keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
-					}
-				}
-			],
-			moves: [
-				{ id: 'preceding', from: 0 },
-				{ id: 'preceding-audio', from: 0 }
-			],
-			snapTarget: null
-		});
+		const plan = planRateStretchGesture(
+			item,
+			'start',
+			-100,
+			[precedingVideo, precedingAudio, linkedAudio],
+			30,
+			[],
+			2
+		);
+
+		expect(plan?.patch.from).toBe(95);
+		expect(plan?.patch.durationInFrames).toBe(105);
+		expect(plan?.linkedPatches?.[0]?.patch.from).toBe(95);
+		expect(plan?.moves).toEqual([
+			{ id: 'preceding-video', from: 35 },
+			{ id: 'preceding-audio', from: 0 }
+		]);
 	});
 
 	it('snaps a start-handle rate stretch and keeps its original end fixed', () => {
