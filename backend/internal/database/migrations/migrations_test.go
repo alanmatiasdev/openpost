@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,23 @@ import (
 	"github.com/uptrace/bun/dialect"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
+
+func TestRetiredVideoEditorMigrationDropsForeignKeyOwnersFirst(t *testing.T) {
+	t.Parallel()
+
+	raw, err := migrationFiles.ReadFile("107_drop_video_projects.sql")
+	require.NoError(t, err)
+	sql := string(raw)
+
+	assets := strings.Index(sql, "DROP TABLE IF EXISTS video_project_assets;")
+	revisions := strings.Index(sql, "DROP TABLE IF EXISTS video_project_revisions;")
+	projects := strings.Index(sql, "DROP TABLE IF EXISTS video_projects;")
+	require.NotEqual(t, -1, assets)
+	require.NotEqual(t, -1, revisions)
+	require.NotEqual(t, -1, projects)
+	require.Less(t, assets, revisions)
+	require.Less(t, revisions, projects)
+}
 
 func TestRunMigrationsReplacesLegacySocialSetsAndPromotesSchedules(t *testing.T) {
 	t.Parallel()
