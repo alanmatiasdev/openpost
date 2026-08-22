@@ -21,6 +21,8 @@
 	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { Slider } from '$lib/components/ui/slider';
+	import { Input } from '$lib/components/ui/input';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import {
 		activeValueAt,
 		removeKeyframe,
@@ -294,6 +296,25 @@
 	const availableKeyframeProperties = $derived(
 		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
 	);
+	const keyframePropertyOptions = $derived(
+		availableKeyframeProperties.map((property) => ({
+			value: property,
+			label: keyframeLabel(property)
+		}))
+	);
+	const easingOptions = $derived([
+		{ value: 'linear', label: 'Linear' },
+		{ value: 'hold', label: 'Hold' },
+		{ value: 'ease-in', label: 'Ease in' },
+		{ value: 'ease-out', label: 'Ease out' },
+		{ value: 'ease-in-out', label: 'Ease in/out' },
+		{ value: 'cubic-bezier', label: 'Cubic bezier' },
+		{ value: 'spring', label: 'Spring' }
+	]);
+	const bezierOptions = $derived([
+		{ value: '', label: 'Custom' },
+		...BEZIER_PRESETS.map((preset) => ({ value: preset.value, label: preset.label }))
+	]);
 	const selectedKeyframeTrack = $derived(
 		selectedItem && selectedKeyframe
 			? selectedItem.keyframes?.[selectedKeyframe.property]
@@ -386,6 +407,16 @@
 		}
 	}
 
+	function setPendingKeyframeProperty(value: string): void {
+		const property = availableKeyframeProperties.find((candidate) => candidate === value);
+		if (property) pendingKeyframeProperty = property;
+	}
+
+	function applyBezierPreset(value: string): void {
+		const preset = BEZIER_PRESETS.find((candidate) => candidate.value === value);
+		if (preset) commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier: preset.points });
+	}
+
 	function bezierValue(key: 'x1' | 'y1' | 'x2' | 'y2'): number {
 		return selectedEasingConfig?.bezier?.[key] ?? { x1: 0.42, y1: 0, x2: 0.58, y2: 1 }[key];
 	}
@@ -402,15 +433,13 @@
 			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
 				{selectedItem.label}
 			</span>
-			<select
-				class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-xs"
-				bind:value={pendingKeyframeProperty}
-				aria-label="Animated property"
-			>
-				{#each availableKeyframeProperties as property (property)}<option value={property}
-						>{keyframeLabel(property)}</option
-					>{/each}
-			</select>
+			<AppSelect
+				class="h-7 w-36 text-xs"
+				value={pendingKeyframeProperty}
+				options={keyframePropertyOptions}
+				ariaLabel="Animated property"
+				onValueChange={setPendingKeyframeProperty}
+			/>
 			<button
 				type="button"
 				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
@@ -573,38 +602,25 @@
 						class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-[10px]"
 					>
 						<span class="font-medium capitalize">{keyframeLabel(selectedKeyframe.property)}</span>
-						<label
-							>Easing <select
-								class="ml-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+						<label class="flex items-center gap-1">
+							Easing
+							<AppSelect
+								class="h-7 w-28 text-[10px]"
 								value={selectedEasing}
-								onchange={(event) => commitEasing(easingFromValue(event.currentTarget.value))}
-								><option value="linear">Linear</option><option value="hold">Hold</option><option
-									value="ease-in">Ease in</option
-								><option value="ease-out">Ease out</option><option value="ease-in-out"
-									>Ease in/out</option
-								><option value="cubic-bezier">Cubic bezier</option><option value="spring"
-									>Spring</option
-								></select
-							></label
-						>
+								options={easingOptions}
+								onValueChange={(value) => commitEasing(easingFromValue(value))}
+							/>
+						</label>
 						{#if selectedEasing === 'cubic-bezier'}
-							<select
-								class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
-								aria-label="Bezier preset"
-								onchange={(event) => {
-									const preset = BEZIER_PRESETS.find(
-										(candidate) => candidate.value === event.currentTarget.value
-									);
-									if (preset)
-										commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier: preset.points });
-								}}
-								><option value="">Custom</option
-								>{#each BEZIER_PRESETS as preset (preset.value)}<option value={preset.value}
-										>{preset.label}</option
-									>{/each}</select
-							>
+							<AppSelect
+								class="h-7 w-32 text-[10px]"
+								value=""
+								options={bezierOptions}
+								ariaLabel="Bezier preset"
+								onValueChange={applyBezierPreset}
+							/>
 							{#each BEZIER_KEYS as key (key)}<label
-									>{key}<input
+									>{key}<Input
 										class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
 										type="number"
 										step="0.01"
@@ -616,7 +632,7 @@
 								>{/each}
 						{:else if selectedEasing === 'spring'}
 							{#each SPRING_KEYS as key (key)}<label
-									>{key}<input
+									>{key}<Input
 										class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
 										type="number"
 										step="0.1"

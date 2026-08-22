@@ -3,6 +3,8 @@
 	import { canEncodeVideo, type VideoCodec } from 'mediabunny';
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
 		renderMultiTrackVideo,
@@ -41,6 +43,32 @@
 		format === 'mp3' || format === 'aac' || format === 'wav' ? null : format
 	);
 	const codecs = $derived(videoFormat ? supportedExportVideoCodecs(videoFormat) : []);
+	const formatOptions = $derived([
+		{ value: 'mp4', label: 'MP4' },
+		{ value: 'mov', label: 'MOV' },
+		{ value: 'webm', label: 'WebM' },
+		{ value: 'mkv', label: 'MKV' },
+		{ value: 'mp3', label: `${m.video_editor_export_audio_only()}: MP3` },
+		{ value: 'aac', label: `${m.video_editor_export_audio_only()}: AAC` },
+		{ value: 'wav', label: `${m.video_editor_export_audio_only()}: WAV` }
+	]);
+	const qualityOptions = $derived([
+		{ value: 'draft', label: m.video_editor_export_quality_draft() },
+		{ value: 'standard', label: m.video_editor_export_quality_standard() },
+		{ value: 'high', label: m.video_editor_export_quality_high() }
+	]);
+	const resolutionOptions = $derived([
+		{ value: 'source', label: `${project?.metadata.width} × ${project?.metadata.height}` },
+		{ value: '1920x1080', label: '1920 × 1080' },
+		{ value: '1280x720', label: '1280 × 720' },
+		{ value: '854x480', label: '854 × 480' }
+	]);
+	const subtitleOptions = $derived([
+		{ value: 'none', label: m.video_editor_export_subtitles_none() },
+		{ value: 'burn', label: m.video_editor_export_subtitles_burn() },
+		{ value: 'sidecar', label: m.video_editor_export_subtitles_sidecar() },
+		{ value: 'embedded', label: m.video_editor_export_subtitles_embedded() }
+	]);
 
 	$effect(() => {
 		const selectedFormat = videoFormat;
@@ -67,6 +95,34 @@
 			}
 		});
 	});
+
+	function setFormat(value: string): void {
+		switch (value) {
+			case 'mp4':
+			case 'mov':
+			case 'webm':
+			case 'mkv':
+			case 'mp3':
+			case 'aac':
+			case 'wav':
+				format = value;
+		}
+	}
+
+	function setQuality(value: string): void {
+		if (value === 'draft' || value === 'standard' || value === 'high') quality = value;
+	}
+
+	function setSubtitleMode(value: string): void {
+		if (value === 'none' || value === 'burn' || value === 'sidecar' || value === 'embedded') {
+			subtitleMode = value;
+		}
+	}
+
+	function setCodec(value: string): void {
+		const next = codecs.find((candidate) => candidate === value);
+		if (next) codec = next;
+	}
 
 	async function start(): Promise<void> {
 		if (!project || rendering) return;
@@ -132,77 +188,63 @@
 		>
 			<h2 id="export-title" class="text-base font-semibold">{m.video_editor_export_title()}</h2>
 			<div class="mt-4 grid grid-cols-2 gap-3">
-				<label class="text-xs text-[oklch(0.7_0.01_55)]"
-					>{m.video_editor_export_format()}<select
-						class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
-						bind:value={format}
+				<label class="text-xs text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_export_format()}<AppSelect
+						class="mt-1 h-9 w-full text-sm"
+						value={format}
+						options={formatOptions}
 						disabled={rendering}
-						><option value="mp4">MP4</option><option value="mov">MOV</option><option value="webm"
-							>WebM</option
-						><option value="mkv">MKV</option><optgroup label={m.video_editor_export_audio_only()}
-							><option value="mp3">MP3</option><option value="aac">AAC</option><option value="wav"
-								>WAV</option
-							></optgroup
-						></select
-					></label
-				>
+						onValueChange={setFormat}
+					/>
+				</label>
 				{#if videoFormat}
 					<label class="text-xs text-[oklch(0.7_0.01_55)]"
-						>{m.video_editor_export_codec()}<select
-							class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
-							bind:value={codec}
+						>{m.video_editor_export_codec()}<AppSelect
+							class="mt-1 h-9 w-full text-sm"
+							value={codec}
 							disabled={rendering}
-							>{#each codecs as candidate}
-								<option value={candidate} disabled={codecSupport[candidate] === false}>
-									{candidate.toUpperCase()}{codecSupport[candidate] === false
-										? ` ${m.video_editor_export_codec_unavailable()}`
-										: ''}
-								</option>
-							{/each}</select
-						></label
-					>
+							options={codecs.map((candidate) => ({
+								value: candidate,
+								label: `${candidate.toUpperCase()}${codecSupport[candidate] === false ? ` ${m.video_editor_export_codec_unavailable()}` : ''}`,
+								disabled: codecSupport[candidate] === false
+							}))}
+							onValueChange={setCodec}
+						/>
+					</label>
 				{/if}
-				<label class="text-xs text-[oklch(0.7_0.01_55)]"
-					>{m.video_editor_export_quality()}<select
-						class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
-						bind:value={quality}
+				<label class="text-xs text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_export_quality()}<AppSelect
+						class="mt-1 h-9 w-full text-sm"
+						value={quality}
+						options={qualityOptions}
 						disabled={rendering}
-						><option value="draft">{m.video_editor_export_quality_draft()}</option><option
-							value="standard">{m.video_editor_export_quality_standard()}</option
-						><option value="high">{m.video_editor_export_quality_high()}</option></select
-					></label
-				>
-				<label class="text-xs text-[oklch(0.7_0.01_55)]"
-					>{m.video_editor_export_resolution()}<select
-						class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
+						onValueChange={setQuality}
+					/>
+				</label>
+				<label class="text-xs text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_export_resolution()}<AppSelect
+						class="mt-1 h-9 w-full text-sm"
 						bind:value={resolution}
+						options={resolutionOptions}
 						disabled={rendering}
-						><option value="source">{project?.metadata.width} × {project?.metadata.height}</option
-						><option value="1920x1080">1920 × 1080</option><option value="1280x720"
-							>1280 × 720</option
-						><option value="854x480">854 × 480</option></select
-					></label
-				>
-				<label class="text-xs text-[oklch(0.7_0.01_55)]"
-					>{m.video_editor_export_subtitles()}<select
-						class="mt-1 w-full rounded bg-[oklch(0.23_0.01_50)] p-2 text-sm"
-						bind:value={subtitleMode}
+					/>
+				</label>
+				<label class="text-xs text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_export_subtitles()}<AppSelect
+						class="mt-1 h-9 w-full text-sm"
+						value={subtitleMode}
+						options={subtitleOptions}
 						disabled={rendering}
-						><option value="none">{m.video_editor_export_subtitles_none()}</option><option
-							value="burn">{m.video_editor_export_subtitles_burn()}</option
-						><option value="sidecar">{m.video_editor_export_subtitles_sidecar()}</option><option
-							value="embedded">{m.video_editor_export_subtitles_embedded()}</option
-						></select
-					></label
-				>
+						onValueChange={setSubtitleMode}
+					/>
+				</label>
 			</div>
-			<label class="mt-3 flex min-h-11 items-center gap-2 text-sm"
-				><input
-					type="checkbox"
+			<label class="mt-3 flex min-h-11 items-center gap-2 text-sm">
+				<Checkbox
 					bind:checked={useRange}
 					disabled={rendering || timelineStore.inPoint === null || timelineStore.outPoint === null}
-				/>{m.video_editor_export_range()}</label
-			>
+				/>{m.video_editor_export_range()}
+			</label>
 			{#if progress}<div class="mt-2" role="status">
 					<p class="text-center text-xs text-[oklch(0.7_0.01_55)]">
 						{m.video_editor_render_progress({ done: progress.done, total: progress.total })}

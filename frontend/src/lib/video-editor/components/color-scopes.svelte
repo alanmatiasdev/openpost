@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 	import { buildScopeBins } from '$lib/video-editor/effects/scopes';
 	let { itemId }: { itemId: string | null } = $props();
@@ -84,11 +85,16 @@
 		<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
 			Scopes
 		</h3>
-		<select class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-[10px]" bind:value={mode}
-			><option value="histogram">{m.video_editor_scope_histogram()}</option><option value="waveform"
-				>{m.video_editor_scope_waveform()}</option
-			><option value="vectorscope">{m.video_editor_scope_vectorscope()}</option></select
-		>
+		<AppSelect
+			bind:value={mode}
+			ariaLabel={m.video_editor_scope_live()}
+			class="h-7 w-28 text-[10px]"
+			options={[
+				{ value: 'histogram', label: m.video_editor_scope_histogram() },
+				{ value: 'waveform', label: m.video_editor_scope_waveform() },
+				{ value: 'vectorscope', label: m.video_editor_scope_vectorscope() }
+			]}
+		/>
 	</div>
 	<canvas
 		bind:this={canvas}

@@ -6,6 +6,7 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { Slider } from '$lib/components/ui/slider';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		EFFECT_DEFINITIONS,
@@ -99,6 +100,26 @@
 		inversion: m.video_editor_blend_group_inversion(),
 		component: m.video_editor_blend_group_component()
 	});
+	const effectOptions = $derived([
+		...EFFECT_DEFINITIONS.map((definition) => ({
+			value: definition.type,
+			label: typeLabels[definition.type]
+		})),
+		...gpuCategories.flatMap((group) =>
+			group.effects.map((definition) => ({
+				value: `gpu:${definition.id}`,
+				label: `${gpuCategoryLabels[group.category]}: ${definition.label}`
+			}))
+		)
+	]);
+	const blendOptions = $derived(
+		BLEND_MODE_GROUPS.flatMap((group) =>
+			group.modes.map((mode) => ({
+				value: mode,
+				label: `${blendGroupLabels[group.label]}: ${blendModeLabels[mode]}`
+			}))
+		)
+	);
 
 	function definitionFor(type: string) {
 		return EFFECT_DEFINITIONS.find((entry) => entry.type === type);
@@ -169,24 +190,12 @@
 		{m.video_editor_effects()}
 	</h3>
 	<div class="flex items-center gap-1">
-		<select
-			class="min-w-0 flex-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+		<AppSelect
+			class="h-8 min-w-0 flex-1 text-xs"
 			bind:value={pendingKind}
-			aria-label={m.video_editor_effects_add()}
-		>
-			<optgroup label={m.video_editor_effects()}>
-				{#each EFFECT_DEFINITIONS as definition (definition.type)}
-					<option value={definition.type}>{typeLabels[definition.type]}</option>
-				{/each}
-			</optgroup>
-			{#each gpuCategories as group (group.category)}
-				<optgroup label={gpuCategoryLabels[group.category]}>
-					{#each group.effects as definition (definition.id)}
-						<option value="gpu:{definition.id}">{definition.label}</option>
-					{/each}
-				</optgroup>
-			{/each}
-		</select>
+			ariaLabel={m.video_editor_effects_add()}
+			options={effectOptions}
+		/>
 		<button
 			type="button"
 			class="rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
@@ -276,19 +285,12 @@
 	{#if itemId}
 		<label class="mt-1 flex items-center gap-2 px-1 text-xs">
 			<span class="shrink-0 text-[oklch(0.65_0.015_55)]">{m.video_editor_blend_mode()}</span>
-			<select
-				class="min-w-0 flex-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			<AppSelect
+				class="h-8 min-w-0 flex-1 text-xs"
 				value={item?.blendMode ?? 'normal'}
-				onchange={(event) => commitBlendMode(event.currentTarget.value)}
-			>
-				{#each BLEND_MODE_GROUPS as group (group.label)}
-					<optgroup label={blendGroupLabels[group.label]}>
-						{#each group.modes as mode (mode)}
-							<option value={mode}>{blendModeLabels[mode]}</option>
-						{/each}
-					</optgroup>
-				{/each}
-			</select>
+				options={blendOptions}
+				onValueChange={commitBlendMode}
+			/>
 		</label>
 	{/if}
 </div>

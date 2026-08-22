@@ -1,6 +1,8 @@
 <!-- Type-specific, undoable clip inspector with FreeCut-compatible auto-key rules. -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
@@ -194,7 +196,7 @@
 								onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
 							>
 						</span>
-						<input
+						<Input
 							class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 							type="number"
 							min={field.min}
@@ -218,7 +220,7 @@
 				<div class="grid grid-cols-2 gap-1">
 					{#each cropFields as field (field.property)}
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-							>{field.label}<input
+							>{field.label}<Input
 								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
 								type="number"
 								min={field.min}
@@ -236,7 +238,7 @@
 
 		{#if item.type === 'video' || item.type === 'audio'}
 			<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-				>{m.video_editor_clip_volume()}<input
+				>{m.video_editor_clip_volume()}<Input
 					class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
 					type="number"
 					min="0"
@@ -255,18 +257,19 @@
 				>
 					{m.video_editor_tool_text()}
 				</h3>
-				<textarea
+				<Textarea
 					class="mb-1 min-h-16 w-full resize-y rounded bg-[oklch(0.22_0.01_50)] p-1.5 text-xs"
 					value={item.text ?? ''}
 					onblur={(event) =>
 						commitText({
 							text: event.currentTarget.value,
 							label: event.currentTarget.value.slice(0, 48) || item.label
-						})}></textarea>
+						})}
+				></Textarea>
 				<div class="grid grid-cols-2 gap-1">
 					{#each textFields as field (field.property)}
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-							>{field.label}<input
+							>{field.label}<Input
 								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
 								type="number"
 								min={field.min}
@@ -281,7 +284,7 @@
 				</div>
 				<div class="mt-1 grid grid-cols-2 gap-1">
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-						>{m.video_editor_text_color()}<input
+						>{m.video_editor_text_color()}<Input
 							class="block h-8 w-full rounded bg-transparent"
 							type="color"
 							value={item.color ?? '#ffffff'}
@@ -289,7 +292,7 @@
 						/></label
 					>
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-						>{m.video_editor_text_background()}<input
+						>{m.video_editor_text_background()}<Input
 							class="block h-8 w-full rounded bg-transparent"
 							type="color"
 							value={item.backgroundColor ?? '#000000'}

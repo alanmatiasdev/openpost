@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { Input } from '$lib/components/ui/input';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
@@ -137,7 +138,7 @@
 				{#each item.cues ?? [] as cue (cue.id)}
 					<li class="rounded bg-[oklch(0.19_0.01_50)] p-1">
 						<div class="flex items-center gap-1">
-							<input
+							<Input
 								class="min-w-0 flex-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 								value={displayText(cue)}
 								aria-label={m.video_editor_transcript_line()}
@@ -161,7 +162,7 @@
 						</div>
 						<div class="mt-1 grid grid-cols-2 gap-1">
 							<label class="text-[9px] text-[oklch(0.62_0.01_55)]"
-								>{m.video_editor_property_start()}<input
+								>{m.video_editor_property_start()}<Input
 									class="mt-0.5 w-full rounded bg-[oklch(0.24_0.01_50)] px-1 py-0.5 text-[10px]"
 									type="number"
 									min="0"
@@ -171,7 +172,7 @@
 								/></label
 							>
 							<label class="text-[9px] text-[oklch(0.62_0.01_55)]"
-								>{m.video_editor_property_end()}<input
+								>{m.video_editor_property_end()}<Input
 									class="mt-0.5 w-full rounded bg-[oklch(0.24_0.01_50)] px-1 py-0.5 text-[10px]"
 									type="number"
 									min={cue.startFrame + 1}
@@ -187,7 +188,7 @@
 									<div
 										class="group rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.23_0.01_50)] p-1"
 									>
-										<input
+										<Input
 											class="w-16 bg-transparent text-[10px] outline-none"
 											value={word.text}
 											aria-label={m.video_editor_transcript_word()}
@@ -198,7 +199,7 @@
 											}}
 										/>
 										<div class="mt-0.5 flex items-center gap-0.5">
-											<input
+											<Input
 												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
 												type="number"
 												value={word.startFrame}
@@ -207,7 +208,7 @@
 													updateWord(item, cue, word.id, {
 														startFrame: Math.max(0, event.currentTarget.valueAsNumber)
 													})}
-											/><span class="text-[8px]">-</span><input
+											/><span class="text-[8px]">-</span><Input
 												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
 												type="number"
 												value={word.endFrame}
