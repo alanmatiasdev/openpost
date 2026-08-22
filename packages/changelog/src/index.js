@@ -69,6 +69,26 @@ export function validateChangelog(markdown) {
   return errors;
 }
 
+function mergePendingBodyIntoReleaseBody(releaseBody, pending) {
+  const pendingSection = parseChangelog(`## [Unreleased]\n\n${pending}\n`)[0];
+  const lines = releaseBody.trim().split(/\r?\n/u);
+
+  for (const group of pendingSection?.groups ?? []) {
+    const items = group.items.map((item) => `- ${item}`);
+    const header = `### ${group.title}`;
+    const headerIndex = lines.findIndex((line) => line.trim() === header);
+    if (headerIndex < 0) {
+      if (lines.length > 0 && lines.at(-1) !== "") lines.push("");
+      lines.push(header, "", ...items);
+      continue;
+    }
+    const insertAt = lines[headerIndex + 1]?.trim() === "" ? headerIndex + 2 : headerIndex + 1;
+    lines.splice(insertAt, 0, ...items);
+  }
+
+  return lines.join("\n").trim();
+}
+
 export function prepareReleaseChangelog(markdown, tag, releaseDate) {
   const normalizedTag = String(tag).trim().replace(/^v/u, "");
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(normalizedTag)) {
@@ -90,13 +110,31 @@ export function prepareReleaseChangelog(markdown, tag, releaseDate) {
   const unreleased = parseChangelog(`${startMarker}\n\n${unreleasedBody}\n`)[0];
   const itemCount =
     unreleased?.groups.reduce((total, current) => total + current.items.length, 0) ?? 0;
+
+  const afterUnreleased = markdown.slice(bodyEnd).replace(/^\n+/u, "");
+  const nextSection = sectionPattern.exec(afterUnreleased.split(/\r?\n/u, 1)[0] ?? "");
+  if (nextSection?.[1] === normalizedTag) {
+    if (itemCount === 0) return markdown;
+    const headerEnd = afterUnreleased.indexOf("\n");
+    const releaseBodyStart = headerEnd < 0 ? afterUnreleased.length : headerEnd + 1;
+    const followingSectionOffset = afterUnreleased.slice(releaseBodyStart).search(/\n## \[/u);
+    const releaseBodyEnd =
+      followingSectionOffset < 0
+        ? afterUnreleased.length
+        : releaseBodyStart + followingSectionOffset;
+    const releaseBody = afterUnreleased.slice(releaseBodyStart, releaseBodyEnd);
+    const followingSections = afterUnreleased.slice(releaseBodyEnd).replace(/^\n+/u, "");
+    const mergedBody = mergePendingBodyIntoReleaseBody(releaseBody, unreleasedBody);
+    const tail = followingSections ? `\n\n${followingSections}` : "";
+    return `${markdown.slice(0, start)}${startMarker}\n\n## [${normalizedTag}] - ${releaseDate}\n\n${mergedBody}${tail}\n`;
+  }
+
   if (itemCount === 0) {
     throw new Error("CHANGELOG.md [Unreleased] has no entries to release");
   }
 
   const before = markdown.slice(0, start);
-  const after = markdown.slice(bodyEnd).replace(/^\n+/u, "");
-  return `${before}${startMarker}\n\n## [${normalizedTag}] - ${releaseDate}\n\n${unreleasedBody}\n\n${after}`;
+  return `${before}${startMarker}\n\n## [${normalizedTag}] - ${releaseDate}\n\n${unreleasedBody}\n\n${afterUnreleased}`;
 }
 
 export function releaseNotesForTag(markdown, tag) {

@@ -51,6 +51,40 @@ test("moves Unreleased into the target version", () => {
   );
 });
 
+test("merges late fragments into an already prepared version", () => {
+  const prepared = prepareReleaseChangelog(sample, "v1.2.4", "2026-07-28");
+  const withLateChanges = prepared.replace(
+    "## [Unreleased]",
+    `## [Unreleased]
+
+### Changed
+
+- Kept linked edits together.
+
+### Added
+
+- Published the Android app.`,
+  );
+  const updated = prepareReleaseChangelog(withLateChanges, "v1.2.4", "2026-07-28");
+
+  assert.equal(updated.match(/^## \[1\.2\.4\]/gmu)?.length, 1);
+  assert.deepEqual(validateChangelog(updated), []);
+  assert.equal(
+    releaseNotesForTag(updated, "v1.2.4"),
+    [
+      "## Changed",
+      "",
+      "- Kept linked edits together.",
+      "- Shared one control system.",
+      "",
+      "## Added",
+      "",
+      "- Published the Android app.",
+    ].join("\n"),
+  );
+  assert.equal(prepareReleaseChangelog(updated, "v1.2.4", "2026-07-28"), updated);
+});
+
 test("rejects empty and malformed release preparation", () => {
   assert.throws(
     () =>
