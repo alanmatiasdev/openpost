@@ -91,6 +91,15 @@
 		getSynchronizedLinkedItems
 	} from '$lib/video-editor/timeline/utils/linked-items';
 	import { updateTimelineItemSelection } from '$lib/video-editor/timeline/selection';
+	import {
+		areItemIdListsEqual,
+		clearEffectDragData,
+		getEffectDragData,
+		isDragPointInsideElement,
+		resolveEffectDropTargetIds,
+		type EffectDragData
+	} from '$lib/video-editor/timeline/effect-drop';
+	import { addEffectTemplates } from '$lib/video-editor/timeline/actions/effects';
 	import { Button } from '$lib/components/ui/button';
 	import BetweenHorizontalEndIcon from '@lucide/svelte/icons/between-horizontal-end';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
@@ -222,6 +231,19 @@
 		additive: boolean;
 		baseIds: string[];
 	} | null>(null);
+	let effectDropTargetIds = $state<string[]>([]);
+	let effectDropHoveredItemId = $state<string | null>(null);
+
+	$effect(() => {
+		if (effectDropTargetIds.length === 0) return;
+		const clear = () => clearEffectDropPreview();
+		window.addEventListener('dragend', clear);
+		window.addEventListener('drop', clear);
+		return () => {
+			window.removeEventListener('dragend', clear);
+			window.removeEventListener('drop', clear);
+		};
+	});
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
 	// extraction worker and tiles render as they arrive.
@@ -389,6 +411,62 @@
 		setCurrentFrame(
 			pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH)
 		);
+	}
+
+	function clearEffectDropPreview(): void {
+		effectDropTargetIds = [];
+		effectDropHoveredItemId = null;
+	}
+
+	function resolveEffectTargets(itemId: string, payload: EffectDragData | null): string[] {
+		if (!payload) return [];
+		const lockedTrackIds = new Set(
+			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		);
+		return resolveEffectDropTargetIds({
+			hoveredItemId: itemId,
+			items: timelineStore.items,
+			selectedItemIds
+		}).filter((targetId) => {
+			const target = timelineStore.itemById.get(targetId);
+			return !!target && !lockedTrackIds.has(target.trackId);
+		});
+	}
+
+	function previewEffectDrop(event: DragEvent, itemId: string): void {
+		const targetItemIds = resolveEffectTargets(itemId, getEffectDragData());
+		if (targetItemIds.length === 0) {
+			clearEffectDropPreview();
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		if (
+			effectDropHoveredItemId === itemId &&
+			areItemIdListsEqual(effectDropTargetIds, targetItemIds)
+		) {
+			return;
+		}
+		effectDropTargetIds = targetItemIds;
+		effectDropHoveredItemId = itemId;
+	}
+
+	function leaveEffectDrop(event: DragEvent, itemId: string): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		if (effectDropHoveredItemId === itemId) clearEffectDropPreview();
+	}
+
+	function dropEffect(event: DragEvent, itemId: string): void {
+		const payload = getEffectDragData();
+		const targetItemIds = resolveEffectTargets(itemId, payload);
+		clearEffectDropPreview();
+		clearEffectDragData();
+		if (!payload || targetItemIds.length === 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (addEffectTemplates(targetItemIds, payload.effects)) onedit();
 	}
 
 	function marqueeStyle(): string {
@@ -1148,6 +1226,8 @@
 	onDestroy(() => {
 		if (drag) finishDrag(true);
 		if (marquee) finishMarquee();
+		clearEffectDropPreview();
+		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
 	});
 
@@ -1539,6 +1619,7 @@
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
 					{@const displayItem = previewedItem(item)}
 					{#if !syncLockPreviewById[item.id]?.hidden}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="group absolute top-1 h-[calc(100%-8px)] touch-none overflow-hidden rounded-sm border text-left {selectedItemIds.includes(
 								item.id
@@ -1547,7 +1628,30 @@
 								: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
 							style={clipStyle(displayItem)}
 							data-timeline-item-id={item.id}
+							ondragenter={(event) => previewEffectDrop(event, item.id)}
+							ondragover={(event) => previewEffectDrop(event, item.id)}
+							ondragleave={(event) => leaveEffectDrop(event, item.id)}
+							ondrop={(event) => dropEffect(event, item.id)}
 						>
+							{#if effectDropTargetIds.includes(item.id)}
+								<div
+									class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-sky-300/90 bg-sky-400/15 shadow-[inset_0_0_0_1px_oklch(0.82_0.09_220_/_0.35)]"
+									data-effect-drop-preview
+								>
+									{#if effectDropHoveredItemId === item.id}
+										<span class="sr-only" role="status" aria-live="polite">
+											{m.video_editor_effects_drop_ready({ count: effectDropTargetIds.length })}
+										</span>
+									{/if}
+									{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
+										<span
+											class="absolute top-1 right-1 rounded-full bg-sky-300/95 px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-slate-950"
+										>
+											{m.video_editor_effects_drop_count({ count: effectDropTargetIds.length })}
+										</span>
+									{/if}
+								</div>
+							{/if}
 							<button
 								type="button"
 								class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"

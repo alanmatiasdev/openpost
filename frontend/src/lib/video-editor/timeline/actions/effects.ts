@@ -20,6 +20,7 @@ import { EFFECT_DEFINITIONS } from '$lib/video-editor/effects/types';
 import type { BlendMode } from '$lib/video-editor/effects/gpu/blend-modes';
 import { clampGpuParam, defaultGpuParams } from '$lib/video-editor/effects/gpu/types';
 import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
+import type { EffectTemplate } from '$lib/video-editor/timeline/effect-drop';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 
@@ -87,6 +88,38 @@ export function addGpuEffect(itemId: string, effectId: string): boolean {
 		]);
 		return true;
 	});
+}
+
+/** Apply one effect template stack to multiple visual clips as one undo step. */
+export function addEffectTemplates(
+	itemIds: readonly string[],
+	templates: readonly EffectTemplate[]
+): boolean {
+	const uniqueItemIds = Array.from(new Set(itemIds));
+	return execute(
+		'ADD_EFFECTS',
+		() => {
+			const updates = uniqueItemIds.flatMap((itemId) => {
+				const item = timelineStore.itemById.get(itemId);
+				if (!item || item.type === 'audio') return [];
+				const additions = templates.flatMap((template) => {
+					const effect = createEffectFromTemplate(template);
+					return effect ? [effect] : [];
+				});
+				if (additions.length === 0) return [];
+				return [
+					{
+						id: itemId,
+						patch: { effects: [...(item.effects ?? []), ...additions] }
+					}
+				];
+			});
+			if (updates.length === 0) return false;
+			timelineStore._updateItems(updates);
+			return true;
+		},
+		{ count: uniqueItemIds.length }
+	);
 }
 
 /** Toggle one GPU effect's enabled flag. One undoable step. */
@@ -180,4 +213,26 @@ export function removeEffect(itemId: string, effectId: string): boolean {
 
 function replaceAt(effects: ItemEffect[], index: number, next: ItemEffect): ItemEffect[] {
 	return [...effects.slice(0, index), next, ...effects.slice(index + 1)];
+}
+
+function createEffectFromTemplate(template: EffectTemplate): ItemEffect | null {
+	if (template.kind === 'css') {
+		const definition = EFFECT_DEFINITIONS.find((entry) => entry.type === template.effectType);
+		if (!definition) return null;
+		return {
+			id: crypto.randomUUID(),
+			type: definition.type,
+			amount: definition.defaultAmount,
+			enabled: true
+		};
+	}
+	const definition = getGpuEffect(template.effectId);
+	if (!definition) return null;
+	return {
+		id: crypto.randomUUID(),
+		type: 'gpu',
+		effectId: definition.id,
+		params: defaultGpuParams(definition.schema),
+		enabled: true
+	};
 }

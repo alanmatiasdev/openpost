@@ -4,10 +4,12 @@
 	Sliders draft locally and commit one undoable update on release.
 -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { Slider } from '$lib/components/ui/slider';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import XIcon from '@lucide/svelte/icons/x';
+	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import {
 		EFFECT_DEFINITIONS,
 		type GpuEffect,
@@ -34,6 +36,12 @@
 		type BlendMode
 	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import ColorScopes from './color-scopes.svelte';
+	import {
+		clearEffectDragData,
+		setEffectDragData,
+		type EffectDragData,
+		type EffectTemplate
+	} from '$lib/video-editor/timeline/effect-drop';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 
@@ -43,6 +51,8 @@
 	/** In-flight slider values so dragging stays smooth before the undoable commit. */
 	let draftAmounts = $state<Record<string, number>>({});
 	let pendingKind = $state<string>('brightness');
+	let suppressAddAfterDrag = false;
+	let dragResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const typeLabels = $derived<Record<Exclude<ItemType, 'gpu'>, string>>({
 		brightness: m.video_editor_effects_brightness(),
@@ -126,6 +136,10 @@
 	}
 
 	function handleAdd(): void {
+		if (suppressAddAfterDrag) {
+			suppressAddAfterDrag = false;
+			return;
+		}
 		if (!itemId) return;
 		if (pendingKind.startsWith('gpu:')) {
 			if (addGpuEffect(itemId, pendingKind.slice(4))) onedit();
@@ -135,6 +149,54 @@
 		if (!definition) return;
 		if (addEffect(itemId, definition.type)) onedit();
 	}
+
+	function pendingEffectTemplate(): EffectTemplate | null {
+		if (pendingKind.startsWith('gpu:')) {
+			const effectId = pendingKind.slice(4);
+			return getGpuEffect(effectId) ? { kind: 'gpu', effectId } : null;
+		}
+		const definition = definitionFor(pendingKind);
+		return definition ? { kind: 'css', effectType: definition.type } : null;
+	}
+
+	function pendingEffectLabel(): string {
+		if (pendingKind.startsWith('gpu:')) {
+			return getGpuEffect(pendingKind.slice(4))?.label ?? pendingKind.slice(4);
+		}
+		const definition = definitionFor(pendingKind);
+		return definition ? typeLabels[definition.type] : pendingKind;
+	}
+
+	function startEffectDrag(event: DragEvent): void {
+		const effect = pendingEffectTemplate();
+		if (!effect || !event.dataTransfer) {
+			event.preventDefault();
+			return;
+		}
+		const payload: EffectDragData = {
+			type: 'timeline-effect',
+			label: pendingEffectLabel(),
+			effects: [effect]
+		};
+		suppressAddAfterDrag = true;
+		event.dataTransfer.effectAllowed = 'copy';
+		event.dataTransfer.setData('application/json', JSON.stringify(payload));
+		setEffectDragData(payload);
+	}
+
+	function finishEffectDrag(): void {
+		clearEffectDragData();
+		if (dragResetTimer) clearTimeout(dragResetTimer);
+		dragResetTimer = setTimeout(() => {
+			suppressAddAfterDrag = false;
+			dragResetTimer = null;
+		}, 0);
+	}
+
+	onDestroy(() => {
+		clearEffectDragData();
+		if (dragResetTimer) clearTimeout(dragResetTimer);
+	});
 
 	function commitAmount(effectId: string, amount: number): void {
 		if (!itemId) return;
@@ -198,13 +260,21 @@
 		/>
 		<button
 			type="button"
-			class="rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="flex cursor-grab items-center gap-1 rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] active:cursor-grabbing"
 			disabled={!itemId}
+			draggable="true"
+			title={m.video_editor_effects_add_or_drag()}
 			onclick={handleAdd}
+			ondragstart={startEffectDrag}
+			ondragend={finishEffectDrag}
 		>
+			<GripVerticalIcon class="size-3" />
 			{m.video_editor_effects_add()}
 		</button>
 	</div>
+	<p class="px-1 text-[10px] leading-4 text-[oklch(0.6_0.012_55)]">
+		{m.video_editor_effects_drag_hint()}
+	</p>
 	{#if !itemId || effects.length === 0}
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_effects_none()}</p>
 	{:else}

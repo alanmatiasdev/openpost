@@ -4,6 +4,7 @@ import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/type
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import TimelinePanel from './timeline-panel.svelte';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
@@ -83,6 +84,80 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel sync-lock ripple trim', () => {
+	it('previews and applies a dropped effect to compatible selected clips', async () => {
+		timelineStore._setTracks([
+			track('video-track', 'video', 0),
+			track('audio-track', 'audio', 1),
+			{ ...track('locked-track', 'video', 2), locked: true }
+		]);
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'title',
+				label: 'Title',
+				type: 'text',
+				from: 70,
+				sourceStart: undefined,
+				sourceEnd: undefined
+			}),
+			item({ id: 'locked-video', trackId: 'locked-track', label: 'Locked video', from: 140 }),
+			item({
+				id: 'music-bed',
+				trackId: 'audio-track',
+				label: 'Music',
+				type: 'audio',
+				durationInFrames: 120,
+				sourceEnd: 120
+			})
+		]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: 'video',
+			selectedItemIds: ['video', 'title', 'music-bed', 'locked-video']
+		});
+		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement!;
+		const titleClip = screen.getByRole('button', { name: /^Title\./ }).element().parentElement!;
+		const musicClip = screen.getByRole('button', { name: /^Music\./ }).element().parentElement!;
+		const lockedClip = screen
+			.getByRole('button', { name: /^Locked video\./ })
+			.element().parentElement!;
+		const payload = {
+			type: 'timeline-effect' as const,
+			label: 'Brightness',
+			effects: [{ kind: 'css' as const, effectType: 'brightness' as const }]
+		};
+		setEffectDragData(payload);
+		const dataTransfer = new DataTransfer();
+		dataTransfer.setData('application/json', JSON.stringify(payload));
+
+		videoClip.dispatchEvent(
+			new DragEvent('dragover', { bubbles: true, clientX: 100, clientY: 100, dataTransfer })
+		);
+		await nextAnimationFrame();
+		expect(videoClip.querySelector('[data-effect-drop-preview]')).not.toBeNull();
+		expect(titleClip.querySelector('[data-effect-drop-preview]')).not.toBeNull();
+		expect(musicClip.querySelector('[data-effect-drop-preview]')).toBeNull();
+		expect(lockedClip.querySelector('[data-effect-drop-preview]')).toBeNull();
+		expect(videoClip.textContent).toContain('2 clips');
+
+		videoClip.dispatchEvent(
+			new DragEvent('drop', { bubbles: true, clientX: 100, clientY: 100, dataTransfer })
+		);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('video')?.effects).toEqual([
+			expect.objectContaining({ type: 'brightness', amount: 1.2, enabled: true })
+		]);
+		expect(timelineStore.itemById.get('title')?.effects).toEqual([
+			expect.objectContaining({ type: 'brightness', amount: 1.2, enabled: true })
+		]);
+		expect(timelineStore.itemById.get('music-bed')?.effects).toBeUndefined();
+		expect(timelineStore.itemById.get('locked-video')?.effects).toBeUndefined();
+		expect(document.querySelector('[data-effect-drop-preview]')).toBeNull();
+		expect(commandHistory.getLastCommandType()).toBe('ADD_EFFECTS');
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('marquee-selects every clip intersecting a background drag', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement!;

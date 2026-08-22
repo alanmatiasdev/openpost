@@ -92,7 +92,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Voiceover recording while timeline plays (mic settings, sync offset, mute-timeline) | `timeline/services/mic-recording-controller.ts`, docs p12                       | PARTIAL — `recorder/recorder.svelte.ts` captures screen/cam/mic but not playhead-locked narration                                                                                                                                                                                                                                                                                                                                   | M      |
 | Insert / overwrite editing from source monitor                                      | docs "Insert and overwrite"                                                     | MISSING                                                                                                                                                                                                                                                                                                                                                                                                                             | M      |
 | Reverse playback / reverse-conform service                                          | `timeline/services/reverse-conform-service.ts`                                  | MISSING                                                                                                                                                                                                                                                                                                                                                                                                                             | M      |
-| Timeline item overlays (effect drop previews, transition break notifications)       | `timeline/stores/*preview-store.ts`, `use-transition-breakage-notifications.ts` | PARTIAL - cut-centered transition spans and transition-break previews render over clips, and removal gives a toast; effect-drop previews remain (`components/timeline-panel.svelte`, `+page.svelte`)                                                                                                                                                                                                                                | M      |
+| Timeline item overlays (effect drop previews, transition break notifications)       | `timeline/stores/*preview-store.ts`, `use-transition-breakage-notifications.ts` | PRESENT - cut-centered transition spans, transition-break previews and toasts, and multi-clip effect-drop previews are wired with one undo step (`components/timeline-panel.svelte`, `components/effects-panel.svelte`, `+page.svelte`)                                                                                                                                                                                             | -      |
 | Track-height resize                                                                 | `use-track-height-resize.ts`                                                    | MISSING                                                                                                                                                                                                                                                                                                                                                                                                                             | S      |
 
 ## 5. Effects & color
@@ -253,8 +253,8 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 61**
-- **PARTIAL: 31**
+- **PRESENT: 62**
+- **PARTIAL: 30**
 - **MISSING: 78**
 - (N/A parity: 3)
 
@@ -264,14 +264,13 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 2. **L - Keyframe value graph and advanced dope-sheet gestures**: visual curve handles, marquee, clipboard, retime, alt-drag, and saved custom presets.
 3. **M - Finish color workspace depth**: RGB Parade, auto-balance, white-balance picker, before/after compare, and grade presets.
 4. **M - Finish on-canvas tools**: crop and anchor gizmos, direct text edit, and motion paths.
-5. **M - Finish timeline edit feedback**: effect-drop previews.
-6. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
-7. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
-8. **M - Scene Browser**: AI captions and semantic/color search on existing scene detection.
-9. **L - Local AI**: multi-engine transcription, TTS, and music generation.
-10. **M - Shapes & masks**: primitives, pen tool, and clip/alpha masks.
-11. **M - Media library upgrades**: URL/GIF/SVG import, info, filter/sort, relink, and embedded subtitle extraction.
-12. **M - Render queue**: batch, pause/resume, per-marker segmentation, worker rendering, and preflight.
-13. **M - Lottie support**, including the LottieFiles browser.
-14. **M - Voiceover narration locked to playhead** by extending the recorder.
-15. **M - Remaining UX and project tools**: shortcut customization, settings, filler-word removal, bundle import/export, and missing-media recovery.
+5. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
+6. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
+7. **M - Scene Browser**: AI captions and semantic/color search on existing scene detection.
+8. **L - Local AI**: multi-engine transcription, TTS, and music generation.
+9. **M - Shapes & masks**: primitives, pen tool, and clip/alpha masks.
+10. **M - Media library upgrades**: URL/GIF/SVG import, info, filter/sort, relink, and embedded subtitle extraction.
+11. **M - Render queue**: batch, pause/resume, per-marker segmentation, worker rendering, and preflight.
+12. **M - Lottie support**, including the LottieFiles browser.
+13. **M - Voiceover narration locked to playhead** by extending the recorder.
+14. **M - Remaining UX and project tools**: shortcut customization, settings, filler-word removal, bundle import/export, and missing-media recovery.
