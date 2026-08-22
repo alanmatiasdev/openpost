@@ -8,7 +8,9 @@ const fragmentPattern = /^.+\.md$/u;
 const groupPattern = /^#{2,3} (.+)$/u;
 const itemPattern = /^-\s+(.+)$/u;
 
-const entries = readdirSync(changesDir).filter((name) => fragmentPattern.test(name));
+const entries = readdirSync(changesDir).filter(
+  (name) => name !== "README.md" && fragmentPattern.test(name),
+);
 if (entries.length === 0) {
   process.stdout.write("changelog: no fragments to merge\n");
   process.exit(0);
