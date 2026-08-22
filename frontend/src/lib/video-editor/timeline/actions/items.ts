@@ -15,6 +15,7 @@ import {
 	getLinkedItemIds
 } from '../utils/linked-items';
 import { pruneOrphanedTransitions } from './transitions.svelte';
+import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -76,7 +77,7 @@ export function duplicateItems(ids: string[]): string[] {
 			const item = byId.get(id);
 			if (!item) continue;
 			duplicates.push({
-				...structuredClone(item),
+				...snapshotTimelineState(item),
 				id: crypto.randomUUID(),
 				originId: item.originId ?? item.id,
 				from: item.from + item.durationInFrames

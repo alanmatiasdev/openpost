@@ -214,7 +214,7 @@ export const timelineStore = {
 		const rightDuration = item.durationInFrames - relative;
 		const leftDuration = relative;
 		const rightItem: TimelineItem = {
-			...structuredClone(item),
+			...$state.snapshot(item),
 			id: crypto.randomUUID(),
 			originId: item.originId ?? item.id,
 			from: frame,

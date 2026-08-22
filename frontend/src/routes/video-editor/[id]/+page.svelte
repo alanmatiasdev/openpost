@@ -96,7 +96,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					...editorSession.project,
 					timeline: {
 						...editorSession.project.timeline,
-						items: structuredClone(timelineStore.items),
+						items: $state.snapshot(timelineStore.items),
 						tracks: timelineStore.tracks
 					}
 				},
@@ -116,7 +116,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					...editorSession.project,
 					timeline: {
 						...editorSession.project.timeline,
-						items: structuredClone(timelineStore.items),
+						items: $state.snapshot(timelineStore.items),
 						tracks: timelineStore.tracks,
 						transitions: [...transitionsStore.list]
 					}
@@ -136,7 +136,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					...editorSession.project,
 					timeline: {
 						...editorSession.project.timeline,
-						items: structuredClone(timelineStore.items),
+						items: $state.snapshot(timelineStore.items),
 						tracks: timelineStore.tracks
 					}
 				},

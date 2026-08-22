@@ -20,9 +20,9 @@ export function captureSnapshot(): TimelineSnapshot {
 	// edits (e.g. _splitItem shrinks the left piece), which would otherwise
 	// corrupt captured snapshots sharing those references.
 	return {
-		items: structuredClone(timelineStore.items),
-		tracks: structuredClone(timelineStore.tracks),
-		transitions: structuredClone(transitionsStore.list),
+		items: $state.snapshot(timelineStore.items),
+		tracks: $state.snapshot(timelineStore.tracks),
+		transitions: $state.snapshot(transitionsStore.list),
 		inPoint: timelineStore.inPoint,
 		outPoint: timelineStore.outPoint,
 		fps: timelineStore.fps,
@@ -33,25 +33,26 @@ export function captureSnapshot(): TimelineSnapshot {
 }
 
 export function restoreSnapshot(snapshot: TimelineSnapshot): void {
+	const plainSnapshot = $state.snapshot(snapshot);
 	const sanitized = sanitizeInOutPoints({
-		inPoint: snapshot.inPoint,
-		outPoint: snapshot.outPoint,
-		maxFrame: snapshot.items.reduce(
+		inPoint: plainSnapshot.inPoint,
+		outPoint: plainSnapshot.outPoint,
+		maxFrame: plainSnapshot.items.reduce(
 			(max, item) => Math.max(max, item.from + item.durationInFrames),
 			0
 		)
 	});
-	transitionsStore.setAll(structuredClone(snapshot.transitions));
+	transitionsStore.setAll(plainSnapshot.transitions);
 	timelineStore.setAll({
-		items: snapshot.items,
-		tracks: snapshot.tracks,
+		items: plainSnapshot.items,
+		tracks: plainSnapshot.tracks,
 		inPoint: sanitized.inPoint,
 		outPoint: sanitized.outPoint,
-		currentFrame: snapshot.currentFrame,
-		fps: snapshot.fps
+		currentFrame: plainSnapshot.currentFrame,
+		fps: plainSnapshot.fps
 	});
-	timelineStore._setScrollPosition(snapshot.scrollPosition);
-	timelineStore._setSnapEnabled(snapshot.snapEnabled);
+	timelineStore._setScrollPosition(plainSnapshot.scrollPosition);
+	timelineStore._setSnapEnabled(plainSnapshot.snapEnabled);
 }
 
 export function snapshotsEqual(a: TimelineSnapshot, b: TimelineSnapshot): boolean {

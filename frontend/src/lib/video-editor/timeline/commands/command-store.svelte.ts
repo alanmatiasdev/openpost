@@ -11,7 +11,7 @@
 
 import { createLogger } from '../../workspace-fs/logger';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { captureSnapshot, restoreSnapshot, snapshotsEqual } from './snapshot';
+import { captureSnapshot, restoreSnapshot, snapshotsEqual } from './snapshot.svelte';
 import type { CommandEntry, CommandPayloadValue, TimelineCommand, TimelineSnapshot } from './types';
 
 const logger = createLogger('TimelineCommands');

@@ -98,7 +98,7 @@
 					...project,
 					timeline: {
 						...project.timeline,
-						items: structuredClone(timelineStore.items),
+						items: $state.snapshot(timelineStore.items),
 						tracks: timelineStore.tracks,
 						transitions: [...transitionsStore.list]
 					}

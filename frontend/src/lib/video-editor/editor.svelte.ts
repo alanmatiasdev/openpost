@@ -91,7 +91,7 @@ class EditorSession {
 				timeline: {
 					...this.project.timeline,
 					tracks: timelineStore.tracks,
-					items: structuredClone(timelineStore.items),
+					items: $state.snapshot(timelineStore.items),
 					currentFrame: timelineStore.currentFrame,
 					inPoint: timelineStore.inPoint ?? undefined,
 					outPoint: timelineStore.outPoint ?? undefined,
