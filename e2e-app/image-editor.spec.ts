@@ -1307,14 +1307,14 @@ test("public OpenPost Image Editor imports attributed stock photos into durable 
   await page.goto("/image-editor");
   await page.getByRole("button", { name: /Instagram square/ }).click();
   await expect(page).toHaveURL(/\/image-editor\/local_design_/);
-  await page.getByRole("button", { name: "Browse stock" }).click();
+  await page.getByRole("button", { name: "Stock media" }).click();
   await expect(
     page.getByText("Search a configured provider to find photos for your design."),
   ).toBeVisible();
-  await page.getByRole("textbox", { name: "Search stock photos and videos" }).fill("desk");
+  await page.getByRole("textbox", { name: "Search stock media" }).fill("desk");
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page.getByText("By OpenPost Test")).toBeVisible();
-  await page.getByRole("button", { name: "Use this item" }).click();
+  await expect(page.getByRole("link", { name: "by OpenPost Test" })).toBeVisible();
+  await page.getByRole("button", { name: "Use", exact: true }).click();
 
   const stockLayer = page.getByRole("treeitem", {
     name: /pexels-image-editor-photo-1\.jpg, image/,
@@ -1392,7 +1392,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect(mediaSourceDialog).toBeVisible();
   await expect(mediaSourceDialog.getByRole("tab", { name: "Device", exact: true })).toBeVisible();
   await expect(mediaSourceDialog.getByRole("tab", { name: "Camera", exact: true })).toBeVisible();
-  await expect(mediaSourceDialog.getByRole("tab", { name: "Browse stock" })).toBeVisible();
+  await expect(mediaSourceDialog.getByRole("tab", { name: "Stock media" })).toBeVisible();
   await mediaSourceDialog.locator('input[type="file"]').setInputFiles({
     name: "picker-library.png",
     mimeType: "image/png",
