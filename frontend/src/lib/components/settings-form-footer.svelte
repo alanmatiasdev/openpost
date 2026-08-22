@@ -8,7 +8,6 @@
 		savingLabel?: string;
 		saving?: boolean;
 		disabled?: boolean;
-		sticky?: boolean;
 		type?: 'button' | 'submit';
 		onSave?: () => void;
 	}
@@ -18,18 +17,12 @@
 		savingLabel = label,
 		saving = false,
 		disabled = false,
-		sticky = false,
 		type = 'button',
 		onSave
 	}: Props = $props();
 </script>
 
-<footer
-	data-slot="settings-form-footer"
-	class={sticky
-		? 'sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-10 flex justify-end border-t bg-background/95 py-4 backdrop-blur md:bottom-0'
-		: 'flex justify-end border-t pt-4'}
->
+<footer data-slot="settings-form-footer" class="flex justify-end border-t pt-4">
 	<Button {type} onclick={onSave} disabled={disabled || saving}>
 		{#if saving}
 			<LoaderIcon class="size-4 animate-spin" />
