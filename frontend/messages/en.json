@@ -4089,5 +4089,11 @@
 	"video_editor_effects_sepia": "Sepia",
 	"video_editor_effects_grayscale": "Grayscale",
 	"video_editor_effects_invert": "Invert",
-	"video_editor_effects_blur": "Blur"
+	"video_editor_effects_blur": "Blur",
+	"video_editor_transcript": "Transcript",
+	"video_editor_transcript_show": "Show transcript",
+	"video_editor_transcript_hide": "Hide transcript",
+	"video_editor_transcript_empty": "No captions yet.",
+	"video_editor_transcript_line": "Caption line",
+	"video_editor_transcript_delete_line": "Delete line"
 }

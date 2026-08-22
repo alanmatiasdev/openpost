@@ -36,6 +36,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
+	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
@@ -214,6 +215,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			['video', 'audio'].includes(timelineStore.itemById.get(selectedItemId)?.type ?? '')
 	);
 
+	let showTranscript = $state(false);
+
 	function handleAddCrossfade(): void {
 		if (!selectedItemId) return;
 		const item = timelineStore.itemById.get(selectedItemId);
@@ -369,6 +372,24 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					{#if selectedIsMedia}
 						<EffectsPanel itemId={selectedItemId} onedit={() => editorSession.scheduleAutosave()} />
 					{/if}
+					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+						<Button
+							size="sm"
+							variant="outline"
+							class="w-full"
+							aria-expanded={showTranscript}
+							onclick={() => (showTranscript = !showTranscript)}
+						>
+							{showTranscript ? m.video_editor_transcript_hide() : m.video_editor_transcript_show()}
+						</Button>
+						{#if showTranscript}
+							<div
+								class="mt-1 max-h-64 overflow-y-auto rounded-md border border-[oklch(0.25_0.015_55)] p-1"
+							>
+								<TranscriptPanel onedit={() => editorSession.scheduleAutosave()} />
+							</div>
+						{/if}
+					</div>
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 						<Button
 							size="sm"

@@ -4089,5 +4089,11 @@
 	"video_editor_effects_sepia": "Sépia",
 	"video_editor_effects_grayscale": "Tons de cinza",
 	"video_editor_effects_invert": "Inverter",
-	"video_editor_effects_blur": "Desfoque"
+	"video_editor_effects_blur": "Desfoque",
+	"video_editor_transcript": "Transcrição",
+	"video_editor_transcript_show": "Mostrar transcrição",
+	"video_editor_transcript_hide": "Ocultar transcrição",
+	"video_editor_transcript_empty": "Ainda sem legendas.",
+	"video_editor_transcript_line": "Linha de legenda",
+	"video_editor_transcript_delete_line": "Eliminar linha"
 }
