@@ -4693,5 +4693,16 @@
 	"video_editor_transcribe_done": "Captions generated",
 	"video_editor_transcript_show": "Show transcript",
 	"video_editor_transcript_hide": "Hide transcript",
-	"video_editor_text_default_label": "Your text"
+	"video_editor_text_default_label": "Your text",
+	"video_editor_export_quality": "Quality",
+	"video_editor_export_quality_draft": "Draft",
+	"video_editor_export_quality_standard": "Standard",
+	"video_editor_export_quality_high": "High",
+	"video_editor_export_resolution": "Resolution",
+	"video_editor_export_range": "Use In / Out range",
+	"video_editor_export_subtitles": "Subtitles",
+	"video_editor_export_subtitles_none": "None",
+	"video_editor_export_subtitles_burn": "Burn into video",
+	"video_editor_export_subtitles_sidecar": "SRT sidecar",
+	"video_editor_export_subtitles_embedded": "Embedded track"
 }

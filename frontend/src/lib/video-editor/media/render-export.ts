@@ -17,8 +17,12 @@ import {
 	BufferTarget,
 	CanvasSink,
 	Input,
+	MkvOutputFormat,
+	MovOutputFormat,
 	Mp4OutputFormat,
 	Output,
+	type OutputFormat,
+	TextSubtitleSource,
 	VideoSample,
 	VideoSampleSource,
 	WebMOutputFormat
@@ -29,6 +33,7 @@ import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { mediaDrawGeometry } from './render-geometry';
+import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
 import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
 	frameToSourceSeconds,
@@ -49,7 +54,14 @@ export interface RenderExportProgress {
 }
 
 export interface RenderExportOptions {
-	format?: 'webm' | 'mp4';
+	format?: 'webm' | 'mp4' | 'mov' | 'mkv';
+	quality?: 'draft' | 'standard' | 'high';
+	width?: number;
+	height?: number;
+	range?: { startFrame: number; endFrame: number };
+	burnSubtitles?: boolean;
+	subtitleMode?: 'none' | 'burn' | 'sidecar' | 'embedded';
+	signal?: AbortSignal;
 	onProgress?: (progress: RenderExportProgress) => void;
 }
 
@@ -62,6 +74,7 @@ export interface RenderExportResult {
 const MIX_SAMPLE_RATE = 48_000;
 const MIX_CHANNELS = 2;
 const AUDIO_ENCODE_CHUNK_FRAMES = 48_000;
+const VIDEO_BITRATES = { draft: 4_000_000, standard: 8_000_000, high: 16_000_000 } as const;
 
 interface VideoDecoder {
 	input: Input;
@@ -319,19 +332,27 @@ export async function renderMultiTrackVideo(
 	options: RenderExportOptions = {}
 ): Promise<RenderExportResult> {
 	const fps = project.metadata.fps;
-	const width = project.metadata.width;
-	const height = project.metadata.height;
+	const width = options.width ?? project.metadata.width;
+	const height = options.height ?? project.metadata.height;
 	const timeline = project.timeline;
 	const items = timeline?.items ?? [];
 	if (items.length === 0) throw new Error('This timeline has nothing to render.');
 	const tracks = timeline?.tracks ?? [];
 	const transitions = timeline?.transitions ?? [];
 	const itemsById = new Map(items.map((item) => [item.id, item]));
-	const totalFrames = outputDurationFrames(items);
+	const fullDuration = outputDurationFrames(items);
+	const startFrame = Math.max(0, Math.floor(options.range?.startFrame ?? 0));
+	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
+	const totalFrames = Math.max(0, endFrame - startFrame);
+	if (totalFrames === 0) throw new Error('The selected export range is empty.');
 
 	report(options, 'preparing', 0, totalFrames);
 
-	const mixEntries = planMixdown(items, tracks, fps);
+	const mixEntries = sliceMixEntries(
+		planMixdown(items, tracks, fps),
+		startFrame / fps,
+		endFrame / fps
+	);
 	const decodedAudio = new Map<string, AudioBuffer>();
 	for (const mediaId of new Set(mixEntries.map((entry) => entry.mediaId))) {
 		const media = mediaPool.get(mediaId);
@@ -349,25 +370,38 @@ export async function renderMultiTrackVideo(
 			: null;
 
 	const format = options.format ?? 'webm';
-	const isWebM = format === 'webm';
-	const outputFormat = isWebM ? new WebMOutputFormat() : new Mp4OutputFormat();
+	const outputFormat = outputFormatFor(format);
 	const target = new BufferTarget();
 	const output = new Output({ format: outputFormat, target });
 	const videoSource = new VideoSampleSource({
-		codec: isWebM ? 'vp9' : 'avc',
-		bitrate: 8_000_000,
+		codec: format === 'webm' || format === 'mkv' ? 'vp9' : 'avc',
+		bitrate: VIDEO_BITRATES[options.quality ?? 'standard'],
 		keyFrameInterval: 2,
 		latencyMode: 'quality'
 	});
 	output.addVideoTrack(videoSource, { frameRate: fps });
+	const subtitleMode = options.subtitleMode ?? (options.burnSubtitles === false ? 'none' : 'burn');
+	let subtitleSource: TextSubtitleSource | null = null;
+	if (subtitleMode === 'embedded') {
+		if (format === 'mov') throw new Error('MOV does not support embedded WebVTT subtitles.');
+		subtitleSource = new TextSubtitleSource('webvtt');
+		output.addSubtitleTrack(subtitleSource);
+	}
 
 	let audioSource: AudioSampleSource | null = null;
 	if (mixed) {
-		audioSource = new AudioSampleSource({ codec: isWebM ? 'opus' : 'aac', bitrate: 192_000 });
+		audioSource = new AudioSampleSource({
+			codec: format === 'webm' || format === 'mkv' ? 'opus' : 'aac',
+			bitrate: 192_000
+		});
 		output.addAudioTrack(audioSource);
 	}
 
 	await output.start();
+	if (subtitleSource) {
+		await subtitleSource.add(subtitleWebVtt(items, fps, startFrame, endFrame));
+		subtitleSource.close();
+	}
 
 	async function runFeed(): Promise<void> {
 		if (!mixed || !audioSource) return;
@@ -417,7 +451,9 @@ export async function renderMultiTrackVideo(
 	}
 
 	try {
-		for (let frame = 0; frame < totalFrames; frame++) {
+		for (let outputFrame = 0; outputFrame < totalFrames; outputFrame++) {
+			throwIfAborted(options.signal);
+			const frame = startFrame + outputFrame;
 			ctx.globalAlpha = 1;
 			ctx.fillStyle = backgroundColor;
 			ctx.fillRect(0, 0, width, height);
@@ -477,17 +513,20 @@ export async function renderMultiTrackVideo(
 				}
 			}
 
-			for (const item of subtitleItems) {
+			for (const item of subtitleMode === 'burn' ? subtitleItems : []) {
 				if (!isVisibleAtFrame(item, frame)) continue;
 				const cue = selectCuesAtFrame(item.cues ?? [], frame)[0];
 				if (cue) drawSubtitleText(ctx, cue.text, width, height, item.subtitleStyleScale ?? 1);
 			}
 
-			const sample = new VideoSample(canvas, { timestamp: frame / fps, duration: 1 / fps });
+			const sample = new VideoSample(canvas, {
+				timestamp: outputFrame / fps,
+				duration: 1 / fps
+			});
 			await videoSource.add(sample);
 			sample.close();
 
-			report(options, 'rendering', frame + 1, totalFrames);
+			report(options, 'rendering', outputFrame + 1, totalFrames);
 		}
 
 		videoSource.close();
@@ -509,8 +548,59 @@ export async function renderMultiTrackVideo(
 
 	const buffer = target.buffer;
 	if (!buffer) throw new Error('Render produced no data.');
-	const blob = new Blob([buffer], { type: isWebM ? 'video/webm' : 'video/mp4' });
+	const blob = new Blob([buffer], { type: outputFormat.mimeType });
 	const baseName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${format}`;
 	const saved = await saveExportFile(project.id, baseName, blob);
+	if (subtitleMode === 'sidecar') {
+		const srt = subtitleSidecarSrt(items, fps, startFrame, endFrame);
+		if (srt)
+			await saveExportFile(
+				project.id,
+				`${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.srt`,
+				new Blob([srt], { type: 'application/x-subrip' })
+			);
+	}
 	return { ...saved, blob };
+}
+
+function outputFormatFor(format: NonNullable<RenderExportOptions['format']>): OutputFormat {
+	switch (format) {
+		case 'webm':
+			return new WebMOutputFormat();
+		case 'mp4':
+			return new Mp4OutputFormat();
+		case 'mov':
+			return new MovOutputFormat();
+		case 'mkv':
+			return new MkvOutputFormat();
+	}
+}
+
+function sliceMixEntries(
+	entries: MixEntry[],
+	startSeconds: number,
+	endSeconds: number
+): MixEntry[] {
+	return entries.flatMap((entry) => {
+		const entryEnd = entry.whenSeconds + entry.durationSeconds;
+		const overlapStart = Math.max(startSeconds, entry.whenSeconds);
+		const overlapEnd = Math.min(endSeconds, entryEnd);
+		if (overlapEnd <= overlapStart) return [];
+		const skipped = overlapStart - entry.whenSeconds;
+		return [
+			{
+				...entry,
+				whenSeconds: overlapStart - startSeconds,
+				sourceOffsetSeconds: entry.sourceOffsetSeconds + skipped * entry.playbackRate,
+				durationSeconds: overlapEnd - overlapStart,
+				gainPoints: entry.gainPoints
+					.filter((point) => point.whenSeconds >= overlapStart && point.whenSeconds <= overlapEnd)
+					.map((point) => ({ ...point, whenSeconds: point.whenSeconds - startSeconds }))
+			}
+		];
+	});
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) throw new DOMException('Export cancelled.', 'AbortError');
 }

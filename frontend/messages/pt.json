@@ -4693,5 +4693,16 @@
 	"video_editor_transcribe_done": "Legendas geradas",
 	"video_editor_transcript_show": "Mostrar transcrição",
 	"video_editor_transcript_hide": "Ocultar transcrição",
-	"video_editor_text_default_label": "O seu texto"
+	"video_editor_text_default_label": "O seu texto",
+	"video_editor_export_quality": "Qualidade",
+	"video_editor_export_quality_draft": "Rascunho",
+	"video_editor_export_quality_standard": "Normal",
+	"video_editor_export_quality_high": "Alta",
+	"video_editor_export_resolution": "Resolução",
+	"video_editor_export_range": "Usar intervalo de entrada / saída",
+	"video_editor_export_subtitles": "Legendas",
+	"video_editor_export_subtitles_none": "Nenhuma",
+	"video_editor_export_subtitles_burn": "Gravar no vídeo",
+	"video_editor_export_subtitles_sidecar": "Ficheiro SRT",
+	"video_editor_export_subtitles_embedded": "Faixa incorporada"
 }
