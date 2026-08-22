@@ -12,6 +12,7 @@
  */
 
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
+import { calculateSplitSourceBoundaries } from '../utils/source-calculations';
 
 export interface TimelineSettings {
 	fps: number;
@@ -211,6 +212,7 @@ export const timelineStore = {
 		if (relative <= 0 || relative >= item.durationInFrames) return null;
 
 		const rightDuration = item.durationInFrames - relative;
+		const leftDuration = relative;
 		const rightItem: TimelineItem = {
 			...structuredClone(item),
 			id: crypto.randomUUID(),
@@ -224,14 +226,20 @@ export const timelineStore = {
 			item.sourceFps &&
 			item.sourceFps > 0
 		) {
-			// Shift the right piece's source window by the source frames consumed by
-			// the left piece (timeline frames scaled by speed).
-			const speed = item.speed ?? 1;
-			rightItem.sourceStart =
-				(item.sourceStart ?? 0) +
-				Math.round((relative * speed * item.sourceFps) / state.settings.fps);
+			const boundaries = calculateSplitSourceBoundaries(
+				item.sourceStart ?? 0,
+				leftDuration,
+				rightDuration,
+				item.speed ?? 1,
+				state.settings.fps,
+				item.sourceFps
+			);
+			item.sourceStart = item.sourceStart ?? 0;
+			item.sourceEnd = boundaries.left.sourceEnd;
+			rightItem.sourceStart = boundaries.right.sourceStart;
+			rightItem.sourceEnd = boundaries.right.sourceEnd;
 		}
-		item.durationInFrames = relative;
+		item.durationInFrames = leftDuration;
 		// Both halves carry the original's lineage so downstream range-removal
 		// can identify every piece of the clip that was edited.
 		if (!item.originId) item.originId = rightItem.originId;
