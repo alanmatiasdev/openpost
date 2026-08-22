@@ -251,7 +251,7 @@ describe('NotificationPreferences', () => {
 		mocks.delete.mockReturnValue(endResponse.promise);
 
 		const screen = await render(NotificationMutes, { notify: mocks.showToast });
-		await screen.getByRole('button', { name: 'Start Mute' }).click();
+		await screen.getByRole('button', { name: 'Start mute' }).click();
 		await screen.getByRole('button', { name: 'End now' }).click();
 
 		serverMutes = [];
@@ -343,7 +343,7 @@ describe('NotificationPreferences', () => {
 			.toISOString()
 			.slice(0, 16);
 		await screen.getByLabelText('End time').fill(local);
-		await screen.getByRole('button', { name: 'Start Mute' }).click();
+		await screen.getByRole('button', { name: 'Start mute' }).click();
 
 		expect(mocks.post).toHaveBeenCalledWith('/notifications/mutes', {
 			body: {
