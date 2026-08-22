@@ -39,6 +39,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- The Video Editor timeline now supports drag-marquee selection across tracks, with additive selection modifiers and a visible selection box.
 - OpenPost Video Editor now supports ripple trim, rate stretch from either edge, linked-selection controls and shortcuts, multi-clip link and unlink actions, group moves and deletes, visible transition spans, and explicit transition removal.
 - Video Editor move, trim, slip, and slide tools now keep synchronized audio and video companions aligned across every affected track.
 - Timeline edits now preserve valid transition handles and keyframes instead of leaving broken cuts or moving keys into blend-owned frames.
