@@ -16,7 +16,15 @@ import { api, errorMessage } from "@/lib/api/client";
 import { calendarOccurrence, dayKey, statusColor } from "@/lib/format";
 import { currentWorkspaceId } from "@/lib/queries";
 
-const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAYS = [
+  ["S", "Sunday"],
+  ["M", "Monday"],
+  ["T", "Tuesday"],
+  ["W", "Wednesday"],
+  ["T", "Thursday"],
+  ["F", "Friday"],
+  ["S", "Saturday"],
+] as const;
 
 export default function CalendarScreen() {
   const colors = useColors();
@@ -132,12 +140,13 @@ export default function CalendarScreen() {
         ) : null}
 
         <View style={styles.weekdays}>
-          {WEEKDAYS.map((weekday, index) => (
+          {WEEKDAYS.map(([shortLabel, label], index) => (
             <Text
-              key={`${weekday}-${index}`}
+              accessibilityLabel={label}
+              key={`${shortLabel}-${index}`}
               style={[styles.weekday, { color: colors.textSecondary }]}
             >
-              {weekday}
+              {shortLabel}
             </Text>
           ))}
         </View>
@@ -153,6 +162,12 @@ export default function CalendarScreen() {
               <Pressable
                 key={key}
                 accessibilityRole="button"
+                accessibilityLabel={`${date.toLocaleDateString("en", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}. ${items.length === 0 ? "Nothing planned" : `${items.length} planned`}`}
+                accessibilityState={{ selected: isSelected }}
                 onPress={() => setSelectedDay(key)}
                 style={({ pressed }) => [styles.cell, pressed && { opacity: 0.6 }]}
               >
@@ -167,7 +182,7 @@ export default function CalendarScreen() {
                     style={[
                       styles.dayNumber,
                       { color: colors.text },
-                      isSelected && { color: "#ffffff", fontWeight: "700" },
+                      isSelected && { color: colors.onTint, fontWeight: "700" },
                     ]}
                   >
                     {date.getDate()}
@@ -208,7 +223,12 @@ export default function CalendarScreen() {
               <Pressable
                 key={item.id}
                 accessibilityRole="button"
-                onPress={() => router.push(`/post/${item.id}` as never)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/post/[id]",
+                    params: { id: item.id },
+                  })
+                }
                 style={({ pressed }) => [styles.itemRow, pressed && { opacity: 0.5 }]}
               >
                 <View style={{ flex: 1, gap: 4 }}>

@@ -162,7 +162,6 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     return new Error(await errorMessage(response, fallback));
   }
 
-  /** Upload any not-yet-uploaded attachments; returns ordered media ids. */
   async function resolveAttachments(): Promise<string[]> {
     const mediaIds: string[] = [];
     for (const attachment of attachments) {
@@ -170,14 +169,21 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         mediaIds.push(attachment.mediaId);
         continue;
       }
-      if (!attachment.uri || attachment.status === "error") continue;
+      if (!attachment.uri) continue;
       setAttachments((current) =>
         current.map((item) =>
           item.localId === attachment.localId ? { ...item, status: "uploading" } : item,
         ),
       );
       try {
-        const mediaId = await uploadAttachment(attachment as PendingAttachment);
+        const pendingAttachment: PendingAttachment = {
+          localId: attachment.localId,
+          uri: attachment.uri,
+          mimeType: attachment.mimeType,
+          filename: attachment.filename,
+          size: attachment.size,
+        };
+        const mediaId = await uploadAttachment(pendingAttachment);
         mediaIds.push(mediaId);
         setAttachments((current) =>
           current.map((item) =>
@@ -198,9 +204,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     return mediaIds;
   }
 
-  /** Persist title/body/schedule/selection/overrides; returns the new revision. */
   async function persist(): Promise<number> {
-    // Uploads first so a failure surfaces before any post mutation.
     let mediaChanged = false;
     for (const attachment of attachments) {
       if (!attachment.mediaId || !initialMediaIds.includes(attachment.mediaId)) {
@@ -217,7 +221,6 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         rendition.social_account_id && !selectedAccounts.has(rendition.social_account_id),
     );
 
-    // Only touch schedule fields when the user actually changed them.
     const initialScheduled = pub.scheduled_at ? new Date(pub.scheduled_at).getTime() : 0;
     const scheduledChanged = (scheduledAt?.getTime() ?? 0) !== initialScheduled;
 
@@ -265,7 +268,8 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           query: { confirm: true, expected_revision: nextRevision },
         },
       });
-      if (!removal.error) nextRevision += 1;
+      if (removal.error) throw await httpError(removal.response, "Could not remove destination");
+      nextRevision += 1;
     }
 
     setRevision(nextRevision);
@@ -432,7 +436,6 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
   return (
     <Screen>
       <Stack.Screen options={{ headerShown: false }} />
-      {/* Modal header */}
       <View style={[styles.modalHeader, { borderBottomColor: colors.separator }]}>
         <Pressable
           accessibilityRole="button"
@@ -468,17 +471,22 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {statusMessage ? (
-          <Card>
-            <BodyText style={[styles.successText, { textAlign: "center" }]}>
+          <Card accessibilityRole="alert">
+            <BodyText style={[styles.successText, { color: colors.success, textAlign: "center" }]}>
               {statusMessage}
             </BodyText>
           </Card>
         ) : null}
-        {actionError ? <BodyText style={{ color: colors.danger }}>{actionError}</BodyText> : null}
+        {actionError ? (
+          <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
+            {actionError}
+          </BodyText>
+        ) : null}
 
         <TextField
           value={title}
           onChangeText={setTitle}
+          accessibilityLabel="Post title"
           placeholder="Title"
           style={{ fontSize: 17, fontWeight: "600" }}
         />
@@ -486,6 +494,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         <TextField
           value={body}
           onChangeText={setBody}
+          accessibilityLabel="Post text"
           placeholder="What do you want to say?"
           multiline
           textAlignVertical="top"
@@ -515,11 +524,19 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                 )}
                 {attachment.status === "uploading" ? (
                   <View style={styles.thumbOverlay}>
-                    <ActivityIndicator size="small" color="#ffffff" />
+                    <ActivityIndicator size="small" color={colors.onTint} />
                   </View>
                 ) : attachment.status === "error" ? (
-                  <View style={[styles.thumbOverlay, { backgroundColor: "rgba(255,69,58,0.6)" }]}>
-                    <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>!</Text>
+                  <View style={[styles.thumbOverlay, { backgroundColor: `${colors.danger}99` }]}>
+                    <Text
+                      style={{
+                        color: colors.onTint,
+                        fontSize: 16,
+                        fontWeight: "700",
+                      }}
+                    >
+                      !
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -591,7 +608,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         <SectionHeader label="Destinations" />
         {(socialSets.data?.length ?? 0) > 0 ? (
           <View style={styles.chipRow}>
-            {[...socialSets.data!]
+            {[...(socialSets.data ?? [])]
               .sort((a, b) => Number(b.is_default === true) - Number(a.is_default === true))
               .map((set) => (
                 <Chip
@@ -651,7 +668,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                         <SymbolView
                           name={{ ios: "checkmark", android: "check" }}
                           size={15}
-                          tintColor="#ffffff"
+                          tintColor={colors.onTint}
                         />
                       ) : null}
                     </View>
@@ -673,7 +690,9 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                     <>
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityState={{ expanded: expandedAccount === accountId }}
+                        accessibilityState={{
+                          expanded: expandedAccount === accountId,
+                        }}
                         onPress={() =>
                           setExpandedAccount(expandedAccount === accountId ? null : accountId)
                         }
@@ -694,6 +713,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                       {expandedAccount === accountId ? (
                         <TextField
                           value={renditionBodies[accountId] ?? ""}
+                          accessibilityLabel={`Custom text for ${platformLabel(account.platform)}`}
                           onChangeText={(text) =>
                             setRenditionBodies((current) => ({
                               ...current,
@@ -839,7 +859,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 56,
+    paddingTop: 4,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -915,7 +935,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   successText: {
-    color: "#34c759",
     fontWeight: "600",
   },
   chipRow: {

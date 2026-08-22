@@ -66,6 +66,7 @@ export default function LoginScreen() {
             <TextField
               value={totpCode}
               onChangeText={setTotpCode}
+              accessibilityLabel="Authenticator code"
               placeholder="123456"
               keyboardType="number-pad"
               textContentType="oneTimeCode"
@@ -78,6 +79,7 @@ export default function LoginScreen() {
               <TextField
                 value={email}
                 onChangeText={setEmail}
+                accessibilityLabel="Email"
                 placeholder="Email"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -88,6 +90,7 @@ export default function LoginScreen() {
               <TextField
                 value={password}
                 onChangeText={setPassword}
+                accessibilityLabel="Password"
                 placeholder="Password"
                 secureTextEntry
                 textContentType="password"

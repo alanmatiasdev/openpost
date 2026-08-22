@@ -25,7 +25,7 @@ import {
   useColors,
 } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
-import { formatDateTime, platformLabel, STATUS_COLOR } from "@/lib/format";
+import { formatDateTime, platformLabel, statusColor } from "@/lib/format";
 
 export default function PostScreen() {
   const colors = useColors();
@@ -52,18 +52,21 @@ export default function PostScreen() {
     void queryClient.invalidateQueries({ queryKey: ["calendar"] });
   }
 
-  async function run(action: () => Promise<unknown>, successMessage?: string) {
+  async function run(action: () => Promise<unknown>, hapticOnSuccess = false): Promise<boolean> {
     setActionError(null);
     try {
       await action();
-      if (successMessage) {
+      if (hapticOnSuccess) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Action failed");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      invalidate();
+      return false;
     }
     invalidate();
+    return true;
   }
 
   const pub = publication.data;
@@ -71,18 +74,17 @@ export default function PostScreen() {
   const reschedule = useMutation({
     mutationFn: async (when: Date) => {
       if (!pub) throw new Error("Not loaded");
-      await api().PUT("/publications/{id}", {
+      const updated = await api().PUT("/publications/{id}", {
         params: { path: { id } },
         body: {
           expected_revision: pub.revision ?? 0,
           scheduled_at: when.toISOString(),
         },
       });
-      // Revision bumped by the PUT; re-fetch before scheduling.
-      const fresh = await api().GET("/publications/{id}", {
-        params: { path: { id } },
-      });
-      const revision = fresh.data?.revision ?? (pub.revision ?? 0) + 1;
+      if (updated.error) {
+        throw new Error(await errorMessage(updated.response, "Could not reschedule"));
+      }
+      const revision = updated.data?.revision ?? (pub.revision ?? 0) + 1;
       const { error, response } = await api().POST("/publications/{id}/schedule", {
         params: { path: { id } },
         body: { expected_revision: revision },
@@ -91,10 +93,14 @@ export default function PostScreen() {
     },
     onSuccess: () => {
       setShowPicker(false);
+      setNewDate(null);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidate();
     },
-    onError: (err) => setActionError(err.message),
+    onError: (err) => {
+      setNewDate(null);
+      setActionError(err.message);
+    },
   });
 
   if (publication.isLoading) {
@@ -129,7 +135,11 @@ export default function PostScreen() {
         }}
       />
       <ScrollView contentContainerStyle={styles.content}>
-        {actionError ? <BodyText style={{ color: colors.danger }}>{actionError}</BodyText> : null}
+        {actionError ? (
+          <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
+            {actionError}
+          </BodyText>
+        ) : null}
 
         <Card style={styles.headerCard}>
           <View style={styles.headerRow}>
@@ -151,7 +161,7 @@ export default function PostScreen() {
                   style={[
                     styles.platformDot,
                     {
-                      backgroundColor: STATUS_COLOR[rendition.status ?? "draft"],
+                      backgroundColor: statusColor(rendition.status ?? "draft", colors.dark),
                     },
                   ]}
                 />
@@ -202,7 +212,7 @@ export default function PostScreen() {
               <Button
                 title="Edit"
                 variant="filled"
-                onPress={() => router.push(`/compose/${id}` as never)}
+                onPress={() => router.push({ pathname: "/compose/[id]", params: { id } })}
               />
               {pub.scheduled_at ? (
                 <Button
@@ -216,7 +226,7 @@ export default function PostScreen() {
                       });
                       if (error)
                         throw new Error(await errorMessage(response, "Could not schedule"));
-                    }, "Scheduled")
+                    }, true)
                   }
                 />
               ) : null}
@@ -240,7 +250,7 @@ export default function PostScreen() {
                       body: { expected_revision: pub.revision ?? 0 },
                     });
                     if (error) throw new Error(await errorMessage(response, "Could not cancel"));
-                  }, "Canceled")
+                  }, true)
                 }
               />
             </>
@@ -256,7 +266,7 @@ export default function PostScreen() {
                     params: { path: { id } },
                   });
                   if (error) throw new Error(await errorMessage(response, "Could not retry"));
-                }, "Retrying")
+                }, true)
               }
             />
           ) : null}
@@ -272,20 +282,22 @@ export default function PostScreen() {
                     text: "Delete",
                     style: "destructive",
                     onPress: () => {
-                      void run(async () => {
-                        const { error, response } = await api().DELETE("/publications/{id}", {
-                          params: {
-                            path: { id },
-                            query: {
-                              confirm: true,
-                              expected_revision: pub.revision!,
+                      void (async () => {
+                        const deleted = await run(async () => {
+                          const { error, response } = await api().DELETE("/publications/{id}", {
+                            params: {
+                              path: { id },
+                              query: {
+                                confirm: true,
+                                expected_revision: pub.revision!,
+                              },
                             },
-                          },
+                          });
+                          if (error)
+                            throw new Error(await errorMessage(response, "Could not delete"));
                         });
-                        if (error)
-                          throw new Error(await errorMessage(response, "Could not delete"));
-                      });
-                      router.back();
+                        if (deleted) router.back();
+                      })();
                     },
                   },
                 ])
@@ -314,7 +326,7 @@ export default function PostScreen() {
               }}
             />
             {reschedule.isPending ? <ActivityIndicator color={colors.tint} /> : null}
-            {newDate && !reschedule.isPending ? (
+            {newDate && reschedule.isPending ? (
               <BodyText>Moving to {formatDateTime(newDate.toISOString())}...</BodyText>
             ) : null}
           </Card>

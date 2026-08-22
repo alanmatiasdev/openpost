@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -64,14 +66,12 @@ export default function DraftsScreen() {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const draft = await createDraft.mutateAsync(text);
       setIdea("");
-      router.push(`/compose/${draft.id}` as never);
+      router.push({ pathname: "/compose/[id]", params: { id: draft.id } });
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "Could not save draft");
     }
   }
 
-  // Handle content shared from other apps: text/URLs become the draft body,
-  // images are stashed for the composer to attach after upload.
   useEffect(() => {
     if (!hasShareIntent || handledShare.current) return;
     if (!workspaces.data?.[0]?.id) return;
@@ -86,17 +86,9 @@ export default function DraftsScreen() {
     void (async () => {
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const draft = await new Promise<
-          NonNullable<Awaited<ReturnType<typeof createDraft.mutateAsync>>>
-        >((resolve, reject) =>
-          createDraft.mutate(sharedText, {
-            onSuccess: resolve,
-            onError: reject,
-          }),
-        );
-        router.push(`/compose/${draft.id}` as never);
+        const draft = await createDraft.mutateAsync(sharedText);
+        router.push({ pathname: "/compose/[id]", params: { id: draft.id } });
       } catch {
-        // Draft creation failed; leave the user on drafts with a visible error.
         setCaptureError("Could not create a draft from the shared content");
       }
     })();
@@ -134,12 +126,15 @@ export default function DraftsScreen() {
         <TextField
           value={idea}
           onChangeText={setIdea}
+          accessibilityLabel="Draft idea"
           placeholder="Jot an idea"
           multiline
           onSubmitEditing={() => void quickCapture()}
         />
         {captureError ? (
-          <BodyText style={{ color: colors.danger, marginTop: 6 }}>{captureError}</BodyText>
+          <BodyText accessibilityRole="alert" style={{ color: colors.danger, marginTop: 6 }}>
+            {captureError}
+          </BodyText>
         ) : null}
       </View>
 
@@ -189,7 +184,11 @@ function DraftRow({ draft }: { draft: PublicationListItem }) {
   const colors = useColors();
   const excerpt = firstRenditionBody(draft) ?? draft.title ?? "Untitled draft";
   return (
-    <Pressable onPress={() => router.push(`/compose/${draft.id}` as never)}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${excerpt}. Edited ${relativeTime(draft.updated_at)}`}
+      onPress={() => router.push({ pathname: "/compose/[id]", params: { id: draft.id } })}
+    >
       {({ pressed }) => (
         <Card style={[styles.row, pressed && { opacity: 0.6 }]}>
           <View style={{ flex: 1, gap: 4 }}>
@@ -222,48 +221,54 @@ function WorkspaceMenu({
   const server = getServer();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === getWorkspaceId());
   return (
-    <Pressable style={styles.overlay} onPress={onClose}>
-      <Pressable onPress={(event) => event.stopPropagation()}>
-        <Card style={[styles.menu, { backgroundColor: colors.card }]}>
-          {workspaces.length > 1 ? (
+    <Modal animationType="fade" transparent onRequestClose={onClose}>
+      <Pressable accessible={false} style={styles.overlay} onPress={onClose}>
+        <Pressable
+          accessible={false}
+          accessibilityViewIsModal
+          onPress={(event) => event.stopPropagation()}
+        >
+          <Card style={[styles.menu, { backgroundColor: colors.card }]}>
+            {workspaces.length > 1 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  onClose();
+                  router.push("/onboarding/workspace");
+                }}
+                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+              >
+                <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
+                <BodyText>{activeWorkspace?.name ?? "Choose another workspace"}</BodyText>
+              </Pressable>
+            ) : null}
+            {server ? (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => {
+                  onClose();
+                  void Linking.openURL(server.baseUrl);
+                }}
+                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+              >
+                <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
+                <BodyText>Manage accounts and settings</BodyText>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               onPress={() => {
                 onClose();
-                router.push("/onboarding/workspace");
+                void signOut().then(() => router.replace("/"));
               }}
               style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
             >
-              <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
-              <BodyText>{activeWorkspace?.name ?? "Choose another workspace"}</BodyText>
+              <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
             </Pressable>
-          ) : null}
-          {server ? (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => {
-                onClose();
-                void import("react-native").then(({ Linking }) => Linking.openURL(server.baseUrl));
-              }}
-              style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-            >
-              <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
-              <BodyText>Manage accounts and settings</BodyText>
-            </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              onClose();
-              void signOut().then(() => router.replace("/"));
-            }}
-            style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-          >
-            <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
-          </Pressable>
-        </Card>
+          </Card>
+        </Pressable>
       </Pressable>
-    </Pressable>
+    </Modal>
   );
 }
 

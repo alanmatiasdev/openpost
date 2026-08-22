@@ -130,7 +130,7 @@ function QueueRow({ publication }: { publication: PublicationListItem }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => router.push(`/post/${publication.id}` as never)}
+      onPress={() => router.push({ pathname: "/post/[id]", params: { id: publication.id } })}
     >
       {({ pressed }) => (
         <Card style={[styles.row, pressed && { opacity: 0.6 }]}>
@@ -171,7 +171,12 @@ function FailedCard({
       <Pressable
         accessibilityRole="button"
         style={{ flex: 1 }}
-        onPress={() => router.push(`/post/${publication.id}` as never)}
+        onPress={() =>
+          router.push({
+            pathname: "/post/[id]",
+            params: { id: publication.id },
+          })
+        }
       >
         <View style={{ gap: 6 }}>
           <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={2}>

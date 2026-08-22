@@ -1,8 +1,8 @@
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
-import { router, Stack } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { router, Stack, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { BodyText, Button, Card, Screen, useColors } from "@/components/ui";
 import { Brand } from "@/components/brand";
@@ -19,6 +19,16 @@ export default function PairScreen() {
   const [attempt, setAttempt] = useState(0);
   const deviceCode = useRef("");
   const cancelled = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        returnToLogin();
+        return true;
+      });
+      return () => subscription.remove();
+    }, []),
+  );
 
   useEffect(() => {
     cancelled.current = false;
@@ -84,64 +94,86 @@ export default function PairScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ headerShown: false }} />
-      <Brand compact style={styles.brand} />
-      <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-      {phase !== "approved" ? (
-        <BodyText style={styles.subtitle}>
-          Approve on any device where you are already signed in to OpenPost. SSO organizations
-          should use this method.
-        </BodyText>
-      ) : null}
-
-      {phase === "starting" || phase === "waiting" ? (
-        <>
-          <Card style={styles.codeCard}>
-            {phase === "starting" ? (
-              <ActivityIndicator color={colors.tint} />
-            ) : (
-              <Text style={[styles.code, { color: colors.text }]} selectable>
-                {userCode}
-              </Text>
-            )}
-          </Card>
-          <BodyText style={styles.center}>Enter this code at</BodyText>
-          <BodyText style={[styles.center, styles.url, { color: colors.text }]}>
-            {verificationUrl.replace(/^https?:\/\//, "")}
+      <ScrollView contentContainerStyle={styles.content}>
+        <Brand compact style={styles.brand} />
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+        {phase !== "approved" ? (
+          <BodyText style={styles.subtitle}>
+            Approve this device from a browser where you are signed in. Organizations that use
+            single sign-on should pair this way.
           </BodyText>
-          <Button
-            title="Open verification page"
-            onPress={() => void WebBrowser.openBrowserAsync(verificationUrl)}
-            style={styles.openButton}
-          />
-          <View style={styles.waitRow}>
-            <ActivityIndicator color={colors.tint} />
-            <BodyText>Waiting for approval</BodyText>
+        ) : null}
+
+        {phase === "starting" || phase === "waiting" ? (
+          <>
+            <Card style={styles.codeCard}>
+              {phase === "starting" ? (
+                <ActivityIndicator color={colors.tint} />
+              ) : (
+                <Text
+                  accessibilityLabel={`Pairing code ${userCode}`}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.55}
+                  numberOfLines={1}
+                  style={[styles.code, { color: colors.text }]}
+                  selectable
+                >
+                  {userCode}
+                </Text>
+              )}
+            </Card>
+            <BodyText style={styles.center}>Enter this code at</BodyText>
+            <BodyText style={[styles.center, styles.url, { color: colors.text }]}>
+              {verificationUrl.replace(/^https?:\/\//, "").replace(/\?.*$/, "")}
+            </BodyText>
+            <Button
+              title="Open verification page"
+              onPress={() => void WebBrowser.openBrowserAsync(verificationUrl)}
+              style={styles.openButton}
+            />
+            <View accessibilityLiveRegion="polite" style={styles.waitRow}>
+              <ActivityIndicator color={colors.tint} />
+              <BodyText>Waiting for approval</BodyText>
+            </View>
+          </>
+        ) : null}
+
+        {phase === "approved" ? (
+          <View accessibilityRole="alert" style={styles.approved}>
+            <ActivityIndicator color={colors.success} />
+            <BodyText style={{ color: colors.success }}>This device is ready.</BodyText>
           </View>
-        </>
-      ) : null}
+        ) : null}
 
-      {phase === "approved" ? (
-        <View style={styles.approved}>
-          <ActivityIndicator color={colors.success} />
-          <BodyText style={{ color: colors.success }}>This device is ready.</BodyText>
-        </View>
-      ) : null}
+        {phase === "denied" || phase === "expired" || phase === "error" ? (
+          <>
+            {error ? (
+              <BodyText accessibilityRole="alert" style={[styles.center, { color: colors.danger }]}>
+                {error}
+              </BodyText>
+            ) : null}
+            <Button
+              title="Try again"
+              variant="tinted"
+              onPress={() => void restart()}
+              style={styles.openButton}
+            />
+          </>
+        ) : null}
 
-      {phase === "denied" || phase === "expired" || phase === "error" ? (
-        <>
-          {error ? (
-            <BodyText style={[styles.center, { color: colors.danger }]}>{error}</BodyText>
-          ) : null}
-          <Button
-            title="Try again"
-            variant="tinted"
-            onPress={() => void restart()}
-            style={styles.openButton}
-          />
-        </>
-      ) : null}
+        <Button
+          title="Back to sign in"
+          variant="plain"
+          onPress={returnToLogin}
+          style={styles.backButton}
+        />
+      </ScrollView>
     </Screen>
   );
+}
+
+function returnToLogin() {
+  router.replace("/onboarding/login");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -149,26 +181,26 @@ function sleep(ms: number): Promise<void> {
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
+  },
   brand: {
-    marginHorizontal: 20,
-    marginTop: 40,
     marginBottom: 28,
   },
   title: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.5,
-    paddingHorizontal: 20,
   },
   subtitle: {
-    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 16,
   },
   codeCard: {
     alignItems: "center",
     paddingVertical: 24,
-    marginHorizontal: 20,
   },
   code: {
     fontSize: 40,
@@ -177,14 +209,12 @@ const styles = StyleSheet.create({
   },
   center: {
     textAlign: "center",
-    paddingHorizontal: 20,
     marginTop: 12,
   },
   url: {
     fontWeight: "600",
   },
   openButton: {
-    marginHorizontal: 20,
     marginTop: 16,
   },
   waitRow: {
@@ -199,5 +229,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     marginTop: 24,
+  },
+  backButton: {
+    marginTop: 12,
   },
 });

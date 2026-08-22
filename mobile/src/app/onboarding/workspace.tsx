@@ -1,7 +1,7 @@
 import { router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { BodyText, Button, Card, Screen, SectionHeader, useColors } from "@/components/ui";
 import { Brand } from "@/components/brand";
@@ -27,105 +27,109 @@ export default function WorkspaceScreen() {
     void loadWorkspaceId();
   }, []);
 
-  const list = workspaces.data ?? [];
+  const list = useMemo(() => workspaces.data ?? [], [workspaces.data]);
+
+  const finish = useCallback(async (id: string) => {
+    setSelected(id);
+    await saveWorkspaceId(id);
+    router.replace("/(tabs)/drafts");
+  }, []);
 
   useEffect(() => {
-    if (list.length === 0 || selected) return;
+    if (list.length === 0) return;
     const stored = getWorkspaceId();
-    if (stored && list.some((w) => w.id === stored)) {
-      finish(stored);
-    } else if (list.length === 1) {
-      finish(list[0].id);
+    let automatic: string | null = null;
+    if (stored && list.some((workspace) => workspace.id === stored)) automatic = stored;
+    else if (list.length === 1) automatic = list[0].id;
+    if (automatic) {
+      void saveWorkspaceId(automatic).then(() => router.replace("/(tabs)/drafts"));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.length]);
-
-  function finish(id: string) {
-    setSelected(id);
-    void saveWorkspaceId(id);
-    setTimeout(() => router.replace("/(tabs)/drafts"), 150);
-  }
+  }, [list]);
 
   return (
     <Screen>
       <Stack.Screen options={{ headerShown: false }} />
-      <Brand compact style={styles.brand} />
-      <Text style={[styles.title, { color: colors.text }]}>Choose workspace</Text>
-      <BodyText style={styles.subtitle}>Posts and accounts live inside a workspace.</BodyText>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Brand compact style={styles.brand} />
+        <Text style={[styles.title, { color: colors.text }]}>Choose workspace</Text>
+        <BodyText style={styles.subtitle}>Each workspace has its own posts and accounts.</BodyText>
 
-      {workspaces.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
-      {workspaces.isError ? (
-        <View style={styles.errorState}>
-          <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
-            {workspaces.error instanceof Error ? workspaces.error.message : "Failed to load"}
-          </BodyText>
-          <Button title="Try again" variant="tinted" onPress={() => void workspaces.refetch()} />
-        </View>
-      ) : null}
+        {workspaces.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
+        {workspaces.isError ? (
+          <View style={styles.errorState}>
+            <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
+              {workspaces.error instanceof Error ? workspaces.error.message : "Failed to load"}
+            </BodyText>
+            <Button title="Try again" variant="tinted" onPress={() => void workspaces.refetch()} />
+          </View>
+        ) : null}
 
-      {!workspaces.isLoading && !workspaces.isError && list.length === 0 ? (
-        <Card style={styles.emptyState}>
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>
-            No workspace found
-          </Text>
-          <BodyText>Create a workspace in the web app, then return here and try again.</BodyText>
-        </Card>
-      ) : null}
-
-      {list.length > 1 ? (
-        <>
-          <SectionHeader label="Your workspaces" />
-          <Card style={styles.list}>
-            {list.map((workspace, index) => (
-              <Pressable
-                key={workspace.id}
-                accessibilityRole="button"
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  finish(workspace.id);
-                }}
-                style={({ pressed }) => [
-                  styles.row,
-                  index > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: colors.separator,
-                  },
-                  pressed && { opacity: 0.5 },
-                ]}
-              >
-                <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
-                  {workspace.name}
-                </Text>
-                {selected === workspace.id ? <ActivityIndicator color={colors.tint} /> : null}
-              </Pressable>
-            ))}
+        {!workspaces.isLoading && !workspaces.isError && list.length === 0 ? (
+          <Card style={styles.emptyState}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>
+              No workspaces found
+            </Text>
+            <BodyText>Create a workspace in the web app, then return here and try again.</BodyText>
           </Card>
-        </>
-      ) : null}
+        ) : null}
+
+        {list.length > 1 ? (
+          <>
+            <SectionHeader label="Your workspaces" />
+            <Card style={styles.list}>
+              {list.map((workspace, index) => (
+                <Pressable
+                  key={workspace.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: selected === workspace.id }}
+                  disabled={selected !== null}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void finish(workspace.id);
+                  }}
+                  style={({ pressed }) => [
+                    styles.row,
+                    index > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: colors.separator,
+                    },
+                    pressed && { opacity: 0.5 },
+                  ]}
+                >
+                  <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={2}>
+                    {workspace.name}
+                  </Text>
+                  {selected === workspace.id ? <ActivityIndicator color={colors.tint} /> : null}
+                </Pressable>
+              ))}
+            </Card>
+          </>
+        ) : null}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
+  },
   brand: {
-    marginHorizontal: 20,
-    marginTop: 40,
     marginBottom: 28,
   },
   title: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.5,
-    paddingHorizontal: 20,
   },
   subtitle: {
-    paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 16,
   },
   list: {
     paddingVertical: 4,
-    marginHorizontal: 16,
   },
   row: {
     flexDirection: "row",
@@ -140,11 +144,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   errorState: {
-    paddingHorizontal: 20,
     gap: 12,
   },
   emptyState: {
-    marginHorizontal: 20,
     gap: 6,
   },
 });

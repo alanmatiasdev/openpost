@@ -84,7 +84,7 @@ export async function pollPairing(deviceCode: string): Promise<PairPoll> {
 
 export async function signOut(): Promise<void> {
   try {
-    await api().POST("/auth/logout", { body: {} as never });
+    await api().POST("/auth/logout");
   } catch {
     // Best effort; local session is cleared regardless.
   }

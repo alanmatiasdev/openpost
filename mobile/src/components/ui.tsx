@@ -69,16 +69,11 @@ export function Screen({
   );
 }
 
-export function Card({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-}) {
+export function Card({ children, style, ...props }: React.ComponentProps<typeof View>) {
   const colors = useColors();
   return (
     <View
+      {...props}
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.separator }, style]}
     >
       {children}
@@ -132,6 +127,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={title}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}

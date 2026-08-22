@@ -89,6 +89,7 @@ export default function ServerScreen() {
           <TextField
             value={url}
             onChangeText={setUrl}
+            accessibilityLabel="Self-hosted server address"
             placeholder="openpost.example.com"
             autoCapitalize="none"
             autoCorrect={false}
