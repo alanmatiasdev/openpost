@@ -35,6 +35,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
+	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
@@ -208,6 +209,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
+	const selectedIsMedia = $derived(
+		selectedItemId !== null &&
+			['video', 'audio'].includes(timelineStore.itemById.get(selectedItemId)?.type ?? '')
+	);
+
 	function handleAddCrossfade(): void {
 		if (!selectedItemId) return;
 		const item = timelineStore.itemById.get(selectedItemId);
@@ -360,6 +366,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					>
 						{m.video_editor_crossfade()}
 					</Button>
+					{#if selectedIsMedia}
+						<EffectsPanel itemId={selectedItemId} onedit={() => editorSession.scheduleAutosave()} />
+					{/if}
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 						<Button
 							size="sm"

@@ -4076,5 +4076,18 @@
 	"video_editor_import_captions": "Import captions",
 	"video_editor_transcribe": "Auto-captions",
 	"video_editor_transcribing": "Transcribing…",
-	"video_editor_transcribe_done": "Captions generated"
+	"video_editor_transcribe_done": "Captions generated",
+	"video_editor_effects": "Effects",
+	"video_editor_effects_add": "Add effect",
+	"video_editor_effects_none": "No effects on this clip.",
+	"video_editor_effects_remove": "Remove effect",
+	"video_editor_effects_amount": "Amount",
+	"video_editor_effects_brightness": "Brightness",
+	"video_editor_effects_contrast": "Contrast",
+	"video_editor_effects_saturation": "Saturation",
+	"video_editor_effects_hue_rotate": "Hue rotate",
+	"video_editor_effects_sepia": "Sepia",
+	"video_editor_effects_grayscale": "Grayscale",
+	"video_editor_effects_invert": "Invert",
+	"video_editor_effects_blur": "Blur"
 }
