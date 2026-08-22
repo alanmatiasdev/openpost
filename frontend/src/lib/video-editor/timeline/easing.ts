@@ -93,7 +93,7 @@ function springEasing(progress: number, params: SpringParameters): number {
 	return Math.max(0, Math.min(1.2, value));
 }
 
-const easingFunctions: Record<EasingType, (progress: number) => number> = {
+const easingFunctions = {
 	linear,
 	'ease-in': easeIn,
 	'ease-out': easeOut,
@@ -101,7 +101,7 @@ const easingFunctions: Record<EasingType, (progress: number) => number> = {
 	hold,
 	'cubic-bezier': (progress) => cubicBezier(progress, DEFAULT_BEZIER_POINTS),
 	spring: (progress) => springEasing(progress, DEFAULT_SPRING_PARAMS)
-};
+} satisfies Record<EasingType, (progress: number) => number>;
 
 export function applyEasing(progress: number, type: EasingType): number {
 	return (easingFunctions[type] ?? linear)(Math.max(0, Math.min(1, progress)));

@@ -103,7 +103,8 @@ function pointsFor(params: GpuParamValues, channel: (typeof CHANNELS)[number]): 
 }
 
 function finite(value: string | number | undefined, fallback: number): number {
-	return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : fallback;
 }
 
 export function evaluateMonotoneCurve(points: Point[] | undefined, inputValue: number): number {

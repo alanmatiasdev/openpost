@@ -75,18 +75,19 @@ vec4 lutFragment(vec2 vUv) { vec4 source = texture(uInputTex, vUv); return vec4(
 		u_intensity: numeric(params.intensity, 1)
 	}),
 	dataTexture: {
-		key: (params) => (typeof params.lutData === 'string' ? params.lutData : ''),
+		key: (params) => String(params.lutData ?? ''),
 		build: (params) => {
 			const size = numeric(params.lutSize, 2);
-			const data =
-				typeof params.lutData === 'string' ? base64ToBytes(params.lutData) : identityLut(size);
+			const encoded = String(params.lutData ?? '');
+			const data = encoded ? base64ToBytes(encoded) : identityLut(size);
 			return { width: size * size, height: size, data };
 		}
 	}
 };
 
 function numeric(value: string | number | undefined, fallback: number): number {
-	return typeof value === 'number' ? value : fallback;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : fallback;
 }
 function bytesToBase64(bytes: Uint8Array): string {
 	let binary = '';

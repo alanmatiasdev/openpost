@@ -5,7 +5,21 @@ import { readOpfsBlob, writeOpfsBlob } from './opfs-cache';
 const MAGIC = 0x4f505746;
 const HEADER_BYTES = 20;
 
-export async function saveWaveform(mediaId: string, data: WaveformData): Promise<void> {
+export interface WaveformPersistenceStore {
+	write(kind: string, key: string, name: string, blob: Blob): Promise<void>;
+	read(kind: string, key: string, name: string): Promise<Blob | null>;
+}
+
+const opfsWaveformStore: WaveformPersistenceStore = {
+	write: writeOpfsBlob,
+	read: readOpfsBlob
+};
+
+export async function saveWaveform(
+	mediaId: string,
+	data: WaveformData,
+	store: WaveformPersistenceStore = opfsWaveformStore
+): Promise<void> {
 	const buffer = new ArrayBuffer(HEADER_BYTES + data.peaks.byteLength);
 	const view = new DataView(buffer);
 	view.setUint32(0, MAGIC, true);
@@ -15,11 +29,14 @@ export async function saveWaveform(mediaId: string, data: WaveformData): Promise
 	new Uint8Array(buffer, HEADER_BYTES).set(
 		new Uint8Array(data.peaks.buffer, data.peaks.byteOffset, data.peaks.byteLength)
 	);
-	await writeOpfsBlob('waveforms', mediaId, 'peaks.bin', new Blob([buffer]));
+	await store.write('waveforms', mediaId, 'peaks.bin', new Blob([buffer]));
 }
 
-export async function loadWaveform(mediaId: string): Promise<WaveformData | null> {
-	const blob = await readOpfsBlob('waveforms', mediaId, 'peaks.bin');
+export async function loadWaveform(
+	mediaId: string,
+	store: WaveformPersistenceStore = opfsWaveformStore
+): Promise<WaveformData | null> {
+	const blob = await store.read('waveforms', mediaId, 'peaks.bin');
 	if (!blob) return null;
 	const buffer = await blob.arrayBuffer();
 	if (buffer.byteLength < HEADER_BYTES) return null;

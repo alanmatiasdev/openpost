@@ -128,8 +128,8 @@
 	}
 
 	function numericParam(effect: GpuEffect, name: string, fallback: number): number {
-		const value = effect.params[name];
-		return typeof value === 'number' ? value : fallback;
+		const value = Number(effect.params[name]);
+		return Number.isFinite(value) ? value : fallback;
 	}
 
 	async function importLut(effect: GpuEffect): Promise<void> {
