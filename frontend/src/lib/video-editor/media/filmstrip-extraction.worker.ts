@@ -69,12 +69,6 @@ type WorkerRequest = FilmstripExtractRequest | FilmstripAbortRequest | Filmstrip
 
 const activeRequests = new Map<string, { aborted: boolean }>();
 
-function getRequestIdFromMessage(data: unknown): string {
-	if (!data || typeof data !== 'object') return 'unknown';
-	const maybe = data as { requestId?: unknown };
-	return typeof maybe.requestId === 'string' ? maybe.requestId : 'unknown';
-}
-
 async function extractAndSave(
 	request: FilmstripExtractRequest,
 	state: { aborted: boolean }
@@ -203,8 +197,6 @@ async function extractAndSave(
 			} satisfies FilmstripCompleteResponse);
 		}
 	} finally {
-		// SAFETY: CanvasSink implementations expose dispose when the build supports it.
-		(sink as unknown as { dispose?: () => void } | null)?.dispose?.();
 		input.dispose();
 	}
 }
@@ -243,7 +235,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 	} catch (error) {
 		self.postMessage({
 			type: 'error',
-			requestId: getRequestIdFromMessage(event.data),
+			requestId: event.data.requestId,
 			error: error instanceof Error ? error.message : String(error)
 		} satisfies FilmstripErrorResponse);
 	}

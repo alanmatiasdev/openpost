@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SeekScheduler, seekDriftExceeded, supportsVideoFrameCallback } from './seek-throttle';
+import {
+	SeekScheduler,
+	seekDriftExceeded,
+	supportsVideoFrameCallback,
+	type ScheduledFlush
+} from './seek-throttle';
 
 class FakeClock {
 	private time = 0;
@@ -16,14 +21,16 @@ class FakeClock {
 		for (const entry of due) entry.fn();
 	}
 
-	schedule(fn: () => void, delayMs: number): unknown {
-		this.callbacks.push({ fn, at: this.time + delayMs });
-		return { id: this.callbacks.length };
-	}
-
-	cancel(_handle: unknown): void {
-		this.callbacks = [];
-	}
+	schedule = (fn: () => void, delayMs: number): ScheduledFlush => {
+		const entry = { fn, at: this.time + delayMs };
+		this.callbacks.push(entry);
+		return {
+			cancel: () => {
+				const index = this.callbacks.indexOf(entry);
+				if (index !== -1) this.callbacks.splice(index, 1);
+			}
+		};
+	};
 }
 
 function makeScheduler(clock: FakeClock, minIntervalMs = 32) {
@@ -35,8 +42,7 @@ function makeScheduler(clock: FakeClock, minIntervalMs = 32) {
 		{
 			minIntervalMs,
 			now: () => clock.now(),
-			schedule: (fn, delayMs) => clock.schedule(fn, delayMs),
-			cancel: (handle) => clock.cancel(handle)
+			schedule: clock.schedule
 		}
 	);
 	return { scheduler, applied };

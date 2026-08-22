@@ -264,8 +264,11 @@
 		timelineStore._setZoomLevel(zoom * factor);
 	}
 
-	const KEYFRAME_PROPERTIES: readonly KeyframeProperty[] = ['opacity', 'volume'];
-	const DEFAULT_KEYFRAME_VALUES: Record<KeyframeProperty, number> = { opacity: 1, volume: 1 };
+	const KEYFRAME_PROPERTIES = ['opacity', 'volume'] as const satisfies readonly KeyframeProperty[];
+	const DEFAULT_KEYFRAME_VALUES = { opacity: 1, volume: 1 } satisfies Record<
+		KeyframeProperty,
+		number
+	>;
 
 	const selectedItem = $derived(
 		selectedItemId ? timelineStore.itemById.get(selectedItemId) : undefined

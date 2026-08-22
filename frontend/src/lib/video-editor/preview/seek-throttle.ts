@@ -10,6 +10,11 @@
 
 export const SEEK_MIN_INTERVAL_MS = 32;
 
+/** Handle for a scheduled trailing flush; cancel() unschedules it. */
+export interface ScheduledFlush {
+	cancel(): void;
+}
+
 /** Whether the video's current time is far enough from the target to seek. */
 export function seekDriftExceeded(
 	currentTime: number,
@@ -28,20 +33,18 @@ export function supportsVideoFrameCallback(video: {
 interface SeekSchedulerOptions {
 	minIntervalMs?: number;
 	now?: () => number;
-	schedule?: (fn: () => void, delayMs: number) => unknown;
-	cancel?: (handle: unknown) => void;
+	schedule?: (fn: () => void, delayMs: number) => ScheduledFlush;
 }
 
 export class SeekScheduler {
 	private pendingTarget: number | null = null;
 	private lastAppliedAt = Number.NEGATIVE_INFINITY;
-	private timerHandle: unknown = null;
+	private timerHandle: ScheduledFlush | null = null;
 	private detached = false;
 
 	private readonly minIntervalMs: number;
 	private readonly now: () => number;
-	private readonly schedule: (fn: () => void, delayMs: number) => unknown;
-	private readonly cancel: (handle: unknown) => void;
+	private readonly schedule: (fn: () => void, delayMs: number) => ScheduledFlush;
 
 	constructor(
 		private apply: (target: number) => void,
@@ -52,12 +55,12 @@ export class SeekScheduler {
 		this.schedule =
 			options?.schedule ??
 			((fn, delayMs) => {
-				setTimeout(fn, delayMs);
-			});
-		this.cancel =
-			options?.cancel ??
-			((handle) => {
-				clearTimeout(handle as number);
+				const id = setTimeout(fn, delayMs);
+				return {
+					cancel: () => {
+						clearTimeout(id);
+					}
+				};
 			});
 	}
 
@@ -108,7 +111,7 @@ export class SeekScheduler {
 
 	private clearTimer(): void {
 		if (this.timerHandle !== null) {
-			this.cancel(this.timerHandle);
+			this.timerHandle.cancel();
 			this.timerHandle = null;
 		}
 	}

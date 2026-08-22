@@ -31,13 +31,24 @@ export interface FrameRange {
 	endIndex: number;
 }
 
+function normalizeTargetFrameCount(targetFrameCount?: number | null): number | null {
+	if (targetFrameCount == null) return null;
+	if (!Number.isFinite(targetFrameCount) || targetFrameCount <= 0) return null;
+	return Math.max(1, Math.ceil(targetFrameCount));
+}
+
+export interface FilmstripFrameSize {
+	width: number;
+	height: number;
+}
+
 /** Fits a filmstrip frame inside the budget without changing its aspect ratio. */
 export function fitFilmstripFrameSize(
 	sourceWidth: number,
 	sourceHeight: number,
 	maxWidth: number,
 	maxHeight: number
-): { width: number; height: number } {
+): FilmstripFrameSize {
 	if (sourceWidth <= 0 || sourceHeight <= 0) return { width: maxWidth, height: maxHeight };
 
 	const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
@@ -54,12 +65,7 @@ export function getTargetFrameBudget(
 ): number {
 	if (totalFrames <= 0) return 0;
 
-	const normalizedTargetFrameCount =
-		typeof targetFrameCount === 'number' &&
-		Number.isFinite(targetFrameCount) &&
-		targetFrameCount > 0
-			? Math.max(1, Math.ceil(targetFrameCount))
-			: null;
+	const normalizedTargetFrameCount = normalizeTargetFrameCount(targetFrameCount);
 
 	const defaultBudget =
 		totalFrames <= MIN_FILMSTRIP_TARGET_FRAMES

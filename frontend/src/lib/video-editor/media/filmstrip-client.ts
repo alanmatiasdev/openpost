@@ -61,6 +61,17 @@ function estimatedFilmstripBytes(filmstrip: Filmstrip): number {
 	return filmstrip.frames.length * ESTIMATED_FRAME_BYTES;
 }
 
+function hardwareCoreCount(): number {
+	const cores = globalThis.navigator?.hardwareConcurrency;
+	return cores > 0 ? cores : 4;
+}
+
+function getMaxConcurrentExtractions(): number {
+	return hardwareCoreCount() >= HIGH_CORE_THRESHOLD
+		? MAX_CONCURRENT_EXTRACTIONS_HIGH_CORE
+		: MAX_CONCURRENT_EXTRACTIONS_BASE;
+}
+
 class FilmstripCacheService {
 	private cache = new SizedAccessedMemoryCache<FilmstripCacheEntry>(MEMORY_SOFT_LIMIT_BYTES);
 	private pendingExtractions = new Map<
@@ -236,7 +247,7 @@ class FilmstripCacheService {
 
 	private enqueueExtraction(mediaId: string): void {
 		if (this.activeExtractions.has(mediaId)) return;
-		if (this.activeExtractions.size >= this.getMaxConcurrentExtractions()) {
+		if (this.activeExtractions.size >= getMaxConcurrentExtractions()) {
 			this.extractionQueue.push(mediaId);
 			this.extractionQueue.sort((a, b) => this.getQueueScore(a) - this.getQueueScore(b));
 			return;
@@ -249,7 +260,7 @@ class FilmstripCacheService {
 	}
 
 	private pumpQueue(): void {
-		if (this.activeExtractions.size >= this.getMaxConcurrentExtractions()) return;
+		if (this.activeExtractions.size >= getMaxConcurrentExtractions()) return;
 		while (this.extractionQueue.length > 0) {
 			const nextMediaId = this.extractionQueue.shift();
 			if (!nextMediaId) return;
@@ -267,13 +278,6 @@ class FilmstripCacheService {
 		const pending = this.pendingExtractions.get(mediaId);
 		if (!pending) return Number.POSITIVE_INFINITY;
 		return pending.targetIndices.length - pending.frames.size;
-	}
-
-	private getMaxConcurrentExtractions(): number {
-		const cores = typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency || 4;
-		return cores >= HIGH_CORE_THRESHOLD
-			? MAX_CONCURRENT_EXTRACTIONS_HIGH_CORE
-			: MAX_CONCURRENT_EXTRACTIONS_BASE;
 	}
 
 	private async runExtraction(
