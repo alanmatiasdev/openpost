@@ -260,10 +260,10 @@
 		/>
 		<button
 			type="button"
-			class="flex cursor-grab items-center gap-1 rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] active:cursor-grabbing"
+			class="flex items-center gap-1 rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] enabled:cursor-grab enabled:active:cursor-grabbing disabled:cursor-not-allowed"
 			disabled={!itemId}
-			draggable="true"
-			title={m.video_editor_effects_add_or_drag()}
+			draggable={itemId !== null}
+			title={itemId ? m.video_editor_effects_add_or_drag() : m.video_editor_effects_add()}
 			onclick={handleAdd}
 			ondragstart={startEffectDrag}
 			ondragend={finishEffectDrag}

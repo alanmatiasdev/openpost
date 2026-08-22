@@ -1635,7 +1635,7 @@
 						>
 							{#if effectDropTargetIds.includes(item.id)}
 								<div
-									class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-[oklch(0.78_0.14_45_/_0.95)] bg-[oklch(0.66_0.14_45_/_0.16)] shadow-[inset_0_0_0_1px_oklch(0.78_0.14_45_/_0.35)]"
+									class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-[oklch(0.66_0.14_45_/_0.95)] bg-[oklch(0.66_0.14_45_/_0.16)] shadow-[inset_0_0_0_1px_oklch(0.66_0.14_45_/_0.35)]"
 									data-effect-drop-preview
 								>
 									{#if effectDropHoveredItemId === item.id}
@@ -1645,7 +1645,7 @@
 									{/if}
 									{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
 										<span
-											class="absolute top-1 right-1 rounded-full bg-[oklch(0.78_0.14_45)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[oklch(0.16_0.008_55)]"
+											class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[oklch(0.16_0.008_55)]"
 										>
 											{m.video_editor_effects_drop_count({ count: effectDropTargetIds.length })}
 										</span>
