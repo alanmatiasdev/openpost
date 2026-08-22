@@ -5,6 +5,7 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { activeValueAt } from '$lib/video-editor/timeline/actions/keyframes';
+	import { effectsToCssFilter } from '$lib/video-editor/effects/filter';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
 	import {
 		incomingOpacity,
@@ -143,7 +144,12 @@
 		{#if activeUrl}
 			{#key activeUrl}
 				<!-- svelte-ignore a11y_media_has_caption -- editor preview canvas; captions render as subtitle items -->
-				<video bind:this={videoEl} src={activeUrl} class="max-h-full rounded-md" playsinline
+				<video
+					bind:this={videoEl}
+					src={activeUrl}
+					class="max-h-full rounded-md"
+					style:filter={activeItem ? effectsToCssFilter(activeItem.effects) : ''}
+					playsinline
 				></video>
 			{/key}
 		{:else}
