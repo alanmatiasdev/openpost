@@ -16,11 +16,9 @@
 	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
-	import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
-	import {
-		computeFilmstripTiles,
-		type FilmstripFrameRef as FilmstripFrame
-	} from '$lib/video-editor/media/filmstrip-plan';
+	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
+	import FilmstripTile from './filmstrip-tile.svelte';
+	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { Slider } from '$lib/components/ui/slider';
 	import {
@@ -138,6 +136,11 @@
 			spanSeconds,
 			frameToPx(item.durationInFrames)
 		);
+	}
+
+	function filmstripBitmapFor(mediaId: string | undefined, index: number): ImageBitmap | undefined {
+		if (!mediaId) return undefined;
+		return filmstrips[mediaId]?.frames.find((frame) => frame.index === index)?.bitmap;
 	}
 
 	const fps = $derived(editorSession.fps);
@@ -412,10 +415,9 @@
 						{#if item.type === 'video' && filmstripTilesFor(item)}
 							<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
 								{#each filmstripTilesFor(item) as tile (tile.index)}
-									<img
-										src={tile.url ?? ''}
-										alt=""
-										class="absolute top-0 h-full rounded-sm object-cover opacity-90"
+									<FilmstripTile
+										bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
+										url={tile.url}
 										style="left:{tile.x}px;width:{tile.width}px"
 									/>
 								{/each}

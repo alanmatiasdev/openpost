@@ -1,0 +1,33 @@
+/** Binary waveform persistence tier. Ported from FreeCut (MIT). */
+import type { WaveformData } from './waveform-client';
+import { readOpfsBlob, writeOpfsBlob } from './opfs-cache';
+
+const MAGIC = 0x4f505746;
+const HEADER_BYTES = 20;
+
+export async function saveWaveform(mediaId: string, data: WaveformData): Promise<void> {
+	const buffer = new ArrayBuffer(HEADER_BYTES + data.peaks.byteLength);
+	const view = new DataView(buffer);
+	view.setUint32(0, MAGIC, true);
+	view.setUint32(4, 1, true);
+	view.setFloat64(8, data.durationSeconds, true);
+	view.setUint32(16, data.samplesPerSecond, true);
+	new Uint8Array(buffer, HEADER_BYTES).set(
+		new Uint8Array(data.peaks.buffer, data.peaks.byteOffset, data.peaks.byteLength)
+	);
+	await writeOpfsBlob('waveforms', mediaId, 'peaks.bin', new Blob([buffer]));
+}
+
+export async function loadWaveform(mediaId: string): Promise<WaveformData | null> {
+	const blob = await readOpfsBlob('waveforms', mediaId, 'peaks.bin');
+	if (!blob) return null;
+	const buffer = await blob.arrayBuffer();
+	if (buffer.byteLength < HEADER_BYTES) return null;
+	const view = new DataView(buffer);
+	if (view.getUint32(0, true) !== MAGIC || view.getUint32(4, true) !== 1) return null;
+	return {
+		durationSeconds: view.getFloat64(8, true),
+		samplesPerSecond: view.getUint32(16, true),
+		peaks: new Float32Array(buffer.slice(HEADER_BYTES))
+	};
+}

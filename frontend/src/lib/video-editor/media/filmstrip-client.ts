@@ -26,10 +26,12 @@ import type {
 	FilmstripExtractRequest,
 	FilmstripWorkerResponse
 } from './filmstrip-extraction.worker';
+import { loadFilmstrip, saveFilmstripFrame, saveFilmstripIndex } from './filmstrip-persistence';
 
 export interface FilmstripFrame {
 	index: number;
 	url: string | null;
+	bitmap?: ImageBitmap;
 }
 
 export interface Filmstrip {
@@ -167,7 +169,7 @@ class FilmstripCacheService {
 			return cached;
 		}
 
-		const promise = this.loadAndExtract(media, targetIndices, onProgress);
+		const promise = this.loadPersistedOrExtract(media, targetIndices, onProgress);
 		this.loadingPromises.set(media.id, promise);
 		try {
 			return await promise;
@@ -175,6 +177,25 @@ class FilmstripCacheService {
 			const current = this.loadingPromises.get(media.id);
 			if (current === promise) this.loadingPromises.delete(media.id);
 		}
+	}
+
+	private async loadPersistedOrExtract(
+		media: MediaMetadata,
+		targetIndices: number[],
+		onProgress?: (progress: number) => void
+	): Promise<Filmstrip> {
+		const persisted = await loadFilmstrip(media.id);
+		if (persisted.length > 0) {
+			const filmstrip: Filmstrip = {
+				frames: persisted,
+				isComplete: true,
+				isExtracting: false,
+				progress: 100
+			};
+			this.storeAndNotify(media.id, filmstrip, true);
+			if (!this.missingTargets(filmstrip, targetIndices)) return filmstrip;
+		}
+		return this.loadAndExtract(media, targetIndices, onProgress);
 	}
 
 	clearAll(): void {
@@ -212,12 +233,14 @@ class FilmstripCacheService {
 	): Promise<Filmstrip> {
 		const cached = this.cachedFilmstrip(media.id);
 		const frames = new Map<number, string | null>();
+		const bitmaps = new Map<number, ImageBitmap>();
 		for (const frame of cached?.frames ?? []) {
 			frames.set(frame.index, frame.url);
+			if (frame.bitmap) bitmaps.set(frame.index, frame.bitmap);
 		}
 
 		const initial: Filmstrip = {
-			frames: sortFrames(frames),
+			frames: sortFrames(frames, bitmaps),
 			isComplete: false,
 			isExtracting: true,
 			progress: cached?.progress ?? 0
@@ -236,6 +259,7 @@ class FilmstripCacheService {
 					requestId,
 					targetIndices,
 					frames,
+					bitmaps,
 					onProgress,
 					resolve,
 					reject
@@ -286,6 +310,7 @@ class FilmstripCacheService {
 		requestId: string,
 		targetIndices: number[],
 		frames: Map<number, string | null>,
+		bitmaps: Map<number, ImageBitmap>,
 		onProgress: ((progress: number) => void) | undefined,
 		resolve: (filmstrip: Filmstrip) => void,
 		reject: (error: Error) => void
@@ -310,10 +335,22 @@ class FilmstripCacheService {
 				for (const saved of message.savedFrames) {
 					pendingFrameUrlRevoker(this.cache.get(media.id)?.filmstrip, saved.index);
 					frames.set(saved.index, URL.createObjectURL(saved.blob));
+					void saveFilmstripFrame(media.id, saved.index, saved.blob);
+					void createImageBitmap(saved.blob)
+						.then((bitmap) => {
+							bitmaps.get(saved.index)?.close();
+							bitmaps.set(saved.index, bitmap);
+							const current = this.cachedFilmstrip(media.id);
+							if (!current) return;
+							const next = { ...current, frames: sortFrames(frames, bitmaps) };
+							this.storeEntry(media.id, next);
+							this.notifyThrottled(media.id, next);
+						})
+						.catch(() => undefined);
 				}
 				onProgress?.(message.progress);
 				const filmstrip: Filmstrip = {
-					frames: sortFrames(frames),
+					frames: sortFrames(frames, bitmaps),
 					isComplete: false,
 					isExtracting: true,
 					progress: message.progress
@@ -329,12 +366,16 @@ class FilmstripCacheService {
 					frames.delete(index);
 				}
 				const filmstrip: Filmstrip = {
-					frames: sortFrames(frames),
+					frames: sortFrames(frames, bitmaps),
 					isComplete: true,
 					isExtracting: false,
 					progress: 100
 				};
 				this.storeEntry(media.id, filmstrip);
+				void saveFilmstripIndex(
+					media.id,
+					filmstrip.frames.map((frame) => frame.index)
+				);
 				this.notifyThrottled(media.id, filmstrip, true);
 				this.enforceMemoryBudget();
 				resolve(filmstrip);
@@ -464,14 +505,21 @@ async function resolveMediaBlobForFilmstrip(media: MediaMetadata): Promise<Blob>
 	return resolveMediaBlob(media);
 }
 
-function sortFrames(frames: Map<number, string | null>): FilmstripFrame[] {
-	return [...frames.entries()].sort((a, b) => a[0] - b[0]).map(([index, url]) => ({ index, url }));
+function sortFrames(
+	frames: Map<number, string | null>,
+	bitmaps: Map<number, ImageBitmap> = new Map()
+): FilmstripFrame[] {
+	return [...frames.entries()]
+		.sort((a, b) => a[0] - b[0])
+		.map(([index, url]) => ({ index, url, bitmap: bitmaps.get(index) }));
 }
 
 function closeReplacedFrames(previous: Filmstrip, next: Filmstrip): void {
 	const retained = new Set(next.frames.map((frame) => frame.url));
 	for (const frame of previous.frames) {
 		if (frame.url && !retained.has(frame.url)) URL.revokeObjectURL(frame.url);
+		if (frame.bitmap && !next.frames.some((candidate) => candidate.bitmap === frame.bitmap))
+			frame.bitmap.close();
 	}
 }
 
@@ -479,11 +527,13 @@ function pendingFrameUrlRevoker(previous: Filmstrip | undefined, index: number):
 	if (!previous) return;
 	const frame = previous.frames.find((candidate) => candidate.index === index);
 	if (frame?.url) URL.revokeObjectURL(frame.url);
+	frame?.bitmap?.close();
 }
 
 function revokeFrames(filmstrip: Filmstrip): void {
 	for (const frame of filmstrip.frames) {
 		if (frame.url) URL.revokeObjectURL(frame.url);
+		frame.bitmap?.close();
 	}
 }
 

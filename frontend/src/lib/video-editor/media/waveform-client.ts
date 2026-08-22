@@ -10,6 +10,7 @@
 import type { MediaMetadata } from './types';
 import type { WaveformCompleteMessage, WaveformWorkerResponse } from './waveform-worker';
 import { SizedAccessedMemoryCache } from './sized-accessed-memory-cache';
+import { loadWaveform, saveWaveform } from './waveform-persistence';
 
 export interface WaveformData {
 	peaks: Float32Array;
@@ -41,9 +42,24 @@ export async function getWaveform(media: MediaMetadata): Promise<WaveformData> {
 	}
 	const pending = inflight.get(media.id);
 	if (pending) return pending;
-	const promise = decode(media).finally(() => inflight.delete(media.id));
+	const promise = loadOrDecode(media).finally(() => inflight.delete(media.id));
 	inflight.set(media.id, promise);
 	return promise;
+}
+
+async function loadOrDecode(media: MediaMetadata): Promise<WaveformData> {
+	const persisted = await loadWaveform(media.id);
+	if (persisted) {
+		cache.add(media.id, {
+			data: persisted,
+			sizeBytes: persisted.peaks.byteLength,
+			lastAccessed: Date.now()
+		});
+		return persisted;
+	}
+	const decoded = await decode(media);
+	void saveWaveform(media.id, decoded);
+	return decoded;
 }
 
 async function decode(media: MediaMetadata): Promise<WaveformData> {
