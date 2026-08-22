@@ -213,6 +213,15 @@
 	let activeSnapTarget = $state<SnapTarget | null>(null);
 	let syncLockPreviewById = $state<Record<string, SyncLockPreviewUpdate>>({});
 	let breakingTransitionPreviewIds = $state<string[]>([]);
+	let marquee = $state<{
+		startX: number;
+		startY: number;
+		currentX: number;
+		currentY: number;
+		active: boolean;
+		additive: boolean;
+		baseIds: string[];
+	} | null>(null);
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
 	// extraction worker and tiles render as they arrive.
@@ -380,6 +389,90 @@
 		setCurrentFrame(
 			pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH)
 		);
+	}
+
+	function marqueeStyle(): string {
+		if (!marquee || !scrollContainer) return '';
+		const rect = scrollContainer.getBoundingClientRect();
+		const left =
+			Math.min(marquee.startX, marquee.currentX) - rect.left + scrollContainer.scrollLeft;
+		const top = Math.min(marquee.startY, marquee.currentY) - rect.top + scrollContainer.scrollTop;
+		return `left:${left}px;top:${top}px;width:${Math.abs(marquee.currentX - marquee.startX)}px;height:${Math.abs(marquee.currentY - marquee.startY)}px`;
+	}
+
+	function updateMarqueeSelection(): void {
+		if (!marquee?.active || !scrollContainer) return;
+		const selectionRect = {
+			left: Math.min(marquee.startX, marquee.currentX),
+			right: Math.max(marquee.startX, marquee.currentX),
+			top: Math.min(marquee.startY, marquee.currentY),
+			bottom: Math.max(marquee.startY, marquee.currentY)
+		};
+		const hitIds = Array.from(
+			scrollContainer.querySelectorAll<HTMLElement>('[data-timeline-item-id]')
+		)
+			.filter((element) => {
+				const rect = element.getBoundingClientRect();
+				return (
+					rect.left < selectionRect.right &&
+					rect.right > selectionRect.left &&
+					rect.top < selectionRect.bottom &&
+					rect.bottom > selectionRect.top
+				);
+			})
+			.map((element) => element.dataset.timelineItemId)
+			.filter((id): id is string => id !== undefined);
+		selectedItemIds = marquee.additive
+			? Array.from(new Set([...marquee.baseIds, ...hitIds]))
+			: hitIds;
+		selectedItemId = hitIds.at(-1) ?? selectedItemIds.at(-1) ?? null;
+	}
+
+	function onMarqueePointerMove(event: PointerEvent): void {
+		if (!marquee) return;
+		marquee.currentX = event.clientX;
+		marquee.currentY = event.clientY;
+		if (
+			!marquee.active &&
+			Math.hypot(event.clientX - marquee.startX, event.clientY - marquee.startY) >=
+				DRAG_THRESHOLD_PIXELS
+		) {
+			marquee.active = true;
+		}
+		updateMarqueeSelection();
+	}
+
+	function finishMarquee(): void {
+		if (!marquee) return;
+		if (!marquee.active && !marquee.additive) {
+			selectedItemIds = [];
+			selectedItemId = null;
+		}
+		marquee = null;
+		window.removeEventListener('pointermove', onMarqueePointerMove);
+		window.removeEventListener('pointerup', finishMarquee);
+		window.removeEventListener('pointercancel', finishMarquee);
+	}
+
+	function startMarquee(event: PointerEvent): void {
+		if (event.button !== 0 || drag || marquee) return;
+		const target = event.target;
+		if (!(target instanceof HTMLElement) || !target.closest('[data-track]')) return;
+		if (target.closest('button, input, select, textarea, [data-marquee-ignore]')) return;
+		event.preventDefault();
+		const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+		marquee = {
+			startX: event.clientX,
+			startY: event.clientY,
+			currentX: event.clientX,
+			currentY: event.clientY,
+			active: false,
+			additive,
+			baseIds: additive ? [...selectedItemIds] : []
+		};
+		window.addEventListener('pointermove', onMarqueePointerMove);
+		window.addEventListener('pointerup', finishMarquee);
+		window.addEventListener('pointercancel', finishMarquee);
 	}
 
 	function trackForItem(item: TimelineItem) {
@@ -1054,6 +1147,7 @@
 
 	onDestroy(() => {
 		if (drag) finishDrag(true);
+		if (marquee) finishMarquee();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
 	});
 
@@ -1382,11 +1476,19 @@
 
 <div
 	bind:this={scrollContainer}
+	onpointerdown={startMarquee}
 	class="relative max-h-72 min-h-32 overflow-x-auto overflow-y-hidden pb-2"
 	role="region"
 	aria-label={m.video_editor_timeline()}
 >
 	<div class="relative select-none" style="width:{timelineWidth}px">
+		{#if marquee?.active}
+			<div
+				class="pointer-events-none absolute z-50 border border-[oklch(0.72_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.16)]"
+				style={marqueeStyle()}
+				data-timeline-marquee
+			></div>
+		{/if}
 		<!-- Ruler -->
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -- ruler seeks on click; arrow-key transport is global (Space/step buttons) -->
 		<div
@@ -1417,7 +1519,11 @@
 				style="height:{track.height}px"
 				data-track={track.id}
 			>
-				<div class="sticky left-0 z-30 h-full" style="width:{TRACK_HEADER_WIDTH}px">
+				<div
+					class="sticky left-0 z-30 h-full"
+					style="width:{TRACK_HEADER_WIDTH}px"
+					data-marquee-ignore
+				>
 					<TimelineTrackHeader
 						{track}
 						itemCount={(timelineStore.itemsByTrackId.get(track.id) ?? []).length}
@@ -1440,6 +1546,7 @@
 								? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
 								: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
 							style={clipStyle(displayItem)}
+							data-timeline-item-id={item.id}
 						>
 							<button
 								type="button"

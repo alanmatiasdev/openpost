@@ -41,7 +41,8 @@ function dispatchPointer(
 	target: EventTarget,
 	type: 'pointerdown' | 'pointermove' | 'pointerup',
 	clientX: number,
-	shiftKey = false
+	shiftKey = false,
+	clientY = 0
 ): void {
 	target.dispatchEvent(
 		new PointerEvent(type, {
@@ -49,6 +50,7 @@ function dispatchPointer(
 			button: 0,
 			buttons: type === 'pointerup' ? 0 : 1,
 			clientX,
+			clientY,
 			pointerId: 7,
 			shiftKey
 		})
@@ -81,6 +83,41 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel sync-lock ripple trim', () => {
+	it('marquee-selects every clip intersecting a background drag', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement!;
+		const musicClip = screen.getByRole('button', { name: /^Music\./ }).element().parentElement!;
+		const videoTrack = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(videoTrack).not.toBeNull();
+		const videoRect = videoClip.getBoundingClientRect();
+		const musicRect = musicClip.getBoundingClientRect();
+
+		dispatchPointer(
+			videoTrack!,
+			'pointerdown',
+			Math.max(videoRect.right, musicRect.right) + 20,
+			false,
+			videoRect.top + videoRect.height / 2
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 1,
+				clientX: Math.min(videoRect.left, musicRect.left) - 5,
+				clientY: musicRect.top + musicRect.height / 2,
+				pointerId: 7
+			})
+		);
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-timeline-marquee]')).not.toBeNull();
+		dispatchPointer(window, 'pointerup', Math.min(videoRect.left, musicRect.left) - 5);
+		await nextAnimationFrame();
+
+		expect(videoClip.className).toContain('ring-1');
+		expect(musicClip.className).toContain('ring-1');
+		expect(document.querySelector('[data-timeline-marquee]')).toBeNull();
+	});
+
 	it('previews every touched track and commits the split as one undo entry', async () => {
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, { onedit });
