@@ -320,7 +320,7 @@
     "boundary": "Provider access and available formats still depend on account type, permissions, review, and current provider support."
   },
   "https://docs.openpost.social/installation/android": {
-    "audience": "This page is for Android users installing OpenPost and connecting it to OpenPost Hosted or a self-hosted instance.",
+    "audience": "This page is for Android users installing OpenPost and connecting it to a self-hosted instance.",
     "boundary": "Because this is a release APK distributed outside the Play Store, Android may ask you to allow installs from your browser or file manager. Only install APKs from the official OpenPost release page."
   },
   "https://docs.openpost.social/installation/binary": {

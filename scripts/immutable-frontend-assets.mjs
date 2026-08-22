@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export const immutableFrontendAssetDirectories = ["image-editor-models"];
+export const immutableFrontendAssetDirectories = [
+  "image-editor-models",
+  "video-editor-audio",
+  "video-editor-models",
+];
 
 const linkFallbackCodes = new Set(["EACCES", "EMLINK", "ENOSYS", "ENOTSUP", "EPERM", "EXDEV"]);
 const validatedFileDigests = new Set();
@@ -85,6 +89,35 @@ async function expectedImmutableFrontendAssets(sourceRoot) {
         throw new Error(`Invalid image editor resource chunk: ${resourceName}`);
       }
       add(imageDirectory, chunk.name, end - start, chunk.hash ?? chunk.name);
+    }
+  }
+
+  const audioDirectory = "video-editor-audio";
+  const audioManifest = await readJson(path.join(sourceRoot, audioDirectory, "manifest.json"));
+  add(audioDirectory, "manifest.json", null);
+  if (!Array.isArray(audioManifest.assets) || audioManifest.assets.length === 0) {
+    throw new Error("The video editor audio manifest has no assets");
+  }
+  for (const asset of audioManifest.assets) {
+    const prefix = `/${audioDirectory}/`;
+    if (typeof asset.path !== "string" || !asset.path.startsWith(prefix)) {
+      throw new Error(`Invalid video editor audio asset path: ${asset.path}`);
+    }
+    add(audioDirectory, asset.path.slice(prefix.length), asset.size_bytes, asset.sha256);
+  }
+
+  const modelDirectory = "video-editor-models";
+  const modelManifest = await readJson(path.join(sourceRoot, modelDirectory, "manifest.json"));
+  add(modelDirectory, "manifest.json", null);
+  if (!Array.isArray(modelManifest.models) || modelManifest.models.length === 0) {
+    throw new Error("The video editor model manifest has no models");
+  }
+  for (const model of modelManifest.models) {
+    if (!Array.isArray(model.files) || model.files.length === 0) {
+      throw new Error(`The video editor model has no files: ${model.id ?? "unknown"}`);
+    }
+    for (const file of model.files) {
+      add(modelDirectory, file.path, file.size_bytes, file.sha256);
     }
   }
 

@@ -15,7 +15,7 @@
 		type StockAsset,
 		type StockMediaSearchInput,
 		type StockProvider
-	} from '$lib/stock-media';
+	} from '$lib/video-editor/api';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
@@ -97,7 +97,7 @@
 	const kindOptions = $derived(
 		stockMediaKindsForProviders(providers, accept).map((value) => ({
 			value,
-			label: value === 'photo' ? m.stock_media_photos() : m.stock_media_videos()
+			label: value === 'photo' ? m.video_editor_stock_photos() : m.video_editor_stock_videos()
 		}))
 	);
 	const orientationOptions = $derived([
@@ -108,7 +108,7 @@
 	]);
 	const selectingAsset = $derived(results.find((asset) => asset.external_id === selecting) ?? null);
 	const emptyMessage = $derived(
-		accept === 'photo' ? m.image_editor_stock_empty() : m.stock_media_empty()
+		accept === 'photo' ? m.image_editor_stock_empty() : m.video_editor_stock_empty()
 	);
 	const activeFilterCount = $derived.by(() => {
 		const values = [
@@ -135,7 +135,7 @@
 			providers = await services.listProviders();
 			provider = providers.find((item) => supportsKind(item, kind))?.key ?? '';
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.stock_media_unavailable();
+			error = cause instanceof Error ? cause.message : m.video_editor_stock_unavailable();
 		} finally {
 			loading = false;
 		}
@@ -206,7 +206,7 @@
 			hasMore = response.has_more;
 			total = response.total;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.stock_media_search_failed();
+			error = cause instanceof Error ? cause.message : m.video_editor_stock_search_failed();
 		} finally {
 			searching = false;
 		}
@@ -247,7 +247,7 @@
 				credentials: 'omit',
 				referrerPolicy: 'no-referrer'
 			});
-			if (!response.ok) throw new Error(m.stock_media_download_failed());
+			if (!response.ok) throw new Error(m.video_editor_stock_download_failed());
 			const blob = await response.blob();
 			const extension = resolved.mime_type.includes('video') ? 'mp4' : 'jpg';
 			const file = new File(
@@ -257,7 +257,7 @@
 			);
 			await onSelect(file, asset);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.stock_media_download_failed();
+			error = cause instanceof Error ? cause.message : m.video_editor_stock_download_failed();
 		} finally {
 			selecting = '';
 		}
@@ -281,7 +281,7 @@
 <div class={compact ? 'space-y-3' : 'space-y-4'}>
 	<div>
 		<h2 class={compact ? 'text-sm font-semibold' : 'text-base font-semibold'}>
-			{m.stock_media_search()}
+			{m.video_editor_stock_search()}
 		</h2>
 		<p
 			class={compact ? 'mt-1 text-xs text-muted-foreground' : 'mt-1 text-sm text-muted-foreground'}
@@ -306,7 +306,7 @@
 			aria-live="polite"
 		>
 			<LoaderIcon class="size-4 animate-spin" />
-			{m.stock_media_downloading({ title: selectingAsset.title || selectingAsset.kind })}
+			{m.video_editor_stock_downloading({ title: selectingAsset.title || selectingAsset.kind })}
 		</p>
 	{/if}
 
@@ -316,7 +316,7 @@
 			{m.common_loading()}
 		</div>
 	{:else if providers.length === 0}
-		<InlineNotice tone="info" message={m.stock_media_unavailable()} />
+		<InlineNotice tone="info" message={m.video_editor_stock_unavailable()} />
 	{:else}
 		<form
 			class="space-y-3"
@@ -335,29 +335,29 @@
 					<Input
 						bind:value={query}
 						class="pl-9"
-						placeholder={m.stock_media_query_placeholder()}
-						aria-label={m.stock_media_search()}
+						placeholder={m.video_editor_stock_query_placeholder()}
+						aria-label={m.video_editor_stock_search()}
 					/>
 				</div>
 				<AppSelect
 					value={provider}
 					onValueChange={changeProvider}
 					options={providerOptions}
-					ariaLabel={m.stock_media_provider()}
+					ariaLabel={m.video_editor_stock_provider()}
 				/>
 				{#if kindOptions.length > 1}
 					<AppSelect
 						value={kind}
 						onValueChange={changeKind}
 						options={kindOptions}
-						ariaLabel={m.stock_media_kind()}
+						ariaLabel={m.video_editor_stock_kind()}
 					/>
 				{/if}
 				<Button type="submit" disabled={!query.trim() || !provider || searching}>
 					{#if searching}<LoaderIcon class="size-4 animate-spin" />{:else}<SearchIcon
 							class="size-4"
 						/>{/if}
-					{m.stock_media_search_action()}
+					{m.video_editor_stock_search_action()}
 				</Button>
 			</div>
 
@@ -444,7 +444,7 @@
 								bind:value={mediaSubtype}
 								options={[
 									{ value: '', label: m.stock_filter_all_images() },
-									{ value: 'photo', label: m.stock_media_photos() },
+									{ value: 'photo', label: m.video_editor_stock_photos() },
 									{ value: 'illustration', label: m.stock_filter_illustrations() },
 									{ value: 'vector', label: m.stock_filter_vectors() }
 								]}
@@ -616,7 +616,7 @@
 									size="xs"
 									class="h-auto p-0 text-xs text-muted-foreground"
 								>
-									{m.stock_media_by({ creator: asset.creator_name })}
+									{m.video_editor_stock_by({ creator: asset.creator_name })}
 								</Button>
 							</p>
 							<Button
@@ -628,8 +628,8 @@
 							>
 								{#if selecting === asset.external_id}<LoaderIcon class="size-4 animate-spin" />{/if}
 								{selecting === asset.external_id
-									? m.stock_media_downloading({ title: asset.title || asset.kind })
-									: m.stock_media_use()}
+									? m.video_editor_stock_downloading({ title: asset.title || asset.kind })
+									: m.video_editor_stock_use()}
 							</Button>
 						</div>
 					</article>

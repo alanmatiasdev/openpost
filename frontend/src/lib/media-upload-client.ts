@@ -2,7 +2,7 @@ import { applyAPIRequestHeaders } from '$lib/api/client';
 import type { components } from '$lib/api/types';
 import { getApiBase } from '$lib/stores/instance.svelte';
 import type { VideoConstraint, VideoPreparationProgress } from '$lib/video/types';
-import type { StockMediaProvenance } from '$lib/stock-media';
+import type { StockMediaProvenance } from '@openpost/video-project';
 import { isSVGFile, rasterizeSVGToPNG } from '$lib/media/svg-rasterize';
 import { m } from '$lib/paraglide/messages';
 
@@ -18,6 +18,8 @@ export interface UploadMediaFileOptions {
 		| 'image_editor_export'
 		| 'image_editor_edit'
 		| 'background_removal'
+		| 'video_editor_source'
+		| 'video_editor_export'
 		| 'stock_import'
 		| 'meme_generator';
 	assetKind?: 'library' | 'brand_asset' | 'brand_font' | 'design_preview' | 'template_preview';
@@ -26,6 +28,7 @@ export interface UploadMediaFileOptions {
 	parentMediaId?: string;
 	designDocumentId?: string;
 	designPageId?: string;
+	videoProjectId?: string;
 	clientSHA256?: string;
 	stockProvenance?: StockMediaProvenance;
 	prepareVideo?: boolean;
@@ -47,6 +50,7 @@ type UploadMetadata = {
 	parentMediaId: string;
 	designDocumentId: string;
 	designPageId: string;
+	videoProjectId: string;
 	clientSHA256: string;
 	stockProvenance?: StockMediaProvenance;
 };
@@ -104,6 +108,7 @@ export async function uploadMediaFile({
 	parentMediaId = '',
 	designDocumentId = '',
 	designPageId = '',
+	videoProjectId = '',
 	clientSHA256 = '',
 	stockProvenance,
 	prepareVideo = true,
@@ -132,6 +137,7 @@ export async function uploadMediaFile({
 		parentMediaId,
 		designDocumentId,
 		designPageId,
+		videoProjectId,
 		clientSHA256,
 		stockProvenance
 	};
@@ -324,6 +330,7 @@ async function uploadViaDirectSession(
 			processing_progress: 100,
 			analysis_status: 'ready'
 		};
+		if (metadata.videoProjectId) dedupedResult.video_project_id = metadata.videoProjectId;
 		return dedupedResult;
 	}
 	const uploadRequest = directUploadRequestPolicy(
@@ -385,6 +392,7 @@ async function uploadViaMultipart(
 	if (metadata.parentMediaId) formData.append('parent_media_id', metadata.parentMediaId);
 	if (metadata.designDocumentId) formData.append('design_document_id', metadata.designDocumentId);
 	if (metadata.designPageId) formData.append('design_page_id', metadata.designPageId);
+	if (metadata.videoProjectId) formData.append('video_project_id', metadata.videoProjectId);
 	if (metadata.stockProvenance) {
 		formData.append('stock_provenance', JSON.stringify(metadata.stockProvenance));
 	}
@@ -419,6 +427,7 @@ function createUploadSessionBody(
 	if (metadata.parentMediaId) body.parent_media_id = metadata.parentMediaId;
 	if (metadata.designDocumentId) body.design_document_id = metadata.designDocumentId;
 	if (metadata.designPageId) body.design_page_id = metadata.designPageId;
+	if (metadata.videoProjectId) body.video_project_id = metadata.videoProjectId;
 	if (metadata.clientSHA256) body.client_sha256 = metadata.clientSHA256;
 	if (metadata.stockProvenance) body.stock_provenance = metadata.stockProvenance;
 	return body;
@@ -498,6 +507,7 @@ function parseMediaUploadResult(value: unknown): MediaUploadResult {
 	result.design_page_id = parseOptionalString(value.design_page_id);
 	result.parent_media_id = parseOptionalString(value.parent_media_id);
 	result.poster_thumbnail_url = parseOptionalString(value.poster_thumbnail_url);
+	result.video_project_id = parseOptionalString(value.video_project_id);
 	return result;
 }
 

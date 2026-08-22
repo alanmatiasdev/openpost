@@ -54,6 +54,7 @@ type Config struct {
 	MemeGenerationModel      string
 	ImageEditorEnabled       bool
 	ImageEditorModelBaseURL  string
+	VideoModelBaseURL        string
 	StockMediaEnabled        bool
 	PexelsAPIKey             string
 	UnsplashAccessKey        string
@@ -234,6 +235,7 @@ func Load() *Config {
 			),
 			"/",
 		),
+		VideoModelBaseURL:      strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_VIDEO_MODEL_BASE_URL", "/video-editor-models")), "/"),
 		StockMediaEnabled:      getEnvBoolWithAliases(false, "OPENPOST_STOCK_MEDIA_ENABLED"),
 		PexelsAPIKey:           strings.TrimSpace(getEnvDefault("OPENPOST_PEXELS_API_KEY", "")),
 		UnsplashAccessKey:      strings.TrimSpace(getEnvDefault("OPENPOST_UNSPLASH_ACCESS_KEY", "")),

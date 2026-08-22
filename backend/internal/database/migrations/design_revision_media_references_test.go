@@ -252,6 +252,9 @@ func TestDesignRevisionMediaReferencePreparationSkipsPartialStudioSchema(t *test
 	designStats, err := backfillDesignRevisionMediaReferencesWithStats(ctx, db, 1)
 	require.NoError(t, err)
 	require.Equal(t, designRevisionMediaBackfillStats{}, designStats)
+	videoStats, err := backfillVideoRevisionMediaReferencesWithStats(ctx, db, 1)
+	require.NoError(t, err)
+	require.Equal(t, videoRevisionMediaBackfillStats{}, videoStats)
 }
 
 func TestMigration82PreparationCreatesRevisionMediaOwnershipSchema(t *testing.T) {
@@ -261,6 +264,9 @@ func TestMigration82PreparationCreatesRevisionMediaOwnershipSchema(t *testing.T)
 	for _, model := range []interface{}{
 		(*models.DesignDocument)(nil),
 		(*models.DesignRevision)(nil),
+		(*models.VideoProject)(nil),
+		(*models.VideoProjectAsset)(nil),
+		(*models.VideoProjectRevision)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
 		require.NoError(t, err)
@@ -276,6 +282,7 @@ func TestMigration82PreparationCreatesRevisionMediaOwnershipSchema(t *testing.T)
 	for _, table := range []string{
 		"design_revision_media_references",
 		"design_revision_media_index_state",
+		"video_revision_media_index_state",
 	} {
 		exists, err := migrationTableExists(ctx, db, table)
 		require.NoError(t, err)

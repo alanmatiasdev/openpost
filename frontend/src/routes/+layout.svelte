@@ -99,28 +99,27 @@
 		'/accounts/mastodon/callback',
 		'/accounts/callback'
 	];
-	const localEditorRoutes = ['/video-editor', '/quick-cut', '/record'];
-	function matchesLocalEditorRoute(path: string): boolean {
-		return localEditorRoutes.some((route) => path === route || path.startsWith(`${route}/`));
-	}
 	let isStandaloneRoute = $derived(
 		standaloneRoutes.includes(currentPath) ||
 			isErrorRoute ||
 			isPublicProfileRoute ||
 			currentPath === '/image-editor' ||
 			currentPath.startsWith('/image-editor/') ||
-			matchesLocalEditorRoute(currentPath)
+			currentPath === '/video-editor' ||
+			currentPath.startsWith('/video-editor/')
 	);
 	let isPublicImageEditorRoute = $derived(
 		currentPath === '/image-editor' || currentPath.startsWith('/image-editor/local_design_')
 	);
-	let isPublicLocalEditorRoute = $derived(matchesLocalEditorRoute(currentPath));
+	let isPublicVideoEditorRoute = $derived(
+		currentPath === '/video-editor' || currentPath.startsWith('/video-editor/')
+	);
 	let isPublicRoute = $derived(
 		currentPath === '/' ||
 			isErrorRoute ||
 			isPublicProfileRoute ||
 			isPublicImageEditorRoute ||
-			isPublicLocalEditorRoute ||
+			isPublicVideoEditorRoute ||
 			publicRoutes.some((route) => currentPath.startsWith(route))
 	);
 
@@ -199,7 +198,7 @@
 
 		if (needsOnboarding) {
 			if (
-				(isPublicImageEditorRoute || isPublicLocalEditorRoute) &&
+				(isPublicImageEditorRoute || isPublicVideoEditorRoute) &&
 				!(
 					currentPath.startsWith('/image-editor/local_design_') &&
 					$page.url.searchParams.get('import') === '1'
@@ -388,8 +387,7 @@
 	<title>OpenPost</title>
 </svelte:head>
 
-{#if !isPreviewRoute}
-	<ModeWatcher themeColors={{ light: '#faf9f7', dark: '#251f1c' }} />{/if}
+{#if !isPreviewRoute}<ModeWatcher />{/if}
 <Toaster position="bottom-center" richColors closeButton />
 {#if !isPreviewRoute && !isErrorRoute}<ConnectivityNotice />{/if}
 {#if isPreviewRoute}
@@ -397,7 +395,7 @@
 {:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeSkipsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
-	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !isPublicLocalEditorRoute}
+	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>
@@ -406,7 +404,7 @@
 		{#if isManagedEdition}
 			<PublicHome />
 		{:else}
-			<div class="flex min-h-[80dvh] items-center justify-center">
+			<div class="flex min-h-[80vh] items-center justify-center">
 				<div class="mx-auto max-w-md px-4 py-12 text-center">
 					<div class="mb-6 flex justify-center">
 						<Logo width={100} height={29} />
@@ -431,7 +429,7 @@
 		{@render children()}
 	{/if}
 {:else if isStandaloneRoute}
-	{#if !isPublicProfileRoute && !currentPath.startsWith('/image-editor/') && !isPublicLocalEditorRoute}
+	{#if !isPublicProfileRoute && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>

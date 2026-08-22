@@ -395,7 +395,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect(page.getByText("Resume the launch announcement")).toBeVisible();
   await expect(page.getByRole("button", { name: "Media", exact: true })).toBeVisible();
   const workspaceNavigation = page.getByTestId("sidebar-workspace-navigation");
-  await expect(workspaceNavigation.getByRole("button")).toHaveCount(6);
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await expect(
     workspaceNavigation.getByRole("button", {
       name: "Accounts",
@@ -416,7 +416,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect(workspaceNavigation.getByRole("button")).toHaveCount(0);
   await page.getByRole("button", { name: "Expand workspace navigation" }).click();
   await expect(workspaceNavigation).toHaveAttribute("aria-hidden", "false");
-  await expect(workspaceNavigation.getByRole("button")).toHaveCount(6);
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await page.getByTestId("profile-menu-trigger").click();
   await expect(page.getByRole("menuitem", { name: "Editors" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Accounts" })).toBeVisible();

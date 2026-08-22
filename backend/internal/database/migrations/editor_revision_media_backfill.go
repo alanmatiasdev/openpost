@@ -69,9 +69,9 @@ func backfillRevisionMediaReferencesWithLimit(
 }
 
 // AdvanceWorkspaceEditorRevisionMediaBackfill moves one bounded design batch
-// for the workspace being cleaned. Keeping this path scoped prevents a large
-// workspace from blocking another workspace's cleanup, while startup continues
-// to advance the global backlog separately.
+// and one bounded video batch for the workspace being cleaned. Keeping this
+// path scoped prevents a large workspace from blocking another workspace's
+// cleanup, while startup continues to advance the global backlog separately.
 func AdvanceWorkspaceEditorRevisionMediaBackfill(
 	ctx context.Context,
 	db *bun.DB,
@@ -81,7 +81,16 @@ func AdvanceWorkspaceEditorRevisionMediaBackfill(
 	if workspaceID == "" {
 		return fmt.Errorf("workspace_id is required for revision media indexing")
 	}
-	_, err := backfillDesignRevisionMediaReferencesBatchAfterWorkspace(
+	if _, err := backfillDesignRevisionMediaReferencesBatchAfterWorkspace(
+		ctx,
+		db,
+		revisionMediaBackfillBatchSize,
+		"",
+		workspaceID,
+	); err != nil {
+		return err
+	}
+	_, err := backfillVideoRevisionMediaReferencesBatchAfterWorkspace(
 		ctx,
 		db,
 		revisionMediaBackfillBatchSize,
@@ -111,7 +120,13 @@ func WorkspaceEditorRevisionMediaBackfillPending(
 			JOIN design_documents document ON document.id = revision.design_document_id
 			LEFT JOIN design_revision_media_index_state state ON state.revision_id = revision.id
 			WHERE document.workspace_id = ? AND state.revision_id IS NULL
+			UNION ALL
+			SELECT 1
+			FROM video_project_revisions revision
+			JOIN video_projects project ON project.id = revision.video_project_id
+			LEFT JOIN video_revision_media_index_state state ON state.revision_id = revision.id
+			WHERE project.workspace_id = ? AND state.revision_id IS NULL
 		) AS pending
-	`, workspaceID).Scan(ctx, &pending)
+	`, workspaceID, workspaceID).Scan(ctx, &pending)
 	return pending, err
 }

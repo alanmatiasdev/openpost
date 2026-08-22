@@ -229,7 +229,7 @@
 	</Popover.Trigger>
 	<Popover.Content
 		align="start"
-		class="max-h-[min(72dvh,42rem)] w-[min(92vw,30rem)] overflow-y-auto p-0"
+		class="max-h-[min(72vh,42rem)] w-[min(92vw,30rem)] overflow-y-auto p-0"
 	>
 		<div class="border-b p-4">
 			<h3 class="font-medium">{m.composer_repost_settings()}</h3>

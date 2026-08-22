@@ -21,7 +21,7 @@ const (
 	tagReposts           = "Repost Automation"
 	tagSocialSets        = "Social Sets"
 	tagImageEditor       = "OpenPost Image Editor"
-	tagStockMedia        = "Stock Media"
+	tagVideoEditor       = "OpenPost Video Editor"
 	tagWorkspaces        = "Workspaces"
 
 	fieldError = "error"

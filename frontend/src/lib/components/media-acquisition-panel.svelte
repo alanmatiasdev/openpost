@@ -15,8 +15,8 @@
 		VideoPreparationProgress,
 		VideoPreparationStage
 	} from '$lib/video/types';
-	import type { StockAsset } from '$lib/stock-media';
-	import type { StockMediaProvenance } from '$lib/stock-media';
+	import type { StockAsset } from '$lib/video-editor/api';
+	import type { StockMediaProvenance } from '@openpost/video-project';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
 	import FileIcon from '@lucide/svelte/icons/file';

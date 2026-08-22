@@ -235,12 +235,6 @@ async function connectMastodon(page: Page, workspaceID: string) {
   }, workspaceID);
   await page.goto(authURL);
   await expect(page).toHaveURL(new RegExp(`workspace_id=${workspaceID}`), { timeout: 15_000 });
-  if (new URL(page.url()).pathname === "/accounts/setup") {
-    await expect(page.getByRole("heading", { name: "Set up your new destinations" })).toBeVisible();
-    await page.getByRole("button", { name: "Keep all off" }).click();
-    await expect.poll(() => new URL(page.url()).pathname).toBe("/");
-    await expect(page).toHaveURL(new RegExp(`workspace_id=${workspaceID}`));
-  }
   await expect(
     page.getByText("Composer ready. The requested destination is selected."),
   ).toBeVisible();

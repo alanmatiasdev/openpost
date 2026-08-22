@@ -20,9 +20,6 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   const auth = await registerUser(request, `analytics-${unique}@example.com`);
   const workspace = (await createWorkspace(request, auth.token, "Analytics E2E")) as { id: string };
   await authenticatePage(page, auth.token);
-  await page.route("**/api/v1/account-features**", async (route) => {
-    await route.fulfill({ contentType: "application/json", json: [] });
-  });
   await page.route("**/api/v1/analytics**", async (route) => {
     const requestURL = new URL(route.request().url());
     if (route.request().method() === "POST" && requestURL.pathname.endsWith("/analytics/refresh")) {

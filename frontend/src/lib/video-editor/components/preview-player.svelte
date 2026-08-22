@@ -13,13 +13,6 @@
 		transitionsStore,
 		transitionAtFrame
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
-	import {
-		createGpuCompositor,
-		type GpuCompositor
-	} from '$lib/video-editor/effects/gpu/compositor';
-	import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
-	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
-	import type { GpuRenderEffect } from '$lib/video-editor/effects/gpu/compositor';
 	import type { TimelineItem } from '$lib/video-editor/project/types';
 
 	const project = $derived(editorSession.project);
@@ -62,93 +55,6 @@
 		blend ? (urls[blend.incoming.mediaId ?? ''] ?? null) : (urls[activeItem?.mediaId ?? ''] ?? null)
 	);
 	const outgoingUrl = $derived(blend ? (urls[blend.outgoing.mediaId ?? ''] ?? null) : null);
-
-	// ── GPU pipeline ────────────────────────────────────────────────────────
-	// When the active clip carries enabled GPU effects or a non-normal blend
-	// mode (and no transition is blending), the frame composites through the
-	// WebGL2 canvas layered over the <video>; the DOM path stays untouched
-	// otherwise and remains the fallback when WebGL2 is unavailable.
-
-	let gpuCanvasEl = $state<HTMLCanvasElement | null>(null);
-	let compositor = $state<GpuCompositor | null>(null);
-
-	const gpuRenderEffects = $derived.by<GpuRenderEffect[]>(() => {
-		const item = activeItem;
-		if (!item) return [];
-		return (item.effects ?? []).flatMap((effect) => {
-			if (effect.type !== 'gpu' || !effect.enabled) return [];
-			return [
-				{
-					effectId: effect.effectId,
-					params: { ...getGpuEffectDefaultParams(effect.effectId), ...effect.params }
-				}
-			];
-		});
-	});
-
-	const needsGpu = $derived(
-		!!activeItem &&
-			!blend &&
-			(gpuRenderEffects.length > 0 || isNonNormalBlend(activeItem?.blendMode))
-	);
-
-	$effect(() => {
-		const canvas = gpuCanvasEl;
-		if (!canvas || !needsGpu) return;
-		const instance = createGpuCompositor(canvas);
-		if (!instance) return;
-		compositor = instance;
-		return () => {
-			instance.dispose();
-			if (compositor === instance) compositor = null;
-		};
-	});
-
-	// rAF-driven composite while playing; framechange redraw covers scrubbing.
-	$effect(() => {
-		const instance = compositor;
-		const video = videoEl;
-		const canvas = gpuCanvasEl;
-		const item = activeItem;
-		if (!needsGpu || !instance || !video || !canvas || !item) return;
-
-		const draw = () => {
-			const width = video.videoWidth;
-			const height = video.videoHeight;
-			if (!width || !height) return;
-			const rendered = instance.render(video, width, height, gpuRenderEffects, {
-				time: timelineStore.currentFrame / editorSession.fps,
-				blendMode: item.blendMode ?? 'normal'
-			});
-			canvas.style.visibility = rendered ? 'visible' : 'hidden';
-			video.style.visibility = rendered ? 'hidden' : '';
-			// Keyframed opacity applies to the composited surface.
-			const keyframedOpacity = activeValueAt(item, 'opacity', timelineStore.currentFrame);
-			canvas.style.opacity = String(keyframedOpacity ?? 1);
-		};
-
-		draw();
-		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(draw));
-		let raf = 0;
-		const loop = () => {
-			draw();
-			raf = requestAnimationFrame(loop);
-		};
-		if (editorSession.clock.isPlaying) raf = requestAnimationFrame(loop);
-		const offPlay = editorSession.clock.on('play', () => {
-			cancelAnimationFrame(raf);
-			raf = requestAnimationFrame(loop);
-		});
-		const offPause = editorSession.clock.on('pause', () => cancelAnimationFrame(raf));
-		return () => {
-			offPlay();
-			offPause();
-			offFrame();
-			cancelAnimationFrame(raf);
-			canvas.style.visibility = '';
-			video.style.visibility = '';
-		};
-	});
 
 	async function loadUrls(): Promise<void> {
 		for (const media of mediaPool.mediaList) {
@@ -246,13 +152,6 @@
 					playsinline
 				></video>
 			{/key}
-			{#if needsGpu}
-				<canvas
-					bind:this={gpuCanvasEl}
-					class="absolute inset-0 h-full w-full rounded-md"
-					style:filter={activeItem ? effectsToCssFilter(activeItem.effects) : ''}
-				></canvas>
-			{/if}
 		{:else}
 			<div
 				class="flex w-full items-center justify-center rounded-md border border-dashed border-[oklch(0.3_0.01_55)] text-xs text-[oklch(0.65_0.015_55)]"

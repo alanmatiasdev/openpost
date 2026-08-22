@@ -2,8 +2,8 @@
   "schema_version": 1,
   "surfaces": {
     "application": {
-      "description": "Server, web and native applications, CLI, shared runtime packages, and application browser coverage",
-      "prefixes": ["backend/", "cli/", "e2e-app/", "frontend/", "mobile/", "packages/"],
+      "description": "Server, web application, CLI, shared runtime packages, and application browser coverage",
+      "prefixes": ["backend/", "cli/", "e2e-app/", "frontend/", "packages/"],
       "paths": ["playwright.app.config.ts"]
     },
     "marketing": {

@@ -585,7 +585,7 @@
 				onclick={() => (pickerMode = 'stock')}
 			>
 				<ImageIcon />
-				{m.stock_media()}
+				{m.video_editor_stock()}
 			</Button>
 		{/if}
 		{#if canUseMeme}

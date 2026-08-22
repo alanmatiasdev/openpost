@@ -60,12 +60,7 @@
 			pathname === '/editors' ||
 			pathname.startsWith('/editors/') ||
 			pathname.startsWith('/image-editor/') ||
-			pathname === '/video-editor' ||
 			pathname.startsWith('/video-editor/') ||
-			pathname === '/quick-cut' ||
-			pathname.startsWith('/quick-cut/') ||
-			pathname === '/record' ||
-			pathname.startsWith('/record/') ||
 			pathname === '/accounts' ||
 			pathname.startsWith('/accounts/') ||
 			pathname === '/settings' ||

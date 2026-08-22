@@ -410,14 +410,40 @@ func pruneExpiredEditorRevisions(
 		Scan(ctx, &designRevisionIDs); err != nil {
 		return err
 	}
-	if len(designRevisionIDs) == 0 {
-		return nil
+	if len(designRevisionIDs) > 0 {
+		if _, err := tx.NewDelete().Model((*models.DesignRevision)(nil)).
+			Where("id IN (?)", bun.List(designRevisionIDs)).Exec(ctx); err != nil {
+			return err
+		}
 	}
-	if _, err := tx.NewDelete().Model((*models.DesignRevision)(nil)).
-		Where("id IN (?)", bun.List(designRevisionIDs)).Exec(ctx); err != nil {
+
+	var videoRevisionIDs []string
+	if err := tx.NewSelect().
+		TableExpr("video_project_revisions AS revision").
+		ColumnExpr("revision.id").
+		Join("JOIN video_projects AS project ON project.id = revision.video_project_id").
+		Where("project.workspace_id = ?", workspaceID).
+		Where("revision.kind = ? AND revision.expires_at IS NOT NULL AND revision.expires_at <= ?", "autosave", now).
+		OrderExpr("revision.expires_at ASC, revision.id ASC").
+		Limit(editorRevisionPruneBatchSize).
+		Scan(ctx, &videoRevisionIDs); err != nil {
 		return err
 	}
-	return nil
+	if len(videoRevisionIDs) == 0 {
+		return nil
+	}
+	usages := make([]string, 0, len(videoRevisionIDs))
+	for _, revisionID := range videoRevisionIDs {
+		usages = append(usages, "revision:"+revisionID)
+	}
+	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
+		Where("revision_id IN (?) OR usage IN (?)", bun.List(videoRevisionIDs), bun.List(usages)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	_, err := tx.NewDelete().Model((*models.VideoProjectRevision)(nil)).
+		Where("id IN (?)", bun.List(videoRevisionIDs)).Exec(ctx)
+	return err
 }
 
 func partitionLifecycleBatch(
@@ -536,7 +562,12 @@ func (snapshot *protectionSnapshot) loadNormalized(
 			JOIN design_templates template ON template.id = reference.design_template_id
 			JOIN candidate_media candidate ON candidate.media_id = reference.media_id
 			WHERE template.workspace_id = (SELECT workspace_id FROM batch_scope)
-
+			UNION
+			SELECT 'reference', asset.media_id
+			FROM video_project_assets asset
+			JOIN video_projects project ON project.id = asset.video_project_id
+			JOIN candidate_media candidate ON candidate.media_id = asset.media_id
+			WHERE project.workspace_id = (SELECT workspace_id FROM batch_scope) AND project.deleted_at IS NULL
 			UNION
 			SELECT 'reference', document.cover_preview_media_id
 			FROM design_documents document
@@ -559,7 +590,11 @@ func (snapshot *protectionSnapshot) loadNormalized(
 			FROM design_templates template
 			JOIN candidate_media candidate ON candidate.media_id = template.preview_media_id
 			WHERE template.workspace_id = (SELECT workspace_id FROM batch_scope)
-
+			UNION
+			SELECT 'reference', project.cover_preview_media_id
+			FROM video_projects project
+			JOIN candidate_media candidate ON candidate.media_id = project.cover_preview_media_id
+			WHERE project.workspace_id = (SELECT workspace_id FROM batch_scope) AND project.deleted_at IS NULL
 			UNION
 			SELECT 'reference', child.parent_media_id
 			FROM media_attachments child
@@ -928,6 +963,13 @@ func releaseDeletedEditorMediaOwnership(
 		Where("media_id IN (?)", bun.List(mediaIDs)).
 		Where(`design_document_id IN (
 			SELECT id FROM design_documents WHERE deleted_at IS NOT NULL
+		)`).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
+		Where("media_id IN (?)", bun.List(mediaIDs)).
+		Where(`video_project_id IN (
+			SELECT id FROM video_projects WHERE deleted_at IS NOT NULL
 		)`).Exec(ctx); err != nil {
 		return err
 	}

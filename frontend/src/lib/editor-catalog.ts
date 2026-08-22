@@ -1,4 +1,5 @@
 import type { ImageEditorDesignSummary } from '$lib/image-editor/types';
+import type { CloudVideoProjectSummary } from '$lib/video-editor/api';
 
 export const EDITOR_CATALOG_PAGE_SIZE = 50;
 
@@ -6,15 +7,21 @@ export interface EditorCatalogSnapshot {
 	workspaceID: string;
 	query: string;
 	designs: ImageEditorDesignSummary[];
+	videoProjects: CloudVideoProjectSummary[];
 	designTotal: number;
+	videoTotal: number;
 	designOffset: number;
+	videoOffset: number;
 	canEditDesigns: boolean;
+	canEditVideos: boolean;
 }
 
-export type EditorCatalogItemKind = 'design';
+export type EditorCatalogItemKind = 'design' | 'video';
 export type EditorCatalogSurface = 'loading' | 'error' | 'empty' | 'content';
 
-type RemovedItem = { key: string; index: number; kind: 'design'; item: ImageEditorDesignSummary };
+type RemovedItem =
+	| { key: string; index: number; kind: 'design'; item: ImageEditorDesignSummary }
+	| { key: string; index: number; kind: 'video'; item: CloudVideoProjectSummary };
 
 export interface EditorCatalogRollback {
 	kind: EditorCatalogItemKind;
@@ -41,9 +48,13 @@ export function emptyEditorCatalog(workspaceID: string, query: string): EditorCa
 		workspaceID,
 		query: normalizeEditorCatalogQuery(query),
 		designs: [],
+		videoProjects: [],
 		designTotal: 0,
+		videoTotal: 0,
 		designOffset: 0,
-		canEditDesigns: false
+		videoOffset: 0,
+		canEditDesigns: false,
+		canEditVideos: false
 	};
 }
 
@@ -51,8 +62,9 @@ export function resolveEditorCatalogSurface(input: {
 	loading: boolean;
 	error: string;
 	designCount: number;
+	videoCount: number;
 }): EditorCatalogSurface {
-	if (input.designCount > 0) return 'content';
+	if (input.designCount > 0 || input.videoCount > 0) return 'content';
 	if (input.loading) return 'loading';
 	if (input.error) return 'error';
 	return 'empty';
@@ -79,7 +91,8 @@ export function mergeEditorCatalogItems<T extends { id: string }>(
 function cloneSnapshot(snapshot: EditorCatalogSnapshot): EditorCatalogSnapshot {
 	return {
 		...snapshot,
-		designs: snapshot.designs.map((design) => ({ ...design }))
+		designs: snapshot.designs.map((design) => ({ ...design })),
+		videoProjects: snapshot.videoProjects.map((project) => ({ ...project }))
 	};
 }
 
@@ -106,11 +119,19 @@ export class EditorCatalogCache {
 		const items: RemovedItem[] = [];
 		for (const [key, snapshot] of this.entries) {
 			if (snapshot.workspaceID !== workspaceID) continue;
-			const index = snapshot.designs.findIndex((item) => item.id === itemID);
-			if (index < 0) continue;
-			const [item] = snapshot.designs.splice(index, 1);
-			snapshot.designTotal = Math.max(0, snapshot.designTotal - 1);
-			items.push({ key, index, kind: 'design', item });
+			if (kind === 'design') {
+				const index = snapshot.designs.findIndex((item) => item.id === itemID);
+				if (index < 0) continue;
+				const [item] = snapshot.designs.splice(index, 1);
+				snapshot.designTotal = Math.max(0, snapshot.designTotal - 1);
+				items.push({ key, index, kind: 'design', item });
+			} else {
+				const index = snapshot.videoProjects.findIndex((item) => item.id === itemID);
+				if (index < 0) continue;
+				const [item] = snapshot.videoProjects.splice(index, 1);
+				snapshot.videoTotal = Math.max(0, snapshot.videoTotal - 1);
+				items.push({ key, index, kind: 'video', item });
+			}
 		}
 		return { kind, workspaceID, items };
 	}
@@ -119,9 +140,19 @@ export class EditorCatalogCache {
 		for (const removed of rollback.items) {
 			const snapshot = this.entries.get(removed.key);
 			if (!snapshot || snapshot.workspaceID !== rollback.workspaceID) continue;
-			if (snapshot.designs.some((item) => item.id === removed.item.id)) continue;
-			snapshot.designs.splice(Math.min(removed.index, snapshot.designs.length), 0, removed.item);
-			snapshot.designTotal += 1;
+			if (removed.kind === 'design') {
+				if (snapshot.designs.some((item) => item.id === removed.item.id)) continue;
+				snapshot.designs.splice(Math.min(removed.index, snapshot.designs.length), 0, removed.item);
+				snapshot.designTotal += 1;
+			} else {
+				if (snapshot.videoProjects.some((item) => item.id === removed.item.id)) continue;
+				snapshot.videoProjects.splice(
+					Math.min(removed.index, snapshot.videoProjects.length),
+					0,
+					removed.item
+				);
+				snapshot.videoTotal += 1;
+			}
 		}
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { migrateVideoProjectDocument } from '@openpost/video-project';
 	import { ContextMenu } from 'bits-ui';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -14,6 +15,13 @@
 		toggleImageEditorDesignFavorite
 	} from '$lib/image-editor/api';
 	import type { ImageEditorDesignSummary } from '$lib/image-editor/types';
+	import {
+		deleteCloudVideoProject,
+		getCloudVideoProject,
+		listCloudVideoProjects,
+		updateCloudVideoProject,
+		type CloudVideoProjectSummary
+	} from '$lib/video-editor/api';
 	import {
 		EDITOR_CATALOG_PAGE_SIZE,
 		EditorCatalogCache,
@@ -53,19 +61,23 @@
 		loading: boolean;
 		refreshing: boolean;
 		loadingMoreDesigns: boolean;
+		loadingMoreVideos: boolean;
 		error: string;
 	};
-	type DeleteTarget = {
-		kind: EditorCatalogItemKind;
+	type CatalogTarget<T> = {
 		workspaceID: string;
 		key: string;
-		item: ImageEditorDesignSummary;
+		item: T;
 	};
+	type DeleteTarget =
+		| ({ kind: 'design' } & CatalogTarget<ImageEditorDesignSummary>)
+		| ({ kind: 'video' } & CatalogTarget<CloudVideoProjectSummary>);
 	type RenameTarget = DeleteTarget;
 
 	const catalogCache = new EditorCatalogCache();
 	const catalogRequests = new EditorCatalogRequestGate();
 	const designPageRequests = new EditorCatalogRequestGate();
+	const videoPageRequests = new EditorCatalogRequestGate();
 	const pendingDeletes = new SvelteSet<string>();
 
 	let search = $state('');
@@ -83,11 +95,13 @@
 	let query = $derived(normalizeEditorCatalogQuery(search));
 	let activeCatalogKey = $derived(editorCatalogKey(workspaceID, query));
 	let hasMoreDesigns = $derived(catalog.designOffset < catalog.designTotal);
+	let hasMoreVideos = $derived(catalog.videoOffset < catalog.videoTotal);
 	let catalogSurface = $derived(
 		resolveEditorCatalogSurface({
 			loading: catalog.loading,
 			error: catalog.error,
-			designCount: catalog.designs.length
+			designCount: catalog.designs.length,
+			videoCount: catalog.videoProjects.length
 		})
 	);
 
@@ -142,6 +156,7 @@
 			loading: false,
 			refreshing: false,
 			loadingMoreDesigns: false,
+			loadingMoreVideos: false,
 			error: '',
 			...overrides
 		};
@@ -152,15 +167,20 @@
 			workspaceID: view.workspaceID,
 			query: view.query,
 			designs: view.designs,
+			videoProjects: view.videoProjects,
 			designTotal: view.designTotal,
+			videoTotal: view.videoTotal,
 			designOffset: view.designOffset,
-			canEditDesigns: view.canEditDesigns
+			videoOffset: view.videoOffset,
+			canEditDesigns: view.canEditDesigns,
+			canEditVideos: view.canEditVideos
 		};
 	}
 
 	function invalidateCatalogRequests(): void {
 		catalogRequests.invalidate();
 		designPageRequests.invalidate();
+		videoPageRequests.invalidate();
 	}
 
 	function errorMessage(cause: unknown, fallback: string): string {
@@ -209,20 +229,32 @@
 	): Promise<void> {
 		const token = catalogRequests.begin(key);
 		try {
-			const imageResult = await listImageEditorDesigns(requestedWorkspaceID, {
-				search: requestedQuery,
-				limit: EDITOR_CATALOG_PAGE_SIZE,
-				offset: 0,
-				signal: token.signal
-			});
+			const [imageResult, videoResult] = await Promise.all([
+				listImageEditorDesigns(requestedWorkspaceID, {
+					search: requestedQuery,
+					limit: EDITOR_CATALOG_PAGE_SIZE,
+					offset: 0,
+					signal: token.signal
+				}),
+				listCloudVideoProjects(requestedWorkspaceID, {
+					search: requestedQuery,
+					limit: EDITOR_CATALOG_PAGE_SIZE,
+					offset: 0,
+					signal: token.signal
+				})
+			]);
 			if (!catalogRequests.accepts(token, activeCatalogKey)) return;
 			const snapshot: EditorCatalogSnapshot = {
 				workspaceID: requestedWorkspaceID,
 				query: requestedQuery,
 				designs: excludePendingDeletes(imageResult.designs, requestedWorkspaceID, 'design'),
+				videoProjects: excludePendingDeletes(videoResult.projects, requestedWorkspaceID, 'video'),
 				designTotal: imageResult.total,
+				videoTotal: videoResult.total,
 				designOffset: imageResult.designs.length,
-				canEditDesigns: imageResult.can_edit
+				videoOffset: videoResult.projects.length,
+				canEditDesigns: imageResult.can_edit,
+				canEditVideos: videoResult.canEdit
 			};
 			catalogCache.write(snapshot);
 			catalog = catalogView(snapshot);
@@ -243,6 +275,7 @@
 		const requestedQuery = query;
 		if (!requestedWorkspaceID) return;
 		designPageRequests.invalidate();
+		videoPageRequests.invalidate();
 		catalog = {
 			...catalog,
 			loading: !preserveResults,
@@ -295,6 +328,50 @@
 			catalog = {
 				...catalog,
 				loadingMoreDesigns: false,
+				error: errorMessage(cause, m.editors_load_failed())
+			};
+		}
+	}
+
+	async function loadMoreVideos(): Promise<void> {
+		const current = catalog;
+		const key = editorCatalogKey(current.workspaceID, current.query);
+		if (
+			!current.workspaceID ||
+			key !== activeCatalogKey ||
+			current.loadingMoreVideos ||
+			current.videoOffset >= current.videoTotal
+		) {
+			return;
+		}
+		const offset = current.videoOffset;
+		const token = videoPageRequests.begin(key);
+		catalog = { ...current, loadingMoreVideos: true, error: '' };
+		try {
+			const result = await listCloudVideoProjects(current.workspaceID, {
+				search: current.query,
+				limit: EDITOR_CATALOG_PAGE_SIZE,
+				offset,
+				signal: token.signal
+			});
+			if (!videoPageRequests.accepts(token, activeCatalogKey)) return;
+			const items = excludePendingDeletes(result.projects, current.workspaceID, 'video');
+			const next: CatalogView = {
+				...catalog,
+				videoProjects: mergeEditorCatalogItems(catalog.videoProjects, items),
+				videoTotal: result.total,
+				videoOffset: result.projects.length === 0 ? result.total : offset + result.projects.length,
+				canEditVideos: result.canEdit,
+				loadingMoreVideos: false
+			};
+			catalogCache.write(catalogSnapshot(next));
+			catalog = next;
+		} catch (cause) {
+			if (token.signal.aborted || isAbortError(cause)) return;
+			if (!videoPageRequests.accepts(token, activeCatalogKey)) return;
+			catalog = {
+				...catalog,
+				loadingMoreVideos: false,
 				error: errorMessage(cause, m.editors_load_failed())
 			};
 		}
@@ -353,13 +430,19 @@
 		deleteDialogOpen = true;
 	}
 
+	function requestDeleteVideo(project: CloudVideoProjectSummary): void {
+		if (!catalog.canEditVideos || !workspaceID) return;
+		deleteTarget = { kind: 'video', workspaceID, key: activeCatalogKey, item: project };
+		deleteDialogOpen = true;
+	}
+
 	async function confirmDelete(): Promise<DestructiveActionOutcome> {
 		const target = deleteTarget;
 		if (
 			!target ||
 			target.workspaceID !== workspaceID ||
 			target.key !== activeCatalogKey ||
-			!catalog.canEditDesigns
+			(target.kind === 'design' ? !catalog.canEditDesigns : !catalog.canEditVideos)
 		) {
 			return { ok: false };
 		}
@@ -370,7 +453,8 @@
 		const optimistic = catalogCache.read(target.workspaceID, query);
 		if (optimistic && target.key === activeCatalogKey) catalog = catalogView(optimistic);
 		try {
-			await deleteImageEditorDesign(target.item.id);
+			if (target.kind === 'design') await deleteImageEditorDesign(target.item.id);
+			else await deleteCloudVideoProject(target.item.id);
 			pendingDeletes.delete(itemKey);
 			catalogCache.invalidateWorkspace(target.workspaceID);
 			if (workspaceID === target.workspaceID) {
@@ -379,7 +463,10 @@
 			if (deleteTarget === target) deleteTarget = null;
 			return {
 				ok: true,
-				successMessage: m.image_editor_design_deleted()
+				successMessage:
+					target.kind === 'design'
+						? m.image_editor_design_deleted()
+						: m.editors_delete_cloud_video_success()
 			};
 		} catch (cause) {
 			pendingDeletes.delete(itemKey);
@@ -391,7 +478,12 @@
 			}
 			return {
 				ok: false,
-				message: errorMessage(cause, m.image_editor_design_delete_failed())
+				message: errorMessage(
+					cause,
+					target.kind === 'design'
+						? m.image_editor_design_delete_failed()
+						: m.editors_delete_cloud_video_failed()
+				)
 			};
 		}
 	}
@@ -402,39 +494,71 @@
 		renameDialogOpen = true;
 	}
 
+	function requestRenameVideo(project: CloudVideoProjectSummary): void {
+		if (!catalog.canEditVideos || !workspaceID) return;
+		renameTarget = { kind: 'video', workspaceID, key: activeCatalogKey, item: project };
+		renameDialogOpen = true;
+	}
+
 	async function renameProject(title: string): Promise<void> {
 		const target = renameTarget;
 		if (
 			!target ||
 			target.workspaceID !== workspaceID ||
 			target.key !== activeCatalogKey ||
-			!catalog.canEditDesigns
+			(target.kind === 'design' ? !catalog.canEditDesigns : !catalog.canEditVideos)
 		) {
 			throw new Error(m.editors_rename_failed());
 		}
 		try {
-			const current = await loadImageEditorDesign(target.item.id);
-			const updated = await saveImageEditorDesign(
-				current.id,
-				current.revision,
-				{ ...current.document, title },
-				current.cover_preview_media_id
-			);
-			catalogCache.invalidateWorkspace(target.workspaceID);
-			if (workspaceID !== target.workspaceID || activeCatalogKey !== target.key) return;
-			catalog = {
-				...catalog,
-				designs: catalog.designs.map((design) =>
-					design.id === current.id
-						? {
-								...design,
-								title: updated.document.title,
-								revision: updated.revision,
-								updated_at: updated.updated_at
-							}
-						: design
-				)
-			};
+			if (target.kind === 'design') {
+				const current = await loadImageEditorDesign(target.item.id);
+				const updated = await saveImageEditorDesign(
+					current.id,
+					current.revision,
+					{ ...current.document, title },
+					current.cover_preview_media_id
+				);
+				catalogCache.invalidateWorkspace(target.workspaceID);
+				if (workspaceID !== target.workspaceID || activeCatalogKey !== target.key) return;
+				catalog = {
+					...catalog,
+					designs: catalog.designs.map((design) =>
+						design.id === current.id
+							? {
+									...design,
+									title: updated.document.title,
+									revision: updated.revision,
+									updated_at: updated.updated_at
+								}
+							: design
+					)
+				};
+			} else {
+				const current = await getCloudVideoProject(target.item.id);
+				const document = migrateVideoProjectDocument(current.document).document;
+				const updated = await updateCloudVideoProject(
+					current.id,
+					current.revision,
+					{ ...document, title },
+					current.cover_preview_media_id
+				);
+				catalogCache.invalidateWorkspace(target.workspaceID);
+				if (workspaceID !== target.workspaceID || activeCatalogKey !== target.key) return;
+				catalog = {
+					...catalog,
+					videoProjects: catalog.videoProjects.map((project) =>
+						project.id === current.id
+							? {
+									...project,
+									title: updated.document.title,
+									revision: updated.revision,
+									updated_at: updated.updated_at
+								}
+							: project
+					)
+				};
+			}
 			catalogCache.write(catalogSnapshot(catalog));
 			notify(m.editors_renamed(), 'success');
 		} catch (cause) {
@@ -462,7 +586,7 @@
 	{#snippet actions()}
 		{#if catalogSurface !== 'error'}
 			<div class="flex flex-wrap gap-2">
-				<Button variant="outline" href="/video-editor">
+				<Button variant="outline" onclick={() => goto(resolve('/video-editor'))}>
 					<VideoIcon />
 					{m.editors_new_video()}
 				</Button>
@@ -620,24 +744,124 @@
 				</div>
 			{/if}
 		</section>
+
+		<section
+			class="space-y-3 border-t pt-5"
+			aria-labelledby="editor-catalog-videos-heading"
+			aria-busy={catalog.loadingMoreVideos || catalog.refreshing}
+		>
+			<div class="flex items-end justify-between gap-3">
+				<div>
+					<h2 id="editor-catalog-videos-heading" class="text-base font-semibold">
+						{m.editors_video_projects()}
+					</h2>
+					<p class="text-sm text-muted-foreground">{m.editors_video_projects_body()}</p>
+				</div>
+				<Button variant="ghost" size="sm" onclick={() => goto(resolve('/video-editor'))}
+					>{m.editors_open_video()}</Button
+				>
+			</div>
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				{#each catalog.videoProjects as project (project.id)}
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							{#snippet child({ props })}
+								<a
+									{...props}
+									class="grid grid-cols-[5rem_minmax(0,1fr)] overflow-hidden rounded-xl border bg-card hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									href={resolve(`/video-editor?cloud=${encodeURIComponent(project.id)}` as '/')}
+								>
+									<div
+										class="flex aspect-square items-center justify-center overflow-hidden bg-neutral-900"
+									>
+										{#if project.cover_preview_media_id}
+											<img
+												class="size-full object-cover"
+												src={getAuthenticatedMediaURL(`/media/${project.cover_preview_media_id}`)}
+												alt=""
+											/>
+										{:else}<VideoIcon class="size-7 text-neutral-500" />{/if}
+									</div>
+									<div class="min-w-0 p-3">
+										<p class="truncate text-sm font-medium">{project.title}</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											{Math.round(project.duration_ms / 1000)}s · {project.source_count === 1
+												? m.editors_source_count_one({ count: project.source_count })
+												: m.editors_source_count_many({ count: project.source_count })}
+										</p>
+										<p class="mt-2 text-xs text-muted-foreground">
+											{formatDate(project.updated_at)}
+										</p>
+									</div>
+								</a>
+							{/snippet}
+						</ContextMenu.Trigger>
+						<ContextMenu.Portal>
+							<ContextMenu.Content class={contextContentClass}>
+								<ContextMenu.Item
+									class={contextItemClass}
+									disabled={!catalog.canEditVideos}
+									onclick={() => requestRenameVideo(project)}
+								>
+									<PencilIcon class="size-4" />
+									{m.common_rename()}
+								</ContextMenu.Item>
+								{#if catalog.canEditVideos}
+									<ContextMenu.Separator class="my-1 h-px bg-border" />
+									<ContextMenu.Item
+										class="{contextItemClass} text-destructive data-highlighted:text-destructive"
+										onclick={() => requestDeleteVideo(project)}
+									>
+										<TrashIcon class="size-4" />
+										{m.common_delete()}
+									</ContextMenu.Item>
+								{/if}
+							</ContextMenu.Content>
+						</ContextMenu.Portal>
+					</ContextMenu.Root>
+				{/each}
+			</div>
+			{#if hasMoreVideos}
+				<div class="flex justify-center">
+					<Button
+						variant="outline"
+						disabled={catalog.loadingMoreVideos}
+						onclick={() => void loadMoreVideos()}
+					>
+						{#if catalog.loadingMoreVideos}
+							<LoaderIcon class="size-4 animate-spin" />
+							{m.editors_loading_more()}
+						{:else}
+							{m.editors_load_more_videos()}
+						{/if}
+					</Button>
+				</div>
+			{/if}
+		</section>
 	{/if}
 </PageContainer>
 
 <DestructiveConfirmDialog
 	bind:open={deleteDialogOpen}
-	title={m.image_editor_design_delete_title()}
-	description={m.image_editor_design_delete_body()}
+	title={deleteTarget?.kind === 'video'
+		? m.editors_delete_cloud_video_title()
+		: m.image_editor_design_delete_title()}
+	description={deleteTarget?.kind === 'video'
+		? m.editors_delete_cloud_video_body()
+		: m.image_editor_design_delete_body()}
 	onConfirm={confirmDelete}
 	returnFocus={catalogReturnFocus}
 />
 
 <RenameDialog
 	bind:open={renameDialogOpen}
-	title={m.editors_rename_design()}
-	description={m.editors_rename_design_body()}
+	title={renameTarget?.kind === 'video' ? m.editors_rename_video() : m.editors_rename_design()}
+	description={renameTarget?.kind === 'video'
+		? m.editors_rename_video_body()
+		: m.editors_rename_design_body()}
 	label={m.editors_project_name()}
 	initialValue={renameTarget?.item.title ?? ''}
-	maxLength={160}
+	maxLength={renameTarget?.kind === 'video' ? 200 : 160}
 	onConfirm={renameProject}
 />
 

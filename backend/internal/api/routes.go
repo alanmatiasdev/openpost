@@ -83,6 +83,7 @@ type RouteDeps struct {
 	DisableLinkedInThreadReplies bool
 	ImageEditorEnabled           bool
 	ImageEditorModelBaseURL      string
+	VideoModelBaseURL            string
 	StockMediaEnabled            bool
 	PexelsAPIKey                 string
 	UnsplashAccessKey            string
@@ -148,6 +149,14 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 		deps.PixabayAPIKey,
 	)
 	stockMediaHandler.RegisterRoutes(api)
+	videoEditorHandler := handlers.NewVideoEditorHandler(
+		deps.DB,
+		deps.Authenticator,
+		deps.VideoModelBaseURL,
+	)
+	videoEditorHandler.SetEntitlement(deps.Entitlement)
+	videoEditorHandler.SetStockProviders(stockMediaHandler.ProviderKeys())
+	videoEditorHandler.RegisterRoutes(api)
 
 	billingHandler := deps.BillingHandler
 	if billingHandler == nil {

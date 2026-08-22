@@ -90,6 +90,7 @@ func TestEditorNameMigrationRenamesCanonicalStoredValues(t *testing.T) {
 
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value_encrypted BLOB NOT NULL);
+		CREATE TABLE video_projects (id TEXT PRIMARY KEY, document_json TEXT NOT NULL);
 		CREATE TABLE billing_subscriptions (plan_id TEXT NOT NULL, entitlement_snapshot TEXT NOT NULL);
 		CREATE TABLE billing_checkout_attempts (plan_id TEXT NOT NULL);
 		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)
@@ -107,6 +108,8 @@ func TestEditorNameMigrationRenamesCanonicalStoredValues(t *testing.T) {
 		VALUES
 			('image-export', 'workspace', 'image-export', 'image/png', 1, 'image.png', 'studio_export'),
 			('video-source', 'workspace', 'video-source', 'video/mp4', 1, 'video.mp4', 'video_studio_source');
+		INSERT INTO video_projects (id, document_json)
+		VALUES ('project', '{"editing_mode":"studio","title":"Studio is user content"}');
 		INSERT INTO billing_subscriptions (plan_id, entitlement_snapshot)
 		VALUES ('creator', '{"plan_id":"creator","limits":{}}');
 		INSERT INTO billing_checkout_attempts (plan_id) VALUES ('creator')
@@ -135,6 +138,10 @@ func TestEditorNameMigrationRenamesCanonicalStoredValues(t *testing.T) {
 	var sources []string
 	require.NoError(t, db.NewRaw("SELECT source FROM media_attachments ORDER BY id").Scan(ctx, &sources))
 	require.Equal(t, []string{"image_editor_export", "video_editor_source"}, sources)
+
+	var documentJSON string
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT document_json FROM video_projects WHERE id = 'project'").Scan(&documentJSON))
+	require.Equal(t, `{"editing_mode":"editor","title":"Studio is user content"}`, documentJSON)
 
 	var subscriptionPlanID, entitlementSnapshot, attemptPlanID string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT plan_id, entitlement_snapshot FROM billing_subscriptions").Scan(&subscriptionPlanID, &entitlementSnapshot))

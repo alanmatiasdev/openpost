@@ -56,6 +56,7 @@ var configTestEnvKeys = []string{
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL",
 	"OPENPOST_STUDIO_ENABLED",
 	"OPENPOST_STUDIO_MODEL_BASE_URL",
+	"OPENPOST_VIDEO_MODEL_BASE_URL",
 	"OPENPOST_STOCK_MEDIA_ENABLED",
 	"OPENPOST_PEXELS_API_KEY",
 	"OPENPOST_UNSPLASH_ACCESS_KEY",
@@ -172,6 +173,7 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.MemeGenerationModel)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
+	require.Equal(t, "/video-editor-models", cfg.VideoModelBaseURL)
 	require.False(t, cfg.StockMediaEnabled)
 	require.False(t, cfg.FeedbackEnabled)
 	require.Empty(t, cfg.FeedbackDestinationURL)
@@ -270,7 +272,8 @@ func TestLoadImageEditorConfigurationSupportsLegacyEnvironmentAliases(t *testing
 	require.Equal(t, "https://assets.example.com/legacy-image-editor", cfg.ImageEditorModelBaseURL)
 }
 
-func TestLoadStockConfiguration(t *testing.T) {
+func TestLoadVideoEditorAndStockConfiguration(t *testing.T) {
+	t.Setenv("OPENPOST_VIDEO_MODEL_BASE_URL", " https://models.example.test/openpost ")
 	t.Setenv("OPENPOST_STOCK_MEDIA_ENABLED", "true")
 	t.Setenv("OPENPOST_PEXELS_API_KEY", " pexels-key ")
 	t.Setenv("OPENPOST_UNSPLASH_ACCESS_KEY", " unsplash-key ")
@@ -278,6 +281,7 @@ func TestLoadStockConfiguration(t *testing.T) {
 
 	cfg := Load()
 
+	require.Equal(t, "https://models.example.test/openpost", cfg.VideoModelBaseURL)
 	require.True(t, cfg.StockMediaEnabled)
 	require.Equal(t, "pexels-key", cfg.PexelsAPIKey)
 	require.Equal(t, "unsplash-key", cfg.UnsplashAccessKey)

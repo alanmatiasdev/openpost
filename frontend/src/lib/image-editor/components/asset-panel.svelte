@@ -16,8 +16,8 @@
 	import StockMediaBrowser from '$lib/components/stock-media-browser.svelte';
 	import { uploadMediaFile } from '$lib/media-upload-client';
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
-	import type { StockAsset } from '$lib/stock-media';
-	import type { StockMediaProvenance } from '$lib/stock-media';
+	import type { StockAsset } from '$lib/video-editor/api';
+	import type { StockMediaProvenance } from '@openpost/video-project';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
@@ -238,7 +238,7 @@
 			}
 			stockOpen = false;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.stock_media_download_failed();
+			error = cause instanceof Error ? cause.message : m.video_editor_stock_download_failed();
 		} finally {
 			loading = false;
 		}
@@ -393,7 +393,7 @@
 				onclick={() => (stockOpen = !stockOpen)}
 			>
 				<ImagePlusIcon />
-				{stockOpen ? m.common_close() : m.stock_media()}
+				{stockOpen ? m.common_close() : m.video_editor_stock()}
 			</Button>
 			{#if stockOpen}
 				<div class="mb-4 rounded-lg border bg-card p-2">

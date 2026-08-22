@@ -21,34 +21,59 @@ const imageResources = [
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 async function writeImmutableAssetFixture(source, model = "model-weights\n") {
-  await mkdir(path.join(source, "image-editor-models"), { recursive: true });
-  const modelPath = "fixture.onnx";
+  await Promise.all(
+    ["image-editor-models", "video-editor-audio/assets", "video-editor-models"].map((directory) =>
+      mkdir(path.join(source, directory), { recursive: true }),
+    ),
+  );
   await Promise.all([
     writeFile(path.join(source, "image-editor-models/chunk.bin"), "chunk\n"),
     writeFile(
       path.join(source, "image-editor-models/resources.json"),
       JSON.stringify(
-        Object.fromEntries([
-          ...imageResources.map((resource) => [
+        Object.fromEntries(
+          imageResources.map((resource) => [
             resource,
             { chunks: [{ name: "chunk.bin", hash: sha256("chunk\n"), offsets: [0, 6] }] },
           ]),
-          [
-            "/models/fixture",
-            {
-              chunks: [
-                { name: modelPath, hash: sha256(model), offsets: [0, Buffer.byteLength(model)] },
-              ],
-            },
-          ],
-        ]),
+        ),
       ),
     ),
     writeFile(
       path.join(source, "image-editor-models/bundle-manifest.json"),
-      JSON.stringify({ version: 1, resources: [...imageResources, "/models/fixture"] }),
+      JSON.stringify({ version: 1, resources: imageResources }),
     ),
-    writeFile(path.join(source, "image-editor-models", modelPath), model),
+    writeFile(path.join(source, "video-editor-audio/assets/clip.wav"), "audio\n"),
+    writeFile(
+      path.join(source, "video-editor-audio/manifest.json"),
+      JSON.stringify({
+        assets: [
+          {
+            path: "/video-editor-audio/assets/clip.wav",
+            size_bytes: 6,
+            sha256: sha256("audio\n"),
+          },
+        ],
+      }),
+    ),
+    writeFile(path.join(source, "video-editor-models/fixture.onnx"), model),
+    writeFile(
+      path.join(source, "video-editor-models/manifest.json"),
+      JSON.stringify({
+        models: [
+          {
+            id: "fixture",
+            files: [
+              {
+                path: "fixture.onnx",
+                size_bytes: Buffer.byteLength(model),
+                sha256: sha256(model),
+              },
+            ],
+          },
+        ],
+      }),
+    ),
   ]);
 }
 
@@ -153,8 +178,8 @@ test("atomically mirrors the complete artifact and removes stale files", async (
   );
   assert.equal(executable?.mode, 0o755);
   const [sourceModel, packagedModel] = await Promise.all([
-    stat(path.join(source, "image-editor-models", "fixture.onnx")),
-    stat(path.join(destination, "image-editor-models", "fixture.onnx")),
+    stat(path.join(source, "video-editor-models", "fixture.onnx")),
+    stat(path.join(destination, "video-editor-models", "fixture.onnx")),
   ]);
   assert.equal(packagedModel.dev, sourceModel.dev);
   assert.equal(packagedModel.ino, sourceModel.ino);
@@ -186,9 +211,9 @@ test("materializes immutable assets omitted from a cached frontend build", async
   const canonical = path.join(root, "frontend-static");
   const client = path.join(root, "svelte-client");
   await writeImmutableAssetFixture(canonical, "cached-model-weights\n");
-  await mkdir(path.join(client, "image-editor-models"), { recursive: true });
-  await writeFile(path.join(client, "image-editor-models/fixture.onnx"), "stale-model-weights\n");
-  await rm(path.join(source, "image-editor-models"), { recursive: true, force: true });
+  await mkdir(path.join(client, "video-editor-models"), { recursive: true });
+  await writeFile(path.join(client, "video-editor-models/fixture.onnx"), "stale-model-weights\n");
+  await rm(path.join(source, "video-editor-models"), { recursive: true, force: true });
 
   await packageFrontend({
     sourceDirectory: source,
@@ -198,10 +223,10 @@ test("materializes immutable assets omitted from a cached frontend build", async
   });
 
   const [canonicalModel, clientModel, buildModel, packagedModel] = await Promise.all([
-    stat(path.join(canonical, "image-editor-models", "fixture.onnx")),
-    stat(path.join(client, "image-editor-models", "fixture.onnx")),
-    stat(path.join(source, "image-editor-models", "fixture.onnx")),
-    stat(path.join(destination, "image-editor-models", "fixture.onnx")),
+    stat(path.join(canonical, "video-editor-models", "fixture.onnx")),
+    stat(path.join(client, "video-editor-models", "fixture.onnx")),
+    stat(path.join(source, "video-editor-models", "fixture.onnx")),
+    stat(path.join(destination, "video-editor-models", "fixture.onnx")),
   ]);
   assert.equal(clientModel.ino, canonicalModel.ino);
   assert.equal(buildModel.ino, canonicalModel.ino);
@@ -212,9 +237,9 @@ test("staging copy omits immutable assets before they are linked", () => {
   const source = "/work/openpost/frontend/build";
   assert.equal(shouldCopyFrontendPath(source, source), true);
   assert.equal(shouldCopyFrontendPath(source, path.join(source, "assets", "app.js")), true);
-  assert.equal(shouldCopyFrontendPath(source, path.join(source, "image-editor-models")), false);
+  assert.equal(shouldCopyFrontendPath(source, path.join(source, "video-editor-models")), false);
   assert.equal(
-    shouldCopyFrontendPath(source, path.join(source, "image-editor-models", "model.onnx")),
+    shouldCopyFrontendPath(source, path.join(source, "video-editor-models", "model.onnx")),
     false,
   );
 });

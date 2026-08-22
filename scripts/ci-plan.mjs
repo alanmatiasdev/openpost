@@ -35,14 +35,17 @@ export function planCI(files, manifest, { full = false } = {}) {
     documentation: full || delivery || touched.has("documentation") || touched.has("shared-assets"),
     cli: matches(["cli/"], ["go.work", "go.work.sum"]),
     security: matches(
-      ["backend/", "cli/", "frontend/", "mobile/", "packages/"],
+      ["backend/", "cli/", "frontend/", "packages/"],
       ["bun.lock", "package.json", "go.work", "go.work.sum"],
     ),
     image: matches(
       ["backend/", "frontend/", "packages/", "assets/", "docker/", "provider-certification/"],
       [".dockerignore", "bun.lock", "bunfig.toml", "package.json", "turbo.json"],
     ),
-    android: matches(["mobile/"], ["frontend/openapi.json"]),
+    android: matches(
+      ["frontend/", "packages/", "assets/"],
+      ["bun.lock", "bunfig.toml", "package.json", "turbo.json"],
+    ),
     cache_contract: files.some(
       (file) =>
         [

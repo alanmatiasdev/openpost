@@ -121,7 +121,7 @@
 					onclick={() => (source = 'stock')}
 				>
 					<ImageIcon />
-					{m.stock_media()}
+					{m.video_editor_stock()}
 				</Button>
 			{/if}
 			{#if showLibrary}

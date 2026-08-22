@@ -1,70 +1,84 @@
 # Android App
 
-This page is for Android users installing OpenPost and connecting it to OpenPost Hosted or a self-hosted instance. OpenPost ships a standalone native Android app built with Expo. It uses the same API as the web app and does not load the web app in a wrapper.
+This page is for Android users installing OpenPost and connecting it to a self-hosted instance.
 
-## Install from a release
+OpenPost ships an Android app built with Capacitor. It wraps the same SvelteKit frontend as the web app, so it connects to your self-hosted OpenPost instance instead of a separate mobile backend.
 
-Official GitHub releases publish this APK:
+## Install from a Release
+
+Every GitHub release builds an APK asset named:
 
 ```text
 openpost-app-android.apk
 ```
 
-Download it from [GitHub Releases](https://github.com/getopenpost/openpost/releases/latest), then open the file on your Android device. Because this is a release APK distributed outside the Play Store, Android may ask you to allow installs from your browser or file manager. Only install APKs from the official OpenPost release page.
+Download it from [GitHub Releases](https://github.com/getopenpost/openpost/releases/latest), then install it on your Android device.
 
-## Connect to OpenPost
+Because this is a release APK distributed outside the Play Store, Android may ask you to allow installs from your browser or file manager. Only install APKs from the official OpenPost release page.
+
+## Connect to Your Instance
+
+After installing:
 
 1. Open the Android app.
-2. Choose OpenPost Hosted, or enter the public HTTPS URL of your server.
-3. Sign in with email and password, or pair the device from a signed-in browser.
-4. Choose a workspace.
+2. Enter the public URL of your OpenPost instance.
+3. Sign in with the same account you use in the web UI.
 
-A self-hosted server must be reachable from the phone. `localhost`, private development names, URL credentials, and plain HTTP do not work in the production app.
+The instance URL should be reachable from your phone. For normal use this means a public HTTPS URL behind a reverse proxy. Localhost URLs from your server will not work from the phone.
 
-## Server requirements
+## Server Requirements
 
-- Set `OPENPOST_APP_URL` to the public URL users open.
-- Preserve the public host and scheme in reverse proxy headers.
-- Match provider OAuth callback URLs to the public server URL.
-- Use HTTPS with a certificate the Android device trusts.
+Use the same production requirements as the web app:
 
-See [Reverse Proxy](/installation/reverse-proxy) and [CORS and URLs](/configuration/cors-and-urls) for server setup.
+- `OPENPOST_APP_URL` should match the public URL users open.
+- Reverse proxy headers should preserve the public host and scheme.
+- OAuth callback URLs in provider apps should match the configured public URL.
+- CORS should include any extra origins only when needed.
 
-## Mobile features
+See [Reverse Proxy](/installation/reverse-proxy) and [CORS and URLs](/configuration/cors-and-urls) for the server-side setup.
 
-The first native app covers the common work away from a desk:
+## Build Locally
 
-- Capture and edit drafts
-- Receive text, links, and photos through Android sharing
-- Select Social Sets or individual destinations
-- Adjust text per destination
-- Schedule, publish, cancel, retry, and inspect provider results
-- Review the calendar and queue
+The native Android project lives under `frontend/android` and is synchronized from the SvelteKit build through Capacitor.
 
-Account connections, billing, and advanced settings remain in the web app. The mobile Drafts menu links to it.
-
-## Build from source
-
-The mobile source lives in `mobile/`. From that directory:
+From `frontend/`:
 
 ```sh
 bun install --frozen-lockfile
-bun run check
-bun run build:android:apk
+bun run --filter @openpost/web build:capacitor
+cd android
+./gradlew assembleDebug
 ```
 
-The installable ARM64 preview APK is written to:
+The debug APK is written to:
 
 ```text
-mobile/android/app/build/outputs/apk/release/app-release.apk
+frontend/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Local preview builds use Android's generated debug key. They are for an emulator, a device, or private testing. Official releases use the project release key in GitHub Actions.
+## Signed Release Build
 
-See `mobile/README.md` in the source tree for the full emulator, package inspection, CI candidate, and signing procedure.
+For local signed release builds:
 
-## Release safety
+```sh
+cd frontend/android
+./gradlew assembleRelease \
+  -PRELEASE_STORE_FILE=path/to/release.keystore.jks \
+  -PRELEASE_STORE_PASSWORD=... \
+  -PRELEASE_KEY_ALIAS=... \
+  -PRELEASE_KEY_PASSWORD=...
+```
 
-Candidate CI builds an unsigned universal APK and keeps its SHA-256 digest. The tag release workflow downloads that exact artifact, signs it with the project release key, verifies the package and signer, and only then publishes `openpost-app-android.apk`.
+The GitHub release workflow signs and verifies the exact APK retained by candidate CI before uploading `openpost-app-android.apk`. If signing credentials are unavailable, the release fails instead of publishing an unsigned file under the installable asset name.
 
-CI also uploads a separate debug-signed preview APK. Its artifact name includes `preview`, and it never enters the release workflow.
+## App Configuration
+
+The Capacitor config is in `frontend/capacitor.config.ts`:
+
+- App ID: `com.openpost.app`
+- App name: `OpenPost`
+- Web directory: `build` (the frontend package-owned output)
+- Android scheme: `https`
+- Plugins: `@capacitor/app`, `@capacitor/splash-screen`, `@capacitor/status-bar`, and Capacitor HTTP support
+
+Launcher and splash assets are generated from the shared OpenPost brand icon during `bun run --filter @openpost/web build:capacitor`, keeping the Android app visually aligned with the web app.

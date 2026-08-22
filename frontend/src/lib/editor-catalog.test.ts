@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ImageEditorDesignSummary } from '$lib/image-editor/types';
+import type { CloudVideoProjectSummary } from '$lib/video-editor/api';
 import {
 	EditorCatalogCache,
 	EditorCatalogRequestGate,
@@ -25,13 +26,27 @@ function design(id: string): ImageEditorDesignSummary {
 	};
 }
 
+function video(id: string): CloudVideoProjectSummary {
+	return {
+		id,
+		title: id,
+		revision: 1,
+		duration_ms: 1_000,
+		source_count: 1,
+		cover_preview_media_id: '',
+		created_at: '2026-01-01T00:00:00Z',
+		updated_at: '2026-01-01T00:00:00Z'
+	};
+}
+
 describe('editor catalog state', () => {
 	it('keeps initial failures mutually exclusive with the empty catalog', () => {
 		expect(
 			resolveEditorCatalogSurface({
 				loading: false,
 				error: 'Workspace unavailable',
-				designCount: 0
+				designCount: 0,
+				videoCount: 0
 			})
 		).toBe('error');
 	});
@@ -41,7 +56,8 @@ describe('editor catalog state', () => {
 			resolveEditorCatalogSurface({
 				loading: false,
 				error: 'Refresh failed',
-				designCount: 1
+				designCount: 1,
+				videoCount: 0
 			})
 		).toBe('content');
 	});
@@ -51,7 +67,8 @@ describe('editor catalog state', () => {
 			resolveEditorCatalogSurface({
 				loading: true,
 				error: '',
-				designCount: 1
+				designCount: 1,
+				videoCount: 0
 			})
 		).toBe('content');
 	});
@@ -65,7 +82,7 @@ describe('editor catalog state', () => {
 		);
 	});
 
-	it('merges enough pages to expose catalogs beyond former caps', () => {
+	it('merges enough pages to expose catalogs beyond both former caps', () => {
 		let designs: ImageEditorDesignSummary[] = [];
 		for (let offset = 0; offset < 125; offset += 50) {
 			designs = mergeEditorCatalogItems(
@@ -75,7 +92,17 @@ describe('editor catalog state', () => {
 				)
 			);
 		}
+		let videos: CloudVideoProjectSummary[] = [];
+		for (let offset = 0; offset < 75; offset += 50) {
+			videos = mergeEditorCatalogItems(
+				videos,
+				Array.from({ length: Math.min(50, 75 - offset) }, (_, index) =>
+					video(`video-${offset + index}`)
+				)
+			);
+		}
 		expect(designs).toHaveLength(125);
+		expect(videos).toHaveLength(75);
 	});
 
 	it('aborts and rejects a slow request after its workspace is superseded', async () => {
@@ -101,43 +128,47 @@ describe('editor catalog state', () => {
 		const cache = new EditorCatalogCache();
 		const workspaceA = {
 			...emptyEditorCatalog('workspace-a', ''),
-			designs: [design('shared-id'), design('a-only')],
-			designTotal: 2,
-			designOffset: 2
+			videoProjects: [video('shared-id'), video('a-only')],
+			videoTotal: 2,
+			videoOffset: 2
 		};
 		const workspaceASearch = {
 			...emptyEditorCatalog('workspace-a', 'shared'),
-			designs: [design('shared-id')],
-			designTotal: 1,
-			designOffset: 1
+			videoProjects: [video('shared-id')],
+			videoTotal: 1,
+			videoOffset: 1
 		};
 		const workspaceB = {
 			...emptyEditorCatalog('workspace-b', ''),
-			designs: [design('shared-id')],
-			designTotal: 1,
-			designOffset: 1
+			videoProjects: [video('shared-id')],
+			videoTotal: 1,
+			videoOffset: 1
 		};
 		cache.write(workspaceA);
 		cache.write(workspaceASearch);
 		cache.write(workspaceB);
 
-		const rollback = cache.remove('workspace-a', 'design', 'shared-id');
-		expect(cache.read('workspace-a', '')?.designs.map((item) => item.id)).toEqual(['a-only']);
-		expect(cache.read('workspace-a', 'shared')?.designs).toEqual([]);
-		expect(cache.read('workspace-b', '')?.designs.map((item) => item.id)).toEqual(['shared-id']);
+		const rollback = cache.remove('workspace-a', 'video', 'shared-id');
+		expect(cache.read('workspace-a', '')?.videoProjects.map((item) => item.id)).toEqual(['a-only']);
+		expect(cache.read('workspace-a', 'shared')?.videoProjects).toEqual([]);
+		expect(cache.read('workspace-b', '')?.videoProjects.map((item) => item.id)).toEqual([
+			'shared-id'
+		]);
 
 		cache.restore(rollback);
-		expect(cache.read('workspace-a', '')?.designs.map((item) => item.id)).toEqual([
+		expect(cache.read('workspace-a', '')?.videoProjects.map((item) => item.id)).toEqual([
 			'shared-id',
 			'a-only'
 		]);
-		expect(cache.read('workspace-a', 'shared')?.designs.map((item) => item.id)).toEqual([
+		expect(cache.read('workspace-a', 'shared')?.videoProjects.map((item) => item.id)).toEqual([
 			'shared-id'
 		]);
 
 		cache.invalidateWorkspace('workspace-a');
 		expect(cache.read('workspace-a', '')).toBeUndefined();
 		expect(cache.read('workspace-a', 'shared')).toBeUndefined();
-		expect(cache.read('workspace-b', '')?.designs.map((item) => item.id)).toEqual(['shared-id']);
+		expect(cache.read('workspace-b', '')?.videoProjects.map((item) => item.id)).toEqual([
+			'shared-id'
+		]);
 	});
 });

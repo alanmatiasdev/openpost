@@ -652,6 +652,7 @@ func main() {
 		DisableLinkedInThreadReplies: cfg.DisableLinkedInThreadReplies,
 		ImageEditorEnabled:           cfg.ImageEditorEnabled,
 		ImageEditorModelBaseURL:      cfg.ImageEditorModelBaseURL,
+		VideoModelBaseURL:            cfg.VideoModelBaseURL,
 		StockMediaEnabled:            cfg.StockMediaEnabled,
 		PexelsAPIKey:                 cfg.PexelsAPIKey,
 		UnsplashAccessKey:            cfg.UnsplashAccessKey,

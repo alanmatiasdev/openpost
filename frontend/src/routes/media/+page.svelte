@@ -9,6 +9,7 @@
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import { uploadMediaFile, type MediaUploadResult } from '$lib/media-upload-client';
 	import { loadImageEditorConfig } from '$lib/image-editor/api';
+	import { loadVideoEditorConfig } from '$lib/video-editor/api';
 	import { clampMediaPage } from '$lib/media-pagination';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -123,6 +124,7 @@
 	let dateFrom = $state('');
 	let dateTo = $state('');
 	let layoutMode = $state<'grid' | 'list'>('grid');
+	let videoEditorEnabled = $state(false);
 	let tags = $state<MediaTag[]>([]);
 	let hubLoading = $state(false);
 	let organizationDialogOpen = $state(false);
@@ -374,6 +376,14 @@
 			notify(cause instanceof Error ? cause.message : m.media_hub_load_failed(), 'error');
 		} finally {
 			hubLoading = false;
+		}
+	}
+
+	async function loadVideoEditorState(): Promise<void> {
+		try {
+			videoEditorEnabled = (await loadVideoEditorConfig()).enabled;
+		} catch {
+			videoEditorEnabled = false;
 		}
 	}
 
@@ -650,8 +660,9 @@
 
 	function openMediaInVideoEditor(media: MediaItem) {
 		const query = new URLSearchParams({
-			source: `media:${media.id}`,
-			name: media.original_filename
+			mode: 'media',
+			source_media: media.id,
+			source_name: media.original_filename
 		});
 		void goto(resolveOwnedMediaRoute(`/video-editor/new?${query.toString()}`));
 	}
@@ -946,6 +957,7 @@
 			replaceState(resolveCurrentMediaURL(next), {});
 		}
 		void loadWorkspaces();
+		void loadVideoEditorState();
 	});
 
 	onMount(() => {
@@ -1548,7 +1560,7 @@
 										{m.image_editor_remove_background()}
 									</ContextMenu.Item>
 								{/if}
-								{#if isVideo(media.mime_type) && mediaCanEdit}
+								{#if isVideo(media.mime_type) && mediaCanEdit && videoEditorEnabled}
 									<ContextMenu.Item
 										class={libraryContextItemClass}
 										onclick={() => openMediaInVideoEditor(media)}
@@ -2022,7 +2034,7 @@
 						{m.image_editor_remove_background()}
 					</Button>
 				{/if}
-				{#if isVideo(selectedMedia.mime_type) && mediaCanEdit}
+				{#if isVideo(selectedMedia.mime_type) && mediaCanEdit && videoEditorEnabled}
 					<Button
 						variant="outline"
 						size="sm"

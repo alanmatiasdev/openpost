@@ -37,6 +37,7 @@ import (
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/openpost/backend/internal/services/videoprocessing"
+	"github.com/openpost/backend/internal/videoproject"
 	"github.com/uptrace/bun"
 )
 
@@ -81,7 +82,8 @@ type mediaUploadBytesInput struct {
 	ParentMediaID    string
 	DesignDocumentID string
 	DesignPageID     string
-	StockProvenance  *StockMediaProvenance
+	VideoProjectID   string
+	StockProvenance  *videoproject.StockMediaProvenance
 	// OnCreated runs synchronously after a new media row is inserted and
 	// before later bookkeeping can fail. Callers that require compensation can
 	// retain the immutable attachment without changing existing call sites.
@@ -213,6 +215,7 @@ type MediaListItem struct {
 	ParentMediaID      string   `json:"parent_media_id,omitempty" doc:"Source media for this derivative"`
 	DesignDocumentID   string   `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design"`
 	DesignPageID       string   `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page"`
+	VideoProjectID     string   `json:"video_project_id,omitempty" doc:"Producing OpenPost Video Editor project"`
 	Tags               []string `json:"tags" doc:"Tag IDs assigned to this media"`
 	RetentionClass     string   `json:"retention_class" enum:"library,temporary" doc:"Whether the asset is kept in the library or managed as temporary post media"`
 	LastUsedAt         string   `json:"last_used_at,omitempty" doc:"Most recent known reference time"`
@@ -387,20 +390,21 @@ type RetryMediaAnalysisOutput struct {
 
 type CreateMediaUploadSessionInput struct {
 	Body struct {
-		WorkspaceID      string                `json:"workspace_id" doc:"Workspace ID"`
-		Filename         string                `json:"filename" doc:"Original filename"`
-		MimeType         string                `json:"mime_type,omitempty" doc:"Declared MIME type"`
-		Size             int64                 `json:"size" doc:"Expected upload size in bytes"`
-		AltText          string                `json:"alt_text,omitempty" doc:"Alt text for accessibility"`
-		Source           string                `json:"source,omitempty" enum:"upload,camera,image_editor_export,image_editor_edit,background_removal,video_editor_source,video_editor_export,stock_import,meme_generator" doc:"Media provenance"`
-		AssetKind        string                `json:"asset_kind,omitempty" enum:"library,brand_asset,brand_font,design_preview,template_preview" doc:"Media library role"`
-		RetentionClass   string                `json:"retention_class,omitempty" enum:"library,temporary" doc:"Keep in the library or manage as temporary post media"`
-		TagID            string                `json:"tag_id,omitempty" doc:"Optional tag to assign to this upload"`
-		ParentMediaID    string                `json:"parent_media_id,omitempty" doc:"Source media ID for a derivative"`
-		DesignDocumentID string                `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design ID"`
-		DesignPageID     string                `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page ID"`
-		ClientSHA256     string                `json:"client_sha256,omitempty" pattern:"^[a-fA-F0-9]{64}$" doc:"Optional SHA-256 used to reuse an identical ready asset in this workspace"`
-		StockProvenance  *StockMediaProvenance `json:"stock_provenance,omitempty" doc:"License and creator provenance for a selected stock asset"`
+		WorkspaceID      string                             `json:"workspace_id" doc:"Workspace ID"`
+		Filename         string                             `json:"filename" doc:"Original filename"`
+		MimeType         string                             `json:"mime_type,omitempty" doc:"Declared MIME type"`
+		Size             int64                              `json:"size" doc:"Expected upload size in bytes"`
+		AltText          string                             `json:"alt_text,omitempty" doc:"Alt text for accessibility"`
+		Source           string                             `json:"source,omitempty" enum:"upload,camera,image_editor_export,image_editor_edit,background_removal,video_editor_source,video_editor_export,stock_import,meme_generator" doc:"Media provenance"`
+		AssetKind        string                             `json:"asset_kind,omitempty" enum:"library,brand_asset,brand_font,design_preview,template_preview" doc:"Media library role"`
+		RetentionClass   string                             `json:"retention_class,omitempty" enum:"library,temporary" doc:"Keep in the library or manage as temporary post media"`
+		TagID            string                             `json:"tag_id,omitempty" doc:"Optional tag to assign to this upload"`
+		ParentMediaID    string                             `json:"parent_media_id,omitempty" doc:"Source media ID for a derivative"`
+		DesignDocumentID string                             `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design ID"`
+		DesignPageID     string                             `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page ID"`
+		VideoProjectID   string                             `json:"video_project_id,omitempty" doc:"Producing OpenPost Video Editor project ID"`
+		ClientSHA256     string                             `json:"client_sha256,omitempty" pattern:"^[a-fA-F0-9]{64}$" doc:"Optional SHA-256 used to reuse an identical ready asset in this workspace"`
+		StockProvenance  *videoproject.StockMediaProvenance `json:"stock_provenance,omitempty" doc:"License and creator provenance for a selected stock asset"`
 	}
 }
 
@@ -442,6 +446,7 @@ type MediaUploadResult struct {
 	ParentMediaID      string `json:"parent_media_id,omitempty" doc:"Source media ID"`
 	DesignDocumentID   string `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design ID"`
 	DesignPageID       string `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page ID"`
+	VideoProjectID     string `json:"video_project_id,omitempty" doc:"Producing OpenPost Video Editor project ID"`
 	ProcessingStatus   string `json:"processing_status" doc:"Media processing status"`
 	ProcessingProgress int    `json:"processing_progress" doc:"Server processing progress from 0 to 100"`
 	AnalysisStatus     string `json:"analysis_status" doc:"Media analysis status"`
@@ -575,6 +580,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 					OR id IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM design_template_media_references)
+					OR id IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM brand_fonts)
 					OR id IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL AND deleted_at IS NULL)
 					OR id IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
@@ -590,6 +596,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				AND id NOT IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM design_template_media_references)
+				AND id NOT IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM brand_fonts)
 				AND id NOT IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL AND deleted_at IS NULL)
 				AND id NOT IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
@@ -716,6 +723,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				ParentMediaID:      m.ParentMediaID,
 				DesignDocumentID:   m.DesignDocumentID,
 				DesignPageID:       m.DesignPageID,
+				VideoProjectID:     m.VideoProjectID,
 				Tags:               tagsByMedia[m.ID],
 				RetentionClass:     m.RetentionClass,
 				LastUsedAt:         formatMediaTime(m.LastUsedAt),
@@ -1188,6 +1196,9 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		); err != nil {
 			return nil, err
 		}
+		if err := h.validateVideoProjectReference(ctx, workspaceID, input.Body.VideoProjectID); err != nil {
+			return nil, err
+		}
 		reusable, err := h.reusableMediaForClientHash(
 			ctx,
 			workspaceID,
@@ -1262,6 +1273,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			ParentMediaID:      strings.TrimSpace(input.Body.ParentMediaID),
 			DesignDocumentID:   strings.TrimSpace(input.Body.DesignDocumentID),
 			DesignPageID:       strings.TrimSpace(input.Body.DesignPageID),
+			VideoProjectID:     strings.TrimSpace(input.Body.VideoProjectID),
 			AltText:            input.Body.AltText,
 			AnalysisStatus:     mediaanalysis.AnalysisStatusPending,
 			LastUsedAt:         now,
@@ -1888,6 +1900,7 @@ func mediaUploadResultFromAttachment(media models.MediaAttachment, deduped bool)
 		ParentMediaID:      media.ParentMediaID,
 		DesignDocumentID:   media.DesignDocumentID,
 		DesignPageID:       media.DesignPageID,
+		VideoProjectID:     media.VideoProjectID,
 		ProcessingStatus:   media.ProcessingStatus,
 		ProcessingProgress: media.ProcessingProgress,
 		AnalysisStatus:     media.AnalysisStatus,
@@ -1965,22 +1978,22 @@ func normalizeMediaProvenance(source, assetKind string) (string, string, error) 
 	return source, assetKind, nil
 }
 
-func parseStockMediaProvenance(raw string) (*StockMediaProvenance, error) {
+func parseStockMediaProvenance(raw string) (*videoproject.StockMediaProvenance, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
-	var provenance StockMediaProvenance
+	var provenance videoproject.StockMediaProvenance
 	if err := json.Unmarshal([]byte(raw), &provenance); err != nil {
 		return nil, errors.New("stock provenance must be valid JSON")
 	}
-	if err := ValidateStockMediaProvenance(provenance); err != nil {
+	if err := videoproject.ValidateStockMediaProvenance(provenance); err != nil {
 		return nil, err
 	}
 	return &provenance, nil
 }
 
-func validateStockUploadProvenance(source string, provenance *StockMediaProvenance) error {
+func validateStockUploadProvenance(source string, provenance *videoproject.StockMediaProvenance) error {
 	if source == "stock_import" && provenance == nil {
 		return errors.New("stock imports require license and creator provenance")
 	}
@@ -1990,13 +2003,13 @@ func validateStockUploadProvenance(source string, provenance *StockMediaProvenan
 	if source != "stock_import" {
 		return errors.New("stock provenance is allowed only for stock imports")
 	}
-	return ValidateStockMediaProvenance(*provenance)
+	return videoproject.ValidateStockMediaProvenance(*provenance)
 }
 
 func (h *MediaHandler) persistStockMediaProvenance(
 	ctx context.Context,
 	mediaID string,
-	provenance *StockMediaProvenance,
+	provenance *videoproject.StockMediaProvenance,
 ) error {
 	if provenance == nil {
 		return nil
@@ -2015,6 +2028,27 @@ func (h *MediaHandler) persistStockMediaProvenance(
 	}
 	_, err := h.db.NewInsert().Model(record).On("CONFLICT (media_id) DO NOTHING").Exec(ctx)
 	return err
+}
+
+func (h *MediaHandler) validateVideoProjectReference(
+	ctx context.Context,
+	workspaceID string,
+	videoProjectID string,
+) error {
+	videoProjectID = strings.TrimSpace(videoProjectID)
+	if videoProjectID == "" {
+		return nil
+	}
+	count, err := h.db.NewSelect().Model((*models.VideoProject)(nil)).
+		Where("id = ? AND workspace_id = ? AND deleted_at IS NULL", videoProjectID, workspaceID).
+		Count(ctx)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to validate OpenPost Video Editor project")
+	}
+	if count != 1 {
+		return huma.Error400BadRequest("OpenPost Video Editor project must belong to the workspace")
+	}
+	return nil
 }
 
 func (h *MediaHandler) reusableMediaForClientHash(
@@ -2217,6 +2251,11 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 		`SELECT r.media_id, COUNT(*) AS usage_count
 			FROM design_template_media_references r
 			WHERE r.media_id IN (?) GROUP BY r.media_id`,
+		`SELECT a.media_id, COUNT(*) AS usage_count
+			FROM video_project_assets a
+			JOIN video_projects p ON p.id = a.video_project_id
+			WHERE a.media_id IN (?) AND p.deleted_at IS NULL
+			GROUP BY a.media_id`,
 		`SELECT media_id, COUNT(*) AS usage_count FROM brand_fonts
 			WHERE media_id IN (?) GROUP BY media_id`,
 	}
@@ -2247,6 +2286,9 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 			WHERE p.latest_export_media_id IN (?) AND d.deleted_at IS NULL GROUP BY p.latest_export_media_id`,
 		`SELECT preview_media_id AS media_id, COUNT(*) AS usage_count
 			FROM design_templates WHERE preview_media_id IN (?) GROUP BY preview_media_id`,
+		`SELECT cover_preview_media_id AS media_id, COUNT(*) AS usage_count
+			FROM video_projects WHERE cover_preview_media_id IN (?) AND deleted_at IS NULL
+			GROUP BY cover_preview_media_id`,
 	}
 	for _, query := range directReferenceQueries {
 		var rows []struct {
@@ -2719,6 +2761,7 @@ func (h *MediaHandler) uploadMedia(c echo.Context) error {
 		ParentMediaID:    c.FormValue("parent_media_id"),
 		DesignDocumentID: c.FormValue("design_document_id"),
 		DesignPageID:     c.FormValue("design_page_id"),
+		VideoProjectID:   c.FormValue("video_project_id"),
 		StockProvenance:  stockProvenance,
 	})
 	if err != nil {
@@ -2837,6 +2880,9 @@ func (h *MediaHandler) processStreamUpload(
 	if err := h.validateMediaProvenanceReferences(ctx, input.WorkspaceID, input.ParentMediaID, input.DesignDocumentID, input.DesignPageID); err != nil {
 		return nil, errors.New(err.Error())
 	}
+	if err := h.validateVideoProjectReference(ctx, input.WorkspaceID, input.VideoProjectID); err != nil {
+		return nil, errors.New(err.Error())
+	}
 	if !isInternalMediaAssetKind(assetKind) {
 		if err := h.checkUploadQuota(ctx, input.WorkspaceID, input.Size); err != nil {
 			return nil, err
@@ -2912,6 +2958,7 @@ func (h *MediaHandler) processStreamUpload(
 		ParentMediaID:      strings.TrimSpace(input.ParentMediaID),
 		DesignDocumentID:   strings.TrimSpace(input.DesignDocumentID),
 		DesignPageID:       strings.TrimSpace(input.DesignPageID),
+		VideoProjectID:     strings.TrimSpace(input.VideoProjectID),
 		DominantType:       dominantMediaType(mimeType),
 		AnalysisStatus:     mediaanalysis.AnalysisStatusReady,
 		LastUsedAt:         time.Now().UTC(),
@@ -2993,6 +3040,9 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 	if err := h.validateMediaProvenanceReferences(ctx, input.WorkspaceID, input.ParentMediaID, input.DesignDocumentID, input.DesignPageID); err != nil {
 		return nil, errors.New(err.Error())
 	}
+	if err := h.validateVideoProjectReference(ctx, input.WorkspaceID, input.VideoProjectID); err != nil {
+		return nil, errors.New(err.Error())
+	}
 	hash := sha256.Sum256(input.Content)
 	fileHash := hex.EncodeToString(hash[:])
 
@@ -3052,6 +3102,7 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 		ParentMediaID:      strings.TrimSpace(input.ParentMediaID),
 		DesignDocumentID:   strings.TrimSpace(input.DesignDocumentID),
 		DesignPageID:       strings.TrimSpace(input.DesignPageID),
+		VideoProjectID:     strings.TrimSpace(input.VideoProjectID),
 		LastUsedAt:         time.Now().UTC(),
 	}
 

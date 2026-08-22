@@ -235,6 +235,9 @@ func finalizeRecentMigrations(
 	if err := backfillDesignRevisionMediaReferences(ctx, db); err != nil {
 		return fmt.Errorf("design revision media reference migration failed: %w", err)
 	}
+	if err := backfillVideoRevisionMediaReferences(ctx, db); err != nil {
+		return fmt.Errorf("video revision media reference migration failed: %w", err)
+	}
 	if appliedSet[83] {
 		if err := resumeLegacyPublicationAuthoringBackfill(ctx, db); err != nil {
 			return fmt.Errorf("legacy publication authoring migration failed: %w", err)
@@ -374,6 +377,9 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 51:
 		description = "optional password"
 		err = makeUserPasswordOptional(ctx, db)
+	case 53:
+		description = "media project linkage"
+		err = addVideoProjectIDToMediaAttachments(ctx, db)
 	case 55:
 		description = "prompt example"
 		err = ensurePromptExampleColumn(ctx, db)
@@ -391,9 +397,6 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 96:
 		description = "workspace invitation delivery outcomes"
 		err = ensureWorkspaceInvitationDeliveryUpdatedAt(ctx, db)
-	case 107:
-		description = "drop retired video editor storage"
-		err = dropRetiredVideoProjectColumn(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
@@ -411,22 +414,6 @@ func ensureWorkspaceInvitationDeliveryUpdatedAt(ctx context.Context, db *bun.DB)
 		return err
 	}
 	_, err = db.ExecContext(ctx, `ALTER TABLE workspace_invitations ADD COLUMN email_delivery_updated_at TIMESTAMP`)
-	return err
-}
-
-// dropRetiredVideoProjectColumn removes the media_attachments.video_project_id
-// column left behind by the retired cloud-synced Video Editor. Databases that
-// never ran the video editor migrations do not have the column.
-func dropRetiredVideoProjectColumn(ctx context.Context, db *bun.DB) error {
-	exists, err := migrationTableExists(ctx, db, "media_attachments")
-	if err != nil || !exists {
-		return err
-	}
-	present, err := migrationColumnExists(ctx, db, "media_attachments", "video_project_id")
-	if err != nil || !present {
-		return err
-	}
-	_, err = db.ExecContext(ctx, "ALTER TABLE media_attachments DROP COLUMN video_project_id")
 	return err
 }
 
@@ -1524,6 +1511,7 @@ func ensureEditorNameMigration(ctx context.Context, db *bun.DB) error {
 	for _, migrate := range []func(context.Context, *bun.DB) error{
 		migrateRenamedInstanceSettings,
 		migrateEditorMediaSources,
+		migrateVideoEditingMode,
 		migrateFounderBillingPlan,
 	} {
 		if err := migrate(ctx, db); err != nil {
@@ -1572,6 +1560,17 @@ func migrateEditorMediaSources(ctx context.Context, db *bun.DB) error {
 		}
 	}
 	return nil
+}
+
+func migrateVideoEditingMode(ctx context.Context, db *bun.DB) error {
+	videoProjectsExist, err := migrationTableExists(ctx, db, "video_projects")
+	if err != nil || !videoProjectsExist {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `UPDATE video_projects
+			SET document_json = REPLACE(document_json, '"editing_mode":"studio"', '"editing_mode":"editor"')
+			WHERE document_json LIKE '%"editing_mode":"studio"%'`)
+	return err
 }
 
 func migrateFounderBillingPlan(ctx context.Context, db *bun.DB) error {
@@ -1718,6 +1717,19 @@ func backfillPublicProfileUsernames(ctx context.Context, db *bun.DB) error {
 		used[candidate] = struct{}{}
 	}
 	return nil
+}
+
+func addVideoProjectIDToMediaAttachments(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "media_attachments")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "media_attachments", "video_project_id")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE media_attachments ADD COLUMN video_project_id TEXT NOT NULL DEFAULT ''")
+	return err
 }
 
 // ensurePromptExampleColumn guarantees the prompts table has the example column

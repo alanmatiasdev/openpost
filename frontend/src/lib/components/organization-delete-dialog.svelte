@@ -190,7 +190,7 @@
 	<Dialog.Content
 		aria-busy={loading || pending}
 		showCloseButton={false}
-		class="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
+		class="max-h-[90vh] overflow-y-auto sm:max-w-xl"
 	>
 		<Dialog.Header>
 			<Dialog.Title>{m.organization_delete_title()}</Dialog.Title>

@@ -3807,6 +3807,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/video-editor/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get OpenPost Video Editor browser limits and optional local model manifest */
+        get: operations["get-video-editor-config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List cloud-saved OpenPost Video Editor projects */
+        get: operations["list-video-editor-projects"];
+        put?: never;
+        /** Save a local OpenPost Video Editor project to OpenPost */
+        post: operations["create-video-editor-project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a cloud-saved OpenPost Video Editor project */
+        get: operations["get-video-editor-project"];
+        put?: never;
+        post?: never;
+        /** Move an OpenPost Video Editor project to trash */
+        delete: operations["delete-video-editor-project"];
+        options?: never;
+        head?: never;
+        /** Save an OpenPost Video Editor project with optimistic concurrency */
+        patch: operations["update-video-editor-project"];
+        trace?: never;
+    };
+    "/video-editor/projects/{id}/checkpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a named OpenPost Video Editor checkpoint */
+        post: operations["create-video-editor-project-checkpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/projects/{id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List OpenPost Video Editor recovery revisions and checkpoints */
+        get: operations["list-video-editor-project-revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/projects/{id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect an OpenPost Video Editor project revision */
+        get: operations["get-video-editor-project-revision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/projects/{id}/revisions/{revision_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an OpenPost Video Editor revision as a new head */
+        post: operations["restore-video-editor-project-revision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/return-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a one-time OpenPost Video Editor composer return token */
+        post: operations["create-video-editor-return-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/return-tokens/{token}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store OpenPost Video Editor variant-to-rendition export assignments */
+        post: operations["complete-video-editor-return-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/return-tokens/{token}/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consume completed OpenPost Video Editor export assignments once */
+        post: operations["consume-video-editor-return-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video-editor/sync-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Estimate and deduplicate an explicit OpenPost Video Editor cloud sync */
+        post: operations["plan-video-editor-sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspace-invitations/accept": {
         parameters: {
             query?: never;
@@ -4656,6 +4846,35 @@ export interface components {
             /** Format: int64 */
             width: number;
         };
+        AudioTrack: {
+            id: string;
+            items: components["schemas"]["AudioTrackItem"][] | null;
+            muted: boolean;
+            name: string;
+            /** @enum {string} */
+            role: "voice" | "music" | "system" | "effects" | "other";
+        };
+        AudioTrackItem: {
+            duck_others: boolean;
+            /** Format: int64 */
+            duration_us: number;
+            /** Format: int64 */
+            fade_in_us: number;
+            /** Format: int64 */
+            fade_out_us: number;
+            /** Format: double */
+            gain_db: number;
+            gain_db_keyframes?: components["schemas"]["NumericKeyframe"][] | null;
+            id: string;
+            muted: boolean;
+            source_id: string;
+            /** Format: int64 */
+            source_in_us: number;
+            /** Format: double */
+            speed: number;
+            /** Format: int64 */
+            timeline_start_us: number;
+        };
         AuditChangedField: {
             current?: string;
             field: string;
@@ -5020,6 +5239,70 @@ export interface components {
             unavailable_reason?: string;
             validation_categories?: string[] | null;
         };
+        CaptionCue: {
+            /** Format: int64 */
+            end_us: number;
+            id: string;
+            review_required?: boolean;
+            speaker?: string;
+            /** Format: int64 */
+            start_us: number;
+            text: string;
+            words: components["schemas"]["CaptionWord"][] | null;
+        };
+        CaptionStyle: {
+            background_color: string;
+            color: string;
+            emphasis_color: string;
+            font_family: string;
+            /** Format: int64 */
+            font_size: number;
+            /** Format: int64 */
+            font_weight: number;
+            /** Format: int64 */
+            max_lines: number;
+            /** @enum {string} */
+            position: "top" | "middle" | "bottom";
+            /** @enum {string} */
+            preset: "clean" | "bold" | "karaoke" | "boxed";
+        };
+        CaptionStyleOverride: {
+            background_color?: string;
+            color?: string;
+            emphasis_color?: string;
+            font_family?: string;
+            /** Format: int64 */
+            font_size?: number;
+            /** Format: int64 */
+            font_weight?: number;
+            /** Format: int64 */
+            max_lines?: number;
+            /** @enum {string} */
+            position?: "top" | "middle" | "bottom";
+            /** @enum {string} */
+            preset?: "clean" | "bold" | "karaoke" | "boxed";
+        };
+        CaptionTrack: {
+            cues: components["schemas"]["CaptionCue"][] | null;
+            id: string;
+            language: string;
+            name: string;
+            style: components["schemas"]["CaptionStyle"];
+            variant_overrides?: {
+                [key: string]: components["schemas"]["CaptionStyleOverride"];
+            };
+            visible: boolean;
+        };
+        CaptionWord: {
+            /** Format: double */
+            confidence?: number;
+            emphasis?: boolean;
+            /** Format: int64 */
+            end_us: number;
+            /** Format: int64 */
+            start_us: number;
+            text: string;
+        };
         ChangeNotificationsInputBody: {
             /**
              * Format: uri
@@ -5077,6 +5360,17 @@ export interface components {
             message: string;
             name: string;
             timestamp: string;
+        };
+        ClipAudioSettings: {
+            duck_others: boolean;
+            /** Format: int64 */
+            fade_in_us: number;
+            /** Format: int64 */
+            fade_out_us: number;
+            /** Format: double */
+            gain_db: number;
+            gain_db_keyframes?: components["schemas"]["NumericKeyframe"][] | null;
+            muted: boolean;
         };
         CommentActionOutputBody: {
             /**
@@ -5171,6 +5465,15 @@ export interface components {
             readonly $schema?: string;
             /** @description Ownership transfer ID */
             id: string;
+        };
+        CompleteVideoReturnTokenOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CompleteVideoReturnTokenOutputBody.json
+             */
+            readonly $schema?: string;
+            return_url: string;
         };
         ConfirmEmailChangeInputBody: {
             /**
@@ -5300,6 +5603,21 @@ export interface components {
              */
             readonly $schema?: string;
             message: string;
+        };
+        ConsumeVideoReturnTokenOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConsumeVideoReturnTokenOutputBody.json
+             */
+            readonly $schema?: string;
+            constraints: {
+                [key: string]: unknown;
+            };
+            purpose: string;
+            result: components["schemas"]["VideoReturnResult"];
+            return_url: string;
+            workspace_id: string;
         };
         ContentConstraint: {
             alt_text: components["schemas"]["TextConstraint"];
@@ -5606,6 +5924,8 @@ export interface components {
             stock_provenance?: components["schemas"]["StockMediaProvenance"];
             /** @description Optional tag to assign to this upload */
             tag_id?: string;
+            /** @description Producing OpenPost Video Editor project ID */
+            video_project_id?: string;
             /** @description Workspace ID */
             workspace_id: string;
         };
@@ -5804,6 +6124,53 @@ export interface components {
             /** @description One-use private-browser sign-in URL */
             url: string;
         };
+        CreateVideoProjectCheckpointInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVideoProjectCheckpointInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            expected_revision: number;
+            name: string;
+        };
+        CreateVideoProjectInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVideoProjectInputBody.json
+             */
+            readonly $schema?: string;
+            client_request_id: string;
+            cover_preview_media_id?: string;
+            document: components["schemas"]["Document"];
+            workspace_id: string;
+        };
+        CreateVideoReturnTokenInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVideoReturnTokenInputBody.json
+             */
+            readonly $schema?: string;
+            constraints: {
+                [key: string]: unknown;
+            };
+            purpose: string;
+            return_url: string;
+            workspace_id: string;
+        };
+        CreateVideoReturnTokenOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVideoReturnTokenOutputBody.json
+             */
+            readonly $schema?: string;
+            expires_at: string;
+            token: string;
+        };
         CreateWorkspaceInputBody: {
             /**
              * Format: uri
@@ -5845,6 +6212,16 @@ export interface components {
             id: string;
             name: string;
             organization_id: string;
+        };
+        CropRectangle: {
+            /** Format: double */
+            height: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
         };
         Decision: {
             advertisable: boolean;
@@ -5948,6 +6325,15 @@ export interface components {
             readonly $schema?: string;
             /** @description Whether the server must restart before adapter changes apply */
             requires_restart: boolean;
+        };
+        DeleteVideoProjectOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteVideoProjectOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: boolean;
         };
         DeleteWorkspaceInputBody: {
             /**
@@ -6117,6 +6503,24 @@ export interface components {
             readonly $schema?: string;
             /** @description Dismiss status */
             status: string;
+        };
+        Document: {
+            audio_tracks: components["schemas"]["AudioTrack"][] | null;
+            caption_tracks: components["schemas"]["CaptionTrack"][] | null;
+            /** @enum {string} */
+            editing_mode?: "quick-cut" | "editor";
+            export_defaults: components["schemas"]["ExportDefaults"];
+            markers: components["schemas"]["TimelineMarker"][] | null;
+            primary_sequence: components["schemas"]["PrimarySequenceClip"][] | null;
+            /** Format: int64 */
+            schema_version: number;
+            sources: {
+                [key: string]: components["schemas"]["Source"];
+            };
+            timebase: components["schemas"]["Timebase"];
+            title: string;
+            variants: components["schemas"]["VideoVariant"][] | null;
+            visual_tracks: components["schemas"]["VisualTrack"][] | null;
         };
         EditorRevisionActor: {
             is_current_user: boolean;
@@ -6311,6 +6715,27 @@ export interface components {
             server_name: string;
             /** @description Workspace ID */
             workspace_id: string;
+        };
+        ExportDefaults: {
+            /** Format: int64 */
+            audio_bitrate: number;
+            /** @enum {string} */
+            audio_codec: "aac" | "opus";
+            /** @enum {string} */
+            format: "mp4" | "webm";
+            frame_rate: components["schemas"]["ExportFrameRate"];
+            loudness_normalization: boolean;
+            variant_ids: string[] | null;
+            /** Format: int64 */
+            video_bitrate: number;
+            /** @enum {string} */
+            video_codec: "avc" | "vp9";
+        };
+        ExportFrameRate: {
+            /** Format: int64 */
+            denominator: number;
+            /** Format: int64 */
+            numerator: number;
         };
         Facts: {
             approval: string;
@@ -7496,6 +7921,28 @@ export interface components {
             enabled: boolean;
             providers: components["schemas"]["StockProviderResponse"][] | null;
         };
+        ListVideoProjectRevisionsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListVideoProjectRevisionsOutputBody.json
+             */
+            readonly $schema?: string;
+            next_cursor?: string;
+            revisions: components["schemas"]["VideoProjectRevisionSummary"][] | null;
+        };
+        ListVideoProjectsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListVideoProjectsOutputBody.json
+             */
+            readonly $schema?: string;
+            can_edit: boolean;
+            projects: components["schemas"]["VideoProjectSummary"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
         LoginInputBody: {
             /**
              * Format: uri
@@ -7702,6 +8149,8 @@ export interface components {
             video_codec?: string;
             /** @description Detected video codec profile */
             video_profile?: string;
+            /** @description Producing OpenPost Video Editor project */
+            video_project_id?: string;
             /**
              * Format: int64
              * @description Image width
@@ -7811,6 +8260,8 @@ export interface components {
             source: string;
             /** @description URL to access the media */
             url: string;
+            /** @description Producing OpenPost Video Editor project ID */
+            video_project_id?: string;
         };
         MediaUsageItem: {
             /** @description Publication content (truncated) */
@@ -7991,6 +8442,14 @@ export interface components {
             next_cursor?: string;
             /** Format: int64 */
             unread_count: number;
+        };
+        NumericKeyframe: {
+            /** @enum {string} */
+            easing: "hold" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "focus-spring";
+            /** Format: int64 */
+            time_us: number;
+            /** Format: double */
+            value: number;
         };
         OIDCAuthenticatedStartInputBody: {
             /**
@@ -8437,6 +8896,31 @@ export interface components {
             action: string;
             password: string;
         };
+        PlanVideoEditorSyncInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PlanVideoEditorSyncInputBody.json
+             */
+            readonly $schema?: string;
+            project_id?: string;
+            sources: components["schemas"]["VideoEditorSyncSource"][] | null;
+        };
+        PlanVideoEditorSyncOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PlanVideoEditorSyncOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            additional_bytes: number;
+            allowed: boolean;
+            missing_source_ids: string[] | null;
+            reason: string | null;
+            reused: components["schemas"]["VideoEditorSyncReuse"][] | null;
+            storage: components["schemas"]["VideoEditorSyncStorage"];
+        };
         Policy: {
             /**
              * Format: uri
@@ -8615,6 +9099,32 @@ export interface components {
             data_base64: string;
             mime_type: string;
             template_id: string;
+        };
+        PrimarySequenceClip: {
+            audio: components["schemas"]["ClipAudioSettings"];
+            /** Format: int64 */
+            duration_us?: number;
+            effects: components["schemas"]["VideoEffect"][] | null;
+            /** Format: int64 */
+            freeze_duration_us?: number;
+            id: string;
+            /** @enum {string} */
+            kind?: "clip" | "gap";
+            /** @enum {string} */
+            mode: "source" | "freeze";
+            source_id: string;
+            /** Format: int64 */
+            source_in_us: number;
+            /** Format: int64 */
+            source_out_us: number;
+            /** Format: double */
+            speed: number;
+            transition_in?: components["schemas"]["Transition"];
+            transition_out?: components["schemas"]["Transition"];
+            variant_overrides?: {
+                [key: string]: components["schemas"]["VideoPresentationOverride"];
+            };
+            video: components["schemas"]["VideoPresentation"];
         };
         Profile: {
             description: string;
@@ -9858,6 +10368,16 @@ export interface components {
             /** @description Success message */
             message: string;
         };
+        RestoreVideoProjectRevisionInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreVideoProjectRevisionInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            expected_revision: number;
+        };
         RetryMediaAnalysisOutputBody: {
             /**
              * Format: uri
@@ -10229,6 +10749,16 @@ export interface components {
             otpauth_url: string;
             qr_code_data_url: string;
         };
+        ShapeStyle: {
+            /** Format: double */
+            blur: number;
+            fill: string;
+            /** @enum {string} */
+            kind: "rectangle" | "ellipse" | "arrow" | "highlight" | "click-pulse" | "redaction" | "progress";
+            stroke: string;
+            /** Format: double */
+            stroke_width: number;
+        };
         SocialSetAccountInput: {
             /** @description Optional provider-qualified default format */
             default_output_profile?: string;
@@ -10258,6 +10788,34 @@ export interface components {
             name: string;
             updated_at: string;
             workspace_id: string;
+        };
+        Source: {
+            audio_codec?: string;
+            content_hash?: string;
+            /** Format: int64 */
+            duration_us: number;
+            /** Format: int64 */
+            height: number;
+            id: string;
+            /** @enum {string} */
+            kind: "video" | "audio" | "image" | "recording-screen" | "recording-camera" | "recording-microphone" | "recording-system-audio";
+            locator: components["schemas"]["SourceLocator"];
+            mime_type: string;
+            original_name: string;
+            provenance?: components["schemas"]["StockMediaProvenance"];
+            /** Format: int64 */
+            rotation: number;
+            /** Format: int64 */
+            size_bytes: number;
+            video_codec?: string;
+            /** Format: int64 */
+            width: number;
+        };
+        SourceLocator: {
+            media_id?: string;
+            path?: string;
+            /** @enum {string} */
+            type: "local-opfs" | "openpost-media";
         };
         StartCLIAuthInputBody: {
             /**
@@ -10449,6 +11007,48 @@ export interface components {
             recommended_max_length?: number;
             required: boolean;
         };
+        TextStyle: {
+            /** @enum {string} */
+            align: "left" | "center" | "right";
+            /** @enum {string} */
+            animation: "none" | "fade" | "rise" | "pop" | "typewriter";
+            background_color: string;
+            color: string;
+            font_family: string;
+            /** Format: double */
+            font_size: number;
+            /** Format: int64 */
+            font_weight: number;
+            outline_color: string;
+            /** Format: double */
+            outline_width: number;
+            /** Format: double */
+            shadow_blur: number;
+        };
+        Timebase: {
+            /**
+             * Format: int64
+             * @enum {integer}
+             */
+            fps_denominator: 1 | 1001;
+            /**
+             * Format: int64
+             * @enum {integer}
+             */
+            fps_numerator: 24 | 25 | 30 | 50 | 60;
+            /**
+             * Format: int64
+             * @enum {integer}
+             */
+            ticks_per_second: 1000000;
+        };
+        TimelineMarker: {
+            color: string;
+            id: string;
+            label: string;
+            /** Format: int64 */
+            time_us: number;
+        };
         ToggleImageEditorDesignFavoriteOutputBody: {
             /**
              * Format: uri
@@ -10469,6 +11069,14 @@ export interface components {
             mute_applies: boolean;
             presentation_key: string;
             transactional: boolean;
+        };
+        Transition: {
+            /** Format: int64 */
+            duration_us: number;
+            /** @enum {string} */
+            easing: "hold" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "focus-spring";
+            /** @enum {string} */
+            type: "cut" | "cross-dissolve" | "dip-black" | "dip-white" | "slide" | "push" | "zoom-blur";
         };
         UpdateAccountInputBody: {
             /**
@@ -10670,6 +11278,18 @@ export interface components {
              * @enum {string}
              */
             state: "current" | "update_available" | "stale" | "unavailable" | "disabled" | "development";
+        };
+        UpdateVideoProjectInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateVideoProjectInputBody.json
+             */
+            readonly $schema?: string;
+            cover_preview_media_id?: string;
+            document: components["schemas"]["Document"];
+            /** Format: int64 */
+            expected_revision: number;
         };
         UpdateWorkspaceMemberInputBody: {
             /**
@@ -10902,6 +11522,241 @@ export interface components {
             /** @description Pending MFA challenge token */
             mfa_token: string;
         };
+        VideoEditorConfigOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoEditorConfigOutputBody.json
+             */
+            readonly $schema?: string;
+            enabled: boolean;
+            limits: components["schemas"]["VideoEditorLimits"];
+            model_manifest: components["schemas"]["VideoEditorModelManifestItem"][] | null;
+            /** Format: int64 */
+            schema_version: number;
+            stock_providers: string[] | null;
+        };
+        VideoEditorLimits: {
+            /** Format: int64 */
+            max_document_bytes: number;
+            /** Format: int64 */
+            max_duration_seconds: number;
+            /** Format: int64 */
+            max_export_fps: number;
+            /** Format: int64 */
+            max_export_height: number;
+            /** Format: int64 */
+            max_export_width: number;
+            /** Format: int64 */
+            max_sources: number;
+        };
+        VideoEditorModelManifestItem: {
+            fingerprint: string;
+            id: string;
+            /** @enum {string} */
+            kind: "transcription" | "vad" | "reframing";
+            license_name: string;
+            license_reference: string;
+            license_url: string;
+            required_backends: string[] | null;
+            resumable: boolean;
+            /** Format: int64 */
+            runtime_bytes_wasm: number;
+            /** Format: int64 */
+            runtime_bytes_webgpu: number;
+            sha256: string;
+            /** Format: int64 */
+            size_bytes: number;
+            url: string;
+            version: string;
+        };
+        VideoEditorSyncReuse: {
+            media_id: string;
+            source_id: string;
+        };
+        VideoEditorSyncSource: {
+            mime_type: string;
+            original_name: string;
+            sha256: string;
+            /** Format: int64 */
+            size_bytes: number;
+            source_id: string;
+        };
+        VideoEditorSyncStorage: {
+            /** Format: int64 */
+            limit_bytes: number | null;
+            /** Format: int64 */
+            remaining_bytes: number | null;
+            /** Format: int64 */
+            used_bytes: number;
+        };
+        VideoEffect: {
+            keyframes?: components["schemas"]["NumericKeyframe"][] | null;
+            /** @enum {string} */
+            type: "exposure" | "contrast" | "saturation" | "temperature" | "tint" | "blur" | "vignette";
+            /** Format: double */
+            value: number;
+        };
+        VideoPresentation: {
+            background_color: string;
+            border_color: string;
+            /** Format: double */
+            border_width: number;
+            /** Format: double */
+            corner_radius: number;
+            crop: components["schemas"]["CropRectangle"];
+            flip_x: boolean;
+            flip_y: boolean;
+            keyframes?: {
+                [key: string]: components["schemas"]["NumericKeyframe"][] | null;
+            };
+            /** Format: double */
+            opacity: number;
+            /** Format: double */
+            position_x: number;
+            /** Format: double */
+            position_y: number;
+            /** Format: double */
+            rotation: number;
+            /** Format: double */
+            scale: number;
+            /** Format: double */
+            shadow_blur: number;
+            /** Format: double */
+            shadow_opacity: number;
+        };
+        VideoPresentationOverride: {
+            background_color?: string;
+            border_color?: string;
+            /** Format: double */
+            border_width?: number;
+            /** Format: double */
+            corner_radius?: number;
+            crop?: components["schemas"]["CropRectangle"];
+            flip_x?: boolean;
+            flip_y?: boolean;
+            keyframes?: {
+                [key: string]: components["schemas"]["NumericKeyframe"][] | null;
+            };
+            /** Format: double */
+            opacity?: number;
+            /** Format: double */
+            position_x?: number;
+            /** Format: double */
+            position_y?: number;
+            /** Format: double */
+            rotation?: number;
+            /** Format: double */
+            scale?: number;
+            /** Format: double */
+            shadow_blur?: number;
+            /** Format: double */
+            shadow_opacity?: number;
+            visible?: boolean;
+        };
+        VideoProjectResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoProjectResponse.json
+             */
+            readonly $schema?: string;
+            can_edit: boolean;
+            cover_preview_media_id?: string;
+            created_at: string;
+            created_by_id: string;
+            document: components["schemas"]["Document"];
+            /** Format: int64 */
+            duration_ms: number;
+            id: string;
+            /** Format: int64 */
+            revision: number;
+            updated_at: string;
+            workspace_id: string;
+        };
+        VideoProjectRevisionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoProjectRevisionResponse.json
+             */
+            readonly $schema?: string;
+            cover_preview_media_id?: string;
+            document: components["schemas"]["Document"];
+            summary: components["schemas"]["VideoProjectRevisionSummary"];
+        };
+        VideoProjectRevisionSummary: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoProjectRevisionSummary.json
+             */
+            readonly $schema?: string;
+            actor: components["schemas"]["EditorRevisionActor"];
+            created_at: string;
+            expires_at?: string;
+            id: string;
+            kind: string;
+            name?: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        VideoProjectSummary: {
+            cover_preview_media_id?: string;
+            created_at: string;
+            /** Format: int64 */
+            duration_ms: number;
+            id: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            source_count: number;
+            title: string;
+            updated_at: string;
+        };
+        VideoReturnExport: {
+            /** Format: int64 */
+            duration_ms: number;
+            /** Format: int64 */
+            height: number;
+            media_id: string;
+            rendition_ids: string[] | null;
+            /** @enum {string} */
+            variant_id: "portrait" | "feed-portrait" | "square" | "landscape";
+            /** Format: int64 */
+            width: number;
+        };
+        VideoReturnResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoReturnResult.json
+             */
+            readonly $schema?: string;
+            exports: components["schemas"]["VideoReturnExport"][] | null;
+            project_id: string;
+        };
+        VideoVariant: {
+            background_color: string;
+            /** Format: int64 */
+            height: number;
+            /** @enum {string} */
+            id: "portrait" | "feed-portrait" | "square" | "landscape";
+            name: string;
+            safe_area: components["schemas"]["VideoVariantSafeAreaStruct"];
+            /** Format: int64 */
+            width: number;
+        };
+        VideoVariantSafeAreaStruct: {
+            /** Format: int64 */
+            bottom: number;
+            /** Format: int64 */
+            left: number;
+            /** Format: int64 */
+            right: number;
+            /** Format: int64 */
+            top: number;
+        };
         Viewport: {
             /** Format: int64 */
             height: number;
@@ -10909,6 +11764,39 @@ export interface components {
             pixel_ratio: number;
             /** Format: int64 */
             width: number;
+        };
+        VisualPresentationOverride: {
+            presentation?: components["schemas"]["VideoPresentationOverride"];
+            visible?: boolean;
+        };
+        VisualTrack: {
+            hidden: boolean;
+            id: string;
+            items: components["schemas"]["VisualTrackItem"][] | null;
+            locked: boolean;
+            name: string;
+        };
+        VisualTrackItem: {
+            /** Format: int64 */
+            duration_us: number;
+            id: string;
+            presentation: components["schemas"]["VideoPresentation"];
+            shape?: components["schemas"]["ShapeStyle"];
+            source_id?: string;
+            /** Format: int64 */
+            source_in_us?: number;
+            /** Format: double */
+            speed?: number;
+            style?: components["schemas"]["TextStyle"];
+            text?: string;
+            /** Format: int64 */
+            timeline_start_us: number;
+            /** @enum {string} */
+            type: "media" | "camera" | "text" | "shape" | "annotation";
+            variant_overrides?: {
+                [key: string]: components["schemas"]["VisualPresentationOverride"];
+            };
+            visible: boolean;
         };
         WorkspaceAccessAuditResponse: {
             action: string;
@@ -25936,6 +26824,930 @@ export interface operations {
             };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-video-editor-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoEditorConfigOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-video-editor-projects": {
+        parameters: {
+            query: {
+                workspace_id: string;
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListVideoProjectsOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-video-editor-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVideoProjectInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-video-editor-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-video-editor-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteVideoProjectOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-video-editor-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVideoProjectInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-video-editor-project-checkpoint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVideoProjectCheckpointInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectRevisionSummary"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-video-editor-project-revisions": {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListVideoProjectRevisionsOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-video-editor-project-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectRevisionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restore-video-editor-project-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreVideoProjectRevisionInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-video-editor-return-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVideoReturnTokenInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateVideoReturnTokenOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "complete-video-editor-return-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoReturnResult"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompleteVideoReturnTokenOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "consume-video-editor-return-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumeVideoReturnTokenOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "plan-video-editor-sync": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Active workspace ID */
+                "X-OpenPost-Workspace-ID": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanVideoEditorSyncInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVideoEditorSyncOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

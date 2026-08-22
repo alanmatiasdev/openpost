@@ -173,7 +173,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 
 	<main class="profile-shell py-6 sm:py-8">
 		{#if loadState === 'loading'}
-			<div class="grid min-h-[55dvh] place-items-center" aria-live="polite">
+			<div class="grid min-h-[55vh] place-items-center" aria-live="polite">
 				<div class="activity-loader" aria-label="Loading public profile">
 					{#each Array(16) as _, index (index)}
 						<i style:--delay={`${index * 45}ms`}></i>
@@ -181,7 +181,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				</div>
 			</div>
 		{:else if loadState === 'disabled'}
-			<div class="mx-auto grid min-h-[55dvh] max-w-xl place-items-center text-center">
+			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
 				<div>
 					<p class="text-sm font-medium text-primary">{m.public_profile_disabled_title()}</p>
 					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
@@ -190,7 +190,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				</div>
 			</div>
 		{:else if loadState === 'not-found'}
-			<div class="mx-auto grid min-h-[55dvh] max-w-xl place-items-center text-center">
+			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
 				<div>
 					<p class="text-sm font-medium text-primary">{m.public_profile_unavailable_title()}</p>
 					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
@@ -200,7 +200,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				</div>
 			</div>
 		{:else if loadState === 'error'}
-			<div class="mx-auto grid min-h-[55dvh] max-w-xl place-items-center text-center">
+			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
 				<div>
 					<p class="text-sm font-medium text-primary">{m.public_profile_error_title()}</p>
 					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">

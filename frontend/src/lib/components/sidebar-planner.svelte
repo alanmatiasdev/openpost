@@ -695,10 +695,8 @@
 		background-color: color-mix(in oklch, var(--sidebar-foreground) 22%, transparent);
 	}
 
-	@media (hover: hover) and (pointer: fine) {
-		.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb:hover,
-		.sidebar-planner-scrollbar::-webkit-scrollbar-thumb:hover {
-			background-color: color-mix(in oklch, var(--sidebar-foreground) 34%, transparent);
-		}
+	.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb:hover,
+	.sidebar-planner-scrollbar::-webkit-scrollbar-thumb:hover {
+		background-color: color-mix(in oklch, var(--sidebar-foreground) 34%, transparent);
 	}
 </style>
