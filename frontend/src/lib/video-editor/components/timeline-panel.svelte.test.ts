@@ -135,7 +135,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			new DragEvent('dragover', { bubbles: true, clientX: 100, clientY: 100, dataTransfer })
 		);
 		await nextAnimationFrame();
-		expect(videoClip.querySelector('[data-effect-drop-preview]')).not.toBeNull();
+		const videoPreview = videoClip.querySelector<HTMLElement>('[data-effect-drop-preview]');
+		expect(videoPreview).not.toBeNull();
+		expect(videoPreview?.className).toContain('oklch(0.66_0.14_45');
 		expect(titleClip.querySelector('[data-effect-drop-preview]')).not.toBeNull();
 		expect(musicClip.querySelector('[data-effect-drop-preview]')).toBeNull();
 		expect(lockedClip.querySelector('[data-effect-drop-preview]')).toBeNull();
