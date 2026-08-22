@@ -36,12 +36,21 @@
 	let urls = $state<Record<string, string>>({});
 	let viewport = $state<HTMLDivElement | null>(null);
 	let draftTransform = $state<ItemTransform | null>(null);
+	const activeTransition = $derived.by(() => {
+		for (const transition of transitionsStore.list) {
+			const state = transitionAtFrame(transition, timelineStore.currentFrame, editorSession.fps);
+			if (state) return state;
+		}
+		return null;
+	});
 	const activeItems = $derived.by(() =>
 		paintOrder(timelineStore.items, timelineStore.tracks).filter(
 			(item) =>
 				['video', 'image', 'text', 'subtitle'].includes(item.type) &&
-				timelineStore.currentFrame >= item.from &&
-				timelineStore.currentFrame < item.from + item.durationInFrames
+				((timelineStore.currentFrame >= item.from &&
+					timelineStore.currentFrame < item.from + item.durationInFrames) ||
+					item.id === activeTransition?.outgoing ||
+					item.id === activeTransition?.incoming)
 		)
 	);
 	const selectedItem = $derived(
@@ -72,12 +81,9 @@
 	});
 
 	function transitionOpacity(item: TimelineItem): number {
-		for (const transition of transitionsStore.list) {
-			const state = transitionAtFrame(transition, timelineStore.currentFrame, editorSession.fps);
-			if (!state) continue;
-			if (state.outgoing === item.id) return outgoingOpacity(state.type, state.progress);
-			if (state.incoming === item.id) return incomingOpacity(state.type, state.progress);
-		}
+		const state = activeTransition;
+		if (state?.outgoing === item.id) return outgoingOpacity(state.type, state.progress);
+		if (state?.incoming === item.id) return incomingOpacity(state.type, state.progress);
 		return 1;
 	}
 

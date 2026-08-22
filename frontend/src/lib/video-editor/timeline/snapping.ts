@@ -11,6 +11,7 @@ import type {
 	TimelineTrack,
 	TimelineTransition
 } from '../project/types';
+import { resolveTransitionWindow } from './transition-planner';
 
 export const BASE_SNAP_THRESHOLD_PIXELS = 8;
 
@@ -157,8 +158,10 @@ export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[]
 			!excluded.has(from.id) &&
 			!excluded.has(to.id)
 		) {
+			const window = resolveTransitionWindow(transition, from, to);
+			if (!window) continue;
 			targets.push({
-				frame: to.from + Math.ceil(transition.durationInFrames / 2),
+				frame: window.startFrame + Math.floor(window.durationInFrames / 2),
 				type: 'item-start',
 				itemId: to.id
 			});

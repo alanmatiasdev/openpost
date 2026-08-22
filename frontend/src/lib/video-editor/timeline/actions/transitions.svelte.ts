@@ -7,38 +7,53 @@
  * Ported from FreeCut (MIT) transition model, trimmed to two v1 types.
  */
 
-import type { TimelineTransition } from '../../project/types';
+import type { TimelineItem, TimelineTransition } from '../../project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
+import { canPreserveTransition, resolveTransitionWindow } from '../transition-planner';
 
 export { transitionsStore } from './transitions-store.svelte';
 
-function findEdgePair(fromItemId: string, toItemId: string): boolean {
+function findEdgePair(
+	fromItemId: string,
+	toItemId: string
+): { from: TimelineItem; to: TimelineItem } | null {
 	const from = timelineStore.itemById.get(fromItemId);
 	const to = timelineStore.itemById.get(toItemId);
-	if (!from || !to) return false;
-	if (from.trackId !== to.trackId) return false;
-	return Math.abs(from.from + from.durationInFrames - to.from) <= 1;
+	if (!from || !to || from.trackId !== to.trackId) return null;
+	return Math.abs(from.from + from.durationInFrames - to.from) <= 1 ? { from, to } : null;
 }
 
 export function addTransition(
 	fromItemId: string,
 	toItemId: string,
 	type: TimelineTransition['type'] = 'crossfade',
-	durationInFrames?: number
+	durationInFrames?: number,
+	alignment?: number
 ): string {
 	// SAFETY: execute returns the action's own string result unchanged.
 	return execute('ADD_TRANSITION', () => {
-		if (!findEdgePair(fromItemId, toItemId)) {
+		const pair = findEdgePair(fromItemId, toItemId);
+		if (!pair) {
 			throw new Error('Transitions need two touching clips on the same track');
 		}
 		const existing = transitionsStore.forItem(fromItemId) ?? transitionsStore.forItem(toItemId);
 		if (existing) throw new Error('Clips already have a transition here');
 		const frames = durationInFrames ?? Math.max(2, Math.round(timelineStore.fps / 2));
-		const id = crypto.randomUUID();
-		transitionsStore.list.push({ id, type, durationInFrames: frames, fromItemId, toItemId });
-		return id;
+		const transition: TimelineTransition = {
+			id: crypto.randomUUID(),
+			type,
+			durationInFrames: frames,
+			alignment,
+			fromItemId,
+			toItemId
+		};
+		if (!canPreserveTransition(transition, pair.from, pair.to, timelineStore.fps)) {
+			throw new Error('Clips do not have enough source handle for this transition');
+		}
+		transitionsStore.list.push(transition);
+		return transition.id;
 	}) as string;
 }
 
@@ -86,10 +101,9 @@ export function transitionAtFrame(
 	const from = timelineStore.itemById.get(transition.fromItemId);
 	const to = timelineStore.itemById.get(transition.toItemId);
 	if (!from || !to) return null;
-	const start = from.from + from.durationInFrames - transition.durationInFrames;
-	const end = start + transition.durationInFrames;
-	if (frame < start || frame >= end) return null;
-	const progress = Math.min(1, (frame - start) / Math.max(1, transition.durationInFrames));
+	const window = resolveTransitionWindow(transition, from, to);
+	if (!window || frame < window.startFrame || frame >= window.endFrame) return null;
+	const progress = Math.min(1, (frame - window.startFrame) / Math.max(1, window.durationInFrames));
 	void fpsForDuration;
 	return { outgoing: from.id, incoming: to.id, progress, type: transition.type };
 }

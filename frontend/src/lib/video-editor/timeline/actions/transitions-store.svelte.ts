@@ -7,6 +7,7 @@
 
 import type { TimelineItem, TimelineTransition } from '../../project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { calculateTransitionPortions } from '../transition-planner';
 
 const state = $state<{ transitions: TimelineTransition[] }>({ transitions: [] });
 
@@ -23,12 +24,14 @@ export const transitionsStore = {
 			if (t.fromItemId !== item.id) continue;
 			const from = timelineStore.itemById.get(t.fromItemId);
 			if (!from) continue;
-			const start = from.durationInFrames - t.durationInFrames;
+			const { leftPortion } = calculateTransitionPortions(t.durationInFrames, t.alignment);
+			const start = from.durationInFrames - leftPortion;
 			if (relativeFrame >= start) return t;
 		}
 		for (const t of state.transitions) {
 			if (t.toItemId !== item.id) continue;
-			if (relativeFrame < t.durationInFrames) return t;
+			const { rightPortion } = calculateTransitionPortions(t.durationInFrames, t.alignment);
+			if (relativeFrame < rightPortion) return t;
 		}
 		return null;
 	},

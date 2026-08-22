@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { transitionsStore } from './transitions-store.svelte';
 import {
 	activeValueAt,
 	interpolateAt,
@@ -31,6 +32,7 @@ describe('setKeyframe', () => {
 	beforeEach(() => {
 		timelineStore.__resetForTesting();
 		commandHistory.clearHistory();
+		transitionsStore.clear();
 		timelineStore._setItems([
 			{
 				id: 'a',
@@ -82,6 +84,33 @@ describe('setKeyframe', () => {
 	it('returns false and records nothing for a missing item', () => {
 		expect(setKeyframe('missing', 'opacity', 0, 1)).toBe(false);
 		expect(commandHistory.undoStack.length).toBe(0);
+	});
+
+	it('rejects keys outside clip bounds and inside transition-owned frames', () => {
+		const right: TimelineItem = {
+			id: 'right',
+			trackId: 't',
+			from: 160,
+			durationInFrames: 60,
+			label: '',
+			type: 'video'
+		};
+		timelineStore._setItems([...timelineStore.items, right]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 12,
+				fromItemId: 'a',
+				toItemId: right.id
+			}
+		]);
+
+		expect(setKeyframe('a', 'opacity', -1, 0)).toBe(false);
+		expect(setKeyframe('a', 'opacity', 60, 0)).toBe(false);
+		expect(setKeyframe('a', 'opacity', 54, 0)).toBe(false);
+		expect(setKeyframe('a', 'opacity', 53, 0)).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity').frames).toEqual([53]);
 	});
 
 	it('changes one outgoing segment to a configured spring and restores it on undo', () => {

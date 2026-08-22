@@ -84,6 +84,34 @@ describe('timeline snapping', () => {
 		expect(calculateMoveSnap(39, 20, targets, 4).snappedFrame).toBe(40);
 	});
 
+	it('uses the visual center of a cut-centered transition as its magnetic target', () => {
+		const left = item('left', 'visible', 0, 100);
+		const right = item('right', 'visible', 100, 100);
+		const targets = buildSnapTargets({
+			items: [left, right],
+			tracks,
+			transitions: [
+				{
+					id: 'transition',
+					type: 'crossfade',
+					durationInFrames: 20,
+					fromItemId: left.id,
+					toItemId: right.id
+				}
+			],
+			markers: [],
+			currentFrame: 0,
+			durationInFrames: 240,
+			fps: 30,
+			zoomLevel: 1
+		});
+
+		expect(targets).toContainEqual({ frame: 100, type: 'item-start', itemId: right.id });
+		expect(targets.some((target) => target.type === 'item-end' && target.itemId === left.id)).toBe(
+			false
+		);
+	});
+
 	it('uses a strict threshold so an edge exactly on the boundary stays unsnapped', () => {
 		expect(findNearestSnapTarget(10, [{ frame: 12, type: 'playhead' }], 2)).toBeNull();
 	});

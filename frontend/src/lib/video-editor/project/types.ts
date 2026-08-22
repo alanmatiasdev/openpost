@@ -246,6 +246,8 @@ export interface TimelineTransition {
 	id: string;
 	type: 'crossfade' | 'fade-black';
 	durationInFrames: number;
+	/** 0 starts at the cut, 0.5 centers on it, and 1 ends at the cut. */
+	alignment?: number;
 	fromItemId: string;
 	toItemId: string;
 }

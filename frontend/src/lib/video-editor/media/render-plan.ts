@@ -15,6 +15,7 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import { activeValueAt } from '../timeline/actions/keyframes';
+import { resolveTransitionWindow } from '../timeline/transition-planner';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
@@ -131,10 +132,12 @@ export function transitionBlendAtFrame(
 		const from = itemsById.get(transition.fromItemId);
 		const to = itemsById.get(transition.toItemId);
 		if (!from || !to) continue;
-		const start = from.from + from.durationInFrames - transition.durationInFrames;
-		const end = start + transition.durationInFrames;
-		if (frame < start || frame >= end) continue;
-		const progress = Math.min(1, (frame - start) / Math.max(1, transition.durationInFrames));
+		const window = resolveTransitionWindow(transition, from, to);
+		if (!window || frame < window.startFrame || frame >= window.endFrame) continue;
+		const progress = Math.min(
+			1,
+			(frame - window.startFrame) / Math.max(1, window.durationInFrames)
+		);
 		return { outgoingId: from.id, incomingId: to.id, progress, type: transition.type };
 	}
 	return null;

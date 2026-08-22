@@ -27,6 +27,53 @@ export function hasLinkedItems(items: TimelineItem[], itemId: string): boolean {
 	return getLinkedItemIds(items, itemId).length > 1;
 }
 
+/**
+ * Return only linked clips that still share one editable media window.
+ *
+ * A user can unlink clips by editing one side until it diverges. Keeping the
+ * synchronization check here prevents later trim, slip, slide, and rate edits
+ * from overwriting that intentional offset.
+ *
+ * Ported from FreeCut (MIT) - timeline/utils/linked-items.ts.
+ */
+export function getSynchronizedLinkedItems(items: TimelineItem[], itemId: string): TimelineItem[] {
+	const linkedItems = getLinkedItems(items, itemId);
+	const anchor = linkedItems.find((item) => item.id === itemId);
+	if (!anchor) return [];
+
+	return linkedItems.filter(
+		(item) =>
+			item.id === anchor.id ||
+			(item.from === anchor.from &&
+				item.durationInFrames === anchor.durationInFrames &&
+				(item.sourceStart ?? null) === (anchor.sourceStart ?? null) &&
+				(item.sourceEnd ?? null) === (anchor.sourceEnd ?? null) &&
+				(item.speed ?? 1) === (anchor.speed ?? 1))
+	);
+}
+
+/** Find synchronized partners for both sides of one cut on the same companion track. */
+export function getSynchronizedLinkedCounterpartPair(
+	items: TimelineItem[],
+	leftId: string,
+	rightId: string
+): { leftCounterpart: TimelineItem; rightCounterpart: TimelineItem } | null {
+	const leftCounterparts = getSynchronizedLinkedItems(items, leftId).filter(
+		(item) => item.id !== leftId
+	);
+	const rightCounterparts = getSynchronizedLinkedItems(items, rightId).filter(
+		(item) => item.id !== rightId
+	);
+
+	for (const leftCounterpart of leftCounterparts) {
+		const rightCounterpart = rightCounterparts.find(
+			(item) => item.trackId === leftCounterpart.trackId && item.type === leftCounterpart.type
+		);
+		if (rightCounterpart) return { leftCounterpart, rightCounterpart };
+	}
+	return null;
+}
+
 /** Collapse a selection to one anchor id per linked group (input order kept). */
 export function getUniqueLinkedItemAnchorIds(items: TimelineItem[], itemIds: string[]): string[] {
 	const anchors: string[] = [];

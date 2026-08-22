@@ -196,23 +196,23 @@ describe('transitionBlendAtFrame', () => {
 	];
 
 	it('returns null outside the transition window', () => {
-		expect(transitionBlendAtFrame(transitions, clips, 79)).toBeNull();
-		expect(transitionBlendAtFrame(transitions, clips, 100)).toBeNull();
+		expect(transitionBlendAtFrame(transitions, clips, 89)).toBeNull();
+		expect(transitionBlendAtFrame(transitions, clips, 110)).toBeNull();
 	});
 
 	it('reports progress across the window', () => {
-		expect(transitionBlendAtFrame(transitions, clips, 80)).toMatchObject({
+		expect(transitionBlendAtFrame(transitions, clips, 90)).toMatchObject({
 			outgoingId: 'left',
 			incomingId: 'right',
 			progress: 0
 		});
-		expect(transitionBlendAtFrame(transitions, clips, 90)).toMatchObject({ progress: 0.5 });
-		expect(transitionBlendAtFrame(transitions, clips, 99)).toMatchObject({ progress: 0.95 });
+		expect(transitionBlendAtFrame(transitions, clips, 100)).toMatchObject({ progress: 0.5 });
+		expect(transitionBlendAtFrame(transitions, clips, 109)).toMatchObject({ progress: 0.95 });
 	});
 
 	it('ignores transitions whose items are gone', () => {
 		const orphaned: TimelineTransition[] = [{ ...transitions[0]!, toItemId: 'missing' }];
-		expect(transitionBlendAtFrame(orphaned, clips, 90)).toBeNull();
+		expect(transitionBlendAtFrame(orphaned, clips, 100)).toBeNull();
 	});
 });
 

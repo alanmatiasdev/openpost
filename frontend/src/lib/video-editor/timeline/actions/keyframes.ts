@@ -22,6 +22,17 @@ import type {
 import { applyEasing, applyEasingConfig } from '../easing';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
+import { isFrameInTransitionRegion } from '../edit-constraints';
+import { transitionsStore } from './transitions-store.svelte';
+
+function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
+	return (
+		Number.isInteger(relativeFrame) &&
+		relativeFrame >= 0 &&
+		relativeFrame < item.durationInFrames &&
+		!isFrameInTransitionRegion(relativeFrame, item, transitionsStore.list)
+	);
+}
 
 /**
  * Interpolate `property` at an item-relative frame. Linear between
@@ -71,7 +82,7 @@ export function setKeyframe(
 ): boolean {
 	return execute('SET_KEYFRAME', () => {
 		const item = timelineStore.itemById.get(itemId);
-		if (!item) return false;
+		if (!item || !canWriteKeyframe(item, frame)) return false;
 		const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, frame, value);
 		timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);
 		return true;
@@ -98,6 +109,7 @@ export function setAnimatedProperty(
 		const relativeFrame = absoluteFrame - item.from;
 		const track = item.keyframes?.[property];
 		if (track || autoKeyEnabled) {
+			if (!canWriteKeyframe(item, relativeFrame)) return false;
 			const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, relativeFrame, value);
 			timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);
 			return true;
@@ -121,12 +133,20 @@ export function setAnimatedProperties(
 		}
 		let keyframes = item.keyframes;
 		let patch: Partial<TimelineItem> = {};
+		const relativeFrame = absoluteFrame - item.from;
+		const shouldWriteKey = Object.entries(values).some(([rawProperty, value]) => {
+			if (value === undefined) return false;
+			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
+			const property = rawProperty as KeyframeProperty;
+			return item.keyframes?.[property] !== undefined || isAutoKeyEnabled(property);
+		});
+		if (shouldWriteKey && !canWriteKeyframe(item, relativeFrame)) return false;
 		for (const [rawProperty, value] of Object.entries(values)) {
 			if (value === undefined) continue;
 			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
 			const property = rawProperty as KeyframeProperty;
 			if (item.keyframes?.[property] || isAutoKeyEnabled(property)) {
-				keyframes = upsertTrack(keyframes ?? {}, property, absoluteFrame - item.from, value);
+				keyframes = upsertTrack(keyframes ?? {}, property, relativeFrame, value);
 			} else {
 				patch = mergeItemPatches(patch, basePropertyPatch({ ...item, ...patch }, property, value));
 			}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '../project/types';
 import {
+	planLinkedMoveGesture,
+	planLinkedSlipGesture,
 	planRateStretchGesture,
 	planRollingTrimGesture,
 	planSlideGesture,
@@ -256,5 +258,270 @@ describe('timeline edit gestures', () => {
 			moves: [],
 			snapTarget: { frame: 150, type: 'item-start', itemId: 'next' }
 		});
+	});
+
+	it('trims synchronized linked media with one shared constrained amount', () => {
+		const video = mediaItem({ id: 'video', linkedGroupId: 'group' });
+		const audio = mediaItem({
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			linkedGroupId: 'group'
+		});
+		expect(planTrimGesture(video, 'start', 10, [video, audio], 30, [], 2)).toEqual({
+			patch: { from: 110, durationInFrames: 50, sourceStart: 40 },
+			snapTarget: null,
+			linkedPatches: [
+				{
+					id: 'audio',
+					patch: { from: 110, durationInFrames: 50, sourceStart: 40 }
+				}
+			]
+		});
+	});
+
+	it('moves synchronized linked media by one snapped timeline delta', () => {
+		const video = mediaItem({ id: 'video', linkedGroupId: 'group' });
+		const audio = mediaItem({
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			linkedGroupId: 'group'
+		});
+		expect(planLinkedMoveGesture(video, 125, [video, audio])).toEqual([
+			{ id: 'video', from: 125 },
+			{ id: 'audio', from: 125 }
+		]);
+	});
+
+	it('slips synchronized linked media in one source-space edit', () => {
+		const video = mediaItem({ id: 'video', linkedGroupId: 'group', sourceDuration: 240 });
+		const audio = mediaItem({
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			linkedGroupId: 'group',
+			sourceDuration: 100
+		});
+		expect(planLinkedSlipGesture(video, -30, [video, audio], 30)).toEqual([
+			{ id: 'video', patch: { sourceStart: 40, sourceEnd: 100 } },
+			{ id: 'audio', patch: { sourceStart: 40, sourceEnd: 100 } }
+		]);
+	});
+
+	it('clamps a slip before it consumes a transition source handle', () => {
+		const left = mediaItem({
+			id: 'left',
+			from: 0,
+			sourceStart: 0,
+			sourceEnd: 60,
+			sourceDuration: 120
+		});
+		const right = mediaItem({
+			id: 'right',
+			from: 60,
+			sourceStart: 60,
+			sourceEnd: 120,
+			sourceDuration: 180
+		});
+		const transition = {
+			id: 'transition',
+			type: 'crossfade' as const,
+			durationInFrames: 20,
+			fromItemId: left.id,
+			toItemId: right.id
+		};
+		expect(planLinkedSlipGesture(right, 100, [left, right], 30, [transition])).toEqual([
+			{ id: 'right', patch: { sourceStart: 10, sourceEnd: 70 } }
+		]);
+	});
+
+	it('rolls synchronized companion cuts together', () => {
+		const leftVideo = mediaItem({
+			id: 'left-video',
+			from: 0,
+			durationInFrames: 60,
+			sourceStart: 0,
+			sourceEnd: 60,
+			linkedGroupId: 'left'
+		});
+		const leftAudio = mediaItem({
+			...leftVideo,
+			id: 'left-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const rightVideo = mediaItem({
+			id: 'right-video',
+			from: 60,
+			sourceStart: 60,
+			sourceEnd: 120,
+			linkedGroupId: 'right'
+		});
+		const rightAudio = mediaItem({
+			...rightVideo,
+			id: 'right-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const result = planRollingTrimGesture(
+			leftVideo,
+			rightVideo,
+			5,
+			[leftVideo, leftAudio, rightVideo, rightAudio],
+			30,
+			[],
+			2
+		);
+		expect(result?.linkedPatches).toEqual([
+			{
+				id: 'left-audio',
+				patch: { durationInFrames: 65, sourceEnd: 65 }
+			},
+			{
+				id: 'right-audio',
+				patch: { from: 65, durationInFrames: 55, sourceStart: 65 }
+			}
+		]);
+	});
+
+	it('keeps a transition attached and its keyframes outside the blend region', () => {
+		const left = mediaItem({
+			id: 'left',
+			from: 0,
+			durationInFrames: 60,
+			sourceStart: 0,
+			sourceEnd: 60,
+			keyframes: { opacity: { frames: [40], values: [1] } }
+		});
+		const right = mediaItem({ id: 'right', from: 60, sourceStart: 60, sourceEnd: 120 });
+		const transition = {
+			id: 'transition',
+			type: 'crossfade' as const,
+			durationInFrames: 12,
+			fromItemId: left.id,
+			toItemId: right.id
+		};
+
+		expect(planTrimGesture(left, 'end', -10, [left, right], 30, [], 2, [transition]).patch).toEqual(
+			{ durationInFrames: 60, sourceEnd: 60 }
+		);
+		expect(
+			planRollingTrimGesture(left, right, -20, [left, right], 30, [], 2, [transition])?.leftPatch
+		).toEqual({ durationInFrames: 47, sourceEnd: 47 });
+	});
+
+	it('rate stretches linked media, scales keys, and ripples both linked tracks', () => {
+		const video = mediaItem({
+			id: 'video',
+			from: 0,
+			durationInFrames: 100,
+			sourceStart: 0,
+			sourceEnd: 100,
+			sourceDuration: 200,
+			linkedGroupId: 'current',
+			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } }
+		});
+		const audio = mediaItem({
+			...video,
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			keyframes: { volume: { frames: [25], values: [0.5] } }
+		});
+		const nextVideo = mediaItem({
+			id: 'next-video',
+			from: 100,
+			linkedGroupId: 'next'
+		});
+		const nextAudio = mediaItem({
+			...nextVideo,
+			id: 'next-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const plan = planRateStretchGesture(
+			video,
+			100,
+			[video, audio, nextVideo, nextAudio],
+			30,
+			[],
+			2
+		);
+
+		expect(plan?.patch).toMatchObject({
+			durationInFrames: 200,
+			speed: 0.5,
+			keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
+		});
+		expect(plan?.linkedPatches).toEqual([
+			{
+				id: 'audio',
+				patch: {
+					durationInFrames: 200,
+					speed: 0.5,
+					keyframes: { volume: { frames: [50], values: [0.5] } }
+				}
+			}
+		]);
+		expect(plan?.moves).toEqual([
+			{ id: 'next-video', from: 200 },
+			{ id: 'next-audio', from: 200 }
+		]);
+	});
+
+	it('slides the synchronized companion and both cuts on its track', () => {
+		const chainItem = (
+			id: string,
+			trackId: string,
+			type: TimelineItem['type'],
+			from: number,
+			linkedGroupId: string
+		) =>
+			mediaItem({
+				id,
+				trackId,
+				type,
+				from,
+				durationInFrames: 100,
+				mediaId: 'media',
+				originId: 'origin',
+				linkedGroupId,
+				sourceStart: from,
+				sourceEnd: from + 100,
+				sourceDuration: 400
+			});
+		const leftVideo = chainItem('left-video', 'video', 'video', 0, 'left');
+		const middleVideo = chainItem('middle-video', 'video', 'video', 100, 'middle');
+		const rightVideo = chainItem('right-video', 'video', 'video', 200, 'right');
+		const leftAudio = chainItem('left-audio', 'audio', 'audio', 0, 'left');
+		const middleAudio = chainItem('middle-audio', 'audio', 'audio', 100, 'middle');
+		const rightAudio = chainItem('right-audio', 'audio', 'audio', 200, 'right');
+
+		const plan = planSlideGesture(
+			middleVideo,
+			leftVideo,
+			rightVideo,
+			20,
+			[leftVideo, middleVideo, rightVideo, leftAudio, middleAudio, rightAudio],
+			30,
+			[],
+			2
+		);
+
+		expect(plan.linkedPatches).toEqual([
+			{
+				id: 'middle-audio',
+				patch: { from: 120, sourceStart: 120, sourceEnd: 220 }
+			},
+			{
+				id: 'left-audio',
+				patch: { durationInFrames: 120, sourceEnd: 120 }
+			},
+			{
+				id: 'right-audio',
+				patch: { from: 220, durationInFrames: 80, sourceStart: 220 }
+			}
+		]);
 	});
 });

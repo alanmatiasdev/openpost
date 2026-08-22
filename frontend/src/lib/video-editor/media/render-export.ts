@@ -462,7 +462,12 @@ export class TimelineFrameRenderer {
 
 		const blend = transitionBlendAtFrame(this.transitions, this.itemsById, frame);
 		for (const item of this.orderedItems) {
-			if (!isVisibleAtFrame(item, frame)) continue;
+			if (
+				!isVisibleAtFrame(item, frame) &&
+				item.id !== blend?.outgoingId &&
+				item.id !== blend?.incomingId
+			)
+				continue;
 			const resolvedItem = scaleItemForCanvas(
 				resolveAnimatedItemAt(item, frame),
 				this.width / this.project.metadata.width,

@@ -19,7 +19,11 @@ function clip(from: number, duration = 60): TimelineItem {
 		durationInFrames: duration,
 		label: 'clip',
 		type: 'video',
-		mediaId: 'media-1'
+		mediaId: 'media-1',
+		sourceStart: 30,
+		sourceEnd: 90,
+		sourceDuration: 120,
+		sourceFps: 30
 	};
 }
 
@@ -57,19 +61,25 @@ describe('transitions', () => {
 		expect(transitionsStore.list.length).toBe(1);
 	});
 
+	it('rejects a transition when either clip lacks the required hidden source', () => {
+		const [left, right] = setup();
+		timelineStore._updateItems([{ id: right.id, patch: { sourceStart: 0 } }]);
+		expect(() => addTransition(left.id, right.id, 'crossfade', 15)).toThrow('enough source handle');
+	});
+
 	it('computes crossfade progress across the overlap window', () => {
 		const [left, right] = setup();
 		addTransition(left.id, right.id, 'crossfade', 30);
 
-		const before = transitionAtFrame(transitionsStore.list[0]!, 29, 30);
+		const before = transitionAtFrame(transitionsStore.list[0]!, 44, 30);
 		expect(before).toBeNull();
 
-		const mid = transitionAtFrame(transitionsStore.list[0]!, 45, 30);
+		const mid = transitionAtFrame(transitionsStore.list[0]!, 60, 30);
 		expect(mid?.progress).toBeCloseTo(0.5);
 		expect(outgoingOpacity('crossfade', mid!.progress)).toBeCloseTo(0.5);
 		expect(incomingOpacity('crossfade', mid!.progress)).toBeCloseTo(0.5);
 
-		// Past the window (frames 30..60) there is no blend.
+		// Past the centered window (frames 45..75) there is no blend.
 		const after = transitionAtFrame(transitionsStore.list[0]!, 90, 30);
 		expect(after).toBeNull();
 	});

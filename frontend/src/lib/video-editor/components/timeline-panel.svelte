@@ -38,10 +38,11 @@
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
 	import {
+		planLinkedMoveGesture,
+		planLinkedSlipGesture,
 		planRateStretchGesture,
 		planRollingTrimGesture,
 		planSlideGesture,
-		planSlipGesture,
 		planTrimGesture
 	} from '$lib/video-editor/timeline/edit-gesture';
 	import {
@@ -69,6 +70,7 @@
 		type TrackKind
 	} from '$lib/video-editor/timeline/actions/tracks';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import { getSynchronizedLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
 	import { Button } from '$lib/components/ui/button';
 	import BetweenHorizontalEndIcon from '@lucide/svelte/icons/between-horizontal-end';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
@@ -140,6 +142,7 @@
 		startX: number;
 		original: TimelineItem;
 		beforeSnapshot: TimelineSnapshot;
+		editItems: TimelineItem[];
 		snapTargets: SnapTarget[];
 		rollingNeighbor: TimelineItem | null;
 		slideLeft: TimelineItem | null;
@@ -339,6 +342,17 @@
 		};
 	}
 
+	function unlockedEditItems(snapshot: TimelineSnapshot): TimelineItem[] {
+		const lockedTrackIds = new Set(
+			snapshot.tracks.filter((track) => track.locked).map((track) => track.id)
+		);
+		return snapshot.items.map((item) =>
+			lockedTrackIds.has(item.trackId) && item.linkedGroupId
+				? { ...item, linkedGroupId: undefined }
+				: item
+		);
+	}
+
 	function startDrag(event: PointerEvent, id: string, requestedKind: TimelineDragKind): void {
 		if (event.button !== 0) return;
 		event.stopPropagation();
@@ -358,8 +372,13 @@
 				: null;
 		if ((kind === 'trim-start' || kind === 'trim-end') && event.altKey && !rollingNeighbor) return;
 		const slideNeighbors = kind === 'slide' ? findSlideNeighbors(item) : null;
+		const beforeSnapshot = captureSnapshot();
+		const editItems = unlockedEditItems(beforeSnapshot);
+		const synchronizedIds = getSynchronizedLinkedItems(editItems, id).map(
+			(candidate) => candidate.id
+		);
 		const excludedIds = [
-			id,
+			...synchronizedIds,
 			...(rollingNeighbor ? [rollingNeighbor.id] : []),
 			...(slideNeighbors?.left ? [slideNeighbors.left.id] : []),
 			...(slideNeighbors?.right ? [slideNeighbors.right.id] : [])
@@ -371,7 +390,8 @@
 			pointerId: event.pointerId,
 			startX: event.clientX,
 			original: structuredClone(item),
-			beforeSnapshot: captureSnapshot(),
+			beforeSnapshot,
+			editItems,
 			snapTargets: snapTargetsFor(excludedIds),
 			rollingNeighbor: rollingNeighbor ? structuredClone(rollingNeighbor) : null,
 			slideLeft: slideNeighbors?.left ? structuredClone(slideNeighbors.left) : null,
@@ -419,26 +439,32 @@
 				: { snappedFrame: proposed, snapTarget: null, didSnap: false };
 			const from = Math.max(0, snap.snappedFrame);
 			activeSnapTarget = from === snap.snappedFrame ? snap.snapTarget : null;
-			timelineStore._moveItems([{ id: drag.id, from }]);
+			timelineStore._moveItems(planLinkedMoveGesture(drag.original, from, drag.editItems));
 			return;
 		}
 		if (drag.kind === 'slip') {
 			activeSnapTarget = null;
-			const patch = planSlipGesture(drag.original, deltaFrames, fps);
-			if (patch) timelineStore._updateItems([{ id: drag.id, patch }]);
+			const updates = planLinkedSlipGesture(
+				drag.original,
+				deltaFrames,
+				drag.editItems,
+				fps,
+				drag.beforeSnapshot.transitions
+			);
+			if (updates.length > 0) timelineStore._updateItems(updates);
 			return;
 		}
 		if (drag.kind === 'slide') {
-			const excluded = new Set([drag.id, drag.slideLeft?.id ?? '', drag.slideRight?.id ?? '']);
 			const plan = planSlideGesture(
 				drag.original,
 				drag.slideLeft,
 				drag.slideRight,
 				deltaFrames,
-				drag.beforeSnapshot.items.filter((item) => !excluded.has(item.id)),
+				drag.editItems,
 				fps,
 				timelineStore.snapEnabled ? drag.snapTargets : [],
-				snapThreshold()
+				snapThreshold(),
+				drag.beforeSnapshot.transitions
 			);
 			activeSnapTarget = plan.snapTarget;
 			timelineStore._updateItems([
@@ -448,7 +474,8 @@
 					: []),
 				...(drag.slideRight && plan.rightPatch
 					? [{ id: drag.slideRight.id, patch: plan.rightPatch }]
-					: [])
+					: []),
+				...(plan.linkedPatches ?? [])
 			]);
 			return;
 		}
@@ -456,15 +483,17 @@
 			const plan = planRateStretchGesture(
 				drag.original,
 				deltaFrames,
-				drag.beforeSnapshot.items,
+				drag.editItems,
 				fps,
 				timelineStore.snapEnabled ? drag.snapTargets : [],
-				snapThreshold()
+				snapThreshold(),
+				drag.beforeSnapshot.transitions
 			);
 			if (!plan) return;
 			activeSnapTarget = plan.snapTarget;
 			timelineStore._updateItems([
 				{ id: drag.id, patch: plan.patch },
+				...(plan.linkedPatches ?? []),
 				...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
 			]);
 			return;
@@ -476,16 +505,18 @@
 				left,
 				right,
 				deltaFrames,
-				timelineStore.items.filter((item) => item.id !== left.id && item.id !== right.id),
+				drag.editItems,
 				fps,
 				timelineStore.snapEnabled ? drag.snapTargets : [],
-				snapThreshold()
+				snapThreshold(),
+				drag.beforeSnapshot.transitions
 			);
 			if (plan) {
 				activeSnapTarget = plan.snapTarget;
 				timelineStore._updateItems([
 					{ id: left.id, patch: plan.leftPatch },
-					{ id: right.id, patch: plan.rightPatch }
+					{ id: right.id, patch: plan.rightPatch },
+					...(plan.linkedPatches ?? [])
 				]);
 			}
 			return;
@@ -495,13 +526,14 @@
 			drag.original,
 			handle,
 			deltaFrames,
-			timelineStore.items.filter((item) => item.id !== drag?.id),
+			drag.editItems,
 			fps,
 			timelineStore.snapEnabled ? drag.snapTargets : [],
-			snapThreshold()
+			snapThreshold(),
+			drag.beforeSnapshot.transitions
 		);
 		activeSnapTarget = plan.snapTarget;
-		timelineStore._updateItems([{ id: drag.id, patch: plan.patch }]);
+		timelineStore._updateItems([{ id: drag.id, patch: plan.patch }, ...(plan.linkedPatches ?? [])]);
 	}
 
 	function commandTypeFor(kind: TimelineDragKind, rolling = false): string {
@@ -567,34 +599,39 @@
 		const direction = event.key === 'ArrowLeft' ? -1 : 1;
 		const delta = direction * (event.shiftKey ? 10 : 1);
 		const before = captureSnapshot();
+		const editItems = unlockedEditItems(before);
 		if (kind === 'move') {
-			timelineStore._moveItems([{ id: item.id, from: Math.max(0, item.from + delta) }]);
+			timelineStore._moveItems(
+				planLinkedMoveGesture(item, Math.max(0, item.from + delta), editItems)
+			);
 		} else if (kind === 'slip') {
-			const patch = planSlipGesture(item, delta, fps);
-			if (patch) timelineStore._updateItems([{ id: item.id, patch }]);
+			const updates = planLinkedSlipGesture(item, delta, editItems, fps, before.transitions);
+			if (updates.length > 0) timelineStore._updateItems(updates);
 		} else if (kind === 'slide') {
 			const { left, right } = findSlideNeighbors(item);
-			const excluded = new Set([item.id, left?.id ?? '', right?.id ?? '']);
 			const plan = planSlideGesture(
 				item,
 				left,
 				right,
 				delta,
-				before.items.filter((candidate) => !excluded.has(candidate.id)),
+				editItems,
 				fps,
 				[],
-				1
+				1,
+				before.transitions
 			);
 			timelineStore._updateItems([
 				{ id: item.id, patch: plan.itemPatch },
 				...(left && plan.leftPatch ? [{ id: left.id, patch: plan.leftPatch }] : []),
-				...(right && plan.rightPatch ? [{ id: right.id, patch: plan.rightPatch }] : [])
+				...(right && plan.rightPatch ? [{ id: right.id, patch: plan.rightPatch }] : []),
+				...(plan.linkedPatches ?? [])
 			]);
 		} else if (kind === 'rate-stretch') {
-			const plan = planRateStretchGesture(item, delta, before.items, fps, [], 1);
+			const plan = planRateStretchGesture(item, delta, editItems, fps, [], 1, before.transitions);
 			if (plan) {
 				timelineStore._updateItems([
 					{ id: item.id, patch: plan.patch },
+					...(plan.linkedPatches ?? []),
 					...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
 				]);
 			}
@@ -607,17 +644,17 @@
 				left,
 				right,
 				delta,
-				timelineStore.items.filter(
-					(candidate) => candidate.id !== left.id && candidate.id !== right.id
-				),
+				editItems,
 				fps,
 				[],
-				1
+				1,
+				before.transitions
 			);
 			if (plan) {
 				timelineStore._updateItems([
 					{ id: left.id, patch: plan.leftPatch },
-					{ id: right.id, patch: plan.rightPatch }
+					{ id: right.id, patch: plan.rightPatch },
+					...(plan.linkedPatches ?? [])
 				]);
 			}
 		} else {
@@ -625,12 +662,16 @@
 				item,
 				kind === 'trim-start' ? 'start' : 'end',
 				delta,
-				timelineStore.items.filter((candidate) => candidate.id !== item.id),
+				editItems,
 				fps,
 				[],
-				1
+				1,
+				before.transitions
 			);
-			timelineStore._updateItems([{ id: item.id, patch: plan.patch }]);
+			timelineStore._updateItems([
+				{ id: item.id, patch: plan.patch },
+				...(plan.linkedPatches ?? [])
+			]);
 		}
 		if (!snapshotsEqual(before, captureSnapshot())) {
 			commandHistory.addUndoEntry({ type: commandTypeFor(kind, event.altKey) }, before);
