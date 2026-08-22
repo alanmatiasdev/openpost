@@ -27,7 +27,8 @@ import { saveExportFile } from '../workspace-fs/exports';
 import type { Project, TimelineItem } from '../project/types';
 import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
-import { activeValueAt } from '../timeline/actions/keyframes';
+import { resolveAnimatedItemAt } from '../timeline/animated-properties';
+import { mediaDrawGeometry } from './render-geometry';
 import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
 	frameToSourceSeconds,
@@ -192,9 +193,7 @@ async function feedEncodedAudio(
 	}
 }
 
-function baseOpacity(item: TimelineItem, frame: number): number {
-	const keyframed = activeValueAt(item, 'opacity', frame);
-	if (keyframed !== null) return Math.min(1, Math.max(0, keyframed));
+function baseOpacity(item: TimelineItem): number {
 	return Math.min(1, Math.max(0, item.transform?.opacity ?? 1));
 }
 
@@ -209,17 +208,83 @@ function drawTransformed(
 	alpha: number
 ): void {
 	const transform = item.transform ?? {};
-	const fit = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-	const drawWidth = sourceWidth * fit;
-	const drawHeight = sourceHeight * fit;
-	const centerX = canvasWidth / 2 + (transform.x ?? 0) * canvasWidth;
-	const centerY = canvasHeight / 2 + (transform.y ?? 0) * canvasHeight;
+	const geometry = mediaDrawGeometry(item, sourceWidth, sourceHeight, canvasWidth, canvasHeight);
 	ctx.save();
 	ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
-	ctx.translate(centerX, centerY);
+	ctx.translate(geometry.centerX, geometry.centerY);
 	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
 	ctx.scale(transform.flipHorizontal === true ? -1 : 1, transform.flipVertical === true ? -1 : 1);
-	ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+	const cornerRadius = Math.min(
+		Math.max(0, transform.cornerRadius ?? 0),
+		geometry.drawWidth / 2,
+		geometry.drawHeight / 2
+	);
+	if (cornerRadius > 0) {
+		ctx.beginPath();
+		ctx.roundRect(
+			-geometry.anchorX,
+			-geometry.anchorY,
+			geometry.drawWidth,
+			geometry.drawHeight,
+			cornerRadius
+		);
+		ctx.clip();
+	}
+	ctx.drawImage(
+		image,
+		geometry.sourceX,
+		geometry.sourceY,
+		geometry.sourceWidth,
+		geometry.sourceHeight,
+		-geometry.anchorX,
+		-geometry.anchorY,
+		geometry.drawWidth,
+		geometry.drawHeight
+	);
+	ctx.restore();
+}
+
+function drawTextItem(
+	ctx: OffscreenCanvasRenderingContext2D,
+	item: TimelineItem,
+	canvasWidth: number,
+	canvasHeight: number
+): void {
+	const transform = item.transform ?? {};
+	const width = Math.max(1, transform.width ?? canvasWidth * 0.7);
+	const height = Math.max(1, transform.height ?? canvasHeight * 0.3);
+	const centerX = canvasWidth / 2 + (transform.x ?? 0);
+	const centerY = canvasHeight / 2 + (transform.y ?? 0);
+	const fontSize = item.fontSize ?? Math.round(canvasHeight / 15);
+	ctx.save();
+	ctx.globalAlpha = Math.min(1, Math.max(0, transform.opacity ?? 1));
+	ctx.translate(centerX, centerY);
+	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
+	ctx.textAlign = item.textAlign ?? 'center';
+	ctx.textBaseline = 'middle';
+	ctx.font = `${item.fontWeight ?? 600} ${fontSize}px ${item.fontFamily ?? 'sans-serif'}`;
+	if (item.backgroundColor) {
+		ctx.fillStyle = item.backgroundColor;
+		ctx.beginPath();
+		ctx.roundRect(-width / 2, -height / 2, width, height, item.borderRadius ?? 0);
+		ctx.fill();
+	}
+	if (item.textShadow) {
+		ctx.shadowColor = item.textShadow.color;
+		ctx.shadowBlur = item.textShadow.blur;
+		ctx.shadowOffsetX = item.textShadow.offsetX;
+		ctx.shadowOffsetY = item.textShadow.offsetY;
+	}
+	ctx.lineWidth = item.strokeWidth ?? 0;
+	ctx.strokeStyle = item.strokeColor ?? '#000000';
+	ctx.fillStyle = item.color ?? '#ffffff';
+	const lines = (item.text ?? item.label).split('\n');
+	const lineHeight = fontSize * (item.lineHeight ?? 1.2);
+	for (const [index, line] of lines.entries()) {
+		const y = (index - (lines.length - 1) / 2) * lineHeight;
+		if ((item.strokeWidth ?? 0) > 0) ctx.strokeText(line, 0, y, width);
+		ctx.fillText(line, 0, y, width);
+	}
 	ctx.restore();
 }
 
@@ -325,7 +390,7 @@ export async function renderMultiTrackVideo(
 
 	const backgroundColor = project.metadata.backgroundColor ?? '#000000';
 	const orderedItems = paintOrder(items, tracks).filter(
-		(item) => item.type === 'video' || item.type === 'image'
+		(item) => item.type === 'video' || item.type === 'image' || item.type === 'text'
 	);
 	const subtitleItems = items.filter((item) => item.type === 'subtitle');
 
@@ -359,8 +424,14 @@ export async function renderMultiTrackVideo(
 
 			const blend = transitionBlendAtFrame(transitions, itemsById, frame);
 			for (const item of orderedItems) {
-				if (!isVisibleAtFrame(item, frame) || !item.mediaId) continue;
-				let alpha = baseOpacity(item, frame);
+				if (!isVisibleAtFrame(item, frame)) continue;
+				const resolvedItem = resolveAnimatedItemAt(item, frame);
+				if (resolvedItem.type === 'text') {
+					drawTextItem(ctx, resolvedItem, width, height);
+					continue;
+				}
+				if (!resolvedItem.mediaId) continue;
+				let alpha = baseOpacity(resolvedItem);
 				if (blend) {
 					if (item.id === blend.outgoingId) {
 						alpha *= outgoingOpacity(blend.type, blend.progress);
@@ -370,8 +441,8 @@ export async function renderMultiTrackVideo(
 				}
 				if (alpha <= 0) continue;
 
-				if (item.type === 'video') {
-					const decoder = await getDecoder(item.mediaId);
+				if (resolvedItem.type === 'video') {
+					const decoder = await getDecoder(resolvedItem.mediaId);
 					if (!decoder) continue;
 					const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, fps));
 					if (!wrapped) continue;
@@ -380,20 +451,29 @@ export async function renderMultiTrackVideo(
 						wrapped.canvas,
 						wrapped.canvas.width,
 						wrapped.canvas.height,
-						item,
+						resolvedItem,
 						width,
 						height,
 						alpha
 					);
 				} else {
-					let bitmap = imageCache.get(item.mediaId);
+					let bitmap = imageCache.get(resolvedItem.mediaId);
 					if (!bitmap) {
-						const media = mediaPool.get(item.mediaId);
+						const media = mediaPool.get(resolvedItem.mediaId);
 						if (!media) continue;
 						bitmap = await createImageBitmap(await resolveMediaBlob(media));
-						imageCache.set(item.mediaId, bitmap);
+						imageCache.set(resolvedItem.mediaId, bitmap);
 					}
-					drawTransformed(ctx, bitmap, bitmap.width, bitmap.height, item, width, height, alpha);
+					drawTransformed(
+						ctx,
+						bitmap,
+						bitmap.width,
+						bitmap.height,
+						resolvedItem,
+						width,
+						height,
+						alpha
+					);
 				}
 			}
 
