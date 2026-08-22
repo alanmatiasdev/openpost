@@ -9,15 +9,15 @@
  * (WebGPU compute pass) — see registry.ts.
  */
 
-import type { GpuShaderDefinition } from "../types";
-import { parseHexColor, readNumber } from "../types";
+import type { GpuShaderDefinition } from '../types';
+import { parseHexColor, readNumber } from '../types';
 
 export const vignette: GpuShaderDefinition = {
-  id: "gpu-vignette",
-  label: "Vignette",
-  category: "stylize",
-  entryPoint: "vignetteFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-vignette',
+	label: 'Vignette',
+	category: 'stylize',
+	entryPoint: 'vignetteFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uSize;
 uniform float uSoftness;
@@ -31,26 +31,26 @@ vec4 vignetteFragment(vec2 vUv) {
   vec3 vigColor = mix(vec3(0.0), color.rgb, vec3(mix(1.0, vig, uAmount)));
   return vec4(vigColor, color.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "size", label: "Size", default: 0.5, min: 0, max: 1.5, step: 0.01 },
-    { name: "softness", label: "Softness", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "roundness", label: "Roundness", default: 1, min: 0.5, max: 2, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.5),
-    uSize: readNumber(p, "size", 0.5),
-    uSoftness: readNumber(p, "softness", 0.5),
-    uRoundness: readNumber(p, "roundness", 1),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'size', label: 'Size', default: 0.5, min: 0, max: 1.5, step: 0.01 },
+		{ name: 'softness', label: 'Softness', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'roundness', label: 'Roundness', default: 1, min: 0.5, max: 2, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.5),
+		uSize: readNumber(p, 'size', 0.5),
+		uSoftness: readNumber(p, 'softness', 0.5),
+		uRoundness: readNumber(p, 'roundness', 1)
+	})
 };
 
 export const grain: GpuShaderDefinition = {
-  id: "gpu-grain",
-  label: "Film Grain",
-  category: "stylize",
-  entryPoint: "grainFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-grain',
+	label: 'Film Grain',
+	category: 'stylize',
+	entryPoint: 'grainFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uSize;
 uniform float uSpeed;
@@ -74,25 +74,25 @@ vec4 grainFragment(vec2 vUv) {
   vec3 grainColor = color.rgb + vec3(noise * grainIntensity);
   return vec4(clamp(grainColor, vec3(0.0), vec3(1.0)), color.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.1, min: 0, max: 0.5, step: 0.01 },
-    { name: "size", label: "Size", default: 1, min: 0.5, max: 5, step: 0.1 },
-    { name: "speed", label: "Speed", default: 1, min: 0, max: 5, step: 0.1 },
-  ],
-  uniformValues: (p, _w, _h, time) => ({
-    uAmount: readNumber(p, "amount", 0.1),
-    uSize: readNumber(p, "size", 1),
-    uSpeed: readNumber(p, "speed", 1),
-    uTime: time,
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.1, min: 0, max: 0.5, step: 0.01 },
+		{ name: 'size', label: 'Size', default: 1, min: 0.5, max: 5, step: 0.1 },
+		{ name: 'speed', label: 'Speed', default: 1, min: 0, max: 5, step: 0.1 }
+	],
+	uniformValues: (p, _w, _h, time) => ({
+		uAmount: readNumber(p, 'amount', 0.1),
+		uSize: readNumber(p, 'size', 1),
+		uSpeed: readNumber(p, 'speed', 1),
+		uTime: time
+	})
 };
 
 export const sharpen: GpuShaderDefinition = {
-  id: "gpu-sharpen",
-  label: "Sharpen",
-  category: "stylize",
-  entryPoint: "sharpenFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-sharpen',
+	label: 'Sharpen',
+	category: 'stylize',
+	entryPoint: 'sharpenFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uRadius;
 uniform float uWidth;
@@ -117,24 +117,24 @@ vec4 sharpenFragment(vec2 vUv) {
   vec3 sharpened = center.rgb + (center.rgb - blur.rgb) * uAmount;
   return vec4(clamp(sharpened, vec3(0.0), vec3(1.0)), center.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 1, min: 0, max: 5, step: 0.1 },
-    { name: "radius", label: "Radius", default: 1, min: 0.5, max: 5, step: 0.1 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uAmount: readNumber(p, "amount", 1),
-    uRadius: readNumber(p, "radius", 1),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 1, min: 0, max: 5, step: 0.1 },
+		{ name: 'radius', label: 'Radius', default: 1, min: 0.5, max: 5, step: 0.1 }
+	],
+	uniformValues: (p, w, h) => ({
+		uAmount: readNumber(p, 'amount', 1),
+		uRadius: readNumber(p, 'radius', 1),
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const posterize: GpuShaderDefinition = {
-  id: "gpu-posterize",
-  label: "Posterize",
-  category: "stylize",
-  entryPoint: "posterizeFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-posterize',
+	label: 'Posterize',
+	category: 'stylize',
+	entryPoint: 'posterizeFragment',
+	fragmentSource: /* glsl */ `
 uniform float uLevels;
 vec4 posterizeFragment(vec2 vUv) {
   vec4 color = texture(uInputTex, vUv);
@@ -142,16 +142,16 @@ vec4 posterizeFragment(vec2 vUv) {
   vec3 posterized = floor(color.rgb * levels) / (levels - 1.0);
   return vec4(posterized, color.a);
 }`,
-  schema: [{ name: "levels", label: "Levels", default: 6, min: 2, max: 32, step: 1 }],
-  uniformValues: (p) => ({ uLevels: readNumber(p, "levels", 6) }),
+	schema: [{ name: 'levels', label: 'Levels', default: 6, min: 2, max: 32, step: 1 }],
+	uniformValues: (p) => ({ uLevels: readNumber(p, 'levels', 6) })
 };
 
 export const glow: GpuShaderDefinition = {
-  id: "gpu-glow",
-  label: "Glow",
-  category: "stylize",
-  entryPoint: "glowFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-glow',
+	label: 'Glow',
+	category: 'stylize',
+	entryPoint: 'glowFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uThreshold;
 uniform float uRadius;
@@ -189,32 +189,32 @@ vec4 glowFragment(vec2 vUv) {
   vec3 result = color.rgb + glowVal * uAmount * 2.0;
   return vec4(clamp(result, vec3(0.0), vec3(1.0)), color.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 1, min: 0, max: 5, step: 0.1 },
-    { name: "threshold", label: "Threshold", default: 0.6, min: 0, max: 1, step: 0.01 },
-    { name: "radius", label: "Radius", default: 20, min: 1, max: 100, step: 1 },
-    { name: "softness", label: "Softness", default: 0.5, min: 0.1, max: 1, step: 0.05 },
-    { name: "rings", label: "Rings", default: 4, min: 1, max: 32, step: 1 },
-    { name: "samplesPerRing", label: "Samples/Ring", default: 16, min: 4, max: 64, step: 1 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uAmount: readNumber(p, "amount", 1),
-    uThreshold: readNumber(p, "threshold", 0.6),
-    uRadius: readNumber(p, "radius", 20),
-    uSoftness: readNumber(p, "softness", 0.5),
-    uWidth: w,
-    uHeight: h,
-    uRings: readNumber(p, "rings", 4),
-    uSamplesPerRing: readNumber(p, "samplesPerRing", 16),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 1, min: 0, max: 5, step: 0.1 },
+		{ name: 'threshold', label: 'Threshold', default: 0.6, min: 0, max: 1, step: 0.01 },
+		{ name: 'radius', label: 'Radius', default: 20, min: 1, max: 100, step: 1 },
+		{ name: 'softness', label: 'Softness', default: 0.5, min: 0.1, max: 1, step: 0.05 },
+		{ name: 'rings', label: 'Rings', default: 4, min: 1, max: 32, step: 1 },
+		{ name: 'samplesPerRing', label: 'Samples/Ring', default: 16, min: 4, max: 64, step: 1 }
+	],
+	uniformValues: (p, w, h) => ({
+		uAmount: readNumber(p, 'amount', 1),
+		uThreshold: readNumber(p, 'threshold', 0.6),
+		uRadius: readNumber(p, 'radius', 20),
+		uSoftness: readNumber(p, 'softness', 0.5),
+		uWidth: w,
+		uHeight: h,
+		uRings: readNumber(p, 'rings', 4),
+		uSamplesPerRing: readNumber(p, 'samplesPerRing', 16)
+	})
 };
 
 export const edgeDetect: GpuShaderDefinition = {
-  id: "gpu-edge-detect",
-  label: "Edge Detect",
-  category: "stylize",
-  entryPoint: "edgeDetectFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-edge-detect',
+	label: 'Edge Detect',
+	category: 'stylize',
+	entryPoint: 'edgeDetectFragment',
+	fragmentSource: /* glsl */ `
 uniform float uStrength;
 uniform float uWidth;
 uniform float uHeight;
@@ -236,21 +236,21 @@ vec4 edgeDetectFragment(vec2 vUv) {
   if (uInvertFlag > 0.5) { edge = 1.0 - edge; }
   return vec4(vec3(edge), 1.0);
 }`,
-  schema: [{ name: "strength", label: "Strength", default: 1, min: 0, max: 5, step: 0.1 }],
-  uniformValues: (p, w, h) => ({
-    uStrength: readNumber(p, "strength", 1),
-    uWidth: w,
-    uHeight: h,
-    uInvertFlag: 0,
-  }),
+	schema: [{ name: 'strength', label: 'Strength', default: 1, min: 0, max: 5, step: 0.1 }],
+	uniformValues: (p, w, h) => ({
+		uStrength: readNumber(p, 'strength', 1),
+		uWidth: w,
+		uHeight: h,
+		uInvertFlag: 0
+	})
 };
 
 export const scanlines: GpuShaderDefinition = {
-  id: "gpu-scanlines",
-  label: "Scanlines",
-  category: "stylize",
-  entryPoint: "scanlinesFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-scanlines',
+	label: 'Scanlines',
+	category: 'stylize',
+	entryPoint: 'scanlinesFragment',
+	fragmentSource: /* glsl */ `
 uniform float uDensity;
 uniform float uOpacity;
 uniform float uSpeed;
@@ -262,25 +262,25 @@ vec4 scanlinesFragment(vec2 vUv) {
   float darken = 1.0 - uOpacity * (1.0 - scanline);
   return vec4(color.rgb * darken, color.a);
 }`,
-  schema: [
-    { name: "density", label: "Density", default: 5, min: 1, max: 20, step: 0.5 },
-    { name: "opacity", label: "Opacity", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "speed", label: "Scroll Speed", default: 0, min: 0, max: 5, step: 0.1 },
-  ],
-  uniformValues: (p, _w, _h, time) => ({
-    uDensity: readNumber(p, "density", 5),
-    uOpacity: readNumber(p, "opacity", 0.3),
-    uSpeed: readNumber(p, "speed", 0),
-    uTime: time,
-  }),
+	schema: [
+		{ name: 'density', label: 'Density', default: 5, min: 1, max: 20, step: 0.5 },
+		{ name: 'opacity', label: 'Opacity', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'speed', label: 'Scroll Speed', default: 0, min: 0, max: 5, step: 0.1 }
+	],
+	uniformValues: (p, _w, _h, time) => ({
+		uDensity: readNumber(p, 'density', 5),
+		uOpacity: readNumber(p, 'opacity', 0.3),
+		uSpeed: readNumber(p, 'speed', 0),
+		uTime: time
+	})
 };
 
 export const colorGlitch: GpuShaderDefinition = {
-  id: "gpu-color-glitch",
-  label: "Color Glitch",
-  category: "stylize",
-  entryPoint: "colorGlitchFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-color-glitch',
+	label: 'Color Glitch',
+	category: 'stylize',
+	entryPoint: 'colorGlitchFragment',
+	fragmentSource: /* glsl */ `
 uniform float uIntensity;
 uniform float uSpeed;
 uniform float uTime;
@@ -325,23 +325,23 @@ vec4 colorGlitchFragment(vec2 vUv) {
 
   return vec4(rgb, a);
 }`,
-  schema: [
-    { name: "intensity", label: "Intensity", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "speed", label: "Speed", default: 1, min: 0.1, max: 5, step: 0.1 },
-  ],
-  uniformValues: (p, _w, _h, time) => ({
-    uIntensity: readNumber(p, "intensity", 0.5),
-    uSpeed: readNumber(p, "speed", 1),
-    uTime: time,
-  }),
+	schema: [
+		{ name: 'intensity', label: 'Intensity', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'speed', label: 'Speed', default: 1, min: 0.1, max: 5, step: 0.1 }
+	],
+	uniformValues: (p, _w, _h, time) => ({
+		uIntensity: readNumber(p, 'intensity', 0.5),
+		uSpeed: readNumber(p, 'speed', 1),
+		uTime: time
+	})
 };
 
 export const blockGlitch: GpuShaderDefinition = {
-  id: "gpu-block-glitch",
-  label: "Block Glitch",
-  category: "stylize",
-  entryPoint: "blockGlitchFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-block-glitch',
+	label: 'Block Glitch',
+	category: 'stylize',
+	entryPoint: 'blockGlitchFragment',
+	fragmentSource: /* glsl */ `
 uniform float uCoverage;
 uniform float uIntensity;
 uniform float uBlockSize;
@@ -398,29 +398,29 @@ vec4 blockGlitchFragment(vec2 vUv) {
 
   return vec4(mix(rgb, c, vec3(corrupt)), aa);
 }`,
-  schema: [
-    { name: "coverage", label: "Coverage", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "intensity", label: "Intensity", default: 0.6, min: 0, max: 1, step: 0.01 },
-    { name: "blockSize", label: "Block Size", default: 40, min: 8, max: 200, step: 1 },
-    { name: "speed", label: "Speed", default: 1, min: 0.1, max: 5, step: 0.1 },
-  ],
-  uniformValues: (p, w, h, time) => ({
-    uCoverage: readNumber(p, "coverage", 0.3),
-    uIntensity: readNumber(p, "intensity", 0.6),
-    uBlockSize: readNumber(p, "blockSize", 40),
-    uSpeed: readNumber(p, "speed", 1),
-    uTime: time,
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'coverage', label: 'Coverage', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'intensity', label: 'Intensity', default: 0.6, min: 0, max: 1, step: 0.01 },
+		{ name: 'blockSize', label: 'Block Size', default: 40, min: 8, max: 200, step: 1 },
+		{ name: 'speed', label: 'Speed', default: 1, min: 0.1, max: 5, step: 0.1 }
+	],
+	uniformValues: (p, w, h, time) => ({
+		uCoverage: readNumber(p, 'coverage', 0.3),
+		uIntensity: readNumber(p, 'intensity', 0.6),
+		uBlockSize: readNumber(p, 'blockSize', 40),
+		uSpeed: readNumber(p, 'speed', 1),
+		uTime: time,
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const crt: GpuShaderDefinition = {
-  id: "gpu-crt",
-  label: "CRT",
-  category: "stylize",
-  entryPoint: "crtFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-crt',
+	label: 'CRT',
+	category: 'stylize',
+	entryPoint: 'crtFragment',
+	fragmentSource: /* glsl */ `
 uniform float uCurvature;
 uniform float uScanlines;
 uniform float uVignette;
@@ -456,30 +456,30 @@ vec4 crtFragment(vec2 vUv) {
 
   return vec4(rgb * mask, aC);
 }`,
-  schema: [
-    { name: "curvature", label: "Curvature", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "scanlines", label: "Scanlines", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "vignette", label: "Vignette", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "chroma", label: "Chroma", default: 0.4, min: 0, max: 2, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uCurvature: readNumber(p, "curvature", 0.3),
-    uScanlines: readNumber(p, "scanlines", 0.3),
-    uVignette: readNumber(p, "vignette", 0.3),
-    uChroma: readNumber(p, "chroma", 0.4),
-  }),
+	schema: [
+		{ name: 'curvature', label: 'Curvature', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'scanlines', label: 'Scanlines', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'vignette', label: 'Vignette', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'chroma', label: 'Chroma', default: 0.4, min: 0, max: 2, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uCurvature: readNumber(p, 'curvature', 0.3),
+		uScanlines: readNumber(p, 'scanlines', 0.3),
+		uVignette: readNumber(p, 'vignette', 0.3),
+		uChroma: readNumber(p, 'chroma', 0.4)
+	})
 };
 
 const DITHER_PATTERN_MAP = {
-  bayer2: 0,
-  bayer4: 1,
-  bayer8: 2,
-  halftone: 3,
-  lines: 4,
-  crosses: 5,
-  dots: 6,
-  grid: 7,
-  scales: 8,
+	bayer2: 0,
+	bayer4: 1,
+	bayer8: 2,
+	halftone: 3,
+	lines: 4,
+	crosses: 5,
+	dots: 6,
+	grid: 7,
+	scales: 8
 };
 
 const DITHER_MODE_MAP = { image: 0, linear: 1, radial: 2 };
@@ -488,11 +488,11 @@ const DITHER_CELL_KIND = { circle: 0, square: 1, diamond: 2 };
 const DITHER_PALETTE_MAP = { bw: 0, gameboy: 1, cga: 2, sepia: 3 };
 
 export const dither: GpuShaderDefinition = {
-  id: "gpu-dither",
-  label: "Dither",
-  category: "stylize",
-  entryPoint: "ditherFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-dither',
+	label: 'Dither',
+	category: 'stylize',
+	entryPoint: 'ditherFragment',
+	fragmentSource: /* glsl */ `
 uniform float uCellSize;
 uniform float uAngleDeg;
 uniform float uScalePercent;
@@ -757,29 +757,29 @@ vec4 ditherFragment(vec2 vUv) {
 
   return vec4(color, base.a);
 }`,
-  schema: [{ name: "cellSize", label: "Cell Size", default: 8, min: 2, max: 32, step: 1 }],
-  uniformValues: (p, w, h) => ({
-    uCellSize: readNumber(p, "cellSize", 8),
-    uAngleDeg: readNumber(p, "angle", 45),
-    uScalePercent: readNumber(p, "scale", 100),
-    uWidth: w,
-    uHeight: h,
-    uOffsetX: readNumber(p, "offsetX", 0),
-    uOffsetY: readNumber(p, "offsetY", 0),
-    uPatternKind: DITHER_PATTERN_MAP.bayer4,
-    uModeKind: DITHER_MODE_MAP.image,
-    uStyleKind: DITHER_STYLE_MAP.threshold,
-    uCellKind: DITHER_CELL_KIND.square,
-    uPaletteKind: DITHER_PALETTE_MAP.gameboy,
-  }),
+	schema: [{ name: 'cellSize', label: 'Cell Size', default: 8, min: 2, max: 32, step: 1 }],
+	uniformValues: (p, w, h) => ({
+		uCellSize: readNumber(p, 'cellSize', 8),
+		uAngleDeg: readNumber(p, 'angle', 45),
+		uScalePercent: readNumber(p, 'scale', 100),
+		uWidth: w,
+		uHeight: h,
+		uOffsetX: readNumber(p, 'offsetX', 0),
+		uOffsetY: readNumber(p, 'offsetY', 0),
+		uPatternKind: DITHER_PATTERN_MAP.bayer4,
+		uModeKind: DITHER_MODE_MAP.image,
+		uStyleKind: DITHER_STYLE_MAP.threshold,
+		uCellKind: DITHER_CELL_KIND.square,
+		uPaletteKind: DITHER_PALETTE_MAP.gameboy
+	})
 };
 
 export const threshold: GpuShaderDefinition = {
-  id: "gpu-threshold",
-  label: "Threshold",
-  category: "stylize",
-  entryPoint: "thresholdFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-threshold',
+	label: 'Threshold',
+	category: 'stylize',
+	entryPoint: 'thresholdFragment',
+	fragmentSource: /* glsl */ `
 uniform float uLevel;
 vec4 thresholdFragment(vec2 vUv) {
   vec4 color = texture(uInputTex, vUv);
@@ -787,16 +787,16 @@ vec4 thresholdFragment(vec2 vUv) {
   float result = luma > uLevel ? 1.0 : 0.0;
   return vec4(vec3(result), color.a);
 }`,
-  schema: [{ name: "level", label: "Level", default: 0.5, min: 0, max: 1, step: 0.01 }],
-  uniformValues: (p) => ({ uLevel: readNumber(p, "level", 0.5) }),
+	schema: [{ name: 'level', label: 'Level', default: 0.5, min: 0, max: 1, step: 0.01 }],
+	uniformValues: (p) => ({ uLevel: readNumber(p, 'level', 0.5) })
 };
 
 export const vhs: GpuShaderDefinition = {
-  id: "gpu-vhs",
-  label: "VHS",
-  category: "stylize",
-  entryPoint: "vhsFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-vhs',
+	label: 'VHS',
+	category: 'stylize',
+	entryPoint: 'vhsFragment',
+	fragmentSource: /* glsl */ `
 uniform float uBleed;
 uniform float uWaviness;
 uniform float uNoise;
@@ -842,34 +842,34 @@ vec4 vhsFragment(vec2 vUv) {
 
   return vec4(clamp(rgb, vec3(0.0), vec3(1.0)), a);
 }`,
-  schema: [
-    { name: "bleed", label: "Chroma Bleed", default: 0.4, min: 0, max: 2, step: 0.01 },
-    { name: "waviness", label: "Tracking", default: 0.3, min: 0, max: 2, step: 0.01 },
-    { name: "noise", label: "Tape Noise", default: 0.25, min: 0, max: 1, step: 0.01 },
-    { name: "scanline", label: "Scanlines", default: 0.35, min: 0, max: 1, step: 0.01 },
-    { name: "speed", label: "Speed", default: 1, min: 0, max: 4, step: 0.1 },
-  ],
-  uniformValues: (p, w, h, time) => ({
-    uBleed: readNumber(p, "bleed", 0.4),
-    uWaviness: readNumber(p, "waviness", 0.3),
-    uNoise: readNumber(p, "noise", 0.25),
-    uScanline: readNumber(p, "scanline", 0.35),
-    uTime: time * readNumber(p, "speed", 1),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'bleed', label: 'Chroma Bleed', default: 0.4, min: 0, max: 2, step: 0.01 },
+		{ name: 'waviness', label: 'Tracking', default: 0.3, min: 0, max: 2, step: 0.01 },
+		{ name: 'noise', label: 'Tape Noise', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'scanline', label: 'Scanlines', default: 0.35, min: 0, max: 1, step: 0.01 },
+		{ name: 'speed', label: 'Speed', default: 1, min: 0, max: 4, step: 0.1 }
+	],
+	uniformValues: (p, w, h, time) => ({
+		uBleed: readNumber(p, 'bleed', 0.4),
+		uWaviness: readNumber(p, 'waviness', 0.3),
+		uNoise: readNumber(p, 'noise', 0.25),
+		uScanline: readNumber(p, 'scanline', 0.35),
+		uTime: time * readNumber(p, 'speed', 1),
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const ink: GpuShaderDefinition = {
-  id: "gpu-ink",
-  label: "Ink",
-  category: "stylize",
-  entryPoint: "inkFragment",
-  // Pen-and-ink / cross-hatch stylization. Tonal shading is drawn with layers of
-  // parallel hatch lines that fade in as the source darkens, plus a Sobel contour
-  // pass for outlines — the whole frame is remapped onto a two-colour ink/paper
-  // palette. Single fullscreen pass; deterministic (no time term).
-  fragmentSource: /* glsl */ `
+	id: 'gpu-ink',
+	label: 'Ink',
+	category: 'stylize',
+	entryPoint: 'inkFragment',
+	// Pen-and-ink / cross-hatch stylization. Tonal shading is drawn with layers of
+	// parallel hatch lines that fade in as the source darkens, plus a Sobel contour
+	// pass for outlines — the whole frame is remapped onto a two-colour ink/paper
+	// palette. Single fullscreen pass; deterministic (no time term).
+	fragmentSource: /* glsl */ `
 uniform float uStrength;
 uniform float uSpacing;
 uniform float uThickness;
@@ -935,48 +935,48 @@ vec4 inkFragment(vec2 vUv) {
   vec3 inkColor = vec3(uInkR, uInkG, uInkB);
   return vec4(mix(paper, inkColor, vec3(inkAmt)), src.a);
 }`,
-  schema: [
-    { name: "strength", label: "Ink Amount", default: 1, min: 0, max: 1, step: 0.01 },
-    { name: "spacing", label: "Line Spacing", default: 6, min: 2, max: 24, step: 0.5 },
-    { name: "thickness", label: "Line Width", default: 1.2, min: 0.5, max: 4, step: 0.1 },
-    { name: "edgeStrength", label: "Outline", default: 1.5, min: 0, max: 5, step: 0.1 },
-    { name: "tone", label: "Shading", default: 1, min: 0.2, max: 2.5, step: 0.05 },
-  ],
-  uniformValues: (p, w, h) => {
-    const ink = parseHexColor("#141414", [0.08, 0.08, 0.08, 1]);
-    const paper = parseHexColor("#f4f1e8", [0.96, 0.95, 0.91, 1]);
-    return {
-      uStrength: readNumber(p, "strength", 1),
-      uSpacing: readNumber(p, "spacing", 6),
-      uThickness: readNumber(p, "thickness", 1.2),
-      uEdgeStrength: readNumber(p, "edgeStrength", 1.5),
-      uTone: readNumber(p, "tone", 1),
-      uWidth: w,
-      uHeight: h,
-      uInkR: ink[0],
-      uInkG: ink[1],
-      uInkB: ink[2],
-      uPaperR: paper[0],
-      uPaperG: paper[1],
-      uPaperB: paper[2],
-    };
-  },
+	schema: [
+		{ name: 'strength', label: 'Ink Amount', default: 1, min: 0, max: 1, step: 0.01 },
+		{ name: 'spacing', label: 'Line Spacing', default: 6, min: 2, max: 24, step: 0.5 },
+		{ name: 'thickness', label: 'Line Width', default: 1.2, min: 0.5, max: 4, step: 0.1 },
+		{ name: 'edgeStrength', label: 'Outline', default: 1.5, min: 0, max: 5, step: 0.1 },
+		{ name: 'tone', label: 'Shading', default: 1, min: 0.2, max: 2.5, step: 0.05 }
+	],
+	uniformValues: (p, w, h) => {
+		const ink = parseHexColor('#141414', [0.08, 0.08, 0.08, 1]);
+		const paper = parseHexColor('#f4f1e8', [0.96, 0.95, 0.91, 1]);
+		return {
+			uStrength: readNumber(p, 'strength', 1),
+			uSpacing: readNumber(p, 'spacing', 6),
+			uThickness: readNumber(p, 'thickness', 1.2),
+			uEdgeStrength: readNumber(p, 'edgeStrength', 1.5),
+			uTone: readNumber(p, 'tone', 1),
+			uWidth: w,
+			uHeight: h,
+			uInkR: ink[0],
+			uInkG: ink[1],
+			uInkB: ink[2],
+			uPaperR: paper[0],
+			uPaperG: paper[1],
+			uPaperB: paper[2]
+		};
+	}
 };
 
 export const pixelSort: GpuShaderDefinition = {
-  id: "gpu-pixel-sort",
-  label: "Pixel Sort (Streak)",
-  category: "stylize",
-  entryPoint: "pixelSortFragment",
-  // Pixel sort (streak approximation). A true comparison sort needs a compute
-  // shader or O(width) ping-pong passes, which this single-pass fragment pipeline
-  // can't express — so each pixel inside the brightness mask instead adopts the
-  // most-extreme key found by scanning up to \`length\` pixels along the sort
-  // direction, stopping at the span boundary (first pixel outside the mask). This
-  // bounded, mask-gated directional max/min filter yields the signature melting /
-  // sorted streaks. The loop uses textureLod (not texture) because
-  // data-dependent control flow forbids implicit-derivative sampling.
-  fragmentSource: /* glsl */ `
+	id: 'gpu-pixel-sort',
+	label: 'Pixel Sort (Streak)',
+	category: 'stylize',
+	entryPoint: 'pixelSortFragment',
+	// Pixel sort (streak approximation). A true comparison sort needs a compute
+	// shader or O(width) ping-pong passes, which this single-pass fragment pipeline
+	// can't express — so each pixel inside the brightness mask instead adopts the
+	// most-extreme key found by scanning up to \`length\` pixels along the sort
+	// direction, stopping at the span boundary (first pixel outside the mask). This
+	// bounded, mask-gated directional max/min filter yields the signature melting /
+	// sorted streaks. The loop uses textureLod (not texture) because
+	// data-dependent control flow forbids implicit-derivative sampling.
+	fragmentSource: /* glsl */ `
 uniform float uDirX;
 uniform float uDirY;
 uniform float uLow;
@@ -1027,19 +1027,19 @@ vec4 pixelSortFragment(vec2 vUv) {
   }
   return vec4(bestColor, src.a);
 }`,
-  schema: [
-    { name: "low", label: "Threshold Low", default: 0.25, min: 0, max: 1, step: 0.01 },
-    { name: "high", label: "Threshold High", default: 1, min: 0, max: 1, step: 0.01 },
-    { name: "length", label: "Length", default: 60, min: 2, max: 400, step: 1 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uDirX: 1,
-    uDirY: 0,
-    uLow: readNumber(p, "low", 0.25),
-    uHigh: readNumber(p, "high", 1),
-    uLength: readNumber(p, "length", 60),
-    uOrder: 1,
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'low', label: 'Threshold Low', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'high', label: 'Threshold High', default: 1, min: 0, max: 1, step: 0.01 },
+		{ name: 'length', label: 'Length', default: 60, min: 2, max: 400, step: 1 }
+	],
+	uniformValues: (p, w, h) => ({
+		uDirX: 1,
+		uDirY: 0,
+		uLow: readNumber(p, 'low', 0.25),
+		uHigh: readNumber(p, 'high', 1),
+		uLength: readNumber(p, 'length', 60),
+		uOrder: 1,
+		uWidth: w,
+		uHeight: h
+	})
 };

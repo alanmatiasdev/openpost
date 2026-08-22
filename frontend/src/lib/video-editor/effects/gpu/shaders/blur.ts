@@ -6,15 +6,15 @@
  * ../shader-source.ts; math and structure verbatim.
  */
 
-import type { GpuShaderDefinition } from "../types";
-import { readNumber } from "../types";
+import type { GpuShaderDefinition } from '../types';
+import { readNumber } from '../types';
 
 export const gaussianBlur: GpuShaderDefinition = {
-  id: "gpu-gaussian-blur",
-  label: "Gaussian Blur",
-  category: "blur",
-  entryPoint: "gaussianBlurFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-gaussian-blur',
+	label: 'Gaussian Blur',
+	category: 'blur',
+	entryPoint: 'gaussianBlurFragment',
+	fragmentSource: /* glsl */ `
 uniform float uRadius;
 uniform float uWidth;
 uniform float uHeight;
@@ -40,24 +40,24 @@ vec4 gaussianBlurFragment(vec2 vUv) {
   }
   return color / totalWeight;
 }`,
-  schema: [
-    { name: "radius", label: "Radius", default: 10, min: 0, max: 50, step: 1 },
-    { name: "samples", label: "Samples", default: 5, min: 1, max: 64, step: 1 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uRadius: readNumber(p, "radius", 10),
-    uWidth: w,
-    uHeight: h,
-    uSamples: readNumber(p, "samples", 5),
-  }),
+	schema: [
+		{ name: 'radius', label: 'Radius', default: 10, min: 0, max: 50, step: 1 },
+		{ name: 'samples', label: 'Samples', default: 5, min: 1, max: 64, step: 1 }
+	],
+	uniformValues: (p, w, h) => ({
+		uRadius: readNumber(p, 'radius', 10),
+		uWidth: w,
+		uHeight: h,
+		uSamples: readNumber(p, 'samples', 5)
+	})
 };
 
 export const boxBlur: GpuShaderDefinition = {
-  id: "gpu-box-blur",
-  label: "Box Blur",
-  category: "blur",
-  entryPoint: "boxBlurFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-box-blur',
+	label: 'Box Blur',
+	category: 'blur',
+	entryPoint: 'boxBlurFragment',
+	fragmentSource: /* glsl */ `
 uniform float uRadius;
 uniform float uWidth;
 uniform float uHeight;
@@ -78,23 +78,23 @@ vec4 boxBlurFragment(vec2 vUv) {
   }
   return color / count;
 }`,
-  schema: [{ name: "radius", label: "Radius", default: 5, min: 0, max: 20, step: 1 }],
-  uniformValues: (p, w, h) => ({
-    uRadius: readNumber(p, "radius", 5),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [{ name: 'radius', label: 'Radius', default: 5, min: 0, max: 20, step: 1 }],
+	uniformValues: (p, w, h) => ({
+		uRadius: readNumber(p, 'radius', 5),
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const motionBlur: GpuShaderDefinition = {
-  id: "gpu-motion-blur",
-  label: "Motion Blur",
-  category: "blur",
-  entryPoint: "motionBlurFragment",
-  // Two vec4-aligned rows in FreeCut's std140 layout. The second row carries
-  // the hard radius bound so corrupted/legacy project values cannot turn one
-  // layer into an unbounded full-frame texture walk.
-  fragmentSource: /* glsl */ `
+	id: 'gpu-motion-blur',
+	label: 'Motion Blur',
+	category: 'blur',
+	entryPoint: 'motionBlurFragment',
+	// Two vec4-aligned rows in FreeCut's std140 layout. The second row carries
+	// the hard radius bound so corrupted/legacy project values cannot turn one
+	// layer into an unbounded full-frame texture walk.
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uAngle;
 uniform float uShutterAngle;
@@ -120,29 +120,29 @@ vec4 motionBlurFragment(vec2 vUv) {
   }
   return color / totalWeight;
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.05, min: 0, max: 0.3, step: 0.005 },
-    { name: "angle", label: "Angle", default: 0, min: 0, max: 6.28318, step: 0.01 },
-    { name: "samples", label: "Samples", default: 16, min: 4, max: 32, step: 1 },
-    { name: "shutterAngle", label: "Shutter Angle", default: 180, min: 0, max: 360, step: 1 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.05),
-    uAngle: readNumber(p, "angle", 0),
-    // Existing effect instances have legacy params but no shutterAngle;
-    // a truly empty params object is the registry's "use defaults" probe.
-    uShutterAngle: Object.keys(p).length > 0 ? readNumber(p, "shutterAngle", 360) : 180,
-    uSamples: readNumber(p, "samples", 16),
-    uMaxRadius: 0.2,
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.05, min: 0, max: 0.3, step: 0.005 },
+		{ name: 'angle', label: 'Angle', default: 0, min: 0, max: 6.28318, step: 0.01 },
+		{ name: 'samples', label: 'Samples', default: 16, min: 4, max: 32, step: 1 },
+		{ name: 'shutterAngle', label: 'Shutter Angle', default: 180, min: 0, max: 360, step: 1 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.05),
+		uAngle: readNumber(p, 'angle', 0),
+		// Existing effect instances have legacy params but no shutterAngle;
+		// a truly empty params object is the registry's "use defaults" probe.
+		uShutterAngle: Object.keys(p).length > 0 ? readNumber(p, 'shutterAngle', 360) : 180,
+		uSamples: readNumber(p, 'samples', 16),
+		uMaxRadius: 0.2
+	})
 };
 
 export const radialBlur: GpuShaderDefinition = {
-  id: "gpu-radial-blur",
-  label: "Radial Blur",
-  category: "blur",
-  entryPoint: "radialBlurFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-radial-blur',
+	label: 'Radial Blur',
+	category: 'blur',
+	entryPoint: 'radialBlurFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uCenterX;
 uniform float uCenterY;
@@ -168,26 +168,26 @@ vec4 radialBlurFragment(vec2 vUv) {
   }
   return color / totalWeight;
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.5, min: 0, max: 2, step: 0.01 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "samples", label: "Samples", default: 32, min: 4, max: 256, step: 1 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.5),
-    uCenterX: readNumber(p, "centerX", 0.5),
-    uCenterY: readNumber(p, "centerY", 0.5),
-    uSamples: readNumber(p, "samples", 32),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.5, min: 0, max: 2, step: 0.01 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'samples', label: 'Samples', default: 32, min: 4, max: 256, step: 1 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.5),
+		uCenterX: readNumber(p, 'centerX', 0.5),
+		uCenterY: readNumber(p, 'centerY', 0.5),
+		uSamples: readNumber(p, 'samples', 32)
+	})
 };
 
 export const zoomBlur: GpuShaderDefinition = {
-  id: "gpu-zoom-blur",
-  label: "Zoom Blur",
-  category: "blur",
-  entryPoint: "zoomBlurFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-zoom-blur',
+	label: 'Zoom Blur',
+	category: 'blur',
+	entryPoint: 'zoomBlurFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uCenterX;
 uniform float uCenterY;
@@ -206,16 +206,16 @@ vec4 zoomBlurFragment(vec2 vUv) {
   }
   return color / float(samples);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "samples", label: "Samples", default: 16, min: 4, max: 256, step: 1 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.3),
-    uCenterX: readNumber(p, "centerX", 0.5),
-    uCenterY: readNumber(p, "centerY", 0.5),
-    uSamples: readNumber(p, "samples", 16),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'samples', label: 'Samples', default: 16, min: 4, max: 256, step: 1 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.3),
+		uCenterX: readNumber(p, 'centerX', 0.5),
+		uCenterY: readNumber(p, 'centerY', 0.5),
+		uSamples: readNumber(p, 'samples', 16)
+	})
 };

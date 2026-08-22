@@ -7,15 +7,15 @@
  * to the green-screen default (the numeric param model carries no strings).
  */
 
-import type { GpuShaderDefinition } from "../types";
-import { readNumber } from "../types";
+import type { GpuShaderDefinition } from '../types';
+import { readNumber } from '../types';
 
 export const chromaKey: GpuShaderDefinition = {
-  id: "gpu-chroma-key",
-  label: "Chroma Key",
-  category: "keying",
-  entryPoint: "chromaKeyFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-chroma-key',
+	label: 'Chroma Key',
+	category: 'keying',
+	entryPoint: 'chromaKeyFragment',
+	fragmentSource: /* glsl */ `
 uniform float uKeyR;
 uniform float uKeyG;
 uniform float uKeyB;
@@ -55,24 +55,24 @@ vec4 chromaKeyFragment(vec2 vUv) {
   }
   return vec4(finalColor, color.a * alpha);
 }`,
-  schema: [
-    { name: "tolerance", label: "Tolerance", default: 0.2, min: 0, max: 1, step: 0.01 },
-    { name: "softness", label: "Edge Softness", default: 0.1, min: 0, max: 0.5, step: 0.01 },
-    {
-      name: "spillSuppression",
-      label: "Spill Suppression",
-      default: 0.5,
-      min: 0,
-      max: 1,
-      step: 0.01,
-    },
-  ],
-  uniformValues: (p) => ({
-    uKeyR: 0,
-    uKeyG: 1,
-    uKeyB: 0,
-    uTolerance: readNumber(p, "tolerance", 0.2),
-    uSoftness: readNumber(p, "softness", 0.1),
-    uSpillSuppression: readNumber(p, "spillSuppression", 0.5),
-  }),
+	schema: [
+		{ name: 'tolerance', label: 'Tolerance', default: 0.2, min: 0, max: 1, step: 0.01 },
+		{ name: 'softness', label: 'Edge Softness', default: 0.1, min: 0, max: 0.5, step: 0.01 },
+		{
+			name: 'spillSuppression',
+			label: 'Spill Suppression',
+			default: 0.5,
+			min: 0,
+			max: 1,
+			step: 0.01
+		}
+	],
+	uniformValues: (p) => ({
+		uKeyR: 0,
+		uKeyG: 1,
+		uKeyB: 0,
+		uTolerance: readNumber(p, 'tolerance', 0.2),
+		uSoftness: readNumber(p, 'softness', 0.1),
+		uSpillSuppression: readNumber(p, 'spillSuppression', 0.5)
+	})
 };

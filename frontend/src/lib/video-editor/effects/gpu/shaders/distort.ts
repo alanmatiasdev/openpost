@@ -8,15 +8,15 @@
  * resolved in `uniformValues` (selects resolve to their defaults).
  */
 
-import type { GpuShaderDefinition } from "../types";
-import { parseHexColor, readNumber } from "../types";
+import type { GpuShaderDefinition } from '../types';
+import { parseHexColor, readNumber } from '../types';
 
 export const pixelate: GpuShaderDefinition = {
-  id: "gpu-pixelate",
-  label: "Pixelate",
-  category: "distort",
-  entryPoint: "pixelateFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-pixelate',
+	label: 'Pixelate',
+	category: 'distort',
+	entryPoint: 'pixelateFragment',
+	fragmentSource: /* glsl */ `
 uniform float uPixelSize;
 uniform float uWidth;
 uniform float uHeight;
@@ -29,20 +29,20 @@ vec4 pixelateFragment(vec2 vUv) {
   );
   return texture(uInputTex, uv);
 }`,
-  schema: [{ name: "size", label: "Pixel Size", default: 8, min: 1, max: 64, step: 1 }],
-  uniformValues: (p, w, h) => ({
-    uPixelSize: readNumber(p, "size", 8),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [{ name: 'size', label: 'Pixel Size', default: 8, min: 1, max: 64, step: 1 }],
+	uniformValues: (p, w, h) => ({
+		uPixelSize: readNumber(p, 'size', 8),
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const rgbSplit: GpuShaderDefinition = {
-  id: "gpu-rgb-split",
-  label: "RGB Split",
-  category: "distort",
-  entryPoint: "rgbSplitFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-rgb-split',
+	label: 'RGB Split',
+	category: 'distort',
+	entryPoint: 'rgbSplitFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uAngle;
 vec4 rgbSplitFragment(vec2 vUv) {
@@ -53,22 +53,22 @@ vec4 rgbSplitFragment(vec2 vUv) {
   float a = texture(uInputTex, vUv).a;
   return vec4(r, g, b, a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.01, min: 0, max: 0.1, step: 0.001 },
-    { name: "angle", label: "Angle", default: 0, min: 0, max: 6.28318, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.01),
-    uAngle: readNumber(p, "angle", 0),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.01, min: 0, max: 0.1, step: 0.001 },
+		{ name: 'angle', label: 'Angle', default: 0, min: 0, max: 6.28318, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.01),
+		uAngle: readNumber(p, 'angle', 0)
+	})
 };
 
 export const twirl: GpuShaderDefinition = {
-  id: "gpu-twirl",
-  label: "Twirl",
-  category: "distort",
-  entryPoint: "twirlFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-twirl',
+	label: 'Twirl',
+	category: 'distort',
+	entryPoint: 'twirlFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uRadius;
 uniform float uCenterX;
@@ -88,26 +88,26 @@ vec4 twirlFragment(vec2 vUv) {
   vec2 finalUV = inRadius ? twirledUV : vUv;
   return texture(uInputTex, finalUV);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 1, min: -10, max: 10, step: 0.1 },
-    { name: "radius", label: "Radius", default: 0.5, min: 0.1, max: 1, step: 0.01 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 1),
-    uRadius: readNumber(p, "radius", 0.5),
-    uCenterX: readNumber(p, "centerX", 0.5),
-    uCenterY: readNumber(p, "centerY", 0.5),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 1, min: -10, max: 10, step: 0.1 },
+		{ name: 'radius', label: 'Radius', default: 0.5, min: 0.1, max: 1, step: 0.01 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 1),
+		uRadius: readNumber(p, 'radius', 0.5),
+		uCenterX: readNumber(p, 'centerX', 0.5),
+		uCenterY: readNumber(p, 'centerY', 0.5)
+	})
 };
 
 export const wave: GpuShaderDefinition = {
-  id: "gpu-wave",
-  label: "Wave",
-  category: "distort",
-  entryPoint: "waveFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-wave',
+	label: 'Wave',
+	category: 'distort',
+	entryPoint: 'waveFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmplitudeX;
 uniform float uAmplitudeY;
 uniform float uFrequencyX;
@@ -118,26 +118,26 @@ vec4 waveFragment(vec2 vUv) {
   uv.x += sin(uv.y * uFrequencyY * TAU) * uAmplitudeY;
   return texture(uInputTex, uv);
 }`,
-  schema: [
-    { name: "amplitudeX", label: "Horizontal Amp", default: 0.02, min: 0, max: 0.1, step: 0.001 },
-    { name: "amplitudeY", label: "Vertical Amp", default: 0.02, min: 0, max: 0.1, step: 0.001 },
-    { name: "frequencyX", label: "Horizontal Freq", default: 5, min: 1, max: 20, step: 0.5 },
-    { name: "frequencyY", label: "Vertical Freq", default: 5, min: 1, max: 20, step: 0.5 },
-  ],
-  uniformValues: (p) => ({
-    uAmplitudeX: readNumber(p, "amplitudeX", 0.02),
-    uAmplitudeY: readNumber(p, "amplitudeY", 0.02),
-    uFrequencyX: readNumber(p, "frequencyX", 5),
-    uFrequencyY: readNumber(p, "frequencyY", 5),
-  }),
+	schema: [
+		{ name: 'amplitudeX', label: 'Horizontal Amp', default: 0.02, min: 0, max: 0.1, step: 0.001 },
+		{ name: 'amplitudeY', label: 'Vertical Amp', default: 0.02, min: 0, max: 0.1, step: 0.001 },
+		{ name: 'frequencyX', label: 'Horizontal Freq', default: 5, min: 1, max: 20, step: 0.5 },
+		{ name: 'frequencyY', label: 'Vertical Freq', default: 5, min: 1, max: 20, step: 0.5 }
+	],
+	uniformValues: (p) => ({
+		uAmplitudeX: readNumber(p, 'amplitudeX', 0.02),
+		uAmplitudeY: readNumber(p, 'amplitudeY', 0.02),
+		uFrequencyX: readNumber(p, 'frequencyX', 5),
+		uFrequencyY: readNumber(p, 'frequencyY', 5)
+	})
 };
 
 export const triggerWave: GpuShaderDefinition = {
-  id: "gpu-trigger-wave",
-  label: "Trigger Wave",
-  category: "distort",
-  entryPoint: "triggerWaveFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-trigger-wave',
+	label: 'Trigger Wave',
+	category: 'distort',
+	entryPoint: 'triggerWaveFragment',
+	fragmentSource: /* glsl */ `
 uniform float uStrength;
 uniform float uRadius;
 uniform float uFrequency;
@@ -196,46 +196,46 @@ vec4 triggerWaveFragment(vec2 vUv) {
   color = vec4(color.rgb + glowColor * glow, color.a);
   return vec4(clamp(color.rgb, vec3(0.0), vec3(1.0)), color.a);
 }`,
-  schema: [
-    { name: "strength", label: "Strength", default: 0.035, min: -0.15, max: 0.15, step: 0.001 },
-    { name: "radius", label: "Radius", default: 0.85, min: 0.1, max: 1.5, step: 0.01 },
-    { name: "frequency", label: "Frequency", default: 18, min: 2, max: 64, step: 1 },
-    { name: "decay", label: "Decay", default: 0.08, min: 0.01, max: 0.3, step: 0.01 },
-    { name: "phase", label: "Phase", default: 0, min: 0, max: 1, step: 0.01 },
-    { name: "speed", label: "Speed", default: 1, min: 0, max: 4, step: 0.1 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "chroma", label: "Chroma", default: 0.006, min: 0, max: 0.05, step: 0.001 },
-    { name: "scanlineMix", label: "Scanlines", default: 0.18, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p, w, h, time) => {
-    const glow = parseHexColor("#2e6b8c", [0.18, 0.42, 0.55, 1]);
-    return {
-      uStrength: readNumber(p, "strength", 0.035),
-      uRadius: readNumber(p, "radius", 0.85),
-      uFrequency: readNumber(p, "frequency", 18),
-      uDecay: readNumber(p, "decay", 0.08),
-      uCenterX: readNumber(p, "centerX", 0.5),
-      uCenterY: readNumber(p, "centerY", 0.5),
-      uPhase: readNumber(p, "phase", 0),
-      uSpeed: readNumber(p, "speed", 1),
-      uChroma: readNumber(p, "chroma", 0.006),
-      uScanlineMix: readNumber(p, "scanlineMix", 0.18),
-      uTime: time,
-      uAspect: w / Math.max(h, 1),
-      uGlowR: glow[0] * glow[3],
-      uGlowG: glow[1] * glow[3],
-      uGlowB: glow[2] * glow[3],
-    };
-  },
+	schema: [
+		{ name: 'strength', label: 'Strength', default: 0.035, min: -0.15, max: 0.15, step: 0.001 },
+		{ name: 'radius', label: 'Radius', default: 0.85, min: 0.1, max: 1.5, step: 0.01 },
+		{ name: 'frequency', label: 'Frequency', default: 18, min: 2, max: 64, step: 1 },
+		{ name: 'decay', label: 'Decay', default: 0.08, min: 0.01, max: 0.3, step: 0.01 },
+		{ name: 'phase', label: 'Phase', default: 0, min: 0, max: 1, step: 0.01 },
+		{ name: 'speed', label: 'Speed', default: 1, min: 0, max: 4, step: 0.1 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'chroma', label: 'Chroma', default: 0.006, min: 0, max: 0.05, step: 0.001 },
+		{ name: 'scanlineMix', label: 'Scanlines', default: 0.18, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p, w, h, time) => {
+		const glow = parseHexColor('#2e6b8c', [0.18, 0.42, 0.55, 1]);
+		return {
+			uStrength: readNumber(p, 'strength', 0.035),
+			uRadius: readNumber(p, 'radius', 0.85),
+			uFrequency: readNumber(p, 'frequency', 18),
+			uDecay: readNumber(p, 'decay', 0.08),
+			uCenterX: readNumber(p, 'centerX', 0.5),
+			uCenterY: readNumber(p, 'centerY', 0.5),
+			uPhase: readNumber(p, 'phase', 0),
+			uSpeed: readNumber(p, 'speed', 1),
+			uChroma: readNumber(p, 'chroma', 0.006),
+			uScanlineMix: readNumber(p, 'scanlineMix', 0.18),
+			uTime: time,
+			uAspect: w / Math.max(h, 1),
+			uGlowR: glow[0] * glow[3],
+			uGlowG: glow[1] * glow[3],
+			uGlowB: glow[2] * glow[3]
+		};
+	}
 };
 
 export const bulge: GpuShaderDefinition = {
-  id: "gpu-bulge",
-  label: "Bulge/Pinch",
-  category: "distort",
-  entryPoint: "bulgeFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-bulge',
+	label: 'Bulge/Pinch',
+	category: 'distort',
+	entryPoint: 'bulgeFragment',
+	fragmentSource: /* glsl */ `
 uniform float uAmount;
 uniform float uRadius;
 uniform float uCenterX;
@@ -254,26 +254,26 @@ vec4 bulgeFragment(vec2 vUv) {
   vec2 finalUV = inRadius ? bulgedUV : vUv;
   return texture(uInputTex, finalUV);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.5, min: 0.1, max: 3, step: 0.1 },
-    { name: "radius", label: "Radius", default: 0.5, min: 0.1, max: 1, step: 0.01 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uAmount: readNumber(p, "amount", 0.5),
-    uRadius: readNumber(p, "radius", 0.5),
-    uCenterX: readNumber(p, "centerX", 0.5),
-    uCenterY: readNumber(p, "centerY", 0.5),
-  }),
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.5, min: 0.1, max: 3, step: 0.1 },
+		{ name: 'radius', label: 'Radius', default: 0.5, min: 0.1, max: 1, step: 0.01 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uAmount: readNumber(p, 'amount', 0.5),
+		uRadius: readNumber(p, 'radius', 0.5),
+		uCenterX: readNumber(p, 'centerX', 0.5),
+		uCenterY: readNumber(p, 'centerY', 0.5)
+	})
 };
 
 export const kaleidoscope: GpuShaderDefinition = {
-  id: "gpu-kaleidoscope",
-  label: "Kaleidoscope",
-  category: "distort",
-  entryPoint: "kaleidoscopeFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-kaleidoscope',
+	label: 'Kaleidoscope',
+	category: 'distort',
+	entryPoint: 'kaleidoscopeFragment',
+	fragmentSource: /* glsl */ `
 uniform float uSegments;
 uniform float uRotation;
 vec4 kaleidoscopeFragment(vec2 vUv) {
@@ -286,22 +286,22 @@ vec4 kaleidoscopeFragment(vec2 vUv) {
   uv = vec2(cos(a), sin(a)) * radius + 0.5;
   return texture(uInputTex, uv);
 }`,
-  schema: [
-    { name: "segments", label: "Segments", default: 6, min: 2, max: 16, step: 1 },
-    { name: "rotation", label: "Rotation", default: 0, min: 0, max: 6.28318, step: 0.01 },
-  ],
-  uniformValues: (p) => ({
-    uSegments: readNumber(p, "segments", 6),
-    uRotation: readNumber(p, "rotation", 0),
-  }),
+	schema: [
+		{ name: 'segments', label: 'Segments', default: 6, min: 2, max: 16, step: 1 },
+		{ name: 'rotation', label: 'Rotation', default: 0, min: 0, max: 6.28318, step: 0.01 }
+	],
+	uniformValues: (p) => ({
+		uSegments: readNumber(p, 'segments', 6),
+		uRotation: readNumber(p, 'rotation', 0)
+	})
 };
 
 export const mirror: GpuShaderDefinition = {
-  id: "gpu-mirror",
-  label: "Mirror",
-  category: "distort",
-  entryPoint: "mirrorFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-mirror',
+	label: 'Mirror',
+	category: 'distort',
+	entryPoint: 'mirrorFragment',
+	fragmentSource: /* glsl */ `
 uniform float uHorizontal;
 uniform float uVertical;
 vec4 mirrorFragment(vec2 vUv) {
@@ -310,17 +310,17 @@ vec4 mirrorFragment(vec2 vUv) {
   if (uVertical > 0.5 && uv.y > 0.5) { uv.y = 1.0 - uv.y; }
   return texture(uInputTex, uv);
 }`,
-  schema: [],
-  uniformValues: () => ({ uHorizontal: 1, uVertical: 0 }),
+	schema: [],
+	uniformValues: () => ({ uHorizontal: 1, uVertical: 0 })
 };
 
 // Adapted from Paper Design's fluted-glass shader (published package source).
 export const flutedGlass: GpuShaderDefinition = {
-  id: "gpu-fluted-glass",
-  label: "Fluted Glass",
-  category: "distort",
-  entryPoint: "flutedGlassFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-fluted-glass',
+	label: 'Fluted Glass',
+	category: 'distort',
+	entryPoint: 'flutedGlassFragment',
+	fragmentSource: /* glsl */ `
 uniform float uBackR;
 uniform float uBackG;
 uniform float uBackB;
@@ -675,71 +675,71 @@ vec4 flutedGlassFragment(vec2 vUv) {
 
   return vec4(color, opacity);
 }`,
-  schema: [
-    { name: "size", label: "Size", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "shadows", label: "Shadows", default: 0.25, min: 0, max: 1, step: 0.01 },
-    { name: "highlights", label: "Highlights", default: 0.1, min: 0, max: 1, step: 0.01 },
-    { name: "angle", label: "Angle", default: 0, min: 0, max: 180, step: 1 },
-    { name: "distortion", label: "Distortion", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "shift", label: "Shift", default: 0, min: -1, max: 1, step: 0.01 },
-    { name: "stretch", label: "Stretch", default: 0, min: 0, max: 1, step: 0.01 },
-    { name: "blur", label: "Blur", default: 0, min: 0, max: 1, step: 0.01 },
-    { name: "edges", label: "Edges", default: 0.25, min: 0, max: 1, step: 0.01 },
-    { name: "margin", label: "Margin", default: 0, min: 0, max: 1, step: 0.01 },
-    { name: "grainMixer", label: "Grain Mixer", default: 0, min: 0, max: 1, step: 0.01 },
-    { name: "grainOverlay", label: "Grain Overlay", default: 0, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p, w, h) => {
-    const margin = readNumber(p, "margin", 0);
-    const colorBack = parseHexColor("#00000000", [0, 0, 0, 0]);
-    const colorShadow = parseHexColor("#000000", [0, 0, 0, 1]);
-    const colorHighlight = parseHexColor("#ffffff", [1, 1, 1, 1]);
-    return {
-      uBackR: colorBack[0],
-      uBackG: colorBack[1],
-      uBackB: colorBack[2],
-      uBackA: colorBack[3],
-      uShadowR: colorShadow[0],
-      uShadowG: colorShadow[1],
-      uShadowB: colorShadow[2],
-      uShadowA: colorShadow[3],
-      uHighlightR: colorHighlight[0],
-      uHighlightG: colorHighlight[1],
-      uHighlightB: colorHighlight[2],
-      uHighlightA: colorHighlight[3],
-      uSize: readNumber(p, "size", 0.5),
-      uShadowsAmount: readNumber(p, "shadows", 0.25),
-      uAngleDeg: readNumber(p, "angle", 0),
-      uStretch: readNumber(p, "stretch", 0),
-      uPatternKind: 1,
-      uDistortion: readNumber(p, "distortion", 0.5),
-      uHighlights: readNumber(p, "highlights", 0.1),
-      uBendKind: 1,
-      uShift: readNumber(p, "shift", 0),
-      uBlur: readNumber(p, "blur", 0),
-      uEdges: readNumber(p, "edges", 0.25),
-      uGrainMixer: readNumber(p, "grainMixer", 0),
-      uGrainOverlay: readNumber(p, "grainOverlay", 0),
-      uWidth: w,
-      uHeight: h,
-      uAspect: w / Math.max(h, 1),
-      uMarginLeft: margin,
-      uMarginTop: margin,
-      uMarginRight: margin,
-      uMarginBottom: margin,
-    };
-  },
+	schema: [
+		{ name: 'size', label: 'Size', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'shadows', label: 'Shadows', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'highlights', label: 'Highlights', default: 0.1, min: 0, max: 1, step: 0.01 },
+		{ name: 'angle', label: 'Angle', default: 0, min: 0, max: 180, step: 1 },
+		{ name: 'distortion', label: 'Distortion', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'shift', label: 'Shift', default: 0, min: -1, max: 1, step: 0.01 },
+		{ name: 'stretch', label: 'Stretch', default: 0, min: 0, max: 1, step: 0.01 },
+		{ name: 'blur', label: 'Blur', default: 0, min: 0, max: 1, step: 0.01 },
+		{ name: 'edges', label: 'Edges', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'margin', label: 'Margin', default: 0, min: 0, max: 1, step: 0.01 },
+		{ name: 'grainMixer', label: 'Grain Mixer', default: 0, min: 0, max: 1, step: 0.01 },
+		{ name: 'grainOverlay', label: 'Grain Overlay', default: 0, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p, w, h) => {
+		const margin = readNumber(p, 'margin', 0);
+		const colorBack = parseHexColor('#00000000', [0, 0, 0, 0]);
+		const colorShadow = parseHexColor('#000000', [0, 0, 0, 1]);
+		const colorHighlight = parseHexColor('#ffffff', [1, 1, 1, 1]);
+		return {
+			uBackR: colorBack[0],
+			uBackG: colorBack[1],
+			uBackB: colorBack[2],
+			uBackA: colorBack[3],
+			uShadowR: colorShadow[0],
+			uShadowG: colorShadow[1],
+			uShadowB: colorShadow[2],
+			uShadowA: colorShadow[3],
+			uHighlightR: colorHighlight[0],
+			uHighlightG: colorHighlight[1],
+			uHighlightB: colorHighlight[2],
+			uHighlightA: colorHighlight[3],
+			uSize: readNumber(p, 'size', 0.5),
+			uShadowsAmount: readNumber(p, 'shadows', 0.25),
+			uAngleDeg: readNumber(p, 'angle', 0),
+			uStretch: readNumber(p, 'stretch', 0),
+			uPatternKind: 1,
+			uDistortion: readNumber(p, 'distortion', 0.5),
+			uHighlights: readNumber(p, 'highlights', 0.1),
+			uBendKind: 1,
+			uShift: readNumber(p, 'shift', 0),
+			uBlur: readNumber(p, 'blur', 0),
+			uEdges: readNumber(p, 'edges', 0.25),
+			uGrainMixer: readNumber(p, 'grainMixer', 0),
+			uGrainOverlay: readNumber(p, 'grainOverlay', 0),
+			uWidth: w,
+			uHeight: h,
+			uAspect: w / Math.max(h, 1),
+			uMarginLeft: margin,
+			uMarginTop: margin,
+			uMarginRight: margin,
+			uMarginBottom: margin
+		};
+	}
 };
 
 // Radial sibling of Fluted Glass: concentric-ring lens refraction from an
 // origin (bullseye / rippled-pond glass). Shares the shadow/highlight lighting
 // model with the fluted shader.
 export const rippleGlass: GpuShaderDefinition = {
-  id: "gpu-ripple-glass",
-  label: "Ripple Glass",
-  category: "distort",
-  entryPoint: "rippleGlassFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-ripple-glass',
+	label: 'Ripple Glass',
+	category: 'distort',
+	entryPoint: 'rippleGlassFragment',
+	fragmentSource: /* glsl */ `
 uniform float uShadowR;
 uniform float uShadowG;
 uniform float uShadowB;
@@ -827,51 +827,51 @@ vec4 rippleGlassFragment(vec2 vUv) {
 
   return vec4(rgb, color.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "rings", label: "Rings", default: 14, min: 1, max: 64, step: 1 },
-    { name: "shadows", label: "Shadows", default: 0.25, min: 0, max: 1, step: 0.01 },
-    { name: "highlights", label: "Highlights", default: 0.1, min: 0, max: 1, step: 0.01 },
-    { name: "originX", label: "Origin X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "originY", label: "Origin Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "phase", label: "Phase", default: 0, min: -1, max: 1, step: 0.01 },
-    { name: "falloff", label: "Falloff", default: 0.35, min: 0.05, max: 2, step: 0.01 },
-    { name: "aberration", label: "Aberration", default: 0, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p, w, h) => {
-    const shadow = parseHexColor("#000000", [0, 0, 0, 1]);
-    const highlight = parseHexColor("#ffffff", [1, 1, 1, 1]);
-    return {
-      uShadowR: shadow[0],
-      uShadowG: shadow[1],
-      uShadowB: shadow[2],
-      uShadowA: shadow[3],
-      uHighlightR: highlight[0],
-      uHighlightG: highlight[1],
-      uHighlightB: highlight[2],
-      uHighlightA: highlight[3],
-      uAmount: readNumber(p, "amount", 0.5),
-      uRings: readNumber(p, "rings", 14),
-      uShadows: readNumber(p, "shadows", 0.25),
-      uHighlights: readNumber(p, "highlights", 0.1),
-      uOriginX: readNumber(p, "originX", 0.5),
-      uOriginY: readNumber(p, "originY", 0.5),
-      uPhase: readNumber(p, "phase", 0),
-      uFalloff: readNumber(p, "falloff", 0.35),
-      uAberration: readNumber(p, "aberration", 0),
-      uAspect: w / Math.max(h, 1),
-    };
-  },
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'rings', label: 'Rings', default: 14, min: 1, max: 64, step: 1 },
+		{ name: 'shadows', label: 'Shadows', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'highlights', label: 'Highlights', default: 0.1, min: 0, max: 1, step: 0.01 },
+		{ name: 'originX', label: 'Origin X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'originY', label: 'Origin Y', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'phase', label: 'Phase', default: 0, min: -1, max: 1, step: 0.01 },
+		{ name: 'falloff', label: 'Falloff', default: 0.35, min: 0.05, max: 2, step: 0.01 },
+		{ name: 'aberration', label: 'Aberration', default: 0, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p, w, h) => {
+		const shadow = parseHexColor('#000000', [0, 0, 0, 1]);
+		const highlight = parseHexColor('#ffffff', [1, 1, 1, 1]);
+		return {
+			uShadowR: shadow[0],
+			uShadowG: shadow[1],
+			uShadowB: shadow[2],
+			uShadowA: shadow[3],
+			uHighlightR: highlight[0],
+			uHighlightG: highlight[1],
+			uHighlightB: highlight[2],
+			uHighlightA: highlight[3],
+			uAmount: readNumber(p, 'amount', 0.5),
+			uRings: readNumber(p, 'rings', 14),
+			uShadows: readNumber(p, 'shadows', 0.25),
+			uHighlights: readNumber(p, 'highlights', 0.1),
+			uOriginX: readNumber(p, 'originX', 0.5),
+			uOriginY: readNumber(p, 'originY', 0.5),
+			uPhase: readNumber(p, 'phase', 0),
+			uFalloff: readNumber(p, 'falloff', 0.35),
+			uAberration: readNumber(p, 'aberration', 0),
+			uAspect: w / Math.max(h, 1)
+		};
+	}
 };
 
 // 2D sibling of Fluted Glass: a grid of rounded lens cells, each magnifying
 // its own patch (privacy-glass block wall). Reuses the shadow/highlight model.
 export const glassMosaic: GpuShaderDefinition = {
-  id: "gpu-glass-mosaic",
-  label: "Glass Mosaic",
-  category: "distort",
-  entryPoint: "glassMosaicFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-glass-mosaic',
+	label: 'Glass Mosaic',
+	category: 'distort',
+	entryPoint: 'glassMosaicFragment',
+	fragmentSource: /* glsl */ `
 uniform float uShadowR;
 uniform float uShadowG;
 uniform float uShadowB;
@@ -947,41 +947,41 @@ vec4 glassMosaicFragment(vec2 vUv) {
 
   return vec4(rgb, color.a);
 }`,
-  schema: [
-    { name: "amount", label: "Amount", default: 0.55, min: 0, max: 1, step: 0.01 },
-    { name: "cells", label: "Cells", default: 18, min: 2, max: 80, step: 1 },
-    { name: "shadows", label: "Shadows", default: 0.3, min: 0, max: 1, step: 0.01 },
-    { name: "highlights", label: "Highlights", default: 0.12, min: 0, max: 1, step: 0.01 },
-    { name: "aberration", label: "Aberration", default: 0, min: 0, max: 1, step: 0.01 },
-  ],
-  uniformValues: (p, w, h) => {
-    const shadow = parseHexColor("#000000", [0, 0, 0, 1]);
-    const highlight = parseHexColor("#ffffff", [1, 1, 1, 1]);
-    return {
-      uShadowR: shadow[0],
-      uShadowG: shadow[1],
-      uShadowB: shadow[2],
-      uShadowA: shadow[3],
-      uHighlightR: highlight[0],
-      uHighlightG: highlight[1],
-      uHighlightB: highlight[2],
-      uHighlightA: highlight[3],
-      uAmount: readNumber(p, "amount", 0.55),
-      uCells: readNumber(p, "cells", 18),
-      uShadows: readNumber(p, "shadows", 0.3),
-      uHighlights: readNumber(p, "highlights", 0.12),
-      uAberration: readNumber(p, "aberration", 0),
-      uAspect: w / Math.max(h, 1),
-    };
-  },
+	schema: [
+		{ name: 'amount', label: 'Amount', default: 0.55, min: 0, max: 1, step: 0.01 },
+		{ name: 'cells', label: 'Cells', default: 18, min: 2, max: 80, step: 1 },
+		{ name: 'shadows', label: 'Shadows', default: 0.3, min: 0, max: 1, step: 0.01 },
+		{ name: 'highlights', label: 'Highlights', default: 0.12, min: 0, max: 1, step: 0.01 },
+		{ name: 'aberration', label: 'Aberration', default: 0, min: 0, max: 1, step: 0.01 }
+	],
+	uniformValues: (p, w, h) => {
+		const shadow = parseHexColor('#000000', [0, 0, 0, 1]);
+		const highlight = parseHexColor('#ffffff', [1, 1, 1, 1]);
+		return {
+			uShadowR: shadow[0],
+			uShadowG: shadow[1],
+			uShadowB: shadow[2],
+			uShadowA: shadow[3],
+			uHighlightR: highlight[0],
+			uHighlightG: highlight[1],
+			uHighlightB: highlight[2],
+			uHighlightA: highlight[3],
+			uAmount: readNumber(p, 'amount', 0.55),
+			uCells: readNumber(p, 'cells', 18),
+			uShadows: readNumber(p, 'shadows', 0.3),
+			uHighlights: readNumber(p, 'highlights', 0.12),
+			uAberration: readNumber(p, 'aberration', 0),
+			uAspect: w / Math.max(h, 1)
+		};
+	}
 };
 
 export const blocks: GpuShaderDefinition = {
-  id: "gpu-blocks",
-  label: "Blocks",
-  category: "distort",
-  entryPoint: "blocksFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-blocks',
+	label: 'Blocks',
+	category: 'distort',
+	entryPoint: 'blocksFragment',
+	fragmentSource: /* glsl */ `
 uniform float uSize;
 uniform float uDepth;
 uniform float uStudSize;
@@ -1015,28 +1015,28 @@ vec4 blocksFragment(vec2 vUv) {
 
   return vec4(clamp(rgb, vec3(0.0), vec3(1.0)), color.a);
 }`,
-  schema: [
-    { name: "size", label: "Block Size", default: 24, min: 4, max: 120, step: 1 },
-    { name: "depth", label: "Depth", default: 0.5, min: 0, max: 1.5, step: 0.01 },
-    { name: "studSize", label: "Stud Size", default: 0.55, min: 0, max: 1, step: 0.01 },
-    { name: "gap", label: "Gap", default: 0.06, min: 0, max: 0.4, step: 0.01 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uSize: readNumber(p, "size", 24),
-    uDepth: readNumber(p, "depth", 0.5),
-    uStudSize: readNumber(p, "studSize", 0.55),
-    uGap: readNumber(p, "gap", 0.06),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'size', label: 'Block Size', default: 24, min: 4, max: 120, step: 1 },
+		{ name: 'depth', label: 'Depth', default: 0.5, min: 0, max: 1.5, step: 0.01 },
+		{ name: 'studSize', label: 'Stud Size', default: 0.55, min: 0, max: 1, step: 0.01 },
+		{ name: 'gap', label: 'Gap', default: 0.06, min: 0, max: 0.4, step: 0.01 }
+	],
+	uniformValues: (p, w, h) => ({
+		uSize: readNumber(p, 'size', 24),
+		uDepth: readNumber(p, 'depth', 0.5),
+		uStudSize: readNumber(p, 'studSize', 0.55),
+		uGap: readNumber(p, 'gap', 0.06),
+		uWidth: w,
+		uHeight: h
+	})
 };
 
 export const droste: GpuShaderDefinition = {
-  id: "gpu-droste",
-  label: "Droste",
-  category: "distort",
-  entryPoint: "drosteFragment",
-  fragmentSource: /* glsl */ `
+	id: 'gpu-droste',
+	label: 'Droste',
+	category: 'distort',
+	entryPoint: 'drosteFragment',
+	fragmentSource: /* glsl */ `
 uniform float uStrength;
 uniform float uScale;
 uniform float uCenterX;
@@ -1068,20 +1068,20 @@ vec4 drosteFragment(vec2 vUv) {
   vec2 uv = center + vec2(cos(na), sin(na)) * er / vec2(aspect, 1.0);
   return texture(uInputTex, fract(uv));
 }`,
-  schema: [
-    { name: "strength", label: "Spiral", default: 1, min: 0, max: 2, step: 0.01 },
-    { name: "scale", label: "Scale", default: 2, min: 1.1, max: 6, step: 0.05 },
-    { name: "centerX", label: "Center X", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "centerY", label: "Center Y", default: 0.5, min: 0, max: 1, step: 0.01 },
-    { name: "spin", label: "Spin", default: 0, min: -6.28318, max: 6.28318, step: 0.01 },
-  ],
-  uniformValues: (p, w, h) => ({
-    uStrength: readNumber(p, "strength", 1),
-    uScale: readNumber(p, "scale", 2),
-    uCenterX: readNumber(p, "centerX", 0.5),
-    uCenterY: readNumber(p, "centerY", 0.5),
-    uSpin: readNumber(p, "spin", 0),
-    uWidth: w,
-    uHeight: h,
-  }),
+	schema: [
+		{ name: 'strength', label: 'Spiral', default: 1, min: 0, max: 2, step: 0.01 },
+		{ name: 'scale', label: 'Scale', default: 2, min: 1.1, max: 6, step: 0.05 },
+		{ name: 'centerX', label: 'Center X', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'centerY', label: 'Center Y', default: 0.5, min: 0, max: 1, step: 0.01 },
+		{ name: 'spin', label: 'Spin', default: 0, min: -6.28318, max: 6.28318, step: 0.01 }
+	],
+	uniformValues: (p, w, h) => ({
+		uStrength: readNumber(p, 'strength', 1),
+		uScale: readNumber(p, 'scale', 2),
+		uCenterX: readNumber(p, 'centerX', 0.5),
+		uCenterY: readNumber(p, 'centerY', 0.5),
+		uSpin: readNumber(p, 'spin', 0),
+		uWidth: w,
+		uHeight: h
+	})
 };
