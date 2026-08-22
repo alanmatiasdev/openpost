@@ -139,6 +139,7 @@
 					url={urls[item.mediaId ?? '']}
 					{canvasWidth}
 					{canvasHeight}
+					selected={item.id === selectedItemId}
 					opacityMultiplier={transitionOpacity(item)}
 					overrideTransform={item.id === selectedItemId ? (draftTransform ?? undefined) : undefined}
 					onselect={() => (selectedItemId = item.id)}

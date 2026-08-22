@@ -14,6 +14,7 @@
 	} from '$lib/video-editor/effects/gpu/compositor';
 	import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
 	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
+	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 
 	let {
 		item,
@@ -22,6 +23,7 @@
 		canvasHeight,
 		opacityMultiplier = 1,
 		overrideTransform,
+		selected = false,
 		onselect
 	}: {
 		item: TimelineItem;
@@ -30,11 +32,13 @@
 		canvasHeight: number;
 		opacityMultiplier?: number;
 		overrideTransform?: ItemTransform;
+		selected?: boolean;
 		onselect: () => void;
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
 	let gpuCanvas = $state<HTMLCanvasElement | null>(null);
 	let compositor = $state<GpuCompositor | null>(null);
+	let lastScopeAt = 0;
 	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
 	const transform = $derived(overrideTransform ?? resolved.transform ?? {});
 	const gpuEffects = $derived.by<GpuRenderEffect[]>(() =>
@@ -86,6 +90,7 @@
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
 			if (editorSession.clock.isPlaying && video.paused) void video.play().catch(() => undefined);
 			if (!editorSession.clock.isPlaying && !video.paused) video.pause();
+			if (selected && !needsGpu) requestAnimationFrame(() => publishScopeSample(video));
 		};
 		sync();
 		const offFrame = editorSession.clock.on('framechange', sync);
@@ -124,6 +129,7 @@
 			});
 			canvas.hidden = !rendered;
 			video.style.visibility = rendered ? 'hidden' : '';
+			if (selected) publishScopeSample(rendered ? canvas : video);
 		};
 		draw();
 		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(draw));
@@ -134,6 +140,21 @@
 			video.style.visibility = '';
 		};
 	});
+
+	function publishScopeSample(source: CanvasImageSource): void {
+		const now = performance.now();
+		if (now - lastScopeAt < 200) return;
+		lastScopeAt = now;
+		const canvas = new OffscreenCanvas(256, 144);
+		const context = canvas.getContext('2d', { willReadFrequently: true });
+		if (!context) return;
+		try {
+			context.drawImage(source, 0, 0, 256, 144);
+			scopeSamples.publish(item.id, context.getImageData(0, 0, 256, 144));
+		} catch {
+			scopeSamples.clear(item.id);
+		}
+	}
 </script>
 
 <div

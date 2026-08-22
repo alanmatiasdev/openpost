@@ -19,6 +19,7 @@
 		addGpuEffect,
 		removeEffect,
 		setGpuEffectParam,
+		setGpuEffectData,
 		setItemBlendMode,
 		updateEffect
 	} from '$lib/video-editor/timeline/actions/effects';
@@ -31,6 +32,7 @@
 		ALL_BLEND_MODES,
 		type BlendMode
 	} from '$lib/video-editor/effects/gpu/blend-modes';
+	import ColorScopes from './color-scopes.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 
@@ -125,6 +127,31 @@
 		delete draftAmounts[`${effect.id}:${paramName}`];
 	}
 
+	function numericParam(effect: GpuEffect, name: string, fallback: number): number {
+		const value = effect.params[name];
+		return typeof value === 'number' ? value : fallback;
+	}
+
+	async function importLut(effect: GpuEffect): Promise<void> {
+		if (!itemId) return;
+		const handles = await window.showOpenFilePicker?.({
+			types: [{ description: '3D LUT', accept: { 'text/plain': ['.cube'] } }],
+			multiple: false
+		});
+		if (!handles?.[0]) return;
+		const file = await handles[0].getFile();
+		const { encodeCubeLut } = await import('$lib/video-editor/effects/gpu/lut');
+		const encoded = encodeCubeLut(await file.text());
+		if (
+			setGpuEffectData(itemId, effect.id, {
+				lutName: file.name,
+				lutSize: encoded.size,
+				lutData: encoded.data
+			})
+		)
+			onedit();
+	}
+
 	function commitBlendMode(value: string): void {
 		const mode = ALL_BLEND_MODES.find((entry) => entry === value);
 		if (!itemId || !mode) return;
@@ -206,6 +233,16 @@
 						/>
 					{/if}
 					{#if gpuDefinition && effect.type === 'gpu'}
+						{#if effect.effectId === 'gpu-lut'}
+							<button
+								type="button"
+								class="mt-1 w-full rounded border border-[oklch(0.32_0.015_55)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)]"
+								onclick={() => importLut(effect)}
+								>{typeof effect.params.lutName === 'string'
+									? effect.params.lutName
+									: 'Choose .cube LUT'}</button
+							>
+						{/if}
 						<div class="mt-1 flex flex-col gap-1">
 							{#each gpuDefinition.schema as param (param.name)}
 								<label class="flex items-center gap-2 text-xs">
@@ -221,8 +258,7 @@
 										max={param.max}
 										step={param.step}
 										value={draftAmounts[`${effect.id}:${param.name}`] ??
-											effect.params[param.name] ??
-											param.default}
+											numericParam(effect, param.name, param.default)}
 										ariaLabel={`${effectLabel(effect)} — ${param.label}`}
 										onValueChange={(value) => {
 											draftAmounts[`${effect.id}:${param.name}`] = value;
@@ -256,3 +292,4 @@
 		</label>
 	{/if}
 </div>
+{#if itemId}<ColorScopes {itemId} />{/if}

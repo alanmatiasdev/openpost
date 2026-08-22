@@ -70,7 +70,7 @@ export interface BlurEffect extends ItemEffectBase {
 export interface GpuEffect extends ItemEffectBase {
 	type: 'gpu';
 	effectId: string;
-	params: Record<string, number>;
+	params: Record<string, number | string>;
 }
 
 export type ItemEffect =

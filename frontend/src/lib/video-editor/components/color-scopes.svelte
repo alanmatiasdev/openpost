@@ -1,0 +1,99 @@
+<script lang="ts">
+	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
+	import { buildScopeBins } from '$lib/video-editor/effects/scopes';
+	let { itemId }: { itemId: string | null } = $props();
+	let canvas = $state<HTMLCanvasElement | null>(null);
+	let mode = $state<'histogram' | 'waveform' | 'vectorscope'>('histogram');
+	const active = $derived(
+		scopeSamples.current?.itemId === itemId ? scopeSamples.current.image : null
+	);
+	$effect(() => {
+		if (!canvas || !active) return;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		const bins = buildScopeBins(active.data, active.width, active.height);
+		ctx.fillStyle = '#0d0d0d';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		if (mode === 'histogram') drawHistogram(ctx, bins.histogram, canvas.width, canvas.height);
+		else
+			drawDensity(
+				ctx,
+				mode === 'waveform' ? bins.waveform : bins.vectorscope,
+				mode === 'waveform' ? 256 : 128,
+				128,
+				canvas.width,
+				canvas.height
+			);
+	});
+
+	function drawHistogram(
+		ctx: CanvasRenderingContext2D,
+		bins: ReturnType<typeof buildScopeBins>['histogram'],
+		width: number,
+		height: number
+	): void {
+		const max = Math.max(1, ...bins.red, ...bins.green, ...bins.blue);
+		const series: Array<{ values: Uint32Array; color: string }> = [
+			{ values: bins.red, color: '#ff5a5f' },
+			{ values: bins.green, color: '#52d273' },
+			{ values: bins.blue, color: '#4da3ff' }
+		];
+		for (const { values, color } of series) {
+			ctx.strokeStyle = color;
+			ctx.globalAlpha = 0.7;
+			ctx.beginPath();
+			for (let x = 0; x < 256; x++) {
+				const y = height - ((values[x] ?? 0) / max) * height;
+				if (x === 0) ctx.moveTo(0, y);
+				else ctx.lineTo((x / 255) * width, y);
+			}
+			ctx.stroke();
+		}
+		ctx.globalAlpha = 1;
+	}
+
+	function drawDensity(
+		ctx: CanvasRenderingContext2D,
+		bins: Uint32Array,
+		sourceWidth: number,
+		sourceHeight: number,
+		width: number,
+		height: number
+	): void {
+		const max = Math.max(1, ...bins);
+		ctx.fillStyle = '#71efb0';
+		for (let y = 0; y < sourceHeight; y++)
+			for (let x = 0; x < sourceWidth; x++) {
+				const value = bins[y * sourceWidth + x] ?? 0;
+				if (!value) continue;
+				ctx.globalAlpha = Math.min(1, Math.log1p(value) / Math.log1p(max));
+				ctx.fillRect(
+					(x / sourceWidth) * width,
+					(y / sourceHeight) * height,
+					Math.max(1, width / sourceWidth),
+					Math.max(1, height / sourceHeight)
+				);
+			}
+		ctx.globalAlpha = 1;
+	}
+</script>
+
+<section class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+	<div class="mb-1 flex items-center justify-between">
+		<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
+			Scopes
+		</h3>
+		<select class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-[10px]" bind:value={mode}
+			><option value="histogram">Histogram</option><option value="waveform">Waveform</option><option
+				value="vectorscope">Vectorscope</option
+			></select
+		>
+	</div>
+	<canvas
+		bind:this={canvas}
+		width="224"
+		height="112"
+		class="w-full rounded bg-black"
+		aria-label="Live color scope"
+	></canvas>
+</section>

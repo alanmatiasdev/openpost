@@ -102,7 +102,7 @@ function pointsFor(params: GpuParamValues, channel: (typeof CHANNELS)[number]): 
 	].toSorted((left, right) => left.x - right.x);
 }
 
-function finite(value: number | undefined, fallback: number): number {
+function finite(value: string | number | undefined, fallback: number): number {
 	return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 

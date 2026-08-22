@@ -1,15 +1,15 @@
 /**
  * GPU effect registry.
  *
- * Ported from FreeCut (MIT) — infrastructure/gpu-effects/registry.ts —
+ * Ported from FreeCut (MIT) - infrastructure/gpu-effects/registry.ts -
  * adapted to a plain array-backed catalog (tree-shakeable, no namespace
  * import magic). Shader sources live in shaders/*; see shader-source.ts for
  * the WGSL -> GLSL ES 3.00 translation rules.
  *
  * Catalog status vs FreeCut's 54-effect catalog:
- * - 48 fragment effects ported verbatim (math intact).
- * - Skipped: gpu-lut (external .cube LUT file asset), gpu-curves (CPU-baked
- *   LUT + point-editor JSON params), gpu-ascii (canvas-rasterized font atlas
+ * - 51 effects run in the WebGL2 pipeline, including CPU-baked curves and
+ *   imported .cube LUTs.
+ * - Skipped: gpu-ascii (canvas-rasterized font atlas
  *   data texture), gpu-halftone (Paper Design-derived; vec4 color/select param
  *   model beyond our numeric schema), gpu-pixel-sort-hq (WebGPU compute pass;
  *   WebGL2 fragment pipeline cannot express scatter writes).
@@ -23,6 +23,7 @@ import * as keyingEffects from './shaders/keying';
 import * as stylizeEffects from './shaders/stylize';
 import * as distortEffects from './shaders/distort';
 import { curves } from './curves';
+import { lut } from './lut';
 
 /** Every definition, in stable category order (color, blur, keying, stylize, distort). */
 export const GPU_EFFECT_CATALOG: readonly GpuShaderDefinition[] = [
@@ -42,6 +43,7 @@ export const GPU_EFFECT_CATALOG: readonly GpuShaderDefinition[] = [
 	colorEffects.powerWindow,
 	colorEffects.gradientMap,
 	curves,
+	lut,
 	blurEffects.gaussianBlur,
 	blurEffects.boxBlur,
 	blurEffects.motionBlur,

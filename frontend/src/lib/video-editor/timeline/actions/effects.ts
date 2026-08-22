@@ -134,6 +134,26 @@ export function setGpuEffectParam(
 	});
 }
 
+/** Store a non-numeric GPU resource param such as an encoded LUT. */
+export function setGpuEffectData(
+	itemId: string,
+	effectId: string,
+	params: Record<string, string | number>
+): boolean {
+	return execute('SET_GPU_EFFECT_DATA', () => {
+		const effects = timelineStore.itemById.get(itemId)?.effects;
+		const index = effects?.findIndex((effect) => effect.id === effectId) ?? -1;
+		if (!effects || index === -1) return false;
+		const current = effects[index];
+		if (!current || current.type !== 'gpu') return false;
+		const next: GpuEffect = { ...current, params: { ...current.params, ...params } };
+		timelineStore._updateItems([
+			{ id: itemId, patch: { effects: replaceAt(effects, index, next) } }
+		]);
+		return true;
+	});
+}
+
 /** Set the clip's compositing blend mode for the GPU pipeline. One undoable step. */
 export function setItemBlendMode(itemId: string, mode: BlendMode): boolean {
 	return execute('SET_ITEM_BLEND_MODE', () => {
