@@ -157,6 +157,14 @@ export interface SubtitleCue {
 	startFrame: number;
 	endFrame: number;
 	text: string;
+	words?: SubtitleWord[];
+}
+
+export interface SubtitleWord {
+	id: string;
+	startFrame: number;
+	endFrame: number;
+	text: string;
 }
 
 export interface TimelineItem extends TextStyleFields {

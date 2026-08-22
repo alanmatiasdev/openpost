@@ -77,7 +77,16 @@ export function buildCuesFromWords(
 				Math.round(last.endSeconds * fps),
 				Math.round(first.startSeconds * fps) + 1
 			),
-			text: lines.join('\n')
+			text: lines.join('\n'),
+			words: batch.map((word) => ({
+				id: crypto.randomUUID(),
+				startFrame: Math.round(word.startSeconds * fps),
+				endFrame: Math.max(
+					Math.round(word.endSeconds * fps),
+					Math.round(word.startSeconds * fps) + 1
+				),
+				text: word.text
+			}))
 		});
 		batch = [];
 	};

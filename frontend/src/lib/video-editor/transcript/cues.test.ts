@@ -13,6 +13,10 @@ describe('buildCuesFromWords', () => {
 		expect(cues[0]!.text).toBe('Hello world');
 		expect(cues[0]!.startFrame).toBe(0);
 		expect(cues[0]!.endFrame).toBe(30);
+		expect(cues[0]!.words).toMatchObject([
+			{ text: 'Hello', startFrame: 0, endFrame: 15 },
+			{ text: 'world', startFrame: 15, endFrame: 30 }
+		]);
 	});
 
 	it('breaks cues when the span exceeds max duration', () => {
