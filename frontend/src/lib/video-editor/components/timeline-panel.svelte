@@ -24,9 +24,17 @@
 	import {
 		activeValueAt,
 		removeKeyframe,
-		setKeyframe
+		setKeyframe,
+		setKeyframeEasing
 	} from '$lib/video-editor/timeline/actions/keyframes';
-	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+	import type {
+		EasingConfig,
+		EasingType,
+		KeyframeProperty,
+		TimelineItem
+	} from '$lib/video-editor/project/types';
+	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
+	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 
@@ -267,11 +275,11 @@
 		timelineStore._setZoomLevel(zoom * factor);
 	}
 
-	const KEYFRAME_PROPERTIES = ['opacity', 'volume'] as const satisfies readonly KeyframeProperty[];
-	type DopesheetProperty = (typeof KEYFRAME_PROPERTIES)[number];
-	const DEFAULT_KEYFRAME_VALUES = { opacity: 1, volume: 1 } satisfies Record<
-		DopesheetProperty,
-		number
+	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
+	let selectedKeyframe = $state<{ property: KeyframeProperty; frame: number } | null>(null);
+	const BEZIER_KEYS = ['x1', 'y1', 'x2', 'y2'] satisfies Array<'x1' | 'y1' | 'x2' | 'y2'>;
+	const SPRING_KEYS = ['tension', 'friction', 'mass'] satisfies Array<
+		'tension' | 'friction' | 'mass'
 	>;
 
 	const selectedItem = $derived(
@@ -279,31 +287,111 @@
 	);
 	const keyframeRows = $derived.by(() => {
 		if (!selectedItem) return [];
-		return KEYFRAME_PROPERTIES.filter(
+		return getAnimatablePropertiesForItem(selectedItem).filter(
 			(property) => (selectedItem.keyframes?.[property]?.frames.length ?? 0) > 0
 		);
 	});
+	const availableKeyframeProperties = $derived(
+		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
+	);
+	const selectedKeyframeTrack = $derived(
+		selectedItem && selectedKeyframe
+			? selectedItem.keyframes?.[selectedKeyframe.property]
+			: undefined
+	);
+	const selectedKeyframeIndex = $derived(
+		selectedKeyframeTrack && selectedKeyframe
+			? selectedKeyframeTrack.frames.indexOf(selectedKeyframe.frame)
+			: -1
+	);
+	const selectedEasing = $derived(
+		selectedKeyframeIndex >= 0
+			? (selectedKeyframeTrack?.easings?.[selectedKeyframeIndex] ?? 'linear')
+			: 'linear'
+	);
+	const selectedEasingConfig = $derived(
+		selectedKeyframeIndex >= 0
+			? (selectedKeyframeTrack?.easingConfigs?.[selectedKeyframeIndex] ?? undefined)
+			: undefined
+	);
 
-	function keyframeLabel(property: DopesheetProperty): string {
-		return property === 'opacity'
-			? m.video_editor_keyframe_opacity()
-			: m.video_editor_keyframe_volume();
+	function keyframeLabel(property: KeyframeProperty): string {
+		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
 	}
 
-	function addKeyframeAtPlayhead(property: DopesheetProperty): void {
+	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
 		const item = selectedItem;
 		if (!item) return;
 		const frame = Math.max(0, timelineStore.currentFrame - item.from);
 		const value =
 			activeValueAt(item, property, timelineStore.currentFrame) ??
-			DEFAULT_KEYFRAME_VALUES[property];
+			(property === 'opacity' || property === 'volume' ? 1 : 0);
 		if (setKeyframe(item.id, property, frame, value)) onedit();
 	}
 
-	function removeKeyframeAt(property: DopesheetProperty, frame: number): void {
+	function removeKeyframeAt(property: KeyframeProperty, frame: number): void {
 		const item = selectedItem;
 		if (!item) return;
 		if (removeKeyframe(item.id, property, frame)) onedit();
+	}
+
+	function commitEasing(easing: EasingType, config?: EasingConfig): void {
+		if (!selectedItem || !selectedKeyframe) return;
+		if (
+			setKeyframeEasing(
+				selectedItem.id,
+				selectedKeyframe.property,
+				selectedKeyframe.frame,
+				easing,
+				config ?? buildEasingConfig(easing, selectedEasingConfig)
+			)
+		)
+			onedit();
+	}
+
+	function commitBezier(key: 'x1' | 'y1' | 'x2' | 'y2', value: number): void {
+		const bezier = {
+			x1: 0.42,
+			y1: 0,
+			x2: 0.58,
+			y2: 1,
+			...selectedEasingConfig?.bezier,
+			[key]: value
+		};
+		commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier });
+	}
+
+	function commitSpring(key: 'tension' | 'friction' | 'mass', value: number): void {
+		const spring = {
+			tension: 170,
+			friction: 26,
+			mass: 1,
+			...selectedEasingConfig?.spring,
+			[key]: value
+		};
+		commitEasing('spring', { type: 'spring', spring });
+	}
+
+	function easingFromValue(value: string): EasingType {
+		switch (value) {
+			case 'hold':
+			case 'ease-in':
+			case 'ease-out':
+			case 'ease-in-out':
+			case 'cubic-bezier':
+			case 'spring':
+				return value;
+			default:
+				return 'linear';
+		}
+	}
+
+	function bezierValue(key: 'x1' | 'y1' | 'x2' | 'y2'): number {
+		return selectedEasingConfig?.bezier?.[key] ?? { x1: 0.42, y1: 0, x2: 0.58, y2: 1 }[key];
+	}
+
+	function springValue(key: 'tension' | 'friction' | 'mass'): number {
+		return selectedEasingConfig?.spring?.[key] ?? { tension: 170, friction: 26, mass: 1 }[key];
 	}
 </script>
 
@@ -314,22 +402,20 @@
 			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
 				{selectedItem.label}
 			</span>
+			<select
+				class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-xs"
+				bind:value={pendingKeyframeProperty}
+				aria-label="Animated property"
+			>
+				{#each availableKeyframeProperties as property (property)}<option value={property}
+						>{keyframeLabel(property)}</option
+					>{/each}
+			</select>
 			<button
 				type="button"
 				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-				title={m.video_editor_keyframe_add_opacity()}
-				onclick={() => addKeyframeAtPlayhead('opacity')}
+				onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}>◆ Add key</button
 			>
-				◆ {keyframeLabel('opacity')}
-			</button>
-			<button
-				type="button"
-				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-				title={m.video_editor_keyframe_add_volume()}
-				onclick={() => addKeyframeAtPlayhead('volume')}
-			>
-				◆ {keyframeLabel('volume')}
-			</button>
 		{/if}
 		<button
 			type="button"
@@ -470,6 +556,7 @@
 								style="left:{frameToPx(selectedItem.from + frame)}px"
 								title="{keyframeLabel(property)} — {m.video_editor_marker_remove_hint()}"
 								onclick={() => setCurrentFrame(selectedItem.from + frame)}
+								onfocus={() => (selectedKeyframe = { property, frame })}
 								ondblclick={() => removeKeyframeAt(property, frame)}
 								onkeydown={(event) => {
 									if (event.key === 'Enter') setCurrentFrame(selectedItem.from + frame);
@@ -481,6 +568,65 @@
 						{/each}
 					</div>
 				{/each}
+				{#if selectedKeyframe && selectedKeyframeIndex >= 0}
+					<div
+						class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-[10px]"
+					>
+						<span class="font-medium capitalize">{keyframeLabel(selectedKeyframe.property)}</span>
+						<label
+							>Easing <select
+								class="ml-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+								value={selectedEasing}
+								onchange={(event) => commitEasing(easingFromValue(event.currentTarget.value))}
+								><option value="linear">Linear</option><option value="hold">Hold</option><option
+									value="ease-in">Ease in</option
+								><option value="ease-out">Ease out</option><option value="ease-in-out"
+									>Ease in/out</option
+								><option value="cubic-bezier">Cubic bezier</option><option value="spring"
+									>Spring</option
+								></select
+							></label
+						>
+						{#if selectedEasing === 'cubic-bezier'}
+							<select
+								class="rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+								aria-label="Bezier preset"
+								onchange={(event) => {
+									const preset = BEZIER_PRESETS.find(
+										(candidate) => candidate.value === event.currentTarget.value
+									);
+									if (preset)
+										commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier: preset.points });
+								}}
+								><option value="">Custom</option
+								>{#each BEZIER_PRESETS as preset (preset.value)}<option value={preset.value}
+										>{preset.label}</option
+									>{/each}</select
+							>
+							{#each BEZIER_KEYS as key (key)}<label
+									>{key}<input
+										class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+										type="number"
+										step="0.01"
+										min={key === 'x1' || key === 'x2' ? 0 : -2}
+										max={key === 'x1' || key === 'x2' ? 1 : 3}
+										value={bezierValue(key)}
+										onchange={(event) => commitBezier(key, event.currentTarget.valueAsNumber)}
+									/></label
+								>{/each}
+						{:else if selectedEasing === 'spring'}
+							{#each SPRING_KEYS as key (key)}<label
+									>{key}<input
+										class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+										type="number"
+										step="0.1"
+										value={springValue(key)}
+										onchange={(event) => commitSpring(key, event.currentTarget.valueAsNumber)}
+									/></label
+								>{/each}
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/if}
 
