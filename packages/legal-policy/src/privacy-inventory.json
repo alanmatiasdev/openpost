@@ -875,6 +875,18 @@
       "source_refs": ["frontend/src/lib/video/stream-target.ts"]
     },
     {
+      "id": "opfs-video-editor-cache",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-cache-v1",
+      "purpose": "Caches derived waveform samples and filmstrip frames so local Video Editor projects reopen and scrub without repeating media analysis.",
+      "scope": "Application origin and browser profile; entries are grouped by derived-media kind and local media identifier.",
+      "duration": "Until the browser evicts the cache, site data is cleared, or a later cache version replaces it. The source media remains in the user-selected workspace and does not enter this cache.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/media/opfs-cache.ts"]
+    },
+    {
       "id": "opfs-video-stream-files",
       "technology": "OPFS",
       "owner": "OpenPost Video Editor export pipeline",
