@@ -6,6 +6,7 @@ import {
 	activeValueAt,
 	interpolateAt,
 	removeKeyframe,
+	setAnimatedProperty,
 	setKeyframe,
 	setKeyframeEasing
 } from './keyframes';
@@ -232,6 +233,49 @@ describe('interpolateAt', () => {
 
 		expect(interpolateAt(item, 'opacity', 5)).toBe(0);
 		expect(interpolateAt(item, 'opacity', 15)).toBeLessThan(0.2);
+	});
+});
+
+describe('setAnimatedProperty', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		commandHistory.clearHistory();
+		timelineStore._setItems([
+			{
+				id: 'animated',
+				trackId: 't',
+				from: 10,
+				durationInFrames: 30,
+				label: '',
+				type: 'video',
+				transform: { x: 0, opacity: 1 }
+			}
+		]);
+	});
+
+	it('updates the base value when auto-key is off and no lane exists', () => {
+		expect(setAnimatedProperty('animated', 'x', 15, 0.25, false)).toBe(true);
+		expect(getItem('animated').transform?.x).toBe(0.25);
+		expect(getItem('animated').keyframes?.x).toBeUndefined();
+	});
+
+	it('starts a lane when auto-key is on', () => {
+		expect(setAnimatedProperty('animated', 'opacity', 15, 0.5, true)).toBe(true);
+		expect(getItem('animated').keyframes?.opacity).toMatchObject({ frames: [5], values: [0.5] });
+	});
+
+	it('extends an existing lane even when auto-key is off', () => {
+		setAnimatedProperty('animated', 'opacity', 15, 0.5, true);
+		setAnimatedProperty('animated', 'opacity', 20, 0.75, false);
+		expect(getItem('animated').keyframes?.opacity).toMatchObject({
+			frames: [5, 10],
+			values: [0.5, 0.75]
+		});
+	});
+
+	it('rejects keys outside the clip bounds', () => {
+		expect(setAnimatedProperty('animated', 'x', 40, 1, true)).toBe(false);
+		expect(getItem('animated').keyframes).toBeUndefined();
 	});
 });
 

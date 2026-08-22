@@ -7,7 +7,7 @@
  * applies the outgoing easing stored on the previous keyframe and clamps
  * outside the keyed range.
  *
- * Ported from FreeCut (MIT) — types/keyframe.ts and
+ * Ported from FreeCut (MIT) - types/keyframe.ts and
  * features/keyframes/utils/interpolation.ts.
  */
 
@@ -74,6 +74,35 @@ export function setKeyframe(
 		if (!item) return false;
 		const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, frame, value);
 		timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);
+		return true;
+	});
+}
+
+/**
+ * Commit an inspector or gizmo value using FreeCut's auto-key rules.
+ * Existing animation lanes keep receiving keys. The explicit auto-key flag
+ * only controls whether a new lane starts.
+ */
+export function setAnimatedProperty(
+	itemId: string,
+	property: KeyframeProperty,
+	absoluteFrame: number,
+	value: number,
+	autoKeyEnabled: boolean
+): boolean {
+	return execute('SET_ANIMATED_PROPERTY', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || absoluteFrame < item.from || absoluteFrame >= item.from + item.durationInFrames) {
+			return false;
+		}
+		const relativeFrame = absoluteFrame - item.from;
+		const track = item.keyframes?.[property];
+		if (track || autoKeyEnabled) {
+			const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, relativeFrame, value);
+			timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);
+			return true;
+		}
+		timelineStore._updateItems([{ id: itemId, patch: basePropertyPatch(item, property, value) }]);
 		return true;
 	});
 }
@@ -185,4 +214,42 @@ function pruneTrack(
 
 function withoutIndex<T>(source: T[], index: number): T[] {
 	return [...source.slice(0, index), ...source.slice(index + 1)];
+}
+
+function basePropertyPatch(
+	item: TimelineItem,
+	property: KeyframeProperty,
+	value: number
+): Partial<TimelineItem> {
+	if (
+		[
+			'x',
+			'y',
+			'width',
+			'height',
+			'anchorX',
+			'anchorY',
+			'rotation',
+			'opacity',
+			'cornerRadius'
+		].includes(property)
+	) {
+		return { transform: { ...item.transform, [property]: value } };
+	}
+	const crop = item.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+	if (property.startsWith('crop')) {
+		const field = property.slice(4).toLowerCase();
+		return { crop: { ...crop, [field]: value } };
+	}
+	if (property.startsWith('textShadow')) {
+		const field = property.slice('textShadow'.length);
+		const key = `${field.slice(0, 1).toLowerCase()}${field.slice(1)}`;
+		return {
+			textShadow: {
+				...(item.textShadow ?? { blur: 0, color: '#000000', offsetX: 0, offsetY: 0 }),
+				[key]: value
+			}
+		};
+	}
+	return { [property]: value };
 }

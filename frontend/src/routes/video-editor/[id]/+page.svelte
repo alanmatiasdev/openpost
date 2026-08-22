@@ -40,6 +40,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
+	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -398,7 +399,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				</section>
 
 				<!-- Tools -->
-				<aside class="flex w-44 shrink-0 flex-col gap-1 border-l border-[oklch(0.25_0.015_55)] p-2">
+				<aside
+					class="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-l border-[oklch(0.25_0.015_55)] p-2"
+				>
 					<h2 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 						{m.video_editor_tools()}
 					</h2>
@@ -419,6 +422,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" onclick={handleAddText}>
 						{m.video_editor_add_text()}
 					</Button>
+					{#if selectedItemId}
+						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+							<ClipPropertiesPanel
+								itemId={selectedItemId}
+								onedit={() => editorSession.scheduleAutosave()}
+							/>
+						</div>
+					{/if}
 					{#if selectedIsVideo}
 						<Button
 							size="sm"
