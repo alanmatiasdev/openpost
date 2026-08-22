@@ -123,7 +123,7 @@ export function prepareReleaseChangelog(markdown, tag, releaseDate) {
         ? afterUnreleased.length
         : releaseBodyStart + followingSectionOffset;
     const releaseBody = afterUnreleased.slice(releaseBodyStart, releaseBodyEnd);
-    const followingSections = afterUnreleased.slice(releaseBodyEnd).replace(/^\n+/u, "");
+    const followingSections = afterUnreleased.slice(releaseBodyEnd).replace(/^\n+/u, "").trimEnd();
     const mergedBody = mergePendingBodyIntoReleaseBody(releaseBody, unreleasedBody);
     const tail = followingSections ? `\n\n${followingSections}` : "";
     return `${markdown.slice(0, start)}${startMarker}\n\n## [${normalizedTag}] - ${releaseDate}\n\n${mergedBody}${tail}\n`;

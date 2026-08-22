@@ -83,6 +83,7 @@ test("merges late fragments into an already prepared version", () => {
     ].join("\n"),
   );
   assert.equal(prepareReleaseChangelog(updated, "v1.2.4", "2026-07-28"), updated);
+  assert.doesNotMatch(updated, /\n\n$/u);
 });
 
 test("rejects empty and malformed release preparation", () => {
