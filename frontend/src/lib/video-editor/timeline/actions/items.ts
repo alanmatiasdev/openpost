@@ -18,6 +18,27 @@ export function addItems(newItems: TimelineItem[]): void {
 	});
 }
 
+export function addTextItem(label: string): string {
+	return execute('ADD_TEXT_ITEM', () => {
+		const topVisualTrack = timelineStore.tracks
+			.filter((track) => track.kind !== 'audio')
+			.toSorted((left, right) => left.order - right.order)[0];
+		if (!topVisualTrack) throw new Error('A visual track is required to add text.');
+
+		const id = crypto.randomUUID();
+		timelineStore._addItem({
+			id,
+			trackId: topVisualTrack.id,
+			from: timelineStore.currentFrame,
+			durationInFrames: timelineStore.fps * 3,
+			label,
+			text: label,
+			type: 'text'
+		});
+		return id;
+	});
+}
+
 export function removeItems(ids: string[]): void {
 	execute('REMOVE_ITEMS', () => {
 		const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
