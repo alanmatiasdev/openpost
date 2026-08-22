@@ -393,7 +393,7 @@ function testPlan(requestedScope, requestedOptions) {
     ),
   ]);
   const workspace = stage("workspace tests", [commandStep("bunx", "turbo", "run", "test")]);
-  const repository = stage("repository tests", [bunTest("scripts")]);
+  const repository = stage("repository tests", [bunTest("./scripts")]);
   const nonBrowserFrontend = stage("frontend server tests", [
     commandStep("bunx", "turbo", "run", "test:server", "--filter", "@openpost/web"),
   ]);

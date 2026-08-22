@@ -171,8 +171,19 @@ test("the frontend test scope covers every browser-side workspace", () => {
   ]);
 });
 
+test("repository tests stay inside the owned scripts directory", () => {
+  const result = taskPlan("test");
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  const repository = plan.stages.find((stage) => stage.label === "repository tests");
+  assert.deepEqual(repository.commands, ["bun test ./scripts"]);
+});
+
 function taskPlan(command, scope) {
-  return spawnSync("bun", ["scripts/tasks.mjs", command, scope, "--plan"], {
+  const args = ["scripts/tasks.mjs", command];
+  if (scope) args.push(scope);
+  args.push("--plan");
+  return spawnSync("bun", args, {
     cwd: process.cwd(),
     encoding: "utf8",
   });
