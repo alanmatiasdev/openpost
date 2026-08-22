@@ -103,6 +103,22 @@ export function splitAtFrame(frame: number, trackId?: string): { left: string[];
 	});
 }
 
+/**
+ * Split one item at every scene-change frame, right-to-left, as one
+ * undoable step. Right-to-left keeps later cut points valid because each
+ * split leaves the original id on the shrinking left piece; frames that no
+ * longer fall strictly inside it are skipped.
+ */
+export function splitAtScenes(id: string, frames: number[]): number {
+	return execute('SPLIT_AT_SCENES', () => {
+		let count = 0;
+		for (const frame of [...frames].sort((a, b) => b - a)) {
+			if (timelineStore._splitItem(id, frame)) count++;
+		}
+		return count;
+	});
+}
+
 export function trimItemStart(id: string, newFrom: number, newSourceStart?: number): boolean {
 	return execute('TRIM_ITEM_START', () => {
 		const item = timelineStore.itemById.get(id);

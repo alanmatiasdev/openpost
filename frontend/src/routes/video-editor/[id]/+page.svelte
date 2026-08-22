@@ -14,9 +14,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import {
 		rippleDeleteItems,
 		splitAtFrame,
+		splitAtScenes,
 		toggleMarkerAtPlayhead,
 		setItemSpeed
 	} from '$lib/video-editor/timeline/actions/items';
+	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
+	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import {
@@ -215,6 +218,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			['video', 'audio'].includes(timelineStore.itemById.get(selectedItemId)?.type ?? '')
 	);
 
+	const selectedIsVideo = $derived(
+		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
+	);
+
 	let showTranscript = $state(false);
 
 	function handleAddCrossfade(): void {
@@ -251,6 +258,39 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
 			removingSilence = false;
+		}
+	}
+
+	let scanningScenes = $state(false);
+	async function handleAutoSplitScenes(): Promise<void> {
+		if (!selectedItemId || scanningScenes) return;
+		const item = timelineStore.itemById.get(selectedItemId);
+		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
+		if (!item || !media) return;
+		scanningScenes = true;
+		try {
+			editorSession.pausePlayback();
+			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : media.fps;
+			const cutFrames = await scanSceneCuts(media, { sourceFps });
+			const frames = cutFramesForItem({
+				cutSourceFrames: cutFrames,
+				sourceFps,
+				sourceStart: item.sourceStart,
+				speed: item.speed,
+				from: item.from,
+				timelineFps: timelineStore.fps
+			}).filter((frame) => frame > item.from && frame < item.from + item.durationInFrames);
+			if (frames.length === 0) {
+				showToast(m.video_editor_scene_none(), 'info');
+				return;
+			}
+			splitAtScenes(item.id, frames);
+			editorSession.scheduleAutosave();
+			showToast(m.video_editor_scene_done({ count: frames.length }), 'success');
+		} catch (err) {
+			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} finally {
+			scanningScenes = false;
 		}
 	}
 
@@ -369,6 +409,19 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					>
 						{m.video_editor_crossfade()}
 					</Button>
+					{#if selectedIsVideo}
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={scanningScenes}
+							onclick={handleAutoSplitScenes}
+						>
+							{#if scanningScenes}
+								<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+							{/if}
+							{m.video_editor_scene_split()}
+						</Button>
+					{/if}
 					{#if selectedIsMedia}
 						<EffectsPanel itemId={selectedItemId} onedit={() => editorSession.scheduleAutosave()} />
 					{/if}
