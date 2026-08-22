@@ -4634,7 +4634,6 @@
 	"video_editor_effects_hue_rotate": "Hue rotate",
 	"video_editor_effects_invert": "Invert",
 	"video_editor_effects_none": "No effects on this clip.",
-	"video_editor_effects_drag_hint": "Choose an effect, then add it here or drag it onto timeline clips.",
 	"video_editor_effects_drop_count": "{count} clips",
 	"video_editor_effects_drop_ready": "Effect ready. Clips: {count}",
 	"video_editor_effects_remove": "Remove effect",

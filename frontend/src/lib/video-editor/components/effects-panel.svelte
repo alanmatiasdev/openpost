@@ -272,9 +272,6 @@
 			{m.video_editor_effects_add()}
 		</button>
 	</div>
-	<p class="px-1 text-[10px] leading-4 text-[oklch(0.6_0.012_55)]">
-		{m.video_editor_effects_drag_hint()}
-	</p>
 	{#if !itemId || effects.length === 0}
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_effects_none()}</p>
 	{:else}

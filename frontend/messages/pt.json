@@ -4634,7 +4634,6 @@
 	"video_editor_effects_hue_rotate": "Rotação de matiz",
 	"video_editor_effects_invert": "Inverter",
 	"video_editor_effects_none": "Sem efeitos neste clipe.",
-	"video_editor_effects_drag_hint": "Escolha um efeito e adicione-o aqui ou arraste-o para clipes na linha temporal.",
 	"video_editor_effects_drop_count": "{count} clipes",
 	"video_editor_effects_drop_ready": "Efeito pronto. Clipes: {count}",
 	"video_editor_effects_remove": "Remover efeito",
