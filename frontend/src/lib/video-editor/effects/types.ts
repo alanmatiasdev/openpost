@@ -62,6 +62,17 @@ export interface BlurEffect extends ItemEffectBase {
 	amount: number;
 }
 
+/**
+ * One GPU-pipeline effect instance, addressed by registry id with numeric
+ * params (see effects/gpu/registry.ts). Rendered through the WebGL2
+ * compositor; ignored by the CSS-filter fallback path.
+ */
+export interface GpuEffect extends ItemEffectBase {
+	type: 'gpu';
+	effectId: string;
+	params: Record<string, number>;
+}
+
 export type ItemEffect =
 	| BrightnessEffect
 	| ContrastEffect
@@ -70,9 +81,13 @@ export type ItemEffect =
 	| SepiaEffect
 	| GrayscaleEffect
 	| InvertEffect
-	| BlurEffect;
+	| BlurEffect
+	| GpuEffect;
 
 export type ItemType = ItemEffect['type'];
+
+/** CSS-filter-renderable subset (everything except the GPU-pipeline variant). */
+export type CssFilterType = Exclude<ItemType, 'gpu'>;
 
 /** Unit appended to the param when serializing to a CSS filter function. */
 const UNIT_BY_TYPE = {
@@ -84,11 +99,11 @@ const UNIT_BY_TYPE = {
 	grayscale: '',
 	invert: '',
 	blur: 'px'
-};
+} satisfies Record<CssFilterType, string>;
 
 /** Slider range and neutral default per effect type. */
 export interface EffectDefinition {
-	type: ItemType;
+	type: CssFilterType;
 	min: number;
 	max: number;
 	step: number;
@@ -106,6 +121,6 @@ export const EFFECT_DEFINITIONS: readonly EffectDefinition[] = [
 	{ type: 'blur', min: 0, max: 20, step: 0.5, defaultAmount: 4 }
 ];
 
-export function effectUnit(type: ItemType): string {
+export function effectUnit(type: CssFilterType): string {
 	return UNIT_BY_TYPE[type];
 }

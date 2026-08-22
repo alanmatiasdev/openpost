@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ItemEffect } from './types';
 import { effectsToCssFilter } from './filter';
 
-function effect(type: ItemEffect['type'], amount: number): ItemEffect {
+function effect(type: Exclude<ItemEffect['type'], 'gpu'>, amount: number): ItemEffect {
 	return { id: `${type}-1`, type, amount, enabled: true };
 }
 

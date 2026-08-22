@@ -134,6 +134,10 @@ export interface TimelineItem extends TextStyleFields {
 
 	// Clip effects (CSS-filter-semantics color/blur stack; see effects/types.ts)
 	effects?: import('$lib/video-editor/effects/types').ItemEffect[];
+
+	// Per-clip compositing blend mode for the GPU pipeline (25 modes; see
+	// effects/gpu/blend-modes.ts). Absent/'normal' keeps opacity-only blending.
+	blendMode?: import('$lib/video-editor/effects/gpu/blend-modes').BlendMode;
 }
 
 export interface TimelineTrack {
