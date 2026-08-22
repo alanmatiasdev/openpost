@@ -80,7 +80,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Linked selection (A/V move together), link/unlink commands                          | `linked-items.ts` ported, docs p07                                              | PARTIAL — `linkItems`/`unlinkItems` (`items.ts:67,74`) + model field; no UI toggle                                                                                                            | S      |
 | Snapping to cuts/markers/playhead, toggle S                                         | `timeline/hooks/use-snap-calculator.ts`                                         | PARTIAL — `snapEnabled` flag in store (`timeline-store.svelte.ts:70`); no snap calculator wired to drags                                                                                      | M      |
 | Markers add/jump/remove with labels/colors                                          | `timeline/stores/markers-store.ts`                                              | PARTIAL — `addMarker`/`toggleMarkerAtPlayhead` (`items.ts:210-232`), ruler shows markers; no label/color/jump UI                                                                              | S      |
-| In/out points define range for preview+export                                       | `in-out-points.ts` ported                                                       | PARTIAL — `setInPoint`/`setOutPoint` (`items.ts:202-208`) unwired                                                                                                                             | S      |
+| In/out points define range for preview+export                                       | `in-out-points.ts` ported                                                       | PRESENT - transport marks and clears the range; preview loops it and export can render it (`transport-bar.svelte`, `export-dialog.svelte`)                                                    | -      |
 | Zoom (ctrl+=/−, fit `\`, 100%)                                                      | `timeline/hooks/use-timeline-zoom.ts`, `stores/zoom-store.ts`                   | PARTIAL — zoom in/out buttons + wheel-derived pxPerFrame; no fit/100% shortcuts                                                                                                               | S      |
 | Sequences: multiple timelines per project, tabs, nest sequence as clip              | `timeline/stores/sequences-store.ts`, docs p06                                  | MISSING (single top-level sequence by design, `project/types.ts:5`)                                                                                                                           | L      |
 | Compound clip open-as-tab                                                           | docs p06                                                                        | MISSING                                                                                                                                                                                       | L      |
@@ -204,10 +204,10 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Mask path editing overlay                                               | `preview/utils/mask-path-utils.ts`                                                 | MISSING                                                                                                                                                                                        | M      |
 | Motion-path editing on canvas                                           | `preview/utils/motion-path-edit.ts`                                                | MISSING                                                                                                                                                                                        | L      |
 | Text scrub overlay / direct text edit on canvas                         | `dom-text-scrub-overlay.ts`                                                        | MISSING                                                                                                                                                                                        | S      |
-| Save frame as image                                                     | `preview/utils/preview-capture-frame.ts`                                           | MISSING                                                                                                                                                                                        | S      |
-| Fullscreen preview                                                      | docs p08                                                                           | MISSING                                                                                                                                                                                        | S      |
-| Preview zoom (view only)                                                | docs p08                                                                           | MISSING                                                                                                                                                                                        | S      |
-| Monitor volume separate from mix                                        | docs p08                                                                           | PARTIAL — transport stop/play only; no volume control                                                                                                                                          | S      |
+| Save frame as image                                                     | `preview/utils/preview-capture-frame.ts`                                           | PRESENT - full-resolution PNG uses the shared export compositor, downloads, and joins project media (`media/render-export.ts`, `components/transport-bar.svelte`)                              | -      |
+| Fullscreen preview                                                      | docs p08                                                                           | PRESENT - native Fullscreen API with live enter/exit state (`components/transport-bar.svelte`)                                                                                                 | -      |
+| Preview zoom (view only)                                                | docs p08                                                                           | PRESENT - fit/25/50/75/100 presets plus 20% step controls, persisted per device (`preview/playback-settings.svelte.ts`)                                                                        | -      |
+| Monitor volume separate from mix                                        | docs p08                                                                           | PRESENT - persisted per-device gain and mute apply to video and audio-only preview without changing project/export gain (`preview/playback-settings.svelte.ts`, `preview-audio-layer.svelte`)  | -      |
 | Proxy playback for smooth scrubbing; proxy fallback during scrub        | `preview/utils/scrub-proxy-fallback.ts`                                            | PARTIAL — proxies generated (`proxy-worker.ts`) but preview always uses originals                                                                                                              | S      |
 | Adaptive preview quality / prewarm pipelines                            | `adaptive-preview-quality.ts`, `render-pump-prewarm-plan.ts`, `decoder-prewarm.ts` | MISSING                                                                                                                                                                                        | L      |
 | Reverse playback                                                        | `reverse-playback-window.ts`                                                       | MISSING                                                                                                                                                                                        | M      |
@@ -251,19 +251,19 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 ## Counts
 
-**Total capabilities audited: 131** (excluding 2 N/A-parity rows: GIF export, alpha export, speed ramps).
+**Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 47**
-- **PARTIAL: 44**
-- **MISSING: 38**
-- (N/A parity: 2)
+- **PRESENT: 50**
+- **PARTIAL: 39**
+- **MISSING: 81**
+- (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)
 
 1. **L - Finish the three special GPU effects**: generated ASCII atlas, Paper halftone controls, and WebGPU compute pixel-sort HQ.
 2. **L - Keyframe value graph and advanced dope-sheet gestures**: visual curve handles, marquee, clipboard, retime, alt-drag, and saved custom presets.
 3. **M - Finish color workspace depth**: RGB Parade, auto-balance, white-balance picker, before/after compare, and grade presets.
-4. **M - Finish on-canvas tools**: crop and anchor gizmos, text direct edit, motion paths, preview zoom, fullscreen, and frame capture.
+4. **M - Finish on-canvas tools**: crop and anchor gizmos, direct text edit, and motion paths.
 5. **M - Trim/slip/slide/rate-stretch tooling**: wire existing slip/rate engines; add trim-start drag, slide, rolling trims, and snapping calculator.
 6. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
 7. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
