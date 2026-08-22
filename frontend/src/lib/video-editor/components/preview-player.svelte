@@ -1,6 +1,7 @@
 <!-- Preview player: pooled <video> synced to the session clock -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { untrack } from 'svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -13,7 +14,19 @@
 		transitionsStore,
 		transitionAtFrame
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import {
+		createGpuCompositor,
+		type GpuCompositor
+	} from '$lib/video-editor/effects/gpu/compositor';
+	import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
+	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
+	import type { GpuRenderEffect } from '$lib/video-editor/effects/gpu/compositor';
 	import type { TimelineItem } from '$lib/video-editor/project/types';
+	import {
+		SeekScheduler,
+		seekDriftExceeded,
+		supportsVideoFrameCallback
+	} from '$lib/video-editor/preview/seek-throttle';
 
 	const project = $derived(editorSession.project);
 	const aspect = $derived(
@@ -56,6 +69,93 @@
 	);
 	const outgoingUrl = $derived(blend ? (urls[blend.outgoing.mediaId ?? ''] ?? null) : null);
 
+	// ── GPU pipeline ────────────────────────────────────────────────────────
+	// When the active clip carries enabled GPU effects or a non-normal blend
+	// mode (and no transition is blending), the frame composites through the
+	// WebGL2 canvas layered over the <video>; the DOM path stays untouched
+	// otherwise and remains the fallback when WebGL2 is unavailable.
+
+	let gpuCanvasEl = $state<HTMLCanvasElement | null>(null);
+	let compositor = $state<GpuCompositor | null>(null);
+
+	const gpuRenderEffects = $derived.by<GpuRenderEffect[]>(() => {
+		const item = activeItem;
+		if (!item) return [];
+		return (item.effects ?? []).flatMap((effect) => {
+			if (effect.type !== 'gpu' || !effect.enabled) return [];
+			return [
+				{
+					effectId: effect.effectId,
+					params: { ...getGpuEffectDefaultParams(effect.effectId), ...effect.params }
+				}
+			];
+		});
+	});
+
+	const needsGpu = $derived(
+		!!activeItem &&
+			!blend &&
+			(gpuRenderEffects.length > 0 || isNonNormalBlend(activeItem?.blendMode))
+	);
+
+	$effect(() => {
+		const canvas = gpuCanvasEl;
+		if (!canvas || !needsGpu) return;
+		const instance = createGpuCompositor(canvas);
+		if (!instance) return;
+		compositor = instance;
+		return () => {
+			instance.dispose();
+			if (compositor === instance) compositor = null;
+		};
+	});
+
+	// rAF-driven composite while playing; framechange redraw covers scrubbing.
+	$effect(() => {
+		const instance = compositor;
+		const video = videoEl;
+		const canvas = gpuCanvasEl;
+		const item = activeItem;
+		if (!needsGpu || !instance || !video || !canvas || !item) return;
+
+		const draw = () => {
+			const width = video.videoWidth;
+			const height = video.videoHeight;
+			if (!width || !height) return;
+			const rendered = instance.render(video, width, height, gpuRenderEffects, {
+				time: timelineStore.currentFrame / editorSession.fps,
+				blendMode: item.blendMode ?? 'normal'
+			});
+			canvas.style.visibility = rendered ? 'visible' : 'hidden';
+			video.style.visibility = rendered ? 'hidden' : '';
+			// Keyframed opacity applies to the composited surface.
+			const keyframedOpacity = activeValueAt(item, 'opacity', timelineStore.currentFrame);
+			canvas.style.opacity = String(keyframedOpacity ?? 1);
+		};
+
+		draw();
+		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(draw));
+		let raf = 0;
+		const loop = () => {
+			draw();
+			raf = requestAnimationFrame(loop);
+		};
+		if (editorSession.clock.isPlaying) raf = requestAnimationFrame(loop);
+		const offPlay = editorSession.clock.on('play', () => {
+			cancelAnimationFrame(raf);
+			raf = requestAnimationFrame(loop);
+		});
+		const offPause = editorSession.clock.on('pause', () => cancelAnimationFrame(raf));
+		return () => {
+			offPlay();
+			offPause();
+			offFrame();
+			cancelAnimationFrame(raf);
+			canvas.style.visibility = '';
+			video.style.visibility = '';
+		};
+	});
+
 	async function loadUrls(): Promise<void> {
 		for (const media of mediaPool.mediaList) {
 			if (media.tags.includes('audio')) continue;
@@ -94,47 +194,97 @@
 		return (item.sourceStart ?? 0) / sourceFps + (relativeFrame / fps) * speed;
 	}
 
-	// Sync <video> to clock: seek when paused; correct drift while playing.
+	// Sync <video> to clock. Ported from FreeCut (MIT): seeks are coalesced
+	// through SeekScheduler instead of writing currentTime on every frame
+	// change, and while playing, drift is corrected against presented frames
+	// via requestVideoFrameCallback (rAF fallback). The effect intentionally
+	// reads currentFrame untracked so listeners are not torn down every frame.
 	$effect(() => {
 		const item = activeItem;
 		const url = activeUrl;
-		if (!item || !url || !videoEl) return;
+		const video = videoEl;
+		if (!item || !url || !video) return;
 
 		const fps = editorSession.fps;
 		const speed = item.speed ?? 1;
-		const relativeFrame = timelineStore.currentFrame - item.from;
 		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
-		const sourceSeconds = (item.sourceStart ?? 0) / sourceFps + (relativeFrame / fps) * speed;
+		const tolerance = 0.08 / Math.abs(speed || 1);
 
-		const apply = () => {
-			if (!videoEl) return;
-			if (Math.abs(videoEl.currentTime - sourceSeconds) > 0.08 / Math.abs(speed || 1)) {
-				videoEl.currentTime = sourceSeconds;
+		const scheduler = new SeekScheduler((target) => {
+			video.currentTime = target;
+		});
+
+		const sync = () => {
+			const frame = untrack(() => timelineStore.currentFrame);
+			const relativeFrame = frame - item.from;
+			const sourceSeconds = (item.sourceStart ?? 0) / sourceFps + (relativeFrame / fps) * speed;
+
+			if (seekDriftExceeded(video.currentTime, sourceSeconds, tolerance)) {
+				scheduler.request(sourceSeconds);
 			}
-			videoEl.playbackRate = Math.min(16, Math.max(0.0625, speed));
+			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
 			if (editorSession.clock.isPlaying) {
-				if (videoEl.paused) void videoEl.play().catch(() => undefined);
-			} else if (!videoEl.paused) {
-				videoEl.pause();
+				if (video.paused) void video.play().catch(() => undefined);
+			} else if (!video.paused) {
+				video.pause();
+			}
+
+			// Keyframed opacity applies to the active layer.
+			const keyframedOpacity = activeValueAt(item, 'opacity', frame);
+			if (keyframedOpacity !== null) {
+				video.style.opacity = String(keyframedOpacity);
+			} else if (!blend || !outVideoEl) {
+				video.style.opacity = '';
 			}
 		};
-		apply();
-		if (outVideoEl && blend) {
-			outVideoEl.style.opacity = String(outgoingOpacity(blend.state.type, blend.state.progress));
-		}
 
-		const keyframedOpacity = activeValueAt(item, 'opacity', timelineStore.currentFrame);
-		if (keyframedOpacity !== null) {
-			videoEl.style.opacity = String(keyframedOpacity);
-		} else if (!blend || !outVideoEl) {
-			videoEl.style.opacity = '';
-		}
+		let stopPresentationLoop = () => {};
+		const startPresentationLoop = () => {
+			stopPresentationLoop();
+			if (supportsVideoFrameCallback(video)) {
+				let alive = true;
+				const tick = () => {
+					if (!alive) return;
+					sync();
+					if (alive && editorSession.clock.isPlaying && videoEl === video) {
+						video.requestVideoFrameCallback(tick);
+					} else {
+						alive = false;
+					}
+				};
+				video.requestVideoFrameCallback(tick);
+				stopPresentationLoop = () => {
+					alive = false;
+				};
+			} else {
+				let raf = requestAnimationFrame(function loop() {
+					sync();
+					if (editorSession.clock.isPlaying && videoEl === video) {
+						raf = requestAnimationFrame(loop);
+					}
+				});
+				stopPresentationLoop = () => cancelAnimationFrame(raf);
+			}
+		};
 
-		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(apply));
-		const offPause = editorSession.clock.on('pause', () => videoEl?.pause());
+		sync();
+		if (untrack(() => editorSession.clock.isPlaying)) startPresentationLoop();
+
+		const offFrame = editorSession.clock.on('framechange', () => {
+			// Scrubbing/stepping while paused: one throttled seek per frame event.
+			if (!editorSession.clock.isPlaying) sync();
+		});
+		const offPlay = editorSession.clock.on('play', startPresentationLoop);
+		const offPause = editorSession.clock.on('pause', () => {
+			stopPresentationLoop();
+			video.pause();
+		});
 		return () => {
+			offPlay();
 			offPause();
 			offFrame();
+			stopPresentationLoop();
+			scheduler.detach();
 		};
 	});
 </script>
@@ -152,6 +302,13 @@
 					playsinline
 				></video>
 			{/key}
+			{#if needsGpu}
+				<canvas
+					bind:this={gpuCanvasEl}
+					class="absolute inset-0 h-full w-full rounded-md"
+					style:filter={activeItem ? effectsToCssFilter(activeItem.effects) : ''}
+				></canvas>
+			{/if}
 		{:else}
 			<div
 				class="flex w-full items-center justify-center rounded-md border border-dashed border-[oklch(0.3_0.01_55)] text-xs text-[oklch(0.65_0.015_55)]"
