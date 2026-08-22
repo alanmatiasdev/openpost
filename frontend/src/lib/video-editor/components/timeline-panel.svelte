@@ -116,6 +116,15 @@
 	});
 
 	$effect(() => {
+		const itemIds = new Set(timelineStore.items.map((item) => item.id));
+		const existingIds = selectedItemIds.filter((id) => itemIds.has(id));
+		if (existingIds.length !== selectedItemIds.length) selectedItemIds = existingIds;
+		if (selectedItemId && !itemIds.has(selectedItemId)) {
+			selectedItemId = existingIds.at(-1) ?? null;
+		}
+	});
+
+	$effect(() => {
 		for (const item of timelineStore.items) {
 			const mediaId = item.mediaId;
 			if (item.type !== 'video' || !mediaId || waveforms[mediaId]) continue;

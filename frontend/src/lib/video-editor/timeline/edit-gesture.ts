@@ -589,7 +589,10 @@ export function planRateStretchGesture(
 		const addMove = (candidate: TimelineItem): void => {
 			for (const linked of getLinkedItems(items, candidate.id)) {
 				if (!participantIds.has(linked.id)) {
-					movedById.set(linked.id, linked.from + edgeDelta);
+					movedById.set(
+						linked.id,
+						handle === 'start' ? Math.max(0, linked.from + edgeDelta) : linked.from + edgeDelta
+					);
 				}
 			}
 		};
@@ -643,14 +646,6 @@ export function planRateStretchGesture(
 		];
 	};
 	let durationDelta = finalBoundedDuration - item.durationInFrames;
-	if (handle === 'start' && durationDelta > 0) {
-		const itemsById = new Map(items.map((candidate) => [candidate.id, candidate]));
-		const availableUpstreamRoom = buildMoves(durationDelta).reduce(
-			(available, move) => Math.min(available, itemsById.get(move.id)?.from ?? available),
-			durationDelta
-		);
-		durationDelta = Math.min(durationDelta, availableUpstreamRoom);
-	}
 	durationDelta = clampEditDeltaToPreserveState({
 		requestedDelta: durationDelta,
 		items,

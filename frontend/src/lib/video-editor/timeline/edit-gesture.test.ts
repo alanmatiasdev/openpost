@@ -538,13 +538,14 @@ describe('timeline edit gestures', () => {
 		]);
 	});
 
-	it('rate stretches from the start without moving upstream clips before frame zero', () => {
+	it('rate stretches from the start and clamps each upstream track at frame zero', () => {
 		const item = mediaItem({
 			from: 100,
 			durationInFrames: 100,
 			sourceStart: 50,
 			sourceEnd: 150,
 			sourceFps: 30,
+			linkedGroupId: 'current',
 			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } }
 		});
 		const preceding = mediaItem({
@@ -552,15 +553,53 @@ describe('timeline edit gestures', () => {
 			from: 40,
 			durationInFrames: 60
 		});
+		const precedingAudio = mediaItem({
+			id: 'preceding-audio',
+			trackId: 'audio',
+			type: 'audio',
+			from: 5,
+			durationInFrames: 95
+		});
+		const linkedAudio = mediaItem({
+			...item,
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			linkedGroupId: 'current'
+		});
 
-		expect(planRateStretchGesture(item, 'start', -100, [preceding], 30, [], 2)).toEqual({
+		expect(
+			planRateStretchGesture(
+				item,
+				'start',
+				-100,
+				[preceding, precedingAudio, linkedAudio],
+				30,
+				[],
+				2
+			)
+		).toEqual({
 			patch: {
-				from: 60,
-				durationInFrames: 140,
-				speed: 100 / 140,
-				keyframes: { opacity: { frames: [0, 70, 139], values: [0, 0.5, 1] } }
+				from: 0,
+				durationInFrames: 200,
+				speed: 0.5,
+				keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
 			},
-			moves: [{ id: 'preceding', from: 0 }],
+			linkedPatches: [
+				{
+					id: 'audio',
+					patch: {
+						from: 0,
+						durationInFrames: 200,
+						speed: 0.5,
+						keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
+					}
+				}
+			],
+			moves: [
+				{ id: 'preceding', from: 0 },
+				{ id: 'preceding-audio', from: 0 }
+			],
 			snapTarget: null
 		});
 	});
