@@ -18,7 +18,7 @@
 		savingLabel = label,
 		saving = false,
 		disabled = false,
-		sticky = true,
+		sticky = false,
 		type = 'button',
 		onSave
 	}: Props = $props();
@@ -27,8 +27,8 @@
 <footer
 	data-slot="settings-form-footer"
 	class={sticky
-		? 'sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-10 flex justify-end rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur md:bottom-3'
-		: 'flex justify-end rounded-lg border bg-background/95 p-3 shadow-sm'}
+		? 'sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-10 flex justify-end border-t bg-background/95 py-4 backdrop-blur md:bottom-0'
+		: 'flex justify-end border-t pt-4'}
 >
 	<Button {type} onclick={onSave} disabled={disabled || saving}>
 		{#if saving}

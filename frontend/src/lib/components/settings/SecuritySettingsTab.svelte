@@ -1029,7 +1029,7 @@
 			{/if}
 		</div>
 
-		<details class="group rounded-lg border" data-testid="email-change-card" open>
+		<details class="group rounded-lg border" data-testid="email-change-card">
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
@@ -1144,7 +1144,7 @@
 			</div>
 		</details>
 
-		<details class="group rounded-lg border p-4" open>
+		<details class="group rounded-lg border p-4">
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
