@@ -90,7 +90,7 @@ test("accounts exposes independent recovery for accounts and providers", async (
   });
 
   let providerRequests = 0;
-  await page.route("**/api/v1/accounts/providers", async (route) => {
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
     providerRequests++;
     if (providerRequests === 1) {
       await route.fulfill({

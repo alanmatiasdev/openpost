@@ -10,6 +10,7 @@
 	import youtube from '../../../../assets/logos/youtube.svg?raw';
 	import tiktok from '../../../../assets/logos/tiktok.svg?raw';
 	import { getPlatformKey } from '$lib/utils';
+	import PlugIcon from '@lucide/svelte/icons/plug';
 
 	interface Props {
 		platform: string;
@@ -38,4 +39,6 @@
 {#if svg}
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html svg}
+{:else}
+	<PlugIcon class={className} aria-hidden="true" />
 {/if}

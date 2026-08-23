@@ -32,7 +32,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
   await createWorkspace(request, auth.token, "Provider Availability E2E");
 
   await authenticatePage(page, auth.token);
-  await page.route("**/api/v1/accounts/providers", async (route) => {
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: [
@@ -181,7 +181,7 @@ test("accounts page starts custom Mastodon instance connection", async ({ page, 
   await createWorkspace(request, auth.token, "Custom Mastodon E2E");
 
   await authenticatePage(page, auth.token);
-  await page.route("**/api/v1/accounts/providers", async (route) => {
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: [
@@ -241,6 +241,107 @@ test("accounts page starts custom Mastodon instance connection", async ({ page, 
   expect(authURLRequest?.serverName).toBeNull();
 });
 
+test("accounts page connects an operator-installed custom connector", async ({ page, request }) => {
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(request, `accounts-connector-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Directus Connector E2E");
+  await authenticatePage(page, auth.token);
+
+  let connected = false;
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("workspace_id")).toBe(workspace.id);
+    await route.fulfill({
+      contentType: "application/json",
+      json: [
+        {
+          platform: "io.directus.items",
+          installation_id: "directus-main",
+          display_name: "Directus",
+          auth_mode: "preconfigured",
+          configured: true,
+          status: "available",
+          readiness: connectionReadiness("healthy", true),
+          description: "Create items in a configured Directus collection.",
+          capabilities: ["publishing", "text"],
+        },
+      ],
+    });
+  });
+  await page.route("**/api/v1/accounts?*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: connected
+        ? [
+            {
+              id: "account-directus",
+              provider_installation_id: "directus-main",
+              slug: "editorial-posts",
+              platform: "io.directus.items",
+              account_id: "posts",
+              account_username: "Editorial Posts",
+              account_avatar_url: "",
+              instance_url: "",
+              is_active: true,
+              thread_replies_supported: false,
+              messaging_supported: false,
+              messages_enabled: false,
+              grant_destination_count: 1,
+              shared_grant: false,
+            },
+          ]
+        : [],
+    });
+  });
+  await page.route("**/api/v1/accounts/connectors/directus-main/connections", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ workspace_id: workspace.id });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    connected = true;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        workspace_id: workspace.id,
+        account_id: "account-directus",
+        account_ids: ["account-directus"],
+        new_account_ids: ["account-directus"],
+        open_fresh_composer: true,
+        feature_setup_required: false,
+      },
+    });
+  });
+
+  await page.goto("/accounts");
+  const provider = page.getByTestId("provider-card-directus-main");
+  await expect(provider).toContainText("Custom connector");
+  await expect(provider).toContainText("Create items in a configured Directus collection.");
+  await provider.getByRole("button", { name: "Connect" }).click();
+  await expect(provider.getByRole("button", { name: "Connecting..." })).toBeDisabled();
+
+  const account = page.getByTestId("account-card-account-directus");
+  await expect(account).toContainText("Directus");
+  await expect(account).toContainText("Custom connector");
+  await expect(account).toContainText("@Editorial Posts");
+  await expect(account).toContainText("editorial-posts");
+
+  if (process.env.OPENPOST_CAPTURE_CONNECTOR_REVIEW === "1") {
+    await page.screenshot({ path: ".impeccable/review/desktop.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => localStorage.setItem("mode-watcher-mode", "dark"));
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(page.getByTestId("account-card-account-directus")).toBeVisible();
+    await page.screenshot({ path: ".impeccable/review/mobile.png", fullPage: true });
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
+  }
+});
+
 test("accounts page fails closed and retries an unavailable readiness lookup", async ({
   page,
   request,
@@ -251,7 +352,7 @@ test("accounts page fails closed and retries an unavailable readiness lookup", a
   await authenticatePage(page, auth.token);
 
   let requestCount = 0;
-  await page.route("**/api/v1/accounts/providers", async (route) => {
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
     requestCount += 1;
     const healthy = requestCount > 1;
     await route.fulfill({
