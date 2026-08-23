@@ -28,11 +28,14 @@
 	} from '$lib/video-editor/timeline/motion-modifier-eval';
 	import {
 		applyMotionModifierToItems,
+		bakeMotionToKeyframes,
 		beginMotionModifierEdit,
 		commitMotionModifierEdit,
 		removeMotionModifierFromItems,
 		updateMotionModifiersLive
 	} from '$lib/video-editor/timeline/actions/motion-modifiers';
+	import { trimAnimationToItemBounds } from '$lib/video-editor/timeline/actions/trimmed-keyframes';
+	import { countTrimmedKeyframes } from '$lib/video-editor/timeline/trimmed-keyframes';
 
 	let {
 		itemId,
@@ -57,6 +60,7 @@
 	let status = $state('');
 	let modifierEditSnapshot = $state<TimelineSnapshot | null>(null);
 	let modifierEditType = $state<MotionModifierType | null>(null);
+	let bakeConfirmationOpen = $state(false);
 
 	const selectedIds = $derived(itemId ? [...new Set([itemId, ...itemIds])].filter(Boolean) : []);
 	const selectedItems = $derived(
@@ -64,6 +68,13 @@
 			const item = timelineStore.itemById.get(id);
 			return item ? [item] : [];
 		})
+	);
+	const liveMotionItemCount = $derived(
+		selectedItems.filter((item) => item.motionModifiers?.some((modifier) => modifier.enabled))
+			.length
+	);
+	const parkedKeyframeCount = $derived(
+		selectedItems.reduce((count, item) => count + countTrimmedKeyframes(item), 0)
 	);
 
 	const labels = $derived<Record<MotionPresetId, string>>({
@@ -261,6 +272,36 @@
 				: result.reason === 'no-change'
 					? m.video_editor_motion_no_change()
 					: m.video_editor_motion_incompatible();
+	}
+
+	function confirmBake(): void {
+		const result = bakeMotionToKeyframes({ itemIds: selectedIds, fps, frameWidth, frameHeight });
+		bakeConfirmationOpen = false;
+		if (result.ok) {
+			status = m.video_editor_motion_bake_success({
+				count: String(result.bakedItems),
+				keyframes: String(result.writtenKeyframes)
+			});
+			onedit();
+			return;
+		}
+		status =
+			result.reason === 'transition-blocked'
+				? m.video_editor_motion_bake_transition_blocked()
+				: m.video_editor_motion_bake_no_change();
+	}
+
+	function trimAnimation(): void {
+		const result = trimAnimationToItemBounds(selectedIds);
+		if (result.ok) {
+			status = m.video_editor_motion_trim_success({ count: String(result.removedCount) });
+			onedit();
+			return;
+		}
+		status =
+			result.reason === 'transition-blocked'
+				? m.video_editor_motion_trim_transition_blocked()
+				: m.video_editor_motion_trim_no_change();
 	}
 
 	function modeLabel(): string {
@@ -466,7 +507,53 @@
 				</div>
 			{/if}
 		{/each}
+
+		{#if liveMotionItemCount > 0}
+			<div class="motion-utility" data-kind="bake">
+				<div>
+					<strong>{m.video_editor_motion_bake_title()}</strong>
+					<p>{m.video_editor_motion_bake_description({ count: String(liveMotionItemCount) })}</p>
+				</div>
+				{#if bakeConfirmationOpen}
+					<div
+						class="confirmation"
+						role="group"
+						aria-label={m.video_editor_motion_bake_confirm_title()}
+					>
+						<p>{m.video_editor_motion_bake_confirm_description()}</p>
+						<div>
+							<button
+								type="button"
+								class="secondary"
+								onclick={() => (bakeConfirmationOpen = false)}
+							>
+								{m.video_editor_motion_bake_cancel()}
+							</button>
+							<button type="button" class="primary" onclick={confirmBake}>
+								{m.video_editor_motion_bake_confirm()}
+							</button>
+						</div>
+					</div>
+				{:else}
+					<button type="button" class="primary" onclick={() => (bakeConfirmationOpen = true)}>
+						{m.video_editor_motion_bake_action()}
+					</button>
+				{/if}
+			</div>
+		{/if}
 	</section>
+
+	{#if parkedKeyframeCount > 0}
+		<section class="motion-utility trim-utility" aria-labelledby="trim-animation-title">
+			<div>
+				<strong id="trim-animation-title">{m.video_editor_motion_trim_title()}</strong>
+				<p>{m.video_editor_motion_trim_description({ count: String(parkedKeyframeCount) })}</p>
+			</div>
+			<button type="button" class="secondary" onclick={trimAnimation}>
+				{m.video_editor_motion_trim_action()}
+			</button>
+		</section>
+	{/if}
 
 	<p class="motion-status" aria-live="polite">{status}</p>
 </section>
@@ -662,6 +749,72 @@
 		border: 0;
 		padding: 0;
 		background: transparent;
+	}
+	.motion-utility {
+		display: grid;
+		gap: 0.5rem;
+		margin-top: 0.65rem;
+		border: 1px solid oklch(0.3 0.035 225);
+		border-radius: 0.45rem;
+		padding: 0.55rem;
+		background: oklch(0.18 0.02 225 / 0.72);
+	}
+	.motion-utility strong {
+		font-size: 0.625rem;
+		color: oklch(0.87 0.025 225);
+	}
+	.motion-utility p {
+		margin-top: 0.14rem;
+		font-size: 0.5625rem;
+		line-height: 1.4;
+		color: oklch(0.66 0.025 225);
+	}
+	.motion-utility button {
+		min-height: 1.8rem;
+		border-radius: 0.34rem;
+		padding: 0.3rem 0.55rem;
+		font-size: 0.6rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.motion-utility button.primary {
+		border: 1px solid oklch(0.56 0.12 45);
+		background: oklch(0.57 0.13 45);
+		color: oklch(0.99 0.006 70);
+	}
+	.motion-utility button.secondary {
+		border: 1px solid oklch(0.34 0.025 60);
+		background: oklch(0.21 0.015 58);
+		color: oklch(0.77 0.02 65);
+	}
+	.motion-utility button:hover {
+		filter: brightness(1.1);
+	}
+	.motion-utility button:focus-visible {
+		outline: 2px solid oklch(0.66 0.14 45);
+		outline-offset: 2px;
+	}
+	.confirmation {
+		display: grid;
+		gap: 0.45rem;
+		border-top: 1px solid oklch(0.29 0.025 225);
+		padding-top: 0.5rem;
+	}
+	.confirmation > div {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem;
+	}
+	.trim-utility {
+		margin-top: 0.75rem;
+		border-color: oklch(0.3 0.025 58);
+		background: oklch(0.18 0.014 58 / 0.72);
+	}
+	.trim-utility strong {
+		color: oklch(0.84 0.02 68);
+	}
+	.trim-utility p {
+		color: oklch(0.65 0.018 65);
 	}
 	.preset-group h3 {
 		margin-bottom: 0.4rem;

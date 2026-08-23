@@ -116,6 +116,53 @@ describe('MotionPresetsPanel', () => {
 		expect(screen.getByText('Horizontal', { exact: true })).toBeVisible();
 	});
 
+	it('confirms and bakes live motion into editable keyframes', async () => {
+		const input = props();
+		const screen = await render(MotionPresetsPanel, input);
+		await screen.getByRole('button', { name: 'Apply live Sway' }).click();
+		expect(screen.getByText('Editable keyframes', { exact: true })).toBeVisible();
+		await screen.getByRole('button', { name: 'Bake to keyframes' }).click();
+		expect(screen.getByText(/replaces the live controls with keyframes/i)).toBeVisible();
+		await screen.getByRole('button', { name: 'Bake motion' }).click();
+		await vi.waitFor(() => {
+			const baked = timelineStore.itemById.get('one');
+			expect(baked?.motionModifiers).toBeUndefined();
+			expect(baked?.keyframes?.rotation?.frames.at(-1)).toBe(89);
+		});
+		expect(commandHistory.undoStack).toHaveLength(2);
+		expect(input.onedit).toHaveBeenCalledTimes(2);
+		expect(screen.getByText(/Baked 1 clips into \d+ editable keyframes\./)).toBeVisible();
+		expect(
+			[...document.querySelectorAll('button')].some((button) =>
+				button.textContent?.includes('Bake to keyframes')
+			)
+		).toBe(false);
+	});
+
+	it('removes parked animation only through the explicit cleanup action', async () => {
+		timelineStore.setAll({
+			items: [
+				item('one', {
+					durationInFrames: 10,
+					keyframes: { opacity: { frames: [0, 20], values: [0, 1] } }
+				})
+			]
+		});
+		const input = props();
+		const screen = await render(MotionPresetsPanel, input);
+		expect(timelineStore.itemById.get('one')?.keyframes?.opacity?.frames).toEqual([0, 20]);
+		expect(screen.getByText(/1 keyframes sit past/)).toBeVisible();
+		await screen.getByRole('button', { name: 'Trim animation to clips' }).click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('one')?.keyframes?.opacity?.frames).toEqual([0, 9]);
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(input.onedit).toHaveBeenCalledTimes(1);
+		expect(
+			screen.getByText('Removed 1 parked keyframes and kept the final visible poses.')
+		).toBeVisible();
+	});
+
 	it('applies tuned motion to every selected clip in one edit', async () => {
 		timelineStore.setAll({
 			tracks: [track],
