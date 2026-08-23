@@ -24,6 +24,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	// Register native WebP decoding for bounded preview validation.
+	_ "github.com/HugoSmits86/nativewebp"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/ai"
@@ -36,9 +38,6 @@ import (
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/ratelimit"
 	"github.com/uptrace/bun"
-
-	// Register WebP decoding for bounded image-dimension validation.
-	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -47,30 +46,33 @@ const (
 	memePreviewRequestsPerMinute    = 30
 	memeRenderRequestsPerMinute     = 30
 	memeRecipeRequestsPerMinute     = 120
-	memeThumbnailRequestsPerMinute  = 120
+	memeThumbnailRequestsPerMinute  = 360
+	memeThumbnailGlobalConcurrency  = 96
+	memeThumbnailPerUserConcurrency = 48
 
-	defaultMemeTemplateLimit         = 40
-	maxMemeTemplateLimit             = 250
-	maxMemeSearchCharacters          = 120
-	maxMemeOverlayMedia              = 8
-	maxMemeOverlayBytes              = 10 * 1024 * 1024
-	maxMemeOverlayTotalBytes         = 20 * 1024 * 1024
-	maxMemePreviewBytes              = 5 * 1024 * 1024
-	maxMemeRenderedBytes             = 20 * 1024 * 1024
-	maxMemeThumbnailBytes            = 2 * 1024 * 1024
-	maxMemeThumbnailDimension        = 2048
-	maxMemeThumbnailPixels     int64 = 4_000_000
-	maxMemeImageDimension            = 6000
-	maxMemeImagePixels         int64 = 12_000_000
-	maxMemeThumbnailEntries          = 128
-	maxMemeThumbnailCacheBytes int64 = 32 * 1024 * 1024
-	maxMemeRequestBytes              = 32 * 1024
-	memeThumbnailTTL                 = 12 * time.Hour
-	memeCleanupTimeout               = 10 * time.Second
-	memeRecipeSchemaVersion          = 1
+	defaultMemeTemplateLimit             = 40
+	maxMemeTemplateLimit                 = 250
+	maxMemeSearchCharacters              = 120
+	maxMemeSuggestionSearchQueries       = 8
+	maxMemeOverlayMedia                  = 8
+	maxMemeOverlayBytes                  = 10 * 1024 * 1024
+	maxMemeOverlayTotalBytes             = 20 * 1024 * 1024
+	maxMemePreviewBytes                  = 5 * 1024 * 1024
+	maxMemeRenderedBytes                 = 20 * 1024 * 1024
+	maxMemeThumbnailBytes                = 2 * 1024 * 1024
+	maxMemeThumbnailDimension            = 2048
+	maxMemeThumbnailPixels         int64 = 4_000_000
+	maxMemeImageDimension                = 6000
+	maxMemeImagePixels             int64 = 12_000_000
+	maxMemeThumbnailEntries              = 128
+	maxMemeThumbnailCacheBytes     int64 = 32 * 1024 * 1024
+	maxMemeRequestBytes                  = 32 * 1024
+	memeThumbnailTTL                     = 12 * time.Hour
+	memeCleanupTimeout                   = 10 * time.Second
+	memeRecipeSchemaVersion              = 1
 )
 
-// Keep the no-match fallback useful and visually varied. Memegen's catalog is
+// Keep the no-match fallback useful and visually varied. The built-in catalog is
 // normalized alphabetically, which is stable for browsing but would otherwise
 // make every unrelated AI prompt see only the first few template names.
 var preferredMemeSuggestionTemplateIDs = []string{
@@ -263,11 +265,16 @@ func NewMemeHandler(
 ) *MemeHandler {
 	handler := &MemeHandler{
 		db: db, auth: authn, provider: renderer, suggester: suggester,
-		limiter:        ratelimit.New(),
-		renders:        newMemeConcurrencyLimiter(4, 2),
-		imports:        newMemeConcurrencyLimiter(2, 1),
-		suggestions:    newMemeConcurrencyLimiter(4, 1),
-		thumbnails:     newMemeConcurrencyLimiter(8, 4),
+		limiter:     ratelimit.New(),
+		renders:     newMemeConcurrencyLimiter(4, 2),
+		imports:     newMemeConcurrencyLimiter(2, 1),
+		suggestions: newMemeConcurrencyLimiter(4, 1),
+		// Browsers can multiplex every image in one catalog page. Admit one full
+		// page per user while the global and request-rate limits bound bursts.
+		thumbnails: newMemeConcurrencyLimiter(
+			memeThumbnailGlobalConcurrency,
+			memeThumbnailPerUserConcurrency,
+		),
 		thumbnailCache: make(map[string]memeThumbnailCacheEntry),
 		now:            func() time.Time { return time.Now().UTC() },
 	}
@@ -345,7 +352,7 @@ type GenerateMemeSuggestionsOutput struct {
 type PreviewMemeInput struct {
 	Body struct {
 		WorkspaceID     string   `json:"workspace_id" required:"true" doc:"Workspace ID"`
-		TemplateID      string   `json:"template_id" required:"true" minLength:"1" maxLength:"80" doc:"Memegen template ID"`
+		TemplateID      string   `json:"template_id" required:"true" minLength:"1" maxLength:"80" doc:"OpenPost meme template ID"`
 		Captions        []string `json:"captions" required:"true" minItems:"1" maxItems:"16" maxLength:"200" doc:"Caption values in template order"`
 		OverlayMediaIDs []string `json:"overlay_media_ids,omitempty" maxItems:"8" maxLength:"80" doc:"Workspace media IDs for replaceable image slots"`
 		Format          string   `json:"format,omitempty" default:"png" enum:"png,jpg,jpeg,gif,webp" doc:"Rendered image format"`
@@ -364,7 +371,7 @@ type PreviewMemeOutput struct {
 type RenderMemeInput struct {
 	Body struct {
 		WorkspaceID     string   `json:"workspace_id" required:"true" doc:"Workspace ID"`
-		TemplateID      string   `json:"template_id" required:"true" minLength:"1" maxLength:"80" doc:"Memegen template ID"`
+		TemplateID      string   `json:"template_id" required:"true" minLength:"1" maxLength:"80" doc:"OpenPost meme template ID"`
 		Captions        []string `json:"captions" required:"true" minItems:"1" maxItems:"16" maxLength:"200" doc:"Caption values in template order"`
 		OverlayMediaIDs []string `json:"overlay_media_ids,omitempty" maxItems:"8" maxLength:"80" doc:"Workspace media IDs for replaceable image slots"`
 		Format          string   `json:"format,omitempty" default:"png" enum:"png,jpg,jpeg,gif,webp" doc:"Rendered image format"`
@@ -579,7 +586,7 @@ func (h *MemeHandler) getTemplateThumbnail(
 		rendered, err = h.provider.Render(ctx, memes.RenderRequest{
 			TemplateID: template.ID,
 			Text:       make([]string, template.Lines),
-			Extension:  "webp",
+			Extension:  "jpg",
 		})
 	}
 	if err != nil {
@@ -660,7 +667,7 @@ func (h *MemeHandler) generateSuggestions(ctx context.Context, input *GenerateMe
 		}
 		for _, caption := range candidate.CaptionLines {
 			if memes.ValidateCaption(caption) != nil {
-				return nil, huma.Error502BadGateway("AI meme suggestions returned caption text that Memegen cannot render")
+				return nil, huma.Error502BadGateway("AI meme suggestions returned caption text that the meme maker cannot render")
 			}
 		}
 		output.Body.Candidates = append(output.Body.Candidates, MemeSuggestionCandidate{
@@ -975,32 +982,79 @@ func (h *MemeHandler) rankSuggestionTemplates(ctx context.Context, idea string, 
 	if err != nil {
 		return memes.Catalog{}, nil, memeProviderError(err)
 	}
-	shortlist := make([]memes.Template, 0, memegeneration.MaxCandidateTemplates)
-	seen := make(map[string]struct{}, memegeneration.MaxCandidateTemplates)
-	appendTemplates := func(values []memes.Template) {
-		for _, template := range values {
-			if len(shortlist) >= memegeneration.MaxCandidateTemplates || !memeTemplateSupportsSuggestions(template) {
-				continue
-			}
-			if _, exists := seen[template.ID]; exists {
-				continue
-			}
-			seen[template.ID] = struct{}{}
-			shortlist = append(shortlist, template)
-		}
+	searchResults, err := h.searchMemeSuggestionTemplates(ctx, idea)
+	if err != nil {
+		return memes.Catalog{}, nil, err
 	}
+	shortlist := newMemeTemplateShortlist()
+	shortlist.appendInterleaved(searchResults)
+	shortlist.append(preferredMemeTemplates(fullCatalog))
+	shortlist.append(fullCatalog.Templates)
+	if len(shortlist.templates) < count {
+		return memes.Catalog{}, nil, huma.Error503ServiceUnavailable("not enough compatible meme templates are available")
+	}
+	return fullCatalog, shortlist.templates, nil
+}
+
+func (h *MemeHandler) searchMemeSuggestionTemplates(
+	ctx context.Context,
+	idea string,
+) ([][]memes.Template, error) {
+	results := make([][]memes.Template, 0, maxMemeSuggestionSearchQueries)
 	for _, query := range memeSuggestionSearchQueries(idea) {
 		catalog, searchErr := h.provider.Search(ctx, query, memegeneration.MaxCandidateTemplates)
 		if searchErr != nil {
-			return memes.Catalog{}, nil, memeProviderError(searchErr)
+			return nil, memeProviderError(searchErr)
 		}
-		appendTemplates(catalog.Templates)
-		if len(shortlist) >= memegeneration.MaxCandidateTemplates {
+		results = append(results, catalog.Templates)
+	}
+	return results, nil
+}
+
+type memeTemplateShortlist struct {
+	templates []memes.Template
+	seen      map[string]struct{}
+}
+
+func newMemeTemplateShortlist() *memeTemplateShortlist {
+	return &memeTemplateShortlist{
+		templates: make([]memes.Template, 0, memegeneration.MaxCandidateTemplates),
+		seen:      make(map[string]struct{}, memegeneration.MaxCandidateTemplates),
+	}
+}
+
+func (s *memeTemplateShortlist) append(values []memes.Template) {
+	for _, template := range values {
+		if len(s.templates) >= memegeneration.MaxCandidateTemplates || !memeTemplateSupportsSuggestions(template) {
+			continue
+		}
+		if _, exists := s.seen[template.ID]; exists {
+			continue
+		}
+		s.seen[template.ID] = struct{}{}
+		s.templates = append(s.templates, template)
+	}
+}
+
+func (s *memeTemplateShortlist) appendInterleaved(results [][]memes.Template) {
+	for rank := 0; len(s.templates) < memegeneration.MaxCandidateTemplates; rank++ {
+		found := false
+		for _, matches := range results {
+			if rank >= len(matches) {
+				continue
+			}
+			found = true
+			s.append(matches[rank : rank+1])
+		}
+		if !found {
 			break
 		}
 	}
-	byID := make(map[string]memes.Template, len(fullCatalog.Templates))
-	for _, template := range fullCatalog.Templates {
+}
+
+func preferredMemeTemplates(catalog memes.Catalog) []memes.Template {
+	byID := make(map[string]memes.Template, len(catalog.Templates))
+	for _, template := range catalog.Templates {
 		byID[template.ID] = template
 	}
 	preferred := make([]memes.Template, 0, len(preferredMemeSuggestionTemplateIDs))
@@ -1009,18 +1063,13 @@ func (h *MemeHandler) rankSuggestionTemplates(ctx context.Context, idea string, 
 			preferred = append(preferred, template)
 		}
 	}
-	appendTemplates(preferred)
-	appendTemplates(fullCatalog.Templates)
-	if len(shortlist) < count {
-		return memes.Catalog{}, nil, huma.Error503ServiceUnavailable("not enough compatible meme templates are available")
-	}
-	return fullCatalog, shortlist, nil
+	return preferred
 }
 
 func memeSuggestionSearchQueries(idea string) []string {
 	idea = strings.TrimSpace(idea)
-	queries := make([]string, 0, 6)
-	seen := make(map[string]struct{}, 6)
+	queries := make([]string, 0, maxMemeSuggestionSearchQueries)
+	seen := make(map[string]struct{}, maxMemeSuggestionSearchQueries)
 	add := func(value string) {
 		value = truncateMemeText(strings.TrimSpace(value), maxMemeSearchCharacters)
 		key := strings.ToLower(value)
@@ -1037,14 +1086,26 @@ func memeSuggestionSearchQueries(idea string) []string {
 	for _, field := range strings.FieldsFunc(idea, func(current rune) bool {
 		return !unicode.IsLetter(current) && !unicode.IsNumber(current)
 	}) {
-		if utf8.RuneCountInString(field) >= 3 {
+		fieldLength := utf8.RuneCountInString(field)
+		isAcronym := fieldLength >= 2 && field == strings.ToUpper(field) && field != strings.ToLower(field)
+		if (fieldLength >= 3 || isAcronym) && !isMemeSuggestionStopWord(field) {
 			add(field)
 		}
-		if len(queries) >= 6 {
+		if len(queries) >= maxMemeSuggestionSearchQueries {
 			break
 		}
 	}
 	return queries
+}
+
+func isMemeSuggestionStopWord(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "in", "is", "it",
+		"of", "on", "one", "or", "that", "the", "then", "this", "to", "was", "were", "when", "with", "you", "your":
+		return true
+	default:
+		return false
+	}
 }
 
 func memeGenerationTemplate(template memes.Template) memegeneration.Template {
@@ -1121,7 +1182,7 @@ func validateMemeRenderValues(template memes.Template, captions, overlayMediaIDs
 	for _, caption := range captions {
 		if !utf8.ValidString(caption) || utf8.RuneCountInString(caption) > memegeneration.MaxCaptionLineCharacters ||
 			hasMemeControl(caption, true) || memes.ValidateCaption(caption) != nil {
-			return huma.Error400BadRequest("meme captions must fit Memegen's 200-byte text limit")
+			return huma.Error400BadRequest("meme captions must contain at most 200 visible characters")
 		}
 	}
 	if len(overlayMediaIDs) > template.Overlays {
@@ -1385,6 +1446,9 @@ func memeCatalogMetadata(providerKey string, catalog memes.Catalog, returned int
 }
 
 func memeCatalogRevision(catalog memes.Catalog) string {
+	if revision := strings.TrimSpace(catalog.Revision); revision != "" {
+		return revision
+	}
 	templates := append([]memes.Template(nil), catalog.Templates...)
 	sort.Slice(templates, func(left, right int) bool { return templates[left].ID < templates[right].ID })
 	payload, err := json.Marshal(templates)

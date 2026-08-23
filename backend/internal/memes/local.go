@@ -2,21 +2,37 @@ package memes
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/font/sfnt"
 )
 
-const builtinCatalogManifest = "catalog/catalog.json"
+const (
+	builtinCatalogManifest  = "catalog/catalog.json"
+	builtinSemanticManifest = "catalog/semantics.json"
+)
+
+var (
+	builtinSemanticIDPattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	builtinSemanticMechanismPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$`)
+	builtinGenericRolePhrases       = []string{
+		"caption_", "caption 1", "caption one", "first text", "text slot", "top text",
+		"bottom text", "fill this field", "joke beat in the", "setup or subject in the",
+		"payoff or contrast in the",
+	}
+)
 
 // builtinCatalogFS holds the exact pinned template snapshot. Keeping assets in
 // the Go binary gives hosted and self-hosted installs the same catalog without
@@ -91,6 +107,7 @@ type BuiltinProvider struct {
 	byID        map[string]builtinTemplateManifest
 	templates   []Template
 	refreshedAt time.Time
+	revision    string
 	fonts       map[string]*sfnt.Font
 }
 
@@ -110,9 +127,12 @@ func NewBuiltinProvider() (*BuiltinProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode built-in meme catalog date: %w", err)
 	}
-	semantics, err := loadBuiltinSemantics(builtinCatalogFS)
+	semantics, semanticData, err := loadBuiltinSemantics(builtinCatalogFS)
 	if err != nil {
 		return nil, err
+	}
+	if len(semantics) != len(manifest.Templates) {
+		return nil, fmt.Errorf("built-in meme semantics cover %d of %d templates", len(semantics), len(manifest.Templates))
 	}
 	fonts, err := loadBuiltinFonts(builtinCatalogFS)
 	if err != nil {
@@ -124,6 +144,7 @@ func NewBuiltinProvider() (*BuiltinProvider, error) {
 		byID:        make(map[string]builtinTemplateManifest, len(manifest.Templates)),
 		templates:   make([]Template, 0, len(manifest.Templates)),
 		refreshedAt: refreshedAt.UTC(), fonts: fonts,
+		revision: builtinCatalogRevision(data, semanticData),
 	}
 	for _, source := range manifest.Templates {
 		if err := validateBuiltinTemplate(source); err != nil {
@@ -131,7 +152,7 @@ func NewBuiltinProvider() (*BuiltinProvider, error) {
 		}
 		semantic, ok := semantics[source.ID]
 		if !ok {
-			semantic = fallbackBuiltinSemantic(source)
+			return nil, fmt.Errorf("built-in meme template %q is missing semantic metadata", source.ID)
 		}
 		if len(semantic.CaptionRoles) != len(source.Text) {
 			return nil, fmt.Errorf("built-in meme template %q has mismatched semantic roles", source.ID)
@@ -177,7 +198,7 @@ func (p *BuiltinProvider) Templates(context.Context) (Catalog, error) {
 	if !p.Available() {
 		return Catalog{}, ErrDisabled
 	}
-	return Catalog{Templates: cloneTemplates(p.templates), RefreshedAt: p.refreshedAt}, nil
+	return Catalog{Templates: cloneTemplates(p.templates), RefreshedAt: p.refreshedAt, Revision: p.revision}, nil
 }
 
 func (p *BuiltinProvider) Search(_ context.Context, query string, limit int) (Catalog, error) {
@@ -187,7 +208,7 @@ func (p *BuiltinProvider) Search(_ context.Context, query string, limit int) (Ca
 	if limit < 1 {
 		return Catalog{}, ErrInvalidRequest
 	}
-	return Catalog{Templates: searchTemplates(p.templates, query, limit), RefreshedAt: p.refreshedAt}, nil
+	return Catalog{Templates: searchTemplates(p.templates, query, limit), RefreshedAt: p.refreshedAt, Revision: p.revision}, nil
 }
 
 func (p *BuiltinProvider) TemplateImage(_ context.Context, templateID string) (RenderedImage, error) {
@@ -202,26 +223,22 @@ func (p *BuiltinProvider) TemplateImage(_ context.Context, templateID string) (R
 	return RenderedImage{Data: data, MIMEType: "image/jpeg", Extension: "jpg", TemplateID: template.ID}, nil
 }
 
-func loadBuiltinSemantics(files fs.FS) (map[string]TemplateSemantic, error) {
-	data, err := fs.ReadFile(files, "catalog/semantics.json")
+func loadBuiltinSemantics(files fs.FS) (map[string]TemplateSemantic, []byte, error) {
+	data, err := fs.ReadFile(files, builtinSemanticManifest)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return map[string]TemplateSemantic{}, nil
-		}
-		return nil, fmt.Errorf("load built-in meme semantics: %w", err)
+		return nil, nil, fmt.Errorf("load built-in meme semantics: %w", err)
 	}
 	var records []builtinSemanticRecord
 	if err := json.Unmarshal(data, &records); err != nil {
-		return nil, fmt.Errorf("decode built-in meme semantics: %w", err)
+		return nil, nil, fmt.Errorf("decode built-in meme semantics: %w", err)
 	}
 	result := make(map[string]TemplateSemantic, len(records))
 	for _, record := range records {
-		if record.ID == "" || utf8.RuneCountInString(record.Visual) > 180 || utf8.RuneCountInString(record.Meaning) > 220 ||
-			len(record.CaptionRoles) == 0 || len(record.Tags) < 2 || len(record.Tags) > 6 {
-			return nil, fmt.Errorf("built-in meme semantic record %q is invalid", record.ID)
+		if err := validateBuiltinSemanticRecord(record); err != nil {
+			return nil, nil, err
 		}
 		if _, exists := result[record.ID]; exists {
-			return nil, fmt.Errorf("built-in meme semantic record %q is duplicated", record.ID)
+			return nil, nil, fmt.Errorf("built-in meme semantic record %q is duplicated", record.ID)
 		}
 		result[record.ID] = TemplateSemantic{
 			Visual: strings.TrimSpace(record.Visual), Meaning: strings.TrimSpace(record.Meaning),
@@ -229,22 +246,109 @@ func loadBuiltinSemantics(files fs.FS) (map[string]TemplateSemantic, error) {
 			CaptionRoles: append([]string(nil), record.CaptionRoles...), Tags: append([]string(nil), record.Tags...),
 		}
 	}
-	return result, nil
+	return result, data, nil
+}
+
+func validateBuiltinSemanticRecord(record builtinSemanticRecord) error {
+	if !validBuiltinSemanticHeader(record) {
+		return fmt.Errorf("built-in meme semantic record %q is invalid", record.ID)
+	}
+	if err := validateBuiltinSemanticRoles(record.ID, record.CaptionRoles); err != nil {
+		return err
+	}
+	return validateBuiltinSemanticTags(record.ID, record.Tags)
+}
+
+func validBuiltinSemanticHeader(record builtinSemanticRecord) bool {
+	return builtinSemanticIDPattern.MatchString(record.ID) &&
+		validBuiltinSemanticText(record.Visual, 180) &&
+		validBuiltinSemanticText(record.Meaning, 220) &&
+		validBuiltinSemanticText(record.Mechanism, 60) &&
+		builtinSemanticMechanismPattern.MatchString(record.Mechanism) &&
+		len(record.CaptionRoles) > 0 && len(record.Tags) >= 2 && len(record.Tags) <= 6
+}
+
+func validateBuiltinSemanticRoles(id string, roles []string) error {
+	seenRoles := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		key := strings.ToLower(role)
+		if !validBuiltinSemanticText(role, 80) || builtinSemanticRoleIsGeneric(key) {
+			return fmt.Errorf("built-in meme semantic record %q has an invalid caption role", id)
+		}
+		if _, exists := seenRoles[key]; exists {
+			return fmt.Errorf("built-in meme semantic record %q has duplicate caption roles", id)
+		}
+		seenRoles[key] = struct{}{}
+	}
+	return nil
+}
+
+func validateBuiltinSemanticTags(id string, tags []string) error {
+	seenTags := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		if !validBuiltinSemanticText(tag, 40) || tag != strings.ToLower(tag) {
+			return fmt.Errorf("built-in meme semantic record %q has an invalid tag", id)
+		}
+		if _, exists := seenTags[tag]; exists {
+			return fmt.Errorf("built-in meme semantic record %q has duplicate tags", id)
+		}
+		seenTags[tag] = struct{}{}
+	}
+	return nil
+}
+
+func validBuiltinSemanticText(value string, maximum int) bool {
+	return value != "" && value == strings.TrimSpace(value) && utf8.ValidString(value) &&
+		utf8.RuneCountInString(value) <= maximum && !strings.ContainsFunc(value, unicode.IsControl)
+}
+
+func builtinSemanticRoleIsGeneric(role string) bool {
+	for _, phrase := range builtinGenericRolePhrases {
+		if strings.Contains(role, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func builtinCatalogRevision(manifestData, semanticData []byte) string {
+	digest := sha256.New()
+	_, _ = digest.Write(manifestData)
+	_, _ = digest.Write([]byte{0})
+	_, _ = digest.Write(semanticData)
+	return "sha256:" + hex.EncodeToString(digest.Sum(nil))
 }
 
 func validateBuiltinTemplate(template builtinTemplateManifest) error {
-	if template.ID == "" || template.Name == "" || strings.HasPrefix(template.ID, "_") ||
-		len(template.Text) < 1 || len(template.Text) > 16 || template.DefaultAsset == "" || template.ThumbnailAsset == "" {
+	if !validBuiltinTemplateHeader(template) {
 		return fmt.Errorf("built-in meme template %q is invalid", template.ID)
 	}
 	for _, field := range template.Text {
-		if field.ScaleX <= 0 || field.ScaleY <= 0 || field.ScaleX > 1.5 || field.ScaleY > 1.5 ||
-			field.AnchorX < -0.1 || field.AnchorX > 1 || field.AnchorY < -0.1 || field.AnchorY > 1 ||
-			field.AnchorX+field.ScaleX > 1.5 || field.AnchorY+field.ScaleY > 1.5 {
+		if !validBuiltinTextField(field) {
 			return fmt.Errorf("built-in meme template %q has an invalid caption area", template.ID)
 		}
 	}
 	return nil
+}
+
+func validBuiltinTemplateHeader(template builtinTemplateManifest) bool {
+	if template.ID == "" || template.Name == "" || strings.HasPrefix(template.ID, "_") {
+		return false
+	}
+	if len(template.Text) < 1 || len(template.Text) > 16 {
+		return false
+	}
+	return template.DefaultAsset != "" && template.ThumbnailAsset != ""
+}
+
+func validBuiltinTextField(field builtinTextField) bool {
+	if field.ScaleX <= 0 || field.ScaleY <= 0 || field.ScaleX > 1.5 || field.ScaleY > 1.5 {
+		return false
+	}
+	if field.AnchorX < -0.1 || field.AnchorX > 1 || field.AnchorY < -0.1 || field.AnchorY > 1 {
+		return false
+	}
+	return field.AnchorX+field.ScaleX <= 1.5 && field.AnchorY+field.ScaleY <= 1.5
 }
 
 func loadBuiltinFonts(files fs.FS) (map[string]*sfnt.Font, error) {
@@ -290,72 +394,6 @@ func loadBuiltinFonts(files fs.FS) (map[string]*sfnt.Font, error) {
 		result[name] = parsed
 	}
 	return result, nil
-}
-
-func fallbackBuiltinSemantic(template builtinTemplateManifest) TemplateSemantic {
-	roles := make([]string, 0, len(template.Text))
-	positions := make([]string, 0, len(template.Text))
-	for index, field := range template.Text {
-		position := builtinFieldPosition(field)
-		positions = append(positions, position)
-		role := "joke beat in the " + position + " area"
-		if index == 0 && len(template.Text) > 1 {
-			role = "setup or subject in the " + position + " area"
-		} else if index == len(template.Text)-1 && len(template.Text) > 1 {
-			role = "payoff or contrast in the " + position + " area"
-		}
-		roles = append(roles, role)
-	}
-	mechanism := "reaction"
-	if len(template.Text) == 2 {
-		mechanism = "setup_payoff"
-	} else if len(template.Text) > 2 {
-		mechanism = "ordered_visual_sequence"
-	}
-	tags := make([]string, 0, 6)
-	for _, value := range append(append([]string(nil), template.Keywords...), strings.Fields(normalizeSearchValue(template.Name))...) {
-		value = normalizeSearchValue(value)
-		if value == "" || containsString(tags, value) {
-			continue
-		}
-		tags = append(tags, value)
-		if len(tags) == 6 {
-			break
-		}
-	}
-	for len(tags) < 2 {
-		tags = append(tags, []string{"reaction", "comparison"}[len(tags)])
-	}
-	return TemplateSemantic{
-		Visual:    fmt.Sprintf("%s, with caption areas at %s.", template.Name, strings.Join(positions, ", ")),
-		Meaning:   fmt.Sprintf("Use the familiar %s format as an ordered visual joke; keep each line tied to its pictured area.", template.Name),
-		Mechanism: mechanism, CaptionRoles: roles, Tags: tags,
-	}
-}
-
-func builtinFieldPosition(field builtinTextField) string {
-	vertical := "middle"
-	if field.AnchorY < 0.3 {
-		vertical = "upper"
-	} else if field.AnchorY >= 0.62 {
-		vertical = "lower"
-	}
-	horizontal := "center"
-	if field.AnchorX < 0.22 && field.ScaleX < 0.75 {
-		horizontal = "left"
-	} else if field.AnchorX >= 0.55 {
-		horizontal = "right"
-	}
-	return vertical + "-" + horizontal
-}
-
-func containsString(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
 }
 
 func cloneTemplateSemantic(source TemplateSemantic) TemplateSemantic {

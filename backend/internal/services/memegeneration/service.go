@@ -18,7 +18,7 @@ const (
 
 	DefaultCandidateCount = 3
 	MaxCandidateCount     = 4
-	MaxCandidateTemplates = 32
+	MaxCandidateTemplates = 16
 
 	MaxIdeaCharacters         = 1000
 	MaxToneCharacters         = 100
@@ -67,9 +67,8 @@ type Input struct {
 	Templates      []Template
 }
 
-// Template is provider-neutral metadata for one renderable template. The
-// optional Semantics field supports a small set of hand-reviewed overrides for
-// ambiguous or high-use templates without duplicating a whole provider catalog.
+// Template is provider-neutral metadata for one renderable template. Semantics
+// tell the model what the image means and what each rendered field controls.
 type Template struct {
 	ID           string
 	Name         string

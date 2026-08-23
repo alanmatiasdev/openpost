@@ -3,6 +3,7 @@ module github.com/openpost/backend
 go 1.26.6
 
 require (
+	github.com/HugoSmits86/nativewebp v1.3.0
 	github.com/OpenRouterTeam/go-sdk v0.7.31
 	github.com/PaddleHQ/paddle-go-sdk/v5 v5.2.0
 	github.com/aws/aws-sdk-go-v2 v1.42.0
@@ -30,6 +31,7 @@ require (
 	github.com/uptrace/bun/driver/sqliteshim v1.2.18
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.45.0
+	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/text v0.41.0
 	mvdan.cc/xurls/v2 v2.6.0
@@ -81,7 +83,6 @@ require (
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect

@@ -19,13 +19,15 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/HugoSmits86/nativewebp"
 	"github.com/disintegration/imaging"
 	"golang.org/x/image/colornames"
 	xfont "golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
-	_ "golang.org/x/image/webp"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const (
@@ -113,9 +115,7 @@ func normalizeBuiltinExtension(value string) string {
 	case "gif":
 		return "gif"
 	case "webp":
-		// The Go image stack decodes WebP but does not ship a maintained encoder.
-		// Local previews use PNG and stay fully cacheable in the browser.
-		return "png"
+		return "webp"
 	default:
 		return "png"
 	}
@@ -242,7 +242,7 @@ func (p *BuiltinProvider) drawBuiltinCaption(canvas *image.NRGBA, field builtinT
 	}
 	layer := image.NewNRGBA(image.Rect(0, 0, width, height))
 	fill := parseBuiltinColor(field.Color)
-	strokeWidth, strokeFill := builtinStrokeForField(field.Color, fill, layout.size, false)
+	strokeWidth, strokeFill := builtinStrokeForField(field.Color, layout.size)
 	isImpact := builtinIsImpactFont(field.Font)
 	rows := len(layout.lines)
 	yAdjust := builtinYAdjust(rows, isImpact)
@@ -316,17 +316,13 @@ func builtinAlignX(width, lineWidth int, align string) int {
 	return max(0, (width-lineWidth)/2)
 }
 
-func builtinStrokeForField(colorStr string, fill color.NRGBA, fontSize int, thick bool) (int, color.NRGBA) {
+func builtinStrokeForField(colorStr string, fontSize int) (int, color.NRGBA) {
 	normalized := strings.TrimSpace(strings.ToLower(colorStr))
 	baseWidth := min(3, max(1, fontSize/12))
 	if normalized == "black" {
 		return 1, color.NRGBA{R: 255, G: 255, B: 255, A: 128}
 	}
 	if strings.HasPrefix(normalized, "#") {
-		width := 1
-		if thick {
-			width = 2
-		}
 		stroke := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
 		if len(normalized) >= 9 {
 			hex := strings.TrimPrefix(normalized, "#")
@@ -337,16 +333,7 @@ func builtinStrokeForField(colorStr string, fill color.NRGBA, fontSize int, thic
 				}
 			}
 		}
-		if width < 1 {
-			width = 1
-		}
-		if width > 3 {
-			width = 3
-		}
-		if baseWidth > width && !thick {
-			// keep upstream color but clamp width to computed base when not thick? Upstream keeps width 1 for non-thick hex.
-		}
-		return width, stroke
+		return 1, stroke
 	}
 	return baseWidth, color.NRGBA{R: 0, G: 0, B: 0, A: 255}
 }
@@ -455,7 +442,7 @@ func balanceBuiltinWords(words []string, count int) []string {
 func (p *BuiltinProvider) builtinFont(name, value string) *sfnt.Font {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if containsHebrew(value) {
-		if font, ok := p.fonts["he"]; ok && font != nil {
+		if font := p.fonts["he"]; font != nil {
 			return font
 		}
 	}
@@ -463,37 +450,29 @@ func (p *BuiltinProvider) builtinFont(name, value string) *sfnt.Font {
 	case "comic", "kalam":
 		return p.fonts["comic"]
 	case "impact":
-		if font, ok := p.fonts["impact"]; ok && font != nil {
-			return font
-		}
-		return p.fonts["thick"]
+		return p.builtinFontOrFallback("impact", "thick")
 	case "thin", "titilliumweb-thin":
 		return p.fonts["thin"]
 	case "tiny", "segoe", "segoe ui", "segoe ui bold":
-		if font, ok := p.fonts["segoe"]; ok && font != nil {
-			return font
-		}
-		return p.fonts["thin"]
+		return p.builtinFontOrFallback("segoe", "thin")
 	case "tahoma", "tahoma-bold":
-		if font, ok := p.fonts["tahoma"]; ok && font != nil {
-			return font
-		}
-		return p.fonts["thick"]
+		return p.builtinFontOrFallback("tahoma", "thick")
 	case "microflf", "microflf-bold":
-		if font, ok := p.fonts["microflf"]; ok && font != nil {
-			return font
-		}
-		return p.fonts["thick"]
+		return p.builtinFontOrFallback("microflf", "thick")
 	case "jp", "hgminchob", "hg-mincho", "notosansjp":
-		if font, ok := p.fonts["jp"]; ok && font != nil {
-			return font
-		}
-		return p.fonts["notosans"]
+		return p.builtinFontOrFallback("jp", "notosans")
 	case "notosans", "notosans-bold", "he":
 		return p.fonts["notosans"]
 	default:
 		return p.fonts["thick"]
 	}
+}
+
+func (p *BuiltinProvider) builtinFontOrFallback(name, fallback string) *sfnt.Font {
+	if font := p.fonts[name]; font != nil {
+		return font
+	}
+	return p.fonts[fallback]
 }
 
 func containsHebrew(value string) bool {
@@ -520,33 +499,31 @@ func styleBuiltinText(value, style string) string {
 		runes[0] = unicode.ToUpper(runes[0])
 		return string(runes)
 	case "title":
-		return strings.Title(strings.ToLower(value))
+		return cases.Title(language.Und).String(value)
 	case "mock":
 		return mockBuiltinText(value)
 	case "none":
 		return value
 	case "default", "":
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" && trimmed == strings.ToLower(trimmed) && trimmed != strings.ToUpper(trimmed) {
-			runes := []rune(value)
-			for index, r := range runes {
-				if unicode.IsLetter(r) {
-					runes[index] = unicode.ToUpper(r)
-					break
-				}
-			}
-			value = string(runes)
-		}
-		return standaloneIRegexp.ReplaceAllString(value, "I")
+		return styleBuiltinDefaultText(value)
 	default:
-		if normalized == "lower" {
-			return strings.ToLower(value)
-		}
-		if normalized == "upper" {
-			return strings.ToUpper(value)
-		}
 		return value
 	}
+}
+
+func styleBuiltinDefaultText(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && trimmed == strings.ToLower(trimmed) && trimmed != strings.ToUpper(trimmed) {
+		runes := []rune(value)
+		for index, current := range runes {
+			if unicode.IsLetter(current) {
+				runes[index] = unicode.ToUpper(current)
+				break
+			}
+		}
+		value = string(runes)
+	}
+	return standaloneIRegexp.ReplaceAllString(value, "I")
 }
 
 func mockBuiltinText(value string) string {
@@ -607,6 +584,11 @@ func encodeBuiltinStatic(frame image.Image, extension string) ([]byte, string, s
 	case "gif":
 		err := gif.Encode(&output, frame, &gif.Options{NumColors: 256, Drawer: stddraw.FloydSteinberg})
 		return output.Bytes(), "image/gif", "gif", err
+	case "webp":
+		err := nativewebp.Encode(&output, frame, &nativewebp.Options{
+			CompressionLevel: nativewebp.DefaultCompression,
+		})
+		return output.Bytes(), "image/webp", "webp", err
 	default:
 		err := png.Encode(&output, frame)
 		return output.Bytes(), "image/png", "png", err
@@ -641,19 +623,7 @@ func (p *BuiltinProvider) renderBuiltinGIF(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if index > 0 && index-1 < len(source.Disposal) {
-			switch source.Disposal[index-1] {
-			case gif.DisposalBackground:
-				stddraw.Draw(canvas, previousBounds, image.Transparent, image.Point{}, stddraw.Src)
-			case gif.DisposalPrevious:
-				if restore != nil {
-					canvas = imaging.Clone(restore)
-				}
-			}
-		}
-		if index < len(source.Disposal) && source.Disposal[index] == gif.DisposalPrevious {
-			restore = imaging.Clone(canvas)
-		}
+		canvas, restore = prepareBuiltinGIFCanvas(canvas, source, index, previousBounds, restore)
 		stddraw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, stddraw.Over)
 		previousBounds = frame.Bounds()
 		if _, keep := selectedSet[index]; !keep {
@@ -678,6 +648,29 @@ func (p *BuiltinProvider) renderBuiltinGIF(
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+func prepareBuiltinGIFCanvas(
+	canvas *image.NRGBA,
+	source *gif.GIF,
+	index int,
+	previousBounds image.Rectangle,
+	restore *image.NRGBA,
+) (*image.NRGBA, *image.NRGBA) {
+	if index > 0 && index-1 < len(source.Disposal) {
+		switch source.Disposal[index-1] {
+		case gif.DisposalBackground:
+			stddraw.Draw(canvas, previousBounds, image.Transparent, image.Point{}, stddraw.Src)
+		case gif.DisposalPrevious:
+			if restore != nil {
+				canvas = imaging.Clone(restore)
+			}
+		}
+	}
+	if index < len(source.Disposal) && source.Disposal[index] == gif.DisposalPrevious {
+		restore = imaging.Clone(canvas)
+	}
+	return canvas, restore
 }
 
 func selectedBuiltinGIFFrames(total int) []int {

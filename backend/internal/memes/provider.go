@@ -131,6 +131,7 @@ type Catalog struct {
 	Templates   []Template `json:"templates"`
 	RefreshedAt time.Time  `json:"refreshed_at"`
 	Stale       bool       `json:"stale"`
+	Revision    string     `json:"revision,omitempty"`
 }
 
 type RenderRequest struct {

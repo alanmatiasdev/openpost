@@ -1,6 +1,7 @@
 package memes
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"image/color"
@@ -62,6 +63,23 @@ func TestStyleBuiltinTextLowercaseBug(t *testing.T) {
 	require.Equal(t, "hello", styleBuiltinText("HELLO", "LOWER"))
 	require.Equal(t, "HELLO", styleBuiltinText("hello", "upper"))
 	require.Equal(t, "HELLO", styleBuiltinText("hello", "UPPER"))
+}
+
+func TestBuiltinWebPEncodingMatchesAdvertisedFormat(t *testing.T) {
+	t.Parallel()
+
+	frame := image.NewNRGBA(image.Rect(0, 0, 32, 24))
+	frame.Set(8, 7, color.NRGBA{R: 42, G: 91, B: 203, A: 255})
+	data, mimeType, extension, err := encodeBuiltinStatic(frame, "webp")
+	require.NoError(t, err)
+	require.Equal(t, "image/webp", mimeType)
+	require.Equal(t, "webp", extension)
+
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	require.NoError(t, err)
+	require.Equal(t, "webp", format)
+	require.Equal(t, 32, config.Width)
+	require.Equal(t, 24, config.Height)
 }
 
 func TestStyleBuiltinTextStandaloneICapitalization(t *testing.T) {
@@ -193,25 +211,23 @@ func TestBuiltinAlignX(t *testing.T) {
 func TestBuiltinStrokeForField(t *testing.T) {
 	t.Parallel()
 
-	fillBlack := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
-	w, col := builtinStrokeForField("black", fillBlack, 24, false)
+	w, col := builtinStrokeForField("black", 24)
 	require.Equal(t, 1, w)
 	require.Equal(t, color.NRGBA{R: 255, G: 255, B: 255, A: 128}, col)
 
-	fillWhite := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	w, col = builtinStrokeForField("white", fillWhite, 24, false)
+	w, col = builtinStrokeForField("white", 24)
 	require.Equal(t, 2, w)
 	require.Equal(t, color.NRGBA{R: 0, G: 0, B: 0, A: 255}, col)
 
-	w, col = builtinStrokeForField("#ff0000", color.NRGBA{R: 255, G: 0, B: 0, A: 255}, 24, false)
+	w, col = builtinStrokeForField("#ff0000", 24)
 	require.Equal(t, 1, w)
 	require.Equal(t, color.NRGBA{R: 0, G: 0, B: 0, A: 255}, col)
 
-	w, col = builtinStrokeForField("#ff000080", color.NRGBA{R: 255, G: 0, B: 0, A: 128}, 24, false)
+	w, col = builtinStrokeForField("#ff000080", 24)
 	require.Equal(t, 1, w)
 	require.Equal(t, uint8(128), col.A)
 
-	w, _ = builtinStrokeForField("white", fillWhite, 12, false)
+	w, _ = builtinStrokeForField("white", 12)
 	require.Equal(t, 1, w)
 }
 

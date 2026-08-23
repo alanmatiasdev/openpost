@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +43,32 @@ type memeProviderStub struct {
 	renderRequests []memes.RenderRequest
 	templateImages []string
 	renderedData   []byte
+}
+
+type memeRenderOnlyProvider struct {
+	delegate *memeProviderStub
+}
+
+func (p memeRenderOnlyProvider) Key() string     { return p.delegate.Key() }
+func (p memeRenderOnlyProvider) Available() bool { return p.delegate.Available() }
+func (p memeRenderOnlyProvider) Health(ctx context.Context) (memes.Health, error) {
+	return p.delegate.Health(ctx)
+}
+func (p memeRenderOnlyProvider) Templates(ctx context.Context) (memes.Catalog, error) {
+	return p.delegate.Templates(ctx)
+}
+func (p memeRenderOnlyProvider) Search(
+	ctx context.Context,
+	query string,
+	limit int,
+) (memes.Catalog, error) {
+	return p.delegate.Search(ctx, query, limit)
+}
+func (p memeRenderOnlyProvider) Render(
+	ctx context.Context,
+	request memes.RenderRequest,
+) (memes.RenderedImage, error) {
+	return p.delegate.Render(ctx, request)
 }
 
 func (p *memeProviderStub) Key() string     { return memes.BuiltinProviderKey }
@@ -263,6 +291,13 @@ func validMemePNG(t *testing.T) []byte {
 	return data
 }
 
+func validMemeJPEG(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	require.NoError(t, jpeg.Encode(&data, image.NewRGBA(image.Rect(0, 0, 1, 1)), nil))
+	return data.Bytes()
+}
+
 func (s *memeHandlerTestServer) request(t *testing.T, method, path string, body any, token ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	var reader io.Reader
@@ -332,6 +367,35 @@ func TestMemeTemplateThumbnailIsAuthenticatedProxiedAndCached(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, unauthenticated.Code)
 }
 
+func TestMemeTemplateThumbnailFallbackUsesAdvertisedJPEGContract(t *testing.T) {
+	t.Parallel()
+
+	srv := newMemeHandlerTestServer(t, nil)
+	srv.provider.renderedData = validMemeJPEG(t)
+	srv.handler.provider = memeRenderOnlyProvider{delegate: srv.provider}
+
+	response := srv.request(
+		t,
+		http.MethodGet,
+		"/api/v1/memes/templates/drake/thumbnail?workspace_id=ws-1",
+		nil,
+	)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, "image/jpeg", response.Header().Get("Content-Type"))
+	require.Equal(t, validMemeJPEG(t), response.Body.Bytes())
+
+	requests := srv.provider.renderedRequests()
+	require.Len(t, requests, 1)
+	require.Equal(t, "jpg", requests[0].Extension)
+}
+
+func TestMemeThumbnailAdmissionCoversOneFrontendCatalogPage(t *testing.T) {
+	t.Parallel()
+
+	require.GreaterOrEqual(t, memeThumbnailPerUserConcurrency, 48)
+	require.GreaterOrEqual(t, memeThumbnailGlobalConcurrency, memeThumbnailPerUserConcurrency)
+}
+
 func TestMemeSuggestionsRanksBoundedTemplatesAndReturnsMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -391,6 +455,48 @@ func TestMemeSuggestionFallbackPrefersReviewedDiverseTemplates(t *testing.T) {
 	require.Len(t, shortlist, 5)
 	require.Equal(t, []string{"drake", "db", "cmm", "doge", "zzz"}, []string{
 		shortlist[0].ID, shortlist[1].ID, shortlist[2].ID, shortlist[3].ID, shortlist[4].ID,
+	})
+}
+
+func TestMemeSuggestionSearchQueriesKeepSpecificTerms(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, []string{
+		"when the release works locally but CI finds one last issue",
+		"release",
+		"works",
+		"locally",
+		"CI",
+		"finds",
+		"last",
+		"issue",
+	}, memeSuggestionSearchQueries("when the release works locally but CI finds one last issue"))
+}
+
+func TestMemeSuggestionRankingInterleavesDistinctIdeaTerms(t *testing.T) {
+	t.Parallel()
+
+	templates := make([]memes.Template, 0, 22)
+	for index := range 20 {
+		templates = append(templates, memes.Template{
+			ID: fmt.Sprintf("project-%02d", index), Name: fmt.Sprintf("Project %02d", index),
+			Lines: 1, Keywords: []string{"project"},
+		})
+	}
+	templates = append(templates,
+		memes.Template{ID: "release-match", Name: "Release match", Lines: 1, Keywords: []string{"release"}},
+		memes.Template{ID: "issue-match", Name: "Issue match", Lines: 1, Keywords: []string{"issue"}},
+	)
+	handler := &MemeHandler{provider: &memeProviderStub{
+		available: true,
+		catalog:   memes.Catalog{Templates: templates},
+	}}
+
+	_, shortlist, err := handler.rankSuggestionTemplates(t.Context(), "project release issue", 4)
+	require.NoError(t, err)
+	require.Len(t, shortlist, memegeneration.MaxCandidateTemplates)
+	require.Equal(t, []string{"project-00", "release-match", "issue-match"}, []string{
+		shortlist[0].ID, shortlist[1].ID, shortlist[2].ID,
 	})
 }
 

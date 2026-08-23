@@ -191,6 +191,38 @@ for (const id of templateDirectories) {
   });
 }
 
+const existingSemanticsPath = join(outputRoot, "semantics.json");
+if (existsSync(existingSemanticsPath)) {
+  const records = JSON.parse(readFileSync(existingSemanticsPath, "utf8"));
+  if (!Array.isArray(records)) throw new Error("The existing meme semantics must be a JSON array.");
+
+  const expectedRoleCounts = new Map(
+    manifestTemplates.map((template) => [template.id, template.text.length]),
+  );
+  const seen = new Set();
+  for (const record of records) {
+    const id = typeof record?.id === "string" ? record.id : "";
+    if (!expectedRoleCounts.has(id)) {
+      throw new Error(`Meme semantics contain unknown template ${id || "<missing id>"}.`);
+    }
+    if (seen.has(id)) throw new Error(`Meme semantics contain duplicate template ${id}.`);
+    if (
+      !Array.isArray(record.caption_roles) ||
+      record.caption_roles.length !== expectedRoleCounts.get(id)
+    ) {
+      throw new Error(`Meme semantics for ${id} do not match its caption field count.`);
+    }
+    seen.add(id);
+  }
+  const missing = manifestTemplates.map((template) => template.id).filter((id) => !seen.has(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `Meme semantics are missing ${missing.length} templates: ${missing.join(", ")}.`,
+    );
+  }
+  copyNormalizedText(existingSemanticsPath, join(stagingRoot, "semantics.json"));
+}
+
 const concurrency = 6;
 let thumbnailIndex = 0;
 async function thumbnailWorker() {
