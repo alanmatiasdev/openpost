@@ -55,6 +55,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
 	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
+	import MotionPresetsPanel from '$lib/video-editor/components/motion-presets-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
@@ -376,6 +377,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	const selectedSupportsEffects = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type !== 'audio'
+	);
+	const selectedSupportsMotion = $derived(
+		selectedItemId !== null &&
+			['video', 'image', 'lottie', 'text', 'subtitle', 'shape', 'composition'].includes(
+				timelineStore.itemById.get(selectedItemId)?.type ?? ''
+			)
 	);
 	const selectedIsMedia = $derived(
 		selectedItemId !== null &&
@@ -808,6 +815,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						</Button>
 					{/if}
 					{#if selectedSupportsEffects}
+						{#if selectedSupportsMotion}
+							<MotionPresetsPanel
+								itemId={selectedItemId}
+								itemIds={selectedItemIds}
+								frameWidth={sequenceStore.activeWidth}
+								frameHeight={sequenceStore.activeHeight}
+								fps={timelineStore.fps}
+								onedit={() => editorSession.scheduleAutosave()}
+							/>
+						{/if}
 						<EffectsPanel
 							itemId={selectedItemId}
 							itemIds={selectedItemIds}
