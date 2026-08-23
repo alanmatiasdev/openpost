@@ -1,4 +1,8 @@
 import { ONNX_MODEL_CACHE_NAME } from '../transcript/engine/onnx-model-cache';
+import { kokoroTtsService } from './tts/kokoro-service';
+import { clearMossModelStorage, inspectMossModelStorage } from './tts/moss-model-storage';
+import { mossTtsService } from './tts/moss-service';
+import { supertonicTtsService } from './tts/supertonic-service';
 
 export const TRANSFORMERS_CACHE_NAME = 'transformers-cache';
 
@@ -8,6 +12,7 @@ export interface LocalModelCacheDefinition {
 	description: string;
 	cacheName: string;
 	matchPathFragments: string[];
+	storage?: 'cache' | 'moss-opfs';
 }
 
 export interface LocalModelCacheSummary extends LocalModelCacheDefinition {
@@ -70,6 +75,14 @@ export const LOCAL_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = [
 		matchPathFragments: ['/supertonic-3/']
 	},
 	{
+		id: 'moss-tts',
+		label: 'MOSS voices',
+		description: 'Multilingual voice and audio-tokenizer models.',
+		cacheName: 'opfs',
+		matchPathFragments: [],
+		storage: 'moss-opfs'
+	},
+	{
 		id: 'musicgen',
 		label: 'MusicGen',
 		description: 'Local music generation model and tokenizer.',
@@ -128,6 +141,18 @@ function unavailable(
 export async function inspectLocalModelCache(
 	definition: LocalModelCacheDefinition
 ): Promise<LocalModelCacheSummary> {
+	if (definition.storage === 'moss-opfs') {
+		try {
+			const summary = await inspectMossModelStorage();
+			return {
+				...definition,
+				...summary,
+				inspectionState: 'ready'
+			};
+		} catch {
+			return unavailable(definition, 'error');
+		}
+	}
 	const storage = cacheStorage();
 	if (!storage) return unavailable(definition, 'error', false);
 	try {
@@ -179,6 +204,12 @@ export function inspectAllLocalModelCaches(): Promise<LocalModelCacheSummary[]> 
 export async function clearLocalModelCache(
 	definition: LocalModelCacheDefinition
 ): Promise<boolean> {
+	if (definition.storage === 'moss-opfs') {
+		mossTtsService.unload();
+		return clearMossModelStorage();
+	}
+	if (definition.id === 'kokoro-tts') await kokoroTtsService.unload();
+	if (definition.id === 'supertonic-tts') await supertonicTtsService.unload();
 	const storage = cacheStorage();
 	if (!storage) return false;
 	const names = await withTimeout(storage.keys());

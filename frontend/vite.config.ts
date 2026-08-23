@@ -97,6 +97,7 @@ export default defineConfig({
 		sourcemap: sourceMaps.enabled ? 'hidden' : false
 	},
 	optimizeDeps: {
+		exclude: ['kokoro-js', 'phonemizer'],
 		include: [
 			'@huggingface/transformers',
 			'@lucide/svelte/icons/align-left',

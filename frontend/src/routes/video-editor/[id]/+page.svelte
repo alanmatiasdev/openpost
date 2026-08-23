@@ -46,6 +46,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
+	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
@@ -69,7 +70,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
-	let assetPanel = $state<'media' | 'scenes'>('media');
+	let assetPanel = $state<'media' | 'scenes' | 'ai'>('media');
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -87,6 +88,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		}
+	}
+
+	function handleGeneratedAudioInserted(itemId: string): void {
+		selectedItemId = itemId;
+		selectedItemIds = [itemId];
+		selectedTransitionId = null;
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_local_ai_added(), 'success');
 	}
 
 	function handleSplit(): void {
@@ -489,7 +498,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					aria-label={m.video_editor_media_pool()}
 				>
 					<div class="flex items-center gap-1 p-2">
-						<div class="grid min-w-0 flex-1 grid-cols-2 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
+						<div class="grid min-w-0 flex-1 grid-cols-3 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
 							<button
 								type="button"
 								class:active={assetPanel === 'media'}
@@ -506,6 +515,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							>
 								{m.video_editor_scenes()}
 							</button>
+							<button
+								type="button"
+								class:active={assetPanel === 'ai'}
+								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+								onclick={() => (assetPanel = 'ai')}
+							>
+								{m.video_editor_local_ai()}
+							</button>
 						</div>
 						{#if assetPanel === 'media'}
 							<Button
@@ -520,8 +537,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					</div>
 					{#if assetPanel === 'media'}
 						<MediaPoolList onsequenceopen={resetTimelineSelection} />
-					{:else}
+					{:else if assetPanel === 'scenes'}
 						<SceneBrowserPanel />
+					{:else}
+						<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 					{/if}
 				</aside>
 

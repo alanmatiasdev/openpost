@@ -1,9 +1,59 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	LOCAL_MODEL_CACHE_DEFINITIONS,
 	clearLocalModelCache,
 	inspectLocalModelCache
 } from './model-cache';
+
+function requestUrl(request: RequestInfo | URL): string {
+	return request instanceof Request ? request.url : String(request);
+}
+
+class MemoryCache implements Cache {
+	constructor(private readonly responses: Map<string, Response>) {}
+
+	async add(): Promise<void> {}
+	async addAll(): Promise<void> {}
+	async put(request: RequestInfo | URL, response: Response): Promise<void> {
+		this.responses.set(requestUrl(request), response);
+	}
+	async match(request: RequestInfo | URL): Promise<Response | undefined> {
+		return this.responses.get(requestUrl(request))?.clone();
+	}
+	async matchAll(request?: RequestInfo | URL): Promise<Response[]> {
+		if (request !== undefined) {
+			const response = await this.match(request);
+			return response ? [response] : [];
+		}
+		return Array.from(this.responses.values(), (response) => response.clone());
+	}
+	async delete(request: RequestInfo | URL): Promise<boolean> {
+		return this.responses.delete(requestUrl(request));
+	}
+	async keys(): Promise<Request[]> {
+		return Array.from(this.responses.keys(), (url) => new Request(url));
+	}
+}
+
+class MemoryCacheStorage implements CacheStorage {
+	constructor(private readonly cache: Cache) {}
+
+	async delete(): Promise<boolean> {
+		return false;
+	}
+	async has(): Promise<boolean> {
+		return true;
+	}
+	async match(request: RequestInfo | URL): Promise<Response | undefined> {
+		return this.cache.match(request);
+	}
+	async keys(): Promise<string[]> {
+		return ['transformers-cache', 'openpost-onnx-models-v1'];
+	}
+	async open(): Promise<Cache> {
+		return this.cache;
+	}
+}
 
 function createCacheStorage(entries: Array<{ url: string; bytes?: number }>): CacheStorage {
 	const responses = new Map(
@@ -14,19 +64,7 @@ function createCacheStorage(entries: Array<{ url: string; bytes?: number }>): Ca
 			})
 		])
 	);
-	const cache = {
-		keys: vi.fn(async () => Array.from(responses.keys(), (url) => new Request(url))),
-		match: vi.fn(async (request: RequestInfo) =>
-			responses.get(typeof request === 'string' ? request : request.url)?.clone()
-		),
-		delete: vi.fn(async (request: RequestInfo) =>
-			responses.delete(typeof request === 'string' ? request : request.url)
-		)
-	} as unknown as Cache;
-	return {
-		keys: vi.fn(async () => ['transformers-cache', 'openpost-onnx-models-v1']),
-		open: vi.fn(async () => cache)
-	} as unknown as CacheStorage;
+	return new MemoryCacheStorage(new MemoryCache(responses));
 }
 
 const originalCaches = Object.getOwnPropertyDescriptor(globalThis, 'caches');

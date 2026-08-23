@@ -39,6 +39,12 @@ export interface GeneratedImageImportOptions {
 	tags?: string[];
 }
 
+export interface GeneratedAudioImportOptions {
+	projectId: string;
+	duration: number;
+	tags?: string[];
+}
+
 const AUDIO_EXTENSIONS = /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i;
 
 function guessKind(file: File): 'video' | 'audio' | 'image' {
@@ -185,6 +191,39 @@ export async function importGeneratedImage(
 		codec: 'png',
 		bitrate: 0,
 		tags: [...new Set(['image', ...(options.tags ?? [])])]
+	};
+
+	await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+	await createMedia(metadata);
+	await associateMediaWithProject(options.projectId, id);
+	mediaPool.upsert(metadata, 'ready');
+	return metadata;
+}
+
+/** Save locally generated speech or music into the workspace media pool. */
+export async function importGeneratedAudio(
+	file: File,
+	options: GeneratedAudioImportOptions
+): Promise<MediaMetadata> {
+	const root = requireWorkspaceRoot();
+	const id = crypto.randomUUID();
+	const fileName = sanitizeWorkspaceFileName(file.name);
+	const duration = Math.max(0, options.duration);
+	const metadata: MediaMetadata = {
+		id,
+		storageType: 'workspace',
+		fileName,
+		fileSize: file.size,
+		mimeType: file.type || 'audio/wav',
+		duration,
+		width: 0,
+		height: 0,
+		fps: 0,
+		codec: '',
+		bitrate: duration > 0 ? Math.round((file.size * 8) / duration) : 0,
+		audioCodec: file.type === 'audio/wav' ? 'pcm_f32le' : undefined,
+		audioCodecSupported: true,
+		tags: [...new Set(['audio', 'ai-generated', ...(options.tags ?? [])])]
 	};
 
 	await writeBlob(root, mediaSourceByFileName(id, fileName), file);

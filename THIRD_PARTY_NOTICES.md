@@ -15,3 +15,5 @@ OpenPost Video Editor includes adapted source from:
 
 - FreeCut, Copyright (c) 2025 FreeCut, under the MIT License. See `licenses/FREECUT.txt`.
 - Paper Shaders, Copyright Lost Coast Labs, Inc., under the Apache License 2.0. See `licenses/PAPER_SHADERS.txt` and `licenses/PAPER_SHADERS_NOTICE.txt`.
+- Kokoro 82M under Apache License 2.0 and Supertonic 3 under its OpenRAIL terms. These models download on demand for local voice generation and are not part of the application binary.
+- The MOSS Nano browser pipeline, including its SentencePiece runtime, under the MIT and Apache License 2.0 terms recorded in `frontend/static/moss-tts/THIRD_PARTY_LICENSES.md`. The two on-demand model revisions are pinned there and are not part of the application binary.

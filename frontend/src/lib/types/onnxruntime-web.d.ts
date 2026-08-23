@@ -16,5 +16,6 @@ declare module 'onnxruntime-web' {
 			}
 		): Promise<InferenceSession>;
 		run(feeds: Record<string, Tensor>): Promise<Record<string, Tensor>>;
+		release(): Promise<void>;
 	}
 }

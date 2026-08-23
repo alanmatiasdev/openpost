@@ -40,7 +40,7 @@ Dependencies in `frontend/package.json`: `mediabunny@^1.51.0`, `@huggingface/tra
 ### Deliberate reductions vs FreeCut (v1)
 
 - Item types: video, audio, image, text, subtitle-segment. No shape/lottie/gif/composition-nesting/adjustment/controller items.
-- TTS, music generation, upscale, and frame interpolation remain parity work. Local scene captions, semantic and visual search, and embeddings are present.
+- Music generation, upscale, and frame interpolation remain parity work. Local scene captions, semantic and visual search, embeddings, and three-engine local voice generation are present.
 - Keyframes include the value graph, dope sheet, spatial curves, transition guards, and shared multi-key editing.
 - Projects support reusable top-level sequences and nested compound clips.
 - Local transcription uses Parakeet by default and offers Whisper Tiny, Base, Small, and Large v3 Turbo, with language and WebGPU fallback.
@@ -80,4 +80,4 @@ Docs/marketing/legal: docs-site `usage/video-editor.md` rewritten for the new mo
 
 ## Out of scope (v1)
 
-TTS, music generation, generated images, upscale, frame interpolation, Android wrapper optimization for editors, collaborative editing, and cloud editing remain outside the initial v1 build. They stay in the active FreeCut parity backlog where applicable.
+Music generation, generated images, upscale, frame interpolation, Android wrapper optimization for editors, collaborative editing, and cloud editing remain outside the initial v1 build. Three-engine local voice generation landed as a post-v1 parity expansion. The other applicable items stay in the active FreeCut parity backlog.

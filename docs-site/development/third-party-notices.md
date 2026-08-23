@@ -19,6 +19,7 @@ OpenPost Video Editor uses:
 - **Paper Shaders** source adapted under the Apache License 2.0. Its retained license and notice are in `licenses/PAPER_SHADERS.txt` and `licenses/PAPER_SHADERS_NOTICE.txt`.
 - **Whisper Tiny multilingual**, pinned to the exact model commit listed in `frontend/static/video-editor-models/THIRD_PARTY_LICENSES.md`, for local transcription under Apache License 2.0.
 - **Silero VAD 6.2** for local voice-activity detection under the MIT License.
+- **Kokoro 82M** under Apache License 2.0, **Supertonic 3** under its OpenRAIL terms, and **MOSS Nano** under Apache License 2.0 for on-device voice generation. Supertonic and both MOSS repositories use fixed revisions. The MOSS browser runtime, model revisions, download sizes, and retained MIT and Apache terms are recorded in `frontend/static/moss-tts/THIRD_PARTY_LICENSES.md`.
 
 The model files, hashes, source revisions, and notices ship under `frontend/static/video-editor-models/`. Operators that set `OPENPOST_VIDEO_MODEL_BASE_URL` must serve the matching content and keep those notices. The checked-in mastered audio assets and machine-readable hashes under `frontend/static/video-editor-audio/` are dedicated under CC0 1.0 as stated beside the files.
 
