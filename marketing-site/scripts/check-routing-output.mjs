@@ -21,7 +21,12 @@ assert.equal(
 const headers = await readFile(path.join(outputRoot, '_headers'), 'utf8');
 assert.match(headers, /<\/\.well-known\/api-catalog>; rel="api-catalog"/);
 assert.match(headers, /<\/auth\.md>; rel="describedby"; type="text\/markdown"/);
-assert.match(headers, /\/\.well-known\/api-catalog\n  Content-Type: application\/linkset\+json;/);
+const headerLines = headers.split('\n');
+const apiCatalogRuleIndex = headerLines.indexOf('/.well-known/api-catalog');
+assert.equal(
+	headerLines[apiCatalogRuleIndex + 1]?.trim(),
+	'Content-Type: application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"'
+);
 
 const apiCatalog = JSON.parse(
 	await readFile(path.join(outputRoot, '.well-known', 'api-catalog'), 'utf8')
