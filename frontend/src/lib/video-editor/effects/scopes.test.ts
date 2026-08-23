@@ -7,4 +7,12 @@ describe('scope bins', () => {
 		expect(bins.histogram.luma[0]).toBe(1);
 		expect(bins.histogram.luma[255]).toBe(1);
 	});
+
+	it('keeps RGB parade channels in separate waveform lanes', () => {
+		const bins = buildScopeBins(new Uint8ClampedArray([255, 128, 0, 255]), 1, 1);
+		expect(bins.parade.red[0]).toBe(1);
+		expect(bins.parade.green[64 * 256]).toBe(1);
+		expect(bins.parade.blue[127 * 256]).toBe(1);
+		expect(bins.parade.red[127 * 256]).toBe(0);
+	});
 });

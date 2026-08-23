@@ -38,6 +38,9 @@
 		PreviewSourceProvider,
 		RegisterPreviewSource
 	} from '$lib/video-editor/preview/source-provider';
+	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
+	import { withoutColorGradeEffects } from '$lib/video-editor/effects/color-grade';
+	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -54,8 +57,16 @@
 	let draftTransform = $state<ItemTransform | null>(null);
 	let stackCanvas = $state<HTMLCanvasElement | null>(null);
 	let stackCompositor = $state<CanvasStackCompositor | null>(null);
+	let compareCanvas = $state<HTMLCanvasElement | null>(null);
+	let compareCompositor = $state<CanvasStackCompositor | null>(null);
 	let stackWidth = $state(1);
 	let stackHeight = $state(1);
+	let pickerOverlay = $state<HTMLButtonElement | null>(null);
+	let pickerLoupe = $state<HTMLCanvasElement | null>(null);
+	let pickerX = $state(0);
+	let pickerY = $state(0);
+	let pickerColor = $state<{ r: number; g: number; b: number } | null>(null);
+	let lastStackScopeAt = 0;
 	let stackFrameRequest: number | null = null;
 	let pendingStackInputs: {
 		items: TimelineItem[];
@@ -89,11 +100,14 @@
 		collectAdjustmentLayers(timelineStore.items, timelineStore.tracks)
 	);
 	const needsStackedComposition = $derived(
-		activeItems.some(
-			(item) =>
-				isNonNormalBlend(item.blendMode) &&
-				(resolveAnimatedItemAt(item, timelineStore.currentFrame).transform?.opacity ?? 1) > 0
-		)
+		colorPreviewStore.comparisonMode !== 'after' ||
+			colorPreviewStore.activePicker !== null ||
+			colorPreviewStore.frameCaptureItemId !== null ||
+			activeItems.some(
+				(item) =>
+					isNonNormalBlend(item.blendMode) &&
+					(resolveAnimatedItemAt(item, timelineStore.currentFrame).transform?.opacity ?? 1) > 0
+			)
 	);
 	const selectedItem = $derived(
 		selectedItemId ? activeItems.find((item) => item.id === selectedItemId) : undefined
@@ -164,6 +178,7 @@
 
 	function renderStackFrame(): void {
 		const stack = stackCompositor;
+		const compare = compareCompositor;
 		const projectState = project;
 		const inputs = pendingStackInputs;
 		if (!stack || !projectState || !inputs || !needsStackedComposition) return;
@@ -172,6 +187,14 @@
 			inputs.height,
 			projectState.metadata.backgroundColor ?? '#000000'
 		);
+		const comparisonMode = colorPreviewStore.comparisonMode;
+		if (comparisonMode === 'split' && compare) {
+			compare.beginFrame(
+				inputs.width,
+				inputs.height,
+				projectState.metadata.backgroundColor ?? '#000000'
+			);
+		}
 		const frame = timelineStore.currentFrame;
 		for (const item of inputs.items) {
 			const source = sourceProviders.get(item.id)?.();
@@ -181,10 +204,40 @@
 				inputs.width / canvasWidth,
 				inputs.height / canvasHeight
 			);
-			resolved.effects = effectiveEffects(item, inputs.layers, inputs.orders, frame);
+			const afterEffects = effectiveEffects(item, inputs.layers, inputs.orders, frame);
+			resolved.effects =
+				comparisonMode === 'before' ? withoutColorGradeEffects(afterEffects) : afterEffects;
 			const alpha = itemOpacity(resolved) * transitionOpacity(item);
 			if (alpha <= 0) continue;
 			stack.compositeLayer(source, resolved, alpha, frame / editorSession.fps);
+			if (comparisonMode === 'split' && compare) {
+				compare.compositeLayer(
+					source,
+					{ ...resolved, effects: withoutColorGradeEffects(afterEffects) },
+					alpha,
+					frame / editorSession.fps
+				);
+			}
+		}
+		publishStackScope(stackCanvas);
+	}
+
+	function publishStackScope(canvas: HTMLCanvasElement | null): void {
+		if (!canvas || !selectedItemId) return;
+		const now = performance.now();
+		const captureRequested = colorPreviewStore.frameCaptureItemId === selectedItemId;
+		if (!captureRequested && now - lastStackScopeAt < 200) return;
+		lastStackScopeAt = now;
+		const sample = new OffscreenCanvas(256, 144);
+		const context = sample.getContext('2d', { willReadFrequently: true });
+		if (!context) return;
+		try {
+			context.drawImage(canvas, 0, 0, 256, 144);
+			const image = context.getImageData(0, 0, 256, 144);
+			scopeSamples.publish(selectedItemId, image);
+			colorPreviewStore.resolveFrameCapture(selectedItemId, image);
+		} catch {
+			scopeSamples.clear(selectedItemId);
 		}
 	}
 
@@ -218,6 +271,18 @@
 	});
 
 	$effect(() => {
+		const canvas = compareCanvas;
+		if (!canvas || colorPreviewStore.comparisonMode !== 'split') return;
+		const stack = new CanvasStackCompositor(canvas);
+		compareCompositor = stack;
+		scheduleStackFrame();
+		return () => {
+			stack.dispose();
+			if (compareCompositor === stack) compareCompositor = null;
+		};
+	});
+
+	$effect(() => {
 		const canvas = stackCanvas;
 		if (!canvas || !needsStackedComposition) return;
 		const stack = new CanvasStackCompositor(canvas);
@@ -239,6 +304,115 @@
 			offPlay();
 		};
 	});
+
+	$effect(() => {
+		const picker = colorPreviewStore.activePicker;
+		if (!picker) {
+			pickerColor = null;
+			return;
+		}
+		requestAnimationFrame(() => pickerOverlay?.focus());
+	});
+
+	$effect(() => {
+		const captureItemId = colorPreviewStore.frameCaptureItemId;
+		if (captureItemId) scheduleStackFrame();
+	});
+
+	function setSplitFromClientX(clientX: number): void {
+		if (!viewport) return;
+		const rect = viewport.getBoundingClientRect();
+		if (rect.width <= 0) return;
+		colorPreviewStore.setSplitPosition((clientX - rect.left) / rect.width);
+	}
+
+	function startSplitDrag(event: PointerEvent): void {
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.currentTarget instanceof HTMLButtonElement) {
+			event.currentTarget.setPointerCapture?.(event.pointerId);
+		}
+		setSplitFromClientX(event.clientX);
+	}
+
+	function moveSplit(event: PointerEvent): void {
+		if (event.buttons !== 1) return;
+		setSplitFromClientX(event.clientX);
+	}
+
+	function splitKeydown(event: KeyboardEvent): void {
+		let next: number | null = null;
+		if (event.key === 'ArrowLeft')
+			next = colorPreviewStore.splitPosition - (event.shiftKey ? 0.1 : 0.01);
+		if (event.key === 'ArrowRight')
+			next = colorPreviewStore.splitPosition + (event.shiftKey ? 0.1 : 0.01);
+		if (event.key === 'Home') next = 0.05;
+		if (event.key === 'End') next = 0.95;
+		if (next === null) return;
+		event.preventDefault();
+		colorPreviewStore.setSplitPosition(next);
+	}
+
+	function samplePicker(event: PointerEvent): { r: number; g: number; b: number } | null {
+		const active = scopeSamples.current;
+		if (!viewport || !active || active.itemId !== selectedItemId) return null;
+		const rect = viewport.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) return null;
+		const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+		const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+		const pixelX = Math.min(active.image.width - 1, Math.floor(x * active.image.width));
+		const pixelY = Math.min(active.image.height - 1, Math.floor(y * active.image.height));
+		const offset = (pixelY * active.image.width + pixelX) * 4;
+		const color = {
+			r: (active.image.data[offset] ?? 0) / 255,
+			g: (active.image.data[offset + 1] ?? 0) / 255,
+			b: (active.image.data[offset + 2] ?? 0) / 255
+		};
+		pickerColor = color;
+		pickerX = Math.max(8, Math.min(rect.width - 88, event.clientX - rect.left + 16));
+		pickerY = Math.max(8, Math.min(rect.height - 104, event.clientY - rect.top + 16));
+		requestAnimationFrame(() => drawPickerLoupe(active.image, pixelX, pixelY));
+		return color;
+	}
+
+	function drawPickerLoupe(image: ImageData, x: number, y: number): void {
+		const loupe = pickerLoupe;
+		if (!loupe) return;
+		const source = document.createElement('canvas');
+		source.width = image.width;
+		source.height = image.height;
+		source.getContext('2d')?.putImageData(image, 0, 0);
+		const context = loupe.getContext('2d');
+		if (!context) return;
+		context.imageSmoothingEnabled = false;
+		context.clearRect(0, 0, loupe.width, loupe.height);
+		context.drawImage(source, x - 4, y - 4, 9, 9, 0, 0, loupe.width, loupe.height);
+		context.strokeStyle = 'rgba(255,255,255,0.9)';
+		context.lineWidth = 1;
+		context.strokeRect(32.5, 32.5, 8, 8);
+	}
+
+	function choosePickerColor(event: PointerEvent): void {
+		const color = samplePicker(event);
+		if (color) colorPreviewStore.resolvePick(color);
+	}
+
+	function pickerKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			colorPreviewStore.cancelPick();
+		}
+	}
+
+	function colorHex(color: { r: number; g: number; b: number }): string {
+		return `#${[color.r, color.g, color.b]
+			.map((channel) =>
+				Math.round(channel * 255)
+					.toString(16)
+					.padStart(2, '0')
+			)
+			.join('')}`.toUpperCase();
+	}
 
 	function startGizmo(event: PointerEvent, mode: 'move' | 'resize'): void {
 		if (!selectedItem || !viewport) return;
@@ -313,6 +487,43 @@
 						aria-hidden="true"
 						data-stacked-preview
 					></canvas>
+					{#if colorPreviewStore.comparisonMode === 'split'}
+						<canvas
+							bind:this={compareCanvas}
+							width={stackWidth}
+							height={stackHeight}
+							class="absolute inset-0 size-full object-fill"
+							style:clip-path={`inset(0 ${100 - colorPreviewStore.splitPosition * 100}% 0 0)`}
+							aria-hidden="true"
+							data-color-before-preview
+						></canvas>
+						<span
+							class="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white"
+							>{m.video_editor_color_before()}</span
+						>
+						<span
+							class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white"
+							>{m.video_editor_color_after()}</span
+						>
+						<button
+							type="button"
+							role="slider"
+							class="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize focus-visible:outline-2 focus-visible:outline-white"
+							style:left={`${colorPreviewStore.splitPosition * 100}%`}
+							aria-label={m.video_editor_color_split_position()}
+							aria-valuemin="5"
+							aria-valuemax="95"
+							aria-valuenow={Math.round(colorPreviewStore.splitPosition * 100)}
+							onpointerdown={startSplitDrag}
+							onpointermove={moveSplit}
+							onkeydown={splitKeydown}
+						>
+							<span class="mx-auto block h-full w-px bg-white shadow-[0_0_0_1px_black]"></span>
+							<span
+								class="absolute top-1/2 left-1/2 size-3 -translate-1/2 rounded-full border border-black bg-white"
+							></span>
+						</button>
+					{/if}
 				</div>
 			{/if}
 			{#each activeItems as item (item.id)}
@@ -352,6 +563,31 @@
 						onpointerdown={(event) => startGizmo(event, 'resize')}
 					></button>
 				</div>
+			{/if}
+			{#if colorPreviewStore.activePicker}
+				<button
+					bind:this={pickerOverlay}
+					type="button"
+					class="absolute inset-0 z-30 cursor-crosshair bg-transparent focus-visible:outline-2 focus-visible:outline-white"
+					aria-label={m.video_editor_color_picker_instruction()}
+					onpointermove={samplePicker}
+					onpointerdown={choosePickerColor}
+					onkeydown={pickerKeydown}
+				>
+					{#if pickerColor}
+						<span
+							class="pointer-events-none absolute overflow-hidden rounded border border-white bg-black shadow-xl"
+							style:left={`${pickerX}px`}
+							style:top={`${pickerY}px`}
+						>
+							<canvas bind:this={pickerLoupe} width="72" height="72" class="block size-[72px]"
+							></canvas>
+							<span class="block px-1 py-0.5 text-center font-mono text-[10px] text-white"
+								>{colorHex(pickerColor)}</span
+							>
+						</span>
+					{/if}
+				</button>
 			{/if}
 		{/if}
 	</div>

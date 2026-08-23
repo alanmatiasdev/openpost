@@ -25,6 +25,11 @@ import {
 } from '$lib/video-editor/effects/gpu/types';
 import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
 import type { EffectTemplate } from '$lib/video-editor/timeline/effect-drop';
+import {
+	isColorGradeEffect,
+	replaceColorGradeInStack,
+	type GradeEffectSnapshot
+} from '$lib/video-editor/effects/color-grade';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 
@@ -167,6 +172,161 @@ export function setGpuEffectParam(
 		timelineStore._updateItems([
 			{ id: itemId, patch: { effects: replaceAt(effects, index, next) } }
 		]);
+		return true;
+	});
+}
+
+/** Update several params, lazily creating the GPU effect when absent, as one undo step. */
+export function upsertGpuEffectParams(
+	itemId: string,
+	effectId: string,
+	updates: Record<string, GpuParamValue>
+): boolean {
+	return execute('UPSERT_GPU_EFFECT_PARAMS', () => {
+		const item = timelineStore.itemById.get(itemId);
+		const definition = getGpuEffect(effectId);
+		if (!item || !definition || Object.keys(updates).length === 0) return false;
+		const normalized: Record<string, GpuParamValue> = {};
+		for (const [name, value] of Object.entries(updates)) {
+			const schemaParam = definition.schema.find((entry) => entry.name === name);
+			if (!schemaParam) return false;
+			normalized[name] = normalizeGpuParam(schemaParam, value);
+		}
+		const effects = item.effects ?? [];
+		const index = effects.findIndex(
+			(effect) => effect.type === 'gpu' && effect.effectId === effectId
+		);
+		if (index >= 0) {
+			const current = effects[index];
+			if (!current || current.type !== 'gpu') return false;
+			if (Object.entries(normalized).every(([name, value]) => current.params[name] === value))
+				return false;
+			const next: GpuEffect = {
+				...current,
+				params: { ...current.params, ...normalized }
+			};
+			timelineStore._updateItems([
+				{ id: itemId, patch: { effects: replaceAt(effects, index, next) } }
+			]);
+			return true;
+		}
+		const next: GpuEffect = {
+			id: crypto.randomUUID(),
+			type: 'gpu',
+			effectId,
+			params: { ...defaultGpuParams(definition.schema), ...normalized },
+			enabled: true
+		};
+		timelineStore._updateItems([{ id: itemId, patch: { effects: [...effects, next] } }]);
+		return true;
+	});
+}
+
+/** Apply one param batch to several selected visual items as one undo step. */
+export function upsertGpuEffectParamsOnItems(
+	itemIds: readonly string[],
+	effectId: string,
+	updates: Record<string, GpuParamValue>
+): boolean {
+	const uniqueItemIds = Array.from(new Set(itemIds));
+	return execute('UPSERT_GPU_EFFECT_PARAMS_ON_ITEMS', () => {
+		const definition = getGpuEffect(effectId);
+		if (!definition || Object.keys(updates).length === 0) return false;
+		const normalized: Record<string, GpuParamValue> = {};
+		for (const [name, value] of Object.entries(updates)) {
+			const schemaParam = definition.schema.find((entry) => entry.name === name);
+			if (!schemaParam) return false;
+			normalized[name] = normalizeGpuParam(schemaParam, value);
+		}
+		const itemUpdates = uniqueItemIds.flatMap((itemId) => {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item || item.type === 'audio') return [];
+			const effects = item.effects ?? [];
+			const index = effects.findIndex(
+				(effect) => effect.type === 'gpu' && effect.effectId === effectId
+			);
+			if (index >= 0) {
+				const current = effects[index];
+				if (!current || current.type !== 'gpu') return [];
+				if (Object.entries(normalized).every(([name, value]) => current.params[name] === value))
+					return [];
+				return [
+					{
+						id: itemId,
+						patch: {
+							effects: replaceAt(effects, index, {
+								...current,
+								params: { ...current.params, ...normalized }
+							})
+						}
+					}
+				];
+			}
+			const next: GpuEffect = {
+				id: crypto.randomUUID(),
+				type: 'gpu',
+				effectId,
+				params: { ...defaultGpuParams(definition.schema), ...normalized },
+				enabled: true
+			};
+			return [{ id: itemId, patch: { effects: [...effects, next] } }];
+		});
+		if (itemUpdates.length === 0) return false;
+		timelineStore._updateItems(itemUpdates);
+		return true;
+	});
+}
+
+/** Replace color-category GPU effects on visual items and preserve every other effect. */
+export function replaceColorGradeEffects(
+	itemIds: readonly string[],
+	grade: readonly GradeEffectSnapshot[]
+): boolean {
+	const uniqueItemIds = Array.from(new Set(itemIds));
+	return execute('REPLACE_COLOR_GRADE', () => {
+		if (
+			grade.length === 0 ||
+			grade.some(
+				(entry) =>
+					getGpuEffect(entry.effectId)?.category !== 'color' ||
+					Object.values(entry.params).some(
+						(value) =>
+							value === Number.POSITIVE_INFINITY ||
+							value === Number.NEGATIVE_INFINITY ||
+							value !== value
+					)
+			)
+		)
+			return false;
+		const updates = uniqueItemIds.flatMap((itemId) => {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item || item.type === 'audio') return [];
+			return [
+				{
+					id: itemId,
+					patch: { effects: replaceColorGradeInStack(item.effects, grade) }
+				}
+			];
+		});
+		if (updates.length === 0) return false;
+		timelineStore._updateItems(updates);
+		return true;
+	});
+}
+
+/** Enable or disable every color-grade effect on one clip as one edit. */
+export function setColorGradeEnabled(itemId: string, enabled: boolean): boolean {
+	return execute('SET_COLOR_GRADE_ENABLED', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item?.effects) return false;
+		let changed = false;
+		const effects = item.effects.map((effect) => {
+			if (!isColorGradeEffect(effect) || effect.enabled === enabled) return effect;
+			changed = true;
+			return { ...effect, enabled };
+		});
+		if (!changed) return false;
+		timelineStore._updateItems([{ id: itemId, patch: { effects } }]);
 		return true;
 	});
 }

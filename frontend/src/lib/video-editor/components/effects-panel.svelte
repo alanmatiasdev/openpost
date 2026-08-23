@@ -36,6 +36,7 @@
 		type BlendMode
 	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import ColorScopes from './color-scopes.svelte';
+	import ColorWorkspace from './color-workspace.svelte';
 	import GpuParamControl from './gpu-param-control.svelte';
 	import type { GpuParamValue } from '$lib/video-editor/effects/gpu/types';
 	import {
@@ -45,7 +46,11 @@
 		type EffectTemplate
 	} from '$lib/video-editor/timeline/effect-drop';
 
-	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
+	let {
+		itemId,
+		itemIds = [],
+		onedit
+	}: { itemId: string | null; itemIds?: string[]; onedit: () => void } = $props();
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const effects = $derived(item?.effects ?? []);
@@ -244,6 +249,7 @@
 </script>
 
 <div class="flex flex-col gap-1">
+	<ColorWorkspace {itemId} {itemIds} {onedit} />
 	<h3 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 		{m.video_editor_effects()}
 	</h3>

@@ -473,7 +473,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						</Button>
 					{/if}
 					{#if selectedSupportsEffects}
-						<EffectsPanel itemId={selectedItemId} onedit={() => editorSession.scheduleAutosave()} />
+						<EffectsPanel
+							itemId={selectedItemId}
+							itemIds={selectedItemIds}
+							onedit={() => editorSession.scheduleAutosave()}
+						/>
 					{/if}
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 						<Button

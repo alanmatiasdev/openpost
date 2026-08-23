@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { addEffectTemplates, addGpuEffect, setGpuEffectParam } from './effects';
+import {
+	addEffectTemplates,
+	addGpuEffect,
+	replaceColorGradeEffects,
+	setGpuEffectParam,
+	upsertGpuEffectParams,
+	upsertGpuEffectParamsOnItems
+} from './effects';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
 	return {
@@ -93,5 +100,86 @@ describe('setGpuEffectParam', () => {
 		expect(updated.params.charSet).toBe('custom');
 		expect([...String(updated.params.customChars)]).toHaveLength(64);
 		expect(updated.params.font).toBe('monospace');
+	});
+});
+
+describe('color grade actions', () => {
+	it('lazily creates and then updates color wheels with one undo step per batch', () => {
+		expect(
+			upsertGpuEffectParams('video', 'gpu-color-wheels', {
+				lift: -0.2,
+				gain: 1.5,
+				temperature: 20,
+				tint: -10
+			})
+		).toBe(true);
+		const created = timelineStore.itemById.get('video')?.effects?.[0];
+		expect(created?.type === 'gpu' ? created.params : undefined).toMatchObject({
+			lift: -0.2,
+			gain: 1.5,
+			temperature: 20,
+			tint: -10
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		expect(upsertGpuEffectParams('video', 'gpu-color-wheels', { gain: 2 })).toBe(true);
+		const updated = timelineStore.itemById.get('video')?.effects?.[0];
+		expect(updated?.id).toBe(created?.id);
+		expect(updated?.type === 'gpu' ? updated.params.gain : undefined).toBe(2);
+		expect(commandHistory.undoStack).toHaveLength(2);
+	});
+
+	it('replaces grades on several clips atomically while retaining non-color effects', () => {
+		expect(addGpuEffect('video', 'gpu-color-wheels')).toBe(true);
+		expect(addGpuEffect('video', 'gpu-gaussian-blur')).toBe(true);
+		expect(addGpuEffect('title', 'gpu-curves')).toBe(true);
+		commandHistory.clearHistory();
+
+		expect(
+			replaceColorGradeEffects(
+				['video', 'title', 'audio'],
+				[
+					{ effectId: 'gpu-color-wheels', params: { lift: -0.4 }, enabled: true },
+					{ effectId: 'gpu-curves', params: { masterShadowY: 0.15 }, enabled: true }
+				]
+			)
+		).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			const effects = timelineStore.itemById.get(itemId)?.effects ?? [];
+			expect(
+				effects.filter((effect) =>
+					effect.type === 'gpu'
+						? ['gpu-color-wheels', 'gpu-curves'].includes(effect.effectId)
+						: false
+				)
+			).toHaveLength(2);
+		}
+		expect(
+			timelineStore.itemById
+				.get('video')
+				?.effects?.some(
+					(effect) => effect.type === 'gpu' && effect.effectId === 'gpu-gaussian-blur'
+				)
+		).toBe(true);
+		expect(timelineStore.itemById.get('audio')?.effects).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('auto-balances every selected visual item in one undo step', () => {
+		expect(
+			upsertGpuEffectParamsOnItems(['video', 'title', 'audio'], 'gpu-color-wheels', {
+				lift: -0.1,
+				gain: 1.2
+			})
+		).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			const effect = timelineStore.itemById.get(itemId)?.effects?.[0];
+			expect(effect?.type === 'gpu' ? effect.params : undefined).toMatchObject({
+				lift: -0.1,
+				gain: 1.2
+			});
+		}
+		expect(timelineStore.itemById.get('audio')?.effects).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });

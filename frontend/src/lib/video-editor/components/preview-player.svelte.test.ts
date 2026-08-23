@@ -5,6 +5,8 @@ import { editorSession } from '../editor.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { TimelineFrameRenderer } from '../media/render-export';
 import PreviewPlayer from './preview-player.svelte';
+import { colorPreviewStore } from '../effects/color-preview-store.svelte';
+import { scopeSamples } from '../effects/scope-samples.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -64,9 +66,35 @@ function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 }
 
 afterEach(() => {
+	colorPreviewStore.__resetForTesting();
 	editorSession.project = null;
 	timelineStore.clear();
 });
+
+function gradedProject(): Project {
+	const layer = {
+		...colorLayer('graded', 'video-track', '#808080'),
+		effects: [
+			{
+				id: 'grade',
+				type: 'gpu' as const,
+				effectId: 'gpu-brightness',
+				enabled: true,
+				params: { amount: 0.25 }
+			}
+		]
+	};
+	return {
+		id: 'graded-project',
+		name: 'Graded project',
+		description: '',
+		createdAt: 0,
+		updatedAt: 0,
+		duration: 1,
+		metadata: { width: 4, height: 4, fps: 30, backgroundColor: '#000000' },
+		timeline: { tracks: [track('video-track', 0)], items: [layer] }
+	};
+}
 
 describe('PreviewPlayer backdrop composition', () => {
 	it('matches export pixels when a top layer multiplies the finished layer below', async () => {
@@ -105,5 +133,113 @@ describe('PreviewPlayer backdrop composition', () => {
 		} finally {
 			renderer.dispose();
 		}
+	});
+
+	it('renders a split before surface without changing the graded export', async () => {
+		const project = gradedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		colorPreviewStore.setComparisonMode('split');
+		const screen = await render(PreviewPlayer, { selectedItemId: 'graded', onedit: vi.fn() });
+		const after = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
+		const before = screen.container.querySelector<HTMLCanvasElement>('[data-color-before-preview]');
+		expect(after).not.toBeNull();
+		expect(before).not.toBeNull();
+		if (!after || !before) return;
+
+		await vi.waitFor(() => {
+			const [afterRed] = centerPixel(after);
+			const [beforeRed] = centerPixel(before);
+			expect(afterRed).toBeGreaterThanOrEqual(190);
+			expect(afterRed).toBeLessThanOrEqual(194);
+			expect(beforeRed).toBeGreaterThanOrEqual(126);
+			expect(beforeRed).toBeLessThanOrEqual(130);
+		});
+
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const exported = await renderer.render(0);
+			const [red] = centerPixel(exported);
+			expect(red).toBeGreaterThanOrEqual(190);
+			expect(red).toBeLessThanOrEqual(194);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('samples the visible preview with a keyboard-cancellable loupe picker', async () => {
+		const project = gradedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewPlayer, { selectedItemId: 'graded', onedit: vi.fn() });
+		const picked = colorPreviewStore.requestPick('graded', 'white-balance');
+		await vi.waitFor(() => {
+			expect(
+				screen.container.querySelector<HTMLButtonElement>(
+					'[aria-label="Choose a color in the preview. Press Escape to cancel."]'
+				)
+			).not.toBeNull();
+		});
+		const overlay = screen.container.querySelector<HTMLButtonElement>(
+			'[aria-label="Choose a color in the preview. Press Escape to cancel."]'
+		);
+		if (!overlay) throw new Error('picker overlay missing');
+		scopeSamples.publish('graded', new ImageData(new Uint8ClampedArray([51, 102, 153, 255]), 1, 1));
+		const rect = overlay.getBoundingClientRect();
+		const pointer = {
+			bubbles: true,
+			clientX: rect.left + rect.width / 2,
+			clientY: rect.top + rect.height / 2
+		};
+		overlay.dispatchEvent(new PointerEvent('pointermove', pointer));
+		await expect.element(screen.getByText('#336699', { exact: true })).toBeVisible();
+		overlay.dispatchEvent(new PointerEvent('pointerdown', pointer));
+		expect(await picked).toEqual({ r: 0.2, g: 0.4, b: 0.6 });
+		expect(colorPreviewStore.activePicker).toBeNull();
+
+		const cancelled = colorPreviewStore.requestPick('graded', 'black-point');
+		await vi.waitFor(() => {
+			expect(
+				screen.container.querySelector<HTMLButtonElement>(
+					'[aria-label="Choose a color in the preview. Press Escape to cancel."]'
+				)
+			).not.toBeNull();
+		});
+		screen.container
+			.querySelector<HTMLButtonElement>(
+				'[aria-label="Choose a color in the preview. Press Escape to cancel."]'
+			)
+			?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(await cancelled).toBeNull();
+		expect(colorPreviewStore.activePicker).toBeNull();
+	});
+
+	it('captures the finished preview frame for auto balance without touching export state', async () => {
+		const project = gradedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		await render(PreviewPlayer, { selectedItemId: 'graded', onedit: vi.fn() });
+		const image = await colorPreviewStore.requestFrameCapture('graded');
+		expect(image).not.toBeNull();
+		if (!image) return;
+		const center = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 2)) * 4;
+		expect(image.data[center]).toBeGreaterThanOrEqual(190);
+		expect(image.data[center]).toBeLessThanOrEqual(194);
+		expect(colorPreviewStore.frameCaptureItemId).toBeNull();
 	});
 });

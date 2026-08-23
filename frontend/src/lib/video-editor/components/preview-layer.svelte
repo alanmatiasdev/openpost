@@ -192,7 +192,8 @@
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
 			if (editorSession.clock.isPlaying && video.paused) void video.play().catch(() => undefined);
 			if (!editorSession.clock.isPlaying && !video.paused) video.pause();
-			if (selected && !needsGpu) requestAnimationFrame(() => publishScopeSample(video));
+			if (selected && !needsGpu && !deferEffects)
+				requestAnimationFrame(() => publishScopeSample(video));
 		};
 		sync();
 		const offFrame = editorSession.clock.on('framechange', sync);
@@ -323,6 +324,17 @@
 			if (image) image.style.visibility = '';
 			if (raster) raster.style.visibility = '';
 		};
+	});
+
+	$effect(() => {
+		const image = decodedImageElement;
+		const raster = rasterCanvas;
+		const revision = rasterRevision;
+		if (!selected || needsGpu || deferEffects || item.type === 'video') return;
+		const source = item.type === 'image' ? image : raster;
+		if (!source || ((item.type === 'text' || item.type === 'subtitle') && revision === 0)) return;
+		const frame = requestAnimationFrame(() => publishScopeSample(source));
+		return () => cancelAnimationFrame(frame);
 	});
 
 	function publishScopeSample(source: CanvasImageSource): void {
