@@ -93,7 +93,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Insert / overwrite editing from source monitor                                      | docs "Insert and overwrite"                                                     | PRESENT - comma insert and period overwrite place the exact native-frame source range at the program playhead, create linked V/A clips, convert frame rates, split or preserve surrounding material, shift only patched tracks, support Auto, explicit, or create-on-edit targets, reject locked targets, advance the playhead, prune transitions, preserve Lottie phase, and undo atomically (`source-monitor/source-edit.ts`)                                                                                                                              | M      |
 | Reverse playback / reverse-conform service                                          | `timeline/services/reverse-conform-service.ts`                                  | PRESENT - video and audio clips reverse from the exact exclusive source end; preview uses an exact frame/PCM fallback while one shared, cancellable, fingerprinted 720p source conform renders with progress and persists under the workspace media cache. Cached conforms play forward for smooth monitoring, linked A/V toggles atomically, and unreverse is one undo step (`media/reverse-conform-service.ts`, `audio/reverse-preview-audio.ts`)                                                                                                          | M      |
 | Timeline item overlays (effect drop previews, transition break notifications)       | `timeline/stores/*preview-store.ts`, `use-transition-breakage-notifications.ts` | PRESENT - cut-centered transition spans, transition-break previews and toasts, and multi-clip effect-drop previews are wired with one undo step (`components/timeline-panel.svelte`, `components/effects-panel.svelte`, `+page.svelte`)                                                                                                                                                                                                                                                                                                                      | -      |
-| Track-height resize                                                                 | `use-track-height-resize.ts`                                                    | MISSING                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | S      |
+| Track-height resize                                                                 | `use-track-height-resize.ts`                                                    | PRESENT - every row exposes a 48-140 px height control with live pointer drag, Arrow and Shift+Arrow steps, Home/End bounds, Alt resize-all, double-click reset, Escape rollback, vertical timeline scrolling, project persistence, and one undo entry per completed gesture (`timeline/track-resize.ts`, `components/timeline-panel.svelte`)                                                                                                                                                                                                                | S      |
 
 ## 5. Effects & color
 
@@ -253,9 +253,9 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 97**
+- **PRESENT: 98**
 - **PARTIAL: 28**
-- **MISSING: 45**
+- **MISSING: 44**
 - (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)

@@ -27,6 +27,14 @@
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
+	import {
+		MAX_TRACK_HEIGHT,
+		MIN_TRACK_HEIGHT,
+		clampTrackHeight,
+		resetTrackHeightsInList,
+		resizeAllTracksInList,
+		resizeTrackInList
+	} from '$lib/video-editor/timeline/track-resize';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Input } from '$lib/components/ui/input';
 	import AppSelect from '$lib/components/app-select.svelte';
@@ -168,6 +176,17 @@
 		pointerId: number;
 		latestClientX: number;
 		animationFrame: number | null;
+	} | null = null;
+	let trackHeightResize: {
+		pointerId: number;
+		trackId: string;
+		startY: number;
+		startHeight: number;
+		applyToAll: boolean;
+		beforeSnapshot: TimelineSnapshot;
+		changed: boolean;
+		bodyCursor: string;
+		bodyUserSelect: string;
 	} | null = null;
 	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
 
@@ -697,6 +716,126 @@
 		setCurrentFrame(frame);
 		audioSkimController.schedule(frame);
 		scheduleAudioSkimStop();
+	}
+
+	function applyTrackHeightResize(clientY: number): void {
+		if (!trackHeightResize) return;
+		const height = clampTrackHeight(
+			trackHeightResize.startHeight + clientY - trackHeightResize.startY
+		);
+		const nextTracks = trackHeightResize.applyToAll
+			? resizeAllTracksInList(timelineStore.tracks, height)
+			: resizeTrackInList(timelineStore.tracks, trackHeightResize.trackId, height);
+		if (nextTracks === timelineStore.tracks) return;
+		// Keep drag previews out of the dirty state until pointer-up commits once.
+		timelineStore.setAll({ tracks: nextTracks });
+		trackHeightResize.changed = true;
+	}
+
+	function moveTrackHeightResize(event: PointerEvent): void {
+		if (!trackHeightResize || event.pointerId !== trackHeightResize.pointerId) return;
+		event.preventDefault();
+		applyTrackHeightResize(event.clientY);
+	}
+
+	function cleanupTrackHeightResize(): void {
+		if (!trackHeightResize) return;
+		document.body.style.cursor = trackHeightResize.bodyCursor;
+		document.body.style.userSelect = trackHeightResize.bodyUserSelect;
+		window.removeEventListener('pointermove', moveTrackHeightResize);
+		window.removeEventListener('pointerup', finishTrackHeightResize);
+		window.removeEventListener('pointercancel', cancelTrackHeightResize);
+		window.removeEventListener('keydown', onTrackHeightResizeKeydown);
+		trackHeightResize = null;
+	}
+
+	function completeTrackHeightResize(cancelled: boolean): void {
+		if (!trackHeightResize) return;
+		const beforeSnapshot = trackHeightResize.beforeSnapshot;
+		const changed = trackHeightResize.changed;
+		if (cancelled && changed) restoreSnapshot(beforeSnapshot);
+		if (!cancelled && changed) timelineStore._setTracks([...timelineStore.tracks]);
+		cleanupTrackHeightResize();
+		if (!cancelled && changed) {
+			commandHistory.addUndoEntry({ type: 'RESIZE_TRACK_HEIGHT' }, beforeSnapshot);
+			onedit();
+		}
+	}
+
+	function finishTrackHeightResize(event: PointerEvent): void {
+		if (!trackHeightResize || event.pointerId !== trackHeightResize.pointerId) return;
+		event.preventDefault();
+		applyTrackHeightResize(event.clientY);
+		completeTrackHeightResize(false);
+	}
+
+	function cancelTrackHeightResize(event?: PointerEvent): void {
+		if (event && trackHeightResize && event.pointerId !== trackHeightResize.pointerId) return;
+		completeTrackHeightResize(true);
+	}
+
+	function onTrackHeightResizeKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		completeTrackHeightResize(true);
+	}
+
+	function startTrackHeightResize(event: PointerEvent, trackId: string): void {
+		if (event.button !== 0 || trackHeightResize) return;
+		const track = timelineStore.tracks.find((candidate) => candidate.id === trackId);
+		if (!track) return;
+		event.preventDefault();
+		event.stopPropagation();
+		editorSession.pausePlayback();
+		trackHeightResize = {
+			pointerId: event.pointerId,
+			trackId,
+			startY: event.clientY,
+			startHeight: track.height,
+			applyToAll: event.altKey,
+			beforeSnapshot: captureSnapshot(),
+			changed: false,
+			bodyCursor: document.body.style.cursor,
+			bodyUserSelect: document.body.style.userSelect
+		};
+		document.body.style.cursor = 'row-resize';
+		document.body.style.userSelect = 'none';
+		window.addEventListener('pointermove', moveTrackHeightResize);
+		window.addEventListener('pointerup', finishTrackHeightResize);
+		window.addEventListener('pointercancel', cancelTrackHeightResize);
+		window.addEventListener('keydown', onTrackHeightResizeKeydown);
+	}
+
+	function resetTrackHeight(event: MouseEvent, trackId: string): void {
+		event.preventDefault();
+		event.stopPropagation();
+		const before = captureSnapshot();
+		const next = resetTrackHeightsInList(timelineStore.tracks, trackId, event.altKey);
+		if (next === timelineStore.tracks) return;
+		timelineStore._setTracks(next);
+		commandHistory.addUndoEntry({ type: 'RESET_TRACK_HEIGHT' }, before);
+		onedit();
+	}
+
+	function resizeTrackHeightFromKeyboard(event: KeyboardEvent, trackId: string): void {
+		let height: number | null = null;
+		const track = timelineStore.tracks.find((candidate) => candidate.id === trackId);
+		if (!track) return;
+		if (event.key === 'ArrowUp') height = track.height - (event.shiftKey ? 12 : 4);
+		else if (event.key === 'ArrowDown') height = track.height + (event.shiftKey ? 12 : 4);
+		else if (event.key === 'Home') height = MIN_TRACK_HEIGHT;
+		else if (event.key === 'End') height = MAX_TRACK_HEIGHT;
+		else return;
+		event.preventDefault();
+		event.stopPropagation();
+		const before = captureSnapshot();
+		const next = event.altKey
+			? resizeAllTracksInList(timelineStore.tracks, height)
+			: resizeTrackInList(timelineStore.tracks, trackId, height);
+		if (next === timelineStore.tracks) return;
+		timelineStore._setTracks(next);
+		commandHistory.addUndoEntry({ type: 'RESIZE_TRACK_HEIGHT' }, before);
+		onedit();
 	}
 
 	function clearEffectDropPreview(): void {
@@ -1627,6 +1766,7 @@
 		if (transitionResize) finishTransitionResize(true);
 		if (marquee) finishMarquee();
 		if (rulerScrub) cancelRulerScrub();
+		if (trackHeightResize) completeTrackHeightResize(true);
 		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
 		audioSkimController.dispose();
 		clearEffectDropPreview();
@@ -2101,7 +2241,7 @@
 <div
 	bind:this={scrollContainer}
 	onpointerdown={startMarquee}
-	class="relative max-h-72 min-h-32 overflow-x-auto overflow-y-hidden pb-2"
+	class="relative max-h-72 min-h-32 overflow-auto pb-2"
 	role="region"
 	aria-label={m.video_editor_timeline()}
 >
@@ -2368,6 +2508,22 @@
 						</div>
 					{/if}
 				{/each}
+				<div
+					class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none"
+					role="slider"
+					tabindex="0"
+					aria-orientation="vertical"
+					aria-label={m.video_editor_track_resize({ name: track.name })}
+					aria-valuemin={MIN_TRACK_HEIGHT}
+					aria-valuemax={MAX_TRACK_HEIGHT}
+					aria-valuenow={track.height}
+					title={m.video_editor_track_resize_hint()}
+					data-track-resize={track.id}
+					data-marquee-ignore
+					onpointerdown={(event) => startTrackHeightResize(event, track.id)}
+					ondblclick={(event) => resetTrackHeight(event, track.id)}
+					onkeydown={(event) => resizeTrackHeightFromKeyboard(event, track.id)}
+				></div>
 			</div>
 		{/each}
 

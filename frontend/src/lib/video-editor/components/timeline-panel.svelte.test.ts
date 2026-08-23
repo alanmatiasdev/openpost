@@ -64,7 +64,8 @@ function dispatchPointer(
 	type: 'pointerdown' | 'pointermove' | 'pointerup',
 	clientX: number,
 	shiftKey = false,
-	clientY = 0
+	clientY = 0,
+	altKey = false
 ): void {
 	target.dispatchEvent(
 		new PointerEvent(type, {
@@ -74,7 +75,8 @@ function dispatchPointer(
 			clientX,
 			clientY,
 			pointerId: 7,
-			shiftKey
+			shiftKey,
+			altKey
 		})
 	);
 }
@@ -162,6 +164,52 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.currentFrame).toBe(11);
 		ruler.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 		expect(timelineStore.currentFrame).toBe(120);
+	});
+
+	it('resizes one track as one undoable pointer gesture', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const resize = screen.getByRole('slider', { name: 'Resize video-track track height' });
+
+		dispatchPointer(resize.element(), 'pointerdown', 0, false, 100);
+		dispatchPointer(window, 'pointermove', 0, false, 130);
+		expect(timelineStore.tracks.find((candidate) => candidate.id === 'video-track')?.height).toBe(
+			94
+		);
+		expect(onedit).not.toHaveBeenCalled();
+		dispatchPointer(window, 'pointerup', 0, false, 130);
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(commandHistory.getLastCommandType()).toBe('RESIZE_TRACK_HEIGHT');
+		await expect.element(resize).toHaveAttribute('aria-valuenow', '94');
+
+		commandHistory.undo();
+		expect(timelineStore.tracks.find((candidate) => candidate.id === 'video-track')?.height).toBe(
+			64
+		);
+	});
+
+	it('supports resize-all, cancellation, keyboard bounds, and reset', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const audioResize = screen.getByRole('slider', { name: 'Resize audio-track track height' });
+
+		dispatchPointer(audioResize.element(), 'pointerdown', 0, false, 100, true);
+		dispatchPointer(window, 'pointermove', 0, false, 110);
+		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([74, 74]);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([64, 64]);
+		expect(onedit).not.toHaveBeenCalled();
+
+		audioResize
+			.element()
+			.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', altKey: true, bubbles: true }));
+		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([140, 140]);
+		const videoResize = screen.getByRole('slider', { name: 'Resize video-track track height' });
+		videoResize
+			.element()
+			.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, altKey: true }));
+		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([96, 72]);
+		expect(onedit).toHaveBeenCalledTimes(2);
 	});
 
 	it('joins selected split siblings from the toolbar and Shift+J', async () => {

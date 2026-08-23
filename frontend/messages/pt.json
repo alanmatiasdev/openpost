@@ -3835,6 +3835,8 @@
 	"video_editor_track_sync_unlock": "Desativar bloqueio de sincronização",
 	"video_editor_track_delete": "Eliminar faixa e clipes",
 	"video_editor_track_keep_one": "Mantém pelo menos uma faixa",
+	"video_editor_track_resize": "Redimensionar a altura da faixa {name}",
+	"video_editor_track_resize_hint": "Arraste ou use as setas. Mantenha Shift para passos maiores, Alt para todas as faixas ou faça duplo clique para repor.",
 	"video_editor_track_video_name": "Vídeo {number}",
 	"video_editor_track_audio_name": "Áudio {number}",
 	"video_editor_snap_enable": "Ativar alinhamento (S)",

@@ -3835,6 +3835,8 @@
 	"video_editor_track_sync_unlock": "Disable sync lock",
 	"video_editor_track_delete": "Delete track and clips",
 	"video_editor_track_keep_one": "Keep at least one track",
+	"video_editor_track_resize": "Resize {name} track height",
+	"video_editor_track_resize_hint": "Drag or use Arrow keys. Hold Shift for larger steps, Alt for all tracks, or double-click to reset.",
 	"video_editor_track_video_name": "Video {number}",
 	"video_editor_track_audio_name": "Audio {number}",
 	"video_editor_snap_enable": "Enable snapping (S)",
