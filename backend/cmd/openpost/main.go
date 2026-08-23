@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
