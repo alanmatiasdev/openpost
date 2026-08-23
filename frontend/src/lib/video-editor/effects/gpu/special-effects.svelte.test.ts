@@ -84,4 +84,68 @@ describe('special GPU effects in Chromium', () => {
 		expect(second).not.toEqual(first);
 		compositor.dispose();
 	});
+
+	it.each([
+		{ order: 'ascending', expected: [10, 50, 100, 200, 20] },
+		{ order: 'descending', expected: [10, 200, 100, 50, 20] }
+	])('sorts each exact threshold span in $order order', ({ order, expected }) => {
+		const values = [10, 100, 200, 50, 20];
+		const source = document.createElement('canvas');
+		source.width = values.length;
+		source.height = 1;
+		const context = source.getContext('2d');
+		expect(context).not.toBeNull();
+		if (!context) return;
+		for (const [x, value] of values.entries()) {
+			context.fillStyle = `rgb(${value} ${value} ${value})`;
+			context.fillRect(x, 0, 1, 1);
+		}
+
+		const output = document.createElement('canvas');
+		const compositor = createGpuCompositor(output);
+		expect(compositor).not.toBeNull();
+		if (!compositor) return;
+		const rendered = compositor.render(source, values.length, 1, [
+			{
+				effectId: 'gpu-pixel-sort-hq',
+				params: { orientation: 'horizontal', order, low: 0.1, high: 1 }
+			}
+		]);
+		expect(rendered, compositor.failureReason() ?? undefined).toBe(true);
+		const data = pixels(output);
+		const actual = values.map((_, index) => data[index * 4]);
+		expect(actual).toEqual(expected);
+		expect(values.map((_, index) => data[index * 4 + 3])).toEqual(values.map(() => 255));
+		compositor.dispose();
+	});
+
+	it('sorts vertical spans without crossing threshold boundaries', () => {
+		const valuesTopToBottom = [10, 100, 200, 50, 20];
+		const source = document.createElement('canvas');
+		source.width = 1;
+		source.height = valuesTopToBottom.length;
+		const context = source.getContext('2d');
+		expect(context).not.toBeNull();
+		if (!context) return;
+		for (const [y, value] of valuesTopToBottom.entries()) {
+			context.fillStyle = `rgb(${value} ${value} ${value})`;
+			context.fillRect(0, y, 1, 1);
+		}
+
+		const output = document.createElement('canvas');
+		const compositor = createGpuCompositor(output);
+		expect(compositor).not.toBeNull();
+		if (!compositor) return;
+		const rendered = compositor.render(source, 1, valuesTopToBottom.length, [
+			{
+				effectId: 'gpu-pixel-sort-hq',
+				params: { orientation: 'vertical', order: 'ascending', low: 0.1, high: 1 }
+			}
+		]);
+		expect(rendered, compositor.failureReason() ?? undefined).toBe(true);
+		const data = pixels(output);
+		const bottomToTop = valuesTopToBottom.map((_, index) => data[index * 4]);
+		expect(bottomToTop).toEqual([20, 200, 100, 50, 10]);
+		compositor.dispose();
+	});
 });

@@ -36,6 +36,8 @@ const FREECUT_BLEND_MODE_INDEX = {
 describe('gpu registry integrity', () => {
 	it('has unique ids for every catalog entry', () => {
 		const ids = GPU_EFFECT_CATALOG.map((definition) => definition.id);
+		expect(ids).toHaveLength(54);
+		expect(ids).toContain('gpu-pixel-sort-hq');
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
@@ -44,6 +46,22 @@ describe('gpu registry integrity', () => {
 			expect(
 				definition.fragmentSource.includes(`vec4 ${definition.entryPoint}(vec2 vUv)`),
 				`${definition.id} must define vec4 ${definition.entryPoint}(vec2 vUv)`
+			).toBe(true);
+		}
+	});
+
+	it('declares a complete vertex entry point for every scatter effect', () => {
+		for (const definition of GPU_EFFECT_CATALOG) {
+			if (!definition.scatterVertexSource) continue;
+			expect(
+				definition.scatterEntryPoint,
+				`${definition.id} must name its scatter entry`
+			).toBeTruthy();
+			expect(
+				definition.scatterVertexSource.includes(
+					`vec4 ${definition.scatterEntryPoint}(int vertexId, out ivec2 destination)`
+				),
+				`${definition.id} must declare its point-scatter entry function`
 			).toBe(true);
 		}
 	});

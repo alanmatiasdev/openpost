@@ -3,9 +3,9 @@
  *
  * Ported from FreeCut (MIT) — infrastructure/gpu-effects/types.ts — adapted
  * from WebGPU/WGSL to our WebGL2 compositor: each definition carries a GLSL
- * ES 3.00 fragment source (ported verbatim from the WGSL catalog), a numeric
- * param schema for generic UI, and a resolver that maps stored params plus
- * frame context to individual float uniforms.
+ * ES 3.00 fragment source or point-scatter vertex source, a typed param schema
+ * for generic UI, and a resolver that maps stored params plus frame context to
+ * individual float uniforms.
  */
 
 export type GpuEffectCategory = 'color' | 'blur' | 'distort' | 'stylize' | 'keying';
@@ -61,8 +61,7 @@ export type GpuParamSchema =
 
 /**
  * Auxiliary CPU-built texture bound alongside the input (e.g. a 256x1 LUT).
- * Port of EffectDataTextureSpec; only effects whose data is fully
- * self-contained are ported — LUT-file and font-atlas effects are not.
+ * Port of EffectDataTextureSpec for curves, imported LUTs, and glyph atlases.
  */
 export interface GpuDataTextureSpec {
 	/** Cheap change-detection key derived from params. */
@@ -82,6 +81,13 @@ export interface GpuShaderDefinition {
 	 * `vec4 <entryPoint>(vec2 vUv)`.
 	 */
 	fragmentSource: string;
+	/**
+	 * Optional point-scatter vertex body for effects that must write each input
+	 * texel to a different output coordinate. The entry function receives
+	 * gl_VertexID and returns the source color plus an exact destination texel.
+	 */
+	scatterVertexSource?: string;
+	scatterEntryPoint?: string;
 	schema: readonly GpuParamSchema[];
 	/**
 	 * Map stored params (+ frame width/height/time in seconds) to uniform

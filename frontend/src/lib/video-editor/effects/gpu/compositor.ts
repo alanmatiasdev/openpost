@@ -3,10 +3,10 @@
  *
  * Ported from FreeCut (MIT) — infrastructure/gpu-effects/effects-pipeline.ts
  * and infrastructure/gpu-media/media-blend-pipeline.ts — adapted from WebGPU
- * to WebGL2: same fullscreen-quad contract, ping-pong framebuffers chaining
- * multiple effects, per-effect uniform binding from param values, and the
- * verbatim 25-mode blend pass as the final composite against an optional
- * second source texture.
+ * to WebGL2: fullscreen-quad fragment passes plus exact point-scatter passes,
+ * ping-pong framebuffers chaining multiple effects, per-effect uniform binding
+ * from param values, and the verbatim 25-mode blend pass as the final composite
+ * against an optional second source texture.
  *
  * The engine is intentionally standalone (no Svelte imports) so the export
  * canvas compositor can adopt the same shaders later.
@@ -53,6 +53,36 @@ void main() {
 }
 `;
 }
+
+function scatterVertexShaderSource(definition: GpuShaderDefinition): string {
+	if (!definition.scatterVertexSource || !definition.scatterEntryPoint) {
+		throw new Error(`GPU compositor: ${definition.id} has an incomplete scatter definition`);
+	}
+	return `#version 300 es
+precision highp float;
+precision highp int;
+uniform sampler2D uInputTex;
+out vec4 vScatterColor;
+${definition.scatterVertexSource}
+void main() {
+  ivec2 destination;
+  vScatterColor = ${definition.scatterEntryPoint}(gl_VertexID, destination);
+  ivec2 size = textureSize(uInputTex, 0);
+  vec2 center = (vec2(destination) + vec2(0.5)) / vec2(size);
+  gl_Position = vec4(center * 2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}
+`;
+}
+
+const SCATTER_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+in vec4 vScatterColor;
+out vec4 fragColor;
+void main() {
+  fragColor = vScatterColor;
+}
+`;
 
 const BLEND_FRAGMENT_SOURCE = `#version 300 es
 precision highp float;
@@ -168,9 +198,18 @@ export class GpuCompositor {
 		const cached = this.programs.get(definition.id);
 		if (cached) return cached;
 		const gl = this.gl;
-		const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource(definition));
-		const program = linkProgram(gl, this.vertexShader, fragment);
+		const scatter = definition.scatterVertexSource !== undefined;
+		const vertex = scatter
+			? compileShader(gl, gl.VERTEX_SHADER, scatterVertexShaderSource(definition))
+			: this.vertexShader;
+		const fragment = compileShader(
+			gl,
+			gl.FRAGMENT_SHADER,
+			scatter ? SCATTER_FRAGMENT_SOURCE : fragmentShaderSource(definition)
+		);
+		const program = linkProgram(gl, vertex, fragment);
 		gl.deleteShader(fragment);
+		if (scatter) gl.deleteShader(vertex);
 
 		const bundle: ProgramBundle = { program, uniformLocations: new Map(), samplerUnits: new Map() };
 		// SAFETY: getProgramParameter is typed any; ACTIVE_UNIFORMS returns the
@@ -324,7 +363,13 @@ export class GpuCompositor {
 					if (loc) gl.uniform1f(loc, value);
 				}
 
-				gl.drawArrays(gl.TRIANGLES, 0, 6);
+				if (definition.scatterVertexSource) {
+					gl.clearColor(0, 0, 0, 0);
+					gl.clear(gl.COLOR_BUFFER_BIT);
+					gl.drawArrays(gl.POINTS, 0, width * height);
+				} else {
+					gl.drawArrays(gl.TRIANGLES, 0, 6);
+				}
 				currentTexture = targetTexture;
 				passIndex++;
 			}

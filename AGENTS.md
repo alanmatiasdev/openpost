@@ -37,6 +37,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Svelte uses runes, the typed API client, and shared UI/page controls; visible form fields belong in shared primitives. Secrets stay out of code and logs; stored provider tokens are encrypted.
 - CLI, MCP, API, and product surfaces share terms, permissions, and boundaries. Public contract changes are acceptable when deliberate and UX-improving; change the source, then regenerate.
 - AI features use maintained SDKs behind a small provider-neutral boundary (`backend/internal/ai/`); reuse the shared model and config choices instead of adding per-feature models.
+- Video Editor GPU effects share one WebGL2 ping-pong compositor; use point-scatter vertex passes for exact cross-texel writes that a fragment pass cannot express.
 
 ## Reference repositories
 

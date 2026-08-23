@@ -5,7 +5,7 @@
  * WGSL fragment bodies translated to GLSL ES 3.00 with the mechanical rules in
  * ../shader-source.ts; math and structure verbatim. ASCII and Paper halftone
  * live in focused modules because they have a large typed control surface and
- * an auxiliary texture. gpu-pixel-sort-hq still needs a WebGPU compute pass.
+ * an auxiliary texture. HQ pixel sort uses an exact point-scatter vertex pass.
  */
 
 import type { GpuShaderDefinition } from '../types';
@@ -1027,17 +1027,177 @@ vec4 pixelSortFragment(vec2 vUv) {
   return vec4(bestColor, src.a);
 }`,
 	schema: [
+		{
+			name: 'direction',
+			label: 'Direction',
+			type: 'select',
+			default: 'right',
+			options: [
+				{ value: 'right', label: 'Right' },
+				{ value: 'left', label: 'Left' },
+				{ value: 'down', label: 'Down' },
+				{ value: 'up', label: 'Up' }
+			]
+		},
+		{
+			name: 'order',
+			label: 'Carry',
+			type: 'select',
+			default: 'bright',
+			options: [
+				{ value: 'bright', label: 'Bright streaks' },
+				{ value: 'dark', label: 'Dark streaks' }
+			]
+		},
 		{ name: 'low', label: 'Threshold Low', default: 0.25, min: 0, max: 1, step: 0.01 },
 		{ name: 'high', label: 'Threshold High', default: 1, min: 0, max: 1, step: 0.01 },
 		{ name: 'length', label: 'Length', default: 60, min: 2, max: 400, step: 1 }
 	],
+	uniformValues: (p, w, h) => {
+		let dirX = 1;
+		let dirY = 0;
+		if (p.direction === 'left') dirX = -1;
+		else if (p.direction === 'down') {
+			dirX = 0;
+			dirY = 1;
+		} else if (p.direction === 'up') {
+			dirX = 0;
+			dirY = -1;
+		}
+		return {
+			uDirX: dirX,
+			uDirY: dirY,
+			uLow: readNumber(p, 'low', 0.25),
+			uHigh: readNumber(p, 'high', 1),
+			uLength: readNumber(p, 'length', 60),
+			uOrder: p.order === 'dark' ? 0 : 1,
+			uWidth: w,
+			uHeight: h
+		};
+	}
+};
+
+/**
+ * Exact FreeCut pixel sort. WebGL2 point rasterization supplies the scatter
+ * write that a fragment pass cannot express: one vertex handles each input
+ * texel, computes its unique sorted rank, and places a one-pixel point at the
+ * destination. Its span/rank math is a mechanical port of FreeCut's WGSL
+ * compute shader and keeps the same O(span) work per input pixel.
+ */
+export const pixelSortHq: GpuShaderDefinition = {
+	id: 'gpu-pixel-sort-hq',
+	label: 'Pixel Sort',
+	category: 'stylize',
+	entryPoint: 'pixelSortHqFragment',
+	fragmentSource: /* glsl */ `
+uniform float uLow;
+uniform float uHigh;
+uniform float uVertical;
+uniform float uDescending;
+uniform float uWidth;
+uniform float uHeight;
+vec4 pixelSortHqFragment(vec2 vUv) {
+  return texture(uInputTex, vUv);
+}`,
+	scatterEntryPoint: 'pixelSortHqScatter',
+	scatterVertexSource: /* glsl */ `
+uniform float uLow;
+uniform float uHigh;
+uniform float uVertical;
+uniform float uDescending;
+uniform float uWidth;
+uniform float uHeight;
+
+float pixelSortHqLuminance(vec3 color) {
+  return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+bool pixelSortHqInBand(float value) {
+  return value >= uLow && value <= uHigh;
+}
+
+float pixelSortHqLumAt(int index, int perpendicular, bool vertical) {
+  int height = max(1, int(uHeight + 0.5));
+  ivec2 coordinate = vertical
+    ? ivec2(perpendicular, height - 1 - index)
+    : ivec2(index, perpendicular);
+  return pixelSortHqLuminance(texelFetch(uInputTex, coordinate, 0).rgb);
+}
+
+vec4 pixelSortHqScatter(int vertexId, out ivec2 destination) {
+  int width = max(1, int(uWidth + 0.5));
+  int height = max(1, int(uHeight + 0.5));
+  int x = vertexId % width;
+  int y = vertexId / width;
+  int topY = height - 1 - y;
+  ivec2 sourceCoordinate = ivec2(x, y);
+  vec4 sourceColor = texelFetch(uInputTex, sourceCoordinate, 0);
+  float sourceLum = pixelSortHqLuminance(sourceColor.rgb);
+
+  destination = sourceCoordinate;
+  if (!pixelSortHqInBand(sourceLum)) {
+    return sourceColor;
+  }
+
+  bool vertical = uVertical > 0.5;
+  int axisLength = vertical ? height : width;
+  int perpendicular = vertical ? x : y;
+  int position = vertical ? topY : x;
+
+  int spanStart = position;
+  while (spanStart > 0) {
+    if (!pixelSortHqInBand(pixelSortHqLumAt(spanStart - 1, perpendicular, vertical))) break;
+    spanStart--;
+  }
+
+  int spanEnd = position;
+  while (spanEnd < axisLength - 1) {
+    if (!pixelSortHqInBand(pixelSortHqLumAt(spanEnd + 1, perpendicular, vertical))) break;
+    spanEnd++;
+  }
+
+  int rank = 0;
+  for (int index = spanStart; index <= spanEnd; index++) {
+    if (index == position) continue;
+    float candidateLum = pixelSortHqLumAt(index, perpendicular, vertical);
+    if (candidateLum < sourceLum || (candidateLum == sourceLum && index < position)) rank++;
+  }
+
+  int destinationIndex = uDescending > 0.5 ? spanEnd - rank : spanStart + rank;
+  destination = vertical
+    ? ivec2(perpendicular, height - 1 - destinationIndex)
+    : ivec2(destinationIndex, perpendicular);
+  return sourceColor;
+}`,
+	schema: [
+		{
+			name: 'orientation',
+			label: 'Orientation',
+			type: 'select',
+			default: 'horizontal',
+			options: [
+				{ value: 'horizontal', label: 'Horizontal' },
+				{ value: 'vertical', label: 'Vertical' }
+			]
+		},
+		{
+			name: 'order',
+			label: 'Order',
+			type: 'select',
+			default: 'ascending',
+			options: [
+				{ value: 'ascending', label: 'Dark to Bright' },
+				{ value: 'descending', label: 'Bright to Dark' }
+			]
+		},
+		{ name: 'low', label: 'Threshold Low', default: 0.25, min: 0, max: 1, step: 0.01 },
+		{ name: 'high', label: 'Threshold High', default: 0.9, min: 0, max: 1, step: 0.01 }
+	],
 	uniformValues: (p, w, h) => ({
-		uDirX: 1,
-		uDirY: 0,
 		uLow: readNumber(p, 'low', 0.25),
-		uHigh: readNumber(p, 'high', 1),
-		uLength: readNumber(p, 'length', 60),
-		uOrder: 1,
+		uHigh: readNumber(p, 'high', 0.9),
+		uVertical: p.orientation === 'vertical' ? 1 : 0,
+		uDescending: p.order === 'descending' ? 1 : 0,
 		uWidth: w,
 		uHeight: h
 	})

@@ -7,10 +7,9 @@
  * the WGSL -> GLSL ES 3.00 translation rules.
  *
  * Catalog status vs FreeCut's 54-effect catalog:
- * - 53 effects run in the WebGL2 pipeline, including the generated ASCII
- *   atlas, Paper halftone, CPU-baked curves, and imported .cube LUTs.
- * - The remaining gpu-pixel-sort-hq definition needs a WebGPU compute pass;
- *   WebGL2 fragment shaders cannot express its scatter writes.
+ * - All 54 effects run in the WebGL2 pipeline, including the generated ASCII
+ *   atlas, Paper halftone, CPU-baked curves, imported .cube LUTs, and exact
+ *   point-scatter HQ pixel sorting.
  */
 
 import type { GpuEffectCategory, GpuParamValues, GpuShaderDefinition } from './types';
@@ -67,6 +66,7 @@ export const GPU_EFFECT_CATALOG: readonly GpuShaderDefinition[] = [
 	halftone,
 	ascii,
 	stylizeEffects.pixelSort,
+	stylizeEffects.pixelSortHq,
 	distortEffects.pixelate,
 	distortEffects.rgbSplit,
 	distortEffects.twirl,
