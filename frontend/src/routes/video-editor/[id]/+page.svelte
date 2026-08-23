@@ -822,6 +822,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								frameWidth={sequenceStore.activeWidth}
 								frameHeight={sequenceStore.activeHeight}
 								fps={timelineStore.fps}
+								animationPresets={editorSession.project?.animationPresets ?? []}
+								onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
+								ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
 								onedit={() => editorSession.scheduleAutosave()}
 							/>
 						{/if}

@@ -77,7 +77,8 @@ export function createBlankProject(name = 'Untitled project'): Project {
 			fps: DEFAULT_PROJECT_FPS,
 			backgroundColor: '#000000'
 		},
-		timeline: createEmptyTimeline()
+		timeline: createEmptyTimeline(),
+		animationPresets: []
 	};
 }
 

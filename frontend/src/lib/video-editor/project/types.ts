@@ -219,6 +219,38 @@ export interface VectorKeyframe {
 export type VectorKeyframeProperty = 'position';
 export type ItemVectorKeyframes = Partial<Record<VectorKeyframeProperty, VectorKeyframe[]>>;
 
+/** One scalar key stored inside a portable saved animation recipe. */
+export interface AnimationPresetKeyframe {
+	id: string;
+	frame: number;
+	value: number;
+	easing: EasingType;
+	easingConfig?: EasingConfig;
+}
+
+export interface AnimationPresetProperty {
+	property: KeyframeProperty;
+	keyframes: AnimationPresetKeyframe[];
+}
+
+export interface AnimationPresetVectorProperty {
+	property: VectorKeyframeProperty;
+	keyframes: VectorKeyframe[];
+}
+
+/** Project-scoped animation recipe captured from one compatible clip type. */
+export interface AnimationPreset {
+	id: string;
+	name: string;
+	sourceItemType: TimelineItemKind;
+	properties: AnimationPresetProperty[];
+	vectorProperties?: AnimationPresetVectorProperty[];
+	effects: import('../effects/types').ItemEffect[];
+	motionModifiers?: MotionModifier[];
+	sourceDurationInFrames: number;
+	createdAt: number;
+}
+
 /** Styling for text items and caption rendering. */
 export interface TextStyleFields {
 	fontFamily?: string;
@@ -483,6 +515,8 @@ export interface Project {
 	thumbnailId?: string;
 	metadata: ProjectResolution;
 	timeline?: ProjectTimeline;
+	/** Saved animation recipes that travel with this project document. */
+	animationPresets?: AnimationPreset[];
 	/**
 	 * Root folder handle for the project's media files. Non-serializable —
 	 * stripped on save and re-attached from the handles registry on load.

@@ -20,6 +20,7 @@ describe('createBlankProject', () => {
 			'track-audio'
 		]);
 		expect(project.timeline?.items).toEqual([]);
+		expect(project.animationPresets).toEqual([]);
 	});
 
 	it('generates unique ids', () => {

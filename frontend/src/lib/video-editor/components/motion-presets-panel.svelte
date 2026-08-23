@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
-	import type { MotionModifierChannel, MotionModifierType } from '$lib/video-editor/project/types';
+	import type {
+		AnimationPreset,
+		MotionModifierChannel,
+		MotionModifierType
+	} from '$lib/video-editor/project/types';
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import {
 		applyMotionPreset,
@@ -36,6 +40,7 @@
 	} from '$lib/video-editor/timeline/actions/motion-modifiers';
 	import { trimAnimationToItemBounds } from '$lib/video-editor/timeline/actions/trimmed-keyframes';
 	import { countTrimmedKeyframes } from '$lib/video-editor/timeline/trimmed-keyframes';
+	import SavedAnimationLibrary from './saved-animation-library.svelte';
 
 	let {
 		itemId,
@@ -43,6 +48,9 @@
 		frameWidth,
 		frameHeight,
 		fps,
+		animationPresets = [],
+		onsavepreset = () => {},
+		ondeletepreset = () => {},
 		onedit
 	}: {
 		itemId: string | null;
@@ -50,6 +58,9 @@
 		frameWidth: number;
 		frameHeight: number;
 		fps: number;
+		animationPresets?: AnimationPreset[];
+		onsavepreset?: (preset: AnimationPreset) => void;
+		ondeletepreset?: (presetId: string) => void;
 		onedit: () => void;
 	} = $props();
 
@@ -554,6 +565,16 @@
 			</button>
 		</section>
 	{/if}
+
+	<SavedAnimationLibrary
+		{itemId}
+		{itemIds}
+		presets={animationPresets}
+		{mode}
+		{onsavepreset}
+		{ondeletepreset}
+		{onedit}
+	/>
 
 	<p class="motion-status" aria-live="polite">{status}</p>
 </section>

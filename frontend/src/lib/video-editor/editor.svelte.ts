@@ -10,7 +10,8 @@ import { createLogger } from './workspace-fs/logger';
 import { getMediaForProject } from './workspace-fs/project-media';
 import { updateProject } from './workspace-fs/projects';
 import { getProject } from './workspace-fs/projects';
-import type { Project } from './project/types';
+import type { AnimationPreset, Project } from './project/types';
+import { cloneAnimationPreset, normalizeAnimationPresets } from './project/animation-presets';
 import { timelineStore } from './timeline/stores/timeline-store.svelte';
 import { commandHistory } from './timeline/commands/command-store.svelte';
 import { Clock } from './preview/clock';
@@ -51,7 +52,10 @@ class EditorSession {
 				this.loadError = 'Project not found';
 				return;
 			}
-			this.project = project;
+			this.project = {
+				...project,
+				animationPresets: normalizeAnimationPresets(project.animationPresets)
+			};
 			commandHistory.clearHistory();
 			sequenceStore.load(project.timeline ?? { tracks: [], items: [] }, project.metadata);
 			this.clock.setFps(project.metadata.fps);
@@ -91,6 +95,24 @@ class EditorSession {
 		this.saveTimer = setTimeout(() => void this.saveNow(), 800);
 	}
 
+	saveAnimationPreset(preset: AnimationPreset): void {
+		if (!this.project) return;
+		const next = [
+			...(this.project.animationPresets ?? []).filter((entry) => entry.id !== preset.id),
+			cloneAnimationPreset(preset)
+		].toSorted((left, right) => right.createdAt - left.createdAt);
+		this.project = { ...this.project, animationPresets: next };
+		this.scheduleAutosave();
+	}
+
+	deleteAnimationPreset(presetId: string): void {
+		if (!this.project) return;
+		const next = (this.project.animationPresets ?? []).filter((preset) => preset.id !== presetId);
+		if (next.length === (this.project.animationPresets ?? []).length) return;
+		this.project = { ...this.project, animationPresets: next };
+		this.scheduleAutosave();
+	}
+
 	async saveNow(): Promise<void> {
 		if (!this.projectId || !this.project) return;
 		this.saving = true;
@@ -102,7 +124,8 @@ class EditorSession {
 						(max, item) => Math.max(max, item.from + item.durationInFrames),
 						0
 					) / this.project.metadata.fps,
-				timeline
+				timeline,
+				animationPresets: this.project.animationPresets
 			});
 			timelineStore._clearDirty();
 		} catch (error) {
