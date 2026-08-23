@@ -133,10 +133,10 @@ describe('ClipPropertiesPanel text styling', () => {
 		shadowColor.value = '#336699';
 		shadowColor.dispatchEvent(new Event('change', { bubbles: true }));
 
-		await screen.getByRole('combobox', { name: 'Alignment', exact: true }).selectOptions('left');
-		await screen
-			.getByRole('combobox', { name: 'Vertical alignment', exact: true })
-			.selectOptions('bottom');
+		await screen.getByRole('button', { name: 'Alignment', exact: true }).click();
+		await screen.getByRole('option', { name: 'Left', exact: true }).click();
+		await screen.getByRole('button', { name: 'Vertical alignment', exact: true }).click();
+		await screen.getByRole('option', { name: 'Bottom', exact: true }).click();
 		await screen.getByRole('button', { name: 'Clear background' }).click();
 
 		expect(timelineStore.itemById.get('text-item')).toMatchObject({

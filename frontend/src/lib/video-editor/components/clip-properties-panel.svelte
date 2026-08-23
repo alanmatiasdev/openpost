@@ -3,6 +3,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
+	import AppSelect, { type AppSelectOption } from '$lib/components/app-select.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
@@ -20,10 +21,15 @@
 	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
 	import LottiePropertiesPanel from './lottie-properties-panel.svelte';
 	import TextPropertiesPanel from './text-properties-panel.svelte';
+	import SubtitlePropertiesPanel from './subtitle-properties-panel.svelte';
+	import { editorSession } from '$lib/video-editor/editor.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
-	let conformStatus = $state<ReverseConformStatus>({ state: 'idle', progress: 0 });
+	let conformStatus = $state<ReverseConformStatus>({
+		state: 'idle',
+		progress: 0
+	});
 
 	$effect(() => {
 		const mediaId = item?.mediaId;
@@ -199,6 +205,16 @@
 			max: 160,
 			step: 1
 		}
+	];
+	const textAlignmentOptions: AppSelectOption[] = [
+		{ value: 'left', label: m.video_editor_align_left() },
+		{ value: 'center', label: m.video_editor_align_center() },
+		{ value: 'right', label: m.video_editor_align_right() }
+	];
+	const verticalAlignmentOptions: AppSelectOption[] = [
+		{ value: 'top', label: m.video_editor_property_top() },
+		{ value: 'middle', label: m.video_editor_align_center() },
+		{ value: 'bottom', label: m.video_editor_property_bottom() }
 	];
 
 	function valueFor(source: TimelineItem, property: KeyframeProperty): number {
@@ -530,34 +546,41 @@
 				<div class="mt-1 grid grid-cols-2 gap-1">
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
 						{m.video_editor_text_alignment()}
-						<select
-							class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.22_0.01_50)] px-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+						<AppSelect
 							value={item.textAlign ?? 'center'}
-							onchange={(event) =>
-								commitText({ textAlign: event.currentTarget.value as TimelineItem['textAlign'] })}
-						>
-							<option value="left">{m.video_editor_align_left()}</option>
-							<option value="center">{m.video_editor_align_center()}</option>
-							<option value="right">{m.video_editor_align_right()}</option>
-						</select>
+							options={textAlignmentOptions}
+							ariaLabel={m.video_editor_text_alignment()}
+							class="mt-0.5 h-8 w-full text-xs"
+							onValueChange={(textAlign) =>
+								commitText({
+									textAlign: textAlign as TimelineItem['textAlign']
+								})}
+						/>
 					</label>
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
 						{m.video_editor_text_vertical_alignment()}
-						<select
-							class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.22_0.01_50)] px-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+						<AppSelect
 							value={item.verticalAlign ?? 'middle'}
-							onchange={(event) =>
+							options={verticalAlignmentOptions}
+							ariaLabel={m.video_editor_text_vertical_alignment()}
+							class="mt-0.5 h-8 w-full text-xs"
+							onValueChange={(verticalAlign) =>
 								commitText({
-									verticalAlign: event.currentTarget.value as TimelineItem['verticalAlign']
+									verticalAlign: verticalAlign as TimelineItem['verticalAlign']
 								})}
-						>
-							<option value="top">{m.video_editor_property_top()}</option>
-							<option value="middle">{m.video_editor_align_center()}</option>
-							<option value="bottom">{m.video_editor_property_bottom()}</option>
-						</select>
+						/>
 					</label>
 				</div>
 			</section>
+		{/if}
+
+		{#if item.type === 'subtitle'}
+			<SubtitlePropertiesPanel
+				{item}
+				canvasWidth={editorSession.project?.metadata.width ?? 1920}
+				canvasHeight={editorSession.project?.metadata.height ?? 1080}
+				{onedit}
+			/>
 		{/if}
 	</div>
 {/if}

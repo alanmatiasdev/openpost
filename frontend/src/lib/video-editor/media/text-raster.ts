@@ -15,6 +15,7 @@ import {
 } from '../timeline/text-motion-eval';
 import { getTextMotionPreset } from '../timeline/text-motion-presets';
 import { segmentTextUnits } from '../timeline/text-motion-segmentation';
+import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
 
 export type TextRasterContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -142,26 +143,42 @@ function paintLaidOutLine(context: TextRasterContext, item: TimelineItem, line: 
 	context.font = line.cssFont;
 	context.textAlign = 'left';
 	context.textBaseline = 'alphabetic';
-	applyCanvasLetterSpacing(context, line.letterSpacing);
-	if ((item.strokeWidth ?? 0) > 0) {
-		context.strokeStyle = item.strokeColor ?? '#000000';
-		context.lineWidth = (item.strokeWidth ?? 0) * 2;
-		context.lineJoin = 'round';
-		context.strokeText(line.text, line.startX, line.baselineY);
-	}
 	if (!line.runs?.length) {
+		applyCanvasLetterSpacing(context, line.letterSpacing);
+		if ((item.strokeWidth ?? 0) > 0) {
+			context.strokeStyle = item.strokeColor ?? '#000000';
+			context.lineWidth = (item.strokeWidth ?? 0) * 2;
+			context.lineJoin = 'round';
+			context.strokeText(line.text, line.startX, line.baselineY);
+		}
 		context.fillStyle = line.color;
 		context.fillText(line.text, line.startX, line.baselineY);
 		if (line.underline) drawUnderline(context, line, line.startX, line.baselineY);
 		return;
 	}
 	for (const run of line.runs) {
+		context.font = run.cssFont;
+		applyCanvasLetterSpacing(context, run.letterSpacing);
+		if ((item.strokeWidth ?? 0) > 0) {
+			context.strokeStyle = item.strokeColor ?? '#000000';
+			context.lineWidth = (item.strokeWidth ?? 0) * 2;
+			context.lineJoin = 'round';
+			context.strokeText(run.text, line.startX + run.offsetX, line.baselineY);
+		}
 		context.fillStyle = run.color;
 		context.fillText(run.text, line.startX + run.offsetX, line.baselineY);
 		if (run.underline) {
 			drawUnderline(
 				context,
-				{ ...line, width: run.width, color: run.color },
+				{
+					...line,
+					cssFont: run.cssFont,
+					fontSize: run.fontSize,
+					letterSpacing: run.letterSpacing,
+					trailingLetterSpacing: run.letterSpacing,
+					width: run.width,
+					color: run.color
+				},
 				line.startX + run.offsetX,
 				line.baselineY
 			);
@@ -223,22 +240,32 @@ export function renderSubtitleRaster(
 	width: number,
 	height: number
 ): void {
-	context.clearRect(0, 0, width, height);
-	const fontSize = (height / 18) * (item.subtitleStyleScale ?? 1);
-	const lines = text.split('\n');
-	const lineHeight = fontSize * 1.25;
-	const bottomOffset = height * 0.05;
-	context.save();
-	context.font = `600 ${fontSize}px sans-serif`;
-	context.textAlign = 'center';
-	context.textBaseline = 'bottom';
-	context.shadowColor = 'rgba(0, 0, 0, 0.9)';
-	context.shadowBlur = fontSize / 6;
-	context.shadowOffsetY = Math.max(2, fontSize / 24);
-	context.fillStyle = '#ffffff';
-	for (const [index, line] of lines.entries()) {
-		const y = height - bottomOffset - (lines.length - 1 - index) * lineHeight;
-		context.fillText(line, width / 2, y, width * 0.9);
-	}
-	context.restore();
+	const parsed = parseSubtitleCueText(text);
+	const fontSize = item.fontSize ?? (height / 18) * (item.subtitleStyleScale ?? 1);
+	const styledCue: TimelineItem = {
+		...item,
+		text: parsed.plainText,
+		textSpans: parsed.spans,
+		spanLayout: 'inline',
+		fontFamily: item.fontFamily ?? 'Inter',
+		fontSize,
+		fontWeight: item.fontWeight ?? 600,
+		fontStyle: item.fontStyle ?? 'normal',
+		underline: item.underline ?? false,
+		color: item.color ?? '#ffffff',
+		backgroundFit: item.backgroundFit ?? 'content',
+		textAlign: parsed.alignment?.textAlign ?? item.textAlign ?? 'center',
+		verticalAlign: parsed.alignment?.verticalAlign ?? item.verticalAlign ?? 'bottom',
+		lineHeight: item.lineHeight ?? 1.25,
+		letterSpacing: item.letterSpacing ?? 0,
+		paddingX: item.paddingX ?? width * 0.05,
+		paddingY: item.paddingY ?? height * 0.05,
+		textShadow: item.textShadow ?? {
+			color: 'rgba(0, 0, 0, 0.9)',
+			blur: fontSize / 6,
+			offsetX: 0,
+			offsetY: Math.max(2, fontSize / 24)
+		}
+	};
+	renderTextItemRaster(context, styledCue, width, height);
 }

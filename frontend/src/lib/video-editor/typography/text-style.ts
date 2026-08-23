@@ -76,6 +76,8 @@ export function loadedTextFontFamily(family: string): string {
 			return 'Inter Variable';
 		case 'Inter Tight':
 			return 'Inter Tight Variable';
+		case 'Manrope':
+			return 'Manrope Variable';
 		case 'Orbitron':
 			return 'Orbitron Variable';
 		case 'Playfair Display':

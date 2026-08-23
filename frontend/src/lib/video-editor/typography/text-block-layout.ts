@@ -6,6 +6,9 @@ import type { TextMeasurer } from './text-measurer';
 
 export interface LaidOutRun {
 	text: string;
+	cssFont: string;
+	fontSize: number;
+	letterSpacing: number;
 	color: string;
 	underline: boolean;
 	offsetX: number;
@@ -24,6 +27,7 @@ export interface LaidOutLine {
 	baselineY: number;
 	startX: number;
 	lineHeightPx: number;
+	trailingLetterSpacing?: number;
 	runs?: LaidOutRun[];
 }
 
@@ -156,25 +160,95 @@ function buildLineRuns(
 	text: string,
 	charStyles: number[],
 	spans: ReturnType<typeof resolveSpanStyles>,
-	measure: (text: string) => number
+	measurer: TextMeasurer
 ): LaidOutRun[] {
 	if (text.length === 0) return [];
 	const runs: LaidOutRun[] = [];
 	let runStart = 0;
+	let offsetX = 0;
 	for (let index = 1; index <= text.length; index += 1) {
 		if (index !== text.length && charStyles[index] === charStyles[runStart]) continue;
 		const span = spans[charStyles[runStart] ?? 0] ?? spans[0]!;
-		const prefixWidth = runStart === 0 ? 0 : measure(text.slice(0, runStart));
+		const runText = text.slice(runStart, index);
+		const width = measurer.measure(runText, span.cssFont, span.letterSpacing);
 		runs.push({
-			text: text.slice(runStart, index),
+			text: runText,
+			cssFont: span.cssFont,
+			fontSize: span.fontSize,
+			letterSpacing: span.letterSpacing,
 			color: span.color,
 			underline: span.underline,
-			offsetX: prefixWidth,
-			width: measure(text.slice(0, index)) - prefixWidth
+			offsetX,
+			width
 		});
+		offsetX += width;
 		runStart = index;
 	}
 	return runs;
+}
+
+function lineCopyAndStyles(words: InlineWord[], isContinuation: boolean) {
+	let text = '';
+	const charStyles: number[] = [];
+	for (const [wordIndex, word] of words.entries()) {
+		if (wordIndex > 0 || !isContinuation) {
+			text += word.leading;
+			charStyles.push(...word.leadingStyles);
+		}
+		text += word.text;
+		charStyles.push(...word.charStyles);
+	}
+	return { text, charStyles };
+}
+
+function measureStyledText(
+	text: string,
+	charStyles: number[],
+	spans: ReturnType<typeof resolveSpanStyles>,
+	measurer: TextMeasurer
+): number {
+	return buildLineRuns(text, charStyles, spans, measurer).reduce((sum, run) => sum + run.width, 0);
+}
+
+function splitInlineWord(
+	word: InlineWord,
+	availableWidth: number,
+	spans: ReturnType<typeof resolveSpanStyles>,
+	measurer: TextMeasurer
+): InlineWord[] {
+	if (word.text.length === 0) return [word];
+	const pieces: InlineWord[] = [];
+	let text = '';
+	let charStyles: number[] = [];
+	for (let index = 0; index < word.text.length; index += 1) {
+		const character = word.text[index] ?? '';
+		const styleIndex = word.charStyles[index] ?? 0;
+		const candidateText = text + character;
+		const candidateStyles = [...charStyles, styleIndex];
+		if (
+			text.length > 0 &&
+			measureStyledText(candidateText, candidateStyles, spans, measurer) > availableWidth
+		) {
+			pieces.push({
+				text,
+				charStyles,
+				leading: pieces.length === 0 ? word.leading : '',
+				leadingStyles: pieces.length === 0 ? word.leadingStyles : []
+			});
+			text = character;
+			charStyles = [styleIndex];
+		} else {
+			text = candidateText;
+			charStyles = candidateStyles;
+		}
+	}
+	pieces.push({
+		text,
+		charStyles,
+		leading: pieces.length === 0 ? word.leading : '',
+		leadingStyles: pieces.length === 0 ? word.leadingStyles : []
+	});
+	return pieces;
 }
 
 function layoutInlineSpanLines(
@@ -184,38 +258,38 @@ function layoutInlineSpanLines(
 	measurer: TextMeasurer
 ): LaidOutLine[] {
 	const base = spans[0]!;
-	const metrics = measurer.fontMetrics(base.cssFont);
-	const lineHeightPx = base.fontSize * lineHeightFactor;
-	const halfLeading = (lineHeightPx - (metrics.ascent + metrics.descent)) / 2;
-	const baselineOffset = halfLeading + metrics.ascent;
 	const paragraphs = tokenizeInlineSpans(spans);
-	const measure = (text: string) => measurer.measure(text, base.cssFont, base.letterSpacing);
 	const lines: LaidOutLine[] = [];
 
 	const pushLine = (words: InlineWord[], isContinuation = false) => {
-		let text = '';
-		const charStyles: number[] = [];
-		for (const [wordIndex, word] of words.entries()) {
-			if (wordIndex > 0 || !isContinuation) {
-				text += word.leading;
-				charStyles.push(...word.leadingStyles);
-			}
-			text += word.text;
-			charStyles.push(...word.charStyles);
-		}
+		const { text, charStyles } = lineCopyAndStyles(words, isContinuation);
+		const runs = buildLineRuns(text, charStyles, spans, measurer);
+		const usedSpans = new Set(charStyles.map((styleIndex) => spans[styleIndex] ?? base));
+		if (usedSpans.size === 0) usedSpans.add(base);
+		const lineHeightPx = Math.max(
+			...Array.from(usedSpans, (span) => span.fontSize * lineHeightFactor)
+		);
+		const maxAscent = Math.max(
+			...Array.from(usedSpans, (span) => measurer.fontMetrics(span.cssFont).ascent)
+		);
+		const maxDescent = Math.max(
+			...Array.from(usedSpans, (span) => measurer.fontMetrics(span.cssFont).descent)
+		);
+		const baselineOffset = (lineHeightPx - (maxAscent + maxDescent)) / 2 + maxAscent;
 		lines.push({
 			text,
 			cssFont: base.cssFont,
-			fontSize: base.fontSize,
+			fontSize: Math.max(...Array.from(usedSpans, (span) => span.fontSize)),
 			color: base.color,
 			letterSpacing: base.letterSpacing,
 			underline: false,
-			width: measure(text),
+			width: runs.reduce((sum, run) => sum + run.width, 0),
 			top: 0,
 			baselineY: baselineOffset,
 			startX: 0,
 			lineHeightPx,
-			runs: buildLineRuns(text, charStyles, spans, measure)
+			trailingLetterSpacing: runs.at(-1)?.letterSpacing ?? base.letterSpacing,
+			runs
 		});
 	};
 
@@ -225,19 +299,21 @@ function layoutInlineSpanLines(
 			continue;
 		}
 		let lineWords: InlineWord[] = [];
-		let lineText = '';
 		let isContinuation = false;
-		for (const word of words) {
-			const leading = lineWords.length > 0 || !isContinuation ? word.leading : '';
-			const candidate = lineText + leading + word.text;
-			if (measure(candidate) > availableWidth && lineWords.length > 0) {
+		for (const word of words.flatMap((entry) =>
+			splitInlineWord(entry, availableWidth, spans, measurer)
+		)) {
+			const candidateWords = [...lineWords, word];
+			const candidate = lineCopyAndStyles(candidateWords, isContinuation);
+			if (
+				measureStyledText(candidate.text, candidate.charStyles, spans, measurer) > availableWidth &&
+				lineWords.length > 0
+			) {
 				pushLine(lineWords, isContinuation);
 				isContinuation = true;
 				lineWords = [word];
-				lineText = word.text;
 			} else {
-				lineWords.push(word);
-				lineText = candidate;
+				lineWords = candidateWords;
 			}
 		}
 		if (lineWords.length > 0) pushLine(lineWords, isContinuation);
@@ -346,5 +422,5 @@ export function layoutTextBlock(
 }
 
 export function lineInkWidth(line: LaidOutLine): number {
-	return Math.max(0, line.width - line.letterSpacing);
+	return Math.max(0, line.width - (line.trailingLetterSpacing ?? line.letterSpacing));
 }

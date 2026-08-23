@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import AppSelect, { type AppSelectOption } from '$lib/components/app-select.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import type { TextSpan, TextStylePresetId, TimelineItem } from '../project/types';
 	import { timelineStore } from '../timeline/stores/timeline-store.svelte';
@@ -34,12 +35,20 @@
 		'Space Grotesk',
 		'Geist'
 	] as const;
+	const fontSelectOptions: AppSelectOption[] = fontOptions.map((font) => ({
+		value: font,
+		label: font
+	}));
 	const weightOptions = [
 		{ value: 400, label: m.video_editor_text_weight_regular() },
 		{ value: 500, label: m.video_editor_text_weight_medium() },
 		{ value: 600, label: m.video_editor_text_weight_semibold() },
 		{ value: 700, label: m.video_editor_text_weight_bold() }
 	] as const;
+	const weightSelectOptions: AppSelectOption[] = weightOptions.map((weight) => ({
+		value: String(weight.value),
+		label: weight.label
+	}));
 
 	function presetLabel(id: TextStylePresetId): string {
 		switch (id) {
@@ -129,7 +138,9 @@
 				<button
 					type="button"
 					class:active={activeItem.textStylePresetId === preset.id}
-					aria-label={m.video_editor_text_apply_template({ name: presetLabel(preset.id) })}
+					aria-label={m.video_editor_text_apply_template({
+						name: presetLabel(preset.id)
+					})}
 					aria-pressed={activeItem.textStylePresetId === preset.id}
 					onclick={() => commitPreset(preset.id)}
 				>
@@ -178,13 +189,13 @@
 						<div class="mt-2 grid grid-cols-2 gap-1.5">
 							<label class="field-label col-span-2">
 								{m.video_editor_text_font()}
-								<select
-									class="field-select"
+								<AppSelect
 									value={span.fontFamily ?? activeItem.fontFamily ?? 'Inter'}
-									onchange={(event) => commitSpan(index, { fontFamily: event.currentTarget.value })}
-								>
-									{#each fontOptions as font}<option value={font}>{font}</option>{/each}
-								</select>
+									options={fontSelectOptions}
+									ariaLabel={m.video_editor_text_font()}
+									class="field-select"
+									onValueChange={(fontFamily) => commitSpan(index, { fontFamily })}
+								/>
 							</label>
 							<label class="field-label">
 								{m.video_editor_property_size()}
@@ -196,20 +207,21 @@
 									step="1"
 									value={span.fontSize ?? activeItem.fontSize ?? 60}
 									onchange={(event) =>
-										commitSpan(index, { fontSize: event.currentTarget.valueAsNumber })}
+										commitSpan(index, {
+											fontSize: event.currentTarget.valueAsNumber
+										})}
 								/>
 							</label>
 							<label class="field-label">
 								{m.video_editor_property_weight()}
-								<select
+								<AppSelect
+									value={String(span.fontWeight ?? activeItem.fontWeight ?? 400)}
+									options={weightSelectOptions}
+									ariaLabel={m.video_editor_property_weight()}
 									class="field-select"
-									value={span.fontWeight ?? activeItem.fontWeight ?? 400}
-									onchange={(event) =>
-										commitSpan(index, { fontWeight: Number(event.currentTarget.value) })}
-								>
-									{#each weightOptions as weight}<option value={weight.value}>{weight.label}</option
-										>{/each}
-								</select>
+									onValueChange={(fontWeight) =>
+										commitSpan(index, { fontWeight: Number(fontWeight) })}
+								/>
 							</label>
 							<label class="field-label">
 								{m.video_editor_property_tracking()}
@@ -221,7 +233,9 @@
 									step="1"
 									value={span.letterSpacing ?? activeItem.letterSpacing ?? 0}
 									onchange={(event) =>
-										commitSpan(index, { letterSpacing: event.currentTarget.valueAsNumber })}
+										commitSpan(index, {
+											letterSpacing: event.currentTarget.valueAsNumber
+										})}
 								/>
 							</label>
 							<label class="field-label">
@@ -272,13 +286,13 @@
 		<div class="grid grid-cols-2 gap-1.5">
 			<label class="field-label col-span-2">
 				{m.video_editor_text_font()}
-				<select
-					class="field-select"
+				<AppSelect
 					value={activeItem.fontFamily ?? 'Inter'}
-					onchange={(event) => commitItem({ fontFamily: event.currentTarget.value })}
-				>
-					{#each fontOptions as font}<option value={font}>{font}</option>{/each}
-				</select>
+					options={fontSelectOptions}
+					ariaLabel={m.video_editor_text_font()}
+					class="field-select"
+					onValueChange={(fontFamily) => commitItem({ fontFamily })}
+				/>
 			</label>
 			<Button
 				type="button"
@@ -286,8 +300,9 @@
 				variant={activeItem.fontStyle === 'italic' ? 'secondary' : 'ghost'}
 				aria-pressed={activeItem.fontStyle === 'italic'}
 				onclick={() =>
-					commitItem({ fontStyle: activeItem.fontStyle === 'italic' ? 'normal' : 'italic' })}
-				>{m.video_editor_text_italic()}</Button
+					commitItem({
+						fontStyle: activeItem.fontStyle === 'italic' ? 'normal' : 'italic'
+					})}>{m.video_editor_text_italic()}</Button
 			>
 			<Button
 				type="button"
@@ -308,7 +323,7 @@
 		color: oklch(0.7 0.01 55);
 	}
 	:global(.field-input),
-	.field-select {
+	:global(.field-select) {
 		width: 100%;
 		min-width: 0;
 		height: 2rem;
@@ -321,7 +336,7 @@
 		color: white;
 	}
 	:global(.field-input:focus-visible),
-	.field-select:focus-visible {
+	:global(.field-select:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 1px;
 	}
@@ -481,6 +496,9 @@
 	.span-style summary:hover,
 	.span-style summary:focus-visible {
 		color: white;
+		border-radius: 0.25rem;
+		outline: 2px solid oklch(0.66 0.14 45);
+		outline-offset: 2px;
 	}
 	@media (pointer: coarse) {
 		.layout-switch button,

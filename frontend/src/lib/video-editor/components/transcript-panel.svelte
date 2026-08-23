@@ -6,10 +6,20 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Input } from '$lib/components/ui/input';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import BoldIcon from '@lucide/svelte/icons/bold';
+	import ItalicIcon from '@lucide/svelte/icons/italic';
+	import UnderlineIcon from '@lucide/svelte/icons/underline';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 	import { execute } from '$lib/video-editor/timeline/commands/command-store.svelte';
 	import type { SubtitleCue, SubtitleWord, TimelineItem } from '$lib/video-editor/project/types';
+	import {
+		buildCueText,
+		getCueFormatFlags,
+		parseSubtitleCueText,
+		toggleCueFormat,
+		type CueFormatFlags
+	} from '$lib/video-editor/transcript/subtitle-cue-format';
 
 	let { onedit }: { onedit: () => void } = $props();
 
@@ -19,7 +29,7 @@
 	let draftTexts = $state<Record<string, string>>({});
 
 	function displayText(cue: SubtitleCue): string {
-		return draftTexts[cue.id] ?? cue.text;
+		return draftTexts[cue.id] ?? parseSubtitleCueText(cue.text).plainText;
 	}
 
 	function commitText(item: TimelineItem, cueId: string): void {
@@ -28,18 +38,37 @@
 		const cues = item.cues;
 		if (next === undefined || !cues) return;
 		const current = cues.find((cue) => cue.id === cueId);
-		if (!current || next === current.text) return;
+		if (!current || next === parseSubtitleCueText(current.text).plainText) return;
+		const formattedText = buildCueText(
+			next,
+			getCueFormatFlags(parseSubtitleCueText(current.text)),
+			current.text
+		);
 		execute('EDIT_CUE', () => {
 			timelineStore._updateItems([
 				{
 					id: item.id,
 					patch: {
-						cues: cues.map((cue) => (cue.id === cueId ? { ...cue, text: next } : cue))
+						cues: cues.map((cue) => (cue.id === cueId ? { ...cue, text: formattedText } : cue))
 					}
 				}
 			]);
 		});
 		onedit();
+	}
+
+	function cueFlags(cue: SubtitleCue): CueFormatFlags {
+		return getCueFormatFlags(parseSubtitleCueText(cue.text));
+	}
+
+	function toggleFormat(item: TimelineItem, cue: SubtitleCue, format: keyof CueFormatFlags): void {
+		const currentItem = timelineStore.itemById.get(item.id) ?? item;
+		const currentCue = currentItem.cues?.find((candidate) => candidate.id === cue.id) ?? cue;
+		replaceCue(
+			currentItem,
+			{ ...currentCue, text: toggleCueFormat(currentCue.text, format) },
+			'TOGGLE_CUE_FORMAT'
+		);
 	}
 
 	function deleteCue(item: TimelineItem, cueId: string): void {
@@ -48,7 +77,10 @@
 		execute('DELETE_CUE', () => {
 			const remaining = cues.filter((cue) => cue.id !== cueId);
 			timelineStore._updateItems([
-				{ id: item.id, patch: { cues: remaining.length > 0 ? remaining : undefined } }
+				{
+					id: item.id,
+					patch: { cues: remaining.length > 0 ? remaining : undefined }
+				}
 			]);
 		});
 		onedit();
@@ -60,7 +92,9 @@
 			timelineStore._updateItems([
 				{
 					id: item.id,
-					patch: { cues: item.cues?.map((cue) => (cue.id === nextCue.id ? nextCue : cue)) }
+					patch: {
+						cues: item.cues?.map((cue) => (cue.id === nextCue.id ? nextCue : cue))
+					}
 				}
 			]);
 		});
@@ -95,7 +129,7 @@
 			{
 				...cue,
 				words: nextWords,
-				text: nextWords.map((word) => word.text).join(' '),
+				text: buildCueText(nextWords.map((word) => word.text).join(' '), cueFlags(cue), cue.text),
 				startFrame: first?.startFrame ?? cue.startFrame,
 				endFrame: last?.endFrame ?? cue.endFrame
 			},
@@ -117,7 +151,7 @@
 			{
 				...cue,
 				words,
-				text: words.map((word) => word.text).join(' '),
+				text: buildCueText(words.map((word) => word.text).join(' '), cueFlags(cue), cue.text),
 				startFrame: first.startFrame,
 				endFrame: last.endFrame
 			},
@@ -131,7 +165,9 @@
 		{m.video_editor_transcript()}
 	</h3>
 	{#if subtitleItems.length === 0}
-		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_transcript_empty()}</p>
+		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">
+			{m.video_editor_transcript_empty()}
+		</p>
 	{:else}
 		{#each subtitleItems as item (item.id)}
 			<ul class="flex flex-col gap-0.5" aria-label={item.label}>
@@ -182,6 +218,38 @@
 								/></label
 							>
 						</div>
+						<div class="mt-1 flex gap-0.5" role="group" aria-label={m.video_editor_caption_style()}>
+							<button
+								type="button"
+								class="format-button"
+								class:active={cueFlags(cue).bold}
+								aria-label={m.video_editor_caption_bold()}
+								aria-pressed={cueFlags(cue).bold}
+								onclick={() => toggleFormat(item, cue, 'bold')}
+							>
+								<BoldIcon class="size-3" aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class="format-button"
+								class:active={cueFlags(cue).italic}
+								aria-label={m.video_editor_text_italic()}
+								aria-pressed={cueFlags(cue).italic}
+								onclick={() => toggleFormat(item, cue, 'italic')}
+							>
+								<ItalicIcon class="size-3" aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class="format-button"
+								class:active={cueFlags(cue).underline}
+								aria-label={m.video_editor_text_underline()}
+								aria-pressed={cueFlags(cue).underline}
+								onclick={() => toggleFormat(item, cue, 'underline')}
+							>
+								<UnderlineIcon class="size-3" aria-hidden="true" />
+							</button>
+						</div>
 						{#if cue.words?.length}
 							<div class="mt-1 flex flex-wrap gap-1">
 								{#each cue.words as word (word.id)}
@@ -195,7 +263,9 @@
 											onfocus={() => setCurrentFrame(word.startFrame)}
 											onblur={(event) => {
 												if (event.currentTarget.value !== word.text)
-													updateWord(item, cue, word.id, { text: event.currentTarget.value });
+													updateWord(item, cue, word.id, {
+														text: event.currentTarget.value
+													});
 											}}
 										/>
 										<div class="mt-0.5 flex items-center gap-0.5">
@@ -240,3 +310,33 @@
 		{/each}
 	{/if}
 </div>
+
+<style>
+	.format-button {
+		display: grid;
+		height: 1.75rem;
+		width: 1.75rem;
+		place-items: center;
+		border-radius: 0.375rem;
+		color: oklch(0.68 0.015 55);
+	}
+	.format-button:hover,
+	.format-button:focus-visible {
+		background: oklch(0.27 0.015 55);
+		color: white;
+	}
+	.format-button:focus-visible {
+		outline: 2px solid oklch(0.66 0.14 45);
+		outline-offset: 1px;
+	}
+	.format-button.active {
+		background: oklch(0.66 0.14 45);
+		color: oklch(0.16 0.008 55);
+	}
+	@media (pointer: coarse) {
+		.format-button {
+			height: 2.75rem;
+			width: 2.75rem;
+		}
+	}
+</style>

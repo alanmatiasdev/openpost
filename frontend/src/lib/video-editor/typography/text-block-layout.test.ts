@@ -115,4 +115,56 @@ describe('text block layout', () => {
 			['video editor', '#ff7a00', true]
 		]);
 	});
+
+	it('measures and exposes each inline run with its own font metrics', () => {
+		const layout = layoutTextBlock(
+			item({
+				text: 'Small BIG',
+				textSpans: [
+					{ text: 'Small ', fontSize: 20, fontFamily: 'Inter' },
+					{
+						text: 'BIG',
+						fontSize: 60,
+						fontFamily: 'Anton',
+						fontWeight: 700,
+						fontStyle: 'italic'
+					}
+				],
+				spanLayout: 'inline',
+				paddingX: 0,
+				paddingY: 0,
+				lineHeight: 1.2
+			}),
+			1000,
+			200,
+			measurer()
+		);
+		const line = layout.lines[0]!;
+		expect(line.width).toBeCloseTo(6 * 20 * 0.5 + 3 * 60 * 0.5);
+		expect(line.lineHeightPx).toBeCloseTo(60 * 1.2);
+		expect(line.runs?.map((run) => [run.text, run.fontSize, run.cssFont])).toEqual([
+			['Small ', 20, 'normal 400 20px "Inter Variable", sans-serif'],
+			['BIG', 60, 'italic 700 60px "Anton", sans-serif']
+		]);
+	});
+
+	it('breaks an overlong inline word without losing its span style', () => {
+		const layout = layoutTextBlock(
+			item({
+				text: 'ABCDEFGHIJ',
+				textSpans: [{ text: 'ABCDEFGHIJ', fontSize: 20, color: '#ffd400' }],
+				spanLayout: 'inline',
+				paddingX: 0,
+				paddingY: 0
+			}),
+			50,
+			100,
+			measurer()
+		);
+		expect(layout.lines.map((line) => line.text)).toEqual(['ABCDE', 'FGHIJ']);
+		expect(layout.lines.flatMap((line) => line.runs?.map((run) => run.color) ?? [])).toEqual([
+			'#ffd400',
+			'#ffd400'
+		]);
+	});
 });
