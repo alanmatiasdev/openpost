@@ -2,6 +2,8 @@
 
 import { DotLottie } from '@lottiefiles/dotlottie-web';
 import wasmUrl from '@lottiefiles/dotlottie-web/dotlottie-player.wasm?url';
+import type { LottieRenderSpec } from './render-spec';
+import type { LottieSlotValue } from './slots';
 
 let wasmConfigured = false;
 
@@ -68,13 +70,20 @@ export class LottieRenderer {
 
 	constructor(
 		readonly canvas: HTMLCanvasElement | OffscreenCanvas,
-		config: { src: string; autoResize?: boolean }
+		config: {
+			src?: string;
+			data?: string;
+			themeData?: string;
+			slots?: Record<string, LottieSlotValue>;
+			autoResize?: boolean;
+		}
 	) {
 		ensureLottieWasm();
 		const autoResize = config.autoResize ?? false;
 		this.player = new DotLottie({
 			canvas,
 			src: config.src,
+			data: config.data,
 			autoplay: false,
 			loop: false,
 			backgroundColor: '#00000000',
@@ -87,6 +96,14 @@ export class LottieRenderer {
 		this.ready = new Promise((resolve) => {
 			const complete = () => {
 				this.loaded = true;
+				if (config.themeData) {
+					try {
+						this.player.setThemeData(config.themeData);
+					} catch {
+						// Keep the authored theme if the selected theme is malformed.
+					}
+				}
+				this.applySlots(config.slots);
 				resolve();
 			};
 			if (this.player.isLoaded) complete();
@@ -95,6 +112,19 @@ export class LottieRenderer {
 				this.player.addEventListener('loadError', () => resolve());
 			}
 		});
+	}
+
+	private applySlots(slots: Record<string, LottieSlotValue> | undefined): void {
+		if (!slots) return;
+		for (const [id, value] of Object.entries(slots)) {
+			try {
+				const type = this.player.getSlotType(id);
+				if (type === 'scalar' && !Array.isArray(value)) this.player.setScalarSlot(id, value);
+				else if (type === 'vector' && Array.isArray(value)) this.player.setVectorSlot(id, value);
+			} catch {
+				// One invalid slot must not block the other authored controls.
+			}
+		}
 	}
 
 	get isLoaded(): boolean {
@@ -150,23 +180,38 @@ export async function renderLottieThumbnail(
 }
 
 export class LottieFrameProvider {
-	private readonly entries = new Map<string, { renderer: LottieRenderer; url: string }>();
+	private readonly entries = new Map<
+		string,
+		{ renderer: LottieRenderer; url: string; signature: string }
+	>();
 
 	async source(
 		key: string,
 		blob: Blob,
 		width: number,
 		height: number,
-		frame: number
+		frame: number,
+		spec?: LottieRenderSpec
 	): Promise<OffscreenCanvas | null> {
 		const targetWidth = Math.max(1, Math.round(width));
 		const targetHeight = Math.max(1, Math.round(height));
 		let entry = this.entries.get(key);
+		const signature = spec?.signature ?? '';
+		if (entry && entry.signature !== signature) {
+			entry.renderer.destroy();
+			URL.revokeObjectURL(entry.url);
+			this.entries.delete(key);
+			entry = undefined;
+		}
 		if (!entry) {
 			const url = URL.createObjectURL(blob);
 			const canvas = new OffscreenCanvas(targetWidth, targetHeight);
-			const renderer = new LottieRenderer(canvas, { src: url });
-			entry = { renderer, url };
+			const renderer = new LottieRenderer(canvas, {
+				...(spec?.data ? { data: spec.data } : { src: url }),
+				themeData: spec?.themeData ?? undefined,
+				slots: spec?.slots ?? undefined
+			});
+			entry = { renderer, url, signature };
 			this.entries.set(key, entry);
 			await renderer.ready;
 		}

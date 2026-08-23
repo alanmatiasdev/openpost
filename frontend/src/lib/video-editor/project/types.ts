@@ -280,6 +280,11 @@ export interface TimelineItem extends TextStyleFields {
 	lottieSegmentStart?: number;
 	lottieSegmentEnd?: number;
 	lottieMarkers?: Array<{ name: string; start: number; duration: number }>;
+	lottieAnimationId?: string;
+	lottieThemeId?: string;
+	lottieTextOverrides?: Record<string, string>;
+	lottieColorOverrides?: Record<string, string>;
+	lottieSlotOverrides?: Record<string, number | [number, number]>;
 
 	// Text items
 	text?: string;

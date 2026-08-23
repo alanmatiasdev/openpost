@@ -36,6 +36,10 @@
 		LottieRenderer,
 		mapTimelineFrameToLottieFrame
 	} from '$lib/video-editor/lottie/frame-provider';
+	import {
+		resolveLottieRenderSpec,
+		type LottieRenderSpec
+	} from '$lib/video-editor/lottie/render-spec';
 
 	let {
 		item,
@@ -78,6 +82,8 @@
 	let compositionCanvas = $state<HTMLCanvasElement | null>(null);
 	let lottieCanvas = $state<HTMLCanvasElement | null>(null);
 	let lottieRenderer = $state<LottieRenderer | null>(null);
+	let lottieBytes = $state<Uint8Array | null>(null);
+	let lottieSpec = $state<LottieRenderSpec | null>(null);
 	let lottieReadyRevision = $state(0);
 	let lottieRevision = $state(0);
 	let compositor = $state<GpuCompositor | null>(null);
@@ -338,10 +344,61 @@
 	});
 
 	$effect(() => {
+		const sourceUrl = url;
+		lottieBytes = null;
+		if (item.type !== 'lottie' || !sourceUrl) return;
+		let disposed = false;
+		void fetch(sourceUrl)
+			.then((response) => response.arrayBuffer())
+			.then((buffer) => {
+				if (!disposed) lottieBytes = new Uint8Array(buffer);
+			})
+			.catch(() => undefined);
+		return () => {
+			disposed = true;
+		};
+	});
+
+	$effect(() => {
+		const bytes = lottieBytes;
+		const animationId = item.lottieAnimationId;
+		const themeId = item.lottieThemeId;
+		const textOverrides = item.lottieTextOverrides;
+		const colorOverrides = item.lottieColorOverrides;
+		const slotOverrides = item.lottieSlotOverrides;
+		lottieSpec = null;
+		if (item.type !== 'lottie' || !bytes) return;
+		let disposed = false;
+		void Promise.resolve(
+			resolveLottieRenderSpec(bytes, {
+				animationId,
+				themeId,
+				textOverrides,
+				colorOverrides,
+				slotOverrides
+			})
+		)
+			.then((spec) => {
+				if (!disposed) lottieSpec = spec;
+			})
+			.catch(() => undefined);
+		return () => {
+			disposed = true;
+		};
+	});
+
+	$effect(() => {
 		const canvas = lottieCanvas;
 		const sourceUrl = url;
-		if (item.type !== 'lottie' || !canvas || !sourceUrl) return;
-		const renderer = new LottieRenderer(canvas, { src: sourceUrl });
+		const spec = lottieSpec;
+		if (item.type !== 'lottie' || !canvas || !sourceUrl || !spec) return;
+		lottieReadyRevision = 0;
+		lottieRevision = 0;
+		const renderer = new LottieRenderer(canvas, {
+			...(spec.data ? { data: spec.data } : { src: sourceUrl }),
+			themeData: spec.themeData ?? undefined,
+			slots: spec.slots ?? undefined
+		});
 		lottieRenderer = renderer;
 		let disposed = false;
 		void renderer.ready.then(() => {

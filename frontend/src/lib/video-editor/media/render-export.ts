@@ -67,6 +67,11 @@ import {
 import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 import { shapeMasksForTrack } from '../shapes/masks';
 import { LottieFrameProvider, mapTimelineFrameToLottieFrame } from '../lottie/frame-provider';
+import {
+	lottieRenderSignature,
+	resolveLottieRenderSpec,
+	type LottieRenderSpec
+} from '../lottie/render-spec';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
@@ -284,6 +289,7 @@ export class TimelineFrameRenderer {
 	private readonly nestedRenderers = new Map<string, TimelineFrameRenderer>();
 	private readonly lottieProvider = new LottieFrameProvider();
 	private readonly lottieBlobs = new Map<string, Blob>();
+	private readonly lottieSpecs = new Map<string, Promise<LottieRenderSpec>>();
 
 	constructor(
 		private readonly project: Project,
@@ -391,6 +397,26 @@ export class TimelineFrameRenderer {
 		return blob;
 	}
 
+	private getLottieSpec(item: TimelineItem, blob: Blob): Promise<LottieRenderSpec> {
+		const input = {
+			animationId: item.lottieAnimationId,
+			themeId: item.lottieThemeId,
+			textOverrides: item.lottieTextOverrides,
+			colorOverrides: item.lottieColorOverrides,
+			slotOverrides: item.lottieSlotOverrides
+		};
+		const signature = lottieRenderSignature(input);
+		const key = `${item.id}:${signature}`;
+		let spec = this.lottieSpecs.get(key);
+		if (!spec) {
+			spec = blob
+				.arrayBuffer()
+				.then((buffer) => resolveLottieRenderSpec(new Uint8Array(buffer), input));
+			this.lottieSpecs.set(key, spec);
+		}
+		return spec;
+	}
+
 	private async sourceForItem(
 		resolvedItem: TimelineItem,
 		originalItem: TimelineItem,
@@ -450,6 +476,7 @@ export class TimelineFrameRenderer {
 		if (resolvedItem.type === 'lottie') {
 			const blob = await this.getLottieBlob(resolvedItem.mediaId);
 			if (!blob) return null;
+			const spec = await this.getLottieSpec(originalItem, blob);
 			const width = Math.max(
 				1,
 				Math.round(resolvedItem.transform?.width ?? resolvedItem.sourceWidth ?? this.width)
@@ -475,7 +502,8 @@ export class TimelineFrameRenderer {
 				blob,
 				width,
 				height,
-				lottieFrame
+				lottieFrame,
+				spec
 			);
 			return source ? { source, width, height } : null;
 		}
@@ -597,6 +625,7 @@ export class TimelineFrameRenderer {
 		this.imageCache.clear();
 		this.lottieProvider.destroy();
 		this.lottieBlobs.clear();
+		this.lottieSpecs.clear();
 		this.stackCompositor.dispose();
 	}
 }

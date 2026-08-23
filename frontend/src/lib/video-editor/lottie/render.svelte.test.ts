@@ -143,10 +143,11 @@ function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): Uint8ClampedA
 	return context.getImageData(SIZE / 2, SIZE / 2, 1, 1).data;
 }
 
-function expectColor(pixel: Uint8ClampedArray, channel: 0 | 1): void {
+function expectColor(pixel: Uint8ClampedArray, channel: 0 | 1 | 2): void {
 	expect(pixel[channel]).toBeGreaterThan(240);
-	expect(pixel[channel === 0 ? 1 : 0]).toBeLessThan(15);
-	expect(pixel[2]).toBeLessThan(15);
+	for (const other of [0, 1, 2] as const) {
+		if (other !== channel) expect(pixel[other]).toBeLessThan(15);
+	}
 	expect(pixel[3]).toBeGreaterThan(240);
 }
 
@@ -222,6 +223,60 @@ describe('Lottie timeline rendering', () => {
 		}
 	});
 
+	it('renders a selected animation from a multi-animation archive', async () => {
+		const alternate = JSON.stringify({
+			v: '5.12.2',
+			fr: FPS,
+			ip: 0,
+			op: 2,
+			w: SIZE,
+			h: SIZE,
+			assets: [],
+			layers: [shapeLayer('Blue', [0, 0, 1, 1], 0, 2)],
+			markers: []
+		});
+		const archive = zipSync({
+			'manifest.json': strToU8(
+				JSON.stringify({ animations: [{ id: 'proof' }, { id: 'alternate' }] })
+			),
+			'animations/proof.json': strToU8(animation),
+			'animations/alternate.json': strToU8(alternate)
+		});
+		// SAFETY: Uint8Array.slice creates a standalone ArrayBuffer-backed copy.
+		const archiveBlob = new Blob([archive.slice().buffer as ArrayBuffer], {
+			type: 'application/zip'
+		});
+		const selectedItem: TimelineItem = { ...item, lottieAnimationId: 'alternate' };
+		const sourceUrl = URL.createObjectURL(archiveBlob);
+		const currentProject = project();
+		currentProject.timeline!.items = [selectedItem];
+		editorSession.project = currentProject;
+		timelineStore.setAll({ items: [selectedItem], tracks: [track], currentFrame: 0, fps: FPS });
+		registerAnimationMedia(archiveBlob);
+		try {
+			const screen = await render(PreviewLayer, {
+				item: selectedItem,
+				url: sourceUrl,
+				canvasWidth: SIZE,
+				canvasHeight: SIZE,
+				onselect: vi.fn()
+			});
+			const preview = screen.container.querySelector<HTMLCanvasElement>('canvas');
+			expect(preview).not.toBeNull();
+			if (!preview) return;
+			await vi.waitFor(() => expectColor(centerPixel(preview), 2), { timeout: 15_000 });
+
+			const exporter = new TimelineFrameRenderer(currentProject);
+			try {
+				expectColor(centerPixel(await exporter.render(0)), 2);
+			} finally {
+				exporter.dispose();
+			}
+		} finally {
+			URL.revokeObjectURL(sourceUrl);
+		}
+	}, 30_000);
+
 	it('renders exact source frames in Chromium preview and export', async () => {
 		const sourceUrl = URL.createObjectURL(animationBlob);
 		const currentProject = project();
@@ -260,6 +315,47 @@ describe('Lottie timeline rendering', () => {
 				});
 				const second = await exporter.render(1);
 				expectColor(centerPixel(second), 1);
+			} finally {
+				exporter.dispose();
+			}
+		} finally {
+			URL.revokeObjectURL(sourceUrl);
+		}
+	}, 30_000);
+
+	it('applies the same authored color override in Chromium preview and export', async () => {
+		const editedItem: TimelineItem = {
+			...item,
+			lottieColorOverrides: { c0: '#0000ff' }
+		};
+		const sourceUrl = URL.createObjectURL(animationBlob);
+		const currentProject = project();
+		currentProject.timeline!.items = [editedItem];
+		editorSession.project = currentProject;
+		timelineStore.setAll({
+			items: [editedItem],
+			tracks: [track],
+			currentFrame: 0,
+			fps: FPS
+		});
+		registerAnimationMedia();
+
+		try {
+			const screen = await render(PreviewLayer, {
+				item: editedItem,
+				url: sourceUrl,
+				canvasWidth: SIZE,
+				canvasHeight: SIZE,
+				onselect: vi.fn()
+			});
+			const preview = screen.container.querySelector<HTMLCanvasElement>('canvas');
+			expect(preview).not.toBeNull();
+			if (!preview) return;
+			await vi.waitFor(() => expectColor(centerPixel(preview), 2), { timeout: 15_000 });
+
+			const exporter = new TimelineFrameRenderer(currentProject);
+			try {
+				expectColor(centerPixel(await exporter.render(0)), 2);
 			} finally {
 				exporter.dispose();
 			}
