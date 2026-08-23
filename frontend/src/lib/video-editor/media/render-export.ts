@@ -59,9 +59,11 @@ import {
 	paintOrder,
 	planMixdown,
 	selectCuesAtFrame,
+	sliceMixEntries,
 	transitionBlendAtFrame,
 	type MixEntry
 } from './render-plan';
+import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
@@ -192,10 +194,25 @@ async function renderMixdown(
 		source.buffer = buffer;
 		source.playbackRate.value = entry.playbackRate;
 		const gain = context.createGain();
-		for (const point of entry.gainPoints) {
-			gain.gain.setValueAtTime(Math.max(0, point.value), point.whenSeconds);
+		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
+		const firstPoint = points[0];
+		if (firstPoint) {
+			gain.gain.setValueAtTime(Math.max(0, firstPoint.value), firstPoint.whenSeconds);
+			for (const point of points.slice(1)) {
+				gain.gain.linearRampToValueAtTime(Math.max(0, point.value), point.whenSeconds);
+			}
 		}
-		source.connect(gain).connect(context.destination);
+		const transitionGain = context.createGain();
+		const entryEnd = entry.whenSeconds + entry.durationSeconds;
+		for (const span of entry.transitionGainSpans) {
+			const spanEnd = span.startSeconds + span.durationSeconds;
+			const start = Math.max(entry.whenSeconds, span.startSeconds);
+			const end = Math.min(entryEnd, spanEnd);
+			if (end <= start || span.durationSeconds <= 0) continue;
+			const curve = buildTransitionGainCurve(span, start, end, context.sampleRate);
+			transitionGain.gain.setValueCurveAtTime(curve, start, end - start);
+		}
+		source.connect(gain).connect(transitionGain).connect(context.destination);
 		source.start(
 			entry.whenSeconds,
 			entry.sourceOffsetSeconds,
@@ -324,13 +341,20 @@ export class TimelineFrameRenderer {
 		const media = mediaPool.get(mediaId);
 		if (!media) return null;
 		const blob = await resolveMediaBlob(media);
-		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		const input = new Input({
+			source: new BlobSource(blob),
+			formats: ALL_FORMATS
+		});
 		this.inputs.push(input);
 		const videoTrack = await input.getPrimaryVideoTrack();
 		if (!videoTrack) return null;
 		const decoder: VideoDecoder = {
 			input,
-			sink: new CanvasSink(videoTrack, { width: this.width, height: this.height, fit: 'contain' })
+			sink: new CanvasSink(videoTrack, {
+				width: this.width,
+				height: this.height,
+				fit: 'contain'
+			})
 		};
 		this.decoders.set(mediaId, decoder);
 		return decoder;
@@ -475,8 +499,9 @@ export async function renderMultiTrackVideo(
 
 	report(options, 'preparing', 0, totalFrames);
 
+	const transitions = timeline?.transitions ?? [];
 	const mixEntries = sliceMixEntries(
-		planMixdown(items, tracks, fps),
+		planMixdown(items, tracks, fps, transitions),
 		startFrame / fps,
 		endFrame / fps
 	);
@@ -504,9 +529,17 @@ export async function renderMultiTrackVideo(
 		throw new Error(`${requestedCodec} cannot be stored in ${format.toUpperCase()}.`);
 	}
 	const bitrate = VIDEO_BITRATES[options.quality ?? 'standard'];
-	const codec = (await canEncodeVideo(requestedCodec, { width, height, bitrate }))
+	const codec = (await canEncodeVideo(requestedCodec, {
+		width,
+		height,
+		bitrate
+	}))
 		? requestedCodec
-		: await getFirstEncodableVideoCodec(supportedCodecs, { width, height, bitrate });
+		: await getFirstEncodableVideoCodec(supportedCodecs, {
+				width,
+				height,
+				bitrate
+			});
 	if (!codec) throw new Error(`This browser cannot encode video for ${format.toUpperCase()}.`);
 	const target = new BufferTarget();
 	const output = new Output({ format: outputFormat, target });
@@ -619,8 +652,9 @@ export async function renderTimelineAudio(
 	const fullDuration = outputDurationFrames(items);
 	const startFrame = Math.max(0, Math.floor(options.range?.startFrame ?? 0));
 	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
+	const transitions = project.timeline?.transitions ?? [];
 	const entries = sliceMixEntries(
-		planMixdown(items, tracks, fps),
+		planMixdown(items, tracks, fps, transitions),
 		startFrame / fps,
 		endFrame / fps
 	);
@@ -705,34 +739,6 @@ function audioOutputFormatFor(format: AudioExportOptions['format']): OutputForma
 		case 'wav':
 			return new WavOutputFormat();
 	}
-}
-
-function sliceMixEntries(
-	entries: MixEntry[],
-	startSeconds: number,
-	endSeconds: number
-): MixEntry[] {
-	return entries.flatMap((entry) => {
-		const entryEnd = entry.whenSeconds + entry.durationSeconds;
-		const overlapStart = Math.max(startSeconds, entry.whenSeconds);
-		const overlapEnd = Math.min(endSeconds, entryEnd);
-		if (overlapEnd <= overlapStart) return [];
-		const skipped = overlapStart - entry.whenSeconds;
-		return [
-			{
-				...entry,
-				whenSeconds: overlapStart - startSeconds,
-				sourceOffsetSeconds: entry.sourceOffsetSeconds + skipped * entry.playbackRate,
-				durationSeconds: overlapEnd - overlapStart,
-				gainPoints: entry.gainPoints
-					.filter((point) => point.whenSeconds >= overlapStart && point.whenSeconds <= overlapEnd)
-					.map((point) => ({
-						...point,
-						whenSeconds: point.whenSeconds - startSeconds
-					}))
-			}
-		];
-	});
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

@@ -159,6 +159,65 @@ afterEach(() => {
 });
 
 describe('PreviewLayer GPU rendering', () => {
+	it('mutes embedded video audio when a synced audio companion owns playback', async () => {
+		const video: TimelineItem = {
+			...textItem({
+				id: 'video',
+				type: 'video',
+				text: undefined,
+				effects: [],
+				mediaId: 'media',
+				linkedGroupId: 'linked-media'
+			}),
+			trackId: 'visuals'
+		};
+		const audio: TimelineItem = {
+			...video,
+			id: 'audio',
+			type: 'audio',
+			trackId: 'audio'
+		};
+		timelineStore.setAll({
+			items: [video, audio],
+			tracks: [
+				{
+					id: 'visuals',
+					name: 'Visuals',
+					kind: 'video',
+					height: 64,
+					locked: false,
+					visible: true,
+					muted: false,
+					solo: false,
+					order: 0
+				},
+				{
+					id: 'audio',
+					name: 'Audio',
+					kind: 'audio',
+					height: 64,
+					locked: false,
+					visible: true,
+					muted: false,
+					solo: false,
+					order: 1
+				}
+			],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewLayer, {
+			item: video,
+			url: 'data:video/mp4;base64,',
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const element = screen.container.querySelector('video');
+		expect(element).not.toBeNull();
+		await vi.waitFor(() => expect(element?.volume).toBe(0));
+	});
+
 	it('rasterizes text before applying its GPU effect in the live preview', async () => {
 		const item = textItem();
 		timelineStore.setAll({ items: [item], currentFrame: 0, fps: 30 });

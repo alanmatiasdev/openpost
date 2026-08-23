@@ -50,6 +50,7 @@
 	import { withoutColorGradeEffects } from '$lib/video-editor/effects/color-grade';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 	import { toast } from 'svelte-sonner';
+	import { isAudioTransitionParticipantAtFrame } from '$lib/video-editor/audio/transition-crossfade';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -677,7 +678,7 @@
 			{/if}
 		{/if}
 	</div>
-	{#each timelineStore.items.filter((item) => item.type === 'audio' && timelineStore.currentFrame >= item.from && timelineStore.currentFrame < item.from + item.durationInFrames) as item (item.id)}
+	{#each timelineStore.items.filter((item) => item.type === 'audio' && isAudioTransitionParticipantAtFrame(item, timelineStore.currentFrame, transitionsStore.list, timelineStore.itemById, editorSession.fps)) as item (item.id)}
 		<PreviewAudioLayer {item} url={urls[item.mediaId ?? '']} />
 	{/each}
 </div>

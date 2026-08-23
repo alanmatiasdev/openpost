@@ -19,6 +19,12 @@ import {
 	calculateTransitionProgress,
 	resolveTransitionWindow
 } from '../timeline/transition-planner';
+import {
+	hasLinkedAudioCompanion,
+	transitionAudioExtentForItem,
+	transitionGainSpansForItem,
+	type TransitionGainSpan
+} from '../audio/transition-crossfade';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
@@ -33,6 +39,7 @@ export interface MixEntry {
 	/** Real seconds this clip occupies in the mixdown. */
 	durationSeconds: number;
 	gainPoints: GainPoint[];
+	transitionGainSpans: TransitionGainSpan[];
 }
 
 export interface GainPoint {
@@ -80,47 +87,122 @@ const AUDIO_BEARING_TYPES: ReadonlySet<TimelineItem['type']> = new Set(['video',
 export function planMixdown(
 	items: TimelineItem[],
 	tracks: TimelineTrack[],
-	fps: number
+	fps: number,
+	transitions: TimelineTransition[] = []
 ): MixEntry[] {
 	const trackById = new Map(tracks.map((track) => [track.id, track]));
+	const itemsById = new Map(items.map((item) => [item.id, item]));
 	const anySolo = tracks.some((track) => track.solo);
 	const entries: MixEntry[] = [];
 	for (const item of items) {
 		if (!AUDIO_BEARING_TYPES.has(item.type) || !item.mediaId) continue;
+		if (hasLinkedAudioCompanion(item, items)) continue;
 		const track = trackById.get(item.trackId);
 		if (!track || !isAudible(track, anySolo)) continue;
 		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
 		const speed = item.speed ?? 1;
+		const { beforeFrames, afterFrames } = transitionAudioExtentForItem(
+			item,
+			transitions,
+			itemsById,
+			fps
+		);
+		const startFrame = item.from - beforeFrames;
+		const endFrame = item.from + item.durationInFrames + afterFrames;
 		entries.push({
 			itemId: item.id,
 			mediaId: item.mediaId,
-			whenSeconds: item.from / fps,
-			sourceOffsetSeconds: (item.sourceStart ?? 0) / sourceFps,
+			whenSeconds: startFrame / fps,
+			sourceOffsetSeconds: Math.max(
+				0,
+				(item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed
+			),
 			playbackRate: speed,
-			durationSeconds: item.durationInFrames / fps,
-			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps)
+			durationSeconds: (endFrame - startFrame) / fps,
+			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps, startFrame, endFrame),
+			transitionGainSpans: transitionGainSpansForItem(item, transitions, itemsById, fps)
 		});
 	}
 	return entries;
 }
 
-function volumeGainPoints(item: TimelineItem, trackVolume: number, fps: number): GainPoint[] {
+function gainValueAtTime(points: GainPoint[], time: number): number {
+	const sorted = points.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
+	if (sorted.length === 0) return 1;
+	if (time <= sorted[0]!.whenSeconds) return sorted[0]!.value;
+	for (let index = 1; index < sorted.length; index++) {
+		const right = sorted[index]!;
+		if (time > right.whenSeconds) continue;
+		const left = sorted[index - 1]!;
+		const duration = right.whenSeconds - left.whenSeconds;
+		if (duration <= 0) return right.value;
+		const progress = (time - left.whenSeconds) / duration;
+		return left.value + (right.value - left.value) * progress;
+	}
+	return sorted[sorted.length - 1]!.value;
+}
+
+/** Restrict absolute mix entries to an export range without resetting automation. */
+export function sliceMixEntries(
+	entries: MixEntry[],
+	startSeconds: number,
+	endSeconds: number
+): MixEntry[] {
+	return entries.flatMap((entry) => {
+		const entryEnd = entry.whenSeconds + entry.durationSeconds;
+		const overlapStart = Math.max(startSeconds, entry.whenSeconds);
+		const overlapEnd = Math.min(endSeconds, entryEnd);
+		if (overlapEnd <= overlapStart) return [];
+		const skipped = overlapStart - entry.whenSeconds;
+		const startGain = gainValueAtTime(entry.gainPoints, overlapStart);
+		const gainPoints = [
+			{ whenSeconds: 0, value: startGain },
+			...entry.gainPoints
+				.filter((point) => point.whenSeconds > overlapStart && point.whenSeconds <= overlapEnd)
+				.map((point) => ({
+					...point,
+					whenSeconds: point.whenSeconds - startSeconds
+				}))
+		];
+		return [
+			{
+				...entry,
+				whenSeconds: overlapStart - startSeconds,
+				sourceOffsetSeconds: entry.sourceOffsetSeconds + skipped * entry.playbackRate,
+				durationSeconds: overlapEnd - overlapStart,
+				gainPoints,
+				transitionGainSpans: entry.transitionGainSpans.map((span) => ({
+					...span,
+					startSeconds: span.startSeconds - startSeconds
+				}))
+			}
+		];
+	});
+}
+
+function volumeGainPoints(
+	item: TimelineItem,
+	trackVolume: number,
+	fps: number,
+	startFrame: number,
+	endFrame: number
+): GainPoint[] {
 	const baseGain = (item.volume ?? 1) * trackVolume;
 	const track = item.keyframes?.volume;
 	if (!track || track.frames.length === 0) {
-		return [{ whenSeconds: item.from / fps, value: baseGain }];
+		return [{ whenSeconds: startFrame / fps, value: baseGain }];
 	}
 	const points: GainPoint[] = [];
 	const seen = new Set<number>();
-	for (let frame = 0; frame <= item.durationInFrames; frame++) {
-		const animated = activeValueAt(item, 'volume', item.from + frame);
+	for (let frame = startFrame; frame <= endFrame; frame++) {
+		const animated = activeValueAt(item, 'volume', frame);
 		if (animated === null) continue;
-		const whenSeconds = Math.round(((item.from + frame) / fps) * 1000) / 1000;
+		const whenSeconds = frame / fps;
 		if (seen.has(whenSeconds)) continue;
 		seen.add(whenSeconds);
-		points.push({ whenSeconds, value: animated });
+		points.push({ whenSeconds, value: animated * trackVolume });
 	}
-	return points.length > 0 ? points : [{ whenSeconds: item.from / fps, value: baseGain }];
+	return points.length > 0 ? points : [{ whenSeconds: startFrame / fps, value: baseGain }];
 }
 
 /**
