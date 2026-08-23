@@ -15,7 +15,7 @@ import type {
 	TimelineTrack,
 	TimelineTransition
 } from '../project/types';
-import { activeValueAt } from '../timeline/actions/keyframes';
+import { activeValueAt } from '../timeline/keyframe-interpolation';
 import {
 	calculateTransitionProgress,
 	resolveTransitionWindow
@@ -37,6 +37,8 @@ export interface MixEntry {
 	sourceOffsetSeconds: number;
 	/** Source seconds played per real second (the item's speed). */
 	playbackRate: number;
+	/** Read the source window backward while keeping timeline time forward. */
+	reversed: boolean;
 	/** Real seconds this clip occupies in the mixdown. */
 	durationSeconds: number;
 	gainPoints: GainPoint[];
@@ -68,7 +70,14 @@ export function isVisibleAtFrame(item: TimelineItem, frame: number): boolean {
 export function frameToSourceSeconds(item: TimelineItem, frame: number, fps: number): number {
 	const speed = item.speed ?? 1;
 	const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
-	return (item.sourceStart ?? 0) / sourceFps + ((frame - item.from) / fps) * speed;
+	const sourceStart = item.sourceStart ?? 0;
+	const sourceDistance = ((frame - item.from) / fps) * speed * sourceFps;
+	if (!item.isReversed) return (sourceStart + sourceDistance) / sourceFps;
+	const sourceEnd =
+		item.sourceEnd ?? sourceStart + (item.durationInFrames / fps) * speed * sourceFps;
+	const upperFrame =
+		item.sourceDuration === undefined ? Number.POSITIVE_INFINITY : item.sourceDuration - 1;
+	return Math.min(upperFrame, Math.max(0, sourceEnd - 1 - sourceDistance)) / sourceFps;
 }
 
 function isAudible(track: TimelineTrack, anySolo: boolean): boolean {
@@ -114,11 +123,17 @@ export function planMixdown(
 			itemId: item.id,
 			mediaId: item.mediaId,
 			whenSeconds: startFrame / fps,
-			sourceOffsetSeconds: Math.max(
-				0,
-				(item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed
-			),
+			sourceOffsetSeconds: item.isReversed
+				? Math.max(
+						0,
+						(item.sourceEnd ??
+							(item.sourceStart ?? 0) + (item.durationInFrames / fps) * speed * sourceFps) /
+							sourceFps +
+							(beforeFrames / fps) * speed
+					)
+				: Math.max(0, (item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed),
 			playbackRate: speed,
+			reversed: item.isReversed === true,
 			durationSeconds: (endFrame - startFrame) / fps,
 			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps, startFrame, endFrame),
 			transitionGainSpans: transitionGainSpansForItem(item, transitions, itemsById, fps)
@@ -252,7 +267,8 @@ export function sliceMixEntries(
 			{
 				...entry,
 				whenSeconds: overlapStart - startSeconds,
-				sourceOffsetSeconds: entry.sourceOffsetSeconds + skipped * entry.playbackRate,
+				sourceOffsetSeconds:
+					entry.sourceOffsetSeconds + (entry.reversed ? -1 : 1) * skipped * entry.playbackRate,
 				durationSeconds: overlapEnd - overlapStart,
 				gainPoints,
 				transitionGainSpans: entry.transitionGainSpans.map((span) => ({

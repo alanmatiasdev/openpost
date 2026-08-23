@@ -2,11 +2,20 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
-	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
+	import { setItemsReversed, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import {
+		cancelReverseConform,
+		conformReversePreview,
+		reverseConformStatus,
+		subscribeReverseConform,
+		type ReverseConformStatus
+	} from '$lib/video-editor/media/reverse-conform-service';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
 	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
@@ -14,6 +23,17 @@
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
+	let conformStatus = $state<ReverseConformStatus>({ state: 'idle', progress: 0 });
+
+	$effect(() => {
+		const mediaId = item?.mediaId;
+		if (!mediaId) {
+			conformStatus = { state: 'idle', progress: 0 };
+			return;
+		}
+		conformStatus = reverseConformStatus(mediaId);
+		return subscribeReverseConform(mediaId, (status) => (conformStatus = status));
+	});
 
 	interface NumericField {
 		property: KeyframeProperty;
@@ -248,6 +268,16 @@
 		updateItemProperties(itemId, patch, 'UPDATE_CLIP_PROPERTIES');
 		onedit();
 	}
+
+	function toggleReverse(): void {
+		if (!item) return;
+		const willReverse = item.isReversed !== true;
+		if (setItemsReversed([item.id], willReverse).length === 0) return;
+		onedit();
+		if (!willReverse || !item.mediaId) return;
+		const media = mediaPool.get(item.mediaId);
+		if (media?.tags.includes('video')) void conformReversePreview(media).catch(() => undefined);
+	}
 </script>
 
 {#if item}
@@ -333,17 +363,70 @@
 		{/if}
 
 		{#if item.type === 'video' || item.type === 'audio'}
-			<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-				>{m.video_editor_clip_volume()}<Input
-					class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-					type="number"
-					min="0"
-					max="4"
-					step="0.01"
-					value={valueFor(item, 'volume')}
-					onchange={(event) => commitNumeric('volume', event.currentTarget.valueAsNumber)}
-				/></label
-			>
+			<section class="space-y-2">
+				<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
+					{m.video_editor_clip_playback()}
+				</h3>
+				<Button
+					type="button"
+					size="sm"
+					variant={item.isReversed ? 'secondary' : 'outline'}
+					class="h-8 w-full justify-between text-xs"
+					aria-label={m.video_editor_clip_reverse()}
+					aria-pressed={item.isReversed === true}
+					onclick={toggleReverse}
+				>
+					<span>{m.video_editor_clip_reverse()}</span>
+					<span class="text-[10px] opacity-70">
+						{item.isReversed ? m.video_editor_clip_reverse_on() : m.video_editor_clip_reverse_off()}
+					</span>
+				</Button>
+				<p class="text-[10px] leading-relaxed text-[oklch(0.62_0.01_55)]">
+					{m.video_editor_clip_reverse_hint()}
+				</p>
+				{#if item.isReversed && (conformStatus.state === 'preparing' || conformStatus.state === 'rendering')}
+					<div class="rounded border border-white/10 bg-black/20 p-2">
+						<div class="flex items-center justify-between gap-2 text-[10px] text-white/75">
+							<span>{m.video_editor_clip_reverse_preparing()}</span>
+							<span>{Math.round(conformStatus.progress * 100)}%</span>
+						</div>
+						<div class="mt-1 h-1 overflow-hidden rounded bg-white/10">
+							<div
+								class="h-full bg-[oklch(0.66_0.14_45)] transition-[width] motion-reduce:transition-none"
+								style:width={`${Math.round(conformStatus.progress * 100)}%`}
+							></div>
+						</div>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							class="mt-1 h-6 px-1.5 text-[10px]"
+							onclick={() => item.mediaId && cancelReverseConform(item.mediaId)}
+						>
+							{m.common_cancel()}
+						</Button>
+					</div>
+				{:else if item.isReversed && conformStatus.state === 'ready'}
+					<p class="text-[10px] text-[oklch(0.74_0.1_145)]">
+						{m.video_editor_clip_reverse_ready()}
+					</p>
+				{:else if item.isReversed && (conformStatus.state === 'error' || conformStatus.state === 'canceled')}
+					<p class="text-[10px] text-[oklch(0.72_0.14_30)]">
+						{m.video_editor_clip_reverse_fallback()}
+					</p>
+				{/if}
+				<label class="block text-[10px] text-[oklch(0.7_0.01_55)]"
+					>{m.video_editor_clip_volume()}<Input
+						class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+						type="number"
+						min="0"
+						max="4"
+						step="0.01"
+						value={valueFor(item, 'volume')}
+						onchange={(event) => commitNumeric('volume', event.currentTarget.valueAsNumber)}
+					/></label
+				>
+			</section>
 		{/if}
 
 		{#if item.type === 'text'}

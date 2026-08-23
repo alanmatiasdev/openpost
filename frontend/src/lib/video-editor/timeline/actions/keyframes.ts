@@ -21,7 +21,6 @@ import type {
 	TimelineItem,
 	VectorKeyframe
 } from '$lib/video-editor/project/types';
-import { applyEasing, applyEasingConfig } from '../easing';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
 import { execute } from '../commands/command-store.svelte';
@@ -37,6 +36,7 @@ import {
 	upsertPositionKeyframe,
 	vectorKeyframesPatch
 } from '../vector-keyframes';
+export { activeValueAt, interpolateAt } from '../keyframe-interpolation';
 
 export interface KeyframeEdit {
 	ref: KeyframeRef;
@@ -61,49 +61,6 @@ function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
 		relativeFrame < item.durationInFrames &&
 		!isFrameInTransitionRegion(relativeFrame, item, transitionsStore.list)
 	);
-}
-
-/**
- * Interpolate `property` at an item-relative frame. Linear between
- * surrounding keyframes; constant before the first and after the last.
- * Returns null when the item has no track for the property.
- */
-export function interpolateAt(
-	item: TimelineItem,
-	property: KeyframeProperty,
-	frame: number
-): number | null {
-	if (property === 'x' || property === 'y') {
-		const position = activePositionKeyframes(item);
-		if (position) return interpolatePosition(position, frame)?.[property] ?? null;
-	}
-	const track: KeyframeTrack | undefined = item.keyframes?.[property];
-	if (!track || track.frames.length === 0) return null;
-	const { frames, values } = track;
-	if (track.frames.length === 1) return values[0];
-	if (frame <= frames[0]) return values[0];
-	const last = frames.length - 1;
-	if (frame >= frames[last]) return values[last];
-	for (let i = 1; i <= last; i++) {
-		if (frame <= frames[i]) {
-			const progress = (frame - frames[i - 1]) / (frames[i] - frames[i - 1]);
-			const easingConfig = track.easingConfigs?.[i - 1] ?? undefined;
-			const easedProgress = easingConfig
-				? applyEasingConfig(progress, easingConfig)
-				: applyEasing(progress, track.easings?.[i - 1] ?? 'linear');
-			return values[i - 1] + easedProgress * (values[i] - values[i - 1]);
-		}
-	}
-	return values[last];
-}
-
-/** Interpolate at an absolute timeline frame, converting to item-relative first. */
-export function activeValueAt(
-	item: TimelineItem,
-	property: KeyframeProperty,
-	absoluteFrame: number
-): number | null {
-	return interpolateAt(item, property, absoluteFrame - item.from);
 }
 
 /** Insert or replace a keyframe at exactly `frame` as one undoable step. */

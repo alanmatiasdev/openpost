@@ -64,6 +64,7 @@ import {
 	transitionBlendAtFrame,
 	type MixEntry
 } from './render-plan';
+import { reverseAudioWindow } from '../audio/reverse-audio';
 import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 import { shapeMasksForTrack } from '../shapes/masks';
 import { LottieFrameProvider, mapTimelineFrameToLottieFrame } from '../lottie/frame-provider';
@@ -97,6 +98,12 @@ export interface RenderExportResult {
 	fileName: string;
 	relPath: string;
 	blob: Blob;
+}
+
+interface InMemoryVideoRender {
+	fileName: string;
+	blob: Blob;
+	sidecar?: { fileName: string; blob: Blob };
 }
 
 export interface AudioExportOptions {
@@ -199,7 +206,24 @@ async function renderMixdown(
 		const buffer = decoded.get(entry.mediaId);
 		if (!buffer) continue;
 		const source = context.createBufferSource();
-		source.buffer = buffer;
+		let sourceBuffer = buffer;
+		if (entry.reversed) {
+			const window = reverseAudioWindow(
+				buffer,
+				entry.sourceOffsetSeconds,
+				entry.durationSeconds * entry.playbackRate
+			);
+			if (window.channels[0]?.length === 0) continue;
+			sourceBuffer = context.createBuffer(
+				window.channels.length,
+				window.channels[0]!.length,
+				window.sampleRate
+			);
+			for (let channel = 0; channel < window.channels.length; channel++) {
+				sourceBuffer.getChannelData(channel).set(window.channels[channel]!);
+			}
+		}
+		source.buffer = sourceBuffer;
 		source.playbackRate.value = entry.playbackRate;
 		const gain = context.createGain();
 		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
@@ -223,7 +247,7 @@ async function renderMixdown(
 		source.connect(gain).connect(transitionGain).connect(context.destination);
 		source.start(
 			entry.whenSeconds,
-			entry.sourceOffsetSeconds,
+			entry.reversed ? 0 : entry.sourceOffsetSeconds,
 			entry.durationSeconds * entry.playbackRate
 		);
 	}
@@ -644,11 +668,11 @@ export async function renderTimelineFrame(
 	}
 }
 
-/** Render the full timeline into one composed file and save it to exports. */
-export async function renderMultiTrackVideo(
+/** Render the full timeline without choosing where the resulting bytes are stored. */
+async function renderMultiTrackVideoInMemory(
 	project: Project,
 	options: RenderExportOptions = {}
-): Promise<RenderExportResult> {
+): Promise<InMemoryVideoRender> {
 	const fps = project.metadata.fps;
 	const width = options.width ?? project.metadata.width;
 	const height = options.height ?? project.metadata.height;
@@ -793,17 +817,38 @@ export async function renderMultiTrackVideo(
 	if (!buffer) throw new Error('Render produced no data.');
 	const blob = new Blob([buffer], { type: outputFormat.mimeType });
 	const baseName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${format}`;
-	const saved = await saveExportFile(project.id, baseName, blob);
+	let sidecar: InMemoryVideoRender['sidecar'];
 	if (subtitleMode === 'sidecar') {
 		const srt = subtitleSidecarSrt(items, fps, startFrame, endFrame);
-		if (srt)
-			await saveExportFile(
-				project.id,
-				`${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.srt`,
-				new Blob([srt], { type: 'application/x-subrip' })
-			);
+		if (srt) {
+			sidecar = {
+				fileName: `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.srt`,
+				blob: new Blob([srt], { type: 'application/x-subrip' })
+			};
+		}
 	}
-	return { ...saved, blob };
+	return { fileName: baseName, blob, sidecar };
+}
+
+/** Render a timeline to bytes for internal caches without creating a user export. */
+export async function renderMultiTrackVideoBlob(
+	project: Project,
+	options: RenderExportOptions = {}
+): Promise<Blob> {
+	return (await renderMultiTrackVideoInMemory(project, options)).blob;
+}
+
+/** Render the full timeline into one composed file and save it to exports. */
+export async function renderMultiTrackVideo(
+	project: Project,
+	options: RenderExportOptions = {}
+): Promise<RenderExportResult> {
+	const rendered = await renderMultiTrackVideoInMemory(project, options);
+	const saved = await saveExportFile(project.id, rendered.fileName, rendered.blob);
+	if (rendered.sidecar) {
+		await saveExportFile(project.id, rendered.sidecar.fileName, rendered.sidecar.blob);
+	}
+	return { ...saved, blob: rendered.blob };
 }
 
 /** Render the audible timeline mix without a video track. */

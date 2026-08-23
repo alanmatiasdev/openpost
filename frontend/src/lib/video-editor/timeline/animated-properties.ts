@@ -6,7 +6,7 @@
  * animated-text-item.ts. Adapted to OpenPost's item model.
  */
 import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
-import { activeValueAt } from './actions/keyframes';
+import { activeValueAt } from './keyframe-interpolation';
 import { activePositionKeyframes, interpolatePosition } from './vector-keyframes';
 
 const VISUAL_PROPERTIES: KeyframeProperty[] = [

@@ -14,6 +14,7 @@ import {
 	planMixdown,
 	planNestedMixdown,
 	selectCuesAtFrame,
+	sliceMixEntries,
 	transitionBlendAtFrame
 } from './render-plan';
 
@@ -85,6 +86,35 @@ describe('frameToSourceSeconds', () => {
 		const clip = item({ sourceStart: 0, sourceFps: 60, speed: 2 });
 		expect(frameToSourceSeconds(clip, 30, 30)).toBeCloseTo(2);
 		expect(frameToSourceSeconds(clip, 15, 30)).toBeCloseTo(1);
+	});
+
+	it('maps reversed clips from the exclusive source end toward the source start', () => {
+		const clip = item({
+			from: 10,
+			durationInFrames: 30,
+			sourceStart: 60,
+			sourceEnd: 180,
+			sourceFps: 60,
+			speed: 2,
+			isReversed: true
+		});
+		expect(frameToSourceSeconds(clip, 10, 30)).toBeCloseTo(179 / 60);
+		expect(frameToSourceSeconds(clip, 25, 30)).toBeCloseTo(119 / 60);
+		expect(frameToSourceSeconds(clip, 40, 30)).toBeCloseTo(59 / 60);
+	});
+
+	it('uses available source handles outside the reversed clip window', () => {
+		const clip = item({
+			from: 30,
+			durationInFrames: 30,
+			sourceStart: 60,
+			sourceEnd: 90,
+			sourceDuration: 120,
+			sourceFps: 30,
+			isReversed: true
+		});
+		expect(frameToSourceSeconds(clip, 15, 30)).toBeCloseTo(104 / 30);
+		expect(frameToSourceSeconds(clip, 75, 30)).toBeCloseTo(44 / 30);
 	});
 });
 
@@ -165,6 +195,32 @@ describe('planMixdown', () => {
 		expect(entries[0]?.durationSeconds).toBeCloseTo(2);
 	});
 
+	it('schedules and range-slices reversed audio from the exclusive source end', () => {
+		const entries = planMixdown(
+			[
+				item({
+					mediaId: 'reverse',
+					sourceStart: 30,
+					sourceEnd: 150,
+					sourceFps: 30,
+					durationInFrames: 60,
+					speed: 2,
+					isReversed: true
+				})
+			],
+			[track('track-video-main', 'video', 1)],
+			30
+		);
+		expect(entries[0]).toMatchObject({
+			sourceOffsetSeconds: 5,
+			playbackRate: 2,
+			reversed: true
+		});
+		const sliced = sliceMixEntries(entries, 1, 2)[0]!;
+		expect(sliced.sourceOffsetSeconds).toBe(3);
+		expect(sliced.durationSeconds).toBe(1);
+	});
+
 	it('emits keyframed volume automation points in mix time', () => {
 		const entries = planMixdown(
 			[
@@ -184,7 +240,10 @@ describe('planMixdown', () => {
 		const points = entries[0]?.gainPoints ?? [];
 		expect(points.length).toBeGreaterThanOrEqual(2);
 		expect(points[0]).toMatchObject({ whenSeconds: 1, value: 0 });
-		expect(points[points.length - 1]).toMatchObject({ whenSeconds: 3, value: 1 });
+		expect(points[points.length - 1]).toMatchObject({
+			whenSeconds: 3,
+			value: 1
+		});
 	});
 });
 
@@ -350,7 +409,13 @@ describe('transitionBlendAtFrame', () => {
 		['right', item({ id: 'right', from: 100, durationInFrames: 100 })]
 	]);
 	const transitions: TimelineTransition[] = [
-		{ id: 't', type: 'crossfade', durationInFrames: 20, fromItemId: 'left', toItemId: 'right' }
+		{
+			id: 't',
+			type: 'crossfade',
+			durationInFrames: 20,
+			fromItemId: 'left',
+			toItemId: 'right'
+		}
 	];
 
 	it('returns null outside the transition window', () => {
@@ -364,8 +429,12 @@ describe('transitionBlendAtFrame', () => {
 			incomingId: 'right',
 			progress: 0
 		});
-		expect(transitionBlendAtFrame(transitions, clips, 100)).toMatchObject({ progress: 10 / 19 });
-		expect(transitionBlendAtFrame(transitions, clips, 109)).toMatchObject({ progress: 1 });
+		expect(transitionBlendAtFrame(transitions, clips, 100)).toMatchObject({
+			progress: 10 / 19
+		});
+		expect(transitionBlendAtFrame(transitions, clips, 109)).toMatchObject({
+			progress: 1
+		});
 	});
 
 	it('ignores transitions whose items are gone', () => {

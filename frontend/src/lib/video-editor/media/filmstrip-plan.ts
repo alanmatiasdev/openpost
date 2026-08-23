@@ -204,7 +204,8 @@ export function computeFilmstripTiles(
 	frames: readonly FilmstripFrameRef[],
 	sourceStartSeconds: number,
 	clipSpanSeconds: number,
-	clipWidthPx: number
+	clipWidthPx: number,
+	reversed = false
 ): FilmstripTile[] {
 	if (!(clipSpanSeconds > 0) || !(clipWidthPx > 0)) return [];
 
@@ -217,13 +218,14 @@ export function computeFilmstripTiles(
 		const visibleEnd = Math.min(frame.index + 1, endSeconds);
 		const span = visibleEnd - visibleStart;
 		if (span <= 0) continue;
+		const x = (visibleStart - sourceStartSeconds) * pxPerSecond;
 		tiles.push({
 			index: frame.index,
 			url: frame.url,
-			x: (visibleStart - sourceStartSeconds) * pxPerSecond,
+			x: reversed ? clipWidthPx - x - span * pxPerSecond : x,
 			width: span * pxPerSecond
 		});
 	}
 
-	return tiles;
+	return tiles.toSorted((left, right) => left.x - right.x);
 }

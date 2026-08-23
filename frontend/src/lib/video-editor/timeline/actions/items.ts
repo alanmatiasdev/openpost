@@ -162,6 +162,26 @@ export function updateItemProperties(
 	});
 }
 
+/** Toggle reverse playback for media clips and their linked A/V companions. */
+export function setItemsReversed(ids: string[], isReversed: boolean): string[] {
+	const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
+	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	const targets = expanded.filter((id) => {
+		const item = timelineStore.itemById.get(id);
+		return (
+			item !== undefined &&
+			(item.type === 'video' || item.type === 'audio') &&
+			trackById.get(item.trackId)?.locked !== true &&
+			item.isReversed !== isReversed
+		);
+	});
+	if (targets.length === 0) return [];
+	execute('SET_ITEMS_REVERSED', () => {
+		timelineStore._updateItems(targets.map((id) => ({ id, patch: { isReversed } })));
+	});
+	return targets;
+}
+
 export function duplicateItems(ids: string[]): string[] {
 	return execute('DUPLICATE_ITEMS', () => {
 		const byId = timelineStore.itemById;

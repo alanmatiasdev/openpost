@@ -270,6 +270,8 @@ export interface TimelineItem extends TextStyleFields {
 	sourceDuration?: number;
 	sourceFps?: number;
 	speed?: number;
+	/** Play the selected source window from its exclusive end back to its start. */
+	isReversed?: boolean;
 
 	// Lottie playback
 	lottieTotalFrames?: number;

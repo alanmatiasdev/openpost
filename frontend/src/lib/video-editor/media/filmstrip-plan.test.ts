@@ -16,7 +16,10 @@ describe('fitFilmstripFrameSize', () => {
 	});
 
 	it('falls back to the budget for unusable sources', () => {
-		expect(fitFilmstripFrameSize(0, 0, 178, 100)).toEqual({ width: 178, height: 100 });
+		expect(fitFilmstripFrameSize(0, 0, 178, 100)).toEqual({
+			width: 178,
+			height: 100
+		});
 	});
 });
 
@@ -93,6 +96,16 @@ describe('computeFilmstripTiles', () => {
 		expect(tiles[1]?.width).toBe(100);
 	});
 
+	it('mirrors tile positions and order for reversed playback', () => {
+		const frames = [0, 1, 2].map((index) => ({ index, url: `frame-${index}` }));
+		const tiles = computeFilmstripTiles(frames, 0, 3, 300, true);
+		expect(tiles.map((tile) => ({ index: tile.index, x: tile.x }))).toEqual([
+			{ index: 2, x: 0 },
+			{ index: 1, x: 100 },
+			{ index: 0, x: 200 }
+		]);
+	});
+
 	it('drops tiles outside the window and rejects unusable input', () => {
 		const frames = [{ index: 5, url: null }];
 		expect(computeFilmstripTiles(frames, 0, 2, 200)).toEqual([]);
@@ -107,7 +120,10 @@ describe('buildPriorityIndices', () => {
 	});
 
 	it('clamps out-of-bounds ranges', () => {
-		const indices = buildPriorityIndices(50, { startIndex: -10, endIndex: 500 });
+		const indices = buildPriorityIndices(50, {
+			startIndex: -10,
+			endIndex: 500
+		});
 		expect(indices[0]).toBe(0);
 		expect(indices[indices.length - 1]).toBe(49);
 	});

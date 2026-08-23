@@ -3,6 +3,7 @@ import {
 	sanitizeWorkspaceFileName,
 	projectJsonPath,
 	mediaMetadataPath,
+	mediaReversePreviewPath,
 	exportFilePath,
 	recordingFilePath,
 	filmstripFramePath
@@ -39,6 +40,16 @@ describe('path builders', () => {
 	it('builds project paths from ids', () => {
 		expect(projectJsonPath('p1')).toEqual(['projects', 'p1', 'project.json']);
 		expect(mediaMetadataPath('m1')).toEqual(['media', 'm1', 'metadata.json']);
+	});
+
+	it('keeps reverse conforms under their source cache', () => {
+		expect(mediaReversePreviewPath('m1', 'v1-fingerprint')).toEqual([
+			'media',
+			'm1',
+			'cache',
+			'reverse',
+			'v1-fingerprint.webm'
+		]);
 	});
 
 	it('sanitizes user-facing file names in export paths', () => {

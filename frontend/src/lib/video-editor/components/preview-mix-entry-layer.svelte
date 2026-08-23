@@ -49,13 +49,16 @@
 		const sync = () => {
 			const time = untrack(() => timelineStore.currentFrame) / editorSession.fps;
 			const sourceTime =
-				entry.sourceOffsetSeconds + (time - entry.whenSeconds) * entry.playbackRate;
+				entry.sourceOffsetSeconds +
+				(time - entry.whenSeconds) * entry.playbackRate * (entry.reversed ? -1 : 1);
 			if (seekDriftExceeded(media.currentTime, sourceTime, 0.08 / entry.playbackRate)) {
 				scheduler.request(sourceTime);
 			}
 			media.playbackRate = Math.min(16, Math.max(0.0625, entry.playbackRate));
 			media.volume = gainAt(time);
-			if (editorSession.clock.isPlaying && media.paused) void media.play().catch(() => undefined);
+			if (editorSession.clock.isPlaying && media.paused && !entry.reversed)
+				void media.play().catch(() => undefined);
+			if (entry.reversed && !media.paused) media.pause();
 			if (!editorSession.clock.isPlaying && !media.paused) media.pause();
 		};
 		syncMedia = sync;

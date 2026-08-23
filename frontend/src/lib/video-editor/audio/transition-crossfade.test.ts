@@ -336,6 +336,7 @@ describe('transition mix planning', () => {
 			whenSeconds: 0,
 			sourceOffsetSeconds: 1,
 			playbackRate: 2,
+			reversed: false,
 			durationSeconds: 4,
 			gainPoints: [
 				{ whenSeconds: 0, value: 0 },

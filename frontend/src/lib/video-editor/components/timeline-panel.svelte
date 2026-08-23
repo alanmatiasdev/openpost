@@ -199,6 +199,10 @@
 	function waveformSvgPoints(item: {
 		mediaId?: string;
 		sourceStart?: number;
+		sourceEnd?: number;
+		sourceFps?: number;
+		speed?: number;
+		isReversed?: boolean;
 		durationInFrames: number;
 	}): string | null {
 		if (!item.mediaId) return null;
@@ -206,17 +210,16 @@
 		const data = entry?.data ?? cachedWaveform(item.mediaId);
 		if (!data) return null;
 		const width = Math.max(8, frameToPx(item.durationInFrames) - 4);
-		const columns = peaksForWindow(
-			data,
-			item.sourceStart ?? 0,
-			(item.sourceStart ?? 0) + item.durationInFrames,
-			timelineStore.fps,
-			width
-		);
+		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
+		const sourceStart = item.sourceStart ?? 0;
+		const sourceEnd =
+			item.sourceEnd ?? sourceStart + (item.durationInFrames / fps) * (item.speed ?? 1) * sourceFps;
+		const columns = peaksForWindow(data, sourceStart, sourceEnd, sourceFps, width);
 		const points: string[] = [];
 		for (let column = 0; column < width; column++) {
-			const min = columns[column * 2];
-			const max = columns[column * 2 + 1];
+			const sourceColumn = item.isReversed ? width - column - 1 : column;
+			const min = columns[sourceColumn * 2];
+			const max = columns[sourceColumn * 2 + 1];
 			points.push(`${column + 2},${(max * 40).toFixed(1)} ${column + 2},${(min * 40).toFixed(1)}`);
 		}
 		return points.join(' ');
@@ -327,8 +330,10 @@
 	function filmstripTilesFor(item: {
 		mediaId?: string;
 		sourceStart?: number;
+		sourceEnd?: number;
 		sourceFps?: number;
 		speed?: number;
+		isReversed?: boolean;
 		durationInFrames: number;
 	}): ReturnType<typeof computeFilmstripTiles> | null {
 		if (!item.mediaId) return null;
@@ -343,7 +348,8 @@
 			entry.frames,
 			startSeconds,
 			spanSeconds,
-			frameToPx(item.durationInFrames)
+			frameToPx(item.durationInFrames),
+			item.isReversed
 		);
 	}
 
@@ -2033,7 +2039,7 @@
 							<button
 								type="button"
 								class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"
-								aria-label={`${item.label}. ${m.video_editor_timing_keyboard()}`}
+								aria-label={`${item.label}${item.isReversed ? `, ${m.video_editor_clip_reverse()}` : ''}. ${m.video_editor_timing_keyboard()}`}
 								onclick={(event) => {
 									event.stopPropagation();
 									if (event.detail === 0) selectItem(event, item.id);
@@ -2074,6 +2080,14 @@
 								<span class="relative z-10 truncate px-2 text-[11px] text-white/90"
 									>{item.label}</span
 								>
+								{#if item.isReversed}
+									<span
+										class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-[8px] font-semibold tracking-wide text-white/85"
+										title={m.video_editor_clip_reverse()}
+									>
+										{m.video_editor_clip_reverse_badge()}
+									</span>
+								{/if}
 							</button>
 							<button
 								type="button"

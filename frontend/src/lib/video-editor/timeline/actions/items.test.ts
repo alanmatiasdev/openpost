@@ -9,6 +9,7 @@ import {
 	addTextItem,
 	linkItems,
 	setCurrentFrame,
+	setItemsReversed,
 	unlinkItems
 } from './items';
 
@@ -211,5 +212,37 @@ describe('linked item actions', () => {
 
 		commandHistory.undo();
 		expect(timelineStore.items.map((item) => item.linkedGroupId)).toEqual(['group', 'group']);
+	});
+
+	it('reverses linked video and audio together as one undo step', () => {
+		timelineStore._setItems([
+			clip({ id: 'video', linkedGroupId: 'group' }),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				linkedGroupId: 'group'
+			})
+		]);
+
+		expect(setItemsReversed(['video'], true)).toEqual(['video', 'audio']);
+		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([true, true]);
+		expect(commandHistory.getLastCommandType()).toBe('SET_ITEMS_REVERSED');
+
+		commandHistory.undo();
+		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([undefined, undefined]);
+	});
+
+	it('does not reverse clips on locked tracks', () => {
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-video-main' ? { ...track, locked: true } : track
+			)
+		);
+		timelineStore._setItems([clip({ id: 'video' })]);
+
+		expect(setItemsReversed(['video'], true)).toEqual([]);
+		expect(timelineStore.itemById.get('video')?.isReversed).toBeUndefined();
+		expect(commandHistory.canUndo).toBe(false);
 	});
 });

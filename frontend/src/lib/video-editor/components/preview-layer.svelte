@@ -7,6 +7,14 @@
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 	import { effectsToCssFilter } from '$lib/video-editor/effects/filter';
 	import { SeekScheduler, seekDriftExceeded } from '$lib/video-editor/preview/seek-throttle';
+	import { frameToSourceSeconds } from '$lib/video-editor/media/render-plan';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import {
+		conformReversePreview,
+		reverseConformObjectUrl,
+		sourceSecondsToReverseConformSeconds,
+		type ReverseConformResult
+	} from '$lib/video-editor/media/reverse-conform-service';
 	import {
 		createGpuCompositor,
 		type GpuCompositor,
@@ -75,6 +83,8 @@
 		onselect: () => void;
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
+	let reverseConform = $state<ReverseConformResult | null>(null);
+	let reverseConformUrl = $state<string | null>(null);
 	let imageElement = $state<HTMLImageElement | null>(null);
 	let decodedImageElement = $state<HTMLImageElement | null>(null);
 	let rasterCanvas = $state<HTMLCanvasElement | null>(null);
@@ -174,6 +184,31 @@
 		)
 	);
 	const previewVolume = $derived(previewItemVolumeWithFade(basePreviewVolume, crossfadeGain));
+	const previewMediaUrl = $derived(
+		item.type === 'video' && item.isReversed && reverseConformUrl ? reverseConformUrl : url
+	);
+
+	$effect(() => {
+		const mediaId = item.mediaId;
+		if (item.type !== 'video' || !item.isReversed || !mediaId) {
+			reverseConform = null;
+			reverseConformUrl = null;
+			return;
+		}
+		const media = mediaPool.get(mediaId);
+		if (!media) return;
+		let stale = false;
+		void conformReversePreview(media)
+			.then((result) => {
+				if (stale) return;
+				reverseConform = result;
+				reverseConformUrl = reverseConformObjectUrl(result);
+			})
+			.catch(() => undefined);
+		return () => {
+			stale = true;
+		};
+	});
 
 	function paintRaster(canvas: HTMLCanvasElement): void {
 		if (!['text', 'subtitle', 'shape'].includes(resolved.type)) return;
@@ -257,13 +292,18 @@
 		const sync = () => {
 			const frame = untrack(() => timelineStore.currentFrame);
 			const speed = item.speed ?? 1;
-			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : editorSession.fps;
+			const originalSourceTime = frameToSourceSeconds(item, frame, editorSession.fps);
+			const conform = reverseConform;
 			const sourceTime =
-				(item.sourceStart ?? 0) / sourceFps + ((frame - item.from) / editorSession.fps) * speed;
+				item.isReversed && conform
+					? sourceSecondsToReverseConformSeconds(conform, originalSourceTime)
+					: originalSourceTime;
 			if (seekDriftExceeded(video.currentTime, sourceTime, 0.08 / Math.max(0.1, speed)))
 				scheduler.request(sourceTime);
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
-			if (editorSession.clock.isPlaying && video.paused) void video.play().catch(() => undefined);
+			if (editorSession.clock.isPlaying && video.paused && (!item.isReversed || conform !== null))
+				void video.play().catch(() => undefined);
+			if (item.isReversed && !conform && !video.paused) video.pause();
 			if (!editorSession.clock.isPlaying && !video.paused) video.pause();
 			if (selected && !needsGpu && !deferEffects)
 				requestAnimationFrame(() => publishScopeSample(video));
@@ -628,11 +668,11 @@
 	aria-hidden={deferEffects ? 'true' : undefined}
 	onpointerdown={onselect}
 >
-	{#if resolved.type === 'video' && url}
+	{#if resolved.type === 'video' && previewMediaUrl}
 		<!-- svelte-ignore a11y_media_has_caption -- captions render as separate layers -->
 		<video
 			bind:this={mediaElement}
-			src={url}
+			src={previewMediaUrl}
 			class="absolute object-fill"
 			style={mediaCropStyle}
 			playsinline
