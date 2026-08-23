@@ -1,0 +1,136 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import type { MediaMetadata } from '$lib/video-editor/media/types';
+import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+import type { Project, TimelineTrack } from '$lib/video-editor/project/types';
+import { editorSession } from '$lib/video-editor/editor.svelte';
+import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+import { setWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
+import SourceMonitor from './source-monitor.svelte';
+
+const videoTrack: TimelineTrack = {
+	id: 'video',
+	name: 'Video 1',
+	kind: 'video',
+	height: 96,
+	locked: false,
+	visible: true,
+	muted: false,
+	solo: false,
+	order: 0
+};
+
+const audioTrack: TimelineTrack = {
+	id: 'audio',
+	name: 'Audio 1',
+	kind: 'audio',
+	height: 72,
+	locked: false,
+	visible: true,
+	muted: false,
+	solo: false,
+	volume: 1,
+	order: 1
+};
+
+const source: MediaMetadata = {
+	id: 'source',
+	storageType: 'handle',
+	fileName: 'interview.mp4',
+	fileSize: 128,
+	mimeType: 'video/mp4',
+	duration: 10,
+	width: 1920,
+	height: 1080,
+	fps: 30,
+	codec: 'avc',
+	bitrate: 1000,
+	audioCodec: 'aac',
+	tags: ['video']
+};
+
+function setRange(input: HTMLInputElement, value: number): void {
+	input.value = String(value);
+	input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+beforeEach(() => {
+	commandHistory.clearHistory();
+	mediaPool.clear();
+	timelineStore.__resetForTesting();
+	timelineStore.setAll({ tracks: [videoTrack, audioTrack], items: [], currentFrame: 20, fps: 30 });
+	editorSession.clock.seek(20);
+	editorSession.project = {
+		id: 'project',
+		name: 'Project',
+		description: '',
+		createdAt: 0,
+		updatedAt: 0,
+		duration: 0,
+		metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000000' },
+		timeline: { tracks: [videoTrack, audioTrack], items: [] }
+	} satisfies Project;
+	const file = new File([new Uint8Array(128)], source.fileName, { type: source.mimeType });
+	mediaPool.upsert(
+		{
+			...source,
+			// SAFETY: resolveMediaBlob only calls getFile on this linked test handle.
+			fileHandle: { getFile: async () => file } as FileSystemFileHandle
+		},
+		'ready'
+	);
+	// SAFETY: linked media resolves before any directory method is used.
+	setWorkspaceRoot({ name: 'test' } as FileSystemDirectoryHandle);
+});
+
+afterEach(() => {
+	mediaPool.clear();
+	setWorkspaceRoot(null);
+});
+
+describe('SourceMonitor', () => {
+	it('marks an exclusive range and inserts linked video and audio at the program playhead', async () => {
+		const onedit = vi.fn();
+		const oninserted = vi.fn();
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit,
+			oninserted
+		});
+
+		await expect.element(screen.getByText(source.fileName)).toBeVisible();
+		const position = screen.getByLabelText('Source position').element() as HTMLInputElement;
+		setRange(position, 30);
+		await screen.getByRole('button', { name: 'Mark in (I)' }).click();
+		setRange(position, 59);
+		await screen.getByRole('button', { name: 'Mark out (O)' }).click();
+		await screen.getByRole('button', { name: 'Insert edit ,' }).click();
+
+		expect(timelineStore.currentFrame).toBe(50);
+		expect(editorSession.clock.currentFrame).toBe(50);
+		expect(timelineStore.items).toHaveLength(2);
+		expect(
+			timelineStore.items.map((item) => [item.type, item.sourceStart, item.sourceEnd])
+		).toEqual([
+			['video', 30, 60],
+			['audio', 30, 60]
+		]);
+		expect(timelineStore.items[0]?.linkedGroupId).toBe(timelineStore.items[1]?.linkedGroupId);
+		expect(oninserted).toHaveBeenCalledWith(timelineStore.items.map((item) => item.id));
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(commandHistory.canUndo).toBe(true);
+	});
+
+	it('keeps every source control inside a narrow monitor', async () => {
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit: vi.fn()
+		});
+		screen.container.style.width = '320px';
+		const monitor = screen.getByRole('region', { name: 'Source' }).element() as HTMLElement;
+		expect(monitor.scrollWidth).toBeLessThanOrEqual(monitor.clientWidth);
+	});
+});

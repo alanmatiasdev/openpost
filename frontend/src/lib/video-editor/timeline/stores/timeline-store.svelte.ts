@@ -248,6 +248,8 @@ export const timelineStore = {
 			item.sourceEnd = boundaries.left.sourceEnd;
 			rightItem.sourceStart = boundaries.right.sourceStart;
 			rightItem.sourceEnd = boundaries.right.sourceEnd;
+		} else if (rightItem.type === 'lottie') {
+			rightItem.lottiePhaseOffset = (item.lottiePhaseOffset ?? 0) + relative;
 		}
 		item.durationInFrames = leftDuration;
 		// Both halves carry the original's lineage so downstream range-removal

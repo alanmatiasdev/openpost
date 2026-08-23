@@ -422,7 +422,7 @@
 		renderer.resize(width, height);
 		renderer.renderFrame(
 			mapTimelineFrameToLottieFrame({
-				localFrame: frame - item.from,
+				localFrame: frame - item.from + (item.lottiePhaseOffset ?? 0),
 				projectFps: editorSession.fps,
 				speed: item.speed ?? 1,
 				totalFrames: item.lottieTotalFrames ?? 1,

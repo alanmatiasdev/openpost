@@ -103,4 +103,20 @@ describe('_splitItem source boundaries', () => {
 		expect(timelineStore._splitItem(item.id, item.from)).toBeNull();
 		expect(timelineStore._splitItem(item.id, item.from + item.durationInFrames)).toBeNull();
 	});
+
+	it('carries the Lottie playback phase into the right piece', () => {
+		const item = videoItem({
+			type: 'lottie',
+			durationInFrames: 90,
+			lottieTotalFrames: 60,
+			lottieFrameRate: 30,
+			lottieLoop: true,
+			lottiePhaseOffset: 5
+		});
+		timelineStore._setItems([item]);
+
+		const result = timelineStore._splitItem(item.id, item.from + 20);
+		expect(result?.leftItem.lottiePhaseOffset).toBe(5);
+		expect(result?.rightItem.lottiePhaseOffset).toBe(25);
+	});
 });

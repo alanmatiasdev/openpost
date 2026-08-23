@@ -21,7 +21,10 @@
 	import { requireWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
 	import { mediaThumbnailPath } from '$lib/video-editor/workspace-fs/paths';
 
-	let { onsequenceopen = () => undefined }: { onsequenceopen?: () => void } = $props();
+	let {
+		onsequenceopen = () => undefined,
+		onsourceopen = () => undefined
+	}: { onsequenceopen?: () => void; onsourceopen?: (mediaId: string) => void } = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
 	const ownedThumbnailUrls = new Set<string>();
@@ -183,13 +186,13 @@
 	<ul class="flex flex-col gap-1" role="list">
 		{#each mediaPool.order as id (id)}
 			{@const entry = mediaPool.entry(id)}
-			<li>
+			<li class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)]">
 				<button
 					type="button"
-					class="flex w-full items-center gap-2 rounded-md p-1.5 text-left hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
+					class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
 					disabled={entry?.status !== 'ready'}
-					onclick={() => entry && addToTimeline(id)}
-					title={m.video_editor_media_add()}
+					onclick={() => entry && onsourceopen(id)}
+					title={m.video_editor_source_monitor()}
 				>
 					<span
 						class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)]"
@@ -216,6 +219,15 @@
 							</span>
 						{/if}
 					</span>
+				</button>
+				<button
+					type="button"
+					class="rounded p-1.5 text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
+					disabled={entry?.status !== 'ready'}
+					aria-label={`${m.video_editor_media_add()}: ${entry?.media.fileName ?? ''}`}
+					onclick={() => entry && addToTimeline(id)}
+				>
+					<PlusIcon class="size-3.5" aria-hidden="true" />
 				</button>
 			</li>
 		{/each}

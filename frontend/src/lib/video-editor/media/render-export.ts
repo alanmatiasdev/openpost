@@ -486,7 +486,7 @@ export class TimelineFrameRenderer {
 				Math.round(resolvedItem.transform?.height ?? resolvedItem.sourceHeight ?? this.height)
 			);
 			const lottieFrame = mapTimelineFrameToLottieFrame({
-				localFrame: frame - originalItem.from,
+				localFrame: frame - originalItem.from + (originalItem.lottiePhaseOffset ?? 0),
 				projectFps: this.fps,
 				speed: originalItem.speed ?? 1,
 				totalFrames: originalItem.lottieTotalFrames ?? 1,

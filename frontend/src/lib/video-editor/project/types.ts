@@ -279,6 +279,8 @@ export interface TimelineItem extends TextStyleFields {
 	lottieLoopMode?: 'loop' | 'pingpong';
 	lottieSegmentStart?: number;
 	lottieSegmentEnd?: number;
+	/** Project-frame phase carried by a split clip so its animation does not restart. */
+	lottiePhaseOffset?: number;
 	lottieMarkers?: Array<{ name: string; start: number; duration: number }>;
 	lottieAnimationId?: string;
 	lottieThemeId?: string;

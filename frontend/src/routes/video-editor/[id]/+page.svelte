@@ -56,6 +56,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
+	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
 	import SequenceTabs from '$lib/video-editor/components/sequence-tabs.svelte';
@@ -72,6 +73,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
+	let sourceMediaId = $state<string | null>(null);
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 
 	$effect(() => {
@@ -105,6 +107,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedItemIds = [itemId];
 		selectedTransitionId = null;
 		editorSession.scheduleAutosave();
+	}
+
+	function handleSourceInserted(itemIds: string[]): void {
+		selectedItemIds = itemIds;
+		selectedItemId = itemIds[0] ?? null;
+		selectedTransitionId = null;
 	}
 
 	function handleSplit(): void {
@@ -572,7 +580,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						{/if}
 					</div>
 					{#if assetPanel === 'media'}
-						<MediaPoolList onsequenceopen={resetTimelineSelection} />
+						<MediaPoolList
+							onsequenceopen={resetTimelineSelection}
+							onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
+						/>
 					{:else if assetPanel === 'scenes'}
 						<SceneBrowserPanel />
 					{:else if assetPanel === 'shapes'}
@@ -584,13 +595,40 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					{/if}
 				</aside>
 
-				<section
-					data-video-preview
-					class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+				<div
+					class:grid={sourceMediaId}
+					class:grid-cols-2={sourceMediaId}
+					class:flex={!sourceMediaId}
+					class="min-w-0 flex-1 bg-[oklch(0.12_0.008_55)]"
 				>
-					<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
-					<TransportBar />
-				</section>
+					{#if sourceMediaId}
+						{#key sourceMediaId}
+							<SourceMonitor
+								mediaId={sourceMediaId}
+								preferredTrackId={selectedItemId
+									? timelineStore.itemById.get(selectedItemId)?.trackId
+									: undefined}
+								onclose={() => (sourceMediaId = null)}
+								onedit={() => editorSession.scheduleAutosave()}
+								oninserted={handleSourceInserted}
+							/>
+						{/key}
+					{/if}
+					<section
+						data-video-preview
+						class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+					>
+						{#if sourceMediaId}
+							<div
+								class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+							>
+								{m.video_editor_program_monitor()}
+							</div>
+						{/if}
+						<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
+						<TransportBar />
+					</section>
+				</div>
 
 				<!-- Tools -->
 				<aside

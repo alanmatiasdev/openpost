@@ -169,6 +169,15 @@ export function pruneOrphanedTransitions(): void {
 	if (next.length !== transitionsStore.list.length) transitionsStore.setAll(next);
 }
 
+/** Drop transitions whose clips no longer share a valid cut after a structural edit. */
+export function pruneInvalidTransitions(): void {
+	const next = transitionsStore.list.filter((transition) => {
+		const pair = findEdgePair(transition.fromItemId, transition.toItemId);
+		return !!pair && canPreserveTransition(transition, pair.from, pair.to, timelineStore.fps);
+	});
+	if (next.length !== transitionsStore.list.length) transitionsStore.setAll(next);
+}
+
 /** Opacity of the incoming clip at progress 0..1 for the transition type. */
 export function incomingOpacity(type: TimelineTransition['type'], progress: number): number {
 	const p = Math.min(1, Math.max(0, progress));
