@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-08-23
+
+### Fixed
+- PostgreSQL upgrades now remove the retired Video Editor tables in foreign-key order instead of failing during startup.
+
 ## [4.0.0] - 2026-08-22
 
 ### Changed
