@@ -1471,7 +1471,10 @@
 												disabled={!providerActionEnabled(provider)}
 											>
 												{#if connectingInstallationID === provider.installation_id}
-													<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+													<LoaderIcon
+														class="size-4 animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
 												{/if}
 												{providerActionLabel(provider)}
 											</Button>
