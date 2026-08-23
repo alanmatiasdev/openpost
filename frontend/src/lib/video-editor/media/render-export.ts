@@ -47,6 +47,11 @@ import {
 	type GpuRenderEffect
 } from '../effects/gpu/compositor';
 import { getGpuEffectDefaultParams } from '../effects/gpu/registry';
+import {
+	collectAdjustmentLayers,
+	effectsForItemAtFrame,
+	type AdjustmentLayerScope
+} from '../effects/adjustment-layers';
 import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
 import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
@@ -304,6 +309,8 @@ export class TimelineFrameRenderer {
 	private readonly transitions: TimelineTransition[];
 	private readonly itemsById: Map<string, TimelineItem>;
 	private readonly burnSubtitles: boolean;
+	private readonly trackOrderById: Map<string, number>;
+	private readonly adjustmentLayers: AdjustmentLayerScope[];
 	private readonly decoders = new Map<string, VideoDecoder>();
 	private readonly imageCache = new Map<string, ImageBitmap>();
 	private readonly inputs: Input[] = [];
@@ -327,6 +334,8 @@ export class TimelineFrameRenderer {
 		this.fps = project.metadata.fps;
 		const items = project.timeline?.items ?? [];
 		const tracks = project.timeline?.tracks ?? [];
+		this.trackOrderById = new Map(tracks.map((track) => [track.id, track.order]));
+		this.adjustmentLayers = collectAdjustmentLayers(items, tracks);
 		this.burnSubtitles = options.burnSubtitles ?? true;
 		this.orderedItems = paintOrder(items, tracks).filter(
 			(item) =>
@@ -434,6 +443,12 @@ export class TimelineFrameRenderer {
 				resolveAnimatedItemAt(item, frame),
 				this.width / this.project.metadata.width,
 				this.height / this.project.metadata.height
+			);
+			resolvedItem.effects = effectsForItemAtFrame(
+				resolvedItem,
+				this.trackOrderById.get(item.trackId) ?? 0,
+				this.adjustmentLayers,
+				frame
 			);
 			let alpha = baseOpacity(resolvedItem);
 			if (blend) {

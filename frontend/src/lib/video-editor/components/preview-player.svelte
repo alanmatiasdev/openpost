@@ -24,6 +24,10 @@
 	import PreviewLayer from './preview-layer.svelte';
 	import PreviewAudioLayer from './preview-audio-layer.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
+	import {
+		collectAdjustmentLayers,
+		effectsForItemAtFrame
+	} from '$lib/video-editor/effects/adjustment-layers';
 
 	let {
 		selectedItemId = $bindable(null),
@@ -52,6 +56,12 @@
 					item.id === activeTransition?.outgoing ||
 					item.id === activeTransition?.incoming)
 		)
+	);
+	const trackOrderById = $derived(
+		new Map(timelineStore.tracks.map((track) => [track.id, track.order]))
+	);
+	const adjustmentLayers = $derived(
+		collectAdjustmentLayers(timelineStore.items, timelineStore.tracks)
 	);
 	const selectedItem = $derived(
 		selectedItemId ? activeItems.find((item) => item.id === selectedItemId) : undefined
@@ -85,6 +95,15 @@
 		if (state?.outgoing === item.id) return outgoingOpacity(state.type, state.progress);
 		if (state?.incoming === item.id) return incomingOpacity(state.type, state.progress);
 		return 1;
+	}
+
+	function effectiveEffects(item: TimelineItem) {
+		return effectsForItemAtFrame(
+			item,
+			trackOrderById.get(item.trackId) ?? 0,
+			adjustmentLayers,
+			timelineStore.currentFrame
+		);
 	}
 
 	function startGizmo(event: PointerEvent, mode: 'move' | 'resize'): void {
@@ -156,6 +175,7 @@
 					url={urls[item.mediaId ?? '']}
 					{canvasWidth}
 					{canvasHeight}
+					effectiveEffects={effectiveEffects(item)}
 					selected={item.id === selectedItemId}
 					opacityMultiplier={transitionOpacity(item)}
 					overrideTransform={item.id === selectedItemId ? (draftTransform ?? undefined) : undefined}

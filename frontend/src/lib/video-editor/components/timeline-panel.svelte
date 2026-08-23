@@ -347,6 +347,7 @@
 		image: string;
 		text: string;
 		subtitle: string;
+		adjustment: string;
 	}
 
 	function clipStyle(item: { from: number; durationInFrames: number; type: string }): string {
@@ -355,7 +356,8 @@
 			audio: 'oklch(0.35 0.03 300)',
 			image: 'oklch(0.45 0.05 250)',
 			text: 'oklch(0.55 0.02 290)',
-			subtitle: 'oklch(0.55 0.02 290)'
+			subtitle: 'oklch(0.55 0.02 290)',
+			adjustment: 'oklch(0.48 0.09 45)'
 		};
 		// SAFETY: item.type values are exactly the ClipPalette keys.
 		const fill = palette[item.type as keyof ClipPalette] ?? palette.video;

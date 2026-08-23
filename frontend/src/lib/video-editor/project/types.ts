@@ -2,11 +2,11 @@
  * Project document model for the OpenPost Video Editor.
  *
  * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
- * video / audio / image / text / subtitle items, one top-level sequence,
- * no compositions, shapes, masks, or per-band EQ.
+ * video / audio / image / text / subtitle / adjustment items, one top-level
+ * sequence, no compositions, shapes, masks, or per-band EQ.
  */
 
-export type TimelineItemKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle';
+export type TimelineItemKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'adjustment';
 
 export interface ItemTransform {
 	x?: number;

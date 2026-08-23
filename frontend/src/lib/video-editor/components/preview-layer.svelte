@@ -19,6 +19,7 @@
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import { previewItemVolume } from '$lib/video-editor/preview/playback-settings';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
+	import type { ItemEffect } from '$lib/video-editor/effects/types';
 
 	let {
 		item,
@@ -26,6 +27,7 @@
 		canvasWidth,
 		canvasHeight,
 		opacityMultiplier = 1,
+		effectiveEffects,
 		overrideTransform,
 		selected = false,
 		onselect
@@ -35,6 +37,7 @@
 		canvasWidth: number;
 		canvasHeight: number;
 		opacityMultiplier?: number;
+		effectiveEffects?: ItemEffect[];
 		overrideTransform?: ItemTransform;
 		selected?: boolean;
 		onselect: () => void;
@@ -51,8 +54,9 @@
 	let lastScopeAt = 0;
 	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
 	const transform = $derived(overrideTransform ?? resolved.transform ?? {});
+	const renderEffects = $derived(effectiveEffects ?? resolved.effects ?? []);
 	const gpuEffects = $derived.by<GpuRenderEffect[]>(() =>
-		(item.effects ?? []).flatMap((effect) =>
+		renderEffects.flatMap((effect) =>
 			effect.type === 'gpu' && effect.enabled
 				? [
 						{
@@ -80,7 +84,7 @@
 			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${transform.rotation ?? 0}deg) scaleX(${transform.flipHorizontal ? -1 : 1}) scaleY(${transform.flipVertical ? -1 : 1})`,
 			`opacity:${Math.max(0, Math.min(1, (transform.opacity ?? 1) * opacityMultiplier))}`,
 			`border-radius:${(Math.max(0, transform.cornerRadius ?? 0) / canvasWidth) * 100}cqw`,
-			`filter:${effectsToCssFilter(resolved.effects)}`
+			`filter:${effectsToCssFilter(renderEffects)}`
 		].join(';');
 	});
 	const mediaCropStyle = $derived.by(() => {

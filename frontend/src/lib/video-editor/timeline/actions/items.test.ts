@@ -3,7 +3,7 @@ import { createDefaultTracks } from '$lib/video-editor/project/defaults';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
-import { addTextItem, linkItems, setCurrentFrame, unlinkItems } from './items';
+import { addAdjustmentLayer, addTextItem, linkItems, setCurrentFrame, unlinkItems } from './items';
 
 function clip(overrides: Partial<TimelineItem>): TimelineItem {
 	return {
@@ -45,6 +45,50 @@ describe('addTextItem', () => {
 
 		commandHistory.undo();
 		expect(timelineStore.itemById.has(id)).toBe(false);
+	});
+});
+
+describe('addAdjustmentLayer', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		timelineStore._setTracks(createDefaultTracks());
+		commandHistory.clearHistory();
+	});
+
+	it('adds an empty grade layer to the top visual track as one undoable step', () => {
+		setCurrentFrame(45);
+
+		const id = addAdjustmentLayer('Adjustment layer');
+
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			trackId: 'track-video-overlay',
+			from: 45,
+			durationInFrames: 90,
+			label: 'Adjustment layer',
+			type: 'adjustment',
+			effects: []
+		});
+		expect(commandHistory.getLastCommandType()).toBe('ADD_ADJUSTMENT_LAYER');
+		commandHistory.undo();
+		expect(timelineStore.itemById.has(id)).toBe(false);
+	});
+
+	it('creates a higher visual track when the top track is occupied at the playhead', () => {
+		timelineStore._setItems([
+			clip({ id: 'overlay', trackId: 'track-video-overlay', from: 30, durationInFrames: 90 })
+		]);
+		setCurrentFrame(45);
+
+		const id = addAdjustmentLayer('Adjustment layer');
+		const adjustment = timelineStore.itemById.get(id);
+		const adjustmentTrack = timelineStore.tracks.find((track) => track.id === adjustment?.trackId);
+
+		expect(adjustmentTrack?.order).toBe(-1);
+		expect(adjustmentTrack?.name).toBe('Adjustment layer');
+		expect(timelineStore.tracks).toHaveLength(4);
+		commandHistory.undo();
+		expect(timelineStore.tracks).toHaveLength(3);
+		expect(timelineStore.items).toHaveLength(1);
 	});
 });
 

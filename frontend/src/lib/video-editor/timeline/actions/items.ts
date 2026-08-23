@@ -44,6 +44,44 @@ export function addTextItem(label: string): string {
 	});
 }
 
+/** Add a three-second adjustment layer on the top visual track at the playhead. */
+export function addAdjustmentLayer(label: string): string {
+	return execute('ADD_ADJUSTMENT_LAYER', () => {
+		let topVisualTrack = timelineStore.tracks
+			.filter((track) => track.kind !== 'audio' && !track.locked)
+			.toSorted((left, right) => left.order - right.order)[0];
+		if (!topVisualTrack) throw new Error('An unlocked visual track is required.');
+
+		const from = timelineStore.currentFrame;
+		const durationInFrames = timelineStore.fps * 3;
+		const end = from + durationInFrames;
+		const topTrackOccupied = (timelineStore.itemsByTrackId.get(topVisualTrack.id) ?? []).some(
+			(item) => item.from < end && item.from + item.durationInFrames > from
+		);
+		if (topTrackOccupied) {
+			topVisualTrack = {
+				...topVisualTrack,
+				id: crypto.randomUUID(),
+				name: label,
+				order: Math.min(...timelineStore.tracks.map((track) => track.order)) - 1
+			};
+			timelineStore._setTracks([...timelineStore.tracks, topVisualTrack]);
+		}
+
+		const id = crypto.randomUUID();
+		timelineStore._addItem({
+			id,
+			trackId: topVisualTrack.id,
+			from,
+			durationInFrames,
+			label,
+			type: 'adjustment',
+			effects: []
+		});
+		return id;
+	});
+}
+
 export function removeItems(ids: string[]): void {
 	execute('REMOVE_ITEMS', () => {
 		const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
@@ -285,7 +323,7 @@ export function toggleMarkerAtPlayhead(): void {
 export function slipItem(id: string, deltaSourceFrames: number): void {
 	execute('SLIP_ITEM', () => {
 		const item = timelineStore.itemById.get(id);
-		if (!item || item.type === 'text' || item.type === 'subtitle') return;
+		if (!item || (item.type !== 'video' && item.type !== 'audio')) return;
 		const start = item.sourceStart ?? 0;
 		const end = item.sourceEnd ?? start + item.durationInFrames;
 		const limit = (item.sourceDuration ?? end) - (end - start);
@@ -300,7 +338,7 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 export function setItemSpeed(id: string, speed: number): void {
 	execute('SET_ITEM_SPEED', () => {
 		const item = timelineStore.itemById.get(id);
-		if (!item || item.type === 'text' || item.type === 'subtitle') return;
+		if (!item || (item.type !== 'video' && item.type !== 'audio')) return;
 		const clamped = Math.min(Math.max(speed, 0.1), 8);
 		const previous = item.speed ?? 1;
 		if (clamped === previous) return;

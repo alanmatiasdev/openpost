@@ -237,6 +237,15 @@ describe('paintOrder', () => {
 		);
 		expect(ordered.map((entry) => entry.id)).toEqual(['shown-item']);
 	});
+
+	it('renders only solo tracks when any track is soloed', () => {
+		const ordered = paintOrder(
+			[item({ id: 'normal-item', trackId: 'normal' }), item({ id: 'solo-item', trackId: 'solo' })],
+			[track('normal', 'video', 0), track('solo', 'video', 1, { solo: true })]
+		);
+
+		expect(ordered.map((entry) => entry.id)).toEqual(['solo-item']);
+	});
 });
 
 describe('selectCuesAtFrame', () => {

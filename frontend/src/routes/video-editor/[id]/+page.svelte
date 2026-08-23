@@ -12,6 +12,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
+		addAdjustmentLayer,
 		addTextItem,
 		rippleDeleteItems,
 		splitAtFrame,
@@ -159,6 +160,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
+	function handleAddAdjustmentLayer(): void {
+		const id = addAdjustmentLayer(m.video_editor_adjustment_layer());
+		selectedItemId = id;
+		editorSession.scheduleAutosave();
+	}
+
 	async function handleTranscribe(): Promise<void> {
 		if (!selectedItemId || transcribing) return;
 		const item = timelineStore.itemById.get(selectedItemId);
@@ -205,6 +212,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
+	const selectedSupportsEffects = $derived(
+		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type !== 'audio'
+	);
 	const selectedIsMedia = $derived(
 		selectedItemId !== null &&
 			['video', 'audio'].includes(timelineStore.itemById.get(selectedItemId)?.type ?? '')
@@ -438,6 +448,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" onclick={handleAddText}>
 						{m.video_editor_add_text()}
 					</Button>
+					<Button size="sm" variant="outline" onclick={handleAddAdjustmentLayer}>
+						{m.video_editor_add_adjustment_layer()}
+					</Button>
 					{#if selectedItemId}
 						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 							<ClipPropertiesPanel
@@ -459,7 +472,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{m.video_editor_scene_split()}
 						</Button>
 					{/if}
-					{#if selectedIsMedia}
+					{#if selectedSupportsEffects}
 						<EffectsPanel itemId={selectedItemId} onedit={() => editorSession.scheduleAutosave()} />
 					{/if}
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">

@@ -177,38 +177,45 @@
 
 {#if item}
 	<div class="flex flex-col gap-3" aria-label={m.video_editor_clip_properties()}>
-		<section>
-			<h3
-				class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
-			>
-				{m.video_editor_property_transform()}
-			</h3>
-			<div class="grid grid-cols-2 gap-1">
-				{#each transformFields as field (field.property)}
-					<label class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
-						<span class="flex items-center justify-between gap-1">
-							{field.label}
-							<button
-								type="button"
-								class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
-								class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
-								aria-label={m.video_editor_property_auto_key({ property: field.label })}
-								onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
-							>
-						</span>
-						<Input
-							class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-							type="number"
-							min={field.min}
-							max={field.max}
-							step={field.step}
-							value={valueFor(item, field.property)}
-							onchange={(event) => commitNumeric(field.property, event.currentTarget.valueAsNumber)}
-						/>
-					</label>
-				{/each}
-			</div>
-		</section>
+		{#if item.type === 'adjustment'}
+			<p class="text-xs leading-relaxed text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_adjustment_layer_hint()}
+			</p>
+		{:else}
+			<section>
+				<h3
+					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+				>
+					{m.video_editor_property_transform()}
+				</h3>
+				<div class="grid grid-cols-2 gap-1">
+					{#each transformFields as field (field.property)}
+						<label class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
+							<span class="flex items-center justify-between gap-1">
+								{field.label}
+								<button
+									type="button"
+									class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
+									class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
+									aria-label={m.video_editor_property_auto_key({ property: field.label })}
+									onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
+								>
+							</span>
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								type="number"
+								min={field.min}
+								max={field.max}
+								step={field.step}
+								value={valueFor(item, field.property)}
+								onchange={(event) =>
+									commitNumeric(field.property, event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+					{/each}
+				</div>
+			</section>
+		{/if}
 
 		{#if item.type === 'video' || item.type === 'image'}
 			<section>

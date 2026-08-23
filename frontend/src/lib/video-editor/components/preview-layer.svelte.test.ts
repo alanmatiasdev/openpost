@@ -63,6 +63,56 @@ function project(item: TimelineItem): Project {
 	};
 }
 
+function projectWithAdjustment(item: TimelineItem): Project {
+	const adjustment: TimelineItem = {
+		id: 'grade',
+		trackId: 'grade-track',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Adjustment layer',
+		type: 'adjustment',
+		effects: [
+			{
+				id: 'invert-grade',
+				type: 'gpu',
+				effectId: 'gpu-invert',
+				enabled: true,
+				params: {}
+			}
+		]
+	};
+	return {
+		...project({ ...item, trackId: 'content-track', effects: [] }),
+		timeline: {
+			tracks: [
+				{
+					id: 'grade-track',
+					name: 'Grade',
+					kind: 'video',
+					height: 64,
+					locked: false,
+					visible: true,
+					muted: false,
+					solo: false,
+					order: 0
+				},
+				{
+					id: 'content-track',
+					name: 'Content',
+					kind: 'video',
+					height: 64,
+					locked: false,
+					visible: true,
+					muted: false,
+					solo: false,
+					order: 1
+				}
+			],
+			items: [adjustment, { ...item, trackId: 'content-track', effects: [] }]
+		}
+	};
+}
+
 function subtitleItem(): TimelineItem {
 	return {
 		id: 'captions',
@@ -171,6 +221,41 @@ describe('PreviewLayer GPU rendering', () => {
 			if (!context) return;
 			const pixel = context.getImageData(4, HEIGHT - 5, 1, 1).data;
 			expectCyan(pixel);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('applies an active adjustment layer in preview and full-resolution export', async () => {
+		const item = textItem({ effects: [] });
+		const effectiveEffects = textItem().effects;
+		timelineStore.setAll({ items: [item], currentFrame: 0, fps: 30 });
+		const screen = await render(PreviewLayer, {
+			item,
+			effectiveEffects,
+			url: null,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const output = screen.container.querySelector<HTMLCanvasElement>('canvas[data-gpu-preview]');
+		expect(output).not.toBeNull();
+		if (!output) return;
+		await vi.waitFor(() => expect(output.hidden).toBe(false));
+		const gl = output.getContext('webgl2');
+		expect(gl).not.toBeNull();
+		if (!gl) return;
+		const previewPixel = new Uint8Array(4);
+		gl.readPixels(4, 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, previewPixel);
+		expectCyan(previewPixel);
+
+		const renderer = new TimelineFrameRenderer(projectWithAdjustment(item));
+		try {
+			const frame = await renderer.render(0);
+			const context = frame.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			expectCyan(context.getImageData(4, HEIGHT - 5, 1, 1).data);
 		} finally {
 			renderer.dispose();
 		}

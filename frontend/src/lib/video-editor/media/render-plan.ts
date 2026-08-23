@@ -149,8 +149,12 @@ export function transitionBlendAtFrame(
  */
 export function paintOrder(items: TimelineItem[], tracks: TimelineTrack[]): TimelineItem[] {
 	const trackById = new Map(tracks.map((track) => [track.id, track]));
+	const anySolo = tracks.some((track) => track.solo);
 	return items
-		.filter((item) => trackById.get(item.trackId)?.visible !== false)
+		.filter((item) => {
+			const track = trackById.get(item.trackId);
+			return track !== undefined && (anySolo ? track.solo : track.visible !== false);
+		})
 		.sort(
 			(a, b) => (trackById.get(b.trackId)?.order ?? 0) - (trackById.get(a.trackId)?.order ?? 0)
 		);
