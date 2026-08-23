@@ -16,6 +16,7 @@ import {
 } from '$lib/video-editor/timeline/vector-keyframes';
 
 export type CropEdge = 'left' | 'right' | 'top' | 'bottom';
+export type TransformHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 export const CROP_EDGE_PROPERTY = {
 	left: 'cropLeft',
@@ -39,6 +40,7 @@ export interface MotionPathPoint extends Point {
 }
 
 const MIN_VISIBLE_RATIO = 0.001;
+export const MIN_TRANSFORM_SIZE = 20;
 
 export function resolveCrop(crop: CropSettings | undefined): CropSettings {
 	return {
@@ -118,6 +120,218 @@ function rotateVector(point: Point, angleDegrees: number): Point {
 		x: point.x * cos - point.y * sin,
 		y: point.x * sin + point.y * cos
 	};
+}
+
+export function transformHandlePoint({
+	transform,
+	handle,
+	canvasWidth,
+	canvasHeight
+}: {
+	transform: Required<Pick<ItemTransform, 'x' | 'y' | 'width' | 'height' | 'rotation'>> &
+		ItemTransform;
+	handle: TransformHandle;
+	canvasWidth: number;
+	canvasHeight: number;
+}): Point {
+	const anchorX = transform.anchorX ?? transform.width / 2;
+	const anchorY = transform.anchorY ?? transform.height / 2;
+	const local = {
+		x: handle.includes('w')
+			? -anchorX
+			: handle.includes('e')
+				? transform.width - anchorX
+				: transform.width / 2 - anchorX,
+		y: handle.includes('n')
+			? -anchorY
+			: handle.includes('s')
+				? transform.height - anchorY
+				: transform.height / 2 - anchorY
+	};
+	const rotated = rotateVector(local, transform.rotation);
+	return {
+		x: canvasWidth / 2 + transform.x + rotated.x,
+		y: canvasHeight / 2 + transform.y + rotated.y
+	};
+}
+
+/**
+ * Resize in item-local space. FreeCut scales from the transform origin by
+ * default and keeps the opposite edge or corner fixed while Control is held.
+ */
+export function calculateTransformResize({
+	startTransform,
+	handle,
+	startPoint,
+	currentPoint,
+	maintainAspectRatio,
+	oppositeAnchored,
+	canvasWidth,
+	canvasHeight
+}: {
+	startTransform: Required<Pick<ItemTransform, 'x' | 'y' | 'width' | 'height' | 'rotation'>> &
+		ItemTransform;
+	handle: TransformHandle;
+	startPoint: Point;
+	currentPoint: Point;
+	maintainAspectRatio: boolean;
+	oppositeAnchored: boolean;
+	canvasWidth: number;
+	canvasHeight: number;
+}): ItemTransform {
+	const origin = {
+		x: canvasWidth / 2 + startTransform.x,
+		y: canvasHeight / 2 + startTransform.y
+	};
+	const localStart = rotateVector(
+		{ x: startPoint.x - origin.x, y: startPoint.y - origin.y },
+		-startTransform.rotation
+	);
+	const localCurrent = rotateVector(
+		{ x: currentPoint.x - origin.x, y: currentPoint.y - origin.y },
+		-startTransform.rotation
+	);
+	const affectsLeft = handle.includes('w');
+	const affectsRight = handle.includes('e');
+	const affectsTop = handle.includes('n');
+	const affectsBottom = handle.includes('s');
+	const corner = (affectsLeft || affectsRight) && (affectsTop || affectsBottom);
+	const aspect = startTransform.width / Math.max(MIN_TRANSFORM_SIZE, startTransform.height);
+	let newWidth = startTransform.width;
+	let newHeight = startTransform.height;
+
+	if (maintainAspectRatio && corner) {
+		const reference = oppositeAnchored
+			? oppositeLocalPoint(startTransform, handle)
+			: { x: 0, y: 0 };
+		const startDistance = Math.hypot(localStart.x - reference.x, localStart.y - reference.y);
+		const currentDistance = Math.hypot(localCurrent.x - reference.x, localCurrent.y - reference.y);
+		const requestedScale = startDistance > 0 ? currentDistance / startDistance : 1;
+		const minimumScale = Math.max(
+			MIN_TRANSFORM_SIZE / startTransform.width,
+			MIN_TRANSFORM_SIZE / startTransform.height
+		);
+		const scale = Math.max(minimumScale, requestedScale);
+		newWidth = startTransform.width * scale;
+		newHeight = startTransform.height * scale;
+	} else {
+		const multiplier = oppositeAnchored ? 1 : 2;
+		const dx = localCurrent.x - localStart.x;
+		const dy = localCurrent.y - localStart.y;
+		if (affectsRight) newWidth += dx * multiplier;
+		else if (affectsLeft) newWidth -= dx * multiplier;
+		if (affectsBottom) newHeight += dy * multiplier;
+		else if (affectsTop) newHeight -= dy * multiplier;
+
+		if (maintainAspectRatio) {
+			const horizontalEdge = (affectsLeft || affectsRight) && !affectsTop && !affectsBottom;
+			if (horizontalEdge) newHeight = newWidth / aspect;
+			else newWidth = newHeight * aspect;
+			const minimumScale = Math.max(
+				MIN_TRANSFORM_SIZE / startTransform.width,
+				MIN_TRANSFORM_SIZE / startTransform.height
+			);
+			const scale = Math.max(
+				minimumScale,
+				Math.min(newWidth / startTransform.width, newHeight / startTransform.height)
+			);
+			newWidth = startTransform.width * scale;
+			newHeight = startTransform.height * scale;
+		} else {
+			newWidth = Math.max(MIN_TRANSFORM_SIZE, newWidth);
+			newHeight = Math.max(MIN_TRANSFORM_SIZE, newHeight);
+		}
+	}
+
+	let x = startTransform.x;
+	let y = startTransform.y;
+	if (oppositeAnchored) {
+		const startOpposite = oppositeLocalPoint(startTransform, handle);
+		const nextTransform = { ...startTransform, width: newWidth, height: newHeight };
+		const nextOpposite = oppositeLocalPoint(nextTransform, handle);
+		const compensation = rotateVector(
+			{
+				x: startOpposite.x - nextOpposite.x,
+				y: startOpposite.y - nextOpposite.y
+			},
+			startTransform.rotation
+		);
+		x += compensation.x;
+		y += compensation.y;
+	}
+
+	return { ...startTransform, x, y, width: newWidth, height: newHeight };
+}
+
+export function calculateTransformRotation({
+	startTransform,
+	startPoint,
+	currentPoint,
+	canvasWidth,
+	canvasHeight,
+	snap = true
+}: {
+	startTransform: Required<Pick<ItemTransform, 'x' | 'y' | 'width' | 'height' | 'rotation'>> &
+		ItemTransform;
+	startPoint: Point;
+	currentPoint: Point;
+	canvasWidth: number;
+	canvasHeight: number;
+	snap?: boolean;
+}): ItemTransform {
+	const origin = {
+		x: canvasWidth / 2 + startTransform.x,
+		y: canvasHeight / 2 + startTransform.y
+	};
+	const startAngle = Math.atan2(startPoint.y - origin.y, startPoint.x - origin.x);
+	const currentAngle = Math.atan2(currentPoint.y - origin.y, currentPoint.x - origin.x);
+	let rotation = normalizeAngle(
+		startTransform.rotation + ((currentAngle - startAngle) * 180) / Math.PI
+	);
+	if (snap) rotation = normalizeAngle(Math.round(rotation / 15) * 15);
+	return { ...startTransform, rotation };
+}
+
+export function transformHandleCursor(handle: TransformHandle, rotation: number): string {
+	const baseAngle = {
+		e: 0,
+		se: 45,
+		s: 90,
+		sw: 135,
+		w: 180,
+		nw: 225,
+		n: 270,
+		ne: 315
+	}[handle];
+	const index = Math.round(((((baseAngle + rotation) % 360) + 360) % 360) / 45) % 4;
+	return ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][index] ?? 'default';
+}
+
+function oppositeLocalPoint(
+	transform: Required<Pick<ItemTransform, 'width' | 'height'>> & ItemTransform,
+	handle: TransformHandle
+): Point {
+	const anchorX = transform.anchorX ?? transform.width / 2;
+	const anchorY = transform.anchorY ?? transform.height / 2;
+	return {
+		x: handle.includes('e')
+			? -anchorX
+			: handle.includes('w')
+				? transform.width - anchorX
+				: transform.width / 2 - anchorX,
+		y: handle.includes('s')
+			? -anchorY
+			: handle.includes('n')
+				? transform.height - anchorY
+				: transform.height / 2 - anchorY
+	};
+}
+
+function normalizeAngle(angle: number): number {
+	let normalized = angle;
+	while (normalized > 180) normalized -= 360;
+	while (normalized <= -180) normalized += 360;
+	return normalized;
 }
 
 /** Move an anchor in local space while preserving the layer's visible pose. */

@@ -3,7 +3,11 @@ import type { TimelineItem } from '$lib/video-editor/project/types';
 import {
 	buildMotionPathPoints,
 	calculateAnchorDrag,
-	calculateCropFromDrag
+	calculateCropFromDrag,
+	calculateTransformResize,
+	calculateTransformRotation,
+	transformHandleCursor,
+	transformHandlePoint
 } from './on-canvas-tools';
 
 describe('on-canvas crop geometry', () => {
@@ -47,6 +51,142 @@ describe('on-canvas anchor geometry', () => {
 		expect(next.anchorY).toBeCloseTo(50);
 		expect(next.x).toBeCloseTo(-10);
 		expect(next.y).toBeCloseTo(40);
+	});
+});
+
+describe('on-canvas transform geometry', () => {
+	const transform = { x: 0, y: 0, width: 200, height: 100, rotation: 0 };
+
+	it('scales media from its center with aspect lock by default', () => {
+		const startPoint = transformHandlePoint({
+			transform,
+			handle: 'se',
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		const next = calculateTransformResize({
+			startTransform: transform,
+			handle: 'se',
+			startPoint,
+			currentPoint: { x: startPoint.x + 50, y: startPoint.y + 25 },
+			maintainAspectRatio: true,
+			oppositeAnchored: false,
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		expect(next.x).toBe(0);
+		expect(next.y).toBe(0);
+		expect(next.width).toBeCloseTo(300);
+		expect(next.height).toBeCloseTo(150);
+	});
+
+	it('supports free edge scaling and Control-anchored opposite edges', () => {
+		const startPoint = transformHandlePoint({
+			transform,
+			handle: 'e',
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		expect(
+			calculateTransformResize({
+				startTransform: transform,
+				handle: 'e',
+				startPoint,
+				currentPoint: { x: startPoint.x + 50, y: startPoint.y },
+				maintainAspectRatio: false,
+				oppositeAnchored: false,
+				canvasWidth: 1000,
+				canvasHeight: 500
+			})
+		).toMatchObject({ x: 0, y: 0, width: 300, height: 100 });
+		expect(
+			calculateTransformResize({
+				startTransform: transform,
+				handle: 'e',
+				startPoint,
+				currentPoint: { x: startPoint.x + 50, y: startPoint.y },
+				maintainAspectRatio: true,
+				oppositeAnchored: true,
+				canvasWidth: 1000,
+				canvasHeight: 500
+			})
+		).toMatchObject({ x: 25, y: 0, width: 250, height: 125 });
+	});
+
+	it('does not flip through a handle or collapse below the FreeCut minimum', () => {
+		const startPoint = transformHandlePoint({
+			transform,
+			handle: 'e',
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		const next = calculateTransformResize({
+			startTransform: transform,
+			handle: 'e',
+			startPoint,
+			currentPoint: { x: startPoint.x - 500, y: startPoint.y },
+			maintainAspectRatio: false,
+			oppositeAnchored: false,
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		expect(next).toMatchObject({ width: 20, height: 100 });
+	});
+
+	it('keeps a rotated opposite corner fixed in project space', () => {
+		const rotated = { ...transform, rotation: 90 };
+		const startPoint = transformHandlePoint({
+			transform: rotated,
+			handle: 'se',
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		const next = calculateTransformResize({
+			startTransform: rotated,
+			handle: 'se',
+			startPoint,
+			currentPoint: { x: startPoint.x - 25, y: startPoint.y + 50 },
+			maintainAspectRatio: true,
+			oppositeAnchored: true,
+			canvasWidth: 1000,
+			canvasHeight: 500
+		});
+		expect(next.x).toBeCloseTo(-12.5);
+		expect(next.y).toBeCloseTo(25);
+		expect(next.width).toBeCloseTo(250);
+		expect(next.height).toBeCloseTo(125);
+		expect(next.rotation).toBe(90);
+	});
+
+	it('snaps rotation to 15 degrees unless free rotation is requested', () => {
+		const startPoint = { x: 500, y: 150 };
+		const angle = (22 * Math.PI) / 180;
+		const currentPoint = { x: 500 + Math.sin(angle) * 100, y: 250 - Math.cos(angle) * 100 };
+		expect(
+			calculateTransformRotation({
+				startTransform: transform,
+				startPoint,
+				currentPoint,
+				canvasWidth: 1000,
+				canvasHeight: 500
+			}).rotation
+		).toBe(15);
+		expect(
+			calculateTransformRotation({
+				startTransform: transform,
+				startPoint,
+				currentPoint,
+				canvasWidth: 1000,
+				canvasHeight: 500,
+				snap: false
+			}).rotation
+		).toBeCloseTo(22);
+	});
+
+	it('rotates resize cursors with the selected item', () => {
+		expect(transformHandleCursor('e', 0)).toBe('ew-resize');
+		expect(transformHandleCursor('e', 90)).toBe('ns-resize');
+		expect(transformHandleCursor('ne', 45)).toBe('ew-resize');
 	});
 });
 

@@ -13,17 +13,25 @@
 		buildMotionPathPoints,
 		calculateAnchorDrag,
 		calculateCropFromDrag,
+		calculateTransformResize,
+		calculateTransformRotation,
 		CROP_EDGE_PROPERTY,
+		MIN_TRANSFORM_SIZE,
 		positionKeyframeFrames,
 		resolveCrop,
 		type CropEdge,
 		type MotionPathPoint,
-		type Point
+		type Point,
+		transformHandleCursor,
+		transformHandlePoint,
+		type TransformHandle
 	} from '$lib/video-editor/preview/on-canvas-tools';
 	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
 
 	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion';
+	type TransformOperation = 'move' | 'resize' | 'rotate';
 	type AnimatedValues = Partial<Record<KeyframeProperty, number>>;
+	const TRANSFORM_HANDLES: TransformHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 	let {
 		item,
@@ -77,8 +85,8 @@
 	let cancelActiveGesture: (() => void) | null = null;
 
 	const transform = $derived(draftTransform ?? item.transform ?? {});
-	const width = $derived(Math.max(16, transform.width ?? canvasWidth));
-	const height = $derived(Math.max(16, transform.height ?? canvasHeight));
+	const width = $derived(Math.max(MIN_TRANSFORM_SIZE, transform.width ?? canvasWidth));
+	const height = $derived(Math.max(MIN_TRANSFORM_SIZE, transform.height ?? canvasHeight));
 	const anchorX = $derived(transform.anchorX ?? width / 2);
 	const anchorY = $derived(transform.anchorY ?? height / 2);
 	const rotation = $derived(transform.rotation ?? 0);
@@ -267,35 +275,80 @@
 		cancelActiveGesture = cancelGesture;
 	}
 
-	function startTransform(event: PointerEvent, mode: 'move' | 'resize'): void {
+	function startTransform(
+		event: PointerEvent,
+		operation: TransformOperation,
+		handle?: TransformHandle
+	): void {
 		if (activeTool !== 'transform') return;
 		const start = canvasPoint(event);
 		const base = resolvedTransform();
+		const resizeStart =
+			operation === 'resize' && handle
+				? transformHandlePoint({ transform: base, handle, canvasWidth, canvasHeight })
+				: null;
+		let moveAxis: 'x' | 'y' | null = null;
 		attachPointerGesture(
 			event,
-			(point) => {
-				const dx = point.x - start.x;
-				const dy = point.y - start.y;
-				draftTransform =
-					mode === 'move'
-						? { ...base, x: base.x + dx, y: base.y + dy }
-						: {
-								...base,
-								width: Math.max(16, base.width + dx),
-								height: Math.max(16, base.height + dy)
-							};
+			(point, pointer) => {
+				if (operation === 'move') {
+					let dx = point.x - start.x;
+					let dy = point.y - start.y;
+					if (pointer.shiftKey) {
+						moveAxis ??= Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+						if (moveAxis === 'x') dy = 0;
+						else dx = 0;
+					}
+					draftTransform = { ...base, x: base.x + dx, y: base.y + dy };
+				} else if (operation === 'resize' && handle) {
+					draftTransform = calculateTransformResize({
+						startTransform: base,
+						handle,
+						startPoint: resizeStart ?? start,
+						currentPoint: resizeStart
+							? {
+									x: resizeStart.x + point.x - start.x,
+									y: resizeStart.y + point.y - start.y
+								}
+							: point,
+						maintainAspectRatio: aspectRatioLocked(pointer.shiftKey),
+						oppositeAnchored: pointer.ctrlKey,
+						canvasWidth,
+						canvasHeight
+					});
+				} else if (operation === 'rotate') {
+					draftTransform = calculateTransformRotation({
+						startTransform: base,
+						startPoint: start,
+						currentPoint: point,
+						canvasWidth,
+						canvasHeight,
+						snap: !pointer.altKey
+					});
+				}
 				ontransformdraft(draftTransform);
 			},
 			() => {
 				const next = draftTransform;
 				if (next) {
-					const values =
-						mode === 'move' ? { x: next.x, y: next.y } : { width: next.width, height: next.height };
-					const committed =
-						mode === 'move' && hasMotion && next.x !== undefined && next.y !== undefined
-							? oncommitposition(currentFrame, next.x, next.y)
-							: oncommitvalues(currentFrame, values);
-					if (committed) onedit();
+					const values: AnimatedValues =
+						operation === 'move'
+							? { x: next.x, y: next.y }
+							: operation === 'rotate'
+								? { rotation: next.rotation }
+								: {
+										width: next.width,
+										height: next.height,
+										...(next.x !== base.x && { x: next.x }),
+										...(next.y !== base.y && { y: next.y })
+									};
+					if (transformValuesChanged(values, base)) {
+						const committed =
+							operation === 'move' && hasMotion && next.x !== undefined && next.y !== undefined
+								? oncommitposition(currentFrame, next.x, next.y)
+								: oncommitvalues(currentFrame, values);
+						if (committed) onedit();
+					}
 				}
 				draftTransform = null;
 				ontransformdraft(null);
@@ -305,6 +358,121 @@
 				ontransformdraft(null);
 			}
 		);
+	}
+
+	function aspectRatioLocked(shiftKey: boolean): boolean {
+		const locked = transform.aspectRatioLocked ?? item.type !== 'text';
+		return shiftKey ? !locked : locked;
+	}
+
+	function commitKeyboardTransform(values: AnimatedValues): void {
+		if (!transformValuesChanged(values, resolvedTransform())) return;
+		const committed =
+			values.x !== undefined &&
+			values.y !== undefined &&
+			hasMotion &&
+			Object.keys(values).length === 2
+				? oncommitposition(currentFrame, values.x, values.y)
+				: oncommitvalues(currentFrame, values);
+		if (committed) onedit();
+	}
+
+	function transformValuesChanged(
+		values: AnimatedValues,
+		base: Required<Pick<ItemTransform, 'x' | 'y' | 'width' | 'height' | 'rotation'>>
+	): boolean {
+		const epsilon = 0.000001;
+		return (
+			(values.x !== undefined && Math.abs(values.x - base.x) > epsilon) ||
+			(values.y !== undefined && Math.abs(values.y - base.y) > epsilon) ||
+			(values.width !== undefined && Math.abs(values.width - base.width) > epsilon) ||
+			(values.height !== undefined && Math.abs(values.height - base.height) > epsilon) ||
+			(values.rotation !== undefined && Math.abs(values.rotation - base.rotation) > epsilon)
+		);
+	}
+
+	function moveKeydown(event: KeyboardEvent): void {
+		const dx = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+		const dy = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+		if (!dx && !dy) return;
+		event.preventDefault();
+		const base = resolvedTransform();
+		const step = event.shiftKey ? 10 : 1;
+		commitKeyboardTransform({ x: base.x + dx * step, y: base.y + dy * step });
+	}
+
+	function resizeKeydown(event: KeyboardEvent, handle: TransformHandle): void {
+		const dx = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+		const dy = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+		if (!dx && !dy) return;
+		event.preventDefault();
+		const base = resolvedTransform();
+		const step = event.shiftKey ? 10 : 1;
+		const startPoint = transformHandlePoint({
+			transform: base,
+			handle,
+			canvasWidth,
+			canvasHeight
+		});
+		const next = calculateTransformResize({
+			startTransform: base,
+			handle,
+			startPoint,
+			currentPoint: { x: startPoint.x + dx * step, y: startPoint.y + dy * step },
+			maintainAspectRatio: aspectRatioLocked(event.shiftKey),
+			oppositeAnchored: event.ctrlKey,
+			canvasWidth,
+			canvasHeight
+		});
+		commitKeyboardTransform({
+			width: next.width,
+			height: next.height,
+			...(next.x !== base.x && { x: next.x }),
+			...(next.y !== base.y && { y: next.y })
+		});
+	}
+
+	function rotationKeydown(event: KeyboardEvent): void {
+		const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+		if (!direction) return;
+		event.preventDefault();
+		const base = resolvedTransform();
+		const step = event.shiftKey ? 15 : 1;
+		let next = base.rotation + direction * step;
+		while (next > 180) next -= 360;
+		while (next <= -180) next += 360;
+		commitKeyboardTransform({ rotation: next });
+	}
+
+	function transformHandleStyle(handle: TransformHandle): string {
+		const left = handle.includes('w') ? 0 : handle.includes('e') ? 100 : 50;
+		const top = handle.includes('n') ? 0 : handle.includes('s') ? 100 : 50;
+		return `left:${left}%;top:${top}%;transform:translate(-50%,-50%);cursor:${transformHandleCursor(handle, rotation)}`;
+	}
+
+	function transformHandleLabel(handle: TransformHandle): string {
+		switch (handle) {
+			case 'nw':
+				return m.video_editor_resize_nw();
+			case 'n':
+				return m.video_editor_resize_n();
+			case 'ne':
+				return m.video_editor_resize_ne();
+			case 'e':
+				return m.video_editor_resize_e();
+			case 'se':
+				return m.video_editor_resize_se();
+			case 's':
+				return m.video_editor_resize_s();
+			case 'sw':
+				return m.video_editor_resize_sw();
+			case 'w':
+				return m.video_editor_resize_w();
+		}
+	}
+
+	function cornerHandle(handle: TransformHandle): boolean {
+		return handle.length === 2;
 	}
 
 	function startCrop(event: PointerEvent, edge: CropEdge): void {
@@ -813,22 +981,58 @@
 	{:else}
 		<div
 			class="pointer-events-auto absolute border border-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_black]"
-			class:cursor-move={activeTool === 'transform'}
-			class:cursor-text={canEditText && activeTool === 'transform'}
 			style={boxStyle}
 			role="presentation"
 			data-canvas-item-box
-			onpointerdown={(event) => startTransform(event, 'move')}
-			ondblclick={() => canEditText && setTool('text')}
 		>
 			{#if activeTool === 'transform'}
 				<button
 					type="button"
-					class="absolute -right-4 -bottom-4 flex size-8 cursor-nwse-resize items-center justify-center rounded-full bg-transparent focus-visible:outline-2 focus-visible:outline-white"
-					aria-label={m.video_editor_preview_resize_selected()}
-					onpointerdown={(event) => startTransform(event, 'resize')}
+					class="absolute inset-0 z-0 cursor-move bg-transparent focus-visible:outline-2 focus-visible:outline-white"
+					class:cursor-text={canEditText}
+					aria-label={m.video_editor_move_selected()}
+					onpointerdown={(event) => startTransform(event, 'move')}
+					onkeydown={moveKeydown}
+					ondblclick={() => canEditText && setTool('text')}
+				></button>
+				{#each TRANSFORM_HANDLES as handle}
+					<button
+						type="button"
+						class="absolute z-10 flex size-8 items-center justify-center rounded-full bg-transparent focus-visible:outline-2 focus-visible:outline-white"
+						style={transformHandleStyle(handle)}
+						aria-label={transformHandleLabel(handle)}
+						title={m.video_editor_resize_modifier_hint()}
+						data-transform-handle={handle}
+						onpointerdown={(event) => startTransform(event, 'resize', handle)}
+						onkeydown={(event) => resizeKeydown(event, handle)}
+					>
+						<span
+							class="border border-black bg-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_white]"
+							class:size-3={cornerHandle(handle)}
+							class:h-2={handle === 'n' || handle === 's'}
+							class:w-5={handle === 'n' || handle === 's'}
+							class:h-5={handle === 'e' || handle === 'w'}
+							class:w-2={handle === 'e' || handle === 'w'}
+							class:rounded-sm={!cornerHandle(handle)}
+						></span>
+					</button>
+				{/each}
+				<button
+					type="button"
+					class="absolute left-1/2 z-10 flex size-8 -translate-1/2 cursor-crosshair items-center justify-center rounded-full bg-transparent focus-visible:outline-2 focus-visible:outline-white"
+					style:top="-32px"
+					aria-label={m.video_editor_rotate_selected()}
+					title={m.video_editor_rotation_modifier_hint()}
+					data-transform-handle="rotate"
+					onpointerdown={(event) => startTransform(event, 'rotate')}
+					onkeydown={rotationKeydown}
 				>
-					<span class="size-4 rounded-full border border-black bg-[oklch(0.72_0.16_45)]"></span>
+					<span
+						class="pointer-events-none absolute top-1/2 left-1/2 h-8 border-l border-dashed border-[oklch(0.72_0.16_45)] shadow-[1px_0_0_black]"
+					></span>
+					<span
+						class="z-10 size-3 rounded-full border border-black bg-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_white]"
+					></span>
 				</button>
 			{:else if activeTool === 'crop'}
 				<div class="pointer-events-none absolute inset-0 bg-black/15"></div>

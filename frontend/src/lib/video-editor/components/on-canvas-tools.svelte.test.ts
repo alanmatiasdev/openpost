@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import type { TimelineItem } from '$lib/video-editor/project/types';
+import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+import type { Point } from '$lib/video-editor/preview/on-canvas-tools';
 import OnCanvasTools from './on-canvas-tools.svelte';
 import '../../../routes/layout.css';
 
@@ -27,12 +28,14 @@ async function renderTools(item: TimelineItem) {
 		oncropdraft: vi.fn(),
 		ontextdraft: vi.fn(),
 		ontextediting: vi.fn(),
-		oncommitvalues: vi.fn(() => true),
-		oncommitposition: vi.fn(() => true),
-		oncreatespatial: vi.fn(() => true),
+		oncommitvalues: vi.fn(
+			(_frame: number, _values: Partial<Record<KeyframeProperty, number>>) => true
+		),
+		oncommitposition: vi.fn((_frame: number, _x: number, _y: number) => true),
+		oncreatespatial: vi.fn((_frame: number) => true),
 		oncommitspatial: vi.fn(() => true),
-		oncommittext: vi.fn(),
-		onseek: vi.fn(),
+		oncommittext: vi.fn((_text: string) => undefined),
+		onseek: vi.fn((_frame: number) => undefined),
 		onedit: vi.fn()
 	};
 	const screen = await render(OnCanvasTools, {
@@ -46,6 +49,10 @@ async function renderTools(item: TimelineItem) {
 	screen.container.style.containerType = 'size';
 	screen.container.style.width = '1000px';
 	screen.container.style.height = '500px';
+	const root = canvasRoot(screen.container);
+	root.style.position = 'relative';
+	root.style.width = '1000px';
+	root.style.height = '500px';
 	return { screen, callbacks };
 }
 
@@ -53,6 +60,43 @@ function canvasRoot(container: HTMLElement): HTMLElement {
 	const root = container.querySelector<HTMLElement>('[data-on-canvas-tools]');
 	if (!root) throw new Error('canvas root missing');
 	return root;
+}
+
+function moveSurface(container: HTMLElement): HTMLButtonElement {
+	const surface = container.querySelector<HTMLButtonElement>('[aria-label="Move selected clip"]');
+	if (!surface) throw new Error('move surface missing');
+	return surface;
+}
+
+interface BrowserPoint {
+	clientX: number;
+	clientY: number;
+}
+
+function canvasClientPoint(
+	root: HTMLElement,
+	point: Point,
+	canvasWidth = 1000,
+	canvasHeight = 500
+): BrowserPoint {
+	const rect = root.getBoundingClientRect();
+	return {
+		clientX: rect.left + (point.x / canvasWidth) * rect.width,
+		clientY: rect.top + (point.y / canvasHeight) * rect.height
+	};
+}
+
+function clientCanvasPoint(
+	root: HTMLElement,
+	point: BrowserPoint,
+	canvasWidth = 1000,
+	canvasHeight = 500
+): Point {
+	const rect = root.getBoundingClientRect();
+	return {
+		x: ((point.clientX - rect.left) / rect.width) * canvasWidth,
+		y: ((point.clientY - rect.top) / rect.height) * canvasHeight
+	};
 }
 
 describe('OnCanvasTools', () => {
@@ -96,9 +140,7 @@ describe('OnCanvasTools', () => {
 			sourceHeight: undefined
 		});
 		const { screen, callbacks } = await renderTools(item);
-		const box = screen.container.querySelector<HTMLElement>('[data-canvas-item-box]');
-		if (!box) throw new Error('item box missing');
-		box.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+		moveSurface(screen.container).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 		await vi.waitFor(() =>
 			expect(screen.container.querySelector('[aria-label^="Edit text on canvas"]')).not.toBeNull()
 		);
@@ -136,15 +178,14 @@ describe('OnCanvasTools', () => {
 		);
 		const root = canvasRoot(screen.container);
 		const rect = root.getBoundingClientRect();
-		const box = screen.container.querySelector<HTMLElement>('[data-canvas-item-box]');
-		if (!box) throw new Error('item box missing');
+		const surface = moveSurface(screen.container);
 		const start = {
 			bubbles: true,
 			clientX: rect.left + rect.width / 2,
 			clientY: rect.top + rect.height / 2,
 			pointerId: 3
 		};
-		box.dispatchEvent(new PointerEvent('pointerdown', start));
+		surface.dispatchEvent(new PointerEvent('pointerdown', start));
 		window.dispatchEvent(
 			new PointerEvent('pointerup', {
 				...start,
@@ -154,6 +195,119 @@ describe('OnCanvasTools', () => {
 		);
 		expect(callbacks.oncommitposition).toHaveBeenCalledWith(12, 20, 10);
 		expect(callbacks.oncommitvalues).not.toHaveBeenCalled();
+	});
+
+	it('exposes and keyboard-operates the full transform gizmo', async () => {
+		const { screen, callbacks } = await renderTools(imageItem());
+		expect(canvasRoot(screen.container).getBoundingClientRect().width).toBe(1000);
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-on-canvas-transform.png'
+		});
+		const expectedHandles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rotate'];
+		expect(
+			[...screen.container.querySelectorAll<HTMLElement>('[data-transform-handle]')].map(
+				(handle) => handle.dataset.transformHandle
+			)
+		).toEqual(expectedHandles);
+		const root = canvasRoot(screen.container);
+		const center = canvasClientPoint(root, { x: 500, y: 250 });
+		const click = { bubbles: true, pointerId: 20, ...center };
+		moveSurface(screen.container).dispatchEvent(new PointerEvent('pointerdown', click));
+		window.dispatchEvent(new PointerEvent('pointerup', click));
+		expect(callbacks.oncommitvalues).not.toHaveBeenCalled();
+		expect(callbacks.onedit).not.toHaveBeenCalled();
+
+		const southeast = screen.container.querySelector<HTMLButtonElement>(
+			'[data-transform-handle="se"]'
+		);
+		if (!southeast) throw new Error('southeast transform handle missing');
+		southeast.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		expect(callbacks.oncommitvalues).toHaveBeenLastCalledWith(12, {
+			width: 120,
+			height: 100
+		});
+
+		const rotate = screen.container.querySelector<HTMLButtonElement>(
+			'[data-transform-handle="rotate"]'
+		);
+		if (!rotate) throw new Error('rotation handle missing');
+		rotate.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		expect(callbacks.oncommitvalues).toHaveBeenLastCalledWith(12, { rotation: 15 });
+		expect(callbacks.onedit).toHaveBeenCalledTimes(2);
+	});
+
+	it('resizes from the center or opposite corner with one atomic commit', async () => {
+		const { screen, callbacks } = await renderTools(imageItem());
+		const root = canvasRoot(screen.container);
+		const handle = screen.container.querySelector<HTMLButtonElement>(
+			'[data-transform-handle="se"]'
+		);
+		if (!handle) throw new Error('southeast transform handle missing');
+		const handleRect = handle.getBoundingClientRect();
+		const startClient = {
+			clientX: handleRect.left + handleRect.width / 2,
+			clientY: handleRect.top + handleRect.height / 2
+		};
+		const startCanvas = clientCanvasPoint(root, startClient);
+		const endClient = canvasClientPoint(root, {
+			x: startCanvas.x + 25,
+			y: startCanvas.y + 25
+		});
+		const pointer = { bubbles: true, pointerId: 21, ...startClient };
+		handle.dispatchEvent(new PointerEvent('pointerdown', pointer));
+		window.dispatchEvent(
+			new PointerEvent('pointerup', { ...pointer, ...endClient, ctrlKey: true })
+		);
+
+		const values = callbacks.oncommitvalues.mock.calls.at(-1)?.[1];
+		expect(values?.width).toBeCloseTo(125, 5);
+		expect(values?.height).toBeCloseTo(125, 5);
+		expect(values?.x).toBeCloseTo(12.5, 5);
+		expect(values?.y).toBeCloseTo(12.5, 5);
+		expect(callbacks.oncommitvalues).toHaveBeenCalledOnce();
+		expect(callbacks.onedit).toHaveBeenCalledOnce();
+	});
+
+	it('snaps pointer rotation unless Option requests a free angle', async () => {
+		const { screen, callbacks } = await renderTools(imageItem());
+		const root = canvasRoot(screen.container);
+		const rotate = screen.container.querySelector<HTMLButtonElement>(
+			'[data-transform-handle="rotate"]'
+		);
+		if (!rotate) throw new Error('rotation handle missing');
+		const handleRect = rotate.getBoundingClientRect();
+		const startClient = {
+			clientX: handleRect.left + handleRect.width / 2,
+			clientY: handleRect.top + handleRect.height / 2
+		};
+		const startCanvas = clientCanvasPoint(root, startClient);
+		const startAngle = Math.atan2(startCanvas.y - 250, startCanvas.x - 500);
+		const freeAngle = startAngle + (37 * Math.PI) / 180;
+		const endClient = canvasClientPoint(root, {
+			x: 500 + Math.cos(freeAngle) * 100,
+			y: 250 + Math.sin(freeAngle) * 100
+		});
+		const pointer = { bubbles: true, pointerId: 22, ...startClient };
+		rotate.dispatchEvent(new PointerEvent('pointerdown', pointer));
+		window.dispatchEvent(new PointerEvent('pointerup', { ...pointer, ...endClient }));
+		expect(callbacks.oncommitvalues).toHaveBeenLastCalledWith(12, { rotation: 30 });
+
+		rotate.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, pointerId: 23 }));
+		window.dispatchEvent(
+			new PointerEvent('pointerup', {
+				...pointer,
+				...endClient,
+				pointerId: 23,
+				altKey: true
+			})
+		);
+		const values = callbacks.oncommitvalues.mock.calls.at(-1)?.[1];
+		expect(values?.rotation).toBeCloseTo(37, 5);
+		expect(callbacks.onedit).toHaveBeenCalledTimes(2);
 	});
 
 	it('edits both axes of a motion keyframe with one path gesture', async () => {
