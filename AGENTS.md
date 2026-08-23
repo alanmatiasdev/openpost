@@ -38,6 +38,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Video Editor on-canvas gestures keep drafts out of undo history and commit once on release. Animated position uses versioned vector keys with temporal easing and spatial Bezier tangents; legacy scalar X/Y tracks promote lazily on the first vector edit.
 - CLI, MCP, API, and product surfaces share terms, permissions, and boundaries. Public contract changes are acceptable when deliberate and UX-improving; change the source, then regenerate.
 - AI features use maintained SDKs behind a small provider-neutral boundary (`backend/internal/ai/`); reuse the shared model and config choices instead of adding per-feature models.
+- Meme Maker embeds a pinned template catalog and renders in process; captions and workspace overlay bytes stay server-side, while optional AI suggestions receive only bounded written template semantics. Refresh the audited snapshot with `scripts/sync-meme-catalog.mjs <pinned-checkout>`.
 - Video Editor GPU effects share one WebGL2 ping-pong compositor; use point-scatter vertex passes for exact cross-texel writes that a fragment pass cannot express.
 - Video Editor adjustment layers are timed, non-rendering items; preview and export apply their enabled effects, top-first, to active visual items on higher-order tracks.
 - Non-normal Video Editor blend modes use the shared `CanvasStackCompositor` in preview and export so each transformed layer blends against the finished frame below; keep the exact CPU fallback aligned with the GPU shader.

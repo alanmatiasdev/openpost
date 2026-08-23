@@ -52,20 +52,20 @@ For every code or copy item, completion also means:
 
 ## P0 — active privacy and integration-expansion safety gates
 
-PRIV-001 is an active managed-service disclosure/configuration mismatch.
+PRIV-001 now needs deployment proof before it can close.
 
-### PRIV-001 — Disclose and govern managed meme processing
+### PRIV-001 - Prove local meme processing in the managed service
 
-- [ ] **Problem — Active/operator evidence required:** managed configuration keeps `OPENPOST_MEME_GENERATOR_ENABLED=true` by operator decision. The production Memegen/OpenRouter processor, legal, routing, retention, ZDR, media-lease, and disclosure evidence is incomplete, so runtime availability currently leads the reviewed policy boundary.
-- **Required remediation:** keep the feature's enabled state explicit; verify the configured services and data paths; complete minimization, expiry, no-secret-log, processor, transfer, and acceptance evidence; align Privacy, Trust, the operator register, and deployed behavior. Runtime disablement is not the selected remediation.
-- **Done when:** managed configuration resolves to a reviewed private service or a fully disclosed processor; captions, ideas, recipes, and media leases have tested minimization/expiry/no-secret-log behavior; provider-side terms and OpenRouter routing/ZDR evidence are recorded; public policies, the operator register, acceptance metadata, and deployed behavior agree with the enabled feature.
-- **Evidence:** `/Users/rgo/.config/home/hosts/rgo-vps/default.nix`, `docs-site/configuration/environment-variables.md`, and `docs-site/configuration/production-checklist.md`. Declarative configuration resolves the managed value to `true`; processor and disclosure verification remains open.
+- [ ] **Problem - Deployment evidence required:** repository source now embeds the template catalog and renders captions and workspace overlays inside OpenPost, but the managed deployment has not yet proved the exact revision or the absence of the former Memegen outbound path. Optional AI suggestions still send the idea and bounded written template semantics through the configured OpenRouter route.
+- **Required remediation:** deploy the built-in maker revision; verify its exact image and configuration; prove manual preview/render traffic makes no Memegen request; retain the separate OpenRouter routing, retention, ZDR, and disclosure checks for AI suggestions.
+- **Done when:** the managed service runs the exact built-in-maker revision; captions, overlays, recipes, and local render failures have tested minimization and no-secret-log behavior; no Memegen credential or request path remains active; provider-side OpenRouter evidence and public disclosures match the optional AI path.
+- **Evidence:** `/Users/rgo/.config/home/hosts/rgo-vps/default.nix`, `docs-site/configuration/environment-variables.md`, `docs-site/configuration/production-checklist.md`, the deployed image digest, and outbound request evidence. Source defaults the feature to `true`; deployment proof remains open.
 
 ## P1 — release, correctness, recovery, billing, and trust
 
 ### TRUST-001 — Publish managed-cloud residency, subprocessors, and human-access facts
 
-- [ ] **Problem — Partial/operator evidence required:** a dated managed-service register and public Trust page cover the recorded providers, residency, data categories, transfer statements, human-access boundary, change notice, and review dates. Managed Memegen remains enabled and must be covered by PRIV-001's evidence and disclosures. The Purelymail transfer mechanism and operational access approval, logging, review, and revocation evidence remain unproved.
+- [ ] **Problem - Partial/operator evidence required:** a dated managed-service register and public Trust page cover the recorded providers, residency, data categories, transfer statements, human-access boundary, change notice, and review dates. Optional meme suggestions use the existing OpenRouter processor boundary tracked in PRIV-001. The Purelymail transfer mechanism and operational access approval, logging, review, and revocation evidence remain unproved.
 - **Fix:** obtain and record the remaining Purelymail transfer/legal basis; verify role approval, access logging, emergency access, review, and revocation evidence; keep the register current before any new managed processor receives data.
 - **Done when:** every current managed store/provider has a reviewed transfer entry and date; internal access evidence matches the public boundary; no unsupported certification, GDPR, or audit badge is added.
 - **Evidence:** `marketing-site/src/routes/trust/+page.svelte`, `packages/legal-policy/src/managed-service.json:92`, `packages/legal-policy/src/security-assurance.json`.
@@ -573,7 +573,7 @@ These cannot be closed from repository source alone:
 - [ ] Verify live Paddle Merchant-of-Record configuration, tax/VAT/customer documents, invoices, portal deep links, discounts, refunds, cancellation, failed-payment recovery, and withdrawal terms.
 - [ ] Close the remaining TRUST-001/LEGAL-005 evidence: controller/company identity, Purelymail transfer basis, operational access-review/revocation proof, incident-procedure ownership/evidence, and legal review dates. The public incident and human-access wording itself is shipped.
 - [ ] Verify provider-side OpenRouter/Azure configuration for both image descriptions and meme suggestions: exact `azure/eu` route, data collection denied, no fallback, current ZDR classification, and provider review date. Source and Nix fail closed but cannot prove the live provider-side policy.
-- [ ] Complete PRIV-001 provider/legal evidence for the enabled managed Memegen target or move it to a reviewed private deployment.
+- [ ] Deploy and verify the built-in meme maker, prove captions and overlays stay local, remove any former Memegen secret or outbound path, and close PRIV-001 against the exact production revision.
 - [ ] After migration 084, inventory pre-existing unbound API tokens for required-SSO organizations; revoke or deliberately reissue workspace-bound tokens because the schema migration cannot infer their intended workspace.
 - [ ] Obtain approved team, mission, timeline, company/contact, funding/backer, and imagery facts before reconsidering an About page; absence is not an implementation defect.
 - [ ] Decide whether independent pentest/audit work is funded; publish scope and date only after completion. Do not add SOC 2, ISO, GDPR, or pentest badges without proof.

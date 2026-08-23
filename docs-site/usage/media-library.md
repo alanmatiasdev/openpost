@@ -29,12 +29,12 @@ Each post editor uses the same media picker:
 - **Library** uses a saved file without uploading another copy.
 - **Upload** adds a file from your device.
 - **Camera** captures a still image after browser permission.
-- **Meme** searches the configured Memegen catalog, lets you fill every caption and replaceable image slot, and saves the rendered result in Media.
+- **Meme** opens OpenPost's built-in catalog, lets you fill every caption and replaceable image slot, and saves the locally rendered result in Media.
 - **Create** saves your post and opens [OpenPost Image Editor](/usage/image-editor).
 
 OpenPost keeps files in the order you choose. It checks the file types and count against the rules for all selected accounts.
 
-If AI suggestions are configured, describe the joke and choose a tone to get several editable template and caption options. OpenPost sends only the idea and a bounded template shortlist to the configured model. Rendering uses the configured Memegen service. Review the result, alt text, template source, and your right to publish the template before attaching it. Instance setup and external-processing details are in [Environment Variables](/configuration/environment-variables#meme-generator).
+If AI suggestions are configured, describe the joke and choose a tone to get several editable template and caption options. OpenPost sends only the idea and a bounded shortlist of names and written template notes to the configured model. It never sends the template images or your replaceable workspace images. Rendering stays inside OpenPost. Review the result, alt text, template source, and your right to publish the template before attaching it. Instance setup and the AI boundary are in [Environment Variables](/configuration/environment-variables#meme-maker).
 
 ### Automatic alt text
 
