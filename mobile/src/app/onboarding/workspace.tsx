@@ -1,7 +1,15 @@
-import { router, Stack } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  BackHandler,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { BodyText, Button, Card, Screen, SectionHeader, useColors } from "@/components/ui";
 import { Brand } from "@/components/brand";
@@ -11,7 +19,19 @@ import * as Haptics from "expo-haptics";
 
 export default function WorkspaceScreen() {
   const colors = useColors();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const switching = mode === "switch";
   const [selected, setSelected] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (switching) router.back();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [switching]),
+  );
 
   const workspaces = useQuery({
     queryKey: ["workspaces"],
@@ -53,6 +73,9 @@ export default function WorkspaceScreen() {
         <Brand compact style={styles.brand} />
         <Text style={[styles.title, { color: colors.text }]}>Choose workspace</Text>
         <BodyText style={styles.subtitle}>Each workspace has its own posts and accounts.</BodyText>
+        {switching ? (
+          <Button title="Cancel" variant="plain" onPress={() => router.back()} style={styles.cancel} />
+        ) : null}
 
         {workspaces.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
         {workspaces.isError ? (
@@ -127,6 +150,10 @@ const styles = StyleSheet.create({
   subtitle: {
     paddingTop: 8,
     paddingBottom: 16,
+  },
+  cancel: {
+    alignSelf: "flex-start",
+    marginBottom: 8,
   },
   list: {
     paddingVertical: 4,

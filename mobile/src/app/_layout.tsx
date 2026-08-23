@@ -4,12 +4,19 @@ import * as SplashScreen from "expo-splash-screen";
 import { ShareIntentProvider } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "react-native";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { DARK_COLORS, LIGHT_COLORS } from "@/components/ui";
 import { getServer, loadServer, subscribeServer } from "@/lib/server";
-import { getToken, loadToken, subscribeToken } from "@/lib/api/token-store";
+import {
+  getToken,
+  getWorkspaceId,
+  loadToken,
+  loadWorkspaceId,
+  subscribeToken,
+} from "@/lib/api/token-store";
+import { loadSessionState } from "@/lib/session";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,18 +33,39 @@ function useSessionReady() {
 
   useEffect(() => {
     void (async () => {
-      await Promise.all([loadServer(), loadToken()]);
+      await loadSessionState({
+        loadServer,
+        loadToken,
+        loadWorkspaceId,
+        getServer,
+        getToken,
+        getWorkspaceId,
+      });
       setLoaded(true);
       void SplashScreen.hideAsync();
     })();
   }, []);
 
-  return { loaded, signedIn: Boolean(server && token) };
+  return { loaded, server, token, signedIn: Boolean(server && token) };
 }
 
 export default function RootLayout() {
   const scheme = useColorScheme();
-  const { loaded, signedIn } = useSessionReady();
+  const { loaded, server, token, signedIn } = useSessionReady();
+  const previousSession = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const session = `${server?.baseUrl ?? ""}\n${token ?? ""}`;
+    if (previousSession.current === null) {
+      previousSession.current = session;
+      return;
+    }
+    if (previousSession.current !== session) {
+      previousSession.current = session;
+      queryClient.clear();
+    }
+  }, [loaded, server?.baseUrl, token]);
 
   if (!loaded) return null;
 

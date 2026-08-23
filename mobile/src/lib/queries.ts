@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 
 import { api, errorMessage } from "./api/client";
-import { getWorkspaceId } from "./api/token-store";
+import { getWorkspaceId, subscribeWorkspaceId } from "./api/token-store";
 
 export type WorkspaceSummary = {
   id: string;
@@ -24,6 +25,10 @@ export function currentWorkspaceId(): string {
   const id = getWorkspaceId();
   if (!id) throw new Error("No workspace selected");
   return id;
+}
+
+export function useWorkspaceId(): string | null {
+  return useSyncExternalStore(subscribeWorkspaceId, getWorkspaceId);
 }
 
 export type PublicationListItem = {
@@ -50,13 +55,16 @@ export function usePublications(
   bucket: "draft" | "scheduled" | "published" | "failed",
   extra?: { calendar_from?: string; calendar_before?: string },
 ) {
+  const workspaceId = useWorkspaceId();
   return useQuery({
-    queryKey: ["publications", bucket, extra ?? {}],
+    queryKey: ["publications", workspaceId, bucket, extra ?? {}],
+    enabled: Boolean(workspaceId),
     queryFn: async () => {
+      if (!workspaceId) throw new Error("Choose a workspace to load posts");
       const { data, error, response } = await api().GET("/publications", {
         params: {
           query: {
-            workspace_id: currentWorkspaceId(),
+            workspace_id: workspaceId,
             activity_bucket: bucket,
             limit: 100,
             ...extra,
@@ -78,12 +86,14 @@ export type AccountSummary = {
 };
 
 export function useAccounts(enabled = true) {
+  const workspaceId = useWorkspaceId();
   return useQuery({
-    queryKey: ["accounts"],
-    enabled,
+    queryKey: ["accounts", workspaceId],
+    enabled: enabled && Boolean(workspaceId),
     queryFn: async () => {
+      if (!workspaceId) throw new Error("Choose a workspace to load accounts");
       const { data, error, response } = await api().GET("/accounts", {
-        params: { query: { workspace_id: currentWorkspaceId() } },
+        params: { query: { workspace_id: workspaceId } },
       });
       if (error || !data) throw new Error(await errorMessage(response, "Could not load accounts"));
       return (data ?? [])
@@ -107,12 +117,14 @@ export type SocialSetSummary = {
 };
 
 export function useSocialSets(enabled = true) {
+  const workspaceId = useWorkspaceId();
   return useQuery({
-    queryKey: ["social-sets"],
-    enabled,
+    queryKey: ["social-sets", workspaceId],
+    enabled: enabled && Boolean(workspaceId),
     queryFn: async () => {
+      if (!workspaceId) throw new Error("Choose a workspace to load social sets");
       const { data, error, response } = await api().GET("/social-sets", {
-        params: { query: { workspace_id: currentWorkspaceId() } },
+        params: { query: { workspace_id: workspaceId } },
       });
       if (error || !data)
         throw new Error(await errorMessage(response, "Could not load social sets"));

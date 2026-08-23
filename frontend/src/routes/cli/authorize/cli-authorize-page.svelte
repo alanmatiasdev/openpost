@@ -16,6 +16,7 @@
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import SmartphoneIcon from '@lucide/svelte/icons/smartphone';
 	import TerminalIcon from '@lucide/svelte/icons/terminal';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -63,7 +64,7 @@
 	let authState = $derived($authStore);
 	let userCode = $derived($pageStore.url.searchParams.get('user_code') ?? '');
 	let session = $state<CLIAuthSession | null>(null);
-	let tokenName = $state('OpenPost CLI');
+	let tokenName = $state('OpenPost');
 	let selectedWorkspaceID = $state<string | null>(null);
 	let error = $state('');
 	let sessionLoadFailed = $state(false);
@@ -101,7 +102,7 @@
 		sessionRequestSequence += 1;
 		decisionRequestSequence += 1;
 		session = null;
-		tokenName = 'OpenPost CLI';
+		tokenName = 'OpenPost';
 		selectedWorkspaceID = null;
 		error = '';
 		sessionLoadFailed = false;
@@ -138,6 +139,7 @@
 			}
 
 			session = data;
+			tokenName = data.client_name.trim() || 'OpenPost';
 			loadedUserCode = code;
 		} catch (cause) {
 			if (
@@ -188,7 +190,7 @@
 				decision === 'approved'
 					? {
 							user_code: code,
-							name: tokenName || 'OpenPost CLI',
+							name: tokenName.trim() || session.client_name.trim() || 'OpenPost',
 							workspace_id: selectedWorkspaceID ?? ''
 						}
 					: { user_code: code };
@@ -252,8 +254,12 @@
 	<title>{m.cli_authorize_title()}</title>
 </svelte:head>
 
-{#snippet terminalIcon()}
-	<TerminalIcon class="size-6" />
+{#snippet clientIcon()}
+	{#if session?.client_os === 'android' || session?.client_os === 'ios'}
+		<SmartphoneIcon class="size-6" />
+	{:else}
+		<TerminalIcon class="size-6" />
+	{/if}
 {/snippet}
 
 {#snippet retryLoadAction()}
@@ -269,7 +275,7 @@
 			? m.cli_authorize_denied()
 			: m.cli_authorize_heading()}
 	description={completed ? m.cli_authorize_close_tab() : m.cli_authorize_description()}
-	icon={terminalIcon}
+	icon={clientIcon}
 	maxWidth="lg"
 	loading={sessionPending}
 	loadingLabel={m.cli_authorize_loading()}

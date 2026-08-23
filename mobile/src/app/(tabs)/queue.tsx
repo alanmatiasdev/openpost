@@ -73,6 +73,7 @@ export default function QueueScreen() {
         ) : null}
 
         <Section title="Failed" count={failed.data?.length ?? 0}>
+          {failed.isError ? <QueryError query={failed} label="failed posts" /> : null}
           {(failed.data ?? []).map((publication) => (
             <FailedCard
               key={publication.id}
@@ -81,7 +82,7 @@ export default function QueueScreen() {
               pending={retryFailed.isPending && retryFailed.variables === publication.id}
             />
           ))}
-          {(failed.data?.length ?? 0) === 0 ? (
+          {(failed.data?.length ?? 0) === 0 && !failed.isLoading && !failed.isError ? (
             <Card>
               <BodyText style={{ textAlign: "center" }}>No failed posts.</BodyText>
             </Card>
@@ -89,10 +90,11 @@ export default function QueueScreen() {
         </Section>
 
         <Section title="Upcoming" count={scheduled.data?.length ?? 0}>
+          {scheduled.isError ? <QueryError query={scheduled} label="scheduled posts" /> : null}
           {(scheduled.data ?? []).map((publication) => (
             <QueueRow key={publication.id} publication={publication} />
           ))}
-          {(scheduled.data?.length ?? 0) === 0 ? (
+          {(scheduled.data?.length ?? 0) === 0 && !scheduled.isLoading && !scheduled.isError ? (
             <Card>
               <BodyText style={{ textAlign: "center" }}>Nothing scheduled yet.</BodyText>
             </Card>
@@ -100,6 +102,25 @@ export default function QueueScreen() {
         </Section>
       </ScrollView>
     </Screen>
+  );
+}
+
+function QueryError({
+  query,
+  label,
+}: {
+  query: { error: Error | null; refetch: () => unknown };
+  label: string;
+}) {
+  const colors = useColors();
+  return (
+    <Card style={styles.error}>
+      <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load {label}</Text>
+      <BodyText accessibilityRole="alert">
+        {query.error?.message ?? "Check your connection and try again."}
+      </BodyText>
+      <Button title="Try again" variant="tinted" onPress={() => void query.refetch()} />
+    </Card>
   );
 }
 
@@ -254,5 +275,12 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     paddingHorizontal: 12,
+  },
+  error: {
+    gap: 12,
+  },
+  errorTitle: {
+    fontSize: 17,
+    fontWeight: "700",
   },
 });

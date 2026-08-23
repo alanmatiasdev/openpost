@@ -11,10 +11,10 @@ import {
   View,
 } from "react-native";
 
-import { BodyText, Card, IconButton, Screen, StatusBadge, useColors } from "@/components/ui";
+import { BodyText, Button, Card, IconButton, Screen, StatusBadge, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { calendarOccurrence, dayKey, statusColor } from "@/lib/format";
-import { currentWorkspaceId } from "@/lib/queries";
+import { useWorkspaceId } from "@/lib/queries";
 
 const WEEKDAYS = [
   ["S", "Sunday"],
@@ -31,17 +31,20 @@ export default function CalendarScreen() {
   const today = useMemo(() => new Date(), []);
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState<string>(() => dayKey(today));
+  const workspaceId = useWorkspaceId();
 
   const monthStart = month;
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 1);
 
   const publications = useQuery({
-    queryKey: ["calendar", dayKey(monthStart), dayKey(monthEnd)],
+    queryKey: ["calendar", workspaceId, dayKey(monthStart), dayKey(monthEnd)],
+    enabled: Boolean(workspaceId),
     queryFn: async () => {
+      if (!workspaceId) throw new Error("Choose a workspace to load the calendar");
       const { data, error, response } = await api().GET("/publications", {
         params: {
           query: {
-            workspace_id: currentWorkspaceId(),
+            workspace_id: workspaceId,
             calendar_from: monthStart.toISOString(),
             calendar_before: monthEnd.toISOString(),
             limit: 200,
@@ -138,6 +141,17 @@ export default function CalendarScreen() {
         {publications.isLoading ? (
           <ActivityIndicator style={{ marginTop: 24 }} color={colors.tint} />
         ) : null}
+        {publications.isError ? (
+          <Card style={styles.error}>
+            <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load calendar</Text>
+            <BodyText accessibilityRole="alert">
+              {publications.error instanceof Error
+                ? publications.error.message
+                : "Check your connection and try again."}
+            </BodyText>
+            <Button title="Try again" variant="tinted" onPress={() => void publications.refetch()} />
+          </Card>
+        ) : null}
 
         <View style={styles.weekdays}>
           {WEEKDAYS.map(([shortLabel, label], index) => (
@@ -216,7 +230,7 @@ export default function CalendarScreen() {
                 })
               : "Select a day"}
           </Text>
-          {selectedItems.length === 0 ? (
+          {selectedItems.length === 0 && !publications.isError ? (
             <BodyText>Nothing planned.</BodyText>
           ) : (
             selectedItems.map((item) => (
@@ -287,10 +301,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   content: {
+    width: "100%",
+    alignSelf: "stretch",
     padding: 16,
     paddingBottom: 40,
   },
   weekdays: {
+    width: "100%",
     flexDirection: "row",
     marginBottom: 4,
   },
@@ -301,6 +318,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   grid: {
+    width: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
   },
@@ -334,6 +352,14 @@ const styles = StyleSheet.create({
   daySheet: {
     marginTop: 16,
     gap: 12,
+  },
+  error: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 17,
+    fontWeight: "700",
   },
   daySheetTitle: {
     fontSize: 16,

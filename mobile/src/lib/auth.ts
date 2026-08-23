@@ -1,5 +1,7 @@
 import { clearToken, saveToken } from "./api/token-store";
 import { api, errorMessage } from "./api/client";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 export type LoginResult =
   | { kind: "signed-in" }
@@ -45,12 +47,12 @@ export type PairPoll =
   | { status: "denied" }
   | { status: "expired" };
 
-export async function startPairing(clientName = "OpenPost mobile"): Promise<PairingState> {
+export async function startPairing(clientName = "OpenPost Mobile"): Promise<PairingState> {
   const { data, error, response } = await api().POST("/cli/auth/start", {
     body: {
       client_name: clientName,
-      client_os: "mobile",
-      client_version: "0.1.0",
+      client_os: Platform.OS,
+      client_version: Constants.expoConfig?.version ?? "unknown",
     },
   });
   if (error || !data) throw new Error(await errorMessage(response, "Could not start pairing"));

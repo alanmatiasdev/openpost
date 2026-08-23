@@ -65,14 +65,20 @@ export function platformLabel(platform: string): string {
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
   const diffMs = date.getTime() - Date.now();
   const absMinutes = Math.abs(diffMs) / 60000;
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
   if (absMinutes < 1) return "just now";
-  if (absMinutes < 60) return rtf.format(Math.round(diffMs / 60000), "minute");
-  if (absMinutes < 60 * 24) return rtf.format(Math.round(diffMs / 3600000), "hour");
-  if (absMinutes < 60 * 24 * 7) return rtf.format(Math.round(diffMs / 86400000), "day");
+  if (absMinutes < 60) return relativeUnit(Math.round(diffMs / 60000), "minute");
+  if (absMinutes < 60 * 24) return relativeUnit(Math.round(diffMs / 3600000), "hour");
+  if (absMinutes < 60 * 24 * 7) return relativeUnit(Math.round(diffMs / 86400000), "day");
   return date.toLocaleDateString("en", { month: "short", day: "numeric" });
+}
+
+function relativeUnit(value: number, unit: "minute" | "hour" | "day"): string {
+  const count = Math.abs(value);
+  const label = `${unit}${count === 1 ? "" : "s"}`;
+  return value < 0 ? `${count} ${label} ago` : `in ${count} ${label}`;
 }
 
 export function formatDateTime(iso: string | null | undefined): string {

@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useShareIntentContext } from "expo-share-intent";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BodyText, Button, Card, IconButton, Screen, TextField, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
@@ -61,6 +62,7 @@ export default function DraftsScreen() {
 
   async function quickCapture() {
     const text = idea.trim();
+    if (!text) return;
     setCaptureError(null);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -118,7 +120,7 @@ export default function DraftsScreen() {
           title="New draft"
           variant="tinted"
           onPress={() => void quickCapture()}
-          disabled={createDraft.isPending}
+          disabled={createDraft.isPending || idea.trim().length === 0}
         />
       </View>
 
@@ -151,7 +153,18 @@ export default function DraftsScreen() {
         {drafts.isLoading ? (
           <ActivityIndicator style={{ marginTop: 32 }} color={colors.tint} />
         ) : null}
-        {list.length === 0 && !drafts.isLoading ? (
+        {drafts.isError ? (
+          <Card style={styles.error}>
+            <Text style={[styles.errorTitle, { color: colors.text }]}>Could not load drafts</Text>
+            <BodyText accessibilityRole="alert">
+              {drafts.error instanceof Error
+                ? drafts.error.message
+                : "Check your connection and try again."}
+            </BodyText>
+            <Button title="Try again" variant="tinted" onPress={() => void drafts.refetch()} />
+          </Card>
+        ) : null}
+        {list.length === 0 && !drafts.isLoading && !drafts.isError ? (
           <Card style={styles.empty}>
             <BodyText style={{ textAlign: "center" }}>
               No drafts yet. Capture an idea above. It saves at once and opens in the composer.
@@ -218,23 +231,39 @@ function WorkspaceMenu({
   workspaces: { id: string; name?: string | null }[];
 }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const server = getServer();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === getWorkspaceId());
   return (
-    <Modal animationType="fade" transparent onRequestClose={onClose}>
+    <Modal
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <Pressable accessible={false} style={styles.overlay} onPress={onClose}>
         <Pressable
           accessible={false}
           accessibilityViewIsModal
           onPress={(event) => event.stopPropagation()}
+          style={styles.sheet}
         >
-          <Card style={[styles.menu, { backgroundColor: colors.card }]}>
+          <Card
+            style={[
+              styles.menu,
+              { backgroundColor: colors.card, paddingBottom: Math.max(insets.bottom, 12) },
+            ]}
+          >
             {workspaces.length > 1 ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
                   onClose();
-                  router.push("/onboarding/workspace");
+                  router.push({
+                    pathname: "/onboarding/workspace",
+                    params: { mode: "switch" },
+                  });
                 }}
                 style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
               >
@@ -297,6 +326,14 @@ const styles = StyleSheet.create({
   empty: {
     marginTop: 16,
   },
+  error: {
+    gap: 10,
+    marginTop: 16,
+  },
+  errorTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+  },
   row: {
     paddingVertical: 14,
   },
@@ -305,17 +342,19 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   overlay: {
-    position: "absolute",
-    inset: 0,
+    flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
-    alignItems: "flex-end",
-    justifyContent: "flex-start",
-    padding: 16,
-    paddingTop: 16,
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    width: "100%",
   },
   menu: {
-    width: 240,
-    paddingVertical: 4,
+    width: "100%",
+    paddingTop: 8,
+    paddingHorizontal: 8,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   menuRow: {
     minHeight: 48,

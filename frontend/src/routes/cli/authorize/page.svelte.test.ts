@@ -98,7 +98,7 @@ describe('CLI authorization request identity', () => {
 
 		await screen.getByRole('button', { name: 'Approve' }).click();
 		expect(mocks.post).toHaveBeenCalledWith('/cli/auth/approve', {
-			body: { user_code: 'CODE-B', name: 'OpenPost CLI', workspace_id: 'workspace-a' }
+			body: { user_code: 'CODE-B', name: 'Client B', workspace_id: 'workspace-a' }
 		});
 	});
 
@@ -124,19 +124,31 @@ describe('CLI authorization request identity', () => {
 
 		await expect.element(screen.getByText('Automation client')).toBeVisible();
 		await expect
-			.element(screen.getByText(/cli:full token can still use account-level commands, but not/))
+			.element(screen.getByText(/cli:full access can still use account-level actions, but not/))
 			.toBeVisible();
 		await screen.getByText('Launch', { exact: true }).click();
 		await screen.getByText('All workspaces', { exact: true }).click();
 		await expect
 			.element(
-				screen.getByText(/cli:full token can also use account- and organization-level commands/)
+				screen.getByText(/cli:full access can also use account- and organization-level actions/)
 			)
 			.toBeVisible();
 		await screen.getByRole('button', { name: 'Approve' }).click();
 
 		expect(mocks.post).toHaveBeenCalledWith('/cli/auth/approve', {
-			body: { user_code: 'CODE-A', name: 'OpenPost CLI', workspace_id: '' }
+			body: { user_code: 'CODE-A', name: 'Automation client', workspace_id: '' }
+		});
+	});
+
+	it('uses the requesting app name as the default token name', async () => {
+		mocks.get.mockResolvedValue({ data: { client_name: 'OpenPost Mobile' }, error: null });
+		const screen = await renderAuthorizePage();
+
+		await expect.element(screen.getByText('OpenPost Mobile')).toBeVisible();
+		await screen.getByRole('button', { name: 'Approve' }).click();
+
+		expect(mocks.post).toHaveBeenCalledWith('/cli/auth/approve', {
+			body: { user_code: 'CODE-A', name: 'OpenPost Mobile', workspace_id: 'workspace-a' }
 		});
 	});
 });
