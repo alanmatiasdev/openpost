@@ -8,8 +8,13 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Slider } from '$lib/components/ui/slider';
 	import AppSelect from '$lib/components/app-select.svelte';
-	import XIcon from '@lucide/svelte/icons/x';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import {
 		EFFECT_DEFINITIONS,
 		type GpuEffect,
@@ -20,7 +25,11 @@
 	import {
 		addEffect,
 		addGpuEffect,
-		removeEffect,
+		isEffectAtDefaults,
+		moveEffectOnItems,
+		removeEffectOnItems,
+		resetEffectOnItems,
+		setEffectEnabledOnItems,
 		setGpuEffectParam,
 		setGpuEffectData,
 		setItemBlendMode,
@@ -54,6 +63,9 @@
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const effects = $derived(item?.effects ?? []);
+	const selectedEffectItemIds = $derived(
+		itemId ? [...new Set([itemId, ...itemIds])].filter(Boolean) : []
+	);
 
 	/** In-flight slider values so dragging stays smooth before the undoable commit. */
 	let draftAmounts = $state<Record<string, number>>({});
@@ -246,6 +258,27 @@
 		if (effect.type !== 'gpu') return typeLabels[effect.type];
 		return getGpuEffect(effect.effectId)?.label ?? effect.effectId;
 	}
+
+	function moveStackEffect(effectId: string, direction: -1 | 1): void {
+		if (!itemId) return;
+		if (moveEffectOnItems(itemId, selectedEffectItemIds, effectId, direction)) onedit();
+	}
+
+	function toggleStackEffect(effect: ItemEffect): void {
+		if (!itemId) return;
+		if (setEffectEnabledOnItems(itemId, selectedEffectItemIds, effect.id, !effect.enabled))
+			onedit();
+	}
+
+	function resetStackEffect(effectId: string): void {
+		if (!itemId) return;
+		if (resetEffectOnItems(itemId, selectedEffectItemIds, effectId)) onedit();
+	}
+
+	function removeStackEffect(effectId: string): void {
+		if (!itemId) return;
+		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId)) onedit();
+	}
 </script>
 
 <div class="flex flex-col gap-1">
@@ -278,62 +311,117 @@
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_effects_none()}</p>
 	{:else}
 		<ul class="flex flex-col gap-1">
-			{#each effects as effect (effect.id)}
+			{#each effects as effect, index (effect.id)}
 				{@const definition = definitionFor(effect.type)}
 				{@const gpuDefinition = effect.type === 'gpu' ? getGpuEffect(effect.effectId) : undefined}
-				<li class="rounded bg-[oklch(0.22_0.01_50)] px-2 py-1.5">
+				<li
+					class="rounded bg-[oklch(0.22_0.01_50)] px-2 py-1.5"
+					data-effect-id={effect.id}
+					data-enabled={effect.enabled}
+				>
 					<div class="flex items-center justify-between gap-1">
-						<span class="text-xs">{effectLabel(effect)}</span>
-						<button
-							type="button"
-							class="rounded p-0.5 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-							aria-label={m.video_editor_effects_remove()}
-							onclick={() => {
-								if (!itemId) return;
-								if (removeEffect(itemId, effect.id)) onedit();
-							}}
+						<span class="min-w-0 flex-1 truncate text-xs" class:opacity-55={!effect.enabled}
+							>{effectLabel(effect)}</span
 						>
-							<XIcon class="size-3" />
-						</button>
-					</div>
-					{#if definition && effect.type !== 'gpu'}
-						<Slider
-							class="mt-1"
-							min={definition.min}
-							max={definition.max}
-							step={definition.step}
-							value={draftAmounts[effect.id] ?? effect.amount}
-							ariaLabel={`${typeLabels[effect.type]} — ${m.video_editor_effects_amount()}`}
-							onValueChange={(value) => {
-								draftAmounts[effect.id] = value;
-							}}
-							onValueCommit={(value) => commitAmount(effect.id, value)}
-						/>
-					{/if}
-					{#if gpuDefinition && effect.type === 'gpu'}
-						{#if effect.effectId === 'gpu-lut'}
+						<div class="flex shrink-0 items-center">
 							<button
 								type="button"
-								class="mt-1 w-full rounded border border-[oklch(0.32_0.015_55)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)]"
-								onclick={() => importLut(effect)}
-								>{typeof effect.params.lutName === 'string'
-									? effect.params.lutName
-									: 'Choose .cube LUT'}</button
+								class="rounded p-1 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
+								disabled={index === 0}
+								aria-label={m.video_editor_effects_move_up()}
+								title={m.video_editor_effects_move_up()}
+								onclick={() => moveStackEffect(effect.id, -1)}
 							>
-						{/if}
-						<div class="mt-1 flex flex-col gap-1">
-							{#each gpuDefinition.schema as param (param.name)}
-								{#if !param.visibleWhen || param.visibleWhen(effect.params)}
-									<GpuParamControl
-										{param}
-										value={effect.params[param.name]}
-										effectLabel={effectLabel(effect)}
-										oncommit={(value) => commitGpuParam(effect, param.name, value)}
-									/>
+								<ChevronUpIcon class="size-3" />
+							</button>
+							<button
+								type="button"
+								class="rounded p-1 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
+								disabled={index === effects.length - 1}
+								aria-label={m.video_editor_effects_move_down()}
+								title={m.video_editor_effects_move_down()}
+								onclick={() => moveStackEffect(effect.id, 1)}
+							>
+								<ChevronDownIcon class="size-3" />
+							</button>
+							<button
+								type="button"
+								class="rounded p-1 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
+								disabled={isEffectAtDefaults(effect)}
+								aria-label={m.video_editor_effects_reset()}
+								title={m.video_editor_effects_reset()}
+								onclick={() => resetStackEffect(effect.id)}
+							>
+								<RotateCcwIcon class="size-3" />
+							</button>
+							<button
+								type="button"
+								class="rounded p-1 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								aria-label={effect.enabled
+									? m.video_editor_effects_disable()
+									: m.video_editor_effects_enable()}
+								title={effect.enabled
+									? m.video_editor_effects_disable()
+									: m.video_editor_effects_enable()}
+								onclick={() => toggleStackEffect(effect)}
+							>
+								{#if effect.enabled}
+									<EyeIcon class="size-3" />
+								{:else}
+									<EyeOffIcon class="size-3" />
 								{/if}
-							{/each}
+							</button>
+							<button
+								type="button"
+								class="rounded p-1 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								aria-label={m.video_editor_effects_remove()}
+								title={m.video_editor_effects_remove()}
+								onclick={() => removeStackEffect(effect.id)}
+							>
+								<Trash2Icon class="size-3" />
+							</button>
 						</div>
-					{/if}
+					</div>
+					<div class:opacity-55={!effect.enabled}>
+						{#if definition && effect.type !== 'gpu'}
+							<Slider
+								class="mt-1"
+								min={definition.min}
+								max={definition.max}
+								step={definition.step}
+								value={draftAmounts[effect.id] ?? effect.amount}
+								ariaLabel={`${typeLabels[effect.type]} — ${m.video_editor_effects_amount()}`}
+								onValueChange={(value) => {
+									draftAmounts[effect.id] = value;
+								}}
+								onValueCommit={(value) => commitAmount(effect.id, value)}
+							/>
+						{/if}
+						{#if gpuDefinition && effect.type === 'gpu'}
+							{#if effect.effectId === 'gpu-lut'}
+								<button
+									type="button"
+									class="mt-1 w-full rounded border border-[oklch(0.32_0.015_55)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)]"
+									onclick={() => importLut(effect)}
+									>{typeof effect.params.lutName === 'string'
+										? effect.params.lutName
+										: 'Choose .cube LUT'}</button
+								>
+							{/if}
+							<div class="mt-1 flex flex-col gap-1">
+								{#each gpuDefinition.schema as param (param.name)}
+									{#if !param.visibleWhen || param.visibleWhen(effect.params)}
+										<GpuParamControl
+											{param}
+											value={effect.params[param.name]}
+											effectLabel={effectLabel(effect)}
+											oncommit={(value) => commitGpuParam(effect, param.name, value)}
+										/>
+									{/if}
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</li>
 			{/each}
 		</ul>

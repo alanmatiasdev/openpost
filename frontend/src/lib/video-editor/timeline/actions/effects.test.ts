@@ -5,11 +5,17 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import {
 	addEffectTemplates,
 	addGpuEffect,
+	isEffectAtDefaults,
+	moveEffectOnItems,
+	removeEffectOnItems,
 	replaceColorGradeEffects,
+	resetEffectOnItems,
+	setEffectEnabledOnItems,
 	setGpuEffectParam,
 	upsertGpuEffectParams,
 	upsertGpuEffectParamsOnItems
 } from './effects';
+import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
 	return {
@@ -100,6 +106,77 @@ describe('setGpuEffectParam', () => {
 		expect(updated.params.charSet).toBe('custom');
 		expect([...String(updated.params.customChars)]).toHaveLength(64);
 		expect(updated.params.font).toBe('monospace');
+	});
+});
+
+describe('effect stack actions', () => {
+	beforeEach(() => {
+		const defaults = getGpuEffectDefaultParams('gpu-gaussian-blur');
+		const stack = (prefix: string) => [
+			{ id: `${prefix}-brightness`, type: 'brightness' as const, amount: 1.8, enabled: true },
+			{ id: `${prefix}-contrast`, type: 'contrast' as const, amount: 1.25, enabled: true },
+			{
+				id: `${prefix}-blur`,
+				type: 'gpu' as const,
+				effectId: 'gpu-gaussian-blur',
+				params: { ...defaults, radius: 18 },
+				enabled: false
+			}
+		];
+		timelineStore._updateItems([
+			{ id: 'video', patch: { effects: stack('video') } },
+			{ id: 'title', patch: { effects: stack('title') } }
+		]);
+		commandHistory.clearHistory();
+	});
+
+	it('reorders, resets, bypasses, and removes mapped selected effects atomically', () => {
+		const modifiedBlur = timelineStore.itemById.get('video')?.effects?.[2];
+		if (!modifiedBlur) throw new Error('modified blur effect missing');
+		expect(isEffectAtDefaults(modifiedBlur)).toBe(false);
+		expect(moveEffectOnItems('video', ['video', 'title'], 'video-contrast', -1)).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			expect(timelineStore.itemById.get(itemId)?.effects?.map((effect) => effect.type)).toEqual([
+				'contrast',
+				'brightness',
+				'gpu'
+			]);
+		}
+		expect(commandHistory.getLastCommandType()).toBe('MOVE_EFFECT');
+		expect(moveEffectOnItems('video', ['video', 'title'], 'video-contrast', -1)).toBe(false);
+
+		expect(resetEffectOnItems('video', ['video', 'title'], 'video-blur')).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			const effect = timelineStore.itemById.get(itemId)?.effects?.[2];
+			expect(effect && isEffectAtDefaults(effect)).toBe(true);
+			expect(effect?.enabled).toBe(false);
+		}
+
+		expect(setEffectEnabledOnItems('video', ['video', 'title'], 'video-contrast', false)).toBe(
+			true
+		);
+		expect(
+			timelineStore.items
+				.filter((candidate) => candidate.id === 'video' || candidate.id === 'title')
+				.map((candidate) => candidate.effects?.[0]?.enabled)
+		).toEqual([false, false]);
+
+		expect(removeEffectOnItems('video', ['video', 'title'], 'video-brightness')).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			expect(timelineStore.itemById.get(itemId)?.effects?.map((effect) => effect.type)).toEqual([
+				'contrast',
+				'gpu'
+			]);
+		}
+		expect(commandHistory.undoStack).toHaveLength(4);
+		expect(commandHistory.getLastCommandType()).toBe('REMOVE_EFFECTS');
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video')?.effects?.map((effect) => effect.type)).toEqual([
+			'contrast',
+			'brightness',
+			'gpu'
+		]);
 	});
 });
 

@@ -30,7 +30,11 @@ const videoItem: TimelineItem = {
 beforeEach(() => {
 	clearEffectDragData();
 	timelineStore.__resetForTesting();
-	timelineStore.setAll({ tracks: [videoTrack], items: [videoItem], fps: 30 });
+	timelineStore.setAll({
+		tracks: [videoTrack],
+		items: [{ ...videoItem, effects: undefined }],
+		fps: 30
+	});
 });
 
 describe('EffectsPanel effect drag source', () => {
@@ -60,6 +64,59 @@ describe('EffectsPanel effect drag source', () => {
 
 		addButton.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
 		expect(getEffectDragData()).toBeNull();
+	});
+});
+
+describe('EffectsPanel stack controls', () => {
+	it('reorders, resets, bypasses, and removes an effect with one edit per action', async () => {
+		timelineStore.setAll({
+			items: [
+				{
+					...videoItem,
+					effects: [
+						{ id: 'brightness', type: 'brightness', amount: 1.8, enabled: true },
+						{ id: 'contrast', type: 'contrast', amount: 1.25, enabled: true }
+					]
+				}
+			]
+		});
+		const onedit = vi.fn();
+		await render(EffectsPanel, { itemId: 'video', itemIds: ['video'], onedit });
+
+		const brightness = document.querySelector<HTMLElement>('[data-effect-id="brightness"]');
+		expect(brightness).not.toBeNull();
+		brightness!.querySelector<HTMLButtonElement>('[aria-label="Move effect down"]')!.click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.effects?.map((effect) => effect.id)).toEqual([
+				'contrast',
+				'brightness'
+			]);
+		});
+
+		brightness!
+			.querySelector<HTMLButtonElement>('[aria-label="Reset effect to defaults"]')!
+			.click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.effects?.[1]).toMatchObject({
+				id: 'brightness',
+				amount: 1.2
+			});
+		});
+
+		const contrast = document.querySelector<HTMLElement>('[data-effect-id="contrast"]');
+		contrast!.querySelector<HTMLButtonElement>('[aria-label="Disable effect"]')!.click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.effects?.[0]?.enabled).toBe(false);
+			expect(contrast?.dataset.enabled).toBe('false');
+		});
+
+		brightness!.querySelector<HTMLButtonElement>('[aria-label="Remove effect"]')!.click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.effects?.map((effect) => effect.id)).toEqual([
+				'contrast'
+			]);
+		});
+		expect(onedit).toHaveBeenCalledTimes(4);
 	});
 });
 

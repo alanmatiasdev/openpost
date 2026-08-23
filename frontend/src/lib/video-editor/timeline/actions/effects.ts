@@ -375,6 +375,154 @@ export function removeEffect(itemId: string, effectId: string): boolean {
 	});
 }
 
+interface MappedEffectTarget {
+	itemId: string;
+	effects: ItemEffect[];
+	index: number;
+	effect: ItemEffect;
+}
+
+function effectsAreCompatible(display: ItemEffect, target: ItemEffect): boolean {
+	if (display.type !== target.type) return false;
+	return display.type !== 'gpu' || (target.type === 'gpu' && display.effectId === target.effectId);
+}
+
+function mappedEffectTargets(
+	displayItemId: string,
+	itemIds: readonly string[],
+	displayEffectId: string
+): MappedEffectTarget[] {
+	const displayEffects = timelineStore.itemById.get(displayItemId)?.effects;
+	const displayIndex = displayEffects?.findIndex((effect) => effect.id === displayEffectId) ?? -1;
+	const displayEffect = displayEffects?.[displayIndex];
+	if (!displayEffect || displayIndex < 0) return [];
+
+	return [...new Set([displayItemId, ...itemIds])].flatMap((itemId) => {
+		const effects = timelineStore.itemById.get(itemId)?.effects;
+		const effect = effects?.[displayIndex];
+		return effects && effect && effectsAreCompatible(displayEffect, effect)
+			? [{ itemId, effects, index: displayIndex, effect }]
+			: [];
+	});
+}
+
+export function isEffectAtDefaults(effect: ItemEffect): boolean {
+	if (effect.type !== 'gpu') {
+		return (
+			EFFECT_DEFINITIONS.find((definition) => definition.type === effect.type)?.defaultAmount ===
+			effect.amount
+		);
+	}
+	const defaults = defaultGpuParams(getGpuEffect(effect.effectId)?.schema ?? []);
+	const keys = new Set([...Object.keys(defaults), ...Object.keys(effect.params)]);
+	return [...keys].every((key) => Object.is(effect.params[key], defaults[key]));
+}
+
+/** Move one displayed effect across every compatible selected stack as one undo step. */
+export function moveEffectOnItems(
+	displayItemId: string,
+	itemIds: readonly string[],
+	effectId: string,
+	direction: -1 | 1
+): boolean {
+	const targets = mappedEffectTargets(displayItemId, itemIds, effectId).filter(
+		(target) => target.index + direction >= 0 && target.index + direction < target.effects.length
+	);
+	if (targets.length === 0) return false;
+	return execute('MOVE_EFFECT', () => {
+		timelineStore._updateItems(
+			targets.map((target) => {
+				const effects = [...target.effects];
+				const swapIndex = target.index + direction;
+				[effects[target.index], effects[swapIndex]] = [effects[swapIndex]!, effects[target.index]!];
+				return { id: target.itemId, patch: { effects } };
+			})
+		);
+		return true;
+	});
+}
+
+/** Enable or bypass one mapped effect across the current selection. */
+export function setEffectEnabledOnItems(
+	displayItemId: string,
+	itemIds: readonly string[],
+	effectId: string,
+	enabled: boolean
+): boolean {
+	const targets = mappedEffectTargets(displayItemId, itemIds, effectId).filter(
+		(target) => target.effect.enabled !== enabled
+	);
+	if (targets.length === 0) return false;
+	return execute('SET_EFFECT_ENABLED', () => {
+		timelineStore._updateItems(
+			targets.map((target) => ({
+				id: target.itemId,
+				patch: {
+					effects: replaceAt(target.effects, target.index, { ...target.effect, enabled })
+				}
+			}))
+		);
+		return true;
+	});
+}
+
+/** Reset one mapped effect to registry defaults without changing its bypass state. */
+export function resetEffectOnItems(
+	displayItemId: string,
+	itemIds: readonly string[],
+	effectId: string
+): boolean {
+	const targets = mappedEffectTargets(displayItemId, itemIds, effectId).filter(
+		(target) => !isEffectAtDefaults(target.effect)
+	);
+	if (targets.length === 0) return false;
+	return execute('RESET_EFFECT', () => {
+		timelineStore._updateItems(
+			targets.map((target) => {
+				const effect: ItemEffect =
+					target.effect.type === 'gpu'
+						? {
+								...target.effect,
+								params: defaultGpuParams(getGpuEffect(target.effect.effectId)?.schema ?? [])
+							}
+						: {
+								...target.effect,
+								amount:
+									EFFECT_DEFINITIONS.find((definition) => definition.type === target.effect.type)
+										?.defaultAmount ?? target.effect.amount
+							};
+				return {
+					id: target.itemId,
+					patch: { effects: replaceAt(target.effects, target.index, effect) }
+				};
+			})
+		);
+		return true;
+	});
+}
+
+/** Remove one mapped effect across every compatible selected stack. */
+export function removeEffectOnItems(
+	displayItemId: string,
+	itemIds: readonly string[],
+	effectId: string
+): boolean {
+	const targets = mappedEffectTargets(displayItemId, itemIds, effectId);
+	if (targets.length === 0) return false;
+	return execute('REMOVE_EFFECTS', () => {
+		timelineStore._updateItems(
+			targets.map((target) => {
+				const effects = target.effects.filter((_, index) => index !== target.index);
+				return {
+					id: target.itemId,
+					patch: { effects: effects.length > 0 ? effects : undefined }
+				};
+			})
+		);
+		return true;
+	});
+}
+
 function replaceAt(effects: ItemEffect[], index: number, next: ItemEffect): ItemEffect[] {
 	return [...effects.slice(0, index), next, ...effects.slice(index + 1)];
 }
