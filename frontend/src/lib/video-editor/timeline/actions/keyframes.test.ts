@@ -1,16 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+import type {
+	KeyframeProperty,
+	KeyframeTrack,
+	TimelineItem
+} from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
 import {
 	activeValueAt,
+	duplicateKeyframes,
 	interpolateAt,
 	removeKeyframe,
+	removeKeyframes,
 	setAnimatedProperties,
 	setAnimatedProperty,
 	setKeyframe,
-	setKeyframeEasing
+	setKeyframeEasing,
+	updateKeyframes
 } from './keyframes';
 
 function getItem(id: string): TimelineItem {
@@ -19,10 +26,7 @@ function getItem(id: string): TimelineItem {
 	return item;
 }
 
-function trackOf(
-	item: TimelineItem,
-	property: KeyframeProperty
-): { frames: number[]; values: number[] } {
+function trackOf(item: TimelineItem, property: KeyframeProperty): KeyframeTrack {
 	const track = item.keyframes?.[property];
 	if (!track) throw new Error(`no ${property} track`);
 	return track;
@@ -180,6 +184,112 @@ describe('removeKeyframe', () => {
 		setKeyframe('a', 'volume', 5, 1);
 		expect(removeKeyframe('a', 'volume', 6)).toBe(false);
 		expect(commandHistory.undoStack.length).toBe(1);
+	});
+});
+
+describe('batch keyframe editing', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		commandHistory.clearHistory();
+		transitionsStore.clear();
+		timelineStore._setItems([
+			{
+				id: 'a',
+				trackId: 't',
+				from: 0,
+				durationInFrames: 60,
+				label: '',
+				type: 'video',
+				keyframes: {
+					opacity: {
+						frames: [10, 20, 30],
+						values: [0, 0.5, 1],
+						ids: ['a', 'b', 'c'],
+						easings: ['hold', 'cubic-bezier', 'linear'],
+						easingConfigs: [
+							null,
+							{
+								type: 'cubic-bezier',
+								bezier: { x1: 0.2, y1: 0.8, x2: 0.4, y2: 1 }
+							},
+							null
+						]
+					}
+				}
+			}
+		]);
+	});
+
+	it('moves a selection atomically and carries easing with each key', () => {
+		expect(
+			updateKeyframes('a', [
+				{ ref: { property: 'opacity', frame: 10, id: 'a' }, frame: 15, value: 0.1 },
+				{ ref: { property: 'opacity', frame: 20, id: 'b' }, frame: 25, value: 0.6 }
+			])
+		).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			frames: [15, 25, 30],
+			values: [0.1, 0.6, 1],
+			ids: ['a', 'b', 'c'],
+			easings: ['hold', 'cubic-bezier', 'linear']
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(trackOf(getItem('a'), 'opacity').frames).toEqual([10, 20, 30]);
+	});
+
+	it('lets a moved key replace an unselected collision like FreeCut', () => {
+		expect(
+			updateKeyframes('a', [
+				{ ref: { property: 'opacity', frame: 10, id: 'a' }, frame: 20, value: 0.25 }
+			])
+		).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			frames: [20, 30],
+			values: [0.25, 1],
+			ids: ['a', 'c']
+		});
+	});
+
+	it('rejects invalid group targets without a partial write', () => {
+		expect(
+			updateKeyframes('a', [
+				{ ref: { property: 'opacity', frame: 10, id: 'a' }, frame: 15, value: 0.1 },
+				{ ref: { property: 'opacity', frame: 20, id: 'b' }, frame: 15, value: 0.6 }
+			])
+		).toBe(false);
+		expect(trackOf(getItem('a'), 'opacity').frames).toEqual([10, 20, 30]);
+		expect(commandHistory.undoStack).toHaveLength(0);
+	});
+
+	it('duplicates keys with source easing and one undo step', () => {
+		expect(
+			duplicateKeyframes('a', [
+				{ ref: { property: 'opacity', frame: 20, id: 'b' }, frame: 40, value: 0.75 }
+			])
+		).toBe(true);
+		const track = getItem('a').keyframes?.opacity;
+		expect(track).toMatchObject({
+			frames: [10, 20, 30, 40],
+			values: [0, 0.5, 1, 0.75],
+			easings: ['hold', 'cubic-bezier', 'linear', 'cubic-bezier']
+		});
+		expect(track?.easingConfigs?.[3]).toEqual(track?.easingConfigs?.[1]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('removes a selection across lanes atomically', () => {
+		setKeyframe('a', 'rotation', 12, 90);
+		commandHistory.clearHistory();
+		expect(
+			removeKeyframes('a', [
+				{ property: 'opacity', frame: 20, id: 'b' },
+				{ property: 'rotation', frame: 12 }
+			])
+		).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity').frames).toEqual([10, 30]);
+		expect(getItem('a').keyframes?.rotation).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });
 

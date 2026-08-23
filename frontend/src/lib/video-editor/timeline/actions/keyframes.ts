@@ -24,6 +24,13 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { isFrameInTransitionRegion } from '../edit-constraints';
 import { transitionsStore } from './transitions-store.svelte';
+import { trackEntryAt, type KeyframeRef } from '../keyframe-editor';
+
+export interface KeyframeEdit {
+	ref: KeyframeRef;
+	frame: number;
+	value: number;
+}
 
 function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
 	return (
@@ -205,6 +212,145 @@ export function removeKeyframe(itemId: string, property: KeyframeProperty, frame
 		timelineStore._updateItems([
 			{ id: itemId, patch: { keyframes: pruneTrack(item.keyframes ?? {}, property, nextTrack) } }
 		]);
+		return true;
+	});
+}
+
+/** Move or edit several keyframes as one collision-safe undo step. */
+export function updateKeyframes(itemId: string, edits: readonly KeyframeEdit[]): boolean {
+	return execute('UPDATE_KEYFRAMES', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || edits.length === 0) return false;
+		if (edits.some((edit) => !canWriteKeyframe(item, edit.frame) || !Number.isFinite(edit.value))) {
+			return false;
+		}
+
+		const byProperty = Map.groupBy(edits, (edit) => edit.ref.property);
+		const keyframes: ItemKeyframes = { ...item.keyframes };
+		for (const [property, propertyEdits] of byProperty) {
+			const source = item.keyframes?.[property];
+			if (!source) return false;
+			const track = withCompleteMetadata(source);
+			const targets = new Set<number>();
+			const editById = new Map<string, KeyframeEdit>();
+			for (const edit of propertyEdits) {
+				const index = trackEntryAt(track, edit.ref);
+				if (index < 0 || targets.has(edit.frame)) return false;
+				targets.add(edit.frame);
+				const id = track.ids[index];
+				if (!id) return false;
+				editById.set(id, edit);
+			}
+
+			const entries = track.frames.map((frame, index) => {
+				const id = track.ids[index] ?? crypto.randomUUID();
+				const edit = editById.get(id);
+				return {
+					id,
+					frame: edit?.frame ?? frame,
+					value: edit?.value ?? track.values[index] ?? 0,
+					easing: track.easings[index] ?? 'linear',
+					easingConfig: track.easingConfigs[index] ?? null,
+					isEdited: edit !== undefined
+				};
+			});
+			const byFrame = new Map<number, (typeof entries)[number]>();
+			for (const entry of entries) {
+				const existing = byFrame.get(entry.frame);
+				if (!existing || entry.isEdited) byFrame.set(entry.frame, entry);
+			}
+			const sorted = [...byFrame.values()].toSorted((left, right) => left.frame - right.frame);
+			keyframes[property] = {
+				frames: sorted.map((entry) => entry.frame),
+				values: sorted.map((entry) => entry.value),
+				ids: sorted.map((entry) => entry.id),
+				easings: sorted.map((entry) => entry.easing),
+				easingConfigs: sorted.map((entry) => entry.easingConfig)
+			};
+		}
+		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		return true;
+	});
+}
+
+/** Duplicate keyframes to explicit graph targets, preserving their easing. */
+export function duplicateKeyframes(itemId: string, edits: readonly KeyframeEdit[]): boolean {
+	return execute('DUPLICATE_KEYFRAMES', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || edits.length === 0) return false;
+		if (edits.some((edit) => !canWriteKeyframe(item, edit.frame) || !Number.isFinite(edit.value))) {
+			return false;
+		}
+		let keyframes: ItemKeyframes = { ...item.keyframes };
+		for (const edit of edits) {
+			const source = keyframes[edit.ref.property];
+			if (!source) return false;
+			const track = withCompleteMetadata(source);
+			const sourceIndex = trackEntryAt(track, edit.ref);
+			if (sourceIndex < 0) return false;
+			const targetIndex = track.frames.indexOf(edit.frame);
+			if (targetIndex >= 0) {
+				track.values[targetIndex] = edit.value;
+				track.easings[targetIndex] = track.easings[sourceIndex] ?? 'linear';
+				track.easingConfigs[targetIndex] = track.easingConfigs[sourceIndex] ?? null;
+			} else {
+				let insertAt = track.frames.findIndex((frame) => frame > edit.frame);
+				if (insertAt < 0) insertAt = track.frames.length;
+				track.frames.splice(insertAt, 0, edit.frame);
+				track.values.splice(insertAt, 0, edit.value);
+				track.ids.splice(insertAt, 0, crypto.randomUUID());
+				track.easings.splice(insertAt, 0, track.easings[sourceIndex] ?? 'linear');
+				track.easingConfigs.splice(
+					insertAt,
+					0,
+					cloneEasingConfig(track.easingConfigs[sourceIndex] ?? null)
+				);
+			}
+			keyframes = { ...keyframes, [edit.ref.property]: track };
+		}
+		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		return true;
+	});
+}
+
+function cloneEasingConfig(config: EasingConfig | null): EasingConfig | null {
+	if (!config) return null;
+	return {
+		...config,
+		...(config.bezier && { bezier: { ...config.bezier } }),
+		...(config.spring && { spring: { ...config.spring } })
+	};
+}
+
+/** Remove an arbitrary selection as one undo step. */
+export function removeKeyframes(itemId: string, refs: readonly KeyframeRef[]): boolean {
+	return execute('REMOVE_KEYFRAMES', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || refs.length === 0) return false;
+		let keyframes = item.keyframes;
+		for (const [property, propertyRefs] of Map.groupBy(refs, (ref) => ref.property)) {
+			const source = keyframes?.[property];
+			if (!source) continue;
+			const indexes = new Set(
+				propertyRefs.map((ref) => trackEntryAt(source, ref)).filter((index) => index >= 0)
+			);
+			if (indexes.size === 0) continue;
+			const keep = source.frames.map((_, index) => index).filter((index) => !indexes.has(index));
+			const nextTrack: KeyframeTrack = {
+				frames: keep.map((index) => source.frames[index] ?? 0),
+				values: keep.map((index) => source.values[index] ?? 0),
+				...(source.ids && { ids: keep.map((index) => source.ids?.[index] ?? crypto.randomUUID()) }),
+				...(source.easings && {
+					easings: keep.map((index) => source.easings?.[index] ?? 'linear')
+				}),
+				...(source.easingConfigs && {
+					easingConfigs: keep.map((index) => source.easingConfigs?.[index] ?? null)
+				})
+			};
+			keyframes = pruneTrack(keyframes ?? {}, property, nextTrack);
+		}
+		if (keyframes === item.keyframes) return false;
+		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
 		return true;
 	});
 }

@@ -40,6 +40,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Video Editor GPU effects share one WebGL2 ping-pong compositor; use point-scatter vertex passes for exact cross-texel writes that a fragment pass cannot express.
 - Video Editor adjustment layers are timed, non-rendering items; preview and export apply their enabled effects, top-first, to active visual items on higher-order tracks.
 - Non-normal Video Editor blend modes use the shared `CanvasStackCompositor` in preview and export so each transformed layer blends against the finished frame below; keep the exact CPU fallback aligned with the GPU shader.
+- Video Editor keyframe views share item keyframe tracks and `keyframeSelectionStore`; batch graph and dope-sheet edits use atomic keyframe actions so parallel metadata arrays and undo stay aligned.
 
 ## Reference repositories
 

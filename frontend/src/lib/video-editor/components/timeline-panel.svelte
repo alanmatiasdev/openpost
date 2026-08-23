@@ -20,6 +20,7 @@
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
+	import KeyframeValueGraph from './keyframe-value-graph.svelte';
 	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { Slider } from '$lib/components/ui/slider';
@@ -113,6 +114,7 @@
 	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
+	import ChartSplineIcon from '@lucide/svelte/icons/chart-spline';
 
 	let {
 		onedit,
@@ -1238,6 +1240,7 @@
 	}
 
 	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
+	let showValueGraph = $state(false);
 	let selectedKeyframe = $state<{ property: KeyframeProperty; frame: number } | null>(null);
 	const BEZIER_KEYS = ['x1', 'y1', 'x2', 'y2'] satisfies Array<'x1' | 'y1' | 'x2' | 'y2'>;
 	const SPRING_KEYS = ['tension', 'friction', 'mass'] satisfies Array<
@@ -1374,6 +1377,10 @@
 	function setPendingKeyframeProperty(value: string): void {
 		const property = availableKeyframeProperties.find((candidate) => candidate === value);
 		if (property) pendingKeyframeProperty = property;
+	}
+
+	function toggleValueGraph(): void {
+		showValueGraph = !showValueGraph;
 	}
 
 	function applyBezierPreset(value: string): void {
@@ -1518,15 +1525,28 @@
 				class="h-7 w-36 text-xs"
 				value={pendingKeyframeProperty}
 				options={keyframePropertyOptions}
-				ariaLabel="Animated property"
+				ariaLabel={m.video_editor_keyframe_property()}
 				onValueChange={setPendingKeyframeProperty}
 			/>
 			<button
 				type="button"
 				class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 				onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
-				><DiamondIcon class="size-2.5 fill-current" /> Add key</button
+				><DiamondIcon class="size-2.5 fill-current" /> {m.video_editor_keyframe_add()}</button
 			>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+				data-active={showValueGraph}
+				aria-pressed={showValueGraph}
+				aria-label={m.video_editor_keyframe_graph_toggle()}
+				title={m.video_editor_keyframe_graph_toggle()}
+				disabled={(selectedItem.keyframes?.[pendingKeyframeProperty]?.frames.length ?? 0) === 0}
+				onclick={toggleValueGraph}
+			>
+				<ChartSplineIcon class="size-3.5" />
+			</Button>
 		{/if}
 		<button
 			type="button"
@@ -1833,6 +1853,19 @@
 								>{/each}
 						{/if}
 					</div>
+				{/if}
+				{#if showValueGraph && (selectedItem.keyframes?.[pendingKeyframeProperty]?.frames.length ?? 0) > 0}
+					<KeyframeValueGraph
+						item={selectedItem}
+						property={pendingKeyframeProperty}
+						currentFrame={timelineStore.currentFrame}
+						onscrub={setCurrentFrame}
+						onselect={(keyframe) =>
+							(selectedKeyframe = keyframe
+								? { property: keyframe.property, frame: keyframe.frame }
+								: null)}
+						{onedit}
+					/>
 				{/if}
 			</div>
 		{/if}
