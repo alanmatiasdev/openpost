@@ -3573,12 +3573,12 @@
 				"required": ["workspace_id", "filename", "size"],
 				"type": "object"
 			},
-			"CreateMediaUploadSessionOutputBody": {
+			"CreateMediaUploadSessionResponse": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateMediaUploadSessionOutputBody.json"],
+						"examples": ["https://example.com/schemas/CreateMediaUploadSessionResponse.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -27791,6 +27791,18 @@
 		"/media/upload-session": {
 			"post": {
 				"operationId": "create-media-upload-session",
+				"parameters": [
+					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					}
+				],
 				"requestBody": {
 					"content": {
 						"application/json": {
@@ -27806,7 +27818,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/CreateMediaUploadSessionOutputBody"
+									"$ref": "#/components/schemas/CreateMediaUploadSessionResponse"
 								}
 							}
 						},
@@ -27957,8 +27969,8 @@
 					"access": "write",
 					"effect": "local-mutation",
 					"exposure": "alpha",
-					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"idempotency": "natural",
+					"retry": "transient"
 				}
 			}
 		},
@@ -33544,6 +33556,18 @@
 			},
 			"post": {
 				"operationId": "create-publication",
+				"parameters": [
+					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					}
+				],
 				"requestBody": {
 					"content": {
 						"application/json": {
@@ -33800,6 +33824,16 @@
 				"operationId": "update-publication",
 				"parameters": [
 					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
+					{
 						"description": "Publication ID",
 						"in": "path",
 						"name": "id",
@@ -33857,6 +33891,16 @@
 			"post": {
 				"operationId": "cancel-publication",
 				"parameters": [
+					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
 					{
 						"description": "Publication ID",
 						"in": "path",
@@ -34076,6 +34120,16 @@
 				"operationId": "publish-publication-now",
 				"parameters": [
 					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
+					{
 						"description": "Publication ID",
 						"in": "path",
 						"name": "id",
@@ -34133,6 +34187,16 @@
 			"put": {
 				"operationId": "upsert-publication-renditions",
 				"parameters": [
+					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
 					{
 						"description": "Publication ID",
 						"in": "path",
@@ -34445,6 +34509,16 @@
 				"operationId": "retry-failed-publication-renditions",
 				"parameters": [
 					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
+					{
 						"description": "Publication ID",
 						"in": "path",
 						"name": "id",
@@ -34542,6 +34616,16 @@
 			"post": {
 				"operationId": "schedule-publication",
 				"parameters": [
+					{
+						"description": "Replay key scoped to the caller, Workspace, and operation",
+						"in": "header",
+						"name": "Idempotency-Key",
+						"schema": {
+							"description": "Replay key scoped to the caller, Workspace, and operation",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
 					{
 						"description": "Publication ID",
 						"in": "path",
