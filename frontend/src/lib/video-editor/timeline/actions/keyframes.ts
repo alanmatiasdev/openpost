@@ -36,6 +36,10 @@ import {
 	upsertPositionKeyframe,
 	vectorKeyframesPatch
 } from '../vector-keyframes';
+import {
+	effectPropertyPatch,
+	isEffectKeyframeProperty
+} from '$lib/video-editor/effects/effect-keyframes';
 export { activeValueAt, interpolateAt } from '../keyframe-interpolation';
 
 export interface KeyframeEdit {
@@ -240,7 +244,10 @@ export function setPositionAtFrame(
 		const promoted = promotePositionKeyframes(item, relativeFrame);
 		if (!promoted) return false;
 		remapPromotedSelection(itemId, promoted.identityRemap);
-		const position = upsertPositionKeyframe(promoted.position, relativeFrame, { x, y });
+		const position = upsertPositionKeyframe(promoted.position, relativeFrame, {
+			x,
+			y
+		});
 		timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
 		return true;
 	});
@@ -364,7 +371,12 @@ export function removeKeyframe(itemId: string, property: KeyframeProperty, frame
 			})
 		};
 		timelineStore._updateItems([
-			{ id: itemId, patch: { keyframes: pruneTrack(item.keyframes ?? {}, property, nextTrack) } }
+			{
+				id: itemId,
+				patch: {
+					keyframes: pruneTrack(item.keyframes ?? {}, property, nextTrack)
+				}
+			}
 		]);
 		return true;
 	});
@@ -575,7 +587,13 @@ export function insertKeyframes(itemId: string, inserts: readonly KeyframeInsert
 			(insert) => insert.property
 		)) {
 			const track = withCompleteMetadata(
-				keyframes[property] ?? { frames: [], values: [], ids: [], easings: [], easingConfigs: [] },
+				keyframes[property] ?? {
+					frames: [],
+					values: [],
+					ids: [],
+					easings: [],
+					easingConfigs: []
+				},
 				property
 			);
 			for (const insert of propertyInserts) {
@@ -671,7 +689,9 @@ export function removeKeyframes(itemId: string, refs: readonly KeyframeRef[]): b
 			const nextTrack: KeyframeTrack = {
 				frames: keep.map((index) => source.frames[index] ?? 0),
 				values: keep.map((index) => source.values[index] ?? 0),
-				...(source.ids && { ids: keep.map((index) => source.ids?.[index] ?? crypto.randomUUID()) }),
+				...(source.ids && {
+					ids: keep.map((index) => source.ids?.[index] ?? crypto.randomUUID())
+				}),
 				...(source.easings && {
 					easings: keep.map((index) => source.easings?.[index] ?? 'linear')
 				}),
@@ -859,6 +879,9 @@ function basePropertyPatch(
 	property: KeyframeProperty,
 	value: number
 ): Partial<TimelineItem> {
+	const effectPatch = effectPropertyPatch(item, property, value);
+	if (effectPatch) return effectPatch;
+	if (isEffectKeyframeProperty(property)) return {};
 	if (
 		[
 			'x',
@@ -884,7 +907,12 @@ function basePropertyPatch(
 		const key = `${field.slice(0, 1).toLowerCase()}${field.slice(1)}`;
 		return {
 			textShadow: {
-				...(item.textShadow ?? { blur: 0, color: '#000000', offsetX: 0, offsetY: 0 }),
+				...(item.textShadow ?? {
+					blur: 0,
+					color: '#000000',
+					offsetX: 0,
+					offsetY: 0
+				}),
 				[key]: value
 			}
 		};

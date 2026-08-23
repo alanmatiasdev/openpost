@@ -67,6 +67,10 @@
 		TimelineTransition
 	} from '$lib/video-editor/project/types';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
+	import {
+		effectPropertyBaseValue,
+		effectPropertyLabel
+	} from '$lib/video-editor/effects/effect-keyframes';
 	import { canJoinMultipleItems } from '$lib/video-editor/timeline/join-items';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
 	import {
@@ -2263,7 +2267,10 @@
 	});
 
 	function keyframeLabel(property: KeyframeProperty): string {
-		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
+		return (
+			(selectedItem && effectPropertyLabel(selectedItem, property)) ??
+			property.replace(/([a-z])([A-Z])/g, '$1 $2')
+		);
 	}
 
 	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
@@ -2272,6 +2279,7 @@
 		const frame = Math.max(0, timelineStore.currentFrame - item.from);
 		const value =
 			activeValueAt(item, property, timelineStore.currentFrame) ??
+			effectPropertyBaseValue(item, property) ??
 			(property === 'opacity' || property === 'volume' ? 1 : 0);
 		if (setKeyframe(item.id, property, frame, value)) onedit();
 	}

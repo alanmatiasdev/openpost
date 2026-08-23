@@ -9,6 +9,7 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
 import { editorKeyframes } from '../keyframe-editor';
+import { buildEffectKeyframeProperty } from '../../effects/effect-keyframes';
 import {
 	activeValueAt,
 	createPositionSpatialTangents,
@@ -545,6 +546,38 @@ describe('setAnimatedProperty', () => {
 			frames: [5, 10],
 			values: [0.5, 0.75]
 		});
+	});
+
+	it('updates an effect base param until auto-key starts its lane', () => {
+		timelineStore._updateItems([
+			{
+				id: 'animated',
+				patch: {
+					effects: [
+						{
+							id: 'contrast',
+							type: 'gpu',
+							effectId: 'gpu-contrast',
+							enabled: true,
+							params: { amount: 1 }
+						}
+					]
+				}
+			}
+		]);
+		commandHistory.clearHistory();
+		const property = buildEffectKeyframeProperty('gpu-contrast', 'contrast', 'amount');
+
+		expect(setAnimatedProperty('animated', property, 15, 1.5, false)).toBe(true);
+		expect(getItem('animated').effects?.[0]).toMatchObject({ params: { amount: 1.5 } });
+		expect(getItem('animated').keyframes?.[property]).toBeUndefined();
+
+		expect(setAnimatedProperty('animated', property, 20, 2.25, true)).toBe(true);
+		expect(getItem('animated').keyframes?.[property]).toMatchObject({
+			frames: [10],
+			values: [2.25]
+		});
+		expect(commandHistory.undoStack).toHaveLength(2);
 	});
 
 	it('rejects keys outside the clip bounds', () => {

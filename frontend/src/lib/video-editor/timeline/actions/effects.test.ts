@@ -16,6 +16,7 @@ import {
 	upsertGpuEffectParamsOnItems
 } from './effects';
 import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
+import { buildEffectKeyframeProperty } from '$lib/video-editor/effects/effect-keyframes';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
 	return {
@@ -198,6 +199,37 @@ describe('effect stack actions', () => {
 			'brightness',
 			'gpu'
 		]);
+	});
+
+	it('prunes mapped effect lanes when the owning effect leaves the stack', () => {
+		for (const itemId of ['video', 'title']) {
+			const effectId = `${itemId}-blur`;
+			const property = buildEffectKeyframeProperty('gpu-gaussian-blur', effectId, 'radius');
+			timelineStore._updateItems([
+				{
+					id: itemId,
+					patch: {
+						keyframes: {
+							opacity: { frames: [0], values: [1] },
+							[property]: { frames: [0], values: [18] }
+						}
+					}
+				}
+			]);
+		}
+		commandHistory.clearHistory();
+
+		expect(removeEffectOnItems('video', ['video', 'title'], 'video-blur')).toBe(true);
+		for (const itemId of ['video', 'title']) {
+			const property = buildEffectKeyframeProperty('gpu-gaussian-blur', `${itemId}-blur`, 'radius');
+			expect(timelineStore.itemById.get(itemId)?.keyframes?.[property]).toBeUndefined();
+			expect(timelineStore.itemById.get(itemId)?.keyframes?.opacity).toBeDefined();
+		}
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video')?.keyframes).toHaveProperty(
+			'effect:gpu-gaussian-blur:video-blur:radius'
+		);
 	});
 });
 

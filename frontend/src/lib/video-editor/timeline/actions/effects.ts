@@ -30,6 +30,7 @@ import {
 	replaceColorGradeInStack,
 	type GradeEffectSnapshot
 } from '$lib/video-editor/effects/color-grade';
+import { removeEffectKeyframes } from '$lib/video-editor/effects/effect-keyframes';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 
@@ -343,7 +344,10 @@ export function setGpuEffectData(
 		if (!effects || index === -1) return false;
 		const current = effects[index];
 		if (!current || current.type !== 'gpu') return false;
-		const next: GpuEffect = { ...current, params: { ...current.params, ...params } };
+		const next: GpuEffect = {
+			...current,
+			params: { ...current.params, ...params }
+		};
 		timelineStore._updateItems([
 			{ id: itemId, patch: { effects: replaceAt(effects, index, next) } }
 		]);
@@ -365,11 +369,18 @@ export function setItemBlendMode(itemId: string, mode: BlendMode): boolean {
 /** Remove one effect by id. One undoable step. */
 export function removeEffect(itemId: string, effectId: string): boolean {
 	return execute('REMOVE_EFFECT', () => {
-		const effects = timelineStore.itemById.get(itemId)?.effects;
+		const item = timelineStore.itemById.get(itemId);
+		const effects = item?.effects;
 		if (!effects || !effects.some((effect) => effect.id === effectId)) return false;
 		const next = effects.filter((effect) => effect.id !== effectId);
 		timelineStore._updateItems([
-			{ id: itemId, patch: { effects: next.length > 0 ? next : undefined } }
+			{
+				id: itemId,
+				patch: {
+					effects: next.length > 0 ? next : undefined,
+					keyframes: removeEffectKeyframes(item?.keyframes, effectId)
+				}
+			}
 		]);
 		return true;
 	});
@@ -458,7 +469,10 @@ export function setEffectEnabledOnItems(
 			targets.map((target) => ({
 				id: target.itemId,
 				patch: {
-					effects: replaceAt(target.effects, target.index, { ...target.effect, enabled })
+					effects: replaceAt(target.effects, target.index, {
+						...target.effect,
+						enabled
+					})
 				}
 			}))
 		);
@@ -513,9 +527,13 @@ export function removeEffectOnItems(
 		timelineStore._updateItems(
 			targets.map((target) => {
 				const effects = target.effects.filter((_, index) => index !== target.index);
+				const item = timelineStore.itemById.get(target.itemId);
 				return {
 					id: target.itemId,
-					patch: { effects: effects.length > 0 ? effects : undefined }
+					patch: {
+						effects: effects.length > 0 ? effects : undefined,
+						keyframes: removeEffectKeyframes(item?.keyframes, target.effect.id)
+					}
 				};
 			})
 		);
@@ -544,7 +562,10 @@ function createEffectFromTemplate(template: EffectTemplate): ItemEffect | null {
 	}
 	const definition = getGpuEffect(template.effectId);
 	if (!definition) return null;
-	const params = { ...defaultGpuParams(definition.schema), ...(template.params ?? {}) };
+	const params = {
+		...defaultGpuParams(definition.schema),
+		...(template.params ?? {})
+	};
 	for (const param of definition.schema) {
 		params[param.name] = normalizeGpuParam(param, params[param.name] ?? param.default);
 	}

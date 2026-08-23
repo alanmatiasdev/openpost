@@ -6,6 +6,7 @@ import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
 import TimelinePanel from './timeline-panel.svelte';
+import { colorStringToKeyframeValue } from '$lib/video-editor/timeline/color-keyframes';
 
 const videoTrack: TimelineTrack = {
 	id: 'video-track',
@@ -332,5 +333,61 @@ describe('KeyframeValueGraph', () => {
 			expect(screen.container.querySelector('rect[stroke-dasharray="3 2"]')).not.toBeNull();
 		});
 		pointer(svg, 'pointerup', right, bottom);
+	});
+
+	it('labels color lanes, formats hex ticks, and keeps keyboard edits frame-only', async () => {
+		const property = 'effect:gpu-ascii:ascii-effect:textColor' as const;
+		timelineStore.setAll({
+			items: [
+				{
+					...animatedItem,
+					effects: [
+						{
+							id: 'ascii-effect',
+							type: 'gpu',
+							effectId: 'gpu-ascii',
+							enabled: true,
+							params: { matchSourceColor: false, textColor: '#ff0000' }
+						}
+					],
+					keyframes: {
+						[property]: {
+							frames: [0, 30],
+							values: [
+								colorStringToKeyframeValue('#ff0000')!,
+								colorStringToKeyframeValue('#0000ff')!
+							],
+							ids: ['red', 'blue']
+						}
+					}
+				}
+			]
+		});
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: animatedItem.id,
+			selectedItemIds: [animatedItem.id]
+		});
+		await screen.getByText('ASCII: Text Color', { exact: true }).click();
+		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await expect
+			.element(
+				screen.getByRole('application', {
+					name: 'Keyframe value graph for ASCII: Text Color'
+				})
+			)
+			.toBeVisible();
+		expect(screen.container.textContent).toMatch(/#[0-9a-f]{6}/);
+
+		const red = screen.container.querySelector<SVGGElement>(
+			'g[aria-label="ASCII: Text Color keyframe at frame 0"]'
+		);
+		expect(red).not.toBeNull();
+		red?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		red?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.[property]?.values[0]).toBe(
+			colorStringToKeyframeValue('#ff0000')
+		);
+		expect(commandHistory.undoStack).toHaveLength(0);
 	});
 });

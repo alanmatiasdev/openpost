@@ -32,6 +32,7 @@
 	import { calculateTransitionPortions } from '$lib/video-editor/timeline/transition-planner';
 	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
 	import { m } from '$lib/paraglide/messages';
+	import { effectPropertyLabel } from '$lib/video-editor/effects/effect-keyframes';
 
 	let {
 		item,
@@ -148,7 +149,7 @@
 	});
 
 	function propertyLabel(property: KeyframeProperty): string {
-		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
+		return effectPropertyLabel(item, property) ?? property.replace(/([a-z])([A-Z])/g, '$1 $2');
 	}
 
 	function propertyGroup(property: KeyframeProperty): PropertyGroup {

@@ -270,6 +270,102 @@ describe('EffectsPanel stack controls', () => {
 });
 
 describe('EffectsPanel typed GPU controls', () => {
+	it('keeps base parameter editing available when the playhead is outside the clip', async () => {
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [
+				{
+					...videoItem,
+					effects: [
+						{
+							id: 'contrast-effect',
+							type: 'gpu',
+							effectId: 'gpu-contrast',
+							enabled: true,
+							params: { amount: 1 }
+						}
+					]
+				}
+			],
+			currentFrame: 90,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(EffectsPanel, { itemId: 'video', onedit });
+		screen
+			.getByRole('slider', { name: 'Contrast: Amount' })
+			.element()
+			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.effects?.[0]).toMatchObject({
+				params: { amount: 1.01 }
+			});
+		});
+		expect(timelineStore.itemById.get('video')?.keyframes).toBeUndefined();
+		expect(
+			screen
+				.getByRole('button', { name: 'Add Contrast: Amount keyframe' })
+				.element()
+				.hasAttribute('disabled')
+		).toBe(true);
+		expect(onedit).toHaveBeenCalledTimes(1);
+	});
+
+	it('adds, removes, and auto-writes parameter keyframes at the playhead', async () => {
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [
+				{
+					...videoItem,
+					effects: [
+						{
+							id: 'contrast-effect',
+							type: 'gpu',
+							effectId: 'gpu-contrast',
+							enabled: true,
+							params: { amount: 1 }
+						}
+					]
+				}
+			],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(EffectsPanel, { itemId: 'video', onedit });
+		const property = 'effect:gpu-contrast:contrast-effect:amount';
+
+		await screen.getByRole('button', { name: 'Add Contrast: Amount keyframe' }).click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.keyframes?.[property]).toMatchObject({
+				frames: [0],
+				values: [1]
+			});
+		});
+		await screen.getByRole('button', { name: 'Remove Contrast: Amount keyframe' }).click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.keyframes?.[property]).toBeUndefined();
+		});
+
+		await screen.getByRole('button', { name: 'Enable auto-key for Contrast: Amount' }).click();
+		await expect
+			.element(screen.getByRole('button', { name: 'Disable auto-key for Contrast: Amount' }))
+			.toHaveAttribute('aria-pressed', 'true');
+		timelineStore._setCurrentFrame(15);
+		screen
+			.getByRole('slider', { name: 'Contrast: Amount' })
+			.element()
+			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('video')?.keyframes?.[property]).toMatchObject({
+				frames: [15],
+				values: [1.01]
+			});
+		});
+		expect(onedit).toHaveBeenCalledTimes(3);
+	});
+
 	it('renders the ASCII control surface and commits conditional choices', async () => {
 		timelineStore.setAll({
 			tracks: [videoTrack],

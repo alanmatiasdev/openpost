@@ -25,7 +25,7 @@
 		graphValueRange,
 		keyframeIdentity,
 		marqueeSelection,
-		PROPERTY_VALUE_RANGES,
+		propertyValueRange,
 		type EditorKeyframe,
 		type GraphCoordinate,
 		type GraphViewport,
@@ -36,6 +36,11 @@
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 	import { calculateTransitionPortions } from '$lib/video-editor/timeline/transition-planner';
 	import { m } from '$lib/paraglide/messages';
+	import {
+		effectPropertyLabel,
+		isColorEffectKeyframeProperty
+	} from '$lib/video-editor/effects/effect-keyframes';
+	import { keyframeValueToHexColor } from '$lib/video-editor/timeline/color-keyframes';
 
 	let {
 		item,
@@ -149,8 +154,11 @@
 			};
 		})
 	);
-	const range = $derived(PROPERTY_VALUE_RANGES[property]);
-	const propertyLabel = $derived(property.replace(/([a-z])([A-Z])/g, '$1 $2'));
+	const range = $derived(propertyValueRange(property));
+	const colorProperty = $derived(isColorEffectKeyframeProperty(property));
+	const propertyLabel = $derived(
+		effectPropertyLabel(item, property) ?? property.replace(/([a-z])([A-Z])/g, '$1 $2')
+	);
 	const blockedRanges = $derived.by(() =>
 		transitionsStore.list.flatMap((transition) => {
 			const { leftPortion, rightPortion } = calculateTransitionPortions(
@@ -330,12 +338,12 @@
 		const anchor = state.initial.get(state.anchorId);
 		if (!anchor) return;
 		let frameDelta = (deltaX / dimensions.width) * dimensions.frameRange;
-		let valueDelta = -(deltaY / dimensions.height) * dimensions.valueRange;
+		let valueDelta = colorProperty ? 0 : -(deltaY / dimensions.height) * dimensions.valueRange;
 		if (event.altKey && !state.duplicate) {
 			frameDelta *= 0.5;
 			valueDelta *= 0.5;
 		}
-		if (event.shiftKey) {
+		if (event.shiftKey && !colorProperty) {
 			if (Math.abs(deltaX) >= Math.abs(deltaY)) valueDelta = 0;
 			else frameDelta = 0;
 		}
@@ -365,7 +373,7 @@
 					.map((keyframe) => keyframe.value)
 			];
 			anchorFrame = nearestSnap(anchorFrame, frameTargets, frameThreshold);
-			anchorValue = nearestSnap(anchorValue, valueTargets, valueThreshold);
+			if (!colorProperty) anchorValue = nearestSnap(anchorValue, valueTargets, valueThreshold);
 		}
 
 		const requestedFrameDelta = anchorFrame - anchor.frame;
@@ -573,6 +581,7 @@
 			return;
 		}
 		if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+		if (colorProperty && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) return;
 		const selected = points.filter((point) => selectedIds.has(point.id));
 		if (selected.length === 0) return;
 		event.preventDefault();
@@ -646,6 +655,7 @@
 	}
 
 	function formatValue(value: number): string {
+		if (colorProperty) return keyframeValueToHexColor(value);
 		return `${value.toFixed(range.decimals)}${range.unit}`;
 	}
 </script>

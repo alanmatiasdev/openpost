@@ -3,6 +3,7 @@
 import type {
 	EasingConfig,
 	EasingType,
+	BuiltInKeyframeProperty,
 	KeyframeProperty,
 	KeyframeTrack,
 	SpatialBezierTangents,
@@ -10,6 +11,9 @@ import type {
 } from '$lib/video-editor/project/types';
 import { applyEasingConfig } from './easing';
 import { activePositionKeyframes } from './vector-keyframes';
+import { parseEffectKeyframeProperty } from '$lib/video-editor/effects/effect-keyframes';
+import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
+import { MAX_PACKED_COLOR } from './color-keyframes';
 
 export interface KeyframeRef {
 	property: KeyframeProperty;
@@ -66,7 +70,12 @@ export interface GraphDataCoordinate {
 	value: number;
 }
 
-export const GRAPH_PADDING: GraphPadding = { top: 18, right: 12, bottom: 28, left: 44 };
+export const GRAPH_PADDING: GraphPadding = {
+	top: 18,
+	right: 12,
+	bottom: 28,
+	left: 44
+};
 
 export const PROPERTY_VALUE_RANGES = {
 	x: { min: -1000, max: 2000, unit: 'px', decimals: 0 },
@@ -95,7 +104,29 @@ export const PROPERTY_VALUE_RANGES = {
 	textShadowOffsetY: { min: -100, max: 100, unit: 'px', decimals: 0 },
 	textShadowBlur: { min: 0, max: 160, unit: 'px', decimals: 0 },
 	strokeWidth: { min: 0, max: 24, unit: 'px', decimals: 0 }
-} satisfies Record<KeyframeProperty, PropertyValueRange>;
+} satisfies Record<BuiltInKeyframeProperty, PropertyValueRange>;
+
+export function propertyValueRange(property: KeyframeProperty): PropertyValueRange {
+	// SAFETY: missing dynamic effect keys return undefined and fall through to schema lookup.
+	const builtIn = PROPERTY_VALUE_RANGES[property as BuiltInKeyframeProperty];
+	if (builtIn) return builtIn;
+	const parsed = parseEffectKeyframeProperty(property);
+	const schema = parsed
+		? getGpuEffect(parsed.effectType)?.schema.find((param) => param.name === parsed.paramName)
+		: undefined;
+	if (schema?.type === 'color') {
+		return { min: 0, max: MAX_PACKED_COLOR, unit: '', decimals: 0 };
+	}
+	if (schema && (!schema.type || schema.type === 'number')) {
+		return {
+			min: schema.min,
+			max: schema.max,
+			unit: '',
+			decimals: schema.step < 0.1 ? 2 : schema.step < 1 ? 1 : 0
+		};
+	}
+	return { min: 0, max: 1, unit: '', decimals: 2 };
+}
 
 export function editorKeyframes(item: TimelineItem, property: KeyframeProperty): EditorKeyframe[] {
 	if (property === 'x' || property === 'y') {
@@ -142,7 +173,7 @@ export function graphValueRange(
 	keyframes: readonly Pick<EditorKeyframe, 'value'>[],
 	autoFit = true
 ): GraphValueRange {
-	const bounds = PROPERTY_VALUE_RANGES[property];
+	const bounds = propertyValueRange(property);
 	if (!autoFit || keyframes.length === 0) return { min: bounds.min, max: bounds.max };
 	let minimum = Number.POSITIVE_INFINITY;
 	let maximum = Number.NEGATIVE_INFINITY;

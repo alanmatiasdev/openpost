@@ -125,8 +125,11 @@ export const DEFAULT_BEZIER_POINTS: BezierControlPoints = {
 	y2: 1
 };
 
-/** Property that can be animated with per-item keyframes. */
-export type KeyframeProperty =
+/** Stable effect-parameter lane, matching FreeCut's persisted property format. */
+export type EffectKeyframeProperty = `effect:${string}:${string}:${string}`;
+
+/** Built-in property that can be animated with per-item keyframes. */
+export type BuiltInKeyframeProperty =
 	| 'x'
 	| 'y'
 	| 'width'
@@ -153,6 +156,9 @@ export type KeyframeProperty =
 	| 'textShadowOffsetY'
 	| 'textShadowBlur'
 	| 'strokeWidth';
+
+/** Property that can be animated with per-item keyframes. */
+export type KeyframeProperty = BuiltInKeyframeProperty | EffectKeyframeProperty;
 
 /**
  * Parallel frame/value arrays for one animated property. Frames ascend and

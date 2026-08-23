@@ -239,6 +239,7 @@
 			case 'textShadowBlur':
 				return source.textShadow?.blur ?? 0;
 		}
+		return defaultValue(property);
 	}
 
 	function defaultValue(property: KeyframeProperty): number {

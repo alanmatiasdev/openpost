@@ -8,6 +8,11 @@
 import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 import { activeValueAt } from './keyframe-interpolation';
 import { activePositionKeyframes, interpolatePosition } from './vector-keyframes';
+import {
+	getAnimatableEffectPropertiesForItem,
+	isEffectKeyframeProperty,
+	resolveAnimatedEffectsAt
+} from '$lib/video-editor/effects/effect-keyframes';
 
 const VISUAL_PROPERTIES: KeyframeProperty[] = [
 	'x',
@@ -49,23 +54,30 @@ const TEXT_PROPERTIES: KeyframeProperty[] = [
 ];
 
 export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProperty[] {
+	let builtIn: KeyframeProperty[];
 	switch (item.type) {
 		case 'audio':
 			return ['volume'];
 		case 'video':
-			return [...VISUAL_PROPERTIES, ...VIDEO_PROPERTIES];
+			builtIn = [...VISUAL_PROPERTIES, ...VIDEO_PROPERTIES];
+			break;
 		case 'text':
-			return [...VISUAL_PROPERTIES, ...TEXT_PROPERTIES];
+			builtIn = [...VISUAL_PROPERTIES, ...TEXT_PROPERTIES];
+			break;
 		case 'image':
 		case 'lottie':
-			return [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
+			builtIn = [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
+			break;
 		case 'subtitle':
 		case 'shape':
 		case 'composition':
-			return [...VISUAL_PROPERTIES];
+			builtIn = [...VISUAL_PROPERTIES];
+			break;
 		case 'adjustment':
-			return [];
+			builtIn = [];
+			break;
 	}
+	return [...builtIn, ...getAnimatableEffectPropertiesForItem(item)];
 }
 
 export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number): TimelineItem {
@@ -73,7 +85,8 @@ export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number)
 		...item,
 		transform: item.transform ? { ...item.transform } : undefined,
 		crop: item.crop ? { ...item.crop } : undefined,
-		textShadow: item.textShadow ? { ...item.textShadow } : undefined
+		textShadow: item.textShadow ? { ...item.textShadow } : undefined,
+		effects: resolveAnimatedEffectsAt(item, absoluteFrame)
 	};
 	const positionTrack = activePositionKeyframes(item);
 	if (positionTrack) {
@@ -87,6 +100,7 @@ export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number)
 	}
 
 	for (const property of getAnimatablePropertiesForItem(item)) {
+		if (isEffectKeyframeProperty(property)) continue;
 		if (positionTrack && (property === 'x' || property === 'y')) continue;
 		const value = activeValueAt(item, property, absoluteFrame);
 		if (value === null) continue;
@@ -141,6 +155,7 @@ function applyResolvedValue(
 				textShadow: { ...shadowOrDefault(item), blur: Math.max(0, value) }
 			};
 	}
+	return item;
 }
 
 function isTransformProperty(

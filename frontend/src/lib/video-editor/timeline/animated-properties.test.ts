@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import { getAnimatablePropertiesForItem, resolveAnimatedItemAt } from './animated-properties';
+import { buildEffectKeyframeProperty } from '../effects/effect-keyframes';
 
 function item(type: TimelineItem['type']): TimelineItem {
 	return {
@@ -114,5 +115,26 @@ describe('resolveAnimatedItemAt', () => {
 		};
 
 		expect(resolveAnimatedItemAt(video, 115).transform).toMatchObject({ x: 30, y: 75 });
+	});
+
+	it('resolves effect params through the same item used by preview and export', () => {
+		const property = buildEffectKeyframeProperty('gpu-contrast', 'contrast', 'amount');
+		const video: TimelineItem = {
+			...item('video'),
+			effects: [
+				{
+					id: 'contrast',
+					type: 'gpu',
+					effectId: 'gpu-contrast',
+					enabled: true,
+					params: { amount: 1 }
+				}
+			],
+			keyframes: { [property]: { frames: [0, 30], values: [1, 3] } }
+		};
+		const properties = getAnimatablePropertiesForItem(video);
+		expect(properties).toContain(property);
+		const resolved = resolveAnimatedItemAt(video, 115);
+		expect(resolved.effects?.[0]).toMatchObject({ params: { amount: 2 } });
 	});
 });

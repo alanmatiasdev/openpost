@@ -4,17 +4,28 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
 	import type { GpuParamSchema, GpuParamValue } from '$lib/video-editor/effects/gpu/types';
+	import DiamondIcon from '@lucide/svelte/icons/diamond';
+	import { m } from '$lib/paraglide/messages';
 
 	let {
 		param,
 		value,
 		effectLabel,
-		oncommit
+		oncommit,
+		keyframe
 	}: {
 		param: GpuParamSchema;
 		value: GpuParamValue | undefined;
 		effectLabel: string;
 		oncommit: (value: GpuParamValue) => void;
+		keyframe?: {
+			autoEnabled: boolean;
+			hasTrack: boolean;
+			atCurrentFrame: boolean;
+			canKeyframe: boolean;
+			onToggleAuto: () => void;
+			onToggleKeyframe: () => void;
+		};
 	} = $props();
 
 	let draftNumber = $state(0);
@@ -31,6 +42,7 @@
 	);
 	const stringValue = $derived(String(value ?? param.default));
 	const booleanValue = $derived((value ?? param.default) === true);
+	const keyframeLabel = $derived(`${effectLabel}: ${param.label}`);
 
 	$effect(() => {
 		if (!editingNumber) draftNumber = numericValue;
@@ -54,6 +66,37 @@
 		oncommit(draftColor);
 	}
 </script>
+
+{#snippet keyframeControls()}
+	{#if keyframe}
+		<button
+			type="button"
+			class={`size-6 shrink-0 rounded text-[10px] font-semibold hover:bg-[oklch(0.3_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] ${keyframe.autoEnabled ? 'bg-[oklch(0.66_0.14_45_/_0.2)] text-[oklch(0.78_0.14_45)]' : ''}`}
+			aria-pressed={keyframe.autoEnabled}
+			aria-label={keyframe.autoEnabled
+				? m.video_editor_effects_auto_key_disable({ parameter: keyframeLabel })
+				: m.video_editor_effects_auto_key_enable({ parameter: keyframeLabel })}
+			title={keyframe.autoEnabled
+				? m.video_editor_effects_auto_key_disable({ parameter: keyframeLabel })
+				: m.video_editor_effects_auto_key_enable({ parameter: keyframeLabel })}
+			onclick={keyframe.onToggleAuto}>A</button
+		>
+		<button
+			type="button"
+			class={`flex size-6 shrink-0 items-center justify-center rounded hover:bg-[oklch(0.3_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-35 ${keyframe.hasTrack ? 'text-[oklch(0.78_0.14_45)]' : ''}`}
+			disabled={!keyframe.canKeyframe}
+			aria-label={keyframe.atCurrentFrame
+				? m.video_editor_effects_keyframe_remove({ parameter: keyframeLabel })
+				: m.video_editor_effects_keyframe_add({ parameter: keyframeLabel })}
+			title={keyframe.atCurrentFrame
+				? m.video_editor_effects_keyframe_remove({ parameter: keyframeLabel })
+				: m.video_editor_effects_keyframe_add({ parameter: keyframeLabel })}
+			onclick={keyframe.onToggleKeyframe}
+		>
+			<DiamondIcon class={`size-2.5 ${keyframe.atCurrentFrame ? 'fill-current' : ''}`} />
+		</button>
+	{/if}
+{/snippet}
 
 {#if !param.type || param.type === 'number'}
 	<label class="flex items-center gap-2 text-xs">
@@ -80,6 +123,7 @@
 		<output class="w-10 shrink-0 text-right text-[oklch(0.65_0.015_55)] tabular-nums">
 			{draftNumber.toFixed(param.step < 0.1 ? 2 : param.step < 1 ? 1 : 0)}
 		</output>
+		{@render keyframeControls()}
 	</label>
 {:else if param.type === 'boolean'}
 	<label class="flex min-h-8 items-center justify-between gap-2 text-xs">
@@ -131,6 +175,7 @@
 				if (event.key === 'Enter') event.currentTarget.blur();
 			}}
 		/>
+		{@render keyframeControls()}
 	</div>
 {:else if param.type === 'text'}
 	<label class="flex flex-col gap-1 text-xs">

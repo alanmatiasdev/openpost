@@ -24,6 +24,7 @@
 		type ItemType
 	} from '$lib/video-editor/effects/types';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import {
 		addEffectTemplates,
 		isEffectAtDefaults,
@@ -65,6 +66,16 @@
 		saveEffectPreset,
 		type EffectPreset
 	} from '$lib/video-editor/effects/effect-presets';
+	import {
+		removeKeyframe,
+		setAnimatedProperty,
+		setKeyframe
+	} from '$lib/video-editor/timeline/actions/keyframes';
+	import {
+		effectKeyframeValue,
+		getGpuEffectKeyframeProperty,
+		resolveAnimatedEffectsAt
+	} from '$lib/video-editor/effects/effect-keyframes';
 
 	let {
 		itemId,
@@ -74,6 +85,9 @@
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const effects = $derived(item?.effects ?? []);
+	const resolvedEffects = $derived(
+		item ? (resolveAnimatedEffectsAt(item, timelineStore.currentFrame) ?? []) : []
+	);
 	const selectedEffectItemIds = $derived(
 		itemId ? [...new Set([itemId, ...itemIds])].filter(Boolean) : []
 	);
@@ -309,9 +323,72 @@
 		delete draftAmounts[effectId];
 	}
 
+	function resolvedGpuEffect(effect: GpuEffect): GpuEffect {
+		const resolved = resolvedEffects.find((candidate) => candidate.id === effect.id);
+		return resolved?.type === 'gpu' ? resolved : effect;
+	}
+
+	function effectRelativeFrame(): number | null {
+		if (
+			!item ||
+			timelineStore.currentFrame < item.from ||
+			timelineStore.currentFrame >= item.from + item.durationInFrames
+		) {
+			return null;
+		}
+		return timelineStore.currentFrame - item.from;
+	}
+
 	function commitGpuParam(effect: GpuEffect, paramName: string, value: GpuParamValue): void {
-		if (!itemId) return;
-		if (setGpuEffectParam(itemId, effect.id, paramName, value)) onedit();
+		if (!itemId || !item) return;
+		const property = getGpuEffectKeyframeProperty(effect, paramName);
+		const encoded = property ? effectKeyframeValue(effect, paramName, value) : null;
+		const updated =
+			property && encoded !== null && effectRelativeFrame() !== null
+				? setAnimatedProperty(
+						itemId,
+						property,
+						timelineStore.currentFrame,
+						encoded,
+						autoKeyframeStore.isEnabled(itemId, property)
+					)
+				: setGpuEffectParam(itemId, effect.id, paramName, value);
+		if (updated) onedit();
+	}
+
+	function toggleEffectKeyframe(effect: GpuEffect, paramName: string): void {
+		if (!itemId || !item) return;
+		const property = getGpuEffectKeyframeProperty(effect, paramName);
+		const relativeFrame = effectRelativeFrame();
+		if (!property || relativeFrame === null) return;
+		const track = item.keyframes?.[property];
+		if (track?.frames.includes(relativeFrame)) {
+			if (removeKeyframe(itemId, property, relativeFrame)) onedit();
+			return;
+		}
+		const resolved = resolvedGpuEffect(effect);
+		const encoded = effectKeyframeValue(
+			effect,
+			paramName,
+			resolved.params[paramName] ?? effect.params[paramName] ?? 0
+		);
+		if (encoded !== null && setKeyframe(itemId, property, relativeFrame, encoded)) onedit();
+	}
+
+	function effectKeyframeControl(effect: GpuEffect, paramName: string) {
+		if (!itemId || !item) return undefined;
+		const property = getGpuEffectKeyframeProperty(effect, paramName);
+		if (!property) return undefined;
+		const relativeFrame = effectRelativeFrame();
+		const track = item.keyframes?.[property];
+		return {
+			autoEnabled: autoKeyframeStore.isEnabled(itemId, property),
+			hasTrack: Boolean(track?.frames.length),
+			atCurrentFrame: relativeFrame !== null && Boolean(track?.frames.includes(relativeFrame)),
+			canKeyframe: relativeFrame !== null,
+			onToggleAuto: () => autoKeyframeStore.toggle(itemId, property),
+			onToggleKeyframe: () => toggleEffectKeyframe(effect, paramName)
+		};
 	}
 
 	async function importLut(effect: GpuEffect): Promise<void> {
@@ -546,11 +623,13 @@
 							<div class="mt-1 flex flex-col gap-1">
 								{#each gpuDefinition.schema as param (param.name)}
 									{#if !param.visibleWhen || param.visibleWhen(effect.params)}
+										{@const resolvedEffect = resolvedGpuEffect(effect)}
 										<GpuParamControl
 											{param}
-											value={effect.params[param.name]}
+											value={resolvedEffect.params[param.name]}
 											effectLabel={effectLabel(effect)}
 											oncommit={(value) => commitGpuParam(effect, param.name, value)}
+											keyframe={effectKeyframeControl(effect, param.name)}
 										/>
 									{/if}
 								{/each}
