@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import { assetSurfaceManifest } from "./asset-surfaces.ts";
 import {
@@ -14,6 +16,32 @@ import {
   validateAssetTarget,
 } from "./asset-surfaces.mjs";
 import { moveAssetDirectory } from "./sync-assets.mjs";
+
+const execFileAsync = promisify(execFile);
+
+const trackedTextExtensions = new Set([
+  ".css",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".svelte",
+  ".svg",
+  ".ts",
+  ".tsx",
+  ".xml",
+  ".yaml",
+  ".yml",
+]);
+
+const legacyPencilLogoFingerprints = [
+  { name: "pencil nib mask", pattern: /id=["']nib-cutout["']/u },
+  {
+    name: "pencil body path",
+    pattern: /M\s*-30\s*-170[\s\S]{0,300}L\s*22\s*-10[\s\S]{0,120}L\s*-22\s*-10/u,
+  },
+];
 
 test("finds deployed asset URLs without treating source imports as copies", () => {
   const source = [
@@ -28,6 +56,28 @@ test("finds deployed asset URLs without treating source imports as copies", () =
 
 test("every copied asset exists and has a source reference", { timeout: 15_000 }, async () => {
   assert.deepEqual(await validateAssetSurfaceManifest(), []);
+});
+
+test("tracked sources do not contain the retired pencil logo", async () => {
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z"], {
+    cwd: repositoryRoot,
+    encoding: "buffer",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const trackedFiles = stdout
+    .toString("utf8")
+    .split("\0")
+    .filter((file) => trackedTextExtensions.has(path.extname(file).toLowerCase()));
+  const findings = [];
+
+  for (const file of trackedFiles) {
+    const contents = await readFile(path.join(repositoryRoot, file), "utf8");
+    for (const fingerprint of legacyPencilLogoFingerprints) {
+      if (fingerprint.pattern.test(contents)) findings.push(`${file}: ${fingerprint.name}`);
+    }
+  }
+
+  assert.deepEqual(findings, []);
 });
 
 test("an undeclared reference fails the surface check", { timeout: 15_000 }, async () => {
