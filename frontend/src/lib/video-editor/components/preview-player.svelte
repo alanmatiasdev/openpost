@@ -12,7 +12,7 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
-	import { paintOrder } from '$lib/video-editor/media/render-plan';
+	import { paintOrder, planNestedMixdown } from '$lib/video-editor/media/render-plan';
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import {
@@ -30,6 +30,7 @@
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import PreviewLayer from './preview-layer.svelte';
 	import PreviewAudioLayer from './preview-audio-layer.svelte';
+	import PreviewMixEntryLayer from './preview-mix-entry-layer.svelte';
 	import OnCanvasTools from './on-canvas-tools.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
@@ -51,6 +52,7 @@
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 	import { toast } from 'svelte-sonner';
 	import { isAudioTransitionParticipantAtFrame } from '$lib/video-editor/audio/transition-crossfade';
+	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -59,8 +61,12 @@
 		onedit
 	}: { selectedItemId?: string | null; onedit: () => void } = $props();
 	const project = $derived(editorSession.project);
-	const canvasWidth = $derived(project?.metadata.width ?? 1920);
-	const canvasHeight = $derived(project?.metadata.height ?? 1080);
+	const canvasWidth = $derived(
+		sequenceStore.activeSequence?.width ?? project?.metadata.width ?? sequenceStore.activeWidth
+	);
+	const canvasHeight = $derived(
+		sequenceStore.activeSequence?.height ?? project?.metadata.height ?? sequenceStore.activeHeight
+	);
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
 	let urls = $state<Record<string, string>>({});
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -100,12 +106,21 @@
 	const activeItems = $derived.by(() =>
 		paintOrder(timelineStore.items, timelineStore.tracks).filter(
 			(item) =>
-				['video', 'image', 'text', 'subtitle'].includes(item.type) &&
+				['video', 'image', 'text', 'subtitle', 'composition'].includes(item.type) &&
 				((timelineStore.currentFrame >= item.from &&
 					timelineStore.currentFrame < item.from + item.durationInFrames) ||
 					item.id === activeTransition?.outgoing ||
 					item.id === activeTransition?.incoming)
 		)
+	);
+	const nestedMixEntries = $derived(
+		planNestedMixdown(
+			timelineStore.items,
+			timelineStore.tracks,
+			editorSession.fps,
+			transitionsStore.list,
+			sequenceStore.compositions
+		).filter((entry) => entry.itemId.includes('/'))
 	);
 	const trackOrderById = $derived(
 		new Map(timelineStore.tracks.map((track) => [track.id, track.order]))
@@ -680,5 +695,8 @@
 	</div>
 	{#each timelineStore.items.filter((item) => item.type === 'audio' && isAudioTransitionParticipantAtFrame(item, timelineStore.currentFrame, transitionsStore.list, timelineStore.itemById, editorSession.fps)) as item (item.id)}
 		<PreviewAudioLayer {item} url={urls[item.mediaId ?? '']} />
+	{/each}
+	{#each nestedMixEntries.filter((entry) => timelineStore.currentFrame / editorSession.fps >= entry.whenSeconds && timelineStore.currentFrame / editorSession.fps < entry.whenSeconds + entry.durationSeconds) as entry (entry.itemId)}
+		<PreviewMixEntryLayer {entry} url={urls[entry.mediaId]} />
 	{/each}
 </div>

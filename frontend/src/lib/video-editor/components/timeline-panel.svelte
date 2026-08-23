@@ -133,12 +133,14 @@
 	let {
 		onedit,
 		ontransitionbreak = () => {},
+		onopencomposition = () => {},
 		selectedItemId = $bindable(null),
 		selectedItemIds = $bindable([]),
 		selectedTransitionId = $bindable(null)
 	}: {
 		onedit: () => void;
 		ontransitionbreak?: (count: number) => void;
+		onopencomposition?: (compositionId: string) => void;
 		selectedItemId?: string | null;
 		selectedItemIds?: string[];
 		selectedTransitionId?: string | null;
@@ -384,6 +386,7 @@
 		text: string;
 		subtitle: string;
 		adjustment: string;
+		composition: string;
 	}
 
 	function clipStyle(item: { from: number; durationInFrames: number; type: string }): string {
@@ -393,7 +396,8 @@
 			image: 'oklch(0.45 0.05 250)',
 			text: 'oklch(0.55 0.02 290)',
 			subtitle: 'oklch(0.55 0.02 290)',
-			adjustment: 'oklch(0.48 0.09 45)'
+			adjustment: 'oklch(0.48 0.09 45)',
+			composition: 'oklch(0.42 0.07 255)'
 		};
 		// SAFETY: item.type values are exactly the ClipPalette keys.
 		const fill = palette[item.type as keyof ClipPalette] ?? palette.video;
@@ -1887,6 +1891,11 @@
 								onclick={(event) => {
 									event.stopPropagation();
 									if (event.detail === 0) selectItem(event, item.id);
+								}}
+								ondblclick={(event) => {
+									if (!item.compositionId) return;
+									event.stopPropagation();
+									onopencomposition(item.compositionId);
 								}}
 								onkeydown={(event) => applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
 								onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}

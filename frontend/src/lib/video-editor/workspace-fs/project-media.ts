@@ -78,6 +78,13 @@ function collectProjectTimelineMediaIds(
 			mediaIds.add(item.mediaId);
 		}
 	}
+	for (const composition of project.timeline.compositions ?? []) {
+		for (const item of composition.items) {
+			if (item.mediaId && PROJECT_MEDIA_ITEM_TYPES.has(item.type)) {
+				mediaIds.add(item.mediaId);
+			}
+		}
+	}
 	return [...mediaIds];
 }
 

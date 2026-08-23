@@ -15,6 +15,7 @@ import { timelineStore } from './timeline/stores/timeline-store.svelte';
 import { commandHistory } from './timeline/commands/command-store.svelte';
 import { Clock } from './preview/clock';
 import { mediaPool } from './media/pool.svelte';
+import { sequenceStore } from './sequences/sequence-store.svelte';
 
 const logger = createLogger('EditorSession');
 
@@ -29,8 +30,12 @@ class EditorSession {
 	private projectId: string | null = null;
 	private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+	constructor() {
+		this.clock.on('framechange', (frame) => timelineStore._setCurrentFrame(frame));
+	}
+
 	get fps(): number {
-		return this.project?.metadata.fps ?? 30;
+		return this.project ? timelineStore.fps : 30;
 	}
 
 	async load(projectId: string): Promise<void> {
@@ -45,13 +50,9 @@ class EditorSession {
 			}
 			this.project = project;
 			commandHistory.clearHistory();
-			timelineStore.setAll({
-				items: project.timeline?.items ?? [],
-				tracks: project.timeline?.tracks ?? [],
-				currentFrame: project.timeline?.currentFrame ?? 0,
-				fps: project.metadata.fps
-			});
+			sequenceStore.load(project.timeline ?? { tracks: [], items: [] }, project.metadata);
 			this.clock.setFps(project.metadata.fps);
+			this.syncTimelineClock();
 			const media = await getMediaForProject(projectId);
 			mediaPool.loadAll(media);
 		} catch (error) {
@@ -59,6 +60,11 @@ class EditorSession {
 		} finally {
 			this.loading = false;
 		}
+	}
+
+	syncTimelineClock(): void {
+		this.clock.setFps(this.fps);
+		this.clock.seek(timelineStore.currentFrame);
 	}
 
 	startPlayback(range?: { start: number; end: number; loop?: boolean }): void {
@@ -86,17 +92,14 @@ class EditorSession {
 		if (!this.projectId || !this.project) return;
 		this.saving = true;
 		try {
+			const timeline = sequenceStore.projectTimeline();
 			await updateProject(this.projectId, {
-				duration: timelineStore.maxItemEndFrame / this.fps,
-				timeline: {
-					...this.project.timeline,
-					tracks: timelineStore.tracks,
-					items: $state.snapshot(timelineStore.items),
-					currentFrame: timelineStore.currentFrame,
-					inPoint: timelineStore.inPoint ?? undefined,
-					outPoint: timelineStore.outPoint ?? undefined,
-					markers: [...timelineStore.markers]
-				}
+				duration:
+					timeline.items.reduce(
+						(max, item) => Math.max(max, item.from + item.durationInFrames),
+						0
+					) / this.project.metadata.fps,
+				timeline
 			});
 			timelineStore._clearDirty();
 		} catch (error) {

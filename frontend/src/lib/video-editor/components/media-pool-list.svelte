@@ -6,10 +6,17 @@
 	import { addItems } from '$lib/video-editor/timeline/actions/items';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import { nestSequence, switchSequence } from '$lib/video-editor/sequences/sequence-actions';
+	import { showToast } from '$lib/toast';
 	import FilmIcon from '@lucide/svelte/icons/film';
 	import ImageIcon from '@lucide/svelte/icons/image-plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import Music2Icon from '@lucide/svelte/icons/music-2';
+	import LayersIcon from '@lucide/svelte/icons/layers-3';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+
+	let { onsequenceopen = () => undefined }: { onsequenceopen?: () => void } = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
 
@@ -33,7 +40,13 @@
 		const fps = editorSession.fps;
 		const isAudio = media.tags.includes('audio');
 		const durationFrames = Math.max(1, Math.round((media.duration || 3) * fps));
-		const trackId = isAudio ? 'track-audio' : 'track-video-main';
+		const targetTrack = timelineStore.tracks
+			.filter(
+				(track) => (isAudio ? track.kind === 'audio' : track.kind !== 'audio') && !track.locked
+			)
+			.toSorted((left, right) => right.order - left.order)[0];
+		if (!targetTrack) return;
+		const trackId = targetTrack.id;
 		// Place after the last item on the target track.
 		const trackItems = timelineStore.itemsByTrackId.get(trackId) ?? [];
 		const end = trackItems.reduce(
@@ -56,9 +69,69 @@
 		]);
 		editorSession.scheduleAutosave();
 	}
+
+	function openSequence(id: string): void {
+		sequenceStore.promoteToTab(id);
+		editorSession.pausePlayback();
+		if (!switchSequence(id)) return;
+		editorSession.syncTimelineClock();
+		onsequenceopen();
+		editorSession.scheduleAutosave();
+	}
+
+	function addSequence(id: string): void {
+		try {
+			nestSequence(id);
+			editorSession.scheduleAutosave();
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : m.video_editor_sequence_cycle(), 'error');
+		}
+	}
 </script>
 
 <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+	{#if sequenceStore.compositions.length > 0}
+		<section class="mb-2" aria-labelledby="video-editor-sequences-heading">
+			<h3
+				id="video-editor-sequences-heading"
+				class="px-1 py-1.5 text-[10px] font-medium tracking-wider text-[oklch(0.62_0.015_55)] uppercase"
+			>
+				{m.video_editor_sequences()}
+			</h3>
+			<ul class="flex flex-col gap-1">
+				{#each sequenceStore.compositions as sequence (sequence.id)}
+					<li
+						class="group flex items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)]"
+					>
+						<span
+							class="flex size-10 shrink-0 items-center justify-center rounded bg-[oklch(0.26_0.025_250)]"
+						>
+							<LayersIcon class="size-4" aria-hidden="true" />
+						</span>
+						<button
+							type="button"
+							class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							title={m.video_editor_sequence_open()}
+							onclick={() => openSequence(sequence.id)}
+						>
+							<span class="block truncate text-xs font-medium">{sequence.name}</span>
+							<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
+								{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
+							</span>
+						</button>
+						<button
+							type="button"
+							class="rounded p-1.5 text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							aria-label={`${m.video_editor_sequence_add()}: ${sequence.name}`}
+							onclick={() => addSequence(sequence.id)}
+						>
+							<PlusIcon class="size-3.5" aria-hidden="true" />
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 	<ul class="flex flex-col gap-1" role="list">
 		{#each mediaPool.order as id (id)}
 			{@const entry = mediaPool.entry(id)}

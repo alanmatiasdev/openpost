@@ -3,9 +3,36 @@ import {
 	MAX_SPEED,
 	getClampedRateStretchSpeed,
 	getRateStretchDurationLimits,
+	mapSourceWindowOverlap,
 	resolveRateStretchDurationAndSpeed,
 	timelineToSourceFrames
 } from './source-calculations';
+
+describe('mapSourceWindowOverlap', () => {
+	it('clips a child item to a trimmed 2x wrapper window', () => {
+		expect(
+			mapSourceWindowOverlap({
+				itemStart: 0,
+				itemDuration: 30,
+				wrapperDuration: 10,
+				wrapperSpeed: 2,
+				wrapperSourceFps: 30,
+				wrapperSourceStart: 5,
+				wrapperSourceEnd: 25,
+				timelineFps: 30,
+				fallbackSourceFps: 30
+			})
+		).toMatchObject({
+			overlapStart: 5,
+			overlapEnd: 25,
+			mappedFrom: 0,
+			mappedDuration: 10,
+			clippedStartFrames: 5,
+			clippedEndFrames: 5,
+			wrapperSpeed: 2
+		});
+	});
+});
 
 describe('rate-stretch source coverage', () => {
 	it('uses a ceil-based minimum duration so max speed keeps every source frame', () => {

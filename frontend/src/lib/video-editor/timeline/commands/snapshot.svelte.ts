@@ -14,6 +14,8 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import { transitionsStore } from '../actions/transitions.svelte';
 import { sanitizeInOutPoints } from '../utils/in-out-points';
 import type { TimelineSnapshot } from './types';
+import { sequenceStore } from '../../sequences/sequence-store.svelte';
+import type { SequenceRegistrySnapshot } from '../../sequences/sequence-store.svelte';
 
 export function captureSnapshot(): TimelineSnapshot {
 	// Deep-copy items/tracks: the store mutates item objects in place during
@@ -28,12 +30,21 @@ export function captureSnapshot(): TimelineSnapshot {
 		fps: timelineStore.fps,
 		scrollPosition: timelineStore.scrollPosition,
 		snapEnabled: timelineStore.snapEnabled,
-		currentFrame: timelineStore.currentFrame
+		currentFrame: timelineStore.currentFrame,
+		sequenceRegistry: sequenceStore.snapshotRegistry()
 	};
 }
 
-export function restoreSnapshot(snapshot: TimelineSnapshot): void {
+export function restoreSnapshot(
+	snapshot: TimelineSnapshot,
+	registryFrom?: SequenceRegistrySnapshot
+): void {
 	const plainSnapshot = $state.snapshot(snapshot);
+	if (registryFrom) {
+		sequenceStore.applyRegistryDelta($state.snapshot(registryFrom), plainSnapshot.sequenceRegistry);
+	} else {
+		sequenceStore.restoreRegistry(plainSnapshot.sequenceRegistry);
+	}
 	const sanitized = sanitizeInOutPoints({
 		inPoint: plainSnapshot.inPoint,
 		outPoint: plainSnapshot.outPoint,
@@ -63,6 +74,7 @@ export function snapshotsEqual(a: TimelineSnapshot, b: TimelineSnapshot): boolea
 		JSON.stringify(a.items) === JSON.stringify(b.items) &&
 		JSON.stringify(a.tracks) === JSON.stringify(b.tracks) &&
 		JSON.stringify(a.transitions) === JSON.stringify(b.transitions) &&
+		JSON.stringify(a.sequenceRegistry) === JSON.stringify(b.sequenceRegistry) &&
 		a.inPoint === b.inPoint &&
 		a.outPoint === b.outPoint &&
 		a.fps === b.fps &&

@@ -57,7 +57,7 @@ import {
 	isVisibleAtFrame,
 	outputDurationFrames,
 	paintOrder,
-	planMixdown,
+	planNestedMixdown,
 	selectCuesAtFrame,
 	sliceMixEntries,
 	transitionBlendAtFrame,
@@ -278,10 +278,12 @@ export class TimelineFrameRenderer {
 	private readonly inputs: Input[] = [];
 	private readonly stackCompositor: CanvasStackCompositor;
 	private readonly textCanvas = new OffscreenCanvas(1, 1);
+	private readonly nestedRenderers = new Map<string, TimelineFrameRenderer>();
 
 	constructor(
 		private readonly project: Project,
-		options: TimelineFrameRenderOptions = {}
+		options: TimelineFrameRenderOptions = {},
+		private readonly ancestry: ReadonlySet<string> = new Set()
 	) {
 		this.width = options.width ?? project.metadata.width;
 		this.height = options.height ?? project.metadata.height;
@@ -299,6 +301,7 @@ export class TimelineFrameRenderer {
 				item.type === 'video' ||
 				item.type === 'image' ||
 				item.type === 'text' ||
+				item.type === 'composition' ||
 				(this.burnSubtitles && item.type === 'subtitle')
 		);
 		this.transitions = project.timeline?.transitions ?? [];
@@ -370,6 +373,46 @@ export class TimelineFrameRenderer {
 			return cue ? this.subtitleSource(resolvedItem, cue.text) : null;
 		}
 		if (resolvedItem.type === 'text') return this.textSource(resolvedItem);
+		if (resolvedItem.type === 'composition' && resolvedItem.compositionId) {
+			if (this.ancestry.has(resolvedItem.compositionId)) return null;
+			const composition = this.project.timeline?.compositions?.find(
+				(candidate) => candidate.id === resolvedItem.compositionId
+			);
+			if (!composition) return null;
+			let renderer = this.nestedRenderers.get(composition.id);
+			if (!renderer) {
+				renderer = new TimelineFrameRenderer(
+					{
+						...this.project,
+						metadata: {
+							width: composition.width,
+							height: composition.height,
+							fps: composition.fps,
+							backgroundColor: composition.backgroundColor ?? '#000000'
+						},
+						timeline: {
+							items: composition.items,
+							tracks: composition.tracks,
+							transitions: composition.transitions,
+							compositions: this.project.timeline?.compositions
+						}
+					},
+					{ width: composition.width, height: composition.height, burnSubtitles: true },
+					new Set([...this.ancestry, composition.id])
+				);
+				this.nestedRenderers.set(composition.id, renderer);
+			}
+			const sourceFps = originalItem.sourceFps ?? composition.fps;
+			const nestedFrame = Math.max(
+				0,
+				Math.floor(
+					(originalItem.sourceStart ?? 0) +
+						((frame - originalItem.from) / this.fps) * (originalItem.speed ?? 1) * sourceFps
+				)
+			);
+			const source = await renderer.render(nestedFrame);
+			return { source, width: composition.width, height: composition.height };
+		}
 		if (!resolvedItem.mediaId) return null;
 		if (resolvedItem.type === 'video') {
 			const decoder = await this.getDecoder(resolvedItem.mediaId);
@@ -459,6 +502,8 @@ export class TimelineFrameRenderer {
 
 	dispose(): void {
 		for (const input of this.inputs) input.dispose?.();
+		for (const renderer of this.nestedRenderers.values()) renderer.dispose();
+		this.nestedRenderers.clear();
 		for (const bitmap of this.imageCache.values()) bitmap.close();
 		this.imageCache.clear();
 		this.stackCompositor.dispose();
@@ -501,7 +546,7 @@ export async function renderMultiTrackVideo(
 
 	const transitions = timeline?.transitions ?? [];
 	const mixEntries = sliceMixEntries(
-		planMixdown(items, tracks, fps, transitions),
+		planNestedMixdown(items, tracks, fps, transitions, timeline?.compositions ?? []),
 		startFrame / fps,
 		endFrame / fps
 	);
@@ -654,7 +699,7 @@ export async function renderTimelineAudio(
 	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
 	const transitions = project.timeline?.transitions ?? [];
 	const entries = sliceMixEntries(
-		planMixdown(items, tracks, fps, transitions),
+		planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
 		startFrame / fps,
 		endFrame / fps
 	);

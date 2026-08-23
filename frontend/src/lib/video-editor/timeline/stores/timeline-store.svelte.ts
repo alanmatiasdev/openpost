@@ -11,7 +11,7 @@
  * or keyframes).
  */
 
-import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
+import type { TimelineItem, TimelineMarker, TimelineTrack } from '$lib/video-editor/project/types';
 import { calculateSplitSourceBoundaries } from '../utils/source-calculations';
 
 export interface TimelineSettings {
@@ -145,6 +145,9 @@ export const timelineStore = {
 		outPoint?: number | null;
 		currentFrame?: number;
 		fps?: number;
+		markers?: TimelineMarker[];
+		zoomLevel?: number;
+		scrollPosition?: number;
 	}): void {
 		if (next.items) state.items = next.items;
 		if (next.tracks) state.tracks = next.tracks;
@@ -155,6 +158,13 @@ export const timelineStore = {
 		}
 		if (next.fps !== undefined && Number.isFinite(next.fps) && next.fps > 0) {
 			state.settings.fps = next.fps;
+		}
+		if (next.markers) state.markers = next.markers;
+		if (next.zoomLevel !== undefined && Number.isFinite(next.zoomLevel)) {
+			state.zoomLevel = Math.min(50, Math.max(0.01, next.zoomLevel));
+		}
+		if (next.scrollPosition !== undefined && Number.isFinite(next.scrollPosition)) {
+			state.settings.scrollPosition = next.scrollPosition;
 		}
 		reindex();
 	},

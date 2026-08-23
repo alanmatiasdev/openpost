@@ -10,8 +10,8 @@
  * - sourceFrames = timelineFrames * speed
  * - timelineFrames = sourceFrames / speed
  *
- * Ported from FreeCut (MIT) — utils/source-calculations.ts — trimmed to the
- * v1 surface (video/audio only; no compositions, no reverse playback).
+ * Ported from FreeCut (MIT) - utils/source-calculations.ts - trimmed to the
+ * supported surface (video, audio, and composition items; no reverse playback).
  */
 
 import type { TimelineItemKind } from '../../project/types';
@@ -46,7 +46,7 @@ export interface SourceProperties {
 
 /** Extract source properties from a media item with defaults. */
 export function getSourceProperties(item: SourceCalculationItem): SourceProperties {
-	if (item.type !== 'video' && item.type !== 'audio') {
+	if (item.type !== 'video' && item.type !== 'audio' && item.type !== 'composition') {
 		return {
 			sourceStart: 0,
 			sourceEnd: undefined,
@@ -89,6 +89,76 @@ export function sourceToTimelineFrames(
 	const safeTimelineFps = normalizeFps(timelineFps, safeSourceFps);
 	const sourceSeconds = sourceFrames / safeSourceFps;
 	return Math.floor((sourceSeconds * safeTimelineFps) / speed);
+}
+
+export interface SourceWindowOverlapMapping {
+	overlapStart: number;
+	overlapEnd: number;
+	mappedFrom: number;
+	mappedEnd: number;
+	mappedDuration: number;
+	clippedStartFrames: number;
+	clippedEndFrames: number;
+	wrapperSpeed: number;
+	wrapperSourceFps: number;
+}
+
+/**
+ * Map the part of a child item visible through a trimmed or retimed wrapper
+ * back onto the parent timeline.
+ */
+export function mapSourceWindowOverlap(params: {
+	itemStart: number;
+	itemDuration: number;
+	wrapperDuration: number;
+	wrapperSpeed?: number;
+	wrapperSourceFps?: number;
+	wrapperSourceStart: number;
+	wrapperSourceEnd?: number;
+	timelineFps: number;
+	fallbackSourceFps: number;
+}): SourceWindowOverlapMapping | null {
+	const wrapperSpeed = params.wrapperSpeed ?? DEFAULT_SPEED;
+	const wrapperSourceFps = params.wrapperSourceFps ?? params.fallbackSourceFps;
+	const wrapperSourceEnd =
+		params.wrapperSourceEnd ??
+		params.wrapperSourceStart +
+			timelineToSourceFrames(
+				params.wrapperDuration,
+				wrapperSpeed,
+				params.timelineFps,
+				wrapperSourceFps
+			);
+	const itemEnd = params.itemStart + params.itemDuration;
+	const overlapStart = Math.max(params.itemStart, params.wrapperSourceStart);
+	const overlapEnd = Math.min(itemEnd, wrapperSourceEnd);
+
+	if (overlapEnd <= overlapStart) return null;
+
+	const mappedFrom = sourceToTimelineFrames(
+		overlapStart - params.wrapperSourceStart,
+		wrapperSpeed,
+		wrapperSourceFps,
+		params.timelineFps
+	);
+	const mappedEnd = sourceToTimelineFrames(
+		overlapEnd - params.wrapperSourceStart,
+		wrapperSpeed,
+		wrapperSourceFps,
+		params.timelineFps
+	);
+
+	return {
+		overlapStart,
+		overlapEnd,
+		mappedFrom,
+		mappedEnd,
+		mappedDuration: Math.max(1, mappedEnd - mappedFrom),
+		clippedStartFrames: overlapStart - params.itemStart,
+		clippedEndFrames: itemEnd - overlapEnd,
+		wrapperSpeed,
+		wrapperSourceFps
+	};
 }
 
 /** Available source frames from `sourceStart` to the end of the media. */

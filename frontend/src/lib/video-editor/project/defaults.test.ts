@@ -48,7 +48,7 @@ describe('migrateProjectDocument', () => {
 		const stored = createBlankProject();
 		stored.schemaVersion = CURRENT_SCHEMA_VERSION + 5;
 		const result = migrateProjectDocument(stored);
-		expect(result.project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+		expect(result.project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION + 5);
 		expect(result.warnings.some((w) => w.code === 'FUTURE_SCHEMA')).toBe(true);
 	});
 

@@ -2,8 +2,8 @@
  * Project document model for the OpenPost Video Editor.
  *
  * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
- * video / audio / image / text / subtitle / adjustment items, one top-level
- * sequence, no compositions, shapes, masks, or per-band EQ.
+ * video / audio / image / text / subtitle / adjustment / composition items,
+ * reusable nested sequences, no shapes, masks, or per-band EQ.
  */
 
 import type {
@@ -19,7 +19,14 @@ export type {
 	WipeDirection as TransitionDirection
 } from '../transitions/types';
 
-export type TimelineItemKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'adjustment';
+export type TimelineItemKind =
+	| 'video'
+	| 'audio'
+	| 'image'
+	| 'text'
+	| 'subtitle'
+	| 'adjustment'
+	| 'composition';
 
 export interface ItemTransform {
 	x?: number;
@@ -217,6 +224,10 @@ export interface TimelineItem extends TextStyleFields {
 	mediaId?: string;
 	originId?: string;
 	linkedGroupId?: string;
+	/** Reusable nested timeline referenced by composition and companion audio items. */
+	compositionId?: string;
+	compositionWidth?: number;
+	compositionHeight?: number;
 
 	// Source boundaries for media items (frames at the source's frame rate)
 	sourceStart?: number;
@@ -323,6 +334,27 @@ export interface ProjectTimeline {
 
 	markers?: TimelineMarker[];
 	transitions?: TimelineTransition[];
+	/** Ordered reusable timelines promoted to tabs. Main stays implicit. */
+	topLevelSequenceIds?: string[];
+	/** Reusable nested timelines. The same entry can be a tab and a nested clip. */
+	compositions?: SubComposition[];
+}
+
+export interface SubComposition {
+	id: string;
+	name: string;
+	editorKind?: 'sequence';
+	items: TimelineItem[];
+	tracks: TimelineTrack[];
+	transitions: TimelineTransition[];
+	fps: number;
+	width: number;
+	height: number;
+	durationInFrames: number;
+	backgroundColor?: string;
+	markers?: TimelineMarker[];
+	inPoint?: number | null;
+	outPoint?: number | null;
 }
 
 export interface ProjectResolution {

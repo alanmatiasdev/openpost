@@ -54,6 +54,7 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			return [...VISUAL_PROPERTIES, ...TEXT_PROPERTIES];
 		case 'image':
 		case 'subtitle':
+		case 'composition':
 			return [...VISUAL_PROPERTIES];
 		case 'adjustment':
 			return [];

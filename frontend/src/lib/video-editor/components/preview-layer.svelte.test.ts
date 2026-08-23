@@ -4,6 +4,8 @@ import type { Project, TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
 import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
+import { editorSession } from '$lib/video-editor/editor.svelte';
+import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import PreviewLayer from './preview-layer.svelte';
 
 const WIDTH = 96;
@@ -59,6 +61,78 @@ function project(item: TimelineItem): Project {
 				}
 			],
 			items: [item]
+		}
+	};
+}
+
+function nestedProject(): Project {
+	const innerText = textItem({
+		id: 'inner-text',
+		effects: [],
+		text: '',
+		backgroundColor: '#ff0000'
+	});
+	const innerWrapper: TimelineItem = {
+		id: 'inner-wrapper',
+		trackId: 'visuals',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Inner',
+		type: 'composition',
+		compositionId: 'inner',
+		sourceStart: 0,
+		sourceEnd: 30,
+		sourceFps: 30,
+		speed: 1,
+		transform: { width: WIDTH, height: HEIGHT, opacity: 1 }
+	};
+	const outerWrapper: TimelineItem = {
+		...innerWrapper,
+		id: 'outer-wrapper',
+		label: 'Outer',
+		compositionId: 'outer'
+	};
+	const visualTrack = {
+		id: 'visuals',
+		name: 'Visuals',
+		kind: 'video' as const,
+		height: 64,
+		locked: false,
+		visible: true,
+		muted: false,
+		solo: false,
+		order: 0
+	};
+	return {
+		...project(outerWrapper),
+		id: 'nested-project',
+		timeline: {
+			tracks: [visualTrack],
+			items: [outerWrapper],
+			compositions: [
+				{
+					id: 'inner',
+					name: 'Inner',
+					items: [innerText],
+					tracks: [visualTrack],
+					transitions: [],
+					fps: 30,
+					width: WIDTH,
+					height: HEIGHT,
+					durationInFrames: 30
+				},
+				{
+					id: 'outer',
+					name: 'Outer',
+					items: [innerWrapper],
+					tracks: [visualTrack],
+					transitions: [],
+					fps: 30,
+					width: WIDTH,
+					height: HEIGHT,
+					durationInFrames: 30
+				}
+			]
 		}
 	};
 }
@@ -155,6 +229,8 @@ function expectCyan(pixel: Uint8ClampedArray | Uint8Array): void {
 
 afterEach(() => {
 	timelineStore.clear();
+	sequenceStore.reset();
+	editorSession.project = null;
 	if (scopeSamples.current) scopeSamples.clear(scopeSamples.current.itemId);
 });
 
@@ -280,6 +356,42 @@ describe('PreviewLayer GPU rendering', () => {
 			if (!context) return;
 			const pixel = context.getImageData(4, HEIGHT - 5, 1, 1).data;
 			expectCyan(pixel);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('renders two nested composition levels in live preview and export', async () => {
+		const nested = nestedProject();
+		const wrapper = nested.timeline?.items[0];
+		expect(wrapper).toBeDefined();
+		if (!wrapper || !nested.timeline) return;
+		editorSession.project = nested;
+		sequenceStore.load(nested.timeline, nested.metadata);
+		const screen = await render(PreviewLayer, {
+			item: wrapper,
+			url: null,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const preview = screen.container.querySelector<HTMLCanvasElement>('canvas');
+		expect(preview).not.toBeNull();
+		if (!preview) return;
+		await vi.waitFor(() => {
+			const context = preview.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			expect(Array.from(context.getImageData(4, 4, 1, 1).data)).toEqual([255, 0, 0, 255]);
+		});
+
+		const renderer = new TimelineFrameRenderer(nested);
+		try {
+			const frame = await renderer.render(0);
+			const context = frame.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			expect(Array.from(context.getImageData(4, HEIGHT - 5, 1, 1).data)).toEqual([255, 0, 0, 255]);
 		} finally {
 			renderer.dispose();
 		}

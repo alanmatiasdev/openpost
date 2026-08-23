@@ -29,6 +29,8 @@
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
 	import type { ItemEffect } from '$lib/video-editor/effects/types';
 	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
+	import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
+	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 
 	let {
 		item,
@@ -68,8 +70,11 @@
 	let decodedImageElement = $state<HTMLImageElement | null>(null);
 	let rasterCanvas = $state<HTMLCanvasElement | null>(null);
 	let gpuCanvas = $state<HTMLCanvasElement | null>(null);
+	let compositionCanvas = $state<HTMLCanvasElement | null>(null);
 	let compositor = $state<GpuCompositor | null>(null);
 	let rasterRevision = $state(0);
+	let compositionRevision = $state(0);
+	let renderCompositionFrame = $state<(() => void) | null>(null);
 	let lastRasterCanvas: HTMLCanvasElement | null = null;
 	let lastRasterKey = '';
 	let lastScopeAt = 0;
@@ -236,6 +241,69 @@
 	});
 
 	$effect(() => {
+		const canvas = compositionCanvas;
+		const compositionId = item.compositionId;
+		if (item.type !== 'composition' || !compositionId || !canvas || !editorSession.project) return;
+		const composition = sequenceStore.compositionById.get(compositionId);
+		if (!composition) return;
+		const renderer = new TimelineFrameRenderer(
+			{
+				...editorSession.project,
+				metadata: {
+					width: composition.width,
+					height: composition.height,
+					fps: composition.fps,
+					backgroundColor: composition.backgroundColor ?? '#000000'
+				},
+				timeline: {
+					items: composition.items,
+					tracks: composition.tracks,
+					transitions: composition.transitions,
+					compositions: sequenceStore.compositions
+				}
+			},
+			{ width: composition.width, height: composition.height }
+		);
+		canvas.width = composition.width;
+		canvas.height = composition.height;
+		let disposed = false;
+		let request = 0;
+		const draw = async () => {
+			const revision = ++request;
+			const frame = untrack(() => timelineStore.currentFrame);
+			const sourceFps = item.sourceFps ?? composition.fps;
+			const nestedFrame = Math.max(
+				0,
+				Math.floor(
+					(item.sourceStart ?? 0) +
+						((frame - item.from) / editorSession.fps) * (item.speed ?? 1) * sourceFps
+				)
+			);
+			const source = await renderer.render(nestedFrame);
+			if (disposed || revision !== request) return;
+			const context = canvas.getContext('2d');
+			if (!context) return;
+			context.clearRect(0, 0, canvas.width, canvas.height);
+			context.drawImage(source, 0, 0, canvas.width, canvas.height);
+			compositionRevision += 1;
+			onsourcechange?.();
+		};
+		renderCompositionFrame = () => void draw();
+		void draw();
+		return () => {
+			disposed = true;
+			if (renderCompositionFrame) renderCompositionFrame = null;
+			renderer.dispose();
+		};
+	});
+
+	$effect(() => {
+		const frame = timelineStore.currentFrame;
+		const render = renderCompositionFrame;
+		if (frame >= 0) render?.();
+	});
+
+	$effect(() => {
 		const image = imageElement;
 		const imageUrl = url;
 		decodedImageElement = null;
@@ -279,6 +347,13 @@
 			paintRaster(rasterCanvas);
 			return { source: rasterCanvas, width: rasterCanvas.width, height: rasterCanvas.height };
 		}
+		if (resolved.type === 'composition' && compositionCanvas && compositionRevision > 0) {
+			return {
+				source: compositionCanvas,
+				width: compositionCanvas.width,
+				height: compositionCanvas.height
+			};
+		}
 		return null;
 	}
 
@@ -307,6 +382,7 @@
 		const image = imageElement;
 		const decodedImage = decodedImageElement;
 		const raster = rasterCanvas;
+		const nested = compositionCanvas;
 		const canvas = gpuCanvas;
 		const instance = compositor;
 		const revision = rasterRevision;
@@ -315,8 +391,16 @@
 		const blendMode = item.blendMode ?? 'normal';
 		if (!canvas || !instance || !needsGpu) return;
 		if ((itemType === 'text' || itemType === 'subtitle') && revision === 0) return;
+		if (itemType === 'composition' && compositionRevision === 0) return;
 		const draw = () => {
-			const source = itemType === 'video' ? video : itemType === 'image' ? decodedImage : raster;
+			const source =
+				itemType === 'video'
+					? video
+					: itemType === 'image'
+						? decodedImage
+						: itemType === 'composition'
+							? nested
+							: raster;
 			if (!source) return;
 			const width =
 				source instanceof HTMLVideoElement
@@ -359,7 +443,8 @@
 		const raster = rasterCanvas;
 		const revision = rasterRevision;
 		if (!selected || needsGpu || deferEffects || item.type === 'video') return;
-		const source = item.type === 'image' ? image : raster;
+		const source =
+			item.type === 'image' ? image : item.type === 'composition' ? compositionCanvas : raster;
 		if (!source || ((item.type === 'text' || item.type === 'subtitle') && revision === 0)) return;
 		const frame = requestAnimationFrame(() => publishScopeSample(source));
 		return () => cancelAnimationFrame(frame);
@@ -409,6 +494,9 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 		/>
+	{:else if resolved.type === 'composition'}
+		<canvas bind:this={compositionCanvas} class="absolute object-fill" style={mediaCropStyle}
+		></canvas>
 	{:else if resolved.type === 'text'}
 		<div class="absolute size-full" role="img" aria-label={resolved.text ?? resolved.label}>
 			<canvas bind:this={rasterCanvas} class="size-full object-fill" aria-hidden="true"></canvas>

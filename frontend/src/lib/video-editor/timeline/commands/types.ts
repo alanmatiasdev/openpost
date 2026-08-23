@@ -8,6 +8,7 @@
  */
 
 import type { TimelineItem, TimelineTrack, TimelineTransition } from '../../project/types';
+import type { SequenceRegistrySnapshot } from '../../sequences/sequence-store.svelte';
 
 export interface TimelineSnapshot {
 	items: TimelineItem[];
@@ -19,6 +20,7 @@ export interface TimelineSnapshot {
 	scrollPosition: number;
 	snapEnabled: boolean;
 	currentFrame: number;
+	sequenceRegistry: SequenceRegistrySnapshot;
 }
 
 /** Payload values carried alongside a command type for labels/debugging. */
@@ -33,5 +35,6 @@ export interface TimelineCommand {
 export interface CommandEntry {
 	command: TimelineCommand;
 	beforeSnapshot: TimelineSnapshot;
+	afterSnapshot: TimelineSnapshot;
 	timestamp: number;
 }

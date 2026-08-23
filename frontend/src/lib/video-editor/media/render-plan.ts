@@ -10,6 +10,7 @@
 
 import type {
 	SubtitleCue,
+	SubComposition,
 	TimelineItem,
 	TimelineTrack,
 	TimelineTransition
@@ -122,6 +123,89 @@ export function planMixdown(
 			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps, startFrame, endFrame),
 			transitionGainSpans: transitionGainSpansForItem(item, transitions, itemsById, fps)
 		});
+	}
+	return entries;
+}
+
+function hasCompositionAudioCompanion(item: TimelineItem, items: TimelineItem[]): boolean {
+	return (
+		item.type === 'composition' &&
+		item.compositionId !== undefined &&
+		items.some(
+			(candidate) =>
+				candidate.type === 'audio' &&
+				candidate.compositionId === item.compositionId &&
+				candidate.from === item.from &&
+				candidate.durationInFrames === item.durationInFrames &&
+				(item.linkedGroupId ? candidate.linkedGroupId === item.linkedGroupId : true)
+		)
+	);
+}
+
+/** Flatten reusable sequence audio to leaf media entries for preview and export. */
+export function planNestedMixdown(
+	items: TimelineItem[],
+	tracks: TimelineTrack[],
+	fps: number,
+	transitions: TimelineTransition[] = [],
+	compositions: SubComposition[] = [],
+	ancestry: ReadonlySet<string> = new Set()
+): MixEntry[] {
+	const entries = planMixdown(items, tracks, fps, transitions);
+	const compositionById = new Map(compositions.map((composition) => [composition.id, composition]));
+	const trackById = new Map(tracks.map((track) => [track.id, track]));
+	const anySolo = tracks.some((track) => track.solo);
+	const itemsById = new Map(items.map((item) => [item.id, item]));
+	for (const wrapper of items) {
+		if (!wrapper.compositionId || (wrapper.type !== 'composition' && wrapper.type !== 'audio'))
+			continue;
+		if (wrapper.type === 'composition' && hasCompositionAudioCompanion(wrapper, items)) continue;
+		if (ancestry.has(wrapper.compositionId)) continue;
+		const composition = compositionById.get(wrapper.compositionId);
+		if (!composition) continue;
+		const track = trackById.get(wrapper.trackId);
+		if (!track || !isAudible(track, anySolo)) continue;
+		const childEntries = planNestedMixdown(
+			composition.items,
+			composition.tracks,
+			composition.fps,
+			composition.transitions,
+			compositions,
+			new Set([...ancestry, wrapper.compositionId])
+		);
+		const sourceFps = wrapper.sourceFps ?? composition.fps;
+		const wrapperSpeed = wrapper.speed && wrapper.speed > 0 ? wrapper.speed : 1;
+		const sourceStart = (wrapper.sourceStart ?? 0) / sourceFps;
+		const sourceEndByDuration = sourceStart + (wrapper.durationInFrames / fps) * wrapperSpeed;
+		const sourceEnd = Math.min(
+			(wrapper.sourceEnd ?? composition.durationInFrames) / sourceFps,
+			sourceEndByDuration
+		);
+		const sliced = sliceMixEntries(childEntries, sourceStart, sourceEnd);
+		const wrapperStart = wrapper.from / fps;
+		const wrapperGain = (wrapper.volume ?? 1) * (track.volume ?? 1);
+		const outerSpans = transitionGainSpansForItem(wrapper, transitions, itemsById, fps);
+		for (const entry of sliced) {
+			entries.push({
+				...entry,
+				itemId: `${wrapper.id}/${entry.itemId}`,
+				whenSeconds: wrapperStart + entry.whenSeconds / wrapperSpeed,
+				playbackRate: entry.playbackRate * wrapperSpeed,
+				durationSeconds: entry.durationSeconds / wrapperSpeed,
+				gainPoints: entry.gainPoints.map((point) => ({
+					whenSeconds: wrapperStart + point.whenSeconds / wrapperSpeed,
+					value: point.value * wrapperGain
+				})),
+				transitionGainSpans: [
+					...entry.transitionGainSpans.map((span) => ({
+						...span,
+						startSeconds: wrapperStart + span.startSeconds / wrapperSpeed,
+						durationSeconds: span.durationSeconds / wrapperSpeed
+					})),
+					...outerSpans
+				]
+			});
+		}
 	}
 	return entries;
 }

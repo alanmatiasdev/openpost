@@ -48,6 +48,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
+	import SequenceTabs from '$lib/video-editor/components/sequence-tabs.svelte';
+	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import {
+		createCompoundClip,
+		dissolveCompoundClip,
+		switchSequence
+	} from '$lib/video-editor/sequences/sequence-actions';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 
@@ -90,6 +97,69 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
+	function resetTimelineSelection(): void {
+		selectedItemId = null;
+		selectedItemIds = [];
+		selectedTransitionId = null;
+	}
+
+	function handleOpenSequence(compositionId: string): void {
+		sequenceStore.promoteToTab(compositionId);
+		editorSession.pausePlayback();
+		if (!switchSequence(compositionId)) return;
+		editorSession.syncTimelineClock();
+		resetTimelineSelection();
+	}
+
+	function handleCreateCompound(): void {
+		const ids =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		const compositionId = createCompoundClip(ids, m.video_editor_compound_default());
+		if (!compositionId) return;
+		selectedItemIds = timelineStore.items
+			.filter((item) => item.compositionId === compositionId)
+			.map((item) => item.id);
+		selectedItemId = selectedItemIds[0] ?? null;
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_compound_created(), 'success');
+	}
+
+	function handleDissolveCompound(): void {
+		if (!selectedItemId) return;
+		const restoredIds = dissolveCompoundClip(selectedItemId);
+		if (restoredIds.length === 0) return;
+		selectedItemIds = restoredIds;
+		selectedItemId = restoredIds[0] ?? null;
+		editorSession.scheduleAutosave();
+	}
+
+	function activeRenderProject() {
+		if (!editorSession.project) return null;
+		const activeSequence = sequenceStore.activeSequence;
+		return {
+			...editorSession.project,
+			name: activeSequence?.name ?? editorSession.project.name,
+			metadata: activeSequence
+				? {
+						width: activeSequence.width,
+						height: activeSequence.height,
+						fps: activeSequence.fps,
+						backgroundColor: activeSequence.backgroundColor ?? '#000000'
+					}
+				: editorSession.project.metadata,
+			timeline: {
+				tracks: $state.snapshot(timelineStore.tracks),
+				items: $state.snapshot(timelineStore.items),
+				transitions: $state.snapshot(transitionsStore.list),
+				markers: $state.snapshot(timelineStore.markers),
+				inPoint: timelineStore.inPoint ?? undefined,
+				outPoint: timelineStore.outPoint ?? undefined,
+				compositions: $state.snapshot(sequenceStore.compositions),
+				topLevelSequenceIds: [...sequenceStore.topLevelSequenceIds]
+			}
+		};
+	}
+
 	let exporting = $state(false);
 	let sending = $state(false);
 	async function handleExport(): Promise<void> {
@@ -98,17 +168,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		try {
 			editorSession.pausePlayback();
 			await editorSession.saveNow();
-			const result = await exportProject(
-				{
-					...editorSession.project,
-					timeline: {
-						...editorSession.project.timeline,
-						items: $state.snapshot(timelineStore.items),
-						tracks: timelineStore.tracks
-					}
-				},
-				{ format: 'mp4' }
-			);
+			const project = activeRenderProject();
+			if (!project) return;
+			const result = await exportProject(project, { format: 'mp4' });
 			showToast(m.video_editor_export_done({ name: result.fileName }), 'success');
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -117,19 +179,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		}
 	}
 
-	const renderProject = $derived(
-		editorSession.project
-			? {
-					...editorSession.project,
-					timeline: {
-						...editorSession.project.timeline,
-						items: $state.snapshot(timelineStore.items),
-						tracks: timelineStore.tracks,
-						transitions: [...transitionsStore.list]
-					}
-				}
-			: null
-	);
+	const renderProject = $derived(activeRenderProject());
 
 	async function handleSendToOpenPost(): Promise<void> {
 		const workspaceId = workspaceCtx.currentWorkspace?.id;
@@ -138,17 +188,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		try {
 			editorSession.pausePlayback();
 			await editorSession.saveNow();
-			const result = await exportProject(
-				{
-					...editorSession.project,
-					timeline: {
-						...editorSession.project.timeline,
-						items: $state.snapshot(timelineStore.items),
-						tracks: timelineStore.tracks
-					}
-				},
-				{ format: 'mp4' }
-			);
+			const project = activeRenderProject();
+			if (!project) return;
+			const result = await exportProject(project, { format: 'mp4' });
 			await sendToOpenPost({ workspaceId, blob: result.blob, fileName: result.fileName });
 			showToast(m.video_editor_sent(), 'success');
 		} catch (err) {
@@ -228,6 +270,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	const selectedIsVideo = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
+	);
+	const selectedIsCompound = $derived(
+		selectedItemId !== null && Boolean(timelineStore.itemById.get(selectedItemId)?.compositionId)
 	);
 	const selectedTransition = $derived(
 		selectedTransitionId
@@ -400,6 +445,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		</main>
 	{:else}
 		{#key projectId}
+			<SequenceTabs
+				onswitch={resetTimelineSelection}
+				onedit={() => editorSession.scheduleAutosave()}
+			/>
 			<div class="flex min-h-0 flex-1">
 				<aside
 					class="flex w-56 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
@@ -418,7 +467,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							<PlusIcon />
 						</Button>
 					</div>
-					<MediaPoolList />
+					<MediaPoolList onsequenceopen={resetTimelineSelection} />
 				</aside>
 
 				<section
@@ -442,6 +491,20 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleDelete}>
 						{m.video_editor_delete_clip()}
 					</Button>
+					{#if selectedIsCompound}
+						<Button size="sm" variant="outline" onclick={handleDissolveCompound}>
+							{m.video_editor_dissolve_compound()}
+						</Button>
+					{:else}
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={selectedItemIds.length === 0 && !selectedItemId}
+							onclick={handleCreateCompound}
+						>
+							{m.video_editor_create_compound()}
+						</Button>
+					{/if}
 					{#if selectedTransition}
 						<Button size="sm" variant="outline" onclick={handleRemoveTransition}>
 							{m.video_editor_break_transition()}
@@ -567,6 +630,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					bind:selectedItemIds
 					bind:selectedTransitionId
 					onedit={() => editorSession.scheduleAutosave()}
+					onopencomposition={handleOpenSequence}
 					ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
 				/>
 			</footer>

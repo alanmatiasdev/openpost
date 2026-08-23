@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
+	SubComposition,
 	SubtitleCue,
 	TimelineItem,
 	TimelineTrack,
@@ -11,6 +12,7 @@ import {
 	outputDurationFrames,
 	paintOrder,
 	planMixdown,
+	planNestedMixdown,
 	selectCuesAtFrame,
 	transitionBlendAtFrame
 } from './render-plan';
@@ -183,6 +185,162 @@ describe('planMixdown', () => {
 		expect(points.length).toBeGreaterThanOrEqual(2);
 		expect(points[0]).toMatchObject({ whenSeconds: 1, value: 0 });
 		expect(points[points.length - 1]).toMatchObject({ whenSeconds: 3, value: 1 });
+	});
+});
+
+describe('planNestedMixdown', () => {
+	it('maps leaf audio through a trimmed and retimed sequence wrapper', () => {
+		const nested: SubComposition = {
+			id: 'nested',
+			name: 'Nested',
+			items: [
+				item({
+					id: 'leaf',
+					type: 'audio',
+					trackId: 'nested-audio',
+					mediaId: 'voice',
+					from: 30,
+					durationInFrames: 120,
+					sourceStart: 60,
+					sourceFps: 60,
+					volume: 0.5
+				})
+			],
+			tracks: [track('nested-audio', 'audio', 0, { volume: 0.5 })],
+			transitions: [],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 150
+		};
+		const wrapper = item({
+			id: 'wrapper',
+			type: 'audio',
+			trackId: 'root-audio',
+			mediaId: undefined,
+			compositionId: 'nested',
+			from: 60,
+			durationInFrames: 45,
+			sourceStart: 45,
+			sourceEnd: 135,
+			sourceFps: 30,
+			speed: 2,
+			volume: 0.5
+		});
+
+		const entries = planNestedMixdown(
+			[wrapper],
+			[track('root-audio', 'audio', 0, { volume: 0.5 })],
+			30,
+			[],
+			[nested]
+		);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({
+			itemId: 'wrapper/leaf',
+			mediaId: 'voice',
+			whenSeconds: 2,
+			sourceOffsetSeconds: 1.5,
+			playbackRate: 2,
+			durationSeconds: 1.5
+		});
+		expect(entries[0]?.gainPoints[0]?.value).toBeCloseTo(0.0625);
+	});
+
+	it('does not double schedule a linked visual and audio wrapper pair', () => {
+		const nested: SubComposition = {
+			id: 'nested',
+			name: 'Nested',
+			items: [
+				item({
+					id: 'leaf',
+					type: 'audio',
+					trackId: 'nested-audio',
+					mediaId: 'voice',
+					durationInFrames: 30
+				})
+			],
+			tracks: [track('nested-audio', 'audio', 0)],
+			transitions: [],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 30
+		};
+		const wrappers = [
+			item({
+				id: 'visual-wrapper',
+				type: 'composition',
+				compositionId: 'nested',
+				linkedGroupId: 'pair',
+				mediaId: undefined,
+				durationInFrames: 30
+			}),
+			item({
+				id: 'audio-wrapper',
+				type: 'audio',
+				trackId: 'root-audio',
+				compositionId: 'nested',
+				linkedGroupId: 'pair',
+				mediaId: undefined,
+				durationInFrames: 30
+			})
+		];
+		const entries = planNestedMixdown(
+			wrappers,
+			[track('track-video-main', 'video', 0), track('root-audio', 'audio', 1)],
+			30,
+			[],
+			[nested]
+		);
+		expect(entries.map((entry) => entry.itemId)).toEqual(['audio-wrapper/leaf']);
+	});
+
+	it('stops recursive cycles while still scheduling reachable leaves once', () => {
+		const cycle: SubComposition = {
+			id: 'cycle',
+			name: 'Cycle',
+			items: [
+				item({
+					id: 'leaf',
+					type: 'audio',
+					trackId: 'cycle-audio',
+					mediaId: 'voice',
+					durationInFrames: 30
+				}),
+				item({
+					id: 'self',
+					type: 'audio',
+					trackId: 'cycle-audio',
+					mediaId: undefined,
+					compositionId: 'cycle',
+					durationInFrames: 30
+				})
+			],
+			tracks: [track('cycle-audio', 'audio', 0)],
+			transitions: [],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 30
+		};
+		const entries = planNestedMixdown(
+			[
+				item({
+					id: 'root-wrapper',
+					type: 'audio',
+					trackId: 'root-audio',
+					mediaId: undefined,
+					compositionId: 'cycle',
+					durationInFrames: 30
+				})
+			],
+			[track('root-audio', 'audio', 0)],
+			30,
+			[],
+			[cycle]
+		);
+		expect(entries.map((entry) => entry.mediaId)).toEqual(['voice']);
 	});
 });
 

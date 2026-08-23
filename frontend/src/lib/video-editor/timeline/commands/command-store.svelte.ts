@@ -19,6 +19,11 @@ const logger = createLogger('TimelineCommands');
 class CommandHistory {
 	undoStack = $state<CommandEntry[]>([]);
 	redoStack = $state<CommandEntry[]>([]);
+	private activeContext = 'root';
+	private readonly contextHistory = new Map<
+		string,
+		{ undoStack: CommandEntry[]; redoStack: CommandEntry[] }
+	>();
 
 	get canUndo(): boolean {
 		return this.undoStack.length > 0;
@@ -33,7 +38,7 @@ class CommandHistory {
 		const result = action();
 		const afterSnapshot = captureSnapshot();
 		if (!snapshotsEqual(beforeSnapshot, afterSnapshot)) {
-			this.push(command, beforeSnapshot);
+			this.push(command, beforeSnapshot, afterSnapshot);
 		}
 		return result;
 	}
@@ -42,51 +47,65 @@ class CommandHistory {
 	addUndoEntry(command: TimelineCommand, beforeSnapshot: TimelineSnapshot): void {
 		const afterSnapshot = captureSnapshot();
 		if (!snapshotsEqual(beforeSnapshot, afterSnapshot)) {
-			this.push(command, beforeSnapshot);
+			this.push(command, beforeSnapshot, afterSnapshot);
 		}
 	}
 
-	private push(command: TimelineCommand, beforeSnapshot: TimelineSnapshot): void {
+	private push(
+		command: TimelineCommand,
+		beforeSnapshot: TimelineSnapshot,
+		afterSnapshot: TimelineSnapshot
+	): void {
 		const max = timelineStore.maxUndoHistory;
 		this.undoStack = [
 			...this.undoStack.slice(-(max - 1)),
-			{ command, beforeSnapshot, timestamp: Date.now() }
+			{ command, beforeSnapshot, afterSnapshot, timestamp: Date.now() }
 		];
 		this.redoStack = [];
 	}
 
 	undo(): void {
 		if (this.undoStack.length === 0) return;
-		const currentSnapshot = captureSnapshot();
 		const entry = this.undoStack[this.undoStack.length - 1];
 		if (!entry) return;
-		restoreSnapshot(entry.beforeSnapshot);
+		restoreSnapshot(entry.beforeSnapshot, entry.afterSnapshot.sequenceRegistry);
 		this.undoStack = this.undoStack.slice(0, -1);
-		this.redoStack = [
-			...this.redoStack,
-			{ command: entry.command, beforeSnapshot: currentSnapshot, timestamp: entry.timestamp }
-		];
+		this.redoStack = [...this.redoStack, entry];
 		logger.debug(`undo ${entry.command.type}`);
 	}
 
 	redo(): void {
 		if (this.redoStack.length === 0) return;
-		const currentSnapshot = captureSnapshot();
 		const entry = this.redoStack[this.redoStack.length - 1];
 		if (!entry) return;
-		// The entry's snapshot is the state to re-apply (undo swapped it in).
-		restoreSnapshot(entry.beforeSnapshot);
+		restoreSnapshot(entry.afterSnapshot, entry.beforeSnapshot.sequenceRegistry);
 		this.redoStack = this.redoStack.slice(0, -1);
-		this.undoStack = [
-			...this.undoStack,
-			{ command: entry.command, beforeSnapshot: currentSnapshot, timestamp: entry.timestamp }
-		];
+		this.undoStack = [...this.undoStack, entry];
 		logger.debug(`redo ${entry.command.type}`);
 	}
 
 	clearHistory(): void {
 		this.undoStack = [];
 		this.redoStack = [];
+		this.contextHistory.clear();
+		this.activeContext = 'root';
+	}
+
+	setActiveContext(context: string | null): void {
+		const key = context ?? 'root';
+		if (key === this.activeContext) return;
+		this.contextHistory.set(this.activeContext, {
+			undoStack: [...this.undoStack],
+			redoStack: [...this.redoStack]
+		});
+		const next = this.contextHistory.get(key);
+		this.undoStack = next ? [...next.undoStack] : [];
+		this.redoStack = next ? [...next.redoStack] : [];
+		this.activeContext = key;
+	}
+
+	removeContext(context: string): void {
+		this.contextHistory.delete(context);
 	}
 
 	getLastCommandType(): string | null {

@@ -8,6 +8,7 @@
 
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { editorSession } from '../../editor.svelte';
 import { execute } from '../commands/command-store.svelte';
 import {
 	canLinkSelection,
@@ -349,5 +350,5 @@ export function setItemSpeed(id: string, speed: number): void {
 
 export function setCurrentFrame(frame: number): void {
 	// Playhead moves are not undoable — they're navigation, not edits.
-	timelineStore._setCurrentFrame(frame);
+	editorSession.clock.seek(frame);
 }
