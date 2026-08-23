@@ -107,6 +107,25 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel sync-lock ripple trim', () => {
+	it('offers freeze-frame insertion only at an eligible video frame', async () => {
+		timelineStore._setCurrentFrame(20);
+		const onfreezeframe = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			onfreezeframe,
+			selectedItemId: 'video',
+			selectedItemIds: ['video']
+		});
+
+		const freeze = screen.getByRole('button', { name: 'Freeze frame' });
+		await expect.element(freeze).toBeEnabled();
+		await freeze.click();
+		expect(onfreezeframe).toHaveBeenCalledWith('video');
+
+		timelineStore._setCurrentFrame(0);
+		await expect.element(freeze).toBeDisabled();
+	});
+
 	it('joins selected split siblings from the toolbar and Shift+J', async () => {
 		const left = item({
 			id: 'left',

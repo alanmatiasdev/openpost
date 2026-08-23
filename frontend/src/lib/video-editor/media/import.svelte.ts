@@ -18,14 +18,25 @@ import {
 	mediaThumbnailPath,
 	sanitizeWorkspaceFileName
 } from '../workspace-fs/paths';
-import { associateMediaWithProject } from '../workspace-fs/project-media';
-import { createMedia } from '../workspace-fs/media';
+import { associateMediaWithProject, removeMediaFromProject } from '../workspace-fs/project-media';
+import { createMedia, deleteMedia } from '../workspace-fs/media';
 import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
 
 const logger = createLogger('MediaImport');
+
+/** Remove a newly created generated asset that has not been exposed outside this project. */
+export async function rollbackNewGeneratedMedia(projectId: string, mediaId: string): Promise<void> {
+	mediaPool.remove(mediaId);
+	await removeMediaFromProject(projectId, mediaId).catch((error) => {
+		logger.warn(`Could not remove generated media ${mediaId} from the project`, error);
+	});
+	await deleteMedia(mediaId).catch((error) => {
+		logger.warn(`Could not remove generated media ${mediaId} from workspace storage`, error);
+	});
+}
 
 export interface ImportOptions {
 	projectId: string;
@@ -272,11 +283,16 @@ export async function importGeneratedImage(
 		tags: [...new Set(['image', ...(options.tags ?? [])])]
 	};
 
-	await writeBlob(root, mediaSourceByFileName(id, fileName), file);
-	await createMedia(metadata);
-	await associateMediaWithProject(options.projectId, id);
-	mediaPool.upsert(metadata, 'ready');
-	return metadata;
+	try {
+		await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+		await createMedia(metadata);
+		await associateMediaWithProject(options.projectId, id);
+		mediaPool.upsert(metadata, 'ready');
+		return metadata;
+	} catch (error) {
+		await rollbackNewGeneratedMedia(options.projectId, id);
+		throw error;
+	}
 }
 
 /** Save locally generated speech or music into the workspace media pool. */
@@ -305,11 +321,16 @@ export async function importGeneratedAudio(
 		tags: [...new Set(['audio', 'ai-generated', ...(options.tags ?? [])])]
 	};
 
-	await writeBlob(root, mediaSourceByFileName(id, fileName), file);
-	await createMedia(metadata);
-	await associateMediaWithProject(options.projectId, id);
-	mediaPool.upsert(metadata, 'ready');
-	return metadata;
+	try {
+		await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+		await createMedia(metadata);
+		await associateMediaWithProject(options.projectId, id);
+		mediaPool.upsert(metadata, 'ready');
+		return metadata;
+	} catch (error) {
+		await rollbackNewGeneratedMedia(options.projectId, id);
+		throw error;
+	}
 }
 
 function sanitizeOrName(media: MediaMetadata): string {

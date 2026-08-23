@@ -22,6 +22,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/timeline/actions/items';
 	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
 	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
+	import { insertFreezeFrame } from '$lib/video-editor/media/insert-freeze-frame.svelte';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import {
@@ -74,6 +75,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
 	let sourceMediaId = $state<string | null>(null);
+	let freezingItemId = $state<string | null>(null);
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 
 	$effect(() => {
@@ -118,6 +120,44 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	function handleSplit(): void {
 		splitAtFrame(timelineStore.currentFrame, undefined);
 		editorSession.scheduleAutosave();
+	}
+
+	async function handleFreezeFrame(itemId = selectedItemId): Promise<void> {
+		if (!itemId || !projectId || freezingItemId) return;
+		freezingItemId = itemId;
+		try {
+			const result = await insertFreezeFrame({
+				projectId,
+				itemId,
+				playheadFrame: timelineStore.currentFrame
+			});
+			if (!result.ok) {
+				const message =
+					result.reason === 'locked-track'
+						? m.video_editor_freeze_frame_locked()
+						: result.reason === 'transition-overlap'
+							? m.video_editor_freeze_frame_transition()
+							: result.reason === 'source-changed'
+								? m.video_editor_freeze_frame_changed()
+								: m.video_editor_freeze_frame_select();
+				showToast(message, 'info');
+				return;
+			}
+			selectedItemId = result.itemId;
+			selectedItemIds = [result.itemId];
+			selectedTransitionId = null;
+			editorSession.scheduleAutosave();
+			showToast(m.video_editor_freeze_frame_added(), 'success');
+		} catch (error) {
+			showToast(
+				m.video_editor_freeze_frame_failed({
+					message: error instanceof Error ? error.message : String(error)
+				}),
+				'error'
+			);
+		} finally {
+			freezingItemId = null;
+		}
 	}
 
 	function handleDelete(): void {
@@ -468,6 +508,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			handleDelete();
 		} else if (event.key === 'b' || event.key === 'B') {
 			handleSplit();
+		} else if (
+			(event.key === 'f' || event.key === 'F') &&
+			event.shiftKey &&
+			!event.altKey &&
+			!event.ctrlKey &&
+			!event.metaKey
+		) {
+			event.preventDefault();
+			void handleFreezeFrame();
 		} else if (event.key === 'm' || event.key === 'M') {
 			toggleMarkerAtPlayhead();
 			editorSession.scheduleAutosave();
@@ -790,7 +839,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					bind:selectedItemId
 					bind:selectedItemIds
 					bind:selectedTransitionId
+					freezeFramePending={freezingItemId !== null}
 					onedit={() => editorSession.scheduleAutosave()}
+					onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
 					onopencomposition={handleOpenSequence}
 					ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
 				/>

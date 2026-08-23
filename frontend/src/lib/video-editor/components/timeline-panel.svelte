@@ -129,6 +129,8 @@
 	import MagnetIcon from '@lucide/svelte/icons/magnet';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
 	import CombineIcon from '@lucide/svelte/icons/combine';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import SnowflakeIcon from '@lucide/svelte/icons/snowflake';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
 	import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -142,6 +144,8 @@
 		onedit,
 		ontransitionbreak = () => {},
 		onopencomposition = () => {},
+		onfreezeframe = () => {},
+		freezeFramePending = false,
 		selectedItemId = $bindable(null),
 		selectedItemIds = $bindable([]),
 		selectedTransitionId = $bindable(null)
@@ -149,6 +153,8 @@
 		onedit: () => void;
 		ontransitionbreak?: (count: number) => void;
 		onopencomposition?: (compositionId: string) => void;
+		onfreezeframe?: (itemId: string) => void;
+		freezeFramePending?: boolean;
 		selectedItemId?: string | null;
 		selectedItemIds?: string[];
 		selectedTransitionId?: string | null;
@@ -1578,6 +1584,17 @@
 		}
 		return [...groups.values()].some(canJoinMultipleItems);
 	});
+	const canFreezeSelectedItem = $derived.by(() => {
+		if (!selectedItem || selectedItem.type !== 'video') return false;
+		if (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked)
+			return false;
+		const frame = timelineStore.currentFrame;
+		return (
+			frame > selectedItem.from &&
+			frame < selectedItem.from + selectedItem.durationInFrames &&
+			!transitionsStore.at(selectedItem, frame - selectedItem.from)
+		);
+	});
 	const availableKeyframeProperties = $derived(
 		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
 	);
@@ -1864,6 +1881,21 @@
 	</div>
 	<div class="ml-auto flex items-center gap-1">
 		{#if selectedItem}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded"
+				disabled={!canFreezeSelectedItem || freezeFramePending}
+				aria-label={m.video_editor_freeze_frame()}
+				title={m.video_editor_freeze_frame_hint()}
+				onclick={() => onfreezeframe(selectedItem.id)}
+			>
+				{#if freezeFramePending}
+					<LoaderCircleIcon class="size-3.5 animate-spin" />
+				{:else}
+					<SnowflakeIcon class="size-3.5" />
+				{/if}
+			</Button>
 			<Button
 				variant="ghost"
 				size="icon"
