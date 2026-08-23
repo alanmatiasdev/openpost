@@ -104,6 +104,7 @@ const selfHostingSidebar = [
         text: "Provider Applications",
         link: "/configuration/provider-applications",
       },
+      { text: "Custom Connectors", link: "/configuration/custom-connectors" },
       { text: "Update Status", link: "/configuration/update-status" },
       { text: "User Feedback", link: "/configuration/feedback" },
       { text: "Database", link: "/configuration/database" },
@@ -186,6 +187,10 @@ const developmentSidebar = [
       },
       { text: "Backend", link: "/development/backend" },
       { text: "Platform Adapters", link: "/development/platform-adapters" },
+      {
+        text: "Connector Protocol",
+        link: "/development/connector-protocol",
+      },
       { text: "Background Jobs", link: "/development/background-jobs" },
       { text: "Analytics Architecture", link: "/development/analytics" },
       { text: "Testing", link: "/development/testing" },

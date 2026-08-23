@@ -114,6 +114,27 @@ func TestResolveMediaFirstIntentsBeforeMediaIsAttached(t *testing.T) {
 	}
 }
 
+func TestResolveCatalogUsesConnectorSuppliedCapabilities(t *testing.T) {
+	t.Parallel()
+
+	resolved := ResolveCatalog("io.directus.items", []Capability{{
+		Provider: "io.directus.items", Profile: "short_text", OutputProfile: "directus.item",
+		Label: "Create Directus item", Intents: []string{"post"}, MediaShapes: []string{MediaShapeText},
+		Content: ContentConstraint{Body: TextConstraint{Required: true, MaxLength: 100}},
+		Media:   MediaConstraint{MinCount: 0, MaxCount: 0}, CapabilityRevision: "directus-items-v1",
+	}}, ResolveInput{
+		CreationPreset: "post", RequestedOutputProfile: "directus.item",
+		Segments: []ResolveSegment{{ID: "segment-1", Body: "Published through Directus"}},
+	})
+
+	if !resolved.Compatible {
+		t.Fatalf("connector capability should be compatible: %#v", resolved.Issues)
+	}
+	if resolved.OutputProfile != "directus.item" || resolved.CapabilityRevision != "directus-items-v1" {
+		t.Fatalf("unexpected connector capability: %#v", resolved.Capability)
+	}
+}
+
 func TestResolveChoosesFormatsPerDestinationForMultiSegmentSource(t *testing.T) {
 	segments := []ResolveSegment{
 		{ID: "segment-1", Body: "First"},

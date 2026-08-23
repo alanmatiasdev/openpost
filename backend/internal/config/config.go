@@ -117,6 +117,7 @@ type Config struct {
 	ThreadsRedirectURI  string
 
 	ProviderApps                  []platform.AppConfig
+	ConnectorsFile                string
 	DisabledProviders             []string
 	ProviderCertificationEnforced bool
 
@@ -247,6 +248,7 @@ func Load() *Config {
 		PostHogUIHost:          strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_UI_HOST", postHogUIHost)), "/"),
 		TelemetryEnvironment:   strings.TrimSpace(getEnvDefault("OPENPOST_TELEMETRY_ENVIRONMENT", telemetryEnvironment)),
 		UpdateCheckEnabled:     getEnvBoolWithAliases(true, "OPENPOST_UPDATE_CHECK_ENABLED"),
+		ConnectorsFile:         strings.TrimSpace(os.Getenv("OPENPOST_CONNECTORS_FILE")),
 		OIDCIssuer:             strings.TrimSpace(getEnvDefault("OPENPOST_OIDC_ISSUER", "")),
 		OIDCClientID:           strings.TrimSpace(getEnvDefault("OPENPOST_OIDC_CLIENT_ID", "")),
 		OIDCClientSecret:       getEnvDefault("OPENPOST_OIDC_CLIENT_SECRET", ""),
@@ -599,6 +601,9 @@ func (c *Config) invalidCloudImageCaptionConfig() []string {
 }
 
 func (c *Config) ValidateManagedSettings() error {
+	if c.Edition == EditionCloud && strings.TrimSpace(c.ConnectorsFile) != "" {
+		return fmt.Errorf("operator-installed connectors are limited to self-hosted deployments")
+	}
 	if invalid := c.invalidAuthenticationConfig(); len(invalid) > 0 {
 		return fmt.Errorf("invalid authentication configuration: %s", strings.Join(invalid, ", "))
 	}

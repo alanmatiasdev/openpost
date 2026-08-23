@@ -357,12 +357,28 @@ type RefreshTokenInput struct {
 	RefreshToken string
 }
 
-// Adapter is the single interface every social platform must implement.
-// This eliminates switch statements across publisher, token manager, and OAuth handlers.
+// Publisher is the smallest provider seam required by the delivery service.
+// Operator-installed connectors implement this without pretending to own OAuth
+// or media upload flows that remain inside their connector process.
+type Publisher interface {
+	Publish(ctx context.Context, credential, accountID string, req *PublishRequest) (PublishResult, error)
+}
+
+// MediaUploader uploads media for providers that do not publish it directly.
+type MediaUploader interface {
+	UploadMedia(ctx context.Context, credential, accountID, mimeType string, reader io.Reader) (string, error)
+}
+
+// Adapter is the full interface implemented by built-in social platforms.
+// Publishing accepts the smaller Publisher interface where authentication and
+// media handling are not required.
 //
 // Each platform implementation lives in its own file (x.go, mastodon.go, etc.)
 // and is registered in main.go via a map[string]Adapter.
 type Adapter interface {
+	Publisher
+	MediaUploader
+
 	// Auth flow
 	// GenerateAuthURL returns the OAuth authorization URL.
 	// extra contains platform-specific params.
@@ -382,16 +398,6 @@ type Adapter interface {
 
 	// GetProfile fetches the authenticated user's profile.
 	GetProfile(ctx context.Context, accessToken string) (*UserProfile, error)
-
-	// Media upload — returns a platform-specific media ID (or URL for Threads).
-	// The reader is consumed and should contain the raw file bytes.
-	UploadMedia(ctx context.Context, accessToken, accountID, mimeType string, reader io.Reader) (string, error)
-
-	// Publishing returns a structured acceptance result. For Bluesky,
-	// ExternalID is JSON {"uri":"...","cid":"..."} for threading support.
-	// For LinkedIn it is the activity URN for the first post, or comment ID for
-	// replies.
-	Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (PublishResult, error)
 }
 
 type CommentAttachment struct {

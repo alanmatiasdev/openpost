@@ -70,7 +70,7 @@ test("accounts distinguishes destination disconnect from credential revocation",
       json: accounts.map(({ grantKey: _grantKey, ...account }) => account),
     });
   });
-  await page.route("**/api/v1/accounts/providers", async (route) => {
+  await page.route("**/api/v1/accounts/providers*", async (route) => {
     await route.fulfill({ contentType: "application/json", json: [] });
   });
 

@@ -712,7 +712,7 @@ test.describe("product screenshot capture", () => {
         ],
       });
     });
-    await page.route("**/api/v1/accounts/providers", async (route) => {
+    await page.route("**/api/v1/accounts/providers*", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         json: providerFixtures,

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
@@ -43,7 +44,9 @@ type Service struct {
 	db                           *bun.DB
 	tm                           *tokenmanager.TokenManager
 	providerMu                   sync.RWMutex
-	providers                    map[string]platform.Adapter
+	providers                    map[string]platform.Publisher
+	connectorRegistry            *connectors.Registry
+	connectorStore               *connectors.Store
 	disableLinkedInThreadReplies bool
 	publicMediaURL               string
 	mediaSigner                  *mediasigner.Signer
@@ -65,7 +68,7 @@ func NewService(db *bun.DB, tm *tokenmanager.TokenManager) *Service {
 	return &Service{
 		db:        db,
 		tm:        tm,
-		providers: make(map[string]platform.Adapter),
+		providers: make(map[string]platform.Publisher),
 		usage:     usage.NewService(db),
 		quota:     entitlements.NewSelfHostedService(),
 	}
@@ -119,10 +122,15 @@ func (s *Service) SetTelemetry(recorder telemetry.Recorder) {
 	s.telemetry = recorder
 }
 
-func (s *Service) SetProvider(platformName string, adapter platform.Adapter) {
+func (s *Service) SetProvider(platformName string, publisher platform.Publisher) {
 	s.providerMu.Lock()
 	defer s.providerMu.Unlock()
-	s.providers[platformName] = adapter
+	s.providers[platformName] = publisher
+}
+
+func (s *Service) SetConnectorRegistry(registry *connectors.Registry, store *connectors.Store) {
+	s.connectorRegistry = registry
+	s.connectorStore = store
 }
 
 // UpdateJobRetryAt keeps user-visible destination retry metadata aligned with
@@ -466,16 +474,19 @@ func (s *Service) publishRendition(
 	if err := s.requireRenditionReadiness(ctx, account, rendition, authorization, readinessIntent); err != nil {
 		return err
 	}
-	provider, providerKey, err := s.providerForAccount(account)
+	provider, providerKey, connectorBacked, err := s.providerForAccount(ctx, publication.WorkspaceID, account)
 	if err != nil {
 		return err
 	}
 	if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitPublishedPostsMonthly); err != nil {
 		return err
 	}
-	token, err := s.tm.GetValidAccessToken(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("auth error: %v", err)
+	token := ""
+	if !connectorBacked {
+		token, err = s.tm.GetValidAccessToken(ctx, account.ID)
+		if err != nil {
+			return fmt.Errorf("auth error: %v", err)
+		}
 	}
 	mediaAttachments, mediaAltTexts, mediaSettings, err := s.loadRenditionMedia(ctx, rendition.ID)
 	if err != nil {
@@ -616,13 +627,16 @@ func (s *Service) publishRenditionSegments(
 	if err := s.requireRenditionReadiness(ctx, account, rendition, authorization, readinessIntent); err != nil {
 		return err
 	}
-	provider, providerKey, err := s.providerForAccount(account)
+	provider, providerKey, connectorBacked, err := s.providerForAccount(ctx, publication.WorkspaceID, account)
 	if err != nil {
 		return err
 	}
-	token, err := s.tm.GetValidAccessToken(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("auth error: %v", err)
+	token := ""
+	if !connectorBacked {
+		token, err = s.tm.GetValidAccessToken(ctx, account.ID)
+		if err != nil {
+			return fmt.Errorf("auth error: %v", err)
+		}
 	}
 	destinationSettings := map[string]interface{}{}
 	_ = json.Unmarshal([]byte(rendition.SettingsJSON), &destinationSettings)
@@ -985,13 +999,16 @@ func (s *Service) publishRenditionReply(
 	if err := s.db.NewSelect().Model(account).Where("id = ?", rendition.SocialAccountID).Scan(ctx); err != nil {
 		return fmt.Errorf("account not found: %w", err)
 	}
-	provider, _, err := s.providerForAccount(account)
+	provider, _, connectorBacked, err := s.providerForAccount(ctx, publication.WorkspaceID, account)
 	if err != nil {
 		return err
 	}
-	token, err := s.tm.GetValidAccessToken(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("auth error: %w", err)
+	token := ""
+	if !connectorBacked {
+		token, err = s.tm.GetValidAccessToken(ctx, account.ID)
+		if err != nil {
+			return fmt.Errorf("auth error: %w", err)
+		}
 	}
 	req := &platform.PublishRequest{
 		Content:      body,
@@ -1094,7 +1111,7 @@ func isExpiredTokenError(err error) bool {
 
 //nolint:dupl
 
-func (s *Service) platformMediaIDForRendition(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment) (string, error) {
+func (s *Service) platformMediaIDForRendition(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, provider platform.Publisher, token string, media models.MediaAttachment) (string, error) {
 	if requiresPublicMedia(account.Platform, rendition.Profile) {
 		return s.uploadRenditionMediaToPlatform(ctx, account, provider, token, rendition, media)
 	}
@@ -1539,6 +1556,23 @@ func (s *Service) requireRenditionReadiness(
 	authorization *models.PublicationAuthorization,
 	intent providerreadiness.ExecutionIntent,
 ) error {
+	connectorCapability, connectorBacked, connectorErr := s.connectorCapabilityForAccount(
+		ctx, account, rendition.OutputProfile, rendition.Profile,
+	)
+	if connectorErr != nil {
+		return connectorErr
+	}
+	if connectorBacked {
+		settings := map[string]any{}
+		if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+			return fmt.Errorf("decode rendition connector settings: %w", err)
+		}
+		providerPolicyMode := providerreadiness.PublicationPolicyMode(*account, connectorCapability, settings)
+		if authorization != nil && authorization.ProviderPolicyMode != providerPolicyMode {
+			return fmt.Errorf("publication authorization validation failed: provider policy mode changed")
+		}
+		return nil
+	}
 	if s == nil || s.readiness == nil {
 		return &providerreadiness.NotReadyError{
 			Decision: providerreadiness.UnavailableDecision(providerreadiness.OperationPublishImmediate),
@@ -1579,9 +1613,45 @@ func (s *Service) requireRenditionReadiness(
 	return nil
 }
 
+func (s *Service) connectorCapabilityForAccount(
+	ctx context.Context,
+	account *models.SocialAccount,
+	outputProfile, profile string,
+) (capabilities.Capability, bool, error) {
+	if s == nil || s.connectorStore == nil || s.connectorRegistry == nil || account == nil {
+		return capabilities.Capability{}, false, nil
+	}
+	binding, err := s.connectorStore.BindingForAccount(ctx, account.WorkspaceID, account.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return capabilities.Capability{}, false, nil
+	}
+	if err != nil {
+		return capabilities.Capability{}, false, err
+	}
+	_, entry, err := s.connectorRegistry.ClientForWorkspace(binding.InstallationID, account.WorkspaceID)
+	if err != nil {
+		return capabilities.Capability{}, true, err
+	}
+	if binding.CapabilityRevision != entry.Manifest.CapabilityRevision {
+		return capabilities.Capability{}, true, fmt.Errorf("connector capabilities changed; reconnect account before publishing")
+	}
+	for _, capability := range entry.Capabilities() {
+		if outputProfile != "" && capability.OutputProfile == outputProfile {
+			return capability, true, nil
+		}
+		if outputProfile == "" && capability.Profile == profile {
+			return capability, true, nil
+		}
+	}
+	return capabilities.Capability{}, true, fmt.Errorf(
+		"connector installation %q does not support output profile %q",
+		binding.InstallationID, outputProfile,
+	)
+}
+
 func (s *Service) publishProvider(
 	ctx context.Context,
-	provider platform.Adapter,
+	provider platform.Publisher,
 	token, accountID string,
 	req *platform.PublishRequest,
 	media []models.MediaAttachment,
@@ -1682,7 +1752,7 @@ func (s *Service) publishProviderWithUsage(
 	ctx context.Context,
 	workspaceID, providerName, subject, phase string,
 	writeScope providerWriteScope,
-	provider platform.Adapter,
+	provider platform.Publisher,
 	token, accountID string,
 	req *platform.PublishRequest,
 	media []models.MediaAttachment,
@@ -1847,7 +1917,7 @@ func providerPublishFingerprint(
 }
 
 //nolint:unparam // token is part of the upload seam signature; tests pass a static token while production media uploads flow through uploadRenditionMediaToPlatform.
-func (s *Service) uploadMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment, content string) (string, error) {
+func (s *Service) uploadMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Publisher, token string, media models.MediaAttachment, content string) (string, error) {
 	if requiresPublicMedia(account.Platform, "") {
 		return s.getPublicMediaURL(media), nil
 	}
@@ -1872,10 +1942,14 @@ func (s *Service) uploadMediaToPlatform(ctx context.Context, account *models.Soc
 		})
 	}
 
-	return provider.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
+	uploader, ok := provider.(platform.MediaUploader)
+	if !ok {
+		return "", fmt.Errorf("provider does not support media uploads")
+	}
+	return uploader.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
 }
 
-func (s *Service) uploadRenditionMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Adapter, token string, rendition *models.Rendition, media models.MediaAttachment) (string, error) {
+func (s *Service) uploadRenditionMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Publisher, token string, rendition *models.Rendition, media models.MediaAttachment) (string, error) {
 	settings := map[string]interface{}{}
 	_ = json.Unmarshal([]byte(rendition.SettingsJSON), &settings)
 
@@ -1899,7 +1973,11 @@ func (s *Service) uploadRenditionMediaToPlatform(ctx context.Context, account *m
 		return "", fmt.Errorf("opening media file %s: %w", media.FilePath, err)
 	}
 	defer data.Close()
-	return provider.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
+	uploader, ok := provider.(platform.MediaUploader)
+	if !ok {
+		return "", fmt.Errorf("provider does not support media uploads")
+	}
+	return uploader.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
 }
 
 func (s *Service) uploadRenditionMediaResumable(
@@ -2105,7 +2183,23 @@ func (s *Service) loadRenditionMedia(ctx context.Context, renditionID string) ([
 	return media, altTexts, settings, nil
 }
 
-func (s *Service) providerForAccount(account *models.SocialAccount) (platform.Adapter, string, error) {
+func (s *Service) providerForAccount(ctx context.Context, workspaceID string, account *models.SocialAccount) (platform.Publisher, string, bool, error) {
+	if s.connectorStore != nil && s.connectorRegistry != nil {
+		binding, err := s.connectorStore.BindingForAccount(ctx, workspaceID, account.ID)
+		switch {
+		case err == nil:
+			client, entry, resolveErr := s.connectorRegistry.ClientForWorkspace(binding.InstallationID, workspaceID)
+			if resolveErr != nil {
+				return nil, binding.InstallationID, true, resolveErr
+			}
+			if binding.CapabilityRevision != entry.Manifest.CapabilityRevision {
+				return nil, binding.InstallationID, true, fmt.Errorf("connector capabilities changed; reconnect account before publishing")
+			}
+			return connectors.NewPublisher(client, binding.ConnectionRef, binding.CapabilityRevision), binding.InstallationID, true, nil
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, "", false, err
+		}
+	}
 	providerKey := account.Platform
 	if account.Platform == "mastodon" {
 		providerKey = "mastodon:" + account.InstanceURL
@@ -2114,9 +2208,9 @@ func (s *Service) providerForAccount(account *models.SocialAccount) (platform.Ad
 	provider, ok := s.providers[providerKey]
 	s.providerMu.RUnlock()
 	if !ok {
-		return nil, providerKey, fmt.Errorf("unsupported platform: %s (instance: %s)", account.Platform, account.InstanceURL)
+		return nil, providerKey, false, fmt.Errorf("unsupported platform: %s (instance: %s)", account.Platform, account.InstanceURL)
 	}
-	return provider, providerKey, nil
+	return provider, providerKey, false, nil
 }
 
 func (s *Service) finalizePublication(ctx context.Context, publication *models.Publication) {

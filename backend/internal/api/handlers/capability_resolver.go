@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/providerreadiness"
@@ -28,6 +31,8 @@ type CapabilityResolverHandler struct {
 	tokenSource AccessTokenSource
 	publicMedia *publicurl.MediaVerifier
 	readiness   *providerreadiness.Service
+	connectors  *connectors.Registry
+	store       *connectors.Store
 	cacheMu     sync.Mutex
 	cache       map[string]accountCapabilityCacheEntry
 }
@@ -58,6 +63,11 @@ func (h *CapabilityResolverHandler) SetPublicMediaVerifier(verifier *publicurl.M
 
 func (h *CapabilityResolverHandler) SetProviderReadiness(service *providerreadiness.Service) {
 	h.readiness = service
+}
+
+func (h *CapabilityResolverHandler) SetConnectorRegistry(registry *connectors.Registry, store *connectors.Store) {
+	h.connectors = registry
+	h.store = store
 }
 
 type ResolveCapabilityMediaInput struct {
@@ -127,33 +137,113 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 		output.Body.Accounts = make([]ResolvedAccountCapability, 0, len(accounts))
 		for _, account := range accounts {
 			accountSegments := segmentsWithDestinationFields(segments, input.Body.Settings[account.ID])
-			resolved := capabilities.Resolve(account.Platform, capabilities.ResolveInput{
+			resolveInput := capabilities.ResolveInput{
 				Intent:                 input.Body.Intent,
 				CreationPreset:         input.Body.CreationPreset,
 				RequestedOutputProfile: input.Body.RequestedOutputProfiles[account.ID],
 				SourceURL:              input.Body.SourceURL,
 				Segments:               accountSegments,
 				Settings:               input.Body.Settings[account.ID],
-			})
-			h.mergeAccountCapability(
-				ctx,
-				account,
-				input.Body.Locale,
-				input.Body.Region,
-				input.Body.Settings[account.ID],
-				accountSegments,
-				&resolved,
-			)
+			}
+			resolved, connectorBacked, err := h.resolveConnectorCapability(ctx, account, resolveInput)
+			if err != nil {
+				return nil, huma.Error502BadGateway("connector capability resolution failed")
+			}
+			if !connectorBacked {
+				resolved = capabilities.Resolve(account.Platform, resolveInput)
+				h.mergeAccountCapability(
+					ctx,
+					account,
+					input.Body.Locale,
+					input.Body.Region,
+					input.Body.Settings[account.ID],
+					accountSegments,
+					&resolved,
+				)
+			}
 			satisfyCanonicalURLRequirement(&resolved, input.Body.SourceURL, segments)
+			immediate := h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishImmediate, input.Body.Settings[account.ID])
+			scheduled := h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishScheduled, input.Body.Settings[account.ID])
+			if connectorBacked {
+				immediate = connectorPublicationDecision(resolved.Compatible)
+				scheduled = connectorPublicationDecision(resolved.Compatible)
+			}
 			output.Body.Accounts = append(output.Body.Accounts, ResolvedAccountCapability{
 				AccountID:          account.ID,
-				ImmediateReadiness: h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishImmediate, input.Body.Settings[account.ID]),
-				ScheduledReadiness: h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishScheduled, input.Body.Settings[account.ID]),
+				ImmediateReadiness: immediate,
+				ScheduledReadiness: scheduled,
 				ResolvedCapability: resolved,
 			})
 		}
 		return output, nil
 	})
+}
+
+func (h *CapabilityResolverHandler) resolveConnectorCapability(
+	ctx context.Context,
+	account models.SocialAccount,
+	input capabilities.ResolveInput,
+) (capabilities.ResolvedCapability, bool, error) {
+	if h.connectors == nil || h.store == nil {
+		return capabilities.ResolvedCapability{}, false, nil
+	}
+	binding, err := h.store.BindingForAccount(ctx, account.WorkspaceID, account.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return capabilities.ResolvedCapability{}, false, nil
+	}
+	if err != nil {
+		return capabilities.ResolvedCapability{}, false, err
+	}
+	client, entry, err := h.connectors.ClientForWorkspace(binding.InstallationID, account.WorkspaceID)
+	if err != nil {
+		return capabilities.ResolvedCapability{}, true, err
+	}
+	if entry.Manifest.CapabilityRevision != binding.CapabilityRevision {
+		return capabilities.ResolvedCapability{}, true, fmt.Errorf("connector capability revision changed")
+	}
+	resolved := capabilities.ResolveCatalog(account.Platform, entry.Capabilities(), input)
+	if resolved.OutputProfile == "" {
+		return resolved, true, nil
+	}
+	dynamic, err := client.ResolveCapabilities(ctx, connectors.CapabilityResolveRequest{
+		ConnectionRef: binding.ConnectionRef, OutputProfile: resolved.OutputProfile,
+		Intent: firstResolvedIntent(resolved), Settings: input.Settings,
+	})
+	if err != nil {
+		return capabilities.ResolvedCapability{}, true, err
+	}
+	if dynamic.CapabilityRevision != binding.CapabilityRevision {
+		return capabilities.ResolvedCapability{}, true, fmt.Errorf("connector returned a stale capability revision")
+	}
+	for key, value := range dynamic.Constraints {
+		resolved.ActiveConstraints[key] = value
+	}
+	if !dynamic.Available {
+		reason := strings.TrimSpace(dynamic.UnavailableReason)
+		if reason == "" {
+			reason = "This connector destination is not available with the current settings."
+		}
+		if len(reason) > 240 {
+			reason = reason[:240]
+		}
+		resolved.Compatible = false
+		resolved.Issues = append(resolved.Issues, capabilities.ValidationIssue{
+			Severity: "error", Code: "connector_destination_unavailable",
+			Message: reason, FallbackMessage: reason, Provider: account.Platform,
+			Profile: resolved.Profile, OutputProfile: resolved.OutputProfile,
+		})
+	}
+	return resolved, true, nil
+}
+
+func connectorPublicationDecision(compatible bool) providerreadiness.Decision {
+	if !compatible {
+		return providerreadiness.Decision{State: providerreadiness.EffectiveStateDegraded}
+	}
+	return providerreadiness.Decision{
+		State: providerreadiness.EffectiveStateHealthy, Executable: true,
+		Publishable: true, Advertisable: true,
+	}
 }
 
 func (h *CapabilityResolverHandler) publicationReadiness(

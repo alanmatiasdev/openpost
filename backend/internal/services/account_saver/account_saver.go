@@ -685,6 +685,13 @@ func (s *AccountSaver) CheckSocialAccountQuota(ctx context.Context, userID, work
 	return s.checkSocialAccountQuota(ctx, userID, workspaceID, 1)
 }
 
+func (s *AccountSaver) CheckSocialAccountQuotaAmount(ctx context.Context, userID, workspaceID string, amount int64) error {
+	if amount < 1 {
+		return fmt.Errorf("social account quota amount must be positive")
+	}
+	return s.checkSocialAccountQuota(ctx, userID, workspaceID, amount)
+}
+
 func (s *AccountSaver) checkSocialAccountQuota(ctx context.Context, userID, workspaceID string, amount int64) error {
 	current, err := s.db.NewSelect().
 		Model((*models.SocialAccount)(nil)).

@@ -1042,6 +1042,63 @@ type SocialAccount struct {
 	IsNewlyInserted bool      `bun:"-" json:"-"`
 }
 
+// ProviderInstallation identifies one built-in provider application or one
+// operator-installed connector. Endpoint and secret material stay in the
+// operator configuration file and are never persisted here.
+type ProviderInstallation struct {
+	bun.BaseModel `bun:"table:provider_installations"`
+
+	ID                    string    `bun:",pk" json:"id"`
+	Kind                  string    `bun:",notnull" json:"kind"`
+	ProviderID            string    `bun:"provider_id,notnull" json:"provider_id"`
+	DisplayName           string    `bun:"display_name,notnull" json:"display_name"`
+	Description           string    `bun:",notnull,default:''" json:"description,omitempty"`
+	ProtocolVersion       string    `bun:"protocol_version,notnull,default:''" json:"protocol_version,omitempty"`
+	ImplementationVersion string    `bun:"implementation_version,notnull,default:''" json:"implementation_version,omitempty"`
+	CapabilityRevision    string    `bun:"capability_revision,notnull,default:''" json:"capability_revision,omitempty"`
+	ManifestJSON          string    `bun:"manifest_json,notnull,default:'{}'" json:"-"`
+	ConfigFingerprint     string    `bun:"config_fingerprint,notnull,default:''" json:"-"`
+	Status                string    `bun:",notnull" json:"status"`
+	StatusDetail          string    `bun:"status_detail,notnull,default:''" json:"status_detail,omitempty"`
+	Required              bool      `bun:",notnull,default:false" json:"required"`
+	LastSeenAt            time.Time `bun:"last_seen_at,nullzero" json:"last_seen_at,omitempty"`
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// ProviderAccountBinding separates an OpenPost account from the installation
+// that executes its provider calls. ConnectionRef is opaque and contains no
+// destination credential material.
+type ProviderAccountBinding struct {
+	bun.BaseModel `bun:"table:provider_account_bindings"`
+
+	SocialAccountID    string    `bun:"social_account_id,pk" json:"social_account_id"`
+	WorkspaceID        string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	InstallationID     string    `bun:"installation_id,notnull" json:"installation_id"`
+	ConnectionRef      string    `bun:"connection_ref,notnull,default:''" json:"-"`
+	ExternalAccountID  string    `bun:"external_account_id,notnull" json:"external_account_id"`
+	CapabilityRevision string    `bun:"capability_revision,notnull,default:''" json:"capability_revision,omitempty"`
+	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// ConnectorConnectionSession lets OpenPost complete or diagnose a connection
+// without giving the browser direct access to a connector.
+type ConnectorConnectionSession struct {
+	bun.BaseModel `bun:"table:connector_connection_sessions"`
+
+	ID             string    `bun:",pk" json:"id"`
+	WorkspaceID    string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	InstallationID string    `bun:"installation_id,notnull" json:"installation_id"`
+	State          string    `bun:",notnull" json:"state"`
+	ConnectionRef  string    `bun:"connection_ref,notnull,default:''" json:"-"`
+	AccountsJSON   string    `bun:"accounts_json,notnull,default:'[]'" json:"-"`
+	ErrorKind      string    `bun:"error_kind,notnull,default:''" json:"error_kind,omitempty"`
+	ExpiresAt      time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
 type WorkspaceFirstConnection struct {
 	bun.BaseModel `bun:"table:workspace_first_connections"`
 

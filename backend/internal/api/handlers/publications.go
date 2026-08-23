@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
@@ -68,6 +69,7 @@ type PublicationHandler struct {
 	publicMedia *publicurl.MediaVerifier
 	reposts     *repostservice.Service
 	readiness   *providerreadiness.Service
+	connectors  *connectors.Registry
 	telemetry   telemetry.Recorder
 	// beforeQueueTransaction is a deterministic concurrency seam for tests.
 	// Production constructors leave it nil.
@@ -77,6 +79,10 @@ type PublicationHandler struct {
 func (h *PublicationHandler) SetCapabilityDependencies(providers map[string]platform.Adapter, tokenSource AccessTokenSource) {
 	h.providers = providers
 	h.tokenSource = tokenSource
+}
+
+func (h *PublicationHandler) SetConnectorRegistry(registry *connectors.Registry) {
+	h.connectors = registry
 }
 
 func (h *PublicationHandler) SetPublicMediaVerifier(verifier *publicurl.MediaVerifier) {
@@ -1830,13 +1836,45 @@ func (h *PublicationHandler) resolveRenditionCapability(
 		}
 		resolveSegments = append(resolveSegments, resolveSegment)
 	}
-	return capabilities.Resolve(account.Platform, capabilities.ResolveInput{
+	resolveInput := capabilities.ResolveInput{
 		Intent:                 publication.Intent,
 		CreationPreset:         publicationFirstNonEmpty(publication.CreationPreset, publication.Intent),
 		RequestedOutputProfile: input.OutputProfile,
 		SourceURL:              publication.SourceURL,
 		Segments:               resolveSegments,
-	})
+	}
+	if connectorCapabilities, connectorBacked, err := h.connectorCapabilitiesWithDB(ctx, db, account); err == nil && connectorBacked {
+		return capabilities.ResolveCatalog(account.Platform, connectorCapabilities, resolveInput)
+	}
+	return capabilities.Resolve(account.Platform, resolveInput)
+}
+
+func (h *PublicationHandler) connectorCapabilitiesWithDB(
+	ctx context.Context,
+	db bun.IDB,
+	account models.SocialAccount,
+) ([]capabilities.Capability, bool, error) {
+	if h == nil || h.connectors == nil || db == nil {
+		return nil, false, nil
+	}
+	var binding models.ProviderAccountBinding
+	err := db.NewSelect().Model(&binding).
+		Where("workspace_id = ? AND social_account_id = ?", account.WorkspaceID, account.ID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	_, entry, err := h.connectors.ClientForWorkspace(binding.InstallationID, account.WorkspaceID)
+	if err != nil {
+		return nil, true, err
+	}
+	if entry.Manifest.CapabilityRevision != binding.CapabilityRevision {
+		return nil, true, fmt.Errorf("connector capabilities changed; reconnect account before publishing")
+	}
+	return entry.Capabilities(), true, nil
 }
 
 func renditionTextOverride(explicit *string, legacyValue, canonicalValue string) (*string, string) {
@@ -3215,7 +3253,7 @@ func (h *PublicationHandler) requirePublicationReadinessWithDB(
 	intent providerreadiness.ExecutionIntent,
 	lock bool,
 ) error {
-	if h == nil || h.readiness == nil || db == nil || publication == nil {
+	if h == nil || db == nil || publication == nil {
 		return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
 	}
 	var renditions []models.Rendition
@@ -3236,9 +3274,30 @@ func (h *PublicationHandler) requirePublicationReadinessWithDB(
 	if err != nil {
 		return err
 	}
-	readiness := h.readiness.WithLedger(providerreadiness.NewRepository(db))
 	for _, rendition := range renditions {
 		account := accounts[rendition.SocialAccountID]
+		connectorCapabilities, connectorBacked, connectorErr := h.connectorCapabilitiesWithDB(ctx, db, account)
+		if connectorErr != nil {
+			return connectorErr
+		}
+		if connectorBacked {
+			found := false
+			for _, capability := range connectorCapabilities {
+				if capability.OutputProfile == rendition.OutputProfile ||
+					(rendition.OutputProfile == "" && capability.Profile == rendition.Profile) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("connector does not support output profile %q", rendition.OutputProfile)
+			}
+			continue
+		}
+		if h.readiness == nil {
+			return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
+		}
+		readiness := h.readiness.WithLedger(providerreadiness.NewRepository(db))
 		capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
 		if !found {
 			capability, found = capabilities.Find(account.Platform, rendition.Profile)

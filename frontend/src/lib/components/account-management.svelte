@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { client, type SocialAccount, type ProviderInfo } from '$lib/api/client';
 	import type { AccountManagementProps } from '$lib/account-management';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -58,6 +59,14 @@
 		account: SocialAccount;
 	};
 
+	function isConnectorAccount(account: SocialAccount): boolean {
+		return Boolean(account.provider_installation_id);
+	}
+
+	function isConnectorProvider(provider: ProviderEntry): boolean {
+		return provider.auth_mode === 'preconfigured' && Boolean(provider.installation_id);
+	}
+
 	let embedded = $derived(mode === 'settings');
 	let selectedWorkspaceId = $derived(workspace?.id ?? '');
 	let canEditWorkspace = $derived(workspace?.can_edit ?? false);
@@ -97,6 +106,7 @@
 	let lastFailedProvider = $state.raw<ProviderEntry | null>(null);
 	let lastFailedMessage = $state('');
 	let setupRequiredOpen = $state(false);
+	let connectingInstallationID = $state('');
 
 	let blueskyModalOpen = $state(false);
 	let blueskyHandle = $state('');
@@ -293,11 +303,13 @@
 		}
 	}
 
-	async function loadProviders() {
+	async function loadProviders(workspaceID = selectedWorkspaceId) {
 		providersLoading = true;
 		providersLoadError = '';
 		try {
-			const { data, error: err } = await client.GET('/accounts/providers');
+			const { data, error: err } = await client.GET('/accounts/providers', {
+				params: { query: { workspace_id: workspaceID || undefined } }
+			});
 			if (err) throw new Error(err.detail ?? m.accounts_providers_load_failed());
 			providerEntries = data ?? [];
 			if (lastFailedMessage) clearConnectionFailure();
@@ -322,6 +334,7 @@
 	}
 
 	function accountRemovalActionLabel(account: SocialAccount, kind: AccountRemovalKind): string {
+		if (isConnectorAccount(account)) return m.accounts_connector_remove_action();
 		if (kind === 'disconnect-destination') return m.accounts_disconnect_destination();
 		const count = grantDestinationCount(account);
 		return count > 1
@@ -333,6 +346,9 @@
 		const action = accountRemovalAction;
 		if (!action) return '';
 		const account = accountDisplayName(action.account);
+		if (isConnectorAccount(action.account)) {
+			return m.accounts_connector_remove_title({ account });
+		}
 		if (action.kind === 'disconnect-destination') {
 			return m.accounts_disconnect_destination_title({ account });
 		}
@@ -347,6 +363,9 @@
 		if (!action) return '';
 		const account = accountDisplayName(action.account);
 		const count = grantDestinationCount(action.account);
+		if (isConnectorAccount(action.account)) {
+			return m.accounts_connector_remove_body({ account });
+		}
 		if (action.kind === 'disconnect-destination') {
 			return m.accounts_disconnect_destination_body({ account, count });
 		}
@@ -362,6 +381,7 @@
 	function accountRemovalConfirmLabel(): string {
 		const action = accountRemovalAction;
 		if (!action) return '';
+		if (isConnectorAccount(action.account)) return m.accounts_connector_remove_action();
 		if (action.kind === 'disconnect-destination') return m.accounts_disconnect_destination();
 		return grantDestinationCount(action.account) > 1
 			? m.accounts_remove_authorization()
@@ -389,8 +409,9 @@
 			if (result.error) throw new Error(result.error.detail || fallback);
 			await loadAccounts();
 			onAccountsChanged();
-			const successMessage =
-				action.kind === 'disconnect-destination'
+			const successMessage = isConnectorAccount(account)
+				? m.accounts_connector_removed_success({ account: accountDisplayName(account) })
+				: action.kind === 'disconnect-destination'
 					? m.accounts_destination_disconnected_success({ account: accountDisplayName(account) })
 					: count > 1
 						? m.accounts_authorization_removed_success({ count })
@@ -414,6 +435,15 @@
 		if (handle) return handle;
 		if (account.instance_url) return account.instance_url.replace('https://', '');
 		return account.account_id || account.platform;
+	}
+
+	function accountPlatformName(account: SocialAccount): string {
+		const provider = providerEntries.find(
+			(entry) =>
+				(entry.installation_id && entry.installation_id === account.provider_installation_id) ||
+				(!entry.installation_id && entry.platform === account.platform)
+		);
+		return provider ? providerTitle(provider) : getPlatformName(account.platform);
 	}
 
 	function accountSlug(account: SocialAccount): string {
@@ -745,7 +775,11 @@
 	const connectYouTube = () => connectOAuthProvider('youtube');
 
 	function providerKey(provider: ProviderEntry): string {
-		return provider.platform;
+		return provider.installation_id || provider.platform;
+	}
+
+	function providerTestID(provider: ProviderEntry): string {
+		return provider.installation_id || provider.platform;
 	}
 
 	function providerTitle(provider: ProviderEntry): string {
@@ -785,6 +819,9 @@
 	}
 
 	function providerStatusLabel(provider: ProviderEntry): string {
+		if (isConnectorProvider(provider) && providerCanConnect(provider)) {
+			return m.accounts_custom_connector();
+		}
 		if (provider.status === 'planned') return m.accounts_provider_planned();
 		switch (providerReadiness(provider).state) {
 			case 'unsupported':
@@ -814,6 +851,9 @@
 	}
 
 	function providerStatusClass(provider: ProviderEntry): string {
+		if (isConnectorProvider(provider)) {
+			return 'border-border bg-muted text-muted-foreground';
+		}
 		if (provider.status === 'planned') {
 			return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300';
 		}
@@ -868,10 +908,16 @@
 	}
 
 	function providerActionEnabled(provider: ProviderEntry): boolean {
-		return providerCanConnect(provider) || providerReadiness(provider).action === 'retry';
+		return (
+			connectingInstallationID !== provider.installation_id &&
+			(providerCanConnect(provider) || providerReadiness(provider).action === 'retry')
+		);
 	}
 
 	function providerActionLabel(provider: ProviderEntry): string {
+		if (connectingInstallationID && connectingInstallationID === provider.installation_id) {
+			return m.accounts_connector_connecting();
+		}
 		if (provider.status === 'planned') return m.accounts_provider_planned();
 		if (providerCanConnect(provider)) return m.common_connect();
 		switch (providerReadiness(provider).action) {
@@ -1021,6 +1067,10 @@
 	}
 
 	function beginProviderConnection(provider: ProviderEntry) {
+		if (isConnectorProvider(provider)) {
+			void connectConnector(provider);
+			return;
+		}
 		switch (provider.platform) {
 			case 'x':
 				connectTwitter();
@@ -1052,6 +1102,40 @@
 			case 'tiktok':
 				connectTikTok();
 				break;
+		}
+	}
+
+	async function connectConnector(provider: ProviderEntry) {
+		if (!selectedWorkspaceId || !provider.installation_id) {
+			showToast(m.accounts_connect_failed());
+			return;
+		}
+		connectingInstallationID = provider.installation_id;
+		try {
+			const { data, error: requestError } = await client.POST(
+				'/accounts/connectors/{installation_id}/connections',
+				{
+					params: { path: { installation_id: provider.installation_id } },
+					body: { workspace_id: selectedWorkspaceId }
+				}
+			);
+			if (requestError) throw new Error(requestError.detail || m.accounts_connect_failed());
+			clearConnectionFailure();
+			await loadAccounts();
+			onAccountsChanged();
+			showToast(
+				m.accounts_connector_connected({ count: data?.account_ids?.length ?? 0 }),
+				undefined,
+				'neutral'
+			);
+		} catch (requestError) {
+			showConnectError(
+				requestError instanceof Error ? requestError : new Error(m.accounts_connect_failed()),
+				m.accounts_connect_failed(),
+				provider
+			);
+		} finally {
+			connectingInstallationID = '';
 		}
 	}
 </script>
@@ -1214,10 +1298,17 @@
 											<PlatformIcon platform={account.platform} class="size-5 text-white" />
 										</div>
 										<div class="min-w-0 flex-1">
-											<div class="flex items-center gap-2">
-												<h3 class="truncate text-sm font-semibold">
-													{getPlatformName(account.platform)}
+											<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+												<h3 class="line-clamp-2 min-w-0 text-sm font-semibold break-words">
+													{accountPlatformName(account)}
 												</h3>
+												{#if isConnectorAccount(account)}
+													<Badge
+														class="shrink-0 rounded-full border-border bg-muted text-[11px] whitespace-nowrap text-muted-foreground shadow-none"
+													>
+														{m.accounts_custom_connector()}
+													</Badge>
+												{/if}
 												{#if !account.is_active}
 													<span
 														class="size-1.5 rounded-full bg-amber-500"
@@ -1236,6 +1327,7 @@
 															{...props}
 															variant="ghost"
 															size="icon-sm"
+															class="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"
 															aria-label={m.accounts_actions_for({
 																account: accountDisplayName(account)
 															})}
@@ -1344,7 +1436,7 @@
 								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 									{#each directProviders as provider (providerKey(provider))}
 										<div
-											data-testid={`provider-card-${provider.platform}`}
+											data-testid={`provider-card-${providerTestID(provider)}`}
 											class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(
 												provider
 											)
@@ -1362,14 +1454,14 @@
 												<div class="min-w-0 flex-1">
 													<div class="flex flex-wrap items-center gap-2">
 														<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
-														{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
-															<span
-																class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
+														{#if isConnectorProvider(provider) || provider.status === 'planned' || !providerReadiness(provider).quiet}
+															<Badge
+																class="rounded-full px-2 py-0.5 text-[11px] shadow-none {providerStatusClass(
 																	provider
 																)}"
 															>
 																{providerStatusLabel(provider)}
-															</span>
+															</Badge>
 														{/if}
 													</div>
 													<p class="truncate text-sm text-muted-foreground">
@@ -1377,7 +1469,7 @@
 													</p>
 													{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
 														<p
-															data-testid={`provider-readiness-${provider.platform}`}
+															data-testid={`provider-readiness-${providerTestID(provider)}`}
 															class="mt-1 text-xs leading-5 text-muted-foreground"
 														>
 															{providerReadinessMessage(provider)}
@@ -1391,6 +1483,12 @@
 												size="sm"
 												disabled={!providerActionEnabled(provider)}
 											>
+												{#if connectingInstallationID === provider.installation_id}
+													<LoaderIcon
+														class="size-4 animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
+												{/if}
 												{providerActionLabel(provider)}
 											</Button>
 										</div>
@@ -1422,7 +1520,7 @@
 										<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 											{#each setupRequiredProviders as provider (providerKey(provider))}
 												<div
-													data-testid={`provider-card-${provider.platform}`}
+													data-testid={`provider-card-${providerTestID(provider)}`}
 													class="flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 opacity-75"
 												>
 													<div class="flex items-start gap-3">
@@ -1451,7 +1549,7 @@
 																{providerDescription(provider)}
 															</p>
 															<p
-																data-testid={`provider-readiness-${provider.platform}`}
+																data-testid={`provider-readiness-${providerTestID(provider)}`}
 																class="mt-1 text-xs leading-5 text-muted-foreground"
 															>
 																{providerReadinessMessage(provider)}

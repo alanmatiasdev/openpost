@@ -28,6 +28,7 @@ import (
 	apimiddleware "github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/config"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/database"
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/platform"
@@ -351,6 +352,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to build provider app registry: %v", err)
 	}
+	connectorConfig, err := connectors.LoadConfig(cfg.ConnectorsFile)
+	if err != nil {
+		log.Fatalf("failed to load connector configuration: %v", err)
+	}
+	connectorRegistry, err := connectors.NewRegistry(context.Background(), connectorConfig, connectors.RegistryOptions{})
+	if err != nil {
+		log.Fatalf("failed to initialize connector registry: %v", err)
+	}
+	connectorStore := connectors.NewStore(db)
+	if err := connectorStore.SyncRegistry(context.Background(), connectorRegistry); err != nil {
+		log.Fatalf("failed to synchronize connector registry: %v", err)
+	}
+	for _, entry := range connectorRegistry.All() {
+		log.Printf("Loaded connector installation %s: %s", entry.InstallationID, entry.Status)
+	}
+	publishSvc.SetConnectorRegistry(connectorRegistry, connectorStore)
 	if cfg.Edition == config.EditionCloud {
 		if _, xEnabled := providers[usage.ProviderX]; xEnabled {
 			if err := usageService.SetProviderCostPolicy(usage.NewXProviderCostPolicy(
@@ -625,9 +642,11 @@ func main() {
 		Providers:                providers,
 		ProviderApps:             cfg.ProviderApps,
 		ProviderReadinessService: providerReadinessService,
+		ConnectorRegistry:        connectorRegistry,
+		ConnectorStore:           connectorStore,
 		ProviderRegistrars: []func(string, platform.Adapter){
 			tokenManager.SetProvider,
-			publishSvc.SetProvider,
+			func(name string, adapter platform.Adapter) { publishSvc.SetProvider(name, adapter) },
 			analyticsService.SetProvider,
 			func(name string, adapter platform.Adapter) {
 				if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {

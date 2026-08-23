@@ -287,6 +287,8 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.UsageCounter)(nil),
 		(*models.Job)(nil),
 		(*models.OAuthGrant)(nil),
+		(*models.ProviderInstallation)(nil),
+		(*models.ProviderAccountBinding)(nil),
 		(*models.User)(nil),
 		(*models.APIToken)(nil),
 	} {

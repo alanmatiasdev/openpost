@@ -488,7 +488,7 @@ test.describe("account setup", () => {
       }
       await route.continue();
     });
-    page.route("**/api/v1/accounts/providers", async (route) => {
+    page.route("**/api/v1/accounts/providers*", async (route) => {
       await route.fulfill({ contentType: "application/json", json: [] });
     });
     await page.goto("/accounts");
@@ -544,7 +544,7 @@ test.describe("account setup", () => {
         ].map((f) => ({ ...f, workspace_id: ws.id })),
       });
     });
-    page.route("**/api/v1/accounts/providers", async (route) => {
+    page.route("**/api/v1/accounts/providers*", async (route) => {
       await route.fulfill({ contentType: "application/json", json: [] });
     });
     await page.goto("/accounts");
@@ -768,7 +768,7 @@ test.describe("account setup", () => {
       }
       await route.continue();
     });
-    page.route("**/api/v1/accounts/providers", async (route) => {
+    page.route("**/api/v1/accounts/providers*", async (route) => {
       await route.fulfill({ contentType: "application/json", json: [] });
     });
     await page.goto("/accounts");
