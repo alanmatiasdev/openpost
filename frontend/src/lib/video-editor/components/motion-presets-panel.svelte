@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import type { MotionModifierChannel, MotionModifierType } from '$lib/video-editor/project/types';
+	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import {
 		applyMotionPreset,
 		canApplyMotionPreset,
@@ -14,6 +16,23 @@
 		type MotionPresetCategory,
 		type MotionPresetId
 	} from '$lib/video-editor/timeline/motion-presets';
+	import {
+		MOTION_MODULATORS,
+		type MotionModulator
+	} from '$lib/video-editor/timeline/motion-modulators';
+	import {
+		createMotionModifier,
+		getMotionModifierSettings,
+		updateMotionModifierSettings,
+		type MotionModifierSettingsUpdate
+	} from '$lib/video-editor/timeline/motion-modifier-eval';
+	import {
+		applyMotionModifierToItems,
+		beginMotionModifierEdit,
+		commitMotionModifierEdit,
+		removeMotionModifierFromItems,
+		updateMotionModifiersLive
+	} from '$lib/video-editor/timeline/actions/motion-modifiers';
 
 	let {
 		itemId,
@@ -36,6 +55,8 @@
 	let intensityScale = $state(1);
 	let staggerFrames = $state(0);
 	let status = $state('');
+	let modifierEditSnapshot = $state<TimelineSnapshot | null>(null);
+	let modifierEditType = $state<MotionModifierType | null>(null);
 
 	const selectedIds = $derived(itemId ? [...new Set([itemId, ...itemIds])].filter(Boolean) : []);
 	const selectedItems = $derived(
@@ -73,6 +94,21 @@
 		exit: m.video_editor_motion_exit(),
 		emphasis: m.video_editor_motion_emphasis()
 	});
+	const modulatorLabels = $derived<Record<MotionModifierType, string>>({
+		'float-drift': m.video_editor_motion_float_drift(),
+		sway: m.video_editor_motion_sway(),
+		'breath-pulse': m.video_editor_motion_breath_pulse(),
+		spin: m.video_editor_motion_live_spin(),
+		'micro-shake': m.video_editor_motion_micro_shake()
+	});
+	const channelLabels = $derived<Record<MotionModifierChannel, string>>({
+		x: m.video_editor_motion_channel_x(),
+		y: m.video_editor_motion_channel_y(),
+		width: m.video_editor_motion_channel_width(),
+		height: m.video_editor_motion_channel_height(),
+		rotation: m.video_editor_motion_channel_rotation(),
+		opacity: m.video_editor_motion_channel_opacity()
+	});
 
 	function presetsFor(category: MotionPresetCategory): MotionPreset[] {
 		return MOTION_PRESETS.filter((preset) => preset.category === category);
@@ -87,6 +123,113 @@
 			return m.video_editor_motion_incompatible();
 		}
 		return null;
+	}
+
+	function modulatorReason(modulator: MotionModulator): string | null {
+		if (selectedItems.length === 0) return m.video_editor_motion_select_clip();
+		if (modulator.scalesBox && selectedItems.some((item) => item.type === 'text')) {
+			return m.video_editor_motion_text_incompatible();
+		}
+		if (
+			selectedItems.some(
+				(item) =>
+					!['video', 'image', 'lottie', 'text', 'subtitle', 'shape', 'composition'].includes(
+						item.type
+					)
+			)
+		) {
+			return m.video_editor_motion_incompatible();
+		}
+		return null;
+	}
+
+	function modifierActiveOnEveryItem(type: MotionModifierType): boolean {
+		return (
+			selectedItems.length > 0 &&
+			selectedItems.every((item) =>
+				item.motionModifiers?.some((modifier) => modifier.type === type && modifier.enabled)
+			)
+		);
+	}
+
+	function toggleModulator(modulator: MotionModulator): void {
+		const reason = modulatorReason(modulator);
+		if (reason) {
+			status = reason;
+			return;
+		}
+		if (modifierActiveOnEveryItem(modulator.id)) {
+			const removed = removeMotionModifierFromItems(selectedIds, modulator.id);
+			if (removed > 0) {
+				status = m.video_editor_motion_live_removed({ name: modulatorLabels[modulator.id] });
+				onedit();
+			}
+			return;
+		}
+		const applied = applyMotionModifierToItems(
+			selectedItems.map((item, index) => ({
+				itemId: item.id,
+				modifier: createMotionModifier(
+					modulator.id,
+					{ durationScale, intensityScale, staggerFrames },
+					index
+				)
+			}))
+		);
+		if (applied > 0) {
+			status = m.video_editor_motion_live_applied({
+				name: modulatorLabels[modulator.id],
+				count: String(applied)
+			});
+			onedit();
+		}
+	}
+
+	function currentModifierSettings(type: MotionModifierType) {
+		const modifier = selectedItems
+			.flatMap((item) => item.motionModifiers ?? [])
+			.find((entry) => entry.type === type && entry.enabled);
+		return modifier ? getMotionModifierSettings(modifier) : null;
+	}
+
+	function modifierAssignments(type: MotionModifierType, update: MotionModifierSettingsUpdate) {
+		return selectedItems.flatMap((item) => {
+			const modifier = item.motionModifiers?.find((entry) => entry.type === type && entry.enabled);
+			return modifier
+				? [{ itemId: item.id, modifier: updateMotionModifierSettings(modifier, update) }]
+				: [];
+		});
+	}
+
+	function liveModifierEdit(type: MotionModifierType, update: MotionModifierSettingsUpdate): void {
+		const assignments = modifierAssignments(type, update);
+		if (assignments.length === 0) return;
+		if (!modifierEditSnapshot || modifierEditType !== type) {
+			modifierEditSnapshot = beginMotionModifierEdit();
+			modifierEditType = type;
+		}
+		updateMotionModifiersLive(assignments);
+	}
+
+	function commitModifierEdit(
+		type: MotionModifierType,
+		update: MotionModifierSettingsUpdate
+	): void {
+		const assignments = modifierAssignments(type, update);
+		if (assignments.length === 0) return;
+		if (modifierEditSnapshot && modifierEditType === type) {
+			updateMotionModifiersLive(assignments);
+			commitMotionModifierEdit(
+				modifierEditSnapshot,
+				type,
+				assignments.map((assignment) => assignment.itemId)
+			);
+		} else {
+			applyMotionModifierToItems(assignments);
+		}
+		modifierEditSnapshot = null;
+		modifierEditType = null;
+		onedit();
 	}
 
 	function applyPreset(preset: MotionPreset): void {
@@ -211,6 +354,120 @@
 		{/each}
 	</div>
 
+	<section class="live-library" aria-labelledby="live-motion-title">
+		<div class="live-heading">
+			<div>
+				<h3 id="live-motion-title">{m.video_editor_motion_live_title()}</h3>
+				<p>{m.video_editor_motion_live_description()}</p>
+			</div>
+			<span>{m.video_editor_motion_live_badge()}</span>
+		</div>
+		<div class="preset-grid live-grid">
+			{#each MOTION_MODULATORS as modulator (modulator.id)}
+				{@const reason = modulatorReason(modulator)}
+				{@const active = modifierActiveOnEveryItem(modulator.id)}
+				<button
+					type="button"
+					class="preset-tile live-tile"
+					class:active
+					disabled={reason !== null}
+					aria-pressed={active}
+					aria-label={active
+						? m.video_editor_motion_live_remove_named({ name: modulatorLabels[modulator.id] })
+						: m.video_editor_motion_live_apply_named({ name: modulatorLabels[modulator.id] })}
+					title={reason ??
+						(active
+							? m.video_editor_motion_live_click_remove()
+							: m.video_editor_motion_live_click_apply())}
+					data-kind={modulator.thumbnail.kind}
+					onclick={() => toggleModulator(modulator)}
+				>
+					<span class="thumbnail" aria-hidden="true">
+						<span class="motion-glyph"></span>
+						<span class="motion-origin"></span>
+					</span>
+					<span>{modulatorLabels[modulator.id]}</span>
+					{#if active}<span class="active-dot">{m.video_editor_motion_live_badge()}</span>{/if}
+				</button>
+			{/each}
+		</div>
+
+		{#each MOTION_MODULATORS.filter( (modulator) => modifierActiveOnEveryItem(modulator.id) ) as modulator (modulator.id)}
+			{@const settings = currentModifierSettings(modulator.id)}
+			{#if settings}
+				<div class="live-editor">
+					<div class="live-editor-heading">
+						<strong>{modulatorLabels[modulator.id]}</strong>
+						<button type="button" onclick={() => toggleModulator(modulator)}>
+							{m.video_editor_motion_live_remove()}
+						</button>
+					</div>
+					<div class="generator-controls live-controls">
+						<label>
+							<span>{m.video_editor_motion_intensity()}</span>
+							<output>{Math.round(settings.intensityScale * 100)}%</output>
+							<input
+								type="range"
+								min="0"
+								max="2"
+								step="0.05"
+								value={settings.intensityScale}
+								oninput={(event) =>
+									liveModifierEdit(modulator.id, {
+										intensityScale: event.currentTarget.valueAsNumber
+									})}
+								onchange={(event) =>
+									commitModifierEdit(modulator.id, {
+										intensityScale: event.currentTarget.valueAsNumber
+									})}
+							/>
+						</label>
+						<label>
+							<span>{m.video_editor_motion_duration()}</span>
+							<output>{Math.round(settings.durationScale * 100)}%</output>
+							<input
+								type="range"
+								min="0.25"
+								max="3"
+								step="0.05"
+								value={settings.durationScale}
+								oninput={(event) =>
+									liveModifierEdit(modulator.id, {
+										durationScale: event.currentTarget.valueAsNumber
+									})}
+								onchange={(event) =>
+									commitModifierEdit(modulator.id, {
+										durationScale: event.currentTarget.valueAsNumber
+									})}
+							/>
+						</label>
+						{#each modulator.properties as channel}
+							<label>
+								<span>{channelLabels[channel]}</span>
+								<output>{Math.round((settings.channelGains[channel] ?? 1) * 100)}%</output>
+								<input
+									type="range"
+									min="0"
+									max="2"
+									step="0.05"
+									value={settings.channelGains[channel] ?? 1}
+									oninput={(event) =>
+										liveModifierEdit(modulator.id, {
+											channelGains: { [channel]: event.currentTarget.valueAsNumber }
+										})}
+									onchange={(event) =>
+										commitModifierEdit(modulator.id, {
+											channelGains: { [channel]: event.currentTarget.valueAsNumber }
+										})}
+								/>
+							</label>
+						{/each}
+					</div>
+				</div>
+			{/if}
+		{/each}
+	</section>
+
 	<p class="motion-status" aria-live="polite">{status}</p>
 </section>
 
@@ -317,6 +574,94 @@
 		display: grid;
 		gap: 0.8rem;
 		margin-top: 0.8rem;
+	}
+	.live-library {
+		margin-top: 0.9rem;
+		border-top: 1px solid oklch(0.25 0.015 55);
+		padding-top: 0.75rem;
+	}
+	.live-heading {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+	.live-heading h3 {
+		font-size: 0.65rem;
+		font-weight: 700;
+		color: oklch(0.86 0.02 65);
+	}
+	.live-heading p {
+		margin-top: 0.15rem;
+		font-size: 0.5625rem;
+		line-height: 1.35;
+		color: oklch(0.64 0.018 65);
+	}
+	.live-heading > span,
+	.active-dot {
+		border-radius: 999px;
+		background: oklch(0.62 0.12 230 / 0.14);
+		padding: 0.12rem 0.35rem;
+		font-size: 0.5rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: oklch(0.75 0.11 230);
+	}
+	.live-grid {
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+	}
+	.live-tile {
+		position: relative;
+		min-height: 4.6rem;
+		padding-inline: 0.2rem;
+	}
+	.live-tile.active {
+		border-color: oklch(0.55 0.1 230);
+		background: oklch(0.23 0.035 225);
+		color: oklch(0.91 0.025 225);
+	}
+	.active-dot {
+		position: absolute;
+		top: 0.18rem;
+		right: 0.18rem;
+		width: 0.35rem;
+		height: 0.35rem;
+		overflow: hidden;
+		padding: 0;
+		color: transparent;
+	}
+	.live-editor {
+		margin-top: 0.45rem;
+		border: 1px solid oklch(0.29 0.03 225);
+		border-radius: 0.45rem;
+		padding: 0.5rem;
+		background: oklch(0.17 0.018 225 / 0.7);
+	}
+	.live-editor-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-size: 0.625rem;
+		color: oklch(0.83 0.025 225);
+	}
+	.live-editor-heading button {
+		border: 0;
+		background: transparent;
+		color: oklch(0.68 0.055 38);
+		font-size: 0.5625rem;
+		cursor: pointer;
+	}
+	.live-editor-heading button:hover {
+		color: oklch(0.82 0.11 38);
+	}
+	.live-controls {
+		margin-top: 0.45rem;
+		border: 0;
+		padding: 0;
+		background: transparent;
 	}
 	.preset-group h3 {
 		margin-bottom: 0.4rem;
@@ -432,6 +777,14 @@
 	.preset-tile[data-kind='wobble']:focus-visible .motion-glyph {
 		animation: ve-motion-wobble 620ms ease-in-out infinite;
 	}
+	.preset-tile[data-kind='drift']:hover .motion-glyph,
+	.preset-tile[data-kind='drift']:focus-visible .motion-glyph {
+		animation: ve-motion-drift 1.4s ease-in-out infinite;
+	}
+	.preset-tile[data-kind='micro-shake']:hover .motion-glyph,
+	.preset-tile[data-kind='micro-shake']:focus-visible .motion-glyph {
+		animation: ve-motion-micro-shake 180ms steps(2, jump-none) infinite;
+	}
 	.motion-status {
 		min-height: 0.9rem;
 		color: oklch(0.76 0.055 58);
@@ -540,6 +893,24 @@
 		}
 		65% {
 			transform: rotate(-8deg);
+		}
+	}
+	@keyframes ve-motion-drift {
+		0%,
+		100% {
+			transform: translate(-0.35rem, 0.2rem) rotate(-3deg);
+		}
+		50% {
+			transform: translate(0.4rem, -0.25rem) rotate(3deg);
+		}
+	}
+	@keyframes ve-motion-micro-shake {
+		0%,
+		100% {
+			transform: translate(-0.1rem, 0.08rem) rotate(-1deg);
+		}
+		50% {
+			transform: translate(0.12rem, -0.1rem) rotate(1deg);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

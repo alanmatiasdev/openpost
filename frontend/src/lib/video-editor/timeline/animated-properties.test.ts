@@ -49,6 +49,32 @@ describe('animatable properties', () => {
 });
 
 describe('resolveAnimatedItemAt', () => {
+	it('evaluates deterministic live motion only when render context is available', () => {
+		const video: TimelineItem = {
+			...item('video'),
+			transform: { x: 100, y: 200, width: 400, height: 300, rotation: 0, opacity: 1 },
+			motionModifiers: [
+				{
+					id: 'sway',
+					type: 'sway',
+					enabled: true,
+					amplitude: 1,
+					frequency: 0.5,
+					phaseFrames: 0,
+					seed: 1
+				}
+			]
+		};
+		expect(resolveAnimatedItemAt(video, 115).transform?.rotation).toBe(0);
+		expect(
+			resolveAnimatedItemAt(video, 115, {
+				fps: 30,
+				frameWidth: 1920,
+				frameHeight: 1080
+			}).transform?.rotation
+		).toBeCloseTo(4, 6);
+	});
+
 	it('resolves nested transform, crop, audio, and text fields at one absolute frame', () => {
 		const video: TimelineItem = {
 			...item('video'),

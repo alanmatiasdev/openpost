@@ -235,6 +235,39 @@ afterEach(() => {
 });
 
 describe('PreviewLayer GPU rendering', () => {
+	it('renders live motion from the shared frame evaluator', async () => {
+		const title = textItem({
+			effects: [],
+			motionModifiers: [
+				{
+					id: 'sway',
+					type: 'sway',
+					enabled: true,
+					amplitude: 1,
+					frequency: 0.5,
+					phaseFrames: 0,
+					seed: 1
+				}
+			]
+		});
+		editorSession.project = project(title);
+		timelineStore.setAll({
+			items: [title],
+			tracks: editorSession.project.timeline?.tracks,
+			fps: 30,
+			currentFrame: 15
+		});
+		await render(PreviewLayer, {
+			item: title,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const layer = document.querySelector<HTMLElement>('[data-preview-item="title"]');
+		expect(layer).not.toBeNull();
+		expect(layer?.style.transform).toContain('rotate(4deg)');
+	});
+
 	it('mutes embedded video audio when a synced audio companion owns playback', async () => {
 		const video: TimelineItem = {
 			...textItem({

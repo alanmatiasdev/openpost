@@ -42,7 +42,17 @@ export interface ResolvedMotionTransform {
 }
 
 export interface MotionThumbnail {
-	kind: 'fade' | 'slide' | 'scale' | 'spin' | 'bounce' | 'pulse' | 'shake' | 'wobble';
+	kind:
+		| 'fade'
+		| 'slide'
+		| 'scale'
+		| 'spin'
+		| 'bounce'
+		| 'pulse'
+		| 'shake'
+		| 'wobble'
+		| 'drift'
+		| 'micro-shake';
 	angle?: number;
 	direction?: 1 | -1;
 }

@@ -563,7 +563,11 @@ export class TimelineFrameRenderer {
 			)
 			.map((item) =>
 				scaleItemForCanvas(
-					resolveAnimatedItemAt(item, frame),
+					resolveAnimatedItemAt(item, frame, {
+						fps: this.fps,
+						frameWidth: this.project.metadata.width,
+						frameHeight: this.project.metadata.height
+					}),
 					this.width / this.project.metadata.width,
 					this.height / this.project.metadata.height
 				)
@@ -574,7 +578,11 @@ export class TimelineFrameRenderer {
 			item: TimelineItem
 		): Promise<StackTransitionParticipant | null> => {
 			const resolvedItem = scaleItemForCanvas(
-				resolveAnimatedItemAt(item, frame),
+				resolveAnimatedItemAt(item, frame, {
+					fps: this.fps,
+					frameWidth: this.project.metadata.width,
+					frameHeight: this.project.metadata.height
+				}),
 				this.width / this.project.metadata.width,
 				this.height / this.project.metadata.height
 			);

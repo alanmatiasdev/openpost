@@ -103,7 +103,13 @@
 	let lastRasterCanvas: HTMLCanvasElement | null = null;
 	let lastRasterKey = '';
 	let lastScopeAt = 0;
-	const baseResolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
+	const baseResolved = $derived(
+		resolveAnimatedItemAt(item, timelineStore.currentFrame, {
+			fps: timelineStore.fps,
+			frameWidth: canvasWidth,
+			frameHeight: canvasHeight
+		})
+	);
 	const resolved = $derived({
 		...baseResolved,
 		crop: overrideCrop ?? baseResolved.crop,
@@ -662,6 +668,7 @@
 
 <div
 	class="absolute overflow-hidden"
+	data-preview-item={item.id}
 	style={layerStyle}
 	style:visibility={hideContent || resolved.isMask ? 'hidden' : undefined}
 	role="presentation"

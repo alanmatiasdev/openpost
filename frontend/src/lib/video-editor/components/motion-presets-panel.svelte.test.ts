@@ -52,13 +52,68 @@ beforeEach(() => {
 describe('MotionPresetsPanel', () => {
 	it('renders the full grouped catalog without auto-playing thumbnails', async () => {
 		const screen = await render(MotionPresetsPanel, props());
-		expect(document.querySelectorAll('.preset-tile')).toHaveLength(20);
+		expect(document.querySelectorAll('.preset-group .preset-tile')).toHaveLength(20);
+		expect(document.querySelectorAll('.live-tile')).toHaveLength(5);
 		expect(screen.getByText('Entrance', { exact: true })).toBeVisible();
 		expect(screen.getByText('Exit', { exact: true })).toBeVisible();
 		expect(screen.getByText('Emphasis', { exact: true })).toBeVisible();
 		const glyph = document.querySelector<HTMLElement>('.motion-glyph');
 		expect(glyph).not.toBeNull();
 		expect(getComputedStyle(glyph!).animationName).toBe('none');
+	});
+
+	it('attaches deterministic staggered live behavior to every selected clip', async () => {
+		timelineStore.setAll({
+			tracks: [track],
+			items: [item('one'), item('two', { from: 100 })],
+			fps: 30
+		});
+		const input = props('one', ['one', 'two']);
+		const screen = await render(MotionPresetsPanel, input);
+		const ranges = document.querySelectorAll<HTMLInputElement>('.generator-controls input');
+		ranges[0]!.value = '2';
+		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		ranges[1]!.value = '0.5';
+		ranges[1]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		ranges[2]!.value = '4';
+		ranges[2]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		await screen.getByRole('button', { name: 'Apply live Float drift' }).click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('one')?.motionModifiers?.[0]).toMatchObject({
+				type: 'float-drift',
+				amplitude: 0.5,
+				frequency: 0.3125,
+				phaseFrames: 0,
+				seed: 1
+			});
+			expect(timelineStore.itemById.get('two')?.motionModifiers?.[0]).toMatchObject({
+				phaseFrames: 4,
+				seed: 2
+			});
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(input.onedit).toHaveBeenCalledTimes(1);
+		expect(screen.getByText('Applied live Float drift to 2 clips.')).toBeVisible();
+	});
+
+	it('coalesces live behavior slider input and exposes per-channel gain', async () => {
+		const input = props();
+		const screen = await render(MotionPresetsPanel, input);
+		await screen.getByRole('button', { name: 'Apply live Float drift' }).click();
+		commandHistory.clearHistory();
+		const ranges = document.querySelectorAll<HTMLInputElement>('.live-controls input');
+		expect(ranges).toHaveLength(5);
+		ranges[0]!.value = '0.8';
+		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		ranges[0]!.value = '0.35';
+		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		ranges[0]!.dispatchEvent(new Event('change', { bubbles: true }));
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get('one')?.motionModifiers?.[0]?.amplitude).toBe(0.35);
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(input.onedit).toHaveBeenCalledTimes(2);
+		expect(screen.getByText('Horizontal', { exact: true })).toBeVisible();
 	});
 
 	it('applies tuned motion to every selected clip in one edit', async () => {
@@ -129,6 +184,10 @@ describe('MotionPresetsPanel', () => {
 		expect(
 			document.querySelector<HTMLButtonElement>('button[aria-label="Replace Fade in"]')?.disabled
 		).toBe(false);
+		expect(
+			document.querySelector<HTMLButtonElement>('button[aria-label="Apply live Breath pulse"]')
+				?.disabled
+		).toBe(true);
 	});
 
 	it('reports transition overlap without saving or partly applying', async () => {

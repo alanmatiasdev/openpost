@@ -145,14 +145,24 @@
 			activeItems.some(
 				(item) =>
 					isNonNormalBlend(item.blendMode) &&
-					(resolveAnimatedItemAt(item, timelineStore.currentFrame).transform?.opacity ?? 1) > 0
+					(resolveAnimatedItemAt(item, timelineStore.currentFrame, {
+						fps: timelineStore.fps,
+						frameWidth: canvasWidth,
+						frameHeight: canvasHeight
+					}).transform?.opacity ?? 1) > 0
 			)
 	);
 	const selectedItem = $derived(
 		selectedItemId ? activeItems.find((item) => item.id === selectedItemId) : undefined
 	);
 	const selectedResolved = $derived(
-		selectedItem ? resolveAnimatedItemAt(selectedItem, timelineStore.currentFrame) : undefined
+		selectedItem
+			? resolveAnimatedItemAt(selectedItem, timelineStore.currentFrame, {
+					fps: timelineStore.fps,
+					frameWidth: canvasWidth,
+					frameHeight: canvasHeight
+				})
+			: undefined
 	);
 	const selectedTrackLocked = $derived(
 		selectedItem
@@ -246,7 +256,11 @@
 		}
 		const frame = timelineStore.currentFrame;
 		const resolveVisualItem = (item: TimelineItem, beforeColor: boolean) => {
-			const baseResolved = resolveAnimatedItemAt(item, frame);
+			const baseResolved = resolveAnimatedItemAt(item, frame, {
+				fps: timelineStore.fps,
+				frameWidth: canvasWidth,
+				frameHeight: canvasHeight
+			});
 			const directDraft = item.id === selectedItemId;
 			const resolved = scaleItemForCanvas(
 				{

@@ -13,6 +13,13 @@ import {
 	isEffectKeyframeProperty,
 	resolveAnimatedEffectsAt
 } from '$lib/video-editor/effects/effect-keyframes';
+import { applyMotionModifiers } from './motion-modifier-eval';
+
+export interface AnimatedItemMotionContext {
+	fps: number;
+	frameWidth: number;
+	frameHeight: number;
+}
 
 const VISUAL_PROPERTIES: KeyframeProperty[] = [
 	'x',
@@ -80,7 +87,11 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 	return [...builtIn, ...getAnimatableEffectPropertiesForItem(item)];
 }
 
-export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number): TimelineItem {
+export function resolveAnimatedItemAt(
+	item: TimelineItem,
+	absoluteFrame: number,
+	motionContext?: AnimatedItemMotionContext
+): TimelineItem {
 	let resolved: TimelineItem = {
 		...item,
 		transform: item.transform ? { ...item.transform } : undefined,
@@ -105,6 +116,27 @@ export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number)
 		const value = activeValueAt(item, property, absoluteFrame);
 		if (value === null) continue;
 		resolved = applyResolvedValue(resolved, property, value);
+	}
+	if (motionContext && item.motionModifiers?.length) {
+		const transform = resolved.transform ?? {};
+		const animated = applyMotionModifiers(
+			{
+				x: transform.x ?? 0,
+				y: transform.y ?? 0,
+				width: Math.max(1, transform.width ?? resolved.sourceWidth ?? motionContext.frameWidth),
+				height: Math.max(1, transform.height ?? resolved.sourceHeight ?? motionContext.frameHeight),
+				rotation: transform.rotation ?? 0,
+				opacity: transform.opacity ?? 1
+			},
+			item.motionModifiers,
+			{
+				frame: absoluteFrame - item.from,
+				fps: motionContext.fps,
+				frameWidth: motionContext.frameWidth,
+				frameHeight: motionContext.frameHeight
+			}
+		);
+		resolved = { ...resolved, transform: { ...transform, ...animated } };
 	}
 	return resolved;
 }

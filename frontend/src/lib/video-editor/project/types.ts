@@ -63,6 +63,22 @@ export interface ItemTransform {
 	aspectRatioLocked?: boolean;
 }
 
+export type MotionModifierType = 'float-drift' | 'breath-pulse' | 'micro-shake' | 'sway' | 'spin';
+export type MotionModifierChannel = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity';
+export type MotionModifierChannelGains = Partial<Record<MotionModifierChannel, number>>;
+
+export interface MotionModifier {
+	version?: 2;
+	id: string;
+	type: MotionModifierType;
+	enabled: boolean;
+	amplitude: number;
+	frequency: number;
+	phaseFrames: number;
+	seed: number;
+	channelGains?: MotionModifierChannelGains;
+}
+
 export interface CropSettings {
 	top: number;
 	right: number;
@@ -357,6 +373,8 @@ export interface TimelineItem extends TextStyleFields {
 	vectorKeyframes?: ItemVectorKeyframes;
 	animationVersion?: 2;
 	separatedVectorProperties?: VectorKeyframeProperty[];
+	/** Small deterministic live-motion records evaluated during preview and export. */
+	motionModifiers?: MotionModifier[];
 
 	// Clip effects (CSS-filter-semantics color/blur stack; see effects/types.ts)
 	effects?: import('$lib/video-editor/effects/types').ItemEffect[];
