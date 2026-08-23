@@ -15,6 +15,7 @@ import { timelineStore } from './timeline/stores/timeline-store.svelte';
 import { commandHistory } from './timeline/commands/command-store.svelte';
 import { Clock } from './preview/clock';
 import { mediaPool } from './media/pool.svelte';
+import { sceneBrowser } from './media/scene-search/scene-browser.svelte';
 import { sequenceStore } from './sequences/sequence-store.svelte';
 
 const logger = createLogger('EditorSession');
@@ -43,6 +44,8 @@ class EditorSession {
 		this.loading = true;
 		this.loadError = '';
 		try {
+			sceneBrowser.reset();
+			mediaPool.clear();
 			const project = await getProject(projectId);
 			if (!project) {
 				this.loadError = 'Project not found';

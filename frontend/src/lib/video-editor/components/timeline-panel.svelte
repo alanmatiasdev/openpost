@@ -115,6 +115,11 @@
 		type EffectDragData
 	} from '$lib/video-editor/timeline/effect-drop';
 	import { addEffectTemplates } from '$lib/video-editor/timeline/actions/effects';
+	import {
+		clearSceneDragData,
+		getSceneDragData
+	} from '$lib/video-editor/media/scene-search/scene-drag';
+	import { insertSceneAtFrame } from '$lib/video-editor/media/scene-search/scene-insert';
 	import { Button } from '$lib/components/ui/button';
 	import BetweenHorizontalEndIcon from '@lucide/svelte/icons/between-horizontal-end';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
@@ -271,6 +276,12 @@
 	} | null>(null);
 	let effectDropTargetIds = $state<string[]>([]);
 	let effectDropHoveredItemId = $state<string | null>(null);
+	let sceneDropPreview = $state<{
+		trackId: string | null;
+		from: number;
+		durationInFrames: number;
+		label: string;
+	} | null>(null);
 
 	$effect(() => {
 		if (effectDropTargetIds.length === 0) return;
@@ -634,6 +645,90 @@
 		event.preventDefault();
 		event.stopPropagation();
 		if (addEffectTemplates(targetItemIds, payload.effects)) onedit();
+	}
+
+	function sceneFrameAtPointer(event: DragEvent): number {
+		if (!scrollContainer) return timelineStore.currentFrame;
+		const rect = scrollContainer.getBoundingClientRect();
+		return pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH);
+	}
+
+	function openSceneTrack(preferredTrackId: string, from: number, end: number): string | null {
+		const preferred = timelineStore.tracks.find((track) => track.id === preferredTrackId);
+		const candidates = [
+			...(preferred ? [preferred] : []),
+			...timelineStore.tracks
+				.filter((track) => track.id !== preferredTrackId)
+				.toSorted((left, right) => right.order - left.order)
+		];
+		return (
+			candidates.find(
+				(track) =>
+					track.kind === 'video' &&
+					!track.locked &&
+					!(timelineStore.itemsByTrackId.get(track.id) ?? []).some(
+						(item) => item.from < end && item.from + item.durationInFrames > from
+					)
+			)?.id ?? null
+		);
+	}
+
+	function previewSceneDrop(event: DragEvent, preferredTrackId: string): void {
+		const payload = getSceneDragData(event.dataTransfer);
+		const media = payload ? mediaPool.get(payload.scene.mediaId) : undefined;
+		if (!payload || !media) {
+			sceneDropPreview = null;
+			return;
+		}
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		const from = sceneFrameAtPointer(event);
+		const durationInFrames = Math.max(
+			1,
+			Math.round((payload.scene.endSec - payload.scene.startSec) * timelineStore.fps)
+		);
+		const nextPreview = {
+			trackId: openSceneTrack(preferredTrackId, from, from + durationInFrames),
+			from,
+			durationInFrames,
+			label: payload.scene.text || media.fileName
+		};
+		if (
+			sceneDropPreview?.trackId === nextPreview.trackId &&
+			sceneDropPreview.from === nextPreview.from &&
+			sceneDropPreview.durationInFrames === nextPreview.durationInFrames &&
+			sceneDropPreview.label === nextPreview.label
+		) {
+			return;
+		}
+		sceneDropPreview = nextPreview;
+	}
+
+	function leaveSceneDrop(event: DragEvent): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		sceneDropPreview = null;
+	}
+
+	function dropScene(event: DragEvent, preferredTrackId: string): void {
+		const payload = getSceneDragData(event.dataTransfer);
+		const media = payload ? mediaPool.get(payload.scene.mediaId) : undefined;
+		if (!payload || !media) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const preview = sceneDropPreview;
+		const from = preview?.from ?? sceneFrameAtPointer(event);
+		const itemId = insertSceneAtFrame(
+			payload.scene,
+			media,
+			from,
+			preview?.trackId ?? preferredTrackId
+		);
+		selectedItemId = itemId;
+		selectedItemIds = [itemId];
+		sceneDropPreview = null;
+		clearSceneDragData();
+		onedit();
 	}
 
 	function marqueeStyle(): string {
@@ -1830,6 +1925,12 @@
 					: ''}"
 				style="height:{track.height}px"
 				data-track={track.id}
+				role="group"
+				aria-label={track.name}
+				ondragenter={(event) => previewSceneDrop(event, track.id)}
+				ondragover={(event) => previewSceneDrop(event, track.id)}
+				ondragleave={leaveSceneDrop}
+				ondrop={(event) => dropScene(event, track.id)}
 			>
 				<div
 					class="sticky left-0 z-30 h-full"
@@ -1848,6 +1949,22 @@
 						ondelete={() => deleteTrack(track.id)}
 					/>
 				</div>
+				{#if sceneDropPreview?.trackId === track.id}
+					<div
+						class="pointer-events-none absolute top-1 z-20 h-[calc(100%-8px)] overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.13_45)] bg-[oklch(0.4_0.04_250_/_0.78)] px-2 py-1 text-[10px] text-white shadow-lg"
+						style={clipStyle({
+							from: sceneDropPreview.from,
+							durationInFrames: sceneDropPreview.durationInFrames,
+							type: 'video'
+						})}
+						data-scene-drop-preview
+					>
+						<span class="block truncate">{sceneDropPreview.label}</span>
+						<span class="sr-only" role="status" aria-live="polite">
+							{m.video_editor_scene_drop_ready()}
+						</span>
+					</div>
+				{/if}
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
 					{@const displayItem = previewedItem(item)}
 					{#if !syncLockPreviewById[item.id]?.hidden}

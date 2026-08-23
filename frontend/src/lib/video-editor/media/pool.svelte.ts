@@ -60,8 +60,15 @@ export const mediaPool = {
 	},
 
 	loadAll(media: MediaMetadata[]): void {
+		state.order = [];
+		state.entries = {};
 		for (const item of media) {
 			this.upsert(item, 'ready');
 		}
+	},
+
+	clear(): void {
+		state.order = [];
+		state.entries = {};
 	}
 };

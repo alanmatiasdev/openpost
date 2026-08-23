@@ -76,6 +76,7 @@ const CACHE_WAVEFORM_DIR = 'waveform';
 const CACHE_FILMSTRIP_DIR = 'filmstrip';
 const CACHE_DECODED_AUDIO_DIR = 'decoded-audio';
 const CACHE_AI_DIR = 'ai';
+const CACHE_SCENE_THUMBS_DIR = 'scene-thumbs';
 /** Non-browser audio codecs are decoded once to WAV and reused for preview. */
 const CACHE_PREVIEW_AUDIO_FILENAME = 'preview-audio.wav';
 /** Header-indexed multi-res binary for timeline waveform rendering. */
@@ -267,6 +268,33 @@ export function aiOutputsDir(mediaId: string): string[] {
 /** Segments for `media/{id}/cache/ai/{kind}.json`. */
 export function aiOutputPath(mediaId: string, kind: string): string[] {
 	return [...aiOutputsDir(mediaId), `${kind}.json`];
+}
+
+/** Scene Browser analysis envelope for one source file. */
+export function sceneAnalysisPath(mediaId: string): string[] {
+	return aiOutputPath(mediaId, 'scene-browser');
+}
+
+/** Persisted thumbnails captured at scene boundaries. */
+export function sceneThumbsDir(mediaId: string): string[] {
+	return [...aiOutputsDir(mediaId), CACHE_SCENE_THUMBS_DIR];
+}
+
+export function sceneThumbPath(mediaId: string, index: number): string[] {
+	return [...sceneThumbsDir(mediaId), `${index}.jpg`];
+}
+
+export function sceneThumbRelPath(mediaId: string, index: number): string {
+	return sceneThumbPath(mediaId, index).join('/');
+}
+
+/** Packed vectors keep local model output compact and fast to hydrate. */
+export function sceneTextEmbeddingsPath(mediaId: string): string[] {
+	return [...aiOutputsDir(mediaId), 'scene-text-embeddings.bin'];
+}
+
+export function sceneImageEmbeddingsPath(mediaId: string): string[] {
+	return [...aiOutputsDir(mediaId), 'scene-image-embeddings.bin'];
 }
 
 export function cacheMetaPath(dir: string[]): string[] {

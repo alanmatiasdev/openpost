@@ -40,6 +40,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
+	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
@@ -62,6 +63,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
+	let assetPanel = $state<'media' | 'scenes'>('media');
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -451,23 +453,44 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			/>
 			<div class="flex min-h-0 flex-1">
 				<aside
-					class="flex w-56 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
+					class="flex w-72 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
 					aria-label={m.video_editor_media_pool()}
 				>
-					<div class="flex items-center justify-between px-3 py-2">
-						<h2 class="text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
-							{m.video_editor_media_pool()}
-						</h2>
-						<Button
-							size="icon-xs"
-							variant="ghost"
-							aria-label={m.video_editor_import_media()}
-							onclick={handleImport}
-						>
-							<PlusIcon />
-						</Button>
+					<div class="flex items-center gap-1 p-2">
+						<div class="grid min-w-0 flex-1 grid-cols-2 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
+							<button
+								type="button"
+								class:active={assetPanel === 'media'}
+								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+								onclick={() => (assetPanel = 'media')}
+							>
+								{m.video_editor_media_pool()}
+							</button>
+							<button
+								type="button"
+								class:active={assetPanel === 'scenes'}
+								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+								onclick={() => (assetPanel = 'scenes')}
+							>
+								{m.video_editor_scenes()}
+							</button>
+						</div>
+						{#if assetPanel === 'media'}
+							<Button
+								size="icon-xs"
+								variant="ghost"
+								aria-label={m.video_editor_import_media()}
+								onclick={handleImport}
+							>
+								<PlusIcon />
+							</Button>
+						{/if}
 					</div>
-					<MediaPoolList onsequenceopen={resetTimelineSelection} />
+					{#if assetPanel === 'media'}
+						<MediaPoolList onsequenceopen={resetTimelineSelection} />
+					{:else}
+						<SceneBrowserPanel />
+					{/if}
 				</aside>
 
 				<section

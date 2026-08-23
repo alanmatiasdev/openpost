@@ -98,6 +98,7 @@ export default defineConfig({
 	},
 	optimizeDeps: {
 		include: [
+			'@huggingface/transformers',
 			'@lucide/svelte/icons/align-left',
 			'@lucide/svelte/icons/alert-circle',
 			'@lucide/svelte/icons/arrow-right',
@@ -113,11 +114,13 @@ export default defineConfig({
 			'@lucide/svelte/icons/eye',
 			'@lucide/svelte/icons/external-link',
 			'@lucide/svelte/icons/file-audio',
+			'@lucide/svelte/icons/film',
 			'@lucide/svelte/icons/image',
 			'@lucide/svelte/icons/image-plus',
 			'@lucide/svelte/icons/images',
 			'@lucide/svelte/icons/laugh',
 			'@lucide/svelte/icons/library',
+			'@lucide/svelte/icons/layout-grid',
 			'@lucide/svelte/icons/link',
 			'@lucide/svelte/icons/list',
 			'@lucide/svelte/icons/loader-2',

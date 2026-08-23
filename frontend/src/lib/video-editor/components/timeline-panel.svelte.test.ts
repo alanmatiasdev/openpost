@@ -5,6 +5,12 @@ import { commandHistory } from '$lib/video-editor/timeline/commands/command-stor
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
+import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+import {
+	clearSceneDragData,
+	setSceneDragData
+} from '$lib/video-editor/media/scene-search/scene-drag';
+import type { MediaMetadata } from '$lib/video-editor/media/types';
 import TimelinePanel from './timeline-panel.svelte';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
@@ -38,6 +44,21 @@ function item(overrides: Partial<TimelineItem>): TimelineItem {
 	};
 }
 
+const sceneMedia: MediaMetadata = {
+	id: 'scene-media',
+	storageType: 'workspace',
+	fileName: 'scene-source.mp4',
+	fileSize: 100,
+	mimeType: 'video/mp4',
+	duration: 8,
+	width: 1920,
+	height: 1080,
+	fps: 24,
+	codec: 'h264',
+	bitrate: 1_000_000,
+	tags: ['video']
+};
+
 function dispatchPointer(
 	target: EventTarget,
 	type: 'pointerdown' | 'pointermove' | 'pointerup',
@@ -63,6 +84,8 @@ async function nextAnimationFrame(): Promise<void> {
 }
 
 beforeEach(() => {
+	clearSceneDragData();
+	mediaPool.loadAll([sceneMedia]);
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	transitionsStore.setAll([]);
@@ -84,6 +107,46 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel sync-lock ripple trim', () => {
+	it('previews and inserts a dragged scene at the exact pointer frame', async () => {
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const videoTrack = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(videoTrack).not.toBeNull();
+		const scene = {
+			id: 'scene-media:0',
+			mediaId: sceneMedia.id,
+			index: 0,
+			startSec: 1,
+			endSec: 3.5,
+			timeSec: 1.2,
+			text: 'A cook plates pasta'
+		};
+		const payload = { type: 'timeline-scene' as const, scene };
+		setSceneDragData(payload);
+		const dataTransfer = new DataTransfer();
+		dataTransfer.setData('application/json', JSON.stringify(payload));
+		const trackRect = videoTrack!.getBoundingClientRect();
+		const clientX = trackRect.left + 180 + 100 * 4;
+
+		videoTrack!.dispatchEvent(new DragEvent('dragover', { bubbles: true, clientX, dataTransfer }));
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-scene-drop-preview]')).not.toBeNull();
+
+		videoTrack!.dispatchEvent(new DragEvent('drop', { bubbles: true, clientX, dataTransfer }));
+		await nextAnimationFrame();
+		const inserted = timelineStore.items.find((candidate) => candidate.mediaId === sceneMedia.id);
+		expect(inserted).toMatchObject({
+			trackId: 'video-track',
+			from: 100,
+			durationInFrames: 75,
+			sourceStart: 24,
+			sourceEnd: 84,
+			sourceFps: 24
+		});
+		expect(document.querySelector('[data-scene-drop-preview]')).toBeNull();
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('previews and applies a dropped effect to compatible selected clips', async () => {
 		timelineStore._setTracks([
 			track('video-track', 'video', 0),
