@@ -73,13 +73,16 @@ function collectPreservedKeyframes(
 				frames.add(frame);
 		}
 	}
-	for (const keyframe of item.vectorKeyframes?.position ?? []) {
-		if (
-			keyframe.frame >= 0 &&
-			keyframe.frame < item.durationInFrames &&
-			!isFrameInTransitionRegion(keyframe.frame, item, transitions)
-		)
-			frames.add(keyframe.frame);
+	for (const track of Object.values(item.vectorKeyframes ?? {})) {
+		for (const keyframe of track ?? []) {
+			if (
+				keyframe.frame >= 0 &&
+				keyframe.frame < item.durationInFrames &&
+				!isFrameInTransitionRegion(keyframe.frame, item, transitions)
+			) {
+				frames.add(keyframe.frame);
+			}
+		}
 	}
 	return [...frames];
 }

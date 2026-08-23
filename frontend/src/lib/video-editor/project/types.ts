@@ -264,7 +264,8 @@ export type ScalarLinkableProperty =
 	| 'rotation'
 	| 'opacity'
 	| 'cornerRadius';
-export type DirectLinkableProperty = ScalarLinkableProperty | 'position';
+export type VectorKeyframeProperty = 'position' | 'scale' | 'anchor';
+export type DirectLinkableProperty = ScalarLinkableProperty | VectorKeyframeProperty;
 
 export interface DirectPropertyLink {
 	type: 'link';
@@ -306,7 +307,6 @@ export interface VectorKeyframe {
 	spatial?: SpatialBezierTangents;
 }
 
-export type VectorKeyframeProperty = 'position';
 export type ItemVectorKeyframes = Partial<Record<VectorKeyframeProperty, VectorKeyframe[]>>;
 
 /** One scalar key stored inside a portable saved animation recipe. */

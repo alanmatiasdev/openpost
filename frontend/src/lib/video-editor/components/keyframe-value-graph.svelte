@@ -25,7 +25,8 @@
 		graphValueRange,
 		keyframeIdentity,
 		marqueeSelection,
-		propertyValueRange,
+		editorPropertyLabel,
+		editorPropertyValueRange,
 		type EditorKeyframe,
 		type GraphCoordinate,
 		type GraphViewport,
@@ -154,10 +155,10 @@
 			};
 		})
 	);
-	const range = $derived(propertyValueRange(property));
+	const range = $derived(editorPropertyValueRange(item, property));
 	const colorProperty = $derived(isColorEffectKeyframeProperty(property));
 	const propertyLabel = $derived(
-		effectPropertyLabel(item, property) ?? property.replace(/([a-z])([A-Z])/g, '$1 $2')
+		effectPropertyLabel(item, property) ?? editorPropertyLabel(item, property)
 	);
 	const blockedRanges = $derived.by(() =>
 		transitionsStore.list.flatMap((transition) => {

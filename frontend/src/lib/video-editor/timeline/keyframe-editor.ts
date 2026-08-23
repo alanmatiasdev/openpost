@@ -10,7 +10,7 @@ import type {
 	TimelineItem
 } from '$lib/video-editor/project/types';
 import { applyEasingConfig } from './easing';
-import { activePositionKeyframes } from './vector-keyframes';
+import { activeVectorKeyframes, vectorPropertyForComponent } from './vector-keyframes';
 import { parseEffectKeyframeProperty } from '$lib/video-editor/effects/effect-keyframes';
 import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
 import { MAX_PACKED_COLOR } from './color-keyframes';
@@ -128,20 +128,42 @@ export function propertyValueRange(property: KeyframeProperty): PropertyValueRan
 	return { min: 0, max: 1, unit: '', decimals: 2 };
 }
 
+export function editorPropertyValueRange(
+	item: TimelineItem,
+	property: KeyframeProperty
+): PropertyValueRange {
+	const vector = vectorPropertyForComponent(property);
+	if (vector?.property === 'scale' && activeVectorKeyframes(item, 'scale')) {
+		return { min: 0, max: 1000, unit: '%', decimals: 1 };
+	}
+	return propertyValueRange(property);
+}
+
+export function editorPropertyLabel(item: TimelineItem, property: KeyframeProperty): string {
+	const vector = vectorPropertyForComponent(property);
+	if (!vector || !activeVectorKeyframes(item, vector.property)) {
+		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
+	}
+	const label =
+		vector.property === 'position' ? 'Position' : vector.property === 'scale' ? 'Scale' : 'Anchor';
+	return `${label} ${vector.axis.toUpperCase()}`;
+}
+
 export function editorKeyframes(item: TimelineItem, property: KeyframeProperty): EditorKeyframe[] {
-	if (property === 'x' || property === 'y') {
-		const position = activePositionKeyframes(item);
-		if (position) {
-			return position.map((keyframe, index) => ({
+	const vector = vectorPropertyForComponent(property);
+	if (vector) {
+		const keyframes = activeVectorKeyframes(item, vector.property);
+		if (keyframes) {
+			return keyframes.map((keyframe, index) => ({
 				property,
 				frame: keyframe.frame,
-				id: property === 'x' ? keyframe.id : `${keyframe.id}:y`,
+				id: vector.axis === 'x' ? keyframe.id : `${keyframe.id}:y`,
 				vectorId: keyframe.id,
 				index,
-				value: keyframe.value[property],
+				value: keyframe.value[vector.axis],
 				easing: keyframe.easing,
 				easingConfig: keyframe.easingConfig,
-				spatial: keyframe.spatial
+				...(vector.property === 'position' && { spatial: keyframe.spatial })
 			}));
 		}
 	}

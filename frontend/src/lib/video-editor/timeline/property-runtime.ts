@@ -43,9 +43,14 @@ export function doDirectLinkTargetsConflict(
 	right: DirectLinkableProperty
 ): boolean {
 	if (left === right) return true;
-	if (left === 'position') return right === 'x' || right === 'y';
-	if (right === 'position') return left === 'x' || left === 'y';
-	return false;
+	return (
+		(left === 'position' && (right === 'x' || right === 'y')) ||
+		(right === 'position' && (left === 'x' || left === 'y')) ||
+		(left === 'scale' && (right === 'width' || right === 'height')) ||
+		(right === 'scale' && (left === 'width' || left === 'height')) ||
+		(left === 'anchor' && (right === 'anchorX' || right === 'anchorY')) ||
+		(right === 'anchor' && (left === 'anchorX' || left === 'anchorY'))
+	);
 }
 
 export function resolveItemPropertyRuntime(
@@ -67,8 +72,8 @@ export function resolveItemPropertyRuntime(
 		itemsById: new Map(context.items.map((candidate) => [candidate.id, candidate]))
 	};
 	let resolved = preExpressionItem;
-	for (const property of ['position', ...SCALAR_PROPERTIES] as const) {
-		const preValue = propertyValue(resolved, property);
+	for (const property of ['position', 'scale', 'anchor', ...SCALAR_PROPERTIES] as const) {
+		const preValue = propertyValue(resolved, property, item);
 		const postLink = resolveLinkedValue(
 			item.id,
 			property,
@@ -86,7 +91,7 @@ export function resolveItemPropertyRuntime(
 			state
 		);
 		if (isExpressionValueCompatible(property, result.value)) {
-			resolved = applyPropertyValue(resolved, property, result.value);
+			resolved = applyPropertyValue(resolved, property, result.value, item);
 		}
 	}
 	return resolved;
@@ -106,7 +111,7 @@ export function evaluateItemPropertyExpression(
 		itemsById
 	};
 	const preItem = context.resolvePreExpressionItem(item, context.absoluteFrame);
-	const preValue = propertyValue(preItem, property);
+	const preValue = propertyValue(preItem, property, item);
 	const postLink = resolveLinkedValue(
 		item.id,
 		property,
@@ -128,7 +133,7 @@ function resolveCompleteValue(
 	const item = state.itemsById.get(itemId);
 	if (!item) return null;
 	const preItem = context.resolvePreExpressionItem(item, absoluteFrame);
-	const preValue = propertyValue(preItem, property);
+	const preValue = propertyValue(preItem, property, item);
 	const postLink = resolveLinkedValue(itemId, property, preValue, absoluteFrame, context, state);
 	return resolveExpressionValue(itemId, property, postLink, absoluteFrame, context, state).value;
 }
@@ -162,7 +167,7 @@ function resolveLinkedValue(
 	state.active.add(dependencyKey);
 	const sourceFrame = absoluteFrame - link.timeOffsetFrames;
 	const sourcePreItem = context.resolvePreExpressionItem(source, sourceFrame);
-	const sourcePreValue = propertyValue(sourcePreItem, link.sourceProperty);
+	const sourcePreValue = propertyValue(sourcePreItem, link.sourceProperty, source);
 	const value = resolveLinkedValue(
 		source.id,
 		link.sourceProperty,
@@ -214,9 +219,25 @@ function resolveExpressionValue(
 	return finalResult;
 }
 
-function propertyValue(item: TimelineItem, property: DirectLinkableProperty): ExpressionValue {
+function propertyValue(
+	item: TimelineItem,
+	property: DirectLinkableProperty,
+	baseItem: TimelineItem
+): ExpressionValue {
 	const transform = item.transform ?? {};
 	if (property === 'position') return { x: transform.x ?? 0, y: transform.y ?? 0 };
+	if (property === 'scale') {
+		return {
+			x: ((transform.width ?? baseWidth(baseItem)) / baseWidth(baseItem)) * 100,
+			y: ((transform.height ?? baseHeight(baseItem)) / baseHeight(baseItem)) * 100
+		};
+	}
+	if (property === 'anchor') {
+		return {
+			x: transform.anchorX ?? baseWidth(baseItem) / 2,
+			y: transform.anchorY ?? baseHeight(baseItem) / 2
+		};
+	}
 	switch (property) {
 		case 'x':
 			return transform.x ?? 0;
@@ -242,16 +263,41 @@ function propertyValue(item: TimelineItem, property: DirectLinkableProperty): Ex
 function applyPropertyValue(
 	item: TimelineItem,
 	property: DirectLinkableProperty,
-	value: ExpressionValue
+	value: ExpressionValue,
+	baseItem: TimelineItem
 ): TimelineItem {
-	if (property === 'position') {
+	if (property === 'position' || property === 'scale' || property === 'anchor') {
 		if (Object(value) !== value) return item;
 		// SAFETY: compatibility is checked before this function handles a vector property.
-		const position = value as Vector2;
-		return { ...item, transform: { ...item.transform, x: position.x, y: position.y } };
+		const vector = value as Vector2;
+		if (property === 'position') {
+			return { ...item, transform: { ...item.transform, x: vector.x, y: vector.y } };
+		}
+		if (property === 'scale') {
+			return {
+				...item,
+				transform: {
+					...item.transform,
+					width: (baseWidth(baseItem) * vector.x) / 100,
+					height: (baseHeight(baseItem) * vector.y) / 100
+				}
+			};
+		}
+		return {
+			...item,
+			transform: { ...item.transform, anchorX: vector.x, anchorY: vector.y }
+		};
 	}
 	if (Object(value) === value) return item;
 	// SAFETY: the object branch above excludes the Vector2 member.
 	const scalar = value as number;
 	return { ...item, transform: { ...item.transform, [property]: scalar } };
+}
+
+function baseWidth(item: TimelineItem): number {
+	return Math.max(Number.EPSILON, item.transform?.width ?? item.sourceWidth ?? 1);
+}
+
+function baseHeight(item: TimelineItem): number {
+	return Math.max(Number.EPSILON, item.transform?.height ?? item.sourceHeight ?? 1);
 }

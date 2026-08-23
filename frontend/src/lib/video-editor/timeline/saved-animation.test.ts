@@ -27,7 +27,9 @@ describe('saved animation capture', () => {
 					}
 				},
 				vectorKeyframes: {
-					position: [{ id: 'position-a', frame: 20, value: { x: 1, y: 2 }, easing: 'linear' }]
+					position: [{ id: 'position-a', frame: 20, value: { x: 1, y: 2 }, easing: 'linear' }],
+					scale: [{ id: 'scale-a', frame: 30, value: { x: 150, y: 80 }, easing: 'linear' }],
+					anchor: [{ id: 'anchor-a', frame: 40, value: { x: 50, y: 25 }, easing: 'linear' }]
 				}
 			}),
 			'My move',
@@ -39,7 +41,11 @@ describe('saved animation capture', () => {
 			sourceDurationInFrames: 60,
 			createdAt: 123,
 			properties: [{ property: 'opacity', keyframes: [{ frame: 0 }, { frame: 20 }] }],
-			vectorProperties: [{ property: 'position', keyframes: [{ frame: 10 }] }]
+			vectorProperties: [
+				{ property: 'position', keyframes: [{ frame: 10 }] },
+				{ property: 'scale', keyframes: [{ frame: 20 }] },
+				{ property: 'anchor', keyframes: [{ frame: 30 }] }
+			]
 		});
 	});
 

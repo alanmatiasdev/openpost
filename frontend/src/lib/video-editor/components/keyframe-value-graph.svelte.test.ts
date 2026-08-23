@@ -72,6 +72,32 @@ beforeEach(() => {
 });
 
 describe('KeyframeValueGraph', () => {
+	it('exposes coupled scale as percentage X and Y graph rows', async () => {
+		const scaled: TimelineItem = {
+			...animatedItem,
+			transform: { width: 400, height: 200 },
+			keyframes: {},
+			vectorKeyframes: {
+				scale: [
+					{ id: 'scale-a', frame: 0, value: { x: 100, y: 100 }, easing: 'linear' },
+					{ id: 'scale-b', frame: 30, value: { x: 200, y: 50 }, easing: 'linear' }
+				]
+			}
+		};
+		timelineStore.setAll({ tracks: [videoTrack], items: [scaled], fps: 30 });
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: scaled.id,
+			selectedItemIds: [scaled.id]
+		});
+		await screen.getByRole('button', { name: 'Scale X', exact: true }).click();
+		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await expect
+			.element(screen.getByRole('application', { name: 'Keyframe value graph for Scale X' }))
+			.toBeVisible();
+		expect(screen.container.textContent).toContain('%');
+	});
+
 	it('renders sampled curves, a playhead, and accessible keyframe controls', async () => {
 		const screen = await render(TimelinePanel, {
 			onedit: vi.fn(),

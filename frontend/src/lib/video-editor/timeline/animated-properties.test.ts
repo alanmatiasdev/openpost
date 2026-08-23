@@ -143,6 +143,30 @@ describe('resolveAnimatedItemAt', () => {
 		expect(resolveAnimatedItemAt(video, 115).transform).toMatchObject({ x: 30, y: 75 });
 	});
 
+	it('resolves coupled percentage scale and pixel anchor lanes', () => {
+		const video: TimelineItem = {
+			...item('video'),
+			transform: { width: 400, height: 200, anchorX: 200, anchorY: 100 },
+			vectorKeyframes: {
+				scale: [
+					{ id: 'scale-a', frame: 0, value: { x: 100, y: 100 }, easing: 'linear' },
+					{ id: 'scale-b', frame: 30, value: { x: 200, y: 50 }, easing: 'linear' }
+				],
+				anchor: [
+					{ id: 'anchor-a', frame: 0, value: { x: 200, y: 100 }, easing: 'linear' },
+					{ id: 'anchor-b', frame: 30, value: { x: 300, y: 50 }, easing: 'linear' }
+				]
+			}
+		};
+
+		expect(resolveAnimatedItemAt(video, 115).transform).toMatchObject({
+			width: 600,
+			height: 150,
+			anchorX: 250,
+			anchorY: 75
+		});
+	});
+
 	it('resolves effect params through the same item used by preview and export', () => {
 		const property = buildEffectKeyframeProperty('gpu-contrast', 'contrast', 'amount');
 		const video: TimelineItem = {

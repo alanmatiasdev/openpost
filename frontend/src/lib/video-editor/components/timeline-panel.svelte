@@ -67,7 +67,11 @@
 		TimelineMarker,
 		TimelineTransition
 	} from '$lib/video-editor/project/types';
-	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
+	import {
+		getAnimatablePropertiesForItem,
+		resolvePreExpressionItemAt
+	} from '$lib/video-editor/timeline/animated-properties';
+	import { editorKeyframes } from '$lib/video-editor/timeline/keyframe-editor';
 	import {
 		effectPropertyBaseValue,
 		effectPropertyLabel
@@ -2223,25 +2227,23 @@
 			label: preset.label
 		}))
 	]);
-	const selectedKeyframeTrack = $derived(
-		selectedItem && selectedKeyframe
-			? selectedItem.keyframes?.[selectedKeyframe.property]
-			: undefined
+	const selectedEditorKeyframes = $derived(
+		selectedItem && selectedKeyframe ? editorKeyframes(selectedItem, selectedKeyframe.property) : []
 	);
 	const selectedKeyframeIndex = $derived(
-		selectedKeyframeTrack && selectedKeyframe
-			? selectedKeyframeTrack.frames.indexOf(selectedKeyframe.frame)
+		selectedKeyframe
+			? selectedEditorKeyframes.findIndex((keyframe) => keyframe.frame === selectedKeyframe?.frame)
 			: -1
 	);
+	const selectedEditorKeyframe = $derived(selectedEditorKeyframes[selectedKeyframeIndex]);
 	const selectedEasing = $derived(
-		selectedKeyframeIndex >= 0
-			? (selectedKeyframeTrack?.easings?.[selectedKeyframeIndex] ?? 'linear')
-			: 'linear'
+		selectedKeyframeIndex >= 0 ? (selectedEditorKeyframe?.easing ?? 'linear') : 'linear'
 	);
 	const selectedEasingConfig = $derived(
-		selectedKeyframeIndex >= 0
-			? (selectedKeyframeTrack?.easingConfigs?.[selectedKeyframeIndex] ?? undefined)
-			: undefined
+		selectedKeyframeIndex >= 0 ? selectedEditorKeyframe?.easingConfig : undefined
+	);
+	const pendingEditorKeyframes = $derived(
+		selectedItem ? editorKeyframes(selectedItem, pendingKeyframeProperty) : []
 	);
 	const customPresetOptions = $derived([
 		{ value: '', label: m.video_editor_keyframe_custom_presets() },
@@ -2278,11 +2280,34 @@
 		const item = selectedItem;
 		if (!item) return;
 		const frame = Math.max(0, timelineStore.currentFrame - item.from);
+		const resolved = resolvePreExpressionItemAt(item, timelineStore.currentFrame);
+		const transformValue = transformKeyframeValue(resolved, property);
 		const value =
+			transformValue ??
 			activeValueAt(item, property, timelineStore.currentFrame) ??
 			effectPropertyBaseValue(item, property) ??
 			(property === 'opacity' || property === 'volume' ? 1 : 0);
 		if (setKeyframe(item.id, property, frame, value)) onedit();
+	}
+
+	function transformKeyframeValue(
+		item: TimelineItem,
+		property: KeyframeProperty
+	): number | undefined {
+		switch (property) {
+			case 'x':
+			case 'y':
+			case 'width':
+			case 'height':
+			case 'anchorX':
+			case 'anchorY':
+			case 'rotation':
+			case 'opacity':
+			case 'cornerRadius':
+				return item.transform?.[property];
+			default:
+				return undefined;
+		}
 	}
 
 	function commitEasing(easing: EasingType, config?: EasingConfig): void {
@@ -2612,7 +2637,7 @@
 				aria-pressed={showValueGraph}
 				aria-label={m.video_editor_keyframe_graph_toggle()}
 				title={m.video_editor_keyframe_graph_toggle()}
-				disabled={(selectedItem.keyframes?.[pendingKeyframeProperty]?.frames.length ?? 0) === 0}
+				disabled={pendingEditorKeyframes.length === 0}
 				onclick={toggleValueGraph}
 			>
 				<ChartSplineIcon class="size-3.5" />
@@ -3156,7 +3181,7 @@
 						{/if}
 					</div>
 				{/if}
-				{#if showValueGraph && (selectedItem.keyframes?.[pendingKeyframeProperty]?.frames.length ?? 0) > 0}
+				{#if showValueGraph && pendingEditorKeyframes.length > 0}
 					<KeyframeValueGraph
 						item={selectedItem}
 						property={pendingKeyframeProperty}

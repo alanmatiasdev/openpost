@@ -91,6 +91,46 @@ describe('applySavedAnimation', () => {
 		});
 	});
 
+	it('applies every coupled transform lane and removes stale scalar components', () => {
+		timelineStore._setItems([
+			item('one', {
+				keyframes: {
+					width: { frames: [0], values: [400] },
+					height: { frames: [0], values: [200] },
+					anchorX: { frames: [0], values: [200] },
+					anchorY: { frames: [0], values: [100] }
+				},
+				separatedVectorProperties: ['scale', 'anchor']
+			})
+		]);
+		const recipe = preset({
+			properties: [],
+			vectorProperties: [
+				{
+					property: 'scale',
+					keyframes: [{ id: 'scale', frame: 0, value: { x: 150, y: 75 }, easing: 'linear' }]
+				},
+				{
+					property: 'anchor',
+					keyframes: [{ id: 'anchor', frame: 0, value: { x: 250, y: 80 }, easing: 'linear' }]
+				}
+			]
+		});
+		expect(
+			applySavedAnimation({
+				itemIds: ['one'],
+				preset: recipe,
+				mode: 'replace',
+				retime: false
+			}).ok
+		).toBe(true);
+		const applied = timelineStore.itemById.get('one');
+		expect(applied?.vectorKeyframes?.scale?.[0]?.value).toEqual({ x: 150, y: 75 });
+		expect(applied?.vectorKeyframes?.anchor?.[0]?.value).toEqual({ x: 250, y: 80 });
+		expect(applied?.keyframes).toBeUndefined();
+		expect(applied?.separatedVectorProperties).toEqual([]);
+	});
+
 	it('remaps separate same-type effect instances and adds missing effects', () => {
 		const recipe = preset({
 			properties: [

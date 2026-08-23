@@ -8,7 +8,8 @@ import type {
 	SpatialBezierTangents,
 	TimelineItem,
 	Vector2,
-	VectorKeyframe
+	VectorKeyframe,
+	VectorKeyframeProperty
 } from '$lib/video-editor/project/types';
 import { applyEasing, applyEasingConfig } from './easing';
 
@@ -18,17 +19,130 @@ export interface PositionPromotion {
 	identityRemap: ReadonlyMap<string, string>;
 }
 
+export interface VectorPromotion {
+	property: VectorKeyframeProperty;
+	keyframes: VectorKeyframe[];
+	scalarKeyframes: ItemKeyframes | undefined;
+	identityRemap: ReadonlyMap<string, string>;
+}
+
+export const VECTOR_COMPONENTS = {
+	position: ['x', 'y'],
+	scale: ['width', 'height'],
+	anchor: ['anchorX', 'anchorY']
+} as const satisfies Record<
+	VectorKeyframeProperty,
+	readonly [keyof ItemKeyframes, keyof ItemKeyframes]
+>;
+
+export function vectorPropertyForComponent(
+	property: keyof ItemKeyframes
+): { property: VectorKeyframeProperty; axis: 'x' | 'y' } | null {
+	for (const vectorProperty of ['position', 'scale', 'anchor'] as const) {
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
+		if (property === xProperty) return { property: vectorProperty, axis: 'x' };
+		if (property === yProperty) return { property: vectorProperty, axis: 'y' };
+	}
+	return null;
+}
+
+export function activeVectorKeyframes(
+	item: TimelineItem,
+	property: VectorKeyframeProperty
+): readonly VectorKeyframe[] | undefined {
+	if (item.separatedVectorProperties?.includes(property)) return undefined;
+	const keyframes = item.vectorKeyframes?.[property];
+	return keyframes && keyframes.length > 0 ? keyframes : undefined;
+}
+
 export function activePositionKeyframes(item: TimelineItem): readonly VectorKeyframe[] | undefined {
-	if (item.separatedVectorProperties?.includes('position')) return undefined;
-	const position = item.vectorKeyframes?.position;
-	return position && position.length > 0 ? position : undefined;
+	return activeVectorKeyframes(item, 'position');
+}
+
+export function vectorKeyframeByFrame(
+	item: TimelineItem,
+	property: VectorKeyframeProperty,
+	relativeFrame: number
+): VectorKeyframe | undefined {
+	return activeVectorKeyframes(item, property)?.find(
+		(keyframe) => keyframe.frame === relativeFrame
+	);
 }
 
 export function positionKeyframeByFrame(
 	item: TimelineItem,
 	relativeFrame: number
 ): VectorKeyframe | undefined {
-	return activePositionKeyframes(item)?.find((keyframe) => keyframe.frame === relativeFrame);
+	return vectorKeyframeByFrame(item, 'position', relativeFrame);
+}
+
+export function promoteVectorKeyframes(
+	item: TimelineItem,
+	property: VectorKeyframeProperty,
+	includeFrame?: number
+): VectorPromotion | null {
+	const active = activeVectorKeyframes(item, property);
+	if (active) {
+		return {
+			property,
+			keyframes: active.map(cloneVectorKeyframe),
+			scalarKeyframes: withoutVectorScalarTracks(item.keyframes, property),
+			identityRemap: new Map()
+		};
+	}
+	const [xProperty, yProperty] = VECTOR_COMPONENTS[property];
+	const xTrack = item.keyframes?.[xProperty];
+	const yTrack = item.keyframes?.[yProperty];
+	const frames = new Set<number>([...(xTrack?.frames ?? []), ...(yTrack?.frames ?? [])]);
+	if (includeFrame !== undefined) frames.add(Math.max(0, Math.round(includeFrame)));
+	if (frames.size === 0) return null;
+	const identityRemap = new Map<string, string>();
+	const keyframes = [...frames]
+		.filter((frame) => Number.isInteger(frame) && frame >= 0 && frame < item.durationInFrames)
+		.toSorted((left, right) => left - right)
+		.map((frame) => {
+			const style = segmentStyleAt(xTrack, frame) ?? segmentStyleAt(yTrack, frame);
+			const id = crypto.randomUUID();
+			const xIndex = xTrack?.frames.indexOf(frame) ?? -1;
+			const yIndex = yTrack?.frames.indexOf(frame) ?? -1;
+			if (xIndex >= 0) {
+				identityRemap.set(xTrack?.ids?.[xIndex] ?? `legacy:${xProperty}:${frame}:${xIndex}`, id);
+			}
+			if (yIndex >= 0) {
+				identityRemap.set(
+					yTrack?.ids?.[yIndex] ?? `legacy:${yProperty}:${frame}:${yIndex}`,
+					`${id}:y`
+				);
+			}
+			return {
+				id,
+				frame,
+				value: {
+					x: scalarToVectorComponent(
+						item,
+						property,
+						'x',
+						interpolateScalarTrack(xTrack, frame, scalarBaseValue(item, xProperty))
+					),
+					y: scalarToVectorComponent(
+						item,
+						property,
+						'y',
+						interpolateScalarTrack(yTrack, frame, scalarBaseValue(item, yProperty))
+					)
+				},
+				easing: style?.easing ?? 'linear',
+				...(style?.easingConfig && { easingConfig: cloneEasingConfig(style.easingConfig) })
+			};
+		});
+	return keyframes.length > 0
+		? {
+				property,
+				keyframes,
+				scalarKeyframes: withoutVectorScalarTracks(item.keyframes, property),
+				identityRemap
+			}
+		: null;
 }
 
 /**
@@ -40,56 +154,17 @@ export function promotePositionKeyframes(
 	item: TimelineItem,
 	includeFrame?: number
 ): PositionPromotion | null {
-	const active = activePositionKeyframes(item);
-	if (active) {
-		return {
-			position: active.map(cloneVectorKeyframe),
-			keyframes: withoutPositionScalarTracks(item.keyframes),
-			identityRemap: new Map()
-		};
-	}
-	const xTrack = item.keyframes?.x;
-	const yTrack = item.keyframes?.y;
-	const frames = new Set<number>([...(xTrack?.frames ?? []), ...(yTrack?.frames ?? [])]);
-	if (includeFrame !== undefined) frames.add(includeFrame);
-	if (frames.size === 0) return null;
-	const xFallback = item.transform?.x ?? 0;
-	const yFallback = item.transform?.y ?? 0;
-	const identityRemap = new Map<string, string>();
-	const position = [...frames]
-		.filter((frame) => Number.isInteger(frame) && frame >= 0 && frame < item.durationInFrames)
-		.toSorted((left, right) => left - right)
-		.map((frame) => {
-			const style = segmentStyleAt(xTrack, frame) ?? segmentStyleAt(yTrack, frame);
-			const xIndex = xTrack?.frames.indexOf(frame) ?? -1;
-			const yIndex = yTrack?.frames.indexOf(frame) ?? -1;
-			const id =
-				(xIndex >= 0 ? xTrack?.ids?.[xIndex] : undefined) ??
-				(yIndex >= 0 ? yTrack?.ids?.[yIndex] : undefined) ??
-				crypto.randomUUID();
-			if (xIndex >= 0) {
-				identityRemap.set(xTrack?.ids?.[xIndex] ?? `legacy:x:${frame}:${xIndex}`, id);
+	const promoted = promoteVectorKeyframes(item, 'position', includeFrame);
+	return promoted
+		? {
+				position: promoted.keyframes,
+				keyframes: promoted.scalarKeyframes,
+				identityRemap: promoted.identityRemap
 			}
-			if (yIndex >= 0) {
-				identityRemap.set(yTrack?.ids?.[yIndex] ?? `legacy:y:${frame}:${yIndex}`, `${id}:y`);
-			}
-			return {
-				id,
-				frame,
-				value: {
-					x: interpolateScalarTrack(xTrack, frame, xFallback),
-					y: interpolateScalarTrack(yTrack, frame, yFallback)
-				},
-				easing: style?.easing ?? 'linear',
-				...(style?.easingConfig && { easingConfig: cloneEasingConfig(style.easingConfig) })
-			};
-		});
-	return position.length > 0
-		? { position, keyframes: withoutPositionScalarTracks(item.keyframes), identityRemap }
 		: null;
 }
 
-export function interpolatePosition(
+export function interpolateVector(
 	keyframes: readonly VectorKeyframe[],
 	frame: number
 ): Vector2 | null {
@@ -112,6 +187,13 @@ export function interpolatePosition(
 		return interpolatePositionSegment(start, end, eased);
 	}
 	return cloneVector(keyframes[last]?.value ?? { x: 0, y: 0 });
+}
+
+export function interpolatePosition(
+	keyframes: readonly VectorKeyframe[],
+	frame: number
+): Vector2 | null {
+	return interpolateVector(keyframes, frame);
 }
 
 export function interpolatePositionSegment(
@@ -191,6 +273,35 @@ export function upsertPositionKeyframe(
 	return next.toSorted((left, right) => left.frame - right.frame);
 }
 
+export function upsertVectorKeyframe(
+	keyframes: readonly VectorKeyframe[],
+	frame: number,
+	value: Vector2
+): VectorKeyframe[] {
+	return upsertPositionKeyframe(keyframes, frame, value);
+}
+
+export function vectorPropertyKeyframesPatch(
+	item: TimelineItem,
+	property: VectorKeyframeProperty,
+	keyframes: readonly VectorKeyframe[]
+): Pick<
+	TimelineItem,
+	'keyframes' | 'vectorKeyframes' | 'animationVersion' | 'separatedVectorProperties'
+> {
+	const vectorKeyframes: ItemVectorKeyframes = { ...item.vectorKeyframes };
+	if (keyframes.length > 0) vectorKeyframes[property] = keyframes.map(cloneVectorKeyframe);
+	else delete vectorKeyframes[property];
+	return {
+		keyframes: withoutVectorScalarTracks(item.keyframes, property),
+		vectorKeyframes: Object.keys(vectorKeyframes).length > 0 ? vectorKeyframes : undefined,
+		animationVersion: 2,
+		separatedVectorProperties: item.separatedVectorProperties?.filter(
+			(candidate) => candidate !== property
+		)
+	};
+}
+
 export function vectorKeyframesPatch(
 	item: TimelineItem,
 	position: readonly VectorKeyframe[]
@@ -198,18 +309,7 @@ export function vectorKeyframesPatch(
 	TimelineItem,
 	'keyframes' | 'vectorKeyframes' | 'animationVersion' | 'separatedVectorProperties'
 > {
-	const vectorKeyframes: ItemVectorKeyframes = {
-		...item.vectorKeyframes,
-		position: position.map(cloneVectorKeyframe)
-	};
-	return {
-		keyframes: withoutPositionScalarTracks(item.keyframes),
-		vectorKeyframes,
-		animationVersion: 2,
-		separatedVectorProperties: item.separatedVectorProperties?.filter(
-			(property) => property !== 'position'
-		)
-	};
+	return vectorPropertyKeyframesPatch(item, 'position', position);
 }
 
 export function scaleItemVectorKeyframes(
@@ -221,17 +321,18 @@ export function scaleItemVectorKeyframes(
 		return vectorKeyframes;
 	const scaleFactor = newDuration / oldDuration;
 	const maxFrame = newDuration - 1;
-	const position = vectorKeyframes.position;
-	if (!position) return vectorKeyframes;
-	const byFrame = new Map<number, VectorKeyframe>();
-	for (const keyframe of position) {
-		const frame = Math.max(0, Math.min(maxFrame, Math.round(keyframe.frame * scaleFactor)));
-		byFrame.set(frame, { ...cloneVectorKeyframe(keyframe), frame });
+	const scaled: ItemVectorKeyframes = {};
+	for (const property of ['position', 'scale', 'anchor'] as const) {
+		const source = vectorKeyframes[property];
+		if (!source) continue;
+		const byFrame = new Map<number, VectorKeyframe>();
+		for (const keyframe of source) {
+			const frame = Math.max(0, Math.min(maxFrame, Math.round(keyframe.frame * scaleFactor)));
+			byFrame.set(frame, { ...cloneVectorKeyframe(keyframe), frame });
+		}
+		scaled[property] = [...byFrame.values()].toSorted((left, right) => left.frame - right.frame);
 	}
-	return {
-		...vectorKeyframes,
-		position: [...byFrame.values()].toSorted((left, right) => left.frame - right.frame)
-	};
+	return scaled;
 }
 
 export function cloneVectorKeyframe(keyframe: VectorKeyframe): VectorKeyframe {
@@ -249,14 +350,65 @@ export function cloneVectorKeyframe(keyframe: VectorKeyframe): VectorKeyframe {
 	};
 }
 
-function withoutPositionScalarTracks(
-	keyframes: ItemKeyframes | undefined
+function withoutVectorScalarTracks(
+	keyframes: ItemKeyframes | undefined,
+	property: VectorKeyframeProperty
 ): ItemKeyframes | undefined {
-	if (!keyframes?.x && !keyframes?.y) return keyframes;
+	const [xProperty, yProperty] = VECTOR_COMPONENTS[property];
+	if (!keyframes?.[xProperty] && !keyframes?.[yProperty]) return keyframes;
 	const next = { ...keyframes };
-	delete next.x;
-	delete next.y;
+	delete next[xProperty];
+	delete next[yProperty];
 	return Object.keys(next).length > 0 ? next : undefined;
+}
+
+export function scalarToVectorComponent(
+	item: TimelineItem,
+	property: VectorKeyframeProperty,
+	axis: 'x' | 'y',
+	value: number
+): number {
+	if (property !== 'scale') return value;
+	const base = axis === 'x' ? baseWidth(item) : baseHeight(item);
+	return Math.abs(base) <= Number.EPSILON ? 100 : (value / base) * 100;
+}
+
+export function vectorToScalarComponent(
+	item: TimelineItem,
+	property: VectorKeyframeProperty,
+	axis: 'x' | 'y',
+	value: number
+): number {
+	if (property !== 'scale') return value;
+	const base = axis === 'x' ? baseWidth(item) : baseHeight(item);
+	return (base * value) / 100;
+}
+
+export function baseVectorValue(item: TimelineItem, property: VectorKeyframeProperty): Vector2 {
+	if (property === 'position') return { x: item.transform?.x ?? 0, y: item.transform?.y ?? 0 };
+	if (property === 'scale') return { x: 100, y: 100 };
+	return {
+		x: item.transform?.anchorX ?? baseWidth(item) / 2,
+		y: item.transform?.anchorY ?? baseHeight(item) / 2
+	};
+}
+
+function scalarBaseValue(item: TimelineItem, property: keyof ItemKeyframes): number {
+	if (property === 'width') return baseWidth(item);
+	if (property === 'height') return baseHeight(item);
+	if (property === 'anchorX') return item.transform?.anchorX ?? baseWidth(item) / 2;
+	if (property === 'anchorY') return item.transform?.anchorY ?? baseHeight(item) / 2;
+	if (property === 'x') return item.transform?.x ?? 0;
+	if (property === 'y') return item.transform?.y ?? 0;
+	return 0;
+}
+
+function baseWidth(item: TimelineItem): number {
+	return item.transform?.width ?? item.sourceWidth ?? 1;
+}
+
+function baseHeight(item: TimelineItem): number {
+	return item.transform?.height ?? item.sourceHeight ?? 1;
 }
 
 function interpolateScalarTrack(

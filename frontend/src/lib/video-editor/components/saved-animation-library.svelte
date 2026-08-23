@@ -45,7 +45,7 @@
 		Boolean(
 			sourceItem &&
 			(Object.values(sourceItem.keyframes ?? {}).some((track) => Boolean(track?.frames.length)) ||
-				Boolean(sourceItem.vectorKeyframes?.position?.length) ||
+				Object.values(sourceItem.vectorKeyframes ?? {}).some((track) => Boolean(track?.length)) ||
 				sourceItem.motionModifiers?.some((modifier) => modifier.enabled && modifier.amplitude > 0))
 		)
 	);

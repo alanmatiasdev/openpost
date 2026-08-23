@@ -46,7 +46,9 @@ const LINKABLE_PROPERTIES = new Set<DirectLinkableProperty>([
 	'rotation',
 	'opacity',
 	'cornerRadius',
-	'position'
+	'position',
+	'scale',
+	'anchor'
 ]);
 
 export function isDirectLinkableProperty(property: string): property is DirectLinkableProperty {
@@ -54,8 +56,10 @@ export function isDirectLinkableProperty(property: string): property is DirectLi
 	return LINKABLE_PROPERTIES.has(property as DirectLinkableProperty);
 }
 
-export function isVectorLinkableProperty(property: DirectLinkableProperty): property is 'position' {
-	return property === 'position';
+export function isVectorLinkableProperty(
+	property: DirectLinkableProperty
+): property is 'position' | 'scale' | 'anchor' {
+	return property === 'position' || property === 'scale' || property === 'anchor';
 }
 
 export function areDirectLinkPropertiesCompatible(

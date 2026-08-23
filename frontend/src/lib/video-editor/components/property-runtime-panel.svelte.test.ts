@@ -154,4 +154,33 @@ describe('PropertyRuntimePanel', () => {
 			);
 		});
 	});
+
+	it('separates coupled vector dimensions with one undo step', async () => {
+		const shape = item('one', 10);
+		shape.transform = { width: 400, height: 200 };
+		shape.vectorKeyframes = {
+			scale: [
+				{ id: 'scale-a', frame: 0, value: { x: 100, y: 100 }, easing: 'linear' },
+				{ id: 'scale-b', frame: 30, value: { x: 200, y: 50 }, easing: 'linear' }
+			]
+		};
+		const driver = item('two', 40);
+		const input = {
+			...props(),
+			item: shape,
+			items: [shape, driver]
+		};
+		timelineStore._setItems([shape, driver]);
+		await render(PropertyRuntimePanel, input);
+		const separate = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+			(button) => button.textContent?.trim() === 'Separate' && !button.disabled
+		);
+		expect(separate).toBeDefined();
+		separate?.click();
+		const separated = timelineStore.itemById.get('one');
+		expect(separated?.keyframes?.width?.values).toEqual([400, 800]);
+		expect(separated?.keyframes?.height?.values).toEqual([200, 100]);
+		expect(separated?.separatedVectorProperties).toEqual(['scale']);
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
 });

@@ -3,7 +3,8 @@
 	import type {
 		DirectLinkableProperty,
 		PropertyExpression,
-		TimelineItem
+		TimelineItem,
+		VectorKeyframeProperty
 	} from '$lib/video-editor/project/types';
 	import {
 		removeDirectPropertyLink,
@@ -11,6 +12,17 @@
 		setDirectPropertyLink,
 		setPropertyExpression
 	} from '$lib/video-editor/timeline/actions/property-runtime';
+	import {
+		coupleVectorDimensions,
+		hasVectorDimensionAuthoringConflict,
+		separateVectorDimensions,
+		vectorDimensionsNeedBake,
+		vectorSeparationNeedsBake
+	} from '$lib/video-editor/timeline/actions/vector-dimensions';
+	import {
+		activeVectorKeyframes,
+		VECTOR_COMPONENTS
+	} from '$lib/video-editor/timeline/vector-keyframes';
 	import {
 		getAnimatablePropertiesForItem,
 		resolvePreExpressionItemAt
@@ -55,8 +67,7 @@
 
 	const targetProperties = $derived.by<DirectLinkableProperty[]>(() => {
 		const properties = availableProperties.filter(isDirectLinkableProperty);
-		if (properties.includes('x') && properties.includes('y')) properties.unshift('position');
-		return [...new Set(properties)];
+		return withVectorProperties(properties);
 	});
 	let targetProperty = $state<DirectLinkableProperty>('x');
 	let sourceItemId = $state('');
@@ -116,6 +127,16 @@
 				? null
 				: m.video_editor_expression_wrong_type())
 	);
+	const dimensionRows = $derived(
+		(['position', 'scale', 'anchor'] as const).map((property) => ({
+			property,
+			coupled: Boolean(activeVectorKeyframes(item, property)),
+			hasAnimation: hasVectorDimensionAnimation(property),
+			needsBake: activeVectorKeyframes(item, property)
+				? vectorSeparationNeedsBake(item, property)
+				: vectorDimensionsNeedBake(item, property)
+		}))
+	);
 
 	$effect(() => {
 		if (!targetProperties.includes(targetProperty)) targetProperty = targetProperties[0] ?? 'x';
@@ -147,8 +168,15 @@
 		const properties: DirectLinkableProperty[] = getAnimatablePropertiesForItem(candidate).flatMap(
 			(property) => (isDirectLinkableProperty(property) ? [property] : [])
 		);
-		if (properties.includes('x') && properties.includes('y')) properties.unshift('position');
-		return [...new Set(properties)];
+		return withVectorProperties(properties);
+	}
+
+	function withVectorProperties(properties: DirectLinkableProperty[]): DirectLinkableProperty[] {
+		const next = [...properties];
+		if (next.includes('x') && next.includes('y')) next.unshift('position');
+		if (next.includes('width') && next.includes('height')) next.unshift('scale');
+		if (next.includes('anchorX') && next.includes('anchorY')) next.unshift('anchor');
+		return [...new Set(next)];
 	}
 
 	function eligibleProperties(candidate: TimelineItem): DirectLinkableProperty[] {
@@ -160,9 +188,10 @@
 	}
 
 	function label(property: DirectLinkableProperty): string {
-		return property === 'position'
-			? m.video_editor_expression_position()
-			: property.replace(/([a-z])([A-Z])/g, '$1 $2');
+		if (property === 'position') return m.video_editor_expression_position();
+		if (property === 'scale') return m.video_editor_expression_scale();
+		if (property === 'anchor') return m.video_editor_expression_anchor();
+		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
 	}
 
 	function itemLabel(itemId: string): string {
@@ -291,6 +320,30 @@
 		pickDrag = null;
 		status = m.video_editor_expression_pick_cancelled();
 	}
+
+	function hasVectorDimensionAnimation(property: VectorKeyframeProperty): boolean {
+		if (activeVectorKeyframes(item, property)) return true;
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[property];
+		return Boolean(item.keyframes?.[xProperty] || item.keyframes?.[yProperty]);
+	}
+
+	function toggleVectorDimensions(property: VectorKeyframeProperty, coupled: boolean): void {
+		if (hasVectorDimensionAuthoringConflict(item, property, coupled)) {
+			status = m.video_editor_expression_dimensions_conflict();
+			return;
+		}
+		const needsBake = coupled
+			? vectorSeparationNeedsBake(item, property)
+			: vectorDimensionsNeedBake(item, property);
+		const changed = coupled
+			? separateVectorDimensions(item.id, property, needsBake)
+			: coupleVectorDimensions(item.id, property, undefined, needsBake);
+		if (!changed) return;
+		status = coupled
+			? m.video_editor_expression_dimensions_separated({ property: label(property) })
+			: m.video_editor_expression_dimensions_coupled({ property: label(property) });
+		onedit();
+	}
 </script>
 
 <svelte:window
@@ -414,6 +467,39 @@
 				{/if}
 			</div>
 		</div>
+		<div class="dimension-strip" aria-label={m.video_editor_expression_dimensions_title()}>
+			<div>
+				<strong>{m.video_editor_expression_dimensions_title()}</strong>
+				<span>{m.video_editor_expression_dimensions_description()}</span>
+			</div>
+			{#each dimensionRows as row}
+				<div class="dimension-row">
+					<span>{label(row.property)}</span>
+					<small
+						>{row.coupled
+							? m.video_editor_expression_dimensions_coupled_state()
+							: m.video_editor_expression_dimensions_separated_state()}</small
+					>
+					<button
+						type="button"
+						disabled={!row.hasAnimation}
+						title={row.needsBake
+							? row.coupled
+								? m.video_editor_expression_dimensions_separate_bake_help()
+								: m.video_editor_expression_dimensions_bake_help()
+							: undefined}
+						onclick={() => toggleVectorDimensions(row.property, row.coupled)}
+						>{row.coupled
+							? row.needsBake
+								? m.video_editor_expression_dimensions_bake_separate()
+								: m.video_editor_expression_dimensions_separate()
+							: row.needsBake
+								? m.video_editor_expression_dimensions_bake_couple()
+								: m.video_editor_expression_dimensions_couple()}</button
+					>
+				</div>
+			{/each}
+		</div>
 		<p class="status" aria-live="polite">{status}</p>
 
 		{#if pickDrag}
@@ -519,6 +605,31 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 0.35rem;
+	}
+	.dimension-strip {
+		display: grid;
+		grid-template-columns: minmax(12rem, 1fr) repeat(3, minmax(8rem, auto));
+		gap: 0.35rem;
+		align-items: center;
+		margin-top: 0.45rem;
+		border: 1px solid oklch(0.26 0.014 55);
+		border-radius: 0.4rem;
+		padding: 0.4rem 0.45rem;
+		background: oklch(0.155 0.008 55);
+		font-size: 0.625rem;
+	}
+	.dimension-strip > div:first-child,
+	.dimension-row {
+		display: grid;
+		gap: 0.15rem;
+	}
+	.dimension-strip > div:first-child span,
+	.dimension-row small {
+		color: oklch(0.62 0.015 60);
+		font-size: 0.5625rem;
+	}
+	.dimension-row button {
+		margin-top: 0.15rem;
 	}
 	.offset {
 		display: flex;
@@ -657,6 +768,9 @@
 	}
 	@media (max-width: 48rem) {
 		.runtime-grid {
+			grid-template-columns: 1fr;
+		}
+		.dimension-strip {
 			grid-template-columns: 1fr;
 		}
 	}

@@ -22,6 +22,7 @@ import {
 } from '../saved-animation';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
+import { VECTOR_COMPONENTS } from '../vector-keyframes';
 
 export interface ApplySavedAnimationOptions {
 	itemIds: string[];
@@ -62,8 +63,8 @@ interface MergedTrack {
 	writtenFrames: number[];
 }
 
-interface MergedPosition {
-	position: VectorKeyframe[];
+interface MergedVector {
+	keyframes: VectorKeyframe[];
 	applied: number;
 	writtenFrames: number[];
 }
@@ -130,12 +131,19 @@ function prepareSavedAnimation(
 	const timeScale = options.retime ? Math.max(0, maxFrame - anchorFrame) / sourceLastFrame : 1;
 	const retime = (frame: number): number =>
 		Math.max(0, Math.min(maxFrame, anchorFrame + Math.round(frame * timeScale)));
-	const hasPosition = Boolean(
-		options.preset.vectorProperties?.some((entry) => entry.property === 'position')
+	const vectorRecipeProperties = new Set(
+		(options.preset.vectorProperties ?? []).map((entry) => entry.property)
 	);
 
 	for (const property of options.preset.properties) {
-		if (hasPosition && (property.property === 'x' || property.property === 'y')) continue;
+		if (
+			[...vectorRecipeProperties].some((vectorProperty) => {
+				const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
+				return property.property === xProperty || property.property === yProperty;
+			})
+		) {
+			continue;
+		}
 		const targetProperty = remapProperty(property.property, effectMapping.idBySourceId);
 		if (!targetProperty) continue;
 		const incoming = retimedScalarKeys(property.keyframes, retime);
@@ -148,16 +156,18 @@ function prepareSavedAnimation(
 	}
 
 	let vectorKeyframes = item.vectorKeyframes;
-	const positionRecipe = options.preset.vectorProperties?.find(
-		(property) => property.property === 'position'
-	);
-	if (positionRecipe) {
-		const incoming = retimedVectorKeys(positionRecipe.keyframes, retime);
-		const result = mergePosition(item.vectorKeyframes?.position ?? [], incoming, options.mode);
+	for (const recipe of options.preset.vectorProperties ?? []) {
+		const incoming = retimedVectorKeys(recipe.keyframes, retime);
+		const result = mergeVector(
+			item.vectorKeyframes?.[recipe.property] ?? [],
+			incoming,
+			options.mode
+		);
 		if (result.applied > 0) {
-			vectorKeyframes = { ...item.vectorKeyframes, position: result.position };
-			delete keyframes.x;
-			delete keyframes.y;
+			vectorKeyframes = { ...vectorKeyframes, [recipe.property]: result.keyframes };
+			const [xProperty, yProperty] = VECTOR_COMPONENTS[recipe.property];
+			delete keyframes[xProperty];
+			delete keyframes[yProperty];
 			writtenKeyframes += result.applied;
 			writtenFrames.push(...result.writtenFrames);
 		}
@@ -180,7 +190,12 @@ function prepareSavedAnimation(
 		patch: {
 			keyframes: Object.keys(keyframes).length > 0 ? keyframes : undefined,
 			vectorKeyframes,
-			...(positionRecipe && { animationVersion: 2 as const }),
+			...(vectorRecipeProperties.size > 0 && { animationVersion: 2 as const }),
+			...(vectorRecipeProperties.size > 0 && {
+				separatedVectorProperties: item.separatedVectorProperties?.filter(
+					(property) => !vectorRecipeProperties.has(property)
+				)
+			}),
 			...(effectMapping.effects.length !== (item.effects ?? []).length && {
 				effects: effectMapping.effects
 			}),
@@ -318,11 +333,11 @@ function mergeTrack(
 	};
 }
 
-function mergePosition(
+function mergeVector(
 	existing: readonly VectorKeyframe[],
 	incoming: readonly VectorKeyframe[],
 	mode: 'replace' | 'add'
-): MergedPosition {
+): MergedVector {
 	const from = Math.min(...incoming.map((entry) => entry.frame));
 	const to = Math.max(...incoming.map((entry) => entry.frame));
 	const byFrame = new Map(
@@ -339,7 +354,7 @@ function mergePosition(
 		writtenFrames.push(entry.frame);
 	}
 	return {
-		position: [...byFrame.values()].toSorted((left, right) => left.frame - right.frame),
+		keyframes: [...byFrame.values()].toSorted((left, right) => left.frame - right.frame),
 		applied,
 		writtenFrames
 	};

@@ -5,9 +5,19 @@
  * animated-transform-resolver.ts, animated-crop-resolver.ts, and
  * animated-text-item.ts. Adapted to OpenPost's item model.
  */
-import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+import type {
+	KeyframeProperty,
+	TimelineItem,
+	VectorKeyframeProperty
+} from '$lib/video-editor/project/types';
 import { activeValueAt } from './keyframe-interpolation';
-import { activePositionKeyframes, interpolatePosition } from './vector-keyframes';
+import {
+	activeVectorKeyframes,
+	interpolateVector,
+	VECTOR_COMPONENTS,
+	vectorPropertyForComponent,
+	vectorToScalarComponent
+} from './vector-keyframes';
 import {
 	getAnimatableEffectPropertiesForItem,
 	isEffectKeyframeProperty,
@@ -139,20 +149,28 @@ export function resolvePreExpressionItemAt(
 		textShadow: item.textShadow ? { ...item.textShadow } : undefined,
 		effects: resolveAnimatedEffectsAt(item, absoluteFrame)
 	};
-	const positionTrack = activePositionKeyframes(item);
-	if (positionTrack) {
-		const position = interpolatePosition(positionTrack, absoluteFrame - item.from);
-		if (position) {
-			resolved = {
-				...resolved,
-				transform: { ...resolved.transform, x: position.x, y: position.y }
-			};
-		}
+	const activeVectors = new Set<VectorKeyframeProperty>();
+	for (const property of ['position', 'scale', 'anchor'] as const) {
+		const track = activeVectorKeyframes(item, property);
+		if (!track) continue;
+		const value = interpolateVector(track, absoluteFrame - item.from);
+		if (!value) continue;
+		activeVectors.add(property);
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[property];
+		resolved = {
+			...resolved,
+			transform: {
+				...resolved.transform,
+				[xProperty]: vectorToScalarComponent(item, property, 'x', value.x),
+				[yProperty]: vectorToScalarComponent(item, property, 'y', value.y)
+			}
+		};
 	}
 
 	for (const property of getAnimatablePropertiesForItem(item)) {
 		if (isEffectKeyframeProperty(property)) continue;
-		if (positionTrack && (property === 'x' || property === 'y')) continue;
+		const vector = vectorPropertyForComponent(property);
+		if (vector && activeVectors.has(vector.property)) continue;
 		const value = activeValueAt(item, property, absoluteFrame);
 		if (value === null) continue;
 		resolved = applyResolvedValue(resolved, property, value);

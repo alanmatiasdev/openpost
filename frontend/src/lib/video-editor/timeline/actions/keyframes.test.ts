@@ -78,6 +78,56 @@ describe('setKeyframe', () => {
 		expect(commandHistory.undoStack.length).toBe(2);
 	});
 
+	it('promotes width, height, and anchor axes into coupled vector lanes', () => {
+		timelineStore._updateItems([
+			{
+				id: 'a',
+				patch: { transform: { width: 400, height: 200, anchorX: 200, anchorY: 100 } }
+			}
+		]);
+		expect(setKeyframe('a', 'width', 10, 800)).toBe(true);
+		expect(setKeyframe('a', 'height', 10, 100)).toBe(true);
+		expect(setKeyframe('a', 'anchorX', 10, 300)).toBe(true);
+		expect(setKeyframe('a', 'anchorY', 10, 50)).toBe(true);
+		const animated = getItem('a');
+		expect(animated.vectorKeyframes?.scale?.[0]?.value).toEqual({ x: 200, y: 50 });
+		expect(animated.vectorKeyframes?.anchor?.[0]?.value).toEqual({ x: 300, y: 50 });
+		expect(animated.keyframes?.width).toBeUndefined();
+		expect(animated.keyframes?.height).toBeUndefined();
+		expect(editorKeyframes(animated, 'width')[0]?.value).toBe(200);
+	});
+
+	it('edits, duplicates, and removes scale keys through virtual axis rows', () => {
+		timelineStore._updateItems([
+			{
+				id: 'a',
+				patch: { transform: { width: 400, height: 200 } }
+			}
+		]);
+		setKeyframe('a', 'width', 0, 400);
+		setKeyframe('a', 'width', 20, 800);
+		const first = editorKeyframes(getItem('a'), 'width')[0];
+		expect(first).toBeDefined();
+		if (!first) return;
+		expect(updateKeyframes('a', [{ ref: first, frame: 5, value: 125 }])).toBe(true);
+		expect(getItem('a').vectorKeyframes?.scale?.[0]).toMatchObject({
+			frame: 5,
+			value: { x: 125, y: 100 }
+		});
+		expect(duplicateKeyframes('a', [{ ref: { ...first, frame: 5 }, frame: 10, value: 150 }])).toBe(
+			true
+		);
+		expect(getItem('a').vectorKeyframes?.scale?.map((keyframe) => keyframe.frame)).toEqual([
+			5, 10, 20
+		]);
+		const duplicate = editorKeyframes(getItem('a'), 'width').find(
+			(keyframe) => keyframe.frame === 10
+		);
+		expect(duplicate).toBeDefined();
+		expect(duplicate && removeKeyframes('a', [duplicate])).toBe(true);
+		expect(getItem('a').vectorKeyframes?.scale?.map((keyframe) => keyframe.frame)).toEqual([5, 20]);
+	});
+
 	it('skips the history step when nothing changes', () => {
 		setKeyframe('a', 'opacity', 15, 0.5);
 		expect(commandHistory.undoStack.length).toBe(1);
@@ -646,7 +696,10 @@ describe('setAnimatedProperty', () => {
 			continuous: true
 		});
 		expect(getItem('animated').keyframes).toBeUndefined();
-		expect([...keyframeSelectionStore.forItem('animated')]).toEqual(['x-a', 'x-a:y']);
+		expect([...keyframeSelectionStore.forItem('animated')]).toEqual([
+			position?.[0]?.id,
+			`${position?.[0]?.id}:y`
+		]);
 		expect(commandHistory.undoStack).toHaveLength(1);
 
 		expect(

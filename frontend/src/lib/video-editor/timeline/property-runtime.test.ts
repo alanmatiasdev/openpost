@@ -80,6 +80,43 @@ describe('property runtime', () => {
 		expect(resolve(target, [source, target]).transform).toMatchObject({ x: 25, y: 50 });
 	});
 
+	it('links percentage scale and evaluates anchor vectors', () => {
+		const source = item('source', {
+			transform: { width: 200, height: 100 },
+			vectorKeyframes: {
+				scale: [{ id: 'scale', frame: 30, value: { x: 150, y: 50 }, easing: 'linear' }]
+			}
+		});
+		const target = item('target', {
+			transform: { width: 400, height: 200, anchorX: 200, anchorY: 100 },
+			propertyLinks: [
+				{
+					type: 'link',
+					targetProperty: 'scale',
+					sourceItemId: 'source',
+					sourceProperty: 'scale',
+					enabled: true,
+					timeOffsetFrames: 0
+				}
+			],
+			expressions: [
+				{
+					type: 'expression',
+					targetProperty: 'anchor',
+					source: 'value + [25, -25]',
+					enabled: true
+				}
+			]
+		});
+
+		expect(resolve(target, [source, target]).transform).toMatchObject({
+			width: 600,
+			height: 100,
+			anchorX: 225,
+			anchorY: 75
+		});
+	});
+
 	it('keeps authored values for broken links, bad types, and imported cycles', () => {
 		const target = item('target', {
 			propertyLinks: [

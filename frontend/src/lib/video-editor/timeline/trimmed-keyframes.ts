@@ -5,10 +5,11 @@ import type {
 	KeyframeProperty,
 	KeyframeTrack,
 	TimelineItem,
-	VectorKeyframe
+	VectorKeyframe,
+	VectorKeyframeProperty
 } from '$lib/video-editor/project/types';
 import { interpolateAt } from './keyframe-interpolation';
-import { interpolatePosition } from './vector-keyframes';
+import { interpolateVector } from './vector-keyframes';
 
 export interface TrimmedKeyframeCleanupResult {
 	keyframes: ItemKeyframes | undefined;
@@ -22,9 +23,9 @@ export function countTrimmedKeyframes(item: TimelineItem): number {
 	for (const track of Object.values(item.keyframes ?? {})) {
 		if (track) count += track.frames.filter((frame) => frame >= item.durationInFrames).length;
 	}
-	count +=
-		item.vectorKeyframes?.position?.filter((keyframe) => keyframe.frame >= item.durationInFrames)
-			.length ?? 0;
+	for (const track of Object.values(item.vectorKeyframes ?? {})) {
+		count += track?.filter((keyframe) => keyframe.frame >= item.durationInFrames).length ?? 0;
+	}
 	return count;
 }
 
@@ -59,11 +60,12 @@ export function cleanupTrimmedKeyframes(
 	}
 
 	let vectorKeyframes = item.vectorKeyframes;
-	const position = item.vectorKeyframes?.position;
-	if (position) {
-		const cleanup = cleanupPosition(position, boundaryFrame, createId);
+	for (const property of ['position', 'scale', 'anchor'] as const) {
+		const source = item.vectorKeyframes?.[property];
+		if (!source) continue;
+		const cleanup = cleanupVector(source, boundaryFrame, createId);
 		if (cleanup.removedCount > 0) {
-			vectorKeyframes = { ...item.vectorKeyframes, position: cleanup.position };
+			vectorKeyframes = { ...vectorKeyframes, [property]: cleanup.keyframes };
 			removedCount += cleanup.removedCount;
 			insertedBoundaryCount += cleanup.insertedBoundary ? 1 : 0;
 		}
@@ -91,8 +93,8 @@ interface ScalarTrackCleanup {
 	insertedBoundary: boolean;
 }
 
-interface PositionCleanup {
-	position: VectorKeyframe[];
+interface VectorCleanup {
+	keyframes: VectorKeyframe[];
 	removedCount: number;
 	insertedBoundary: boolean;
 }
@@ -143,23 +145,23 @@ function entriesToTrack(entries: readonly TrackEntry[]): KeyframeTrack {
 	};
 }
 
-function cleanupPosition(
-	position: readonly VectorKeyframe[],
+function cleanupVector(
+	keyframes: readonly VectorKeyframe[],
 	boundaryFrame: number,
 	createId: () => string
-): PositionCleanup {
-	const sorted = [...position].toSorted((left, right) => left.frame - right.frame);
+): VectorCleanup {
+	const sorted = [...keyframes].toSorted((left, right) => left.frame - right.frame);
 	const removedCount = sorted.filter((keyframe) => keyframe.frame > boundaryFrame).length;
 	if (removedCount === 0) {
-		return { position: [...position], removedCount: 0, insertedBoundary: false };
+		return { keyframes: [...keyframes], removedCount: 0, insertedBoundary: false };
 	}
 
 	const kept = sorted.filter((keyframe) => keyframe.frame <= boundaryFrame);
 	if (kept.some((keyframe) => keyframe.frame === boundaryFrame)) {
-		return { position: kept, removedCount, insertedBoundary: false };
+		return { keyframes: kept, removedCount, insertedBoundary: false };
 	}
 	const template = kept.at(-1) ?? sorted.find((keyframe) => keyframe.frame > boundaryFrame);
-	const value = interpolatePosition(sorted, boundaryFrame) ?? template?.value ?? { x: 0, y: 0 };
+	const value = interpolateVector(sorted, boundaryFrame) ?? template?.value ?? { x: 0, y: 0 };
 	kept.push({
 		id: createId(),
 		frame: boundaryFrame,
@@ -167,5 +169,5 @@ function cleanupPosition(
 		easing: template?.easing ?? 'linear',
 		...(template?.easingConfig && { easingConfig: { ...template.easingConfig } })
 	});
-	return { position: kept, removedCount, insertedBoundary: true };
+	return { keyframes: kept, removedCount, insertedBoundary: true };
 }

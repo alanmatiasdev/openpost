@@ -23,6 +23,7 @@
 	} from '$lib/video-editor/timeline/keyframe-dopesheet';
 	import {
 		editorKeyframes,
+		editorPropertyLabel,
 		keyframeIdentity,
 		marqueeSelection,
 		type EditorKeyframe,
@@ -149,7 +150,7 @@
 	});
 
 	function propertyLabel(property: KeyframeProperty): string {
-		return effectPropertyLabel(item, property) ?? property.replace(/([a-z])([A-Z])/g, '$1 $2');
+		return effectPropertyLabel(item, property) ?? editorPropertyLabel(item, property);
 	}
 
 	function propertyGroup(property: KeyframeProperty): PropertyGroup {

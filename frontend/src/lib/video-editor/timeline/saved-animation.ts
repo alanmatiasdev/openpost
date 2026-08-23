@@ -14,7 +14,7 @@ import type {
 import type { ItemEffect } from '$lib/video-editor/effects/types';
 import { parseEffectKeyframeProperty } from '$lib/video-editor/effects/effect-keyframes';
 import { getAnimatablePropertiesForItem } from './animated-properties';
-import { activePositionKeyframes } from './vector-keyframes';
+import { activeVectorKeyframes, VECTOR_COMPONENTS } from './vector-keyframes';
 
 export type AnimationPresetIncompatibility =
 	| 'type-mismatch'
@@ -32,10 +32,12 @@ export function captureAnimationFromItem(
 	createdAt = Date.now()
 ): AnimationPreset | null {
 	const scalarProperties = capturedScalarProperties(item);
-	const position = activePositionKeyframes(item);
-	const vectorProperties: AnimationPresetVectorProperty[] = position
-		? [{ property: 'position', keyframes: position.map(cloneVectorKeyframe) }]
-		: [];
+	const vectorProperties: AnimationPresetVectorProperty[] = (
+		['position', 'scale', 'anchor'] as const
+	).flatMap((property) => {
+		const keyframes = activeVectorKeyframes(item, property);
+		return keyframes ? [{ property, keyframes: keyframes.map(cloneVectorKeyframe) }] : [];
+	});
 	const motionModifiers = (item.motionModifiers ?? [])
 		.filter((modifier) => modifier.enabled && modifier.amplitude > 0)
 		.map(cloneMotionModifier);
@@ -117,12 +119,11 @@ export function getAnimationPresetCompatibility(
 			return { compatible: false, reason: 'missing-property' };
 		}
 	}
-	if (
-		preset.vectorProperties?.some(
-			(property) => property.property === 'position' && (!available.has('x') || !available.has('y'))
-		)
-	) {
-		return { compatible: false, reason: 'missing-property' };
+	for (const property of preset.vectorProperties ?? []) {
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[property.property];
+		if (!available.has(xProperty) || !available.has(yProperty)) {
+			return { compatible: false, reason: 'missing-property' };
+		}
 	}
 	return { compatible: true };
 }
