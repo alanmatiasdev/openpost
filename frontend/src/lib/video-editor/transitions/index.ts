@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - src/shared/timeline/transitions/index.ts
  * Standalone exact FreeCut transition rendering library for OpenPost.

@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - canvas transition pixel tests
  * Representative exact canvas pixels for browser environment.

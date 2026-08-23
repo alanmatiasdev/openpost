@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - registry/gpu/pipeline tests
  * Verifies 44-entry registry, defaults, timing/property helpers, and graceful GPU fallback.

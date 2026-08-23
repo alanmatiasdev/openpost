@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - src/shared/timeline/transitions/renderers/flip.ts
  */

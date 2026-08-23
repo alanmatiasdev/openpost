@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTransition } from '../project/types';
 import {
 	calculateTransitionPortions,
+	calculateTransitionProgress,
 	canPreserveTransition,
+	getMaxTransitionDuration,
 	resolveTransitionWindow
 } from './transition-planner';
 
@@ -73,5 +75,27 @@ describe('transition planner', () => {
 		const right = clip({ id: 'right', from: 60, sourceStart: 20 });
 		expect(canPreserveTransition({ ...transition, alignment: 1 }, left, right, 30, 0)).toBe(true);
 		expect(canPreserveTransition({ ...transition, alignment: 0 }, left, right, 30, 0)).toBe(false);
+	});
+
+	it('finds the exact duration ceiling for each placement', () => {
+		const left = clip({ sourceEnd: 100 });
+		const right = clip({ id: 'right', from: 60, sourceStart: 20 });
+		expect(getMaxTransitionDuration(left, right, 0, 30)).toBe(20);
+		expect(getMaxTransitionDuration(left, right, 0.5, 30)).toBe(40);
+		expect(getMaxTransitionDuration(left, right, 1, 30)).toBe(20);
+	});
+
+	it('reaches exact endpoints and applies stored transition timing', () => {
+		expect(calculateTransitionProgress(0, 30)).toBe(0);
+		expect(calculateTransitionProgress(29, 30)).toBe(1);
+		expect(calculateTransitionProgress(14.5, 30, 'ease-in')).toBe(0.25);
+		expect(
+			calculateTransitionProgress(14.5, 30, 'cubic-bezier', {
+				x1: 0.42,
+				y1: 0,
+				x2: 0.58,
+				y2: 1
+			})
+		).toBeCloseTo(0.5);
 	});
 });

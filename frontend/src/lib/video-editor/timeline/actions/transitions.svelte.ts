@@ -1,5 +1,6 @@
 /**
- * Transition actions: crossfade and fade-to-black between adjacent clips.
+ * Cut-centered transition actions shared by the picker, timeline, preview,
+ * and export renderer.
  *
  * A transition lives between two items that touch edge-to-edge on the same
  * track. Splits refuse to land inside a transition zone (FreeCut semantics).
@@ -7,13 +8,60 @@
  * Ported from FreeCut (MIT) transition model, trimmed to two v1 types.
  */
 
-import type { TimelineItem, TimelineTransition } from '../../project/types';
+import type {
+	TimelineItem,
+	TimelineTransition,
+	TransitionDirection,
+	TransitionPropertyValue,
+	TransitionTiming
+} from '../../project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
-import { canPreserveTransition, resolveTransitionWindow } from '../transition-planner';
+import {
+	calculateTransitionProgress,
+	canPreserveTransition,
+	getMaxTransitionDuration,
+	resolveTransitionWindow
+} from '../transition-planner';
+import { transitionRegistry } from '../../transitions';
 
 export { transitionsStore } from './transitions-store.svelte';
+
+export interface TransitionCreateOptions {
+	alignment?: number;
+	presentation?: string;
+	direction?: TransitionDirection;
+	timing?: TransitionTiming;
+	properties?: Record<string, TransitionPropertyValue>;
+}
+
+export type TransitionUpdates = Partial<
+	Pick<
+		TimelineTransition,
+		| 'durationInFrames'
+		| 'type'
+		| 'presentation'
+		| 'direction'
+		| 'timing'
+		| 'alignment'
+		| 'bezierPoints'
+		| 'properties'
+	>
+>;
+
+function transitionValuesEqual(left: TimelineTransition, right: TimelineTransition): boolean {
+	return (
+		left.durationInFrames === right.durationInFrames &&
+		left.type === right.type &&
+		left.presentation === right.presentation &&
+		left.direction === right.direction &&
+		left.timing === right.timing &&
+		(left.alignment ?? 0.5) === (right.alignment ?? 0.5) &&
+		JSON.stringify(left.bezierPoints) === JSON.stringify(right.bezierPoints) &&
+		JSON.stringify(left.properties) === JSON.stringify(right.properties)
+	);
+}
 
 function findEdgePair(
 	fromItemId: string,
@@ -30,7 +78,7 @@ export function addTransition(
 	toItemId: string,
 	type: TimelineTransition['type'] = 'crossfade',
 	durationInFrames?: number,
-	alignment?: number
+	alignmentOrOptions?: number | TransitionCreateOptions
 ): string {
 	// SAFETY: execute returns the action's own string result unchanged.
 	return execute('ADD_TRANSITION', () => {
@@ -38,12 +86,39 @@ export function addTransition(
 		if (!pair) {
 			throw new Error('Transitions need two touching clips on the same track');
 		}
-		const existing = transitionsStore.forItem(fromItemId) ?? transitionsStore.forItem(toItemId);
+		const existing = transitionsStore.list.find(
+			(transition) => transition.fromItemId === fromItemId && transition.toItemId === toItemId
+		);
 		if (existing) throw new Error('Clips already have a transition here');
-		const frames = durationInFrames ?? Math.max(2, Math.round(timelineStore.fps / 2));
+		const options =
+			typeof alignmentOrOptions === 'number'
+				? { alignment: alignmentOrOptions }
+				: (alignmentOrOptions ?? {});
+		const presentation =
+			options.presentation ?? (type === 'fade-black' ? 'dipToColorDissolve' : 'fade');
+		const definition = transitionRegistry.getDefinition(presentation);
+		const alignment = options.alignment ?? 0.5;
+		const availableMax = getMaxTransitionDuration(pair.from, pair.to, alignment, timelineStore.fps);
+		const minimum = definition?.minDuration ?? 2;
+		if (availableMax < minimum) {
+			throw new Error('Clips do not have enough source handle for this transition');
+		}
+		const frames = Math.min(
+			availableMax,
+			definition?.maxDuration ?? availableMax,
+			Math.max(minimum, Math.round(durationInFrames ?? definition?.defaultDuration ?? 30))
+		);
 		const transition: TimelineTransition = {
 			id: crypto.randomUUID(),
 			type,
+			presentation,
+			timing: options.timing ?? 'linear',
+			direction: options.direction ?? definition?.directions?.[0],
+			properties:
+				options.properties ??
+				Object.fromEntries(
+					(definition?.parameters ?? []).map((parameter) => [parameter.key, parameter.defaultValue])
+				),
 			durationInFrames: frames,
 			alignment,
 			fromItemId,
@@ -55,6 +130,30 @@ export function addTransition(
 		transitionsStore.list.push(transition);
 		return transition.id;
 	}) as string;
+}
+
+export function updateTransition(id: string, updates: TransitionUpdates): boolean {
+	return execute('UPDATE_TRANSITION', () => {
+		const current = transitionsStore.list.find((transition) => transition.id === id);
+		if (!current) return false;
+		const next: TimelineTransition = {
+			...current,
+			...updates,
+			...(updates.properties && { properties: { ...updates.properties } }),
+			durationInFrames: Math.max(
+				1,
+				Math.round(updates.durationInFrames ?? current.durationInFrames)
+			),
+			alignment: Math.min(1, Math.max(0, updates.alignment ?? current.alignment ?? 0.5))
+		};
+		const pair = findEdgePair(current.fromItemId, current.toItemId);
+		if (!pair || !canPreserveTransition(next, pair.from, pair.to, timelineStore.fps)) return false;
+		if (transitionValuesEqual(current, next)) return false;
+		transitionsStore.setAll(
+			transitionsStore.list.map((transition) => (transition.id === id ? next : transition))
+		);
+		return true;
+	});
 }
 
 export function removeTransition(id: string): void {
@@ -97,13 +196,25 @@ export function transitionAtFrame(
 	incoming: string;
 	progress: number;
 	type: TimelineTransition['type'];
+	transition: TimelineTransition;
 } | null {
 	const from = timelineStore.itemById.get(transition.fromItemId);
 	const to = timelineStore.itemById.get(transition.toItemId);
 	if (!from || !to) return null;
 	const window = resolveTransitionWindow(transition, from, to);
 	if (!window || frame < window.startFrame || frame >= window.endFrame) return null;
-	const progress = Math.min(1, (frame - window.startFrame) / Math.max(1, window.durationInFrames));
+	const progress = calculateTransitionProgress(
+		frame - window.startFrame,
+		window.durationInFrames,
+		transition.timing,
+		transition.bezierPoints
+	);
 	void fpsForDuration;
-	return { outgoing: from.id, incoming: to.id, progress, type: transition.type };
+	return {
+		outgoing: from.id,
+		incoming: to.id,
+		progress,
+		type: transition.type,
+		transition
+	};
 }

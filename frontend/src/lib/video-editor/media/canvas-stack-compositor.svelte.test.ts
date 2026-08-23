@@ -179,4 +179,73 @@ describe('CanvasStackCompositor', () => {
 		}
 		compositor.dispose();
 	});
+
+	it('renders exact transition endpoints from two complete scene branches', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		const outgoing = layer('normal');
+		const incoming = { ...layer('normal'), id: 'incoming' };
+		const transition = {
+			id: 'transition',
+			type: 'crossfade' as const,
+			presentation: 'dissolve',
+			durationInFrames: 10,
+			fromItemId: outgoing.id,
+			toItemId: incoming.id
+		};
+
+		stack.beginFrame(4, 4, '#202020');
+		expect(
+			stack.compositeTransition(
+				{ source: { source: solid('#ff0000'), width: 4, height: 4 }, item: outgoing, alpha: 1 },
+				{ source: { source: solid('#0000ff'), width: 4, height: 4 }, item: incoming, alpha: 1 },
+				transition,
+				0,
+				0
+			)
+		).toBe(true);
+		expect(pixel(output)).toEqual([255, 0, 0, 255]);
+
+		stack.beginFrame(4, 4, '#202020');
+		stack.compositeTransition(
+			{ source: { source: solid('#ff0000'), width: 4, height: 4 }, item: outgoing, alpha: 1 },
+			{ source: { source: solid('#0000ff'), width: 4, height: 4 }, item: incoming, alpha: 1 },
+			transition,
+			1,
+			0
+		);
+		expect(pixel(output)).toEqual([0, 0, 255, 255]);
+		stack.dispose();
+	});
+
+	it('keeps painting higher tracks after replacing the transition scene', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		const outgoing = layer('normal');
+		const incoming = { ...layer('normal'), id: 'incoming' };
+		stack.beginFrame(4, 4, '#000000');
+		stack.compositeTransition(
+			{ source: { source: solid('#ff0000'), width: 4, height: 4 }, item: outgoing, alpha: 1 },
+			{ source: { source: solid('#0000ff'), width: 4, height: 4 }, item: incoming, alpha: 1 },
+			{
+				id: 'transition',
+				type: 'crossfade',
+				presentation: 'dissolve',
+				durationInFrames: 10,
+				fromItemId: outgoing.id,
+				toItemId: incoming.id
+			},
+			0.5,
+			0
+		);
+		const overlay = { ...layer('normal', 0.5), id: 'overlay' };
+		stack.compositeLayer({ source: solid('#ffffff'), width: 4, height: 4 }, overlay, 0.5, 0);
+
+		const [red, green, blue, alpha] = pixel(output);
+		expect(red).toBeGreaterThanOrEqual(190);
+		expect(green).toBeGreaterThanOrEqual(126);
+		expect(blue).toBeGreaterThanOrEqual(190);
+		expect(alpha).toBe(255);
+		stack.dispose();
+	});
 });

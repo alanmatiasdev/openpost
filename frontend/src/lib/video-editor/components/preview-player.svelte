@@ -113,7 +113,8 @@
 		collectAdjustmentLayers(timelineStore.items, timelineStore.tracks)
 	);
 	const needsStackedComposition = $derived(
-		colorPreviewStore.comparisonMode !== 'after' ||
+		activeTransition !== null ||
+			colorPreviewStore.comparisonMode !== 'after' ||
 			colorPreviewStore.activePicker !== null ||
 			colorPreviewStore.frameCaptureItemId !== null ||
 			activeItems.some(
@@ -219,9 +220,9 @@
 			);
 		}
 		const frame = timelineStore.currentFrame;
-		for (const item of inputs.items) {
+		const resolveParticipant = (item: TimelineItem, beforeColor: boolean) => {
 			const source = sourceProviders.get(item.id)?.();
-			if (!source) continue;
+			if (!source) return null;
 			const baseResolved = resolveAnimatedItemAt(item, frame);
 			const directDraft = item.id === selectedItemId;
 			const resolved = scaleItemForCanvas(
@@ -237,18 +238,67 @@
 				inputs.height / canvasHeight
 			);
 			const afterEffects = effectiveEffects(item, inputs.layers, inputs.orders, frame);
-			resolved.effects =
-				comparisonMode === 'before' ? withoutColorGradeEffects(afterEffects) : afterEffects;
-			const alpha = itemOpacity(resolved) * transitionOpacity(item);
-			if (alpha <= 0) continue;
-			stack.compositeLayer(source, resolved, alpha, frame / editorSession.fps);
-			if (comparisonMode === 'split' && compare) {
-				compare.compositeLayer(
-					source,
-					{ ...resolved, effects: withoutColorGradeEffects(afterEffects) },
-					alpha,
+			resolved.effects = beforeColor ? withoutColorGradeEffects(afterEffects) : afterEffects;
+			return { source, item: resolved, alpha: itemOpacity(resolved) };
+		};
+		let transitionRendered = false;
+		for (const item of inputs.items) {
+			if (
+				activeTransition &&
+				(item.id === activeTransition.outgoing || item.id === activeTransition.incoming)
+			) {
+				if (transitionRendered) continue;
+				const outgoingItem = inputs.items.find(
+					(candidate) => candidate.id === activeTransition.outgoing
+				);
+				const incomingItem = inputs.items.find(
+					(candidate) => candidate.id === activeTransition.incoming
+				);
+				if (!outgoingItem || !incomingItem) continue;
+				const outgoing = resolveParticipant(outgoingItem, comparisonMode === 'before');
+				const incoming = resolveParticipant(incomingItem, comparisonMode === 'before');
+				if (!outgoing || !incoming) continue;
+				stack.compositeTransition(
+					outgoing,
+					incoming,
+					activeTransition.transition,
+					activeTransition.progress,
 					frame / editorSession.fps
 				);
+				if (comparisonMode === 'split' && compare) {
+					const beforeOutgoing = resolveParticipant(outgoingItem, true);
+					const beforeIncoming = resolveParticipant(incomingItem, true);
+					if (beforeOutgoing && beforeIncoming) {
+						compare.compositeTransition(
+							beforeOutgoing,
+							beforeIncoming,
+							activeTransition.transition,
+							activeTransition.progress,
+							frame / editorSession.fps
+						);
+					}
+				}
+				transitionRendered = true;
+				continue;
+			}
+			const participant = resolveParticipant(item, comparisonMode === 'before');
+			if (!participant || participant.alpha <= 0) continue;
+			stack.compositeLayer(
+				participant.source,
+				participant.item,
+				participant.alpha,
+				frame / editorSession.fps
+			);
+			if (comparisonMode === 'split' && compare) {
+				const beforeParticipant = resolveParticipant(item, true);
+				if (beforeParticipant) {
+					compare.compositeLayer(
+						beforeParticipant.source,
+						beforeParticipant.item,
+						beforeParticipant.alpha,
+						frame / editorSession.fps
+					);
+				}
 			}
 		}
 		publishStackScope(stackCanvas);

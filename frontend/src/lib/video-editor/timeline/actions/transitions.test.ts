@@ -7,7 +7,8 @@ import {
 	outgoingOpacity,
 	removeTransition,
 	transitionsStore,
-	transitionAtFrame
+	transitionAtFrame,
+	updateTransition
 } from './transitions.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 
@@ -61,6 +62,39 @@ describe('transitions', () => {
 		expect(transitionsStore.list.length).toBe(1);
 	});
 
+	it('allows one incoming and one outgoing transition on the same clip', () => {
+		const [left, middle] = setup();
+		const right = clip(120);
+		timelineStore._setItems([left, middle, right]);
+		addTransition(left.id, middle.id, 'crossfade', 15);
+		addTransition(middle.id, right.id, 'crossfade', 15);
+		expect(transitionsStore.incomingFor(middle.id)?.fromItemId).toBe(left.id);
+		expect(transitionsStore.outgoingFor(middle.id)?.toItemId).toBe(right.id);
+	});
+
+	it('updates renderer controls as one validated undo step', () => {
+		const [left, right] = setup();
+		const id = addTransition(left.id, right.id, 'crossfade', 15);
+		expect(
+			updateTransition(id, {
+				presentation: 'wipe',
+				direction: 'from-right',
+				timing: 'ease-in-out',
+				alignment: 1,
+				durationInFrames: 20
+			})
+		).toBe(true);
+		expect(transitionsStore.list[0]).toMatchObject({
+			presentation: 'wipe',
+			direction: 'from-right',
+			timing: 'ease-in-out',
+			alignment: 1,
+			durationInFrames: 20
+		});
+		commandHistory.undo();
+		expect(transitionsStore.list[0]).toMatchObject({ presentation: 'fade', alignment: 0.5 });
+	});
+
 	it('rejects a transition when either clip lacks the required hidden source', () => {
 		const [left, right] = setup();
 		timelineStore._updateItems([{ id: right.id, patch: { sourceStart: 0 } }]);
@@ -75,9 +109,9 @@ describe('transitions', () => {
 		expect(before).toBeNull();
 
 		const mid = transitionAtFrame(transitionsStore.list[0]!, 60, 30);
-		expect(mid?.progress).toBeCloseTo(0.5);
-		expect(outgoingOpacity('crossfade', mid!.progress)).toBeCloseTo(0.5);
-		expect(incomingOpacity('crossfade', mid!.progress)).toBeCloseTo(0.5);
+		expect(mid?.progress).toBeCloseTo(15 / 29);
+		expect(outgoingOpacity('crossfade', mid!.progress)).toBeCloseTo(14 / 29);
+		expect(incomingOpacity('crossfade', mid!.progress)).toBeCloseTo(15 / 29);
 
 		// Past the centered window (frames 45..75) there is no blend.
 		const after = transitionAtFrame(transitionsStore.list[0]!, 90, 30);

@@ -18,6 +18,17 @@ export const transitionsStore = {
 	forItem(itemId: string): TimelineTransition | undefined {
 		return state.transitions.find((t) => t.fromItemId === itemId || t.toItemId === itemId);
 	},
+	incomingFor(itemId: string): TimelineTransition | undefined {
+		return state.transitions.find((transition) => transition.toItemId === itemId);
+	},
+	outgoingFor(itemId: string): TimelineTransition | undefined {
+		return state.transitions.find((transition) => transition.fromItemId === itemId);
+	},
+	between(fromItemId: string, toItemId: string): TimelineTransition | undefined {
+		return state.transitions.find(
+			(transition) => transition.fromItemId === fromItemId && transition.toItemId === toItemId
+		);
+	},
 	/** The in-progress transition overlapping a frame inside an item, if any. */
 	at(item: { id: string; from: number }, relativeFrame: number): TimelineTransition | null {
 		for (const t of state.transitions) {

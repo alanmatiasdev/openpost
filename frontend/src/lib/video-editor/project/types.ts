@@ -6,6 +6,19 @@
  * sequence, no compositions, shapes, masks, or per-band EQ.
  */
 
+import type {
+	BezierPoints as TransitionBezierPoints,
+	TransitionPresentation,
+	TransitionTiming,
+	WipeDirection as TransitionDirection
+} from '../transitions/types';
+
+export type {
+	BezierPoints as TransitionBezierPoints,
+	TransitionTiming,
+	WipeDirection as TransitionDirection
+} from '../transitions/types';
+
 export type TimelineItemKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'adjustment';
 
 export interface ItemTransform {
@@ -277,9 +290,17 @@ export interface TimelineMarker {
 	color: string;
 }
 
+export type TransitionPropertyValue = number | [number, number, number];
+
 export interface TimelineTransition {
 	id: string;
+	/** Legacy display type. New projects use `presentation` for the renderer. */
 	type: 'crossfade' | 'fade-black';
+	presentation?: TransitionPresentation;
+	timing?: TransitionTiming;
+	direction?: TransitionDirection;
+	bezierPoints?: TransitionBezierPoints;
+	properties?: Record<string, TransitionPropertyValue>;
 	durationInFrames: number;
 	/** 0 starts at the cut, 0.5 centers on it, and 1 ends at the cut. */
 	alignment?: number;

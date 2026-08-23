@@ -1,12 +1,10 @@
-// oxlint-disable
-// @ts-nocheck - WebGPU types shimmed separately; preserve exact FreeCut pipeline logic
 /**
  * Ported from FreeCut (MIT) - src/infrastructure/gpu-transitions/transition-pipeline.ts
  */
 import { createLogger } from '$lib/video-editor/workspace-fs/logger';
 import { TRANSITION_COMMON_WGSL } from './common';
 import type { GpuTransitionDefinition } from './types';
-import { GPU_TRANSITION_REGISTRY, getGpuTransition } from './registry';
+import { getGpuTransition } from './registry';
 
 const log = createLogger('TransitionPipeline');
 
@@ -63,16 +61,21 @@ export class TransitionPipeline {
 
 	private init(): void {
 		if (this.initialized) return;
-
-		for (const [id, def] of GPU_TRANSITION_REGISTRY) {
-			this.createTransitionPipeline(id, def);
-		}
-
 		this.initialized = true;
+	}
+
+	private ensureTransitionPipeline(id: string): TransitionPipelineRecord | undefined {
+		const existing = this.pipelines.get(id);
+		if (existing) return existing;
+		const definition = getGpuTransition(id);
+		if (!definition) return undefined;
+		this.createTransitionPipeline(id, definition);
+		return this.pipelines.get(id);
 	}
 
 	private createTransitionPipeline(id: string, def: GpuTransitionDefinition): void {
 		try {
+			this.device.pushErrorScope?.('validation');
 			const shaderCode = `${TRANSITION_COMMON_WGSL}\n${def.shader}`;
 			const shaderModule = this.device.createShaderModule({
 				label: `transition-${id}`,
@@ -83,13 +86,16 @@ export class TransitionPipeline {
 			shaderModule
 				.getCompilationInfo()
 				.then((info) => {
+					let invalid = false;
 					for (const msg of info.messages) {
 						if (msg.type === 'error') {
+							invalid = true;
 							log.error(
 								`Shader "${id}" error at line ${msg.lineNum}:${msg.linePos}: ${msg.message}`
 							);
 						}
 					}
+					if (invalid) this.pipelines.delete(id);
 				})
 				.catch(() => {
 					/* getCompilationInfo not supported */
@@ -126,7 +132,16 @@ export class TransitionPipeline {
 				primitive: { topology: 'triangle-list' }
 			});
 			this.pipelines.set(id, { pipeline, bindGroupLayout });
+			this.device
+				.popErrorScope?.()
+				.then((error) => {
+					if (!error) return;
+					this.pipelines.delete(id);
+					log.error(`Transition pipeline "${id}" failed validation: ${error.message}`);
+				})
+				.catch(() => undefined);
 		} catch (e) {
+			void this.device.popErrorScope?.().catch(() => undefined);
 			log.warn(`Failed to create pipeline for "${id}"`, e);
 		}
 	}
@@ -331,7 +346,7 @@ export class TransitionPipeline {
 		direction?: string,
 		properties?: Record<string, unknown>
 	): OffscreenCanvas | null {
-		if (!this.pipelines.has(transitionId) || !getGpuTransition(transitionId)) return null;
+		if (!this.ensureTransitionPipeline(transitionId)) return null;
 		if (width < 2 || height < 2) return null;
 
 		if (!this.uploadInputs(leftCanvas, rightCanvas, width, height)) return null;
@@ -382,7 +397,7 @@ export class TransitionPipeline {
 		direction?: string,
 		properties?: Record<string, unknown>
 	): boolean {
-		if (!this.pipelines.has(transitionId) || !getGpuTransition(transitionId)) return false;
+		if (!this.ensureTransitionPipeline(transitionId)) return false;
 		if (width < 2 || height < 2) return false;
 		if (outputTexture.width !== width || outputTexture.height !== height) return false;
 
@@ -414,7 +429,7 @@ export class TransitionPipeline {
 		direction?: string,
 		properties?: Record<string, unknown>
 	): boolean {
-		const record = this.pipelines.get(transitionId);
+		const record = this.ensureTransitionPipeline(transitionId);
 		const def = getGpuTransition(transitionId);
 		if (!record || !def) return false;
 		if (width < 2 || height < 2) return false;
@@ -467,7 +482,7 @@ export class TransitionPipeline {
 	}
 
 	has(transitionId: string): boolean {
-		return this.pipelines.has(transitionId);
+		return this.ensureTransitionPipeline(transitionId) !== undefined;
 	}
 
 	destroy(): void {

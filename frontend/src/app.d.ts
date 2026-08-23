@@ -1,6 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 import './lib/browser-capabilities';
+import '@webgpu/types';
 
 declare global {
 	namespace App {

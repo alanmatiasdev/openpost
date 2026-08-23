@@ -15,7 +15,10 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import { activeValueAt } from '../timeline/actions/keyframes';
-import { resolveTransitionWindow } from '../timeline/transition-planner';
+import {
+	calculateTransitionProgress,
+	resolveTransitionWindow
+} from '../timeline/transition-planner';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
@@ -42,6 +45,7 @@ export interface TransitionBlend {
 	incomingId: string;
 	progress: number;
 	type: TimelineTransition['type'];
+	transition: TimelineTransition;
 }
 
 export function outputDurationFrames(items: TimelineItem[]): number {
@@ -134,11 +138,19 @@ export function transitionBlendAtFrame(
 		if (!from || !to) continue;
 		const window = resolveTransitionWindow(transition, from, to);
 		if (!window || frame < window.startFrame || frame >= window.endFrame) continue;
-		const progress = Math.min(
-			1,
-			(frame - window.startFrame) / Math.max(1, window.durationInFrames)
+		const progress = calculateTransitionProgress(
+			frame - window.startFrame,
+			window.durationInFrames,
+			transition.timing,
+			transition.bezierPoints
 		);
-		return { outgoingId: from.id, incomingId: to.id, progress, type: transition.type };
+		return {
+			outgoingId: from.id,
+			incomingId: to.id,
+			progress,
+			type: transition.type,
+			transition
+		};
 	}
 	return null;
 }

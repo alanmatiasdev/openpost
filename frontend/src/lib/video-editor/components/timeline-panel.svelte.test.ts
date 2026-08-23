@@ -353,4 +353,128 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			expect.objectContaining({ id: 'transition', fromItemId: 'video', toItemId: 'next-video' })
 		]);
 	});
+
+	it('selects and resizes a transition as one undoable pointer edit', async () => {
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'next-video',
+				from: 60,
+				label: 'Next video',
+				sourceStart: 10,
+				sourceEnd: 70
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			}
+		]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: 'video',
+			selectedItemIds: ['video']
+		});
+		const transition = document.querySelector<HTMLElement>('[data-transition-id="transition"]');
+		expect(transition).not.toBeNull();
+		transition
+			?.querySelector<HTMLButtonElement>('button[aria-label="Transition"]')
+			?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await nextAnimationFrame();
+		expect(transition?.className).toContain('ring-2');
+		expect(
+			screen.getByRole('button', { name: /^Video\./ }).element().parentElement?.className
+		).not.toContain('ring-1');
+
+		const resizeEnd = screen.getByRole('button', { name: 'Resize transition end' }).element();
+		dispatchPointer(resizeEnd, 'pointerdown', 300);
+		dispatchPointer(window, 'pointermove', 320);
+		await nextAnimationFrame();
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(10);
+		expect(transition?.style.width).toBe('60px');
+
+		dispatchPointer(window, 'pointerup', 320);
+		await nextAnimationFrame();
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(15);
+		expect(commandHistory.getLastCommandType()).toBe('UPDATE_TRANSITION');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(10);
+	});
+
+	it('cancels a transition resize on Escape without saving or history', async () => {
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'next-video',
+				from: 60,
+				label: 'Next video',
+				sourceStart: 10,
+				sourceEnd: 70
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			}
+		]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const resizeStart = screen.getByRole('button', { name: 'Resize transition start' }).element();
+		dispatchPointer(resizeStart, 'pointerdown', 300);
+		dispatchPointer(window, 'pointermove', 280);
+		await nextAnimationFrame();
+		expect(
+			document.querySelector<HTMLElement>('[data-transition-id="transition"]')?.style.width
+		).toBe('60px');
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await nextAnimationFrame();
+
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(10);
+		expect(commandHistory.undoStack).toHaveLength(0);
+		expect(onedit).not.toHaveBeenCalled();
+	});
+
+	it('resizes a selected transition by frame from the keyboard', async () => {
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'next-video',
+				from: 60,
+				label: 'Next video',
+				sourceStart: 20,
+				sourceEnd: 80
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			}
+		]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const resizeEnd = screen.getByRole('button', { name: 'Resize transition end' }).element();
+		resizeEnd.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(11);
+		resizeEnd.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		expect(transitionsStore.list[0]?.durationInFrames).toBe(21);
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
 });

@@ -206,8 +206,8 @@ describe('transitionBlendAtFrame', () => {
 			incomingId: 'right',
 			progress: 0
 		});
-		expect(transitionBlendAtFrame(transitions, clips, 100)).toMatchObject({ progress: 0.5 });
-		expect(transitionBlendAtFrame(transitions, clips, 109)).toMatchObject({ progress: 0.95 });
+		expect(transitionBlendAtFrame(transitions, clips, 100)).toMatchObject({ progress: 10 / 19 });
+		expect(transitionBlendAtFrame(transitions, clips, 109)).toMatchObject({ progress: 1 });
 	});
 
 	it('ignores transitions whose items are gone', () => {

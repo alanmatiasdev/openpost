@@ -40,14 +40,18 @@ import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { scaleItemForCanvas } from './render-geometry';
 import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
-import { CanvasStackCompositor, itemOpacity } from './canvas-stack-compositor';
+import {
+	CanvasStackCompositor,
+	itemOpacity,
+	type StackLayerSource,
+	type StackTransitionParticipant
+} from './canvas-stack-compositor';
 import {
 	collectAdjustmentLayers,
 	effectsForItemAtFrame,
 	type AdjustmentLayerScope
 } from '../effects/adjustment-layers';
 import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
-import { incomingOpacity, outgoingOpacity } from '../timeline/actions/transitions.svelte';
 import {
 	frameToSourceSeconds,
 	isVisibleAtFrame,
@@ -332,17 +336,48 @@ export class TimelineFrameRenderer {
 		return decoder;
 	}
 
+	private async sourceForItem(
+		resolvedItem: TimelineItem,
+		originalItem: TimelineItem,
+		frame: number
+	): Promise<StackLayerSource | null> {
+		if (resolvedItem.type === 'subtitle') {
+			const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
+			return cue ? this.subtitleSource(resolvedItem, cue.text) : null;
+		}
+		if (resolvedItem.type === 'text') return this.textSource(resolvedItem);
+		if (!resolvedItem.mediaId) return null;
+		if (resolvedItem.type === 'video') {
+			const decoder = await this.getDecoder(resolvedItem.mediaId);
+			if (!decoder) return null;
+			const wrapped = await decoder.sink.getCanvas(
+				frameToSourceSeconds(originalItem, frame, this.fps)
+			);
+			return wrapped
+				? {
+						source: wrapped.canvas,
+						width: wrapped.canvas.width,
+						height: wrapped.canvas.height
+					}
+				: null;
+		}
+		let bitmap = this.imageCache.get(resolvedItem.mediaId);
+		if (!bitmap) {
+			const media = mediaPool.get(resolvedItem.mediaId);
+			if (!media) return null;
+			bitmap = await createImageBitmap(await resolveMediaBlob(media));
+			this.imageCache.set(resolvedItem.mediaId, bitmap);
+		}
+		return { source: bitmap, width: bitmap.width, height: bitmap.height };
+	}
+
 	async render(frame: number): Promise<OffscreenCanvas> {
 		this.stackCompositor.beginFrame(this.width, this.height, this.backgroundColor);
 
 		const blend = transitionBlendAtFrame(this.transitions, this.itemsById, frame);
-		for (const item of this.orderedItems) {
-			if (
-				!isVisibleAtFrame(item, frame) &&
-				item.id !== blend?.outgoingId &&
-				item.id !== blend?.incomingId
-			)
-				continue;
+		const resolveParticipant = async (
+			item: TimelineItem
+		): Promise<StackTransitionParticipant | null> => {
 			const resolvedItem = scaleItemForCanvas(
 				resolveAnimatedItemAt(item, frame),
 				this.width / this.project.metadata.width,
@@ -354,56 +389,45 @@ export class TimelineFrameRenderer {
 				this.adjustmentLayers,
 				frame
 			);
-			let alpha = itemOpacity(resolvedItem);
-			if (blend) {
-				if (item.id === blend.outgoingId) alpha *= outgoingOpacity(blend.type, blend.progress);
-				else if (item.id === blend.incomingId) alpha *= incomingOpacity(blend.type, blend.progress);
-			}
-			if (alpha <= 0) continue;
-			if (resolvedItem.type === 'subtitle') {
-				const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
-				if (!cue) continue;
-				const raster = this.subtitleSource(resolvedItem, cue.text);
-				this.stackCompositor.compositeLayer(raster, resolvedItem, alpha, frame / this.fps);
+			const source = await this.sourceForItem(resolvedItem, item, frame);
+			return source ? { source, item: resolvedItem, alpha: itemOpacity(resolvedItem) } : null;
+		};
+		let transitionRendered = false;
+		for (const item of this.orderedItems) {
+			if (
+				!isVisibleAtFrame(item, frame) &&
+				item.id !== blend?.outgoingId &&
+				item.id !== blend?.incomingId
+			)
 				continue;
-			}
-			if (resolvedItem.type === 'text') {
-				const raster = this.textSource(resolvedItem);
-				this.stackCompositor.compositeLayer(raster, resolvedItem, alpha, frame / this.fps);
-				continue;
-			}
-			if (!resolvedItem.mediaId) continue;
-
-			if (resolvedItem.type === 'video') {
-				const decoder = await this.getDecoder(resolvedItem.mediaId);
-				if (!decoder) continue;
-				const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, this.fps));
-				if (!wrapped) continue;
-				this.stackCompositor.compositeLayer(
-					{
-						source: wrapped.canvas,
-						width: wrapped.canvas.width,
-						height: wrapped.canvas.height
-					},
-					resolvedItem,
-					alpha,
+			if (blend && (item.id === blend.outgoingId || item.id === blend.incomingId)) {
+				if (transitionRendered) continue;
+				const outgoingItem = this.itemsById.get(blend.outgoingId);
+				const incomingItem = this.itemsById.get(blend.incomingId);
+				if (!outgoingItem || !incomingItem) continue;
+				const [outgoing, incoming] = await Promise.all([
+					resolveParticipant(outgoingItem),
+					resolveParticipant(incomingItem)
+				]);
+				if (!outgoing || !incoming) continue;
+				this.stackCompositor.compositeTransition(
+					outgoing,
+					incoming,
+					blend.transition,
+					blend.progress,
 					frame / this.fps
 				);
-			} else {
-				let bitmap = this.imageCache.get(resolvedItem.mediaId);
-				if (!bitmap) {
-					const media = mediaPool.get(resolvedItem.mediaId);
-					if (!media) continue;
-					bitmap = await createImageBitmap(await resolveMediaBlob(media));
-					this.imageCache.set(resolvedItem.mediaId, bitmap);
-				}
-				this.stackCompositor.compositeLayer(
-					{ source: bitmap, width: bitmap.width, height: bitmap.height },
-					resolvedItem,
-					alpha,
-					frame / this.fps
-				);
+				transitionRendered = true;
+				continue;
 			}
+			const participant = await resolveParticipant(item);
+			if (!participant || participant.alpha <= 0) continue;
+			this.stackCompositor.compositeLayer(
+				participant.source,
+				participant.item,
+				participant.alpha,
+				frame / this.fps
+			);
 		}
 
 		return this.canvas;

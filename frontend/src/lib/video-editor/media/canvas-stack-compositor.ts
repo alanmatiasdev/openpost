@@ -1,6 +1,6 @@
 /** Shared preview/export compositor for transformed layers and real backdrops. */
 
-import type { TimelineItem } from '../project/types';
+import type { TimelineItem, TimelineTransition } from '../project/types';
 import { effectsToCssFilter } from '../effects/filter';
 import {
 	createGpuCompositor,
@@ -11,6 +11,8 @@ import { getGpuEffectDefaultParams } from '../effects/gpu/registry';
 import { isNonNormalBlend } from '../effects/gpu/blend-modes';
 import { blendImageData } from '../effects/gpu/cpu-blend';
 import { mediaDrawGeometry } from './render-geometry';
+import { transitionRegistry } from '../transitions';
+import { TransitionPipeline } from '../transitions/gpu/pipeline';
 
 type StackCanvas = HTMLCanvasElement | OffscreenCanvas;
 type StackContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -23,6 +25,18 @@ export interface StackLayerSource {
 	source: CanvasImageSource & TexImageSource;
 	width: number;
 	height: number;
+}
+
+export interface StackTransitionParticipant {
+	source: StackLayerSource;
+	item: TimelineItem;
+	alpha: number;
+}
+
+function createStackCanvas(): StackCanvas {
+	return typeof OffscreenCanvas === 'function'
+		? new OffscreenCanvas(1, 1)
+		: document.createElement('canvas');
 }
 
 export function itemOpacity(item: TimelineItem): number {
@@ -97,33 +111,73 @@ export class CanvasStackCompositor {
 	private readonly layerContext: StackContext;
 	private readonly gpuCanvas: StackCanvas;
 	private readonly gpuCompositor: GpuCompositor | null;
+	private readonly transitionLeftCanvas: StackCanvas | null;
+	private readonly transitionRightCanvas: StackCanvas | null;
+	private readonly transitionOutputCanvas: StackCanvas | null;
+	private readonly transitionOutputContext: StackContext | null;
+	private readonly transitionLeftStack: CanvasStackCompositor | null;
+	private readonly transitionRightStack: CanvasStackCompositor | null;
+	private transitionPipeline: TransitionPipeline | null = null;
+	private transitionDevice: GPUDevice | null = null;
+	private disposed = false;
 	private width = 1;
 	private height = 1;
 	private lastFailure: string | null = null;
 
-	constructor(private readonly canvas: StackCanvas) {
+	constructor(
+		private readonly canvas: StackCanvas,
+		withTransitionBranches = true
+	) {
 		const context = canvas.getContext('2d');
 		if (!context) throw new Error('Failed to create the composition canvas context.');
 		this.context = context;
 		this.context.imageSmoothingEnabled = true;
 		this.context.imageSmoothingQuality = 'high';
-		this.layerCanvas =
-			typeof OffscreenCanvas === 'function'
-				? new OffscreenCanvas(1, 1)
-				: document.createElement('canvas');
+		this.layerCanvas = createStackCanvas();
 		const layerContext = this.layerCanvas.getContext('2d');
 		if (!layerContext) throw new Error('Failed to create the layer canvas context.');
 		this.layerContext = layerContext;
 		this.layerContext.imageSmoothingEnabled = true;
 		this.layerContext.imageSmoothingQuality = 'high';
-		this.gpuCanvas =
-			typeof OffscreenCanvas === 'function'
-				? new OffscreenCanvas(1, 1)
-				: document.createElement('canvas');
+		this.gpuCanvas = createStackCanvas();
 		this.gpuCompositor = createGpuCompositor(this.gpuCanvas);
+		if (withTransitionBranches) {
+			this.transitionLeftCanvas = createStackCanvas();
+			this.transitionRightCanvas = createStackCanvas();
+			this.transitionOutputCanvas = createStackCanvas();
+			this.transitionOutputContext = this.transitionOutputCanvas.getContext('2d');
+			this.transitionLeftStack = new CanvasStackCompositor(this.transitionLeftCanvas, false);
+			this.transitionRightStack = new CanvasStackCompositor(this.transitionRightCanvas, false);
+			void this.initializeTransitionPipeline();
+		} else {
+			this.transitionLeftCanvas = null;
+			this.transitionRightCanvas = null;
+			this.transitionOutputCanvas = null;
+			this.transitionOutputContext = null;
+			this.transitionLeftStack = null;
+			this.transitionRightStack = null;
+		}
 	}
 
-	beginFrame(width: number, height: number, backgroundColor: string): void {
+	private async initializeTransitionPipeline(): Promise<void> {
+		const gpu = globalThis.navigator?.gpu;
+		if (!gpu) return;
+		try {
+			const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+			if (!adapter || this.disposed) return;
+			const device = await adapter.requestDevice();
+			if (this.disposed) {
+				device.destroy();
+				return;
+			}
+			this.transitionDevice = device;
+			this.transitionPipeline = TransitionPipeline.create(device);
+		} catch {
+			// Canvas2D remains the exact fallback when WebGPU is unavailable or blocked.
+		}
+	}
+
+	private resize(width: number, height: number): void {
 		this.width = Math.max(1, Math.round(width));
 		this.height = Math.max(1, Math.round(height));
 		if (this.canvas.width !== this.width) this.canvas.width = this.width;
@@ -137,8 +191,20 @@ export class CanvasStackCompositor {
 		this.context.globalAlpha = 1;
 		this.context.globalCompositeOperation = 'source-over';
 		this.context.filter = 'none';
+	}
+
+	beginFrame(width: number, height: number, backgroundColor: string): void {
+		this.resize(width, height);
 		this.context.fillStyle = backgroundColor;
 		this.context.fillRect(0, 0, this.width, this.height);
+		this.lastFailure = null;
+	}
+
+	private beginFromBackdrop(backdrop: StackCanvas, width: number, height: number): void {
+		this.resize(width, height);
+		this.context.globalCompositeOperation = 'copy';
+		this.context.drawImage(backdrop, 0, 0, this.width, this.height);
+		this.context.globalCompositeOperation = 'source-over';
 		this.lastFailure = null;
 	}
 
@@ -233,11 +299,101 @@ export class CanvasStackCompositor {
 		this.context.putImageData(blendImageData(basePixels, layerPixels, blendMode, alpha), 0, 0);
 	}
 
+	/** Transition two complete scene branches, then keep painting higher tracks. */
+	compositeTransition(
+		outgoing: StackTransitionParticipant,
+		incoming: StackTransitionParticipant,
+		transition: TimelineTransition,
+		progress: number,
+		time: number
+	): boolean {
+		const leftStack = this.transitionLeftStack;
+		const rightStack = this.transitionRightStack;
+		const leftCanvas = this.transitionLeftCanvas;
+		const rightCanvas = this.transitionRightCanvas;
+		const outputCanvas = this.transitionOutputCanvas;
+		const outputContext = this.transitionOutputContext;
+		if (
+			!leftStack ||
+			!rightStack ||
+			!leftCanvas ||
+			!rightCanvas ||
+			!outputCanvas ||
+			!outputContext
+		) {
+			this.lastFailure = 'Transition branches unavailable';
+			return false;
+		}
+		const presentation =
+			transition.presentation ?? (transition.type === 'fade-black' ? 'dipToColorDissolve' : 'fade');
+		const rendererEntry = transitionRegistry.getRenderer(presentation);
+		const renderer = rendererEntry?.renderCanvas;
+		if (!renderer) {
+			this.lastFailure = `Transition renderer unavailable: ${presentation}`;
+			return false;
+		}
+
+		leftStack.beginFromBackdrop(this.canvas, this.width, this.height);
+		rightStack.beginFromBackdrop(this.canvas, this.width, this.height);
+		leftStack.compositeLayer(outgoing.source, outgoing.item, outgoing.alpha, time);
+		rightStack.compositeLayer(incoming.source, incoming.item, incoming.alpha, time);
+		if (outputCanvas.width !== this.width) outputCanvas.width = this.width;
+		if (outputCanvas.height !== this.height) outputCanvas.height = this.height;
+		outputContext.globalAlpha = 1;
+		outputContext.globalCompositeOperation = 'source-over';
+		outputContext.filter = 'none';
+		outputContext.clearRect(0, 0, this.width, this.height);
+		const gpuOutput =
+			rendererEntry.gpuTransitionId &&
+			typeof OffscreenCanvas === 'function' &&
+			leftCanvas instanceof OffscreenCanvas &&
+			rightCanvas instanceof OffscreenCanvas
+				? this.transitionPipeline?.render(
+						rendererEntry.gpuTransitionId,
+						leftCanvas,
+						rightCanvas,
+						progress,
+						this.width,
+						this.height,
+						transition.direction,
+						transition.properties
+					)
+				: null;
+		if (gpuOutput) {
+			outputContext.drawImage(gpuOutput, 0, 0, this.width, this.height);
+		} else {
+			// SAFETY: Branches are OffscreenCanvas instances when that API exists; Canvas2D accepts the HTML fallback at runtime too.
+			renderer(
+				outputContext as OffscreenCanvasRenderingContext2D,
+				leftCanvas as OffscreenCanvas,
+				rightCanvas as OffscreenCanvas,
+				progress,
+				transition.direction,
+				{ width: this.width, height: this.height },
+				transition.properties
+			);
+		}
+		this.context.globalAlpha = 1;
+		this.context.globalCompositeOperation = 'copy';
+		this.context.filter = 'none';
+		this.context.drawImage(outputCanvas, 0, 0, this.width, this.height);
+		this.context.globalCompositeOperation = 'source-over';
+		this.lastFailure = leftStack.failureReason() ?? rightStack.failureReason();
+		return true;
+	}
+
 	failureReason(): string | null {
 		return this.lastFailure;
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		this.gpuCompositor?.dispose();
+		this.transitionLeftStack?.dispose();
+		this.transitionRightStack?.dispose();
+		this.transitionPipeline?.destroy();
+		this.transitionDevice?.destroy();
+		this.transitionPipeline = null;
+		this.transitionDevice = null;
 	}
 }

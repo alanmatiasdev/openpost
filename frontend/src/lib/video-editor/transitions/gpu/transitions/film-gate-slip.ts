@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - src/infrastructure/gpu-transitions/transitions/film-gate-slip.ts
  */

@@ -42,6 +42,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
+	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
@@ -53,6 +54,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
+	let selectedTransitionId = $state<string | null>(null);
+
+	$effect(() => {
+		if (selectedItemId) selectedTransitionId = null;
+	});
 
 	$effect(() => {
 		if (projectId) void editorSession.load(projectId);
@@ -224,7 +230,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
 	);
 	const selectedTransition = $derived(
-		selectedItemId ? transitionsStore.forItem(selectedItemId) : undefined
+		selectedTransitionId
+			? transitionsStore.list.find((transition) => transition.id === selectedTransitionId)
+			: undefined
 	);
 
 	let showTranscript = $state(false);
@@ -242,7 +250,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			return;
 		}
 		try {
-			addTransition(item.id, next.id, 'crossfade');
+			selectedTransitionId = addTransition(item.id, next.id, 'crossfade');
+			selectedItemId = null;
+			selectedItemIds = [];
 			editorSession.scheduleAutosave();
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -252,6 +262,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	function handleRemoveTransition(): void {
 		if (!selectedTransition) return;
 		removeTransition(selectedTransition.id);
+		selectedTransitionId = null;
 		editorSession.scheduleAutosave();
 		showToast(m.video_editor_transition_removed(), 'info');
 	}
@@ -451,7 +462,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" onclick={handleAddAdjustmentLayer}>
 						{m.video_editor_add_adjustment_layer()}
 					</Button>
-					{#if selectedItemId}
+					{#if selectedTransition}
+						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+							<TransitionPropertiesPanel
+								transitionId={selectedTransition.id}
+								onedit={() => editorSession.scheduleAutosave()}
+								onremove={() => (selectedTransitionId = null)}
+							/>
+						</div>
+					{:else if selectedItemId}
 						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 							<ClipPropertiesPanel
 								itemId={selectedItemId}
@@ -546,6 +565,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				<TimelinePanel
 					bind:selectedItemId
 					bind:selectedItemIds
+					bind:selectedTransitionId
 					onedit={() => editorSession.scheduleAutosave()}
 					ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
 				/>

@@ -74,7 +74,8 @@
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import {
 		pruneOrphanedTransitions,
-		transitionsStore
+		transitionsStore,
+		updateTransition
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import {
 		buildInsertedGapPreviewUpdatesForSyncLockedTracks,
@@ -83,7 +84,11 @@
 		propagateRemovedIntervalsToSyncLockedTracks,
 		type SyncLockPreviewUpdate
 	} from '$lib/video-editor/timeline/actions/sync-lock-ripple';
-	import { resolveTransitionWindow } from '$lib/video-editor/timeline/transition-planner';
+	import {
+		getMaxTransitionDuration,
+		resolveTransitionWindow
+	} from '$lib/video-editor/timeline/transition-planner';
+	import { localizedTransitionLabel } from '$lib/video-editor/transitions/labels';
 	import {
 		addTrack,
 		removeTrack,
@@ -129,12 +134,14 @@
 		onedit,
 		ontransitionbreak = () => {},
 		selectedItemId = $bindable(null),
-		selectedItemIds = $bindable([])
+		selectedItemIds = $bindable([]),
+		selectedTransitionId = $bindable(null)
 	}: {
 		onedit: () => void;
 		ontransitionbreak?: (count: number) => void;
 		selectedItemId?: string | null;
 		selectedItemIds?: string[];
+		selectedTransitionId?: string | null;
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
 	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
@@ -153,6 +160,15 @@
 		if (existingIds.length !== selectedItemIds.length) selectedItemIds = existingIds;
 		if (selectedItemId && !itemIds.has(selectedItemId)) {
 			selectedItemId = existingIds.at(-1) ?? null;
+		}
+	});
+
+	$effect(() => {
+		if (
+			selectedTransitionId &&
+			!transitionsStore.list.some((transition) => transition.id === selectedTransitionId)
+		) {
+			selectedTransitionId = null;
 		}
 	});
 
@@ -233,6 +249,15 @@
 	let activeSnapTarget = $state<SnapTarget | null>(null);
 	let syncLockPreviewById = $state<Record<string, SyncLockPreviewUpdate>>({});
 	let breakingTransitionPreviewIds = $state<string[]>([]);
+	let transitionResize = $state<{
+		id: string;
+		handle: 'left' | 'right';
+		pointerId: number;
+		startX: number;
+		initialDuration: number;
+		currentDuration: number;
+		maxDuration: number;
+	} | null>(null);
 	let marquee = $state<{
 		startX: number;
 		startY: number;
@@ -410,12 +435,137 @@
 			return null;
 		const outgoing = previewedItem(outgoingItem);
 		const incoming = previewedItem(incomingItem);
-		const window = resolveTransitionWindow(transition, outgoing, incoming);
+		const previewTransition =
+			transitionResize?.id === transition.id
+				? { ...transition, durationInFrames: transitionResize.currentDuration }
+				: transition;
+		const window = resolveTransitionWindow(previewTransition, outgoing, incoming);
 		if (!window) return null;
 		return {
 			left: timelineX(window.startFrame),
 			width: Math.max(2, frameToPx(window.durationInFrames))
 		};
+	}
+
+	function selectTransition(id: string): void {
+		selectedTransitionId = id;
+		selectedItemId = null;
+		selectedItemIds = [];
+	}
+
+	function transitionDurationFromPointer(clientX: number): number {
+		if (!transitionResize) return 0;
+		const delta = pxDeltaToFrames(clientX - transitionResize.startX);
+		const raw =
+			transitionResize.handle === 'left'
+				? transitionResize.initialDuration - delta
+				: transitionResize.initialDuration + delta;
+		return Math.min(transitionResize.maxDuration, Math.max(2, raw));
+	}
+
+	function moveTransitionResize(event: PointerEvent): void {
+		if (!transitionResize || event.pointerId !== transitionResize.pointerId) return;
+		transitionResize.currentDuration = transitionDurationFromPointer(event.clientX);
+	}
+
+	function finishTransitionResize(cancelled = false): void {
+		if (!transitionResize) return;
+		const resize = transitionResize;
+		transitionResize = null;
+		window.removeEventListener('pointermove', moveTransitionResize);
+		window.removeEventListener('pointerup', releaseTransitionResize);
+		window.removeEventListener('pointercancel', cancelTransitionResize);
+		window.removeEventListener('keydown', cancelTransitionResizeOnEscape);
+		if (
+			!cancelled &&
+			resize.currentDuration !== resize.initialDuration &&
+			updateTransition(resize.id, { durationInFrames: resize.currentDuration })
+		) {
+			onedit();
+		}
+	}
+
+	function releaseTransitionResize(event: PointerEvent): void {
+		if (!transitionResize || event.pointerId !== transitionResize.pointerId) return;
+		finishTransitionResize();
+	}
+
+	function cancelTransitionResize(): void {
+		finishTransitionResize(true);
+	}
+
+	function cancelTransitionResizeOnEscape(event: KeyboardEvent): void {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		finishTransitionResize(true);
+	}
+
+	function startTransitionResize(
+		event: PointerEvent,
+		transition: TimelineTransition,
+		handle: 'left' | 'right'
+	): void {
+		if (event.button !== 0) return;
+		const outgoing = timelineStore.itemById.get(transition.fromItemId);
+		const incoming = timelineStore.itemById.get(transition.toItemId);
+		if (!outgoing || !incoming) return;
+		event.preventDefault();
+		event.stopPropagation();
+		selectTransition(transition.id);
+		const maxDuration = getMaxTransitionDuration(
+			outgoing,
+			incoming,
+			transition.alignment ?? 0.5,
+			timelineStore.fps
+		);
+		transitionResize = {
+			id: transition.id,
+			handle,
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			initialDuration: transition.durationInFrames,
+			currentDuration: transition.durationInFrames,
+			maxDuration
+		};
+		window.addEventListener('pointermove', moveTransitionResize);
+		window.addEventListener('pointerup', releaseTransitionResize);
+		window.addEventListener('pointercancel', cancelTransitionResize);
+		window.addEventListener('keydown', cancelTransitionResizeOnEscape);
+	}
+
+	function resizeTransitionWithKeyboard(
+		event: KeyboardEvent,
+		transition: TimelineTransition,
+		handle: 'left' | 'right'
+	): void {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		const current =
+			transitionsStore.list.find((candidate) => candidate.id === transition.id) ?? transition;
+		const outgoing = timelineStore.itemById.get(current.fromItemId);
+		const incoming = timelineStore.itemById.get(current.toItemId);
+		if (!outgoing || !incoming) return;
+		event.preventDefault();
+		event.stopPropagation();
+		selectTransition(current.id);
+		const direction = event.key === 'ArrowRight' ? 1 : -1;
+		const handleDirection = handle === 'right' ? direction : -direction;
+		const step = event.shiftKey ? 10 : 1;
+		const maxDuration = getMaxTransitionDuration(
+			outgoing,
+			incoming,
+			current.alignment ?? 0.5,
+			timelineStore.fps
+		);
+		const durationInFrames = Math.min(
+			maxDuration,
+			Math.max(2, current.durationInFrames + handleDirection * step)
+		);
+		if (
+			durationInFrames !== current.durationInFrames &&
+			updateTransition(current.id, { durationInFrames })
+		) {
+			onedit();
+		}
 	}
 
 	function seekFromEvent(event: MouseEvent): void {
@@ -493,6 +643,7 @@
 
 	function updateMarqueeSelection(): void {
 		if (!marquee?.active || !scrollContainer) return;
+		selectedTransitionId = null;
 		const selectionRect = {
 			left: Math.min(marquee.startX, marquee.currentX),
 			right: Math.max(marquee.startX, marquee.currentX),
@@ -538,6 +689,7 @@
 		if (!marquee.active && !marquee.additive) {
 			selectedItemIds = [];
 			selectedItemId = null;
+			selectedTransitionId = null;
 		}
 		marquee = null;
 		window.removeEventListener('pointermove', onMarqueePointerMove);
@@ -643,6 +795,7 @@
 	}
 
 	function selectItem(event: MouseEvent, id: string): void {
+		selectedTransitionId = null;
 		const selection = updateTimelineItemSelection(
 			timelineStore.items,
 			selectedItemIds,
@@ -1238,6 +1391,7 @@
 
 	onDestroy(() => {
 		if (drag) finishDrag(true);
+		if (transitionResize) finishTransitionResize(true);
 		if (marquee) finishMarquee();
 		clearEffectDropPreview();
 		clearEffectDragData();
@@ -1809,17 +1963,47 @@
 					{@const geometry = transitionGeometry(transition, track.id)}
 					{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
 						<div
-							class="pointer-events-none absolute top-1 z-10 flex h-[calc(100%-8px)] items-start justify-center overflow-hidden rounded-sm border border-[oklch(0.76_0.14_45_/_0.7)] bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)]"
+							class="group absolute top-1 z-30 flex h-[calc(100%-8px)] items-start justify-center rounded-sm border bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)] {selectedTransitionId ===
+							transition.id
+								? 'border-[oklch(0.82_0.16_65)] ring-2 ring-[oklch(0.66_0.14_45_/_0.48)]'
+								: 'border-[oklch(0.76_0.14_45_/_0.7)]'}"
 							style="left:{geometry.left}px;width:{geometry.width}px"
 							data-transition-id={transition.id}
 						>
-							<span
-								class="mt-0.5 rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-[8px] font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
+							<button
+								type="button"
+								class="absolute inset-0 overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[oklch(0.82_0.16_65)]"
+								aria-label={m.video_editor_transition()}
+								onclick={() => selectTransition(transition.id)}
 							>
-								{transition.type === 'fade-black'
-									? m.video_editor_transition_dip_black()
-									: m.video_editor_transition_cross_dissolve()}
-							</span>
+								<span
+									class="mt-0.5 inline-block max-w-[calc(100%-8px)] truncate rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-[8px] font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
+								>
+									{localizedTransitionLabel(
+										transition.presentation ??
+											(transition.type === 'fade-black' ? 'dipToColorDissolve' : 'fade'),
+										transition.type === 'fade-black'
+											? m.video_editor_transition_dip_black()
+											: m.video_editor_transition_cross_dissolve()
+									)}
+								</span>
+							</button>
+							<button
+								type="button"
+								class="absolute inset-y-0 -left-3 z-20 w-6 cursor-ew-resize touch-none rounded-l-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+								aria-label={m.video_editor_transition_resize_start()}
+								title={m.video_editor_transition_resize_keyboard()}
+								onkeydown={(event) => resizeTransitionWithKeyboard(event, transition, 'left')}
+								onpointerdown={(event) => startTransitionResize(event, transition, 'left')}
+							></button>
+							<button
+								type="button"
+								class="absolute inset-y-0 -right-3 z-20 w-6 cursor-ew-resize touch-none rounded-r-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
+								aria-label={m.video_editor_transition_resize_end()}
+								title={m.video_editor_transition_resize_keyboard()}
+								onkeydown={(event) => resizeTransitionWithKeyboard(event, transition, 'right')}
+								onpointerdown={(event) => startTransitionResize(event, transition, 'right')}
+							></button>
 						</div>
 					{/if}
 				{/each}

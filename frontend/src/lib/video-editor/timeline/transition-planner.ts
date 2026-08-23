@@ -1,6 +1,12 @@
 /** Cut-centered transition windows and source-handle validation. */
 
-import type { TimelineItem, TimelineTransition } from '../project/types';
+import type {
+	TimelineItem,
+	TimelineTransition,
+	TransitionBezierPoints,
+	TransitionTiming
+} from '../project/types';
+import { cubicBezier, easeIn, easeInOut, easeOut } from './easing';
 import {
 	getAvailableSourceFrames,
 	getSourceProperties,
@@ -19,6 +25,28 @@ export interface TransitionWindow {
 export interface TransitionPortions {
 	leftPortion: number;
 	rightPortion: number;
+}
+
+export function calculateTransitionProgress(
+	localFrame: number,
+	durationInFrames: number,
+	timing: TransitionTiming = 'linear',
+	bezierPoints?: TransitionBezierPoints
+): number {
+	const maxFrame = Math.max(1, durationInFrames - 1);
+	const progress = Math.max(0, Math.min(1, localFrame / maxFrame));
+	switch (timing) {
+		case 'ease-in':
+			return easeIn(progress);
+		case 'ease-out':
+			return easeOut(progress);
+		case 'ease-in-out':
+			return easeInOut(progress);
+		case 'cubic-bezier':
+			return bezierPoints ? cubicBezier(progress, bezierPoints) : progress;
+		default:
+			return progress;
+	}
 }
 
 export function calculateTransitionPortions(
@@ -96,4 +124,34 @@ export function canPreserveTransition(
 		leftPortion <= getAvailableTransitionHandle(right, 'start', timelineFps) &&
 		rightPortion <= getAvailableTransitionHandle(left, 'end', timelineFps)
 	);
+}
+
+/** Largest cut-centered duration supported by clip length and hidden handles. */
+export function getMaxTransitionDuration(
+	left: TimelineItem,
+	right: TimelineItem,
+	alignment: number,
+	timelineFps: number
+): number {
+	let low = 0;
+	let high = Math.max(0, Math.floor(Math.min(left.durationInFrames, right.durationInFrames) - 1));
+	while (low < high) {
+		const candidate = Math.ceil((low + high) / 2);
+		const valid = canPreserveTransition(
+			{
+				id: 'duration-probe',
+				type: 'crossfade',
+				durationInFrames: candidate,
+				alignment,
+				fromItemId: left.id,
+				toItemId: right.id
+			},
+			left,
+			right,
+			timelineFps
+		);
+		if (valid) low = candidate;
+		else high = candidate - 1;
+	}
+	return low;
 }

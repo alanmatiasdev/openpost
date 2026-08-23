@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - src/types/transition.ts
  * Original: https://github.com/walterlow/freecut

@@ -1,4 +1,3 @@
-// oxlint-disable
 /**
  * Ported from FreeCut (MIT) - src/shared/timeline/transitions/renderers/gpu.ts
  */
@@ -157,6 +156,15 @@ function fillSparkleShape(
 	ctx.restore();
 }
 
+let sparkleScratchCanvas: OffscreenCanvas | null = null;
+
+function getSparkleScratchCanvas(width: number, height: number): OffscreenCanvas {
+	if (!sparkleScratchCanvas) sparkleScratchCanvas = new OffscreenCanvas(width, height);
+	if (sparkleScratchCanvas.width !== width) sparkleScratchCanvas.width = width;
+	if (sparkleScratchCanvas.height !== height) sparkleScratchCanvas.height = height;
+	return sparkleScratchCanvas;
+}
+
 function renderSparklesCanvas(
 	ctx: OffscreenCanvasRenderingContext2D,
 	leftCanvas: OffscreenCanvas,
@@ -178,7 +186,7 @@ function renderSparklesCanvas(
 	ctx.drawImage(rightCanvas, 0, 0, w, h);
 	ctx.restore();
 
-	const leftLayer = new OffscreenCanvas(w, h);
+	const leftLayer = getSparkleScratchCanvas(w, h);
 	const leftCtx = leftLayer.getContext('2d');
 	if (!leftCtx) {
 		ctx.save();
