@@ -30,6 +30,7 @@ type RegistryEntry struct {
 	InstallationID     string
 	Required           bool
 	WorkspaceAllowlist []string
+	ConfigFingerprint  string
 	Manifest           Manifest
 	Available          bool
 	Status             string
@@ -46,6 +47,7 @@ func NewRegistry(ctx context.Context, config Config, options RegistryOptions) (*
 			InstallationID:     installation.ID,
 			Required:           installation.Required,
 			WorkspaceAllowlist: slices.Clone(installation.WorkspaceAllowlist),
+			ConfigFingerprint:  installationFingerprint(installation),
 		}
 		client, err := NewClient(installation, options.Client)
 		if err != nil {
@@ -84,6 +86,18 @@ func NewRegistry(ctx context.Context, config Config, options RegistryOptions) (*
 		registry.clients[installation.ID] = client
 	}
 	return registry, nil
+}
+
+func (r *Registry) All() []RegistryEntry {
+	if r == nil {
+		return nil
+	}
+	result := make([]RegistryEntry, 0, len(r.entries))
+	for _, entry := range r.entries {
+		result = append(result, cloneRegistryEntry(entry))
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].InstallationID < result[j].InstallationID })
+	return result
 }
 
 func requiredInstallationError(installationID string, err error) error {

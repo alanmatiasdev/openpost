@@ -2,6 +2,7 @@ package connectors
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -292,4 +293,33 @@ func decodeStrictJSON(raw []byte, target any) error {
 		return err
 	}
 	return nil
+}
+
+func installationFingerprint(installation InstallationConfig) string {
+	cidrs := make([]string, 0, len(installation.Endpoint.AllowedCIDRs))
+	for _, prefix := range installation.Endpoint.AllowedCIDRs {
+		cidrs = append(cidrs, prefix.String())
+	}
+	payload := struct {
+		ID                 string   `json:"id"`
+		Required           bool     `json:"required"`
+		WorkspaceAllowlist []string `json:"workspace_allowlist"`
+		Mode               string   `json:"mode"`
+		BaseURL            string   `json:"base_url"`
+		SocketPath         string   `json:"socket_path"`
+		AllowedHosts       []string `json:"allowed_hosts"`
+		AllowedCIDRs       []string `json:"allowed_cidrs"`
+		AllowedPorts       []int    `json:"allowed_ports"`
+		BearerTokenFile    string   `json:"bearer_token_file"`
+	}{
+		ID: installation.ID, Required: installation.Required,
+		WorkspaceAllowlist: installation.WorkspaceAllowlist,
+		Mode:               installation.Endpoint.Mode, BaseURL: installation.Endpoint.BaseURL,
+		SocketPath: installation.Endpoint.SocketPath, AllowedHosts: installation.Endpoint.AllowedHosts,
+		AllowedCIDRs: cidrs, AllowedPorts: installation.Endpoint.AllowedPorts,
+		BearerTokenFile: installation.BearerTokenFile,
+	}
+	encoded, _ := json.Marshal(payload)
+	digest := sha256.Sum256(encoded)
+	return fmt.Sprintf("sha256:%x", digest)
 }

@@ -116,6 +116,7 @@ var configTestEnvKeys = []string{
 	"THREADS_CLIENT_SECRET",
 	"THREADS_REDIRECT_URI",
 	"OPENPOST_PROVIDER_APPS",
+	"OPENPOST_CONNECTORS_FILE",
 	"OPENPOST_PROVIDER_CERTIFICATION_ENFORCED",
 	"OPENPOST_STORAGE_DRIVER",
 	"OPENPOST_MEDIA_PATH",
@@ -143,6 +144,21 @@ var configTestEnvKeys = []string{
 	"OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID",
 	"OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID",
 	"OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID",
+}
+
+func TestLoadKeepsConnectorConfigAsAPath(t *testing.T) {
+	t.Setenv("OPENPOST_CONNECTORS_FILE", "/run/openpost/connectors.json")
+
+	cfg := Load()
+
+	require.Equal(t, "/run/openpost/connectors.json", cfg.ConnectorsFile)
+}
+
+func TestManagedEditionRejectsOperatorInstalledConnectors(t *testing.T) {
+	cfg := &Config{Edition: EditionCloud, ConnectorsFile: "/run/openpost/connectors.json"}
+
+	err := cfg.ValidateManagedSettings()
+	require.ErrorContains(t, err, "operator-installed connectors are limited to self-hosted deployments")
 }
 
 func TestLoadProductionPrimitiveDefaults(t *testing.T) {
