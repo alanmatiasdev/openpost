@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -196,6 +197,210 @@ func (s *Store) CompleteConnection(
 		return models.ConnectorConnectionSession{}, fmt.Errorf("load completed connector connection: %w", err)
 	}
 	return session, nil
+}
+
+func (s *Store) FailConnection(ctx context.Context, sessionID, kind string) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("connector store is unavailable")
+	}
+	kind = strings.TrimSpace(kind)
+	if len(kind) > 80 {
+		kind = kind[:80]
+	}
+	if kind == "" {
+		kind = "connector_error"
+	}
+	result, err := s.db.NewUpdate().Model((*models.ConnectorConnectionSession)(nil)).
+		Set("state = ?", "failed").
+		Set("error_kind = ?", kind).
+		Set("updated_at = ?", s.now()).
+		Where("id = ? AND state = ?", sessionID, "pending").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("fail connector connection: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check failed connector connection: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("connector connection session is not pending")
+	}
+	return nil
+}
+
+// SaveConnectionAccounts commits the connector result, OpenPost accounts, and
+// opaque execution bindings as one database transaction. Connector credentials
+// never enter the social account or OAuth grant tables.
+func (s *Store) SaveConnectionAccounts(
+	ctx context.Context,
+	sessionID string,
+	response ConnectionResponse,
+) ([]*models.SocialAccount, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("connector store is unavailable")
+	}
+	if err := validateConnectionResponse(response); err != nil {
+		return nil, err
+	}
+	now := s.now()
+	accounts := make([]*models.SocialAccount, 0, len(response.Accounts))
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var session models.ConnectorConnectionSession
+		if err := tx.NewSelect().Model(&session).
+			Where("id = ? AND state = ? AND expires_at > ?", sessionID, "pending", now).
+			Scan(txCtx); err != nil {
+			return fmt.Errorf("load pending connector connection: %w", err)
+		}
+		var installation models.ProviderInstallation
+		if err := tx.NewSelect().Model(&installation).
+			Where("id = ? AND kind = ?", session.InstallationID, "connector").
+			Scan(txCtx); err != nil {
+			return fmt.Errorf("load connector installation: %w", err)
+		}
+		if installation.Status != InstallationStatusAvailable {
+			return fmt.Errorf("connector installation is not available")
+		}
+		usedSlugs := map[string]string{}
+		var active []models.SocialAccount
+		if err := tx.NewSelect().Model(&active).
+			Where("workspace_id = ? AND is_active = ?", session.WorkspaceID, true).
+			Scan(txCtx); err != nil {
+			return fmt.Errorf("load Workspace account slugs: %w", err)
+		}
+		for index := range active {
+			usedSlugs[active[index].Slug] = active[index].ID
+		}
+		for _, external := range response.Accounts {
+			var binding models.ProviderAccountBinding
+			bindingErr := tx.NewSelect().Model(&binding).
+				Where("workspace_id = ? AND installation_id = ? AND external_account_id = ?",
+					session.WorkspaceID, session.InstallationID, external.ID).
+				Scan(txCtx)
+			var account *models.SocialAccount
+			switch {
+			case bindingErr == nil:
+				account = new(models.SocialAccount)
+				if err := tx.NewSelect().Model(account).
+					Where("id = ? AND workspace_id = ?", binding.SocialAccountID, session.WorkspaceID).
+					Scan(txCtx); err != nil {
+					return fmt.Errorf("load connector account: %w", err)
+				}
+			case errors.Is(bindingErr, sql.ErrNoRows):
+				account = &models.SocialAccount{
+					ID: uuid.NewString(), WorkspaceID: session.WorkspaceID,
+					Platform: installation.ProviderID, AccountID: external.ID,
+					AccessTokenEnc: []byte("connector-managed"), CapabilityState: "{}",
+					CreatedAt: now, IsNewlyInserted: true,
+				}
+				account.Slug = nextConnectorSlug(firstConnectorLabel(external), usedSlugs)
+				usedSlugs[account.Slug] = account.ID
+			case bindingErr != nil:
+				return fmt.Errorf("load existing connector account binding: %w", bindingErr)
+			}
+			account.AccountUsername = firstConnectorLabel(external)
+			account.AccountAvatarURL = external.AvatarURL
+			account.IsActive = true
+			account.ErrorMessage = ""
+			if account.IsNewlyInserted {
+				if _, err := tx.NewInsert().Model(account).Exec(txCtx); err != nil {
+					return fmt.Errorf("create connector account: %w", err)
+				}
+			} else {
+				if _, err := tx.NewUpdate().Model(account).
+					Column("account_username", "account_avatar_url", "is_active", "error_message").
+					WherePK().Exec(txCtx); err != nil {
+					return fmt.Errorf("update connector account: %w", err)
+				}
+			}
+			accountBinding := &models.ProviderAccountBinding{
+				SocialAccountID: account.ID, WorkspaceID: session.WorkspaceID,
+				InstallationID: session.InstallationID, ConnectionRef: response.ConnectionRef,
+				ExternalAccountID: external.ID, CapabilityRevision: installation.CapabilityRevision,
+				CreatedAt: now, UpdatedAt: now,
+			}
+			if _, err := tx.NewInsert().Model(accountBinding).
+				On("CONFLICT (social_account_id) DO UPDATE").
+				Set("connection_ref = EXCLUDED.connection_ref").
+				Set("external_account_id = EXCLUDED.external_account_id").
+				Set("capability_revision = EXCLUDED.capability_revision").
+				Set("updated_at = EXCLUDED.updated_at").
+				Exec(txCtx); err != nil {
+				return fmt.Errorf("store connector account binding: %w", err)
+			}
+			accounts = append(accounts, account)
+		}
+		accountsJSON, err := json.Marshal(response.Accounts)
+		if err != nil {
+			return fmt.Errorf("encode connector connection accounts: %w", err)
+		}
+		if _, err := tx.NewUpdate().Model(&session).
+			Set("state = ?", "complete").
+			Set("connection_ref = ?", response.ConnectionRef).
+			Set("accounts_json = ?", string(accountsJSON)).
+			Set("updated_at = ?", now).
+			WherePK().Exec(txCtx); err != nil {
+			return fmt.Errorf("complete connector connection: %w", err)
+		}
+		claim := &models.WorkspaceFirstConnection{
+			WorkspaceID: session.WorkspaceID, AccountID: accounts[0].ID,
+			OriginKey: "connector:" + session.ID, CreatedAt: now,
+		}
+		result, err := tx.NewInsert().Model(claim).On("CONFLICT (workspace_id) DO NOTHING").Exec(txCtx)
+		if err != nil {
+			return fmt.Errorf("claim first Workspace connection: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("check first Workspace connection: %w", err)
+		}
+		accounts[0].ClaimedFirst = rows == 1
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
+func firstConnectorLabel(account ConnectionAccount) string {
+	for _, value := range []string{account.Username, account.DisplayName, account.ID} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return "destination"
+}
+
+func nextConnectorSlug(label string, used map[string]string) string {
+	var normalized strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(label) {
+		valid := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
+		if valid {
+			normalized.WriteRune(r)
+			lastDash = false
+		} else if normalized.Len() > 0 && !lastDash {
+			normalized.WriteByte('-')
+			lastDash = true
+		}
+		if normalized.Len() >= 50 {
+			break
+		}
+	}
+	base := strings.Trim(normalized.String(), "-")
+	if base == "" {
+		base = "destination"
+	}
+	for suffix := 1; ; suffix++ {
+		candidate := base
+		if suffix > 1 {
+			candidate = fmt.Sprintf("%s-%d", base, suffix)
+		}
+		if _, exists := used[candidate]; !exists {
+			return candidate
+		}
+	}
 }
 
 func safeStatusDetail(value string) string {

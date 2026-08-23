@@ -7,6 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/handlers"
 	"github.com/openpost/backend/internal/api/middleware"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/accountfeatures"
@@ -98,6 +99,8 @@ type RouteDeps struct {
 	OrganizationOwnershipService *organizationownership.Service
 	UpdateStatusService          *updatestatus.Service
 	ProviderReadinessService     *providerreadiness.Service
+	ConnectorRegistry            *connectors.Registry
+	ConnectorStore               *connectors.Store
 	GrowthService                *growthservice.Service
 	AppVersion                   string
 	AppRevision                  string
@@ -239,12 +242,14 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	capabilityResolverHandler := handlers.NewCapabilityResolverHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenSource)
 	capabilityResolverHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
 	capabilityResolverHandler.SetProviderReadiness(deps.ProviderReadinessService)
+	capabilityResolverHandler.SetConnectorRegistry(deps.ConnectorRegistry, deps.ConnectorStore)
 	capabilityResolverHandler.RegisterRoutes(api)
 	handlers.NewProviderReadinessHandler(deps.DB, deps.Authenticator, deps.ProviderReadinessService, deps.Providers).RegisterRoutes(api)
 	handlers.NewProviderReadinessAdminHandler(deps.DB, deps.Authenticator, deps.ProviderReadinessService).RegisterRoutes(api)
 	handlers.NewDestinationOptionsHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenSource).RegisterRoutes(api)
 	publicationHandler := handlers.NewPublicationHandler(deps.DB, deps.Authenticator, deps.Entitlement)
 	publicationHandler.SetCapabilityDependencies(deps.Providers, deps.TokenSource)
+	publicationHandler.SetConnectorRegistry(deps.ConnectorRegistry)
 	publicationHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
 	publicationHandler.SetRepostService(deps.RepostService)
 	publicationHandler.SetProviderReadiness(deps.ProviderReadinessService)
@@ -343,9 +348,11 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	oauthHandler.SetEntitlement(deps.Entitlement)
 	oauthHandler.SetMastodonAppService(deps.MastodonAppService)
 	oauthHandler.SetProviderReadiness(deps.ProviderReadinessService)
+	oauthHandler.SetConnectorRegistry(deps.ConnectorRegistry, deps.ConnectorStore)
 	oauthHandler.SetProviderRegistrars(deps.ProviderRegistrars...)
 	oauthHandler.SetTelemetry(deps.Telemetry)
 	oauthHandler.ListProviders(api)
+	oauthHandler.ConnectConnector(api)
 	oauthHandler.ListMastodonServers(api)
 	oauthHandler.GetAuthURL(api)
 	oauthHandler.Callback(api)

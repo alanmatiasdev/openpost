@@ -56,6 +56,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/accounts/connectors/{installation_id}/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect destinations from an operator-installed connector */
+        post: operations["connect-operator-connector"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/accounts/discord/webhook": {
         parameters: {
             query?: never;
@@ -2635,8 +2652,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Load a proxied meme template thumbnail
-         * @description Returns a bounded OpenPost-proxied image so private Memegen hosts and server-only provider credentials are never exposed to the browser.
+         * Load a meme template thumbnail
+         * @description Returns bounded cacheable image bytes from OpenPost's configured template catalog.
          */
         get: operations["get-meme-template-thumbnail"];
         put?: never;
@@ -4425,6 +4442,8 @@ export interface components {
             messaging_supported: boolean;
             /** @description Platform name */
             platform: string;
+            /** @description Operator connector installation used by this account */
+            provider_installation_id?: string;
             /** @description Whether revoking this authorization disconnects other destinations */
             shared_grant: boolean;
             /** @description User-editable account slug for CLI selectors */
@@ -4488,6 +4507,8 @@ export interface components {
             open_fresh_composer: boolean;
             /** @description Platform name */
             platform: string;
+            /** @description Operator connector installation used by this account */
+            provider_installation_id?: string;
             /** @description Whether revoking this authorization disconnects other destinations */
             shared_grant: boolean;
             /** @description User-editable account slug for CLI selectors */
@@ -5256,6 +5277,16 @@ export interface components {
             challenge_id: string;
             /** @description Six digit authenticator code */
             code: string;
+        };
+        ConnectConnectorInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConnectConnectorInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Workspace receiving the connected destinations */
+            workspace_id: string;
         };
         ConsumeBillingCheckoutReturnOutputBody: {
             /**
@@ -6591,18 +6622,6 @@ export interface components {
             count: number;
             /** @description Publications and reusable assets using this media */
             usage: components["schemas"]["MediaUsageItem"][] | null;
-        };
-        GetMemeTemplateThumbnailOutputBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/GetMemeTemplateThumbnailOutputBody.json
-             */
-            readonly $schema?: string;
-            /** @description Base64-encoded template thumbnail bytes */
-            data_base64: string;
-            mime_type: string;
-            template_id: string;
         };
         GetPromptCategoriesOutputBody: {
             /**
@@ -8806,6 +8825,8 @@ export interface components {
             description?: string;
             /** @description Human-readable provider name */
             display_name: string;
+            /** @description Operator installation used for a custom connector */
+            installation_id?: string;
             /** @description Federated server URL, when applicable */
             instance_url?: string;
             /** @description Provider app or server display name */
@@ -10448,12 +10469,20 @@ export interface components {
             /** Format: int64 */
             overlays: number;
             search_terms: string[] | null;
+            semantic: components["schemas"]["TemplateSemantic"];
             source_url: string;
             styles: string[] | null;
         };
         TemplateExample: {
             text: string[] | null;
             url: string;
+        };
+        TemplateSemantic: {
+            caption_roles: string[] | null;
+            meaning: string;
+            mechanism: string;
+            tags: string[] | null;
+            visual: string;
         };
         TextConstraint: {
             /** Format: int64 */
@@ -11354,6 +11383,105 @@ export interface operations {
             };
         };
     };
+    "connect-operator-connector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operator connector installation ID */
+                installation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectConnectorInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountConnectionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "discord-webhook-login": {
         parameters: {
             query?: never;
@@ -11496,7 +11624,10 @@ export interface operations {
     };
     "list-account-providers": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Workspace ID used to scope operator-installed connectors */
+                workspace_id?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -21159,24 +21290,28 @@ export interface operations {
             query: {
                 /** @description Workspace ID */
                 workspace_id: string;
+                /** @description Catalog revision returned by the template list */
+                catalog_revision?: string;
             };
             header?: never;
             path: {
-                /** @description Memegen template ID */
+                /** @description Meme template ID */
                 template_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description JPEG template thumbnail */
             200: {
                 headers: {
                     "Cache-Control"?: string;
+                    "Content-Type"?: string;
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GetMemeTemplateThumbnailOutputBody"];
+                    "image/jpeg": string;
                 };
             };
             /** @description Bad Request */

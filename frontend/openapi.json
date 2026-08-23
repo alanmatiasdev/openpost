@@ -918,6 +918,10 @@
 						"description": "Platform name",
 						"type": "string"
 					},
+					"provider_installation_id": {
+						"description": "Operator connector installation used by this account",
+						"type": "string"
+					},
 					"shared_grant": {
 						"description": "Whether revoking this authorization disconnects other destinations",
 						"type": "boolean"
@@ -1035,6 +1039,10 @@
 					},
 					"platform": {
 						"description": "Platform name",
+						"type": "string"
+					},
+					"provider_installation_id": {
+						"description": "Operator connector installation used by this account",
 						"type": "string"
 					},
 					"shared_grant": {
@@ -2796,6 +2804,24 @@
 					}
 				},
 				"required": ["challenge_id", "code"],
+				"type": "object"
+			},
+			"ConnectConnectorInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ConnectConnectorInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"workspace_id": {
+						"description": "Workspace receiving the connected destinations",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id"],
 				"type": "object"
 			},
 			"ConsumeBillingCheckoutReturnOutputBody": {
@@ -5574,30 +5600,6 @@
 					}
 				},
 				"required": ["usage", "count"],
-				"type": "object"
-			},
-			"GetMemeTemplateThumbnailOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/GetMemeTemplateThumbnailOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"data_base64": {
-						"description": "Base64-encoded template thumbnail bytes",
-						"type": "string"
-					},
-					"mime_type": {
-						"type": "string"
-					},
-					"template_id": {
-						"type": "string"
-					}
-				},
-				"required": ["template_id", "mime_type", "data_base64"],
 				"type": "object"
 			},
 			"GetPromptCategoriesOutputBody": {
@@ -10815,6 +10817,10 @@
 						"description": "Human-readable provider name",
 						"type": "string"
 					},
+					"installation_id": {
+						"description": "Operator installation used for a custom connector",
+						"type": "string"
+					},
 					"instance_url": {
 						"description": "Federated server URL, when applicable",
 						"type": "string"
@@ -14683,6 +14689,9 @@
 						},
 						"type": ["array", "null"]
 					},
+					"semantic": {
+						"$ref": "#/components/schemas/TemplateSemantic"
+					},
 					"source_url": {
 						"type": "string"
 					},
@@ -14704,7 +14713,8 @@
 					"source_url",
 					"keywords",
 					"search_terms",
-					"animated"
+					"animated",
+					"semantic"
 				],
 				"type": "object"
 			},
@@ -14722,6 +14732,34 @@
 					}
 				},
 				"required": ["text", "url"],
+				"type": "object"
+			},
+			"TemplateSemantic": {
+				"additionalProperties": false,
+				"properties": {
+					"caption_roles": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"meaning": {
+						"type": "string"
+					},
+					"mechanism": {
+						"type": "string"
+					},
+					"tags": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"visual": {
+						"type": "string"
+					}
+				},
+				"required": ["visual", "meaning", "mechanism", "caption_roles", "tags"],
 				"type": "object"
 			},
 			"TextConstraint": {
@@ -16438,6 +16476,127 @@
 				"tags": ["Accounts"]
 			}
 		},
+		"/accounts/connectors/{installation_id}/connections": {
+			"post": {
+				"operationId": "connect-operator-connector",
+				"parameters": [
+					{
+						"description": "Operator connector installation ID",
+						"in": "path",
+						"name": "installation_id",
+						"required": true,
+						"schema": {
+							"description": "Operator connector installation ID",
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ConnectConnectorInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AccountConnectionResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					},
+					"502": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Gateway"
+					},
+					"503": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Service Unavailable"
+					}
+				},
+				"summary": "Connect destinations from an operator-installed connector",
+				"tags": ["Accounts"]
+			}
+		},
 		"/accounts/discord/webhook": {
 			"post": {
 				"operationId": "discord-webhook-login",
@@ -16601,6 +16760,18 @@
 		"/accounts/providers": {
 			"get": {
 				"operationId": "list-account-providers",
+				"parameters": [
+					{
+						"description": "Workspace ID used to scope operator-installed connectors",
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"schema": {
+							"description": "Workspace ID used to scope operator-installed connectors",
+							"type": "string"
+						}
+					}
+				],
 				"responses": {
 					"200": {
 						"content": {
@@ -28990,16 +29161,16 @@
 		},
 		"/memes/templates/{template_id}/thumbnail": {
 			"get": {
-				"description": "Returns a bounded OpenPost-proxied image so private Memegen hosts and server-only provider credentials are never exposed to the browser.",
+				"description": "Returns bounded cacheable image bytes from OpenPost's configured template catalog.",
 				"operationId": "get-meme-template-thumbnail",
 				"parameters": [
 					{
-						"description": "Memegen template ID",
+						"description": "Meme template ID",
 						"in": "path",
 						"name": "template_id",
 						"required": true,
 						"schema": {
-							"description": "Memegen template ID",
+							"description": "Meme template ID",
 							"type": "string"
 						}
 					},
@@ -29013,20 +29184,42 @@
 							"description": "Workspace ID",
 							"type": "string"
 						}
+					},
+					{
+						"description": "Catalog revision returned by the template list",
+						"explode": false,
+						"in": "query",
+						"name": "catalog_revision",
+						"schema": {
+							"description": "Catalog revision returned by the template list",
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
 					"200": {
 						"content": {
-							"application/json": {
+							"image/jpeg": {
 								"schema": {
-									"$ref": "#/components/schemas/GetMemeTemplateThumbnailOutputBody"
+									"contentMediaType": "application/octet-stream",
+									"format": "binary",
+									"type": "string"
 								}
 							}
 						},
-						"description": "OK",
+						"description": "JPEG template thumbnail",
 						"headers": {
 							"Cache-Control": {
+								"schema": {
+									"type": "string"
+								}
+							},
+							"Content-Type": {
+								"schema": {
+									"type": "string"
+								}
+							},
+							"ETag": {
 								"schema": {
 									"type": "string"
 								}
@@ -29114,7 +29307,7 @@
 						"description": "Service Unavailable"
 					}
 				},
-				"summary": "Load a proxied meme template thumbnail",
+				"summary": "Load a meme template thumbnail",
 				"tags": ["Media"]
 			}
 		},

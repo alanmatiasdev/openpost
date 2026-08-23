@@ -626,14 +626,22 @@ func uniqueStrings(values []string) []string {
 // preset. A requested output profile always wins so explicit user choices are never
 // silently replaced when the source changes.
 func Resolve(provider string, input ResolveInput) ResolvedCapability {
+	return ResolveCatalog(provider, All(), input)
+}
+
+// ResolveCatalog applies the canonical destination selection and validation
+// rules to a caller-supplied capability catalog. Operator-installed connectors
+// use it so their signed manifest data follows the same composer rules as the
+// built-in catalog.
+func ResolveCatalog(provider string, catalog []Capability, input ResolveInput) ResolvedCapability {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	preset := normalizeIntent(firstNonEmptyCapability(input.CreationPreset, input.Intent))
 	inputShape := resolveMediaShape(input.Segments, input.SourceURL)
 	shape := intendedMediaShape(preset, inputShape)
 	issues := []ValidationIssue{}
-	selected := selectDestinationCapability(provider, input, shape, preset)
-	availableFormats := destinationFormats(provider, input, shape, preset)
-	formatSelectionRequired := destinationFormatSelectionRequired(provider, input, shape)
+	selected := selectDestinationCapability(catalog, provider, input, shape, preset)
+	availableFormats := destinationFormats(catalog, provider, input, shape, preset)
+	formatSelectionRequired := destinationFormatSelectionRequired(catalog, provider, input, shape)
 	if selected == nil {
 		message := fmt.Sprintf("%s does not expose a publishing format", provider)
 		issues = append(issues, validationIssue("unsupported_destination", message, provider, "", "output_profile"))
@@ -734,17 +742,17 @@ func providerDisplayName(provider string) string {
 	}
 }
 
-func selectDestinationCapability(provider string, input ResolveInput, shape, preset string) *Capability {
+func selectDestinationCapability(catalog []Capability, provider string, input ResolveInput, shape, preset string) *Capability {
 	requested := strings.TrimSpace(input.RequestedOutputProfile)
 	if requested != "" {
-		if candidate, ok := bestOutputCapability(provider, requested, shape); ok {
+		if candidate, ok := bestOutputCapability(catalog, provider, requested, shape); ok {
 			return &candidate
 		}
 		return nil
 	}
 	var selected *Capability
 	bestScore := -1 << 30
-	for _, candidate := range All() {
+	for _, candidate := range catalog {
 		if candidate.Provider != provider {
 			continue
 		}
@@ -875,7 +883,7 @@ func sourceLooksShortForm(segments []ResolveSegment) bool {
 	return false
 }
 
-func destinationFormatSelectionRequired(provider string, input ResolveInput, shape string) bool {
+func destinationFormatSelectionRequired(catalog []Capability, provider string, input ResolveInput, shape string) bool {
 	if strings.TrimSpace(input.RequestedOutputProfile) != "" {
 		return false
 	}
@@ -884,7 +892,7 @@ func destinationFormatSelectionRequired(provider string, input ResolveInput, sha
 	}
 
 	profiles := map[string]struct{}{}
-	for _, candidate := range All() {
+	for _, candidate := range catalog {
 		if candidate.Provider != provider || !slices.Contains(candidate.MediaShapes, shape) {
 			continue
 		}
@@ -893,17 +901,17 @@ func destinationFormatSelectionRequired(provider string, input ResolveInput, sha
 	return len(profiles) > 1
 }
 
-func destinationFormats(provider string, input ResolveInput, shape, preset string) []DestinationFormat {
+func destinationFormats(catalog []Capability, provider string, input ResolveInput, shape, preset string) []DestinationFormat {
 	seen := map[string]struct{}{}
 	formats := []DestinationFormat{}
-	for _, candidate := range All() {
+	for _, candidate := range catalog {
 		if candidate.Provider != provider {
 			continue
 		}
 		if _, exists := seen[candidate.OutputProfile]; exists {
 			continue
 		}
-		selected, ok := bestOutputCapability(provider, candidate.OutputProfile, shape)
+		selected, ok := bestOutputCapability(catalog, provider, candidate.OutputProfile, shape)
 		if !ok {
 			continue
 		}
@@ -927,9 +935,9 @@ func destinationFormats(provider string, input ResolveInput, shape, preset strin
 	return formats
 }
 
-func bestOutputCapability(provider, outputProfile, shape string) (Capability, bool) {
+func bestOutputCapability(catalog []Capability, provider, outputProfile, shape string) (Capability, bool) {
 	var fallback *Capability
-	for _, candidate := range All() {
+	for _, candidate := range catalog {
 		if candidate.Provider != provider || candidate.OutputProfile != outputProfile {
 			continue
 		}

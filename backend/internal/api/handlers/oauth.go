@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openpost/backend/internal/api/middleware"
+	"github.com/openpost/backend/internal/connectors"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	account_saver "github.com/openpost/backend/internal/services/account_saver"
@@ -54,6 +55,8 @@ type OAuthHandler struct {
 	mastodonApps                 *mastodonapps.Service
 	oauthStates                  *oauthstate.Store
 	readiness                    *providerreadiness.Service
+	connectorRegistry            *connectors.Registry
+	connectorStore               *connectors.Store
 	// frontendURL is the absolute base URL the SPA is served from
 	// (e.g. "https://openpost.example.com"). OAuth callback redirects go
 	// here so they work behind reverse proxies and subpath mounts.
@@ -143,6 +146,11 @@ func (h *OAuthHandler) SetProviderReadiness(service *providerreadiness.Service) 
 	h.readiness = service
 }
 
+func (h *OAuthHandler) SetConnectorRegistry(registry *connectors.Registry, store *connectors.Store) {
+	h.connectorRegistry = registry
+	h.connectorStore = store
+}
+
 func (h *OAuthHandler) SetProviderRegistrars(registrars ...func(string, platform.Adapter)) {
 	h.providerRegistrars = registrars
 }
@@ -165,20 +173,25 @@ type MastodonServerInfo struct {
 }
 
 type ProviderInfo struct {
-	Platform     string                     `json:"platform" doc:"Provider key"`
-	DisplayName  string                     `json:"display_name" doc:"Human-readable provider name"`
-	AuthMode     string                     `json:"auth_mode" doc:"Connection method: oauth, app_password, or oauth_oob"`
-	Configured   bool                       `json:"configured" doc:"Whether this provider can currently be connected"`
-	Status       string                     `json:"status,omitempty" doc:"Provider launch status: available, needs_configuration, or planned"`
-	Description  string                     `json:"description,omitempty" doc:"Short connection or launch note for this provider"`
-	Capabilities []string                   `json:"capabilities,omitempty" doc:"High-level OpenPost capabilities available or planned for this provider"`
-	Name         string                     `json:"name,omitempty" doc:"Provider app or server display name"`
-	InstanceURL  string                     `json:"instance_url,omitempty" doc:"Federated server URL, when applicable"`
-	Readiness    providerreadiness.Decision `json:"readiness"`
+	Platform       string                     `json:"platform" doc:"Provider key"`
+	InstallationID string                     `json:"installation_id,omitempty" doc:"Operator installation used for a custom connector"`
+	DisplayName    string                     `json:"display_name" doc:"Human-readable provider name"`
+	AuthMode       string                     `json:"auth_mode" doc:"Connection method: oauth, app_password, or oauth_oob"`
+	Configured     bool                       `json:"configured" doc:"Whether this provider can currently be connected"`
+	Status         string                     `json:"status,omitempty" doc:"Provider launch status: available, needs_configuration, or planned"`
+	Description    string                     `json:"description,omitempty" doc:"Short connection or launch note for this provider"`
+	Capabilities   []string                   `json:"capabilities,omitempty" doc:"High-level OpenPost capabilities available or planned for this provider"`
+	Name           string                     `json:"name,omitempty" doc:"Provider app or server display name"`
+	InstanceURL    string                     `json:"instance_url,omitempty" doc:"Federated server URL, when applicable"`
+	Readiness      providerreadiness.Decision `json:"readiness"`
 }
 
 type ListProvidersOutput struct {
 	Body []ProviderInfo
+}
+
+type ListProvidersInput struct {
+	WorkspaceID string `query:"workspace_id" required:"false" doc:"Workspace ID used to scope operator-installed connectors"`
 }
 
 type ListMastodonServersOutput struct {
@@ -241,6 +254,7 @@ type ListAccountsInput struct {
 
 type AccountResponse struct {
 	ID                     string     `json:"id" doc:"Account ID"`
+	ProviderInstallationID string     `json:"provider_installation_id,omitempty" doc:"Operator connector installation used by this account"`
 	Slug                   string     `json:"slug" doc:"User-editable account slug for CLI selectors"`
 	Platform               string     `json:"platform" doc:"Platform name"`
 	AccountID              string     `json:"account_id" doc:"Platform-specific account ID"`
@@ -506,8 +520,15 @@ func (h *OAuthHandler) ListProviders(api huma.API) {
 		Summary:     "List configured account providers",
 		Tags:        []string{tagAccounts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-	}, func(ctx context.Context, _ *struct{}) (*ListProvidersOutput, error) {
-		return &ListProvidersOutput{Body: h.providerAvailability(ctx)}, nil
+	}, func(ctx context.Context, input *ListProvidersInput) (*ListProvidersOutput, error) {
+		infos := h.providerAvailability(ctx)
+		if input.WorkspaceID != "" {
+			if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
+				return nil, err
+			}
+			infos = append(infos, h.connectorProviderAvailability(input.WorkspaceID)...)
+		}
+		return &ListProvidersOutput{Body: infos}, nil
 	})
 }
 
@@ -1924,6 +1945,20 @@ func (h *OAuthHandler) ListAccounts(api huma.API) {
 		grantCounts := countGrantDestinations(accounts)
 		supported, enabled := h.resolveListMessaging(ctx, input.WorkspaceID, userID, accounts)
 		response := buildListResponses(accounts, grantCounts, supported, enabled, h.disableLinkedInThreadReplies)
+		if h.connectorStore != nil {
+			var bindings []models.ProviderAccountBinding
+			if err := h.db.NewSelect().Model(&bindings).
+				Where("workspace_id = ?", input.WorkspaceID).Scan(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to list connector account bindings")
+			}
+			installationByAccount := make(map[string]string, len(bindings))
+			for _, binding := range bindings {
+				installationByAccount[binding.SocialAccountID] = binding.InstallationID
+			}
+			for index := range response {
+				response[index].ProviderInstallationID = installationByAccount[response[index].ID]
+			}
+		}
 		return &ListAccountsOutput{Body: response}, nil
 	})
 }

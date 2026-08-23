@@ -69,6 +69,16 @@ func NewRegistry(ctx context.Context, config Config, options RegistryOptions) (*
 			registry.entries[installation.ID] = entry
 			continue
 		}
+		if builtInProviderID(manifest.Provider.ID) {
+			err = fmt.Errorf("connector provider id %q conflicts with a built-in provider", manifest.Provider.ID)
+			entry.Status = InstallationStatusInvalidManifest
+			entry.StatusDetail = err.Error()
+			if installation.Required {
+				return nil, requiredInstallationError(installation.ID, err)
+			}
+			registry.entries[installation.ID] = entry
+			continue
+		}
 		entry.Manifest = manifest
 		if err := client.Health(ctx); err != nil {
 			entry.Status = InstallationStatusUnavailable
@@ -86,6 +96,15 @@ func NewRegistry(ctx context.Context, config Config, options RegistryOptions) (*
 		registry.clients[installation.ID] = client
 	}
 	return registry, nil
+}
+
+func builtInProviderID(providerID string) bool {
+	for _, capability := range capabilities.All() {
+		if capability.Provider == providerID {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Registry) All() []RegistryEntry {
@@ -113,12 +132,23 @@ func (r *Registry) Installation(installationID string) (RegistryEntry, bool) {
 }
 
 func (r *Registry) AvailableForWorkspace(workspaceID string) []RegistryEntry {
+	entries := r.ForWorkspace(workspaceID)
+	result := entries[:0]
+	for _, entry := range entries {
+		if entry.Available {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
+func (r *Registry) ForWorkspace(workspaceID string) []RegistryEntry {
 	if r == nil {
 		return nil
 	}
 	result := make([]RegistryEntry, 0, len(r.entries))
 	for _, entry := range r.entries {
-		if entry.Available && workspaceAllowed(entry.WorkspaceAllowlist, workspaceID) {
+		if workspaceAllowed(entry.WorkspaceAllowlist, workspaceID) {
 			result = append(result, cloneRegistryEntry(entry))
 		}
 	}
