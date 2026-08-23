@@ -25,6 +25,12 @@ import {
 } from '$lib/video-editor/effects/effect-keyframes';
 import { applyMotionModifiers } from './motion-modifier-eval';
 import { resolveItemPropertyRuntime } from './property-runtime';
+import {
+	clonePathVertices,
+	isPathVertexKeyframeProperty,
+	pathVertexKeyframeProperties,
+	setPathVertexPropertyValue
+} from './path-vertex-keyframes';
 
 export interface AnimatedItemMotionContext {
 	fps: number;
@@ -89,9 +95,14 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			builtIn = [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
 			break;
 		case 'subtitle':
-		case 'shape':
 		case 'composition':
 			builtIn = [...VISUAL_PROPERTIES];
+			break;
+		case 'shape':
+			builtIn = [
+				...VISUAL_PROPERTIES,
+				...(item.shapeType === 'path' ? pathVertexKeyframeProperties(item.pathVertices) : [])
+			];
 			break;
 		case 'adjustment':
 			builtIn = [];
@@ -183,6 +194,12 @@ function applyResolvedValue(
 	property: KeyframeProperty,
 	value: number
 ): TimelineItem {
+	if (isPathVertexKeyframeProperty(property)) {
+		const pathVertices = clonePathVertices(item.pathVertices ?? []);
+		return setPathVertexPropertyValue(pathVertices, property, value)
+			? { ...item, pathVertices }
+			: item;
+	}
 	if (isTransformProperty(property)) {
 		return { ...item, transform: { ...item.transform, [property]: value } };
 	}

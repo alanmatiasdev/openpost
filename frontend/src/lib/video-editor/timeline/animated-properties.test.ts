@@ -46,6 +46,22 @@ describe('animatable properties', () => {
 		expect(properties).not.toContain('volume');
 		expect(properties).not.toContain('cropLeft');
 	});
+
+	it('exposes six scalar lanes for every path vertex', () => {
+		const path: TimelineItem = {
+			...item('shape'),
+			shapeType: 'path',
+			pathVertices: [
+				{
+					position: [0.25, 0.5],
+					inHandle: [-0.1, 0],
+					outHandle: [0.1, 0],
+					tangentMode: 'continuous'
+				}
+			]
+		};
+		expect(getAnimatablePropertiesForItem(path)).toContain('pathVertex:0:outY');
+	});
 });
 
 describe('resolveAnimatedItemAt', () => {
@@ -165,6 +181,37 @@ describe('resolveAnimatedItemAt', () => {
 			anchorX: 250,
 			anchorY: 75
 		});
+	});
+
+	it('interpolates path positions and handles without changing topology', () => {
+		const path: TimelineItem = {
+			...item('shape'),
+			shapeType: 'path',
+			pathVertices: [
+				{
+					position: [0, 0],
+					inHandle: [0, 0],
+					outHandle: [0.25, 0],
+					tangentMode: 'broken'
+				},
+				{
+					position: [1, 1],
+					inHandle: [-0.25, 0],
+					outHandle: [0, 0],
+					tangentMode: 'broken'
+				}
+			],
+			keyframes: {
+				'pathVertex:0:positionX': { frames: [0, 30], values: [0, 1] },
+				'pathVertex:1:inY': { frames: [0, 30], values: [0, -0.5] }
+			}
+		};
+
+		const resolved = resolveAnimatedItemAt(path, 115);
+		expect(resolved.pathVertices?.[0]?.position).toEqual([0.5, 0]);
+		expect(resolved.pathVertices?.[1]?.inHandle).toEqual([-0.25, -0.25]);
+		expect(resolved.pathVertices?.[0]?.tangentMode).toBe('broken');
+		expect(path.pathVertices?.[0]?.position).toEqual([0, 0]);
 	});
 
 	it('resolves effect params through the same item used by preview and export', () => {

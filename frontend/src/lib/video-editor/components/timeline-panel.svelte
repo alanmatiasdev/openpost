@@ -71,7 +71,13 @@
 		getAnimatablePropertiesForItem,
 		resolvePreExpressionItemAt
 	} from '$lib/video-editor/timeline/animated-properties';
-	import { editorKeyframes } from '$lib/video-editor/timeline/keyframe-editor';
+	import { editorKeyframes, editorPropertyLabel } from '$lib/video-editor/timeline/keyframe-editor';
+	import { pathVertexSelectionStore } from '$lib/video-editor/timeline/stores/path-vertex-selection-store.svelte';
+	import { visiblePathVertexProperties } from '$lib/video-editor/timeline/path-vertex-visibility';
+	import {
+		isPathVertexKeyframeProperty,
+		pathVertexPropertyValue
+	} from '$lib/video-editor/timeline/path-vertex-keyframes';
 	import {
 		effectPropertyBaseValue,
 		effectPropertyLabel
@@ -2202,8 +2208,18 @@
 			!transitionsStore.at(selectedItem, frame - selectedItem.from)
 		);
 	});
+	const pathVertexSelection = $derived(
+		selectedItem ? pathVertexSelectionStore.forItem(selectedItem.id) : null
+	);
 	const availableKeyframeProperties = $derived(
-		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
+		selectedItem
+			? visiblePathVertexProperties(getAnimatablePropertiesForItem(selectedItem), {
+					itemKeyframes: selectedItem.keyframes,
+					selectedVertexIndices: pathVertexSelection?.indices,
+					showAllVertices: pathVertexSelection?.showAll,
+					alwaysInclude: selectedKeyframe?.property
+				})
+			: []
 	);
 	const keyframePropertyOptions = $derived(
 		availableKeyframeProperties.map((property) => ({
@@ -2272,7 +2288,7 @@
 	function keyframeLabel(property: KeyframeProperty): string {
 		return (
 			(selectedItem && effectPropertyLabel(selectedItem, property)) ??
-			property.replace(/([a-z])([A-Z])/g, '$1 $2')
+			(selectedItem ? editorPropertyLabel(selectedItem, property) : property)
 		);
 	}
 
@@ -2282,8 +2298,12 @@
 		const frame = Math.max(0, timelineStore.currentFrame - item.from);
 		const resolved = resolvePreExpressionItemAt(item, timelineStore.currentFrame);
 		const transformValue = transformKeyframeValue(resolved, property);
+		const pathValue = isPathVertexKeyframeProperty(property)
+			? pathVertexPropertyValue(resolved.pathVertices, property)
+			: undefined;
 		const value =
 			transformValue ??
+			pathValue ??
 			activeValueAt(item, property, timelineStore.currentFrame) ??
 			effectPropertyBaseValue(item, property) ??
 			(property === 'opacity' || property === 'volume' ? 1 : 0);

@@ -3,11 +3,13 @@ import type { TimelineItem } from '$lib/video-editor/project/types';
 import {
 	curvePath,
 	editorKeyframes,
+	editorPropertyLabel,
 	graphCoordinates,
 	graphPoint,
 	graphValueRange,
 	keyframeIdentity,
 	marqueeSelection,
+	propertyValueRange,
 	type GraphViewport
 } from './keyframe-editor';
 
@@ -60,6 +62,18 @@ describe('keyframe editor math', () => {
 		const narrow = graphValueRange('opacity', [{ value: 0.5 }, { value: 0.6 }]);
 		expect(narrow.min).toBeCloseTo(0.488);
 		expect(narrow.max).toBeCloseTo(0.612);
+	});
+
+	it('labels and bounds normalized path coordinates', () => {
+		expect(editorPropertyLabel(item, 'pathVertex:2:positionX')).toBe('Vertex 3 X');
+		expect(editorPropertyLabel(item, 'pathVertex:2:outY')).toBe('Vertex 3 Out Y');
+		expect(propertyValueRange('pathVertex:2:positionX')).toEqual({
+			min: 0,
+			max: 1,
+			unit: '',
+			decimals: 3
+		});
+		expect(propertyValueRange('pathVertex:2:outY')).toMatchObject({ min: -2, max: 2 });
 	});
 
 	it('round-trips graph coordinates', () => {

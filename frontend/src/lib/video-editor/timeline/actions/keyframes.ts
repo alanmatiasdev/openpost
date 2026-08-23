@@ -50,6 +50,11 @@ import {
 	effectPropertyPatch,
 	isEffectKeyframeProperty
 } from '$lib/video-editor/effects/effect-keyframes';
+import {
+	clonePathVertices,
+	isPathVertexKeyframeProperty,
+	setPathVertexPropertyValue
+} from '../path-vertex-keyframes';
 export { activeValueAt, interpolateAt } from '../keyframe-interpolation';
 
 export interface KeyframeEdit {
@@ -1021,6 +1026,10 @@ function basePropertyPatch(
 	property: KeyframeProperty,
 	value: number
 ): Partial<TimelineItem> {
+	if (isPathVertexKeyframeProperty(property)) {
+		const pathVertices = clonePathVertices(item.pathVertices ?? []);
+		return setPathVertexPropertyValue(pathVertices, property, value) ? { pathVertices } : {};
+	}
 	const effectPatch = effectPropertyPatch(item, property, value);
 	if (effectPatch) return effectPatch;
 	if (isEffectKeyframeProperty(property)) return {};

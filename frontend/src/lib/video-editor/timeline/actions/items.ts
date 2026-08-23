@@ -23,6 +23,7 @@ import { transitionsStore } from './transitions-store.svelte';
 import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
 import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
 import { clonePropertyRuntime } from './property-runtime';
+import { hasPathVertexKeyframes } from '../path-vertex-keyframes';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -180,8 +181,25 @@ export function updateItemProperties(
 	commandType = 'UPDATE_ITEM'
 ): void {
 	execute(commandType, () => {
+		const item = timelineStore.itemById.get(id);
+		if (item && pathTopologyChangeIsLocked(item, patch)) return;
 		timelineStore._updateItems([{ id, patch }]);
 	});
+}
+
+function pathTopologyChangeIsLocked(item: TimelineItem, patch: Partial<TimelineItem>): boolean {
+	if (
+		item.type !== 'shape' ||
+		item.shapeType !== 'path' ||
+		!hasPathVertexKeyframes(item.keyframes)
+	) {
+		return false;
+	}
+	return (
+		patch.pathVertices !== undefined ||
+		(patch.pathClosed !== undefined && patch.pathClosed !== (item.pathClosed ?? true)) ||
+		(patch.shapeType !== undefined && patch.shapeType !== item.shapeType)
+	);
 }
 
 /** Toggle reverse playback for media clips and their linked A/V companions. */

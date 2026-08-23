@@ -8,6 +8,11 @@ import PreviewLayer from './preview-layer.svelte';
 const WIDTH = 96;
 const HEIGHT = 64;
 
+interface PixelBounds {
+	width: number;
+	height: number;
+}
+
 function item(id: string, overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
 		id,
@@ -137,4 +142,69 @@ describe('property runtime rendering', () => {
 			renderer.dispose();
 		}
 	});
+
+	it('renders animated path vertices identically in preview and export', async () => {
+		const shape = item('animated-path', {
+			shapeType: 'path',
+			pathClosed: true,
+			strokeEnabled: false,
+			transform: { width: 60, height: 40 },
+			pathVertices: [
+				{ position: [0, 0], inHandle: [0, 0], outHandle: [0, 0] },
+				{ position: [0.2, 1], inHandle: [0, 0], outHandle: [0, 0] },
+				{ position: [0.4, 0], inHandle: [0, 0], outHandle: [0, 0] }
+			],
+			keyframes: {
+				'pathVertex:1:positionX': { frames: [0, 15], values: [0.2, 0.8] },
+				'pathVertex:2:positionX': { frames: [0, 15], values: [0.4, 1] }
+			}
+		});
+		timelineStore.setAll({ items: [shape], currentFrame: 15, fps: 30 });
+
+		const screen = await render(PreviewLayer, {
+			item: shape,
+			url: null,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const previewCanvas = screen.container.querySelector('canvas');
+		if (!previewCanvas) throw new Error('Animated path preview canvas did not render.');
+		await vi.waitFor(() => expect(redBounds(previewCanvas).width).toBeGreaterThan(50));
+		const previewBounds = redBounds(previewCanvas);
+
+		const renderer = new TimelineFrameRenderer(project([shape]));
+		try {
+			const frame = await renderer.render(15);
+			const exportBounds = redBounds(frame);
+			expect(exportBounds.width).toBe(previewBounds.width);
+			expect(exportBounds.height).toBe(previewBounds.height);
+		} finally {
+			renderer.dispose();
+		}
+	});
 });
+
+function redBounds(canvas: HTMLCanvasElement | OffscreenCanvas): PixelBounds {
+	const context = canvas.getContext('2d', { willReadFrequently: true });
+	if (!context) throw new Error('Canvas2D is required for path render validation.');
+	const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+	let minX = canvas.width;
+	let minY = canvas.height;
+	let maxX = -1;
+	let maxY = -1;
+	for (let y = 0; y < canvas.height; y += 1) {
+		for (let x = 0; x < canvas.width; x += 1) {
+			const index = (y * canvas.width + x) * 4;
+			if ((pixels[index] ?? 0) < 200 || (pixels[index + 3] ?? 0) < 200) continue;
+			minX = Math.min(minX, x);
+			minY = Math.min(minY, y);
+			maxX = Math.max(maxX, x);
+			maxY = Math.max(maxY, y);
+		}
+	}
+	return {
+		width: maxX >= minX ? maxX - minX + 1 : 0,
+		height: maxY >= minY ? maxY - minY + 1 : 0
+	};
+}

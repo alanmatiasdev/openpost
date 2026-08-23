@@ -3,6 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
+	import { hasPathVertexKeyframes } from '$lib/video-editor/timeline/path-vertex-keyframes';
 
 	let { item, onedit }: { item: TimelineItem; onedit: () => void } = $props();
 
@@ -16,6 +17,9 @@
 		{ type: 'heart', label: m.video_editor_shape_primitive_heart },
 		{ type: 'path', label: m.video_editor_shape_primitive_pen }
 	];
+	const pathTopologyLocked = $derived(
+		item.shapeType === 'path' && hasPathVertexKeyframes(item.keyframes)
+	);
 
 	function commit(patch: Partial<TimelineItem>): void {
 		updateItemProperties(item.id, patch, 'UPDATE_SHAPE_PROPERTIES');
@@ -27,6 +31,7 @@
 	}
 
 	function setMaskEnabled(enabled: boolean): void {
+		if (enabled && pathTopologyLocked && item.pathClosed === false) return;
 		commit({
 			isMask: enabled,
 			blendMode: enabled ? 'normal' : undefined,
@@ -57,6 +62,7 @@
 		<select
 			class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-2 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 			value={item.shapeType ?? 'rectangle'}
+			disabled={pathTopologyLocked}
 			onchange={(event) => commit({ shapeType: event.currentTarget.value as ShapeType })}
 		>
 			{#each shapeTypes as shape (shape.type)}
@@ -64,6 +70,11 @@
 			{/each}
 		</select>
 	</label>
+	{#if pathTopologyLocked}
+		<p class="rounded bg-amber-400/10 px-2 py-1.5 text-[10px] leading-4 text-amber-100">
+			{m.video_editor_path_topology_locked()}
+		</p>
+	{/if}
 
 	{#if !item.isMask}
 		<div class="grid grid-cols-2 gap-1">
@@ -300,6 +311,7 @@
 				type="checkbox"
 				class="size-3.5 accent-[oklch(0.66_0.14_45)]"
 				checked={item.isMask ?? false}
+				disabled={pathTopologyLocked && !item.isMask && item.pathClosed === false}
 				onchange={(event) => setMaskEnabled(event.currentTarget.checked)}
 			/>
 			{m.video_editor_shape_use_as_mask()}

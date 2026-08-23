@@ -100,7 +100,7 @@
 			allKeyframes.some((keyframe) => keyframe.property === property)
 		)
 	);
-	type PropertyGroup = 'transform' | 'crop' | 'typography' | 'audio' | 'other';
+	type PropertyGroup = 'transform' | 'crop' | 'typography' | 'path' | 'audio' | 'other';
 	const rows = $derived.by(() => {
 		const base = filter === 'keyframed' ? keyframedProperties : availableProperties;
 		const query = searchQuery.trim().toLowerCase();
@@ -154,6 +154,7 @@
 	}
 
 	function propertyGroup(property: KeyframeProperty): PropertyGroup {
+		if (property.startsWith('pathVertex:')) return 'path';
 		if (property.startsWith('crop')) return 'crop';
 		if (property === 'volume') return 'audio';
 		if (
@@ -194,6 +195,7 @@
 			case 'transform':
 			case 'crop':
 			case 'typography':
+			case 'path':
 			case 'audio':
 			case 'other':
 				groupFilter = value;
@@ -613,6 +615,7 @@
 			<option value="transform">{m.video_editor_keyframe_sheet_group_transform()}</option>
 			<option value="crop">{m.video_editor_keyframe_sheet_group_crop()}</option>
 			<option value="typography">{m.video_editor_keyframe_sheet_group_typography()}</option>
+			<option value="path">{m.video_editor_keyframe_sheet_group_path()}</option>
 			<option value="audio">{m.video_editor_keyframe_sheet_group_audio()}</option>
 			<option value="other">{m.video_editor_keyframe_sheet_group_other()}</option>
 		</select>

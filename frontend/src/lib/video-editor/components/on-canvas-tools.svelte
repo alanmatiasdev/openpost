@@ -1010,7 +1010,15 @@
 			></circle>
 		</svg>
 	{:else if activeTool === 'path' && canEditPath && !isPlaying}
-		<PathEditorOverlay {item} {canvasWidth} {canvasHeight} {boxStyle} {screenScale} {onedit} />
+		<PathEditorOverlay
+			{item}
+			{canvasWidth}
+			{canvasHeight}
+			{currentFrame}
+			{boxStyle}
+			{screenScale}
+			{onedit}
+		/>
 	{:else if activeTool === 'corner-pin' && canCornerPin && !isPlaying}
 		<CornerPinOverlay
 			{item}

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import PathEditorOverlay from './path-editor-overlay.svelte';
+import '../../../routes/layout.css';
 
 const track: TimelineTrack = {
 	id: 'visual',
@@ -72,6 +74,7 @@ describe('PathEditorOverlay', () => {
 			item: timelineStore.itemById.get('path')!,
 			canvasWidth: 400,
 			canvasHeight: 200,
+			currentFrame: 0,
 			boxStyle: 'left:0;top:0;width:400px;height:200px;transform:none',
 			screenScale: 1,
 			onedit
@@ -105,6 +108,7 @@ describe('PathEditorOverlay', () => {
 			item: timelineStore.itemById.get('path')!,
 			canvasWidth: 400,
 			canvasHeight: 200,
+			currentFrame: 0,
 			boxStyle: 'left:0;top:0;width:400px;height:200px;transform:none',
 			screenScale: 1,
 			onedit: vi.fn()
@@ -131,5 +135,65 @@ describe('PathEditorOverlay', () => {
 			.querySelector<HTMLElement>('[data-path-editor]')
 			?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 		expect(timelineStore.itemById.get('path')?.pathClosed).toBe(true);
+	});
+
+	it('keys selected or all vertices and locks topology until path keys are cleared', async () => {
+		const animated: TimelineItem = {
+			...pathItem(),
+			pathVertices: [
+				{
+					position: [0.15, 0.25],
+					inHandle: [0, 0],
+					outHandle: [0.15, 0],
+					tangentMode: 'continuous'
+				},
+				{
+					position: [0.85, 0.75],
+					inHandle: [-0.15, 0],
+					outHandle: [0, 0],
+					tangentMode: 'continuous'
+				}
+			]
+		};
+		timelineStore.setAll({ fps: 30, currentFrame: 15, tracks: [track], items: [animated] });
+		const screen = await render(PathEditorOverlay, {
+			item: timelineStore.itemById.get('path')!,
+			canvasWidth: 400,
+			canvasHeight: 200,
+			currentFrame: 15,
+			boxStyle: 'left:0;top:0;width:400px;height:200px;transform:none',
+			screenScale: 1,
+			onedit: vi.fn()
+		});
+		screen.container.style.width = '400px';
+		screen.container.style.height = '320px';
+		screen.container.style.position = 'relative';
+
+		await screen.getByRole('button', { name: 'Path point 1' }).click();
+		await screen.getByRole('button', { name: 'Key selected' }).click();
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+		expect(Object.keys(timelineStore.itemById.get('path')?.keyframes ?? {})).toHaveLength(6);
+		await expect
+			.element(screen.getByText(/Path points, order, and closure stay locked/))
+			.toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'Add point' })).toBeDisabled();
+		await expect.element(screen.getByRole('button', { name: 'Delete point' })).toBeDisabled();
+		await page.screenshot({
+			element: screen.container,
+			path: '../../../../.svelte-kit/openpost-path-vertex-animation.png'
+		});
+		const basePosition = timelineStore.itemById.get('path')?.pathVertices?.[0]?.position[0];
+		const firstPoint = screen.getByRole('button', { name: 'Path point 1' }).query();
+		firstPoint?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		expect(
+			timelineStore.itemById.get('path')?.keyframes?.['pathVertex:0:positionX']?.values[0]
+		).toBeGreaterThan(0.15);
+		expect(timelineStore.itemById.get('path')?.pathVertices?.[0]?.position[0]).toBe(basePosition);
+
+		await screen.getByRole('button', { name: 'Key all' }).click();
+		expect(Object.keys(timelineStore.itemById.get('path')?.keyframes ?? {})).toHaveLength(12);
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+		await screen.getByRole('button', { name: 'Clear path keys' }).click();
+		expect(timelineStore.itemById.get('path')?.keyframes).toBeUndefined();
 	});
 });

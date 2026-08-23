@@ -16,6 +16,7 @@ import {
 	rippleDeleteItems,
 	setCurrentFrame,
 	setItemsReversed,
+	updateItemProperties,
 	updateMarker,
 	unlinkItems
 } from './items';
@@ -235,6 +236,43 @@ describe('addShapeItem', () => {
 				aspectRatioLocked: false
 			}
 		});
+	});
+
+	it('rejects topology patches while path vertex keys exist', () => {
+		const id = addShapeItem('path');
+		timelineStore._updateItems([
+			{
+				id,
+				patch: {
+					pathVertices: [
+						{
+							position: [0.2, 0.2],
+							inHandle: [0, 0],
+							outHandle: [0, 0]
+						},
+						{
+							position: [0.8, 0.8],
+							inHandle: [0, 0],
+							outHandle: [0, 0]
+						}
+					],
+					pathClosed: false,
+					keyframes: {
+						'pathVertex:0:positionX': { frames: [0], values: [0.2] }
+					}
+				}
+			}
+		]);
+		commandHistory.clearHistory();
+		updateItemProperties(id, { shapeType: 'rectangle' });
+		updateItemProperties(id, { pathClosed: true });
+		updateItemProperties(id, { pathVertices: [] });
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			shapeType: 'path',
+			pathClosed: false
+		});
+		expect(timelineStore.itemById.get(id)?.pathVertices).toHaveLength(2);
+		expect(commandHistory.canUndo).toBe(false);
 	});
 });
 

@@ -14,6 +14,7 @@ import { activeVectorKeyframes, vectorPropertyForComponent } from './vector-keyf
 import { parseEffectKeyframeProperty } from '$lib/video-editor/effects/effect-keyframes';
 import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
 import { MAX_PACKED_COLOR } from './color-keyframes';
+import { parsePathVertexKeyframeProperty, pathVertexPropertyLabel } from './path-vertex-keyframes';
 
 export interface KeyframeRef {
 	property: KeyframeProperty;
@@ -107,6 +108,16 @@ export const PROPERTY_VALUE_RANGES = {
 } satisfies Record<BuiltInKeyframeProperty, PropertyValueRange>;
 
 export function propertyValueRange(property: KeyframeProperty): PropertyValueRange {
+	const pathVertex = parsePathVertexKeyframeProperty(property);
+	if (pathVertex) {
+		const isPosition = pathVertex.component === 'positionX' || pathVertex.component === 'positionY';
+		return {
+			min: isPosition ? 0 : -2,
+			max: isPosition ? 1 : 2,
+			unit: '',
+			decimals: 3
+		};
+	}
 	// SAFETY: missing dynamic effect keys return undefined and fall through to schema lookup.
 	const builtIn = PROPERTY_VALUE_RANGES[property as BuiltInKeyframeProperty];
 	if (builtIn) return builtIn;
@@ -140,6 +151,8 @@ export function editorPropertyValueRange(
 }
 
 export function editorPropertyLabel(item: TimelineItem, property: KeyframeProperty): string {
+	const pathLabel = pathVertexPropertyLabel(property);
+	if (pathLabel) return pathLabel;
 	const vector = vectorPropertyForComponent(property);
 	if (!vector || !activeVectorKeyframes(item, vector.property)) {
 		return property.replace(/([a-z])([A-Z])/g, '$1 $2');

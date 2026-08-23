@@ -206,6 +206,17 @@ export const DEFAULT_BEZIER_POINTS: BezierControlPoints = {
 /** Stable effect-parameter lane, matching FreeCut's persisted property format. */
 export type EffectKeyframeProperty = `effect:${string}:${string}:${string}`;
 
+export type PathVertexKeyframeComponent =
+	| 'positionX'
+	| 'positionY'
+	| 'inX'
+	| 'inY'
+	| 'outX'
+	| 'outY';
+
+/** Stable scalar lane for one coordinate of one path vertex. */
+export type PathVertexKeyframeProperty = `pathVertex:${number}:${PathVertexKeyframeComponent}`;
+
 /** Built-in property that can be animated with per-item keyframes. */
 export type BuiltInKeyframeProperty =
 	| 'x'
@@ -236,7 +247,10 @@ export type BuiltInKeyframeProperty =
 	| 'strokeWidth';
 
 /** Property that can be animated with per-item keyframes. */
-export type KeyframeProperty = BuiltInKeyframeProperty | EffectKeyframeProperty;
+export type KeyframeProperty =
+	| BuiltInKeyframeProperty
+	| PathVertexKeyframeProperty
+	| EffectKeyframeProperty;
 
 /**
  * Parallel frame/value arrays for one animated property. Frames ascend and

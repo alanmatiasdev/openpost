@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TimelineItem } from '$lib/video-editor/project/types';
+import type { ShapePathVertex, TimelineItem } from '$lib/video-editor/project/types';
 import { captureAnimationFromItem, getAnimationPresetCompatibility } from './saved-animation';
 
 function item(overrides: Partial<TimelineItem> = {}): TimelineItem {
@@ -117,5 +117,30 @@ describe('saved animation capture', () => {
 			compatible: false,
 			reason: 'type-mismatch'
 		});
+	});
+
+	it('requires matching path topology for saved vertex animation', () => {
+		const vertex: ShapePathVertex = {
+			position: [0.25, 0.5],
+			inHandle: [0, 0],
+			outHandle: [0.1, 0]
+		};
+		const source = item({
+			type: 'shape',
+			shapeType: 'path',
+			pathVertices: [vertex, { ...vertex, position: [0.75, 0.5] }],
+			keyframes: {
+				'pathVertex:1:positionX': { frames: [0, 30], values: [0.75, 0.5] }
+			}
+		});
+		const preset = captureAnimationFromItem(source, 'Path move')!;
+		expect(getAnimationPresetCompatibility(preset, source)).toEqual({ compatible: true });
+		expect(
+			getAnimationPresetCompatibility(preset, {
+				...source,
+				id: 'short-path',
+				pathVertices: [vertex]
+			})
+		).toEqual({ compatible: false, reason: 'missing-property' });
 	});
 });
