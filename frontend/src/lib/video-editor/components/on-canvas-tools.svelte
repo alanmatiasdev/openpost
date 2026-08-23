@@ -10,6 +10,7 @@
 		TimelineItem,
 		TimelineItemCornerPin
 	} from '$lib/video-editor/project/types';
+	import { loadedTextFontFamily } from '$lib/video-editor/typography/text-style';
 	import {
 		buildMotionPathPoints,
 		calculateAnchorDrag,
@@ -636,7 +637,7 @@
 		requestAnimationFrame(() => {
 			const editor = textEditor;
 			if (!editor) return;
-			editor.textContent = draftText ?? '';
+			populateTextEditor(editor);
 			editor.focus();
 			const selection = window.getSelection();
 			const range = document.createRange();
@@ -644,6 +645,27 @@
 			selection?.removeAllRanges();
 			selection?.addRange(range);
 		});
+	}
+
+	function populateTextEditor(editor: HTMLDivElement): void {
+		if (!item.textSpans?.length) {
+			editor.textContent = draftText ?? '';
+			return;
+		}
+		editor.replaceChildren(
+			...item.textSpans.map((span) => {
+				const line = document.createElement('div');
+				line.textContent = span.text;
+				line.style.fontFamily = `"${loadedTextFontFamily(span.fontFamily ?? item.fontFamily ?? 'Inter')}", sans-serif`;
+				line.style.fontSize = `${((span.fontSize ?? item.fontSize ?? Math.max(18, height / 15)) / canvasWidth) * 100}cqw`;
+				line.style.fontWeight = String(span.fontWeight ?? item.fontWeight ?? 600);
+				line.style.fontStyle = span.fontStyle ?? item.fontStyle ?? 'normal';
+				line.style.letterSpacing = `${((span.letterSpacing ?? item.letterSpacing ?? 0) / canvasWidth) * 100}cqw`;
+				line.style.color = span.color ?? item.color ?? '#ffffff';
+				line.style.textDecoration = (span.underline ?? item.underline) ? 'underline' : 'none';
+				return line;
+			})
+		);
 	}
 
 	function updateText(value: string): void {
@@ -1147,14 +1169,19 @@
 			bind:this={textEditor}
 			class="pointer-events-auto absolute z-10 flex overflow-hidden border border-[oklch(0.78_0.16_45)] bg-black/10 whitespace-pre-wrap text-white caret-[oklch(0.78_0.16_45)] shadow-[0_0_0_1px_black] focus:outline-none"
 			style={boxStyle}
-			style:font-family={item.fontFamily ?? 'Inter, sans-serif'}
+			style:font-family={`"${loadedTextFontFamily(item.fontFamily ?? 'Inter')}", sans-serif`}
 			style:font-size={`${((item.fontSize ?? Math.max(18, height / 15)) / canvasWidth) * 100}cqw`}
 			style:font-weight={item.fontWeight ?? 600}
+			style:font-style={item.fontStyle ?? 'normal'}
+			style:text-decoration={item.underline ? 'underline' : 'none'}
 			style:line-height={item.lineHeight ?? 1.2}
 			style:letter-spacing={`${((item.letterSpacing ?? 0) / canvasWidth) * 100}cqw`}
 			style:text-align={item.textAlign ?? 'center'}
 			style:color={item.color ?? '#ffffff'}
-			style:background-color={item.backgroundColor ?? 'transparent'}
+			style:background-color={item.textSpans?.length
+				? 'transparent'
+				: (item.backgroundColor ?? 'transparent')}
+			style:border-radius={`${((item.borderRadius ?? 0) / canvasWidth) * 100}cqw`}
 			style:padding={`${((item.paddingY ?? 0) / canvasHeight) * 100}cqh ${((item.paddingX ?? 0) / canvasWidth) * 100}cqw`}
 			style:align-items={item.verticalAlign === 'top'
 				? 'flex-start'

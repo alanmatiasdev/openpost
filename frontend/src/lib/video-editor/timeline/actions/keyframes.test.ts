@@ -584,6 +584,12 @@ describe('setAnimatedProperty', () => {
 		expect(getItem('animated').keyframes?.x).toBeUndefined();
 	});
 
+	it('updates the base value outside the clip when no keyframe lane exists', () => {
+		expect(setAnimatedProperty('animated', 'x', 0, 0.25, false)).toBe(true);
+		expect(getItem('animated').transform?.x).toBe(0.25);
+		expect(getItem('animated').keyframes?.x).toBeUndefined();
+	});
+
 	it('starts a lane when auto-key is on', () => {
 		expect(setAnimatedProperty('animated', 'opacity', 15, 0.5, true)).toBe(true);
 		expect(getItem('animated').keyframes?.opacity).toMatchObject({ frames: [5], values: [0.5] });

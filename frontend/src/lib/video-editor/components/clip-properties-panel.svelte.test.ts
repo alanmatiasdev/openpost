@@ -56,6 +56,18 @@ const items: TimelineItem[] = [
 		sourceStart: 30,
 		sourceEnd: 120,
 		sourceFps: 30
+	},
+	{
+		id: 'text-item',
+		trackId: 'video',
+		from: 120,
+		durationInFrames: 90,
+		label: 'Launch',
+		text: 'Launch',
+		type: 'text',
+		backgroundColor: '#221100',
+		fontSize: 84,
+		fontWeight: 700
 	}
 ];
 
@@ -75,11 +87,70 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		await reverse.click();
 
 		await expect.element(reverse).toHaveAttribute('aria-pressed', 'true');
-		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([true, true]);
+		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([true, true, undefined]);
 		expect(onedit).toHaveBeenCalledOnce();
 		expect(commandHistory.getLastCommandType()).toBe('SET_ITEMS_REVERSED');
 
 		commandHistory.undo();
-		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([undefined, undefined]);
+		expect(timelineStore.items.map((item) => item.isReversed)).toEqual([
+			undefined,
+			undefined,
+			undefined
+		]);
+	});
+});
+
+describe('ClipPropertiesPanel text styling', () => {
+	it('edits complete block typography without losing related shadow values', async () => {
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, { itemId: 'text-item', onedit });
+
+		const shadowX = screen.getByRole('spinbutton', { name: 'Shadow X' }).query();
+		if (!(shadowX instanceof HTMLInputElement)) {
+			throw new Error('Shadow X control did not render.');
+		}
+		shadowX.value = '12';
+		shadowX.dispatchEvent(new Event('change', { bubbles: true }));
+
+		const shadowY = screen.getByRole('spinbutton', { name: 'Shadow Y' }).query();
+		if (!(shadowY instanceof HTMLInputElement)) {
+			throw new Error('Shadow Y control did not render.');
+		}
+		shadowY.value = '18';
+		shadowY.dispatchEvent(new Event('change', { bubbles: true }));
+
+		const shadowBlur = screen.getByRole('spinbutton', { name: 'Shadow blur' }).query();
+		if (!(shadowBlur instanceof HTMLInputElement)) {
+			throw new Error('Shadow blur control did not render.');
+		}
+		shadowBlur.value = '24';
+		shadowBlur.dispatchEvent(new Event('change', { bubbles: true }));
+
+		const shadowColor = screen.getByLabelText('Shadow color').query();
+		if (!(shadowColor instanceof HTMLInputElement)) {
+			throw new Error('Shadow color control did not render.');
+		}
+		shadowColor.value = '#336699';
+		shadowColor.dispatchEvent(new Event('change', { bubbles: true }));
+
+		await screen.getByRole('combobox', { name: 'Alignment', exact: true }).selectOptions('left');
+		await screen
+			.getByRole('combobox', { name: 'Vertical alignment', exact: true })
+			.selectOptions('bottom');
+		await screen.getByRole('button', { name: 'Clear background' }).click();
+
+		expect(timelineStore.itemById.get('text-item')).toMatchObject({
+			backgroundColor: undefined,
+			textAlign: 'left',
+			verticalAlign: 'bottom',
+			textShadow: { blur: 24, color: '#336699', offsetX: 12, offsetY: 18 }
+		});
+		expect(commandHistory.canUndo).toBe(true);
+		expect(onedit).toHaveBeenCalledTimes(7);
+
+		screen.container.style.width = '260px';
+		const panel = screen.container.firstElementChild;
+		expect(panel).not.toBeNull();
+		if (panel) expect(panel.scrollWidth).toBeLessThanOrEqual(260);
 	});
 });

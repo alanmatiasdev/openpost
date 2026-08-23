@@ -9,6 +9,7 @@
 		TimelineItem,
 		TimelineItemCornerPin
 	} from '$lib/video-editor/project/types';
+	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -275,7 +276,11 @@
 						? (draftTransform ?? baseResolved.transform)
 						: baseResolved.transform,
 					crop: directDraft ? (draftCrop ?? baseResolved.crop) : baseResolved.crop,
-					text: directDraft ? (draftText ?? baseResolved.text) : baseResolved.text
+					text: directDraft ? (draftText ?? baseResolved.text) : baseResolved.text,
+					textSpans:
+						directDraft && draftText !== null && baseResolved.textSpans
+							? replaceTextSpanCopy(baseResolved.textSpans, draftText)
+							: baseResolved.textSpans
 				},
 				inputs.width / canvasWidth,
 				inputs.height / canvasHeight
@@ -592,7 +597,13 @@
 		if (!selectedItemId || !selectedItem) return;
 		updateItemProperties(
 			selectedItemId,
-			{ text, label: text.slice(0, 48) || selectedItem.label },
+			{
+				text,
+				textSpans: selectedItem.textSpans
+					? replaceTextSpanCopy(selectedItem.textSpans, text)
+					: undefined,
+				label: text.slice(0, 48) || selectedItem.label
+			},
 			'UPDATE_TEXT_ON_CANVAS'
 		);
 	}

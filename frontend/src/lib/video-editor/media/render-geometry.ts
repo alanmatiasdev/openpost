@@ -38,6 +38,11 @@ export function scaleItemForCanvas(
 				}
 			: undefined,
 		fontSize: item.fontSize === undefined ? undefined : item.fontSize * scaleY,
+		textSpans: item.textSpans?.map((span) => ({
+			...span,
+			fontSize: span.fontSize === undefined ? undefined : span.fontSize * scaleY,
+			letterSpacing: span.letterSpacing === undefined ? undefined : span.letterSpacing * scaleX
+		})),
 		letterSpacing: item.letterSpacing === undefined ? undefined : item.letterSpacing * scaleX,
 		strokeWidth: item.strokeWidth === undefined ? undefined : item.strokeWidth * radiusScale,
 		shapeCornerRadius:

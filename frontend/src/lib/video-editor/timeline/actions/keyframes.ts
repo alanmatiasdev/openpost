@@ -128,14 +128,15 @@ export function setAnimatedProperty(
 ): boolean {
 	return execute('SET_ANIMATED_PROPERTY', () => {
 		const item = timelineStore.itemById.get(itemId);
-		if (!item || absoluteFrame < item.from || absoluteFrame >= item.from + item.durationInFrames) {
-			return false;
-		}
+		if (!item) return false;
+		const frameIsInsideItem =
+			absoluteFrame >= item.from && absoluteFrame < item.from + item.durationInFrames;
 		const relativeFrame = absoluteFrame - item.from;
 		const track = item.keyframes?.[property];
 		const vector = vectorProxyForItem(item, property);
 		const hasVector = vector ? Boolean(activeVectorKeyframes(item, vector.property)) : false;
 		if (vector && (hasVector || track || autoKeyEnabled)) {
+			if (!frameIsInsideItem) return false;
 			if (!canWriteKeyframe(item, relativeFrame)) return false;
 			const promoted = promoteVectorKeyframes(item, vector.property, relativeFrame);
 			if (!promoted) return false;
@@ -153,6 +154,7 @@ export function setAnimatedProperty(
 			return true;
 		}
 		if (track || autoKeyEnabled) {
+			if (!frameIsInsideItem) return false;
 			if (!canWriteKeyframe(item, relativeFrame)) return false;
 			const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, relativeFrame, value);
 			timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);

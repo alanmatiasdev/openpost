@@ -6,6 +6,11 @@
 @import '@fontsource-variable/space-grotesk/wght.css';
 @import '@fontsource-variable/playfair-display/wght.css';
 @import '@fontsource-variable/source-serif-4/wght.css';
+@import '@fontsource/anton/400.css';
+@import '@fontsource/bebas-neue/400.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/inter-tight';
+@import '@fontsource-variable/orbitron';
 
 @source '../../../packages/social-preview/src';
 

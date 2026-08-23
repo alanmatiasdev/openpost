@@ -52,6 +52,10 @@ describe('mediaDrawGeometry', () => {
 			{
 				...item,
 				fontSize: 48,
+				textSpans: [
+					{ text: 'Title', fontSize: 64, letterSpacing: 4 },
+					{ text: 'Subtitle', fontSize: 32 }
+				],
 				strokeWidth: 4,
 				transform: {
 					x: 200,
@@ -73,5 +77,9 @@ describe('mediaDrawGeometry', () => {
 		});
 		expect(scaled.fontSize).toBe(24);
 		expect(scaled.strokeWidth).toBe(2);
+		expect(scaled.textSpans).toEqual([
+			{ text: 'Title', fontSize: 32, letterSpacing: 2 },
+			{ text: 'Subtitle', fontSize: 16 }
+		]);
 	});
 });

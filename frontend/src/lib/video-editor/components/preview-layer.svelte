@@ -49,6 +49,7 @@
 		resolveLottieRenderSpec,
 		type LottieRenderSpec
 	} from '$lib/video-editor/lottie/render-spec';
+	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
 
 	let {
 		item,
@@ -115,7 +116,11 @@
 	const resolved = $derived({
 		...baseResolved,
 		crop: overrideCrop ?? baseResolved.crop,
-		text: overrideText ?? baseResolved.text
+		text: overrideText ?? baseResolved.text,
+		textSpans:
+			overrideText !== undefined && baseResolved.textSpans
+				? replaceTextSpanCopy(baseResolved.textSpans, overrideText)
+				: baseResolved.textSpans
 	});
 	const transform = $derived(overrideTransform ?? resolved.transform ?? {});
 	const renderEffects = $derived(effectiveEffects ?? resolved.effects ?? []);
@@ -225,6 +230,8 @@
 		const rasterKey = JSON.stringify([
 			resolved.type,
 			resolved.text,
+			resolved.textSpans,
+			resolved.spanLayout,
 			resolved.label,
 			activeSubtitle?.text,
 			width,
@@ -232,8 +239,11 @@
 			resolved.fontFamily,
 			resolved.fontSize,
 			resolved.fontWeight,
+			resolved.fontStyle,
+			resolved.underline,
 			resolved.color,
 			resolved.backgroundColor,
+			resolved.backgroundFit,
 			resolved.textAlign,
 			resolved.verticalAlign,
 			resolved.lineHeight,
@@ -244,6 +254,8 @@
 			resolved.paddingX,
 			resolved.paddingY,
 			resolved.borderRadius,
+			resolved.textStylePresetId,
+			resolved.textStyleScale,
 			resolved.textMotion,
 			resolved.textMotion &&
 			isTextMotionActive(

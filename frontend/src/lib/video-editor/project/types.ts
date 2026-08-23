@@ -361,8 +361,11 @@ export interface TextStyleFields {
 	fontFamily?: string;
 	fontSize?: number;
 	fontWeight?: number;
+	fontStyle?: 'normal' | 'italic';
+	underline?: boolean;
 	color?: string;
 	backgroundColor?: string;
+	backgroundFit?: 'box' | 'content';
 	textAlign?: 'left' | 'center' | 'right';
 	verticalAlign?: 'top' | 'middle' | 'bottom';
 	lineHeight?: number;
@@ -379,6 +382,44 @@ export interface TextStyleFields {
 	paddingY?: number;
 	borderRadius?: number;
 }
+
+/** One independently styled line group inside a text item. */
+export interface TextSpan {
+	text: string;
+	fontSize?: number;
+	fontFamily?: string;
+	fontWeight?: number;
+	fontStyle?: 'normal' | 'italic';
+	underline?: boolean;
+	color?: string;
+	letterSpacing?: number;
+}
+
+export type TextSingleLayoutDraft = TextSpan;
+
+/** Preserves the creator's copy and inline styling while switching layouts. */
+export interface TextLayoutDrafts {
+	single?: TextSingleLayoutDraft;
+	twoSpans?: TextSpan[];
+	threeSpans?: TextSpan[];
+}
+
+export type TextSpanLayout = 'stack' | 'inline';
+
+export type TextStylePresetId =
+	| 'clean-title'
+	| 'poster'
+	| 'outline-pill'
+	| 'lower-third'
+	| 'speaker-card'
+	| 'cinematic'
+	| 'quote'
+	| 'neon'
+	| 'headline-stack'
+	| 'breaking-update'
+	| 'event-card'
+	| 'launch-stack'
+	| 'badge';
 
 /**
  * Where a subtitle item's cues come from. Transcript captions are generated
@@ -451,6 +492,11 @@ export interface TimelineItem extends TextStyleFields {
 
 	// Text items
 	text?: string;
+	textSpans?: TextSpan[];
+	spanLayout?: TextSpanLayout;
+	textLayoutDrafts?: TextLayoutDrafts;
+	textStylePresetId?: TextStylePresetId;
+	textStyleScale?: number;
 
 	// Shape items
 	shapeType?: ShapeType;

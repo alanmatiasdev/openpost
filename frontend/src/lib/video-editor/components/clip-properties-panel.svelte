@@ -3,7 +3,6 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
@@ -20,6 +19,7 @@
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
 	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
 	import LottiePropertiesPanel from './lottie-properties-panel.svelte';
+	import TextPropertiesPanel from './text-properties-panel.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -177,6 +177,27 @@
 			min: 0,
 			max: 30,
 			step: 0.5
+		},
+		{
+			property: 'textShadowOffsetX',
+			label: m.video_editor_text_shadow_x(),
+			min: -100,
+			max: 100,
+			step: 1
+		},
+		{
+			property: 'textShadowOffsetY',
+			label: m.video_editor_text_shadow_y(),
+			min: -100,
+			max: 100,
+			step: 1
+		},
+		{
+			property: 'textShadowBlur',
+			label: m.video_editor_text_shadow_blur(),
+			min: 0,
+			max: 160,
+			step: 1
 		}
 	];
 
@@ -268,6 +289,18 @@
 		if (!itemId) return;
 		updateItemProperties(itemId, patch, 'UPDATE_CLIP_PROPERTIES');
 		onedit();
+	}
+
+	function commitTextShadowColor(color: string): void {
+		const current = itemId ? timelineStore.itemById.get(itemId) : undefined;
+		commitText({
+			textShadow: {
+				blur: current?.textShadow?.blur ?? 0,
+				color,
+				offsetX: current?.textShadow?.offsetX ?? 0,
+				offsetY: current?.textShadow?.offsetY ?? 0
+			}
+		});
 	}
 
 	function toggleReverse(): void {
@@ -437,16 +470,8 @@
 				>
 					{m.video_editor_tool_text()}
 				</h3>
-				<Textarea
-					class="mb-1 min-h-16 w-full resize-y rounded bg-[oklch(0.22_0.01_50)] p-1.5 text-xs"
-					value={item.text ?? ''}
-					onblur={(event) =>
-						commitText({
-							text: event.currentTarget.value,
-							label: event.currentTarget.value.slice(0, 48) || item.label
-						})}
-				></Textarea>
-				<div class="grid grid-cols-2 gap-1">
+				<TextPropertiesPanel {item} {onedit} />
+				<div class="mt-2 grid grid-cols-2 gap-1">
 					{#each textFields as field (field.property)}
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
 							>{field.label}<Input
@@ -477,8 +502,60 @@
 							type="color"
 							value={item.backgroundColor ?? '#000000'}
 							onchange={(event) => commitText({ backgroundColor: event.currentTarget.value })}
+						/><button
+							type="button"
+							class="mt-0.5 w-full rounded px-1 py-1 text-[9px] text-[oklch(0.62_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-40"
+							disabled={!item.backgroundColor}
+							onclick={() => commitText({ backgroundColor: undefined })}
+							>{m.video_editor_text_clear_background()}</button
+						></label
+					>
+					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
+						>{m.video_editor_text_stroke_color()}<Input
+							class="block h-8 w-full rounded bg-transparent"
+							type="color"
+							value={item.strokeColor ?? '#000000'}
+							onchange={(event) => commitText({ strokeColor: event.currentTarget.value })}
 						/></label
 					>
+					<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
+						>{m.video_editor_text_shadow_color()}<Input
+							class="block h-8 w-full rounded bg-transparent"
+							type="color"
+							value={item.textShadow?.color ?? '#000000'}
+							onchange={(event) => commitTextShadowColor(event.currentTarget.value)}
+						/></label
+					>
+				</div>
+				<div class="mt-1 grid grid-cols-2 gap-1">
+					<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+						{m.video_editor_text_alignment()}
+						<select
+							class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.22_0.01_50)] px-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							value={item.textAlign ?? 'center'}
+							onchange={(event) =>
+								commitText({ textAlign: event.currentTarget.value as TimelineItem['textAlign'] })}
+						>
+							<option value="left">{m.video_editor_align_left()}</option>
+							<option value="center">{m.video_editor_align_center()}</option>
+							<option value="right">{m.video_editor_align_right()}</option>
+						</select>
+					</label>
+					<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+						{m.video_editor_text_vertical_alignment()}
+						<select
+							class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.22_0.01_50)] px-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							value={item.verticalAlign ?? 'middle'}
+							onchange={(event) =>
+								commitText({
+									verticalAlign: event.currentTarget.value as TimelineItem['verticalAlign']
+								})}
+						>
+							<option value="top">{m.video_editor_property_top()}</option>
+							<option value="middle">{m.video_editor_align_center()}</option>
+							<option value="bottom">{m.video_editor_property_bottom()}</option>
+						</select>
+					</label>
 				</div>
 			</section>
 		{/if}
