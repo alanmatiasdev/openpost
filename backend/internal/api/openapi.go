@@ -7,6 +7,7 @@ const openAPIDescription = "OpenPost HTTP API for workspace-scoped social publis
 // OpenAPIConfig returns the shared public contract metadata used by the server and generator.
 func OpenAPIConfig(version string) huma.Config {
 	config := huma.DefaultConfig("OpenPost API", version)
+	configureAutomationContract(&config)
 	config.Info.Description = openAPIDescription
 	config.Info.TermsOfService = "https://openpost.social/terms"
 	config.Info.Contact = &huma.Contact{

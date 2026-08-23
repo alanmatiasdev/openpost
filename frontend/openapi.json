@@ -16140,6 +16140,13 @@
 				"required": ["members", "invitations", "current_seats", "can_manage"],
 				"type": "object"
 			}
+		},
+		"securitySchemes": {
+			"bearerAuth": {
+				"bearerFormat": "OpenPost API token or session JWT",
+				"scheme": "bearer",
+				"type": "http"
+			}
 		}
 	},
 	"info": {
@@ -16377,7 +16384,14 @@
 					}
 				},
 				"summary": "List connected social accounts for a workspace",
-				"tags": ["Accounts"]
+				"tags": ["Accounts"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/accounts/bluesky/login": {
@@ -16638,7 +16652,14 @@
 					}
 				},
 				"summary": "List configured account providers",
-				"tags": ["Accounts"]
+				"tags": ["Accounts"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/accounts/selections/{connection_id}": {
@@ -17072,7 +17093,14 @@
 					}
 				},
 				"summary": "List account-specific publishing options",
-				"tags": ["Accounts"]
+				"tags": ["Accounts"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/accounts/{account_id}/grant": {
@@ -17301,7 +17329,14 @@
 					}
 				},
 				"summary": "Search one account-specific publishing option collection",
-				"tags": ["Accounts"]
+				"tags": ["Accounts"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/accounts/{platform}/auth-url": {
@@ -19477,6 +19512,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "Get public authentication configuration",
 				"tags": ["Auth"]
 			}
@@ -19962,6 +19998,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Verify a new account email with a six-digit code",
 				"tags": ["Auth"]
 			}
@@ -20048,6 +20085,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Send a replacement email verification code",
 				"tags": ["Auth"]
 			}
@@ -20125,6 +20163,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Consume a user impersonation link",
 				"tags": ["Auth"]
 			}
@@ -20260,6 +20299,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Login with email and password",
 				"tags": ["Auth"]
 			}
@@ -20329,6 +20369,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Begin MFA login with a passkey",
 				"tags": ["Auth"]
 			}
@@ -20405,6 +20446,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Complete MFA login with a passkey",
 				"tags": ["Auth"]
 			}
@@ -20491,6 +20533,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Complete MFA login with a single-use recovery code",
 				"tags": ["Auth"]
 			}
@@ -20567,6 +20610,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Complete MFA login with a TOTP code",
 				"tags": ["Auth"]
 			}
@@ -20702,6 +20746,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Discover a verified organization identity provider by email",
 				"tags": ["Auth"]
 			}
@@ -20761,6 +20806,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Exchange a one-time native OIDC handoff code",
 				"tags": ["Auth"]
 			}
@@ -20946,6 +20992,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "List instance identity providers available for login",
 				"tags": ["Auth"]
 			}
@@ -21343,6 +21390,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Reset a password with a single-use token",
 				"tags": ["Auth"]
 			}
@@ -21412,6 +21460,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Request a password reset link",
 				"tags": ["Auth"]
 			}
@@ -21843,6 +21892,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Register a new user",
 				"tags": ["Auth"]
 			}
@@ -23229,6 +23279,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Create or validate a hosted plan purchase choice",
 				"tags": ["Billing"]
 			}
@@ -23436,6 +23487,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "List provider publishing capabilities",
 				"tags": ["Capabilities"]
 			}
@@ -23526,7 +23578,14 @@
 					}
 				},
 				"summary": "Resolve publishing capabilities for connected accounts",
-				"tags": ["Capabilities"]
+				"tags": ["Capabilities"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/cli/auth/approve": {
@@ -23790,6 +23849,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Poll CLI device authorization",
 				"tags": ["Auth"]
 			}
@@ -23928,6 +23988,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Start CLI device authorization",
 				"tags": ["Auth"]
 			}
@@ -24992,6 +25053,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "Health check",
 				"tags": ["System"]
 			}
@@ -26095,6 +26157,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "List OpenPost Image Editor presets and runtime configuration",
 				"tags": ["OpenPost Image Editor"]
 			}
@@ -26124,6 +26187,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "List built-in OpenPost Image Editor templates available without a workspace",
 				"tags": ["OpenPost Image Editor"]
 			}
@@ -27341,7 +27405,20 @@
 					}
 				},
 				"summary": "List media attachments for a workspace",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"pagination": {
+						"cursor_parameter": "cursor",
+						"has_more_header": "X-Has-More",
+						"next_cursor_header": "X-Next-Cursor",
+						"style": "cursor"
+					},
+					"retry": "transient"
+				}
 			}
 		},
 		"/media/batch-delete": {
@@ -27410,7 +27487,14 @@
 					}
 				},
 				"summary": "Move multiple media attachments to Trash",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "destructive",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/media/storage": {
@@ -27482,7 +27566,14 @@
 					}
 				},
 				"summary": "Get workspace media storage usage",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/media/tags": {
@@ -27763,7 +27854,14 @@
 					}
 				},
 				"summary": "Create a streaming media upload session",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/media/upload-session/{id}/complete": {
@@ -27854,7 +27952,14 @@
 					}
 				},
 				"summary": "Complete a streaming media upload session",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/media/{id}": {
@@ -27925,7 +28030,14 @@
 					}
 				},
 				"summary": "Move a media attachment to Trash when active work does not use it",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "destructive",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			},
 			"patch": {
 				"operationId": "update-media",
@@ -28004,7 +28116,14 @@
 					}
 				},
 				"summary": "Update media metadata",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/media/{id}/alt-text/generate": {
@@ -28207,7 +28326,14 @@
 					}
 				},
 				"summary": "Retry authoritative analysis for a video",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/media/{id}/favorite": {
@@ -28278,7 +28404,14 @@
 					}
 				},
 				"summary": "Toggle favorite status of a media attachment",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/media/{id}/restore": {
@@ -28349,7 +28482,14 @@
 					}
 				},
 				"summary": "Restore a media attachment from Trash",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/media/{id}/usage": {
@@ -28420,7 +28560,14 @@
 					}
 				},
 				"summary": "Get publications that use a media attachment",
-				"tags": ["Media"]
+				"tags": ["Media"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/memes/preview": {
@@ -29660,7 +29807,14 @@
 					}
 				},
 				"summary": "Pause optional notification email temporarily",
-				"tags": ["Notifications"]
+				"tags": ["Notifications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/notifications/mutes/{id}": {
@@ -29732,7 +29886,14 @@
 					}
 				},
 				"summary": "End a notification Mute now",
-				"tags": ["Notifications"]
+				"tags": ["Notifications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/notifications/preferences": {
@@ -29771,7 +29932,14 @@
 					}
 				},
 				"summary": "Get notification delivery preferences",
-				"tags": ["Notifications"]
+				"tags": ["Notifications"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"put": {
 				"operationId": "update-notification-preferences",
@@ -32290,7 +32458,14 @@
 					}
 				},
 				"summary": "List posting schedules for a workspace",
-				"tags": ["Posting Schedules"]
+				"tags": ["Posting Schedules"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"post": {
 				"operationId": "create-posting-schedule",
@@ -32357,7 +32532,14 @@
 					}
 				},
 				"summary": "Create a new posting schedule slot",
-				"tags": ["Posting Schedules"]
+				"tags": ["Posting Schedules"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/posting-schedules/next-slot": {
@@ -32418,7 +32600,14 @@
 					}
 				},
 				"summary": "Get the next available posting time slot",
-				"tags": ["Posting Schedules"]
+				"tags": ["Posting Schedules"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/posting-schedules/suggest": {
@@ -32558,7 +32747,14 @@
 					}
 				},
 				"summary": "Delete a posting schedule slot",
-				"tags": ["Posting Schedules"]
+				"tags": ["Posting Schedules"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "destructive",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			},
 			"patch": {
 				"operationId": "update-posting-schedule",
@@ -32647,7 +32843,14 @@
 					}
 				},
 				"summary": "Update a posting schedule slot",
-				"tags": ["Posting Schedules"]
+				"tags": ["Posting Schedules"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/prompts": {
@@ -33041,7 +33244,14 @@
 					}
 				},
 				"summary": "Inspect provider readiness for a workspace",
-				"tags": ["Provider Readiness"]
+				"tags": ["Provider Readiness"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/public/profiles/{username}": {
@@ -33111,6 +33321,7 @@
 						"description": "Internal Server Error"
 					}
 				},
+				"security": [],
 				"summary": "Get an opt-in public publishing profile",
 				"tags": ["Profiles"]
 			}
@@ -33316,7 +33527,20 @@
 					}
 				},
 				"summary": "List publications",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"pagination": {
+						"cursor_parameter": "cursor",
+						"has_more_header": "X-Has-More",
+						"next_cursor_header": "X-Next-Cursor",
+						"style": "cursor"
+					},
+					"retry": "transient"
+				}
 			},
 			"post": {
 				"operationId": "create-publication",
@@ -33383,7 +33607,14 @@
 					}
 				},
 				"summary": "Create a publication",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}": {
@@ -33556,7 +33787,14 @@
 					}
 				},
 				"summary": "Get a publication",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"put": {
 				"operationId": "update-publication",
@@ -33605,7 +33843,14 @@
 					}
 				},
 				"summary": "Update a publication",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/cancel": {
@@ -33706,7 +33951,14 @@
 					}
 				},
 				"summary": "Cancel a scheduled publication",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/events": {
@@ -33803,7 +34055,20 @@
 					}
 				},
 				"summary": "List publication lifecycle events",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"pagination": {
+						"cursor_parameter": "cursor",
+						"has_more_header": "X-Has-More",
+						"next_cursor_header": "X-Next-Cursor",
+						"style": "cursor"
+					},
+					"retry": "transient"
+				}
 			}
 		},
 		"/publications/{id}/publish-now": {
@@ -33854,7 +34119,14 @@
 					}
 				},
 				"summary": "Publish a publication now",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "external-action",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/renditions": {
@@ -33905,7 +34177,14 @@
 					}
 				},
 				"summary": "Replace or upsert publication renditions",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/renditions/{account_id}": {
@@ -34150,7 +34429,14 @@
 					}
 				},
 				"summary": "Retry one failed publication destination",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "external-action",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/publications/{id}/retry-failed": {
@@ -34242,7 +34528,14 @@
 					}
 				},
 				"summary": "Retry every retryable failed publication destination",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "external-action",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/schedule": {
@@ -34293,7 +34586,14 @@
 					}
 				},
 				"summary": "Schedule a publication",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "alpha",
+					"idempotency": "required",
+					"retry": "idempotent-transient"
+				}
 			}
 		},
 		"/publications/{id}/validate": {
@@ -34334,7 +34634,14 @@
 					}
 				},
 				"summary": "Validate publication renditions",
-				"tags": ["Publications"]
+				"tags": ["Publications"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			}
 		},
 		"/ready": {
@@ -34372,6 +34679,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Readiness check",
 				"tags": ["System"]
 			}
@@ -34811,7 +35119,20 @@
 					}
 				},
 				"summary": "List Social Sets",
-				"tags": ["Social Sets"]
+				"tags": ["Social Sets"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"pagination": {
+						"cursor_parameter": "cursor",
+						"has_more_header": "X-Has-More",
+						"next_cursor_header": "X-Next-Cursor",
+						"style": "cursor"
+					},
+					"retry": "transient"
+				}
 			},
 			"post": {
 				"operationId": "create-social-set",
@@ -34888,7 +35209,14 @@
 					}
 				},
 				"summary": "Create a Social Set",
-				"tags": ["Social Sets"]
+				"tags": ["Social Sets"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/social-sets/{id}": {
@@ -34980,7 +35308,14 @@
 					}
 				},
 				"summary": "Delete a Social Set",
-				"tags": ["Social Sets"]
+				"tags": ["Social Sets"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "destructive",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			},
 			"get": {
 				"operationId": "get-social-set",
@@ -35049,7 +35384,14 @@
 					}
 				},
 				"summary": "Get a Social Set",
-				"tags": ["Social Sets"]
+				"tags": ["Social Sets"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"put": {
 				"operationId": "update-social-set",
@@ -35148,7 +35490,14 @@
 					}
 				},
 				"summary": "Replace a Social Set",
-				"tags": ["Social Sets"]
+				"tags": ["Social Sets"],
+				"x-openpost-automation": {
+					"access": "write",
+					"effect": "local-mutation",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "never"
+				}
 			}
 		},
 		"/stock-media/providers": {
@@ -35176,6 +35525,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "List configured stock media providers",
 				"tags": ["Stock Media"]
 			}
@@ -35440,6 +35790,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Search configured stock photo and video providers",
 				"tags": ["Stock Media"]
 			}
@@ -35539,6 +35890,7 @@
 						"description": "Service Unavailable"
 					}
 				},
+				"security": [],
 				"summary": "Resolve a selected stock asset and record provider attribution events",
 				"tags": ["Stock Media"]
 			}
@@ -35569,6 +35921,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "Get browser telemetry configuration",
 				"tags": ["System"]
 			}
@@ -35599,6 +35952,7 @@
 						"description": "Error"
 					}
 				},
+				"security": [],
 				"summary": "Running version",
 				"tags": ["System"]
 			}
@@ -35813,7 +36167,14 @@
 					}
 				},
 				"summary": "List workspaces for the current user",
-				"tags": ["Workspaces"]
+				"tags": ["Workspaces"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "alpha",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"post": {
 				"operationId": "create-workspace",
@@ -36750,7 +37111,14 @@
 					}
 				},
 				"summary": "Get workspace settings",
-				"tags": ["Workspaces"]
+				"tags": ["Workspaces"],
+				"x-openpost-automation": {
+					"access": "read",
+					"effect": "query",
+					"exposure": "disabled",
+					"idempotency": "none",
+					"retry": "transient"
+				}
 			},
 			"patch": {
 				"operationId": "update-workspace-settings",
@@ -37117,6 +37485,11 @@
 			}
 		}
 	},
+	"security": [
+		{
+			"bearerAuth": []
+		}
+	],
 	"servers": [
 		{
 			"description": "OpenPost Hosted service",
