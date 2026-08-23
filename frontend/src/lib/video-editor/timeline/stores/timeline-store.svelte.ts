@@ -56,6 +56,7 @@ interface TimelineState {
 	inPoint: number | null;
 	outPoint: number | null;
 	markers: TimelineMarkerRecord[];
+	selectedMarkerId: string | null;
 	settings: TimelineSettings;
 	zoomLevel: number;
 	isDirty: boolean;
@@ -67,6 +68,7 @@ const state = $state<TimelineState>({
 	inPoint: null,
 	outPoint: null,
 	markers: [],
+	selectedMarkerId: null,
 	settings: {
 		fps: 30,
 		snapEnabled: true,
@@ -101,6 +103,9 @@ export const timelineStore = {
 	},
 	get markers() {
 		return state.markers;
+	},
+	get selectedMarkerId(): string | null {
+		return state.selectedMarkerId;
 	},
 	get fps(): number {
 		return state.settings.fps;
@@ -159,7 +164,12 @@ export const timelineStore = {
 		if (next.fps !== undefined && Number.isFinite(next.fps) && next.fps > 0) {
 			state.settings.fps = next.fps;
 		}
-		if (next.markers) state.markers = next.markers;
+		if (next.markers) {
+			state.markers = next.markers;
+			if (!state.markers.some((marker) => marker.id === state.selectedMarkerId)) {
+				state.selectedMarkerId = null;
+			}
+		}
 		if (next.zoomLevel !== undefined && Number.isFinite(next.zoomLevel)) {
 			state.zoomLevel = Math.min(50, Math.max(0.01, next.zoomLevel));
 		}
@@ -175,6 +185,7 @@ export const timelineStore = {
 		state.inPoint = null;
 		state.outPoint = null;
 		state.markers = [];
+		state.selectedMarkerId = null;
 		state.settings.currentFrame = 0;
 		state.isDirty = false;
 		reindex();
@@ -309,9 +320,26 @@ export const timelineStore = {
 		state.isDirty = true;
 	},
 
+	_updateMarker(id: string, patch: Partial<Omit<TimelineMarkerRecord, 'id'>>): void {
+		state.markers = state.markers.map((marker) =>
+			marker.id === id ? { ...marker, ...patch } : marker
+		);
+		state.isDirty = true;
+	},
+
+	_setMarkers(markers: TimelineMarkerRecord[]): void {
+		state.markers = markers;
+		state.isDirty = true;
+	},
+
 	_removeMarker(id: string): void {
 		state.markers = state.markers.filter((marker) => marker.id !== id);
+		if (state.selectedMarkerId === id) state.selectedMarkerId = null;
 		state.isDirty = true;
+	},
+
+	_setSelectedMarkerId(id: string | null): void {
+		state.selectedMarkerId = id;
 	},
 
 	_clearDirty(): void {
@@ -325,5 +353,6 @@ export const timelineStore = {
 		state.settings.linkedSelectionEnabled = true;
 		state.settings.maxUndoHistory = 100;
 		state.markers = [];
+		state.selectedMarkerId = null;
 	}
 };

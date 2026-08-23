@@ -25,6 +25,7 @@ export function captureSnapshot(): TimelineSnapshot {
 		items: $state.snapshot(timelineStore.items),
 		tracks: $state.snapshot(timelineStore.tracks),
 		transitions: $state.snapshot(transitionsStore.list),
+		markers: $state.snapshot(timelineStore.markers),
 		inPoint: timelineStore.inPoint,
 		outPoint: timelineStore.outPoint,
 		fps: timelineStore.fps,
@@ -57,6 +58,7 @@ export function restoreSnapshot(
 	timelineStore.setAll({
 		items: plainSnapshot.items,
 		tracks: plainSnapshot.tracks,
+		markers: plainSnapshot.markers,
 		inPoint: sanitized.inPoint,
 		outPoint: sanitized.outPoint,
 		currentFrame: plainSnapshot.currentFrame,
@@ -74,6 +76,7 @@ export function snapshotsEqual(a: TimelineSnapshot, b: TimelineSnapshot): boolea
 		JSON.stringify(a.items) === JSON.stringify(b.items) &&
 		JSON.stringify(a.tracks) === JSON.stringify(b.tracks) &&
 		JSON.stringify(a.transitions) === JSON.stringify(b.transitions) &&
+		JSON.stringify(a.markers) === JSON.stringify(b.markers) &&
 		JSON.stringify(a.sequenceRegistry) === JSON.stringify(b.sequenceRegistry) &&
 		a.inPoint === b.inPoint &&
 		a.outPoint === b.outPoint &&

@@ -9,13 +9,15 @@
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
+		addMarker,
 		setCurrentFrame,
-		toggleMarkerAtPlayhead,
 		removeMarker,
+		updateMarker,
 		joinItems,
 		linkItems,
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
+	import { markerAfter, markerBefore, markerDisplayName } from '$lib/video-editor/timeline/markers';
 	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
@@ -48,6 +50,7 @@
 		EasingType,
 		KeyframeProperty,
 		TimelineItem,
+		TimelineMarker,
 		TimelineTransition
 	} from '$lib/video-editor/project/types';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
@@ -149,6 +152,10 @@
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 	import ChartSplineIcon from '@lucide/svelte/icons/chart-spline';
+	import FlagIcon from '@lucide/svelte/icons/flag';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	let {
 		onedit,
@@ -188,7 +195,32 @@
 		bodyCursor: string;
 		bodyUserSelect: string;
 	} | null = null;
+	let markerDrag: {
+		pointerId: number;
+		markerId: string;
+		beforeSnapshot: TimelineSnapshot;
+		changed: boolean;
+		bodyCursor: string;
+		bodyUserSelect: string;
+	} | null = null;
+	let markerLabelDraft = $state('');
+	let markerLabelDraftId = '';
+	const selectedMarker = $derived(
+		timelineStore.markers.find((marker) => marker.id === timelineStore.selectedMarkerId) ?? null
+	);
 	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
+
+	$effect(() => {
+		const marker = selectedMarker;
+		if (!marker) {
+			markerLabelDraftId = '';
+			markerLabelDraft = '';
+			return;
+		}
+		if (marker.id === markerLabelDraftId) return;
+		markerLabelDraftId = marker.id;
+		markerLabelDraft = marker.label ?? '';
+	});
 
 	$effect(() => {
 		if (!selectedItemId) {
@@ -836,6 +868,163 @@
 		timelineStore._setTracks(next);
 		commandHistory.addUndoEntry({ type: 'RESIZE_TRACK_HEIGHT' }, before);
 		onedit();
+	}
+
+	function markerName(marker: TimelineMarker): string {
+		const ordered = [...timelineStore.markers].sort(
+			(left, right) => left.frame - right.frame || left.id.localeCompare(right.id)
+		);
+		const index = Math.max(
+			0,
+			ordered.findIndex((candidate) => candidate.id === marker.id)
+		);
+		return markerDisplayName(marker, index, (number) => m.video_editor_marker_number({ number }));
+	}
+
+	function markerColorForInput(color: string): string {
+		return /^#[0-9a-f]{6}$/i.test(color) ? color : '#d97746';
+	}
+
+	function selectMarker(marker: TimelineMarker): void {
+		timelineStore._setSelectedMarkerId(marker.id);
+		selectedItemId = null;
+		selectedItemIds = [];
+		selectedTransitionId = null;
+		setCurrentFrame(marker.frame);
+	}
+
+	function addMarkerAtPlayhead(): void {
+		const id = addMarker(timelineStore.currentFrame);
+		timelineStore._setSelectedMarkerId(id);
+		selectedItemId = null;
+		selectedItemIds = [];
+		selectedTransitionId = null;
+		onedit();
+	}
+
+	function jumpToMarker(marker: TimelineMarker | undefined): void {
+		if (!marker) return;
+		selectMarker(marker);
+	}
+
+	function deleteTimelineMarker(markerId: string): void {
+		if (!timelineStore.markers.some((marker) => marker.id === markerId)) return;
+		removeMarker(markerId);
+		onedit();
+	}
+
+	function commitMarkerPatch(
+		marker: TimelineMarker,
+		patch: Partial<{ frame: number; label: string; color: string }>
+	): void {
+		const changed =
+			(patch.frame !== undefined && patch.frame !== marker.frame) ||
+			(patch.label !== undefined && patch.label !== (marker.label ?? '')) ||
+			(patch.color !== undefined && patch.color !== marker.color);
+		if (!changed) return;
+		if (patch.frame !== undefined) setCurrentFrame(patch.frame);
+		if (updateMarker(marker.id, patch)) onedit();
+	}
+
+	function applyMarkerDrag(clientX: number): void {
+		if (!markerDrag) return;
+		const frame = frameFromClientX(clientX);
+		if (frame === undefined) return;
+		const marker = timelineStore.markers.find((candidate) => candidate.id === markerDrag?.markerId);
+		if (!marker || marker.frame === frame) return;
+		timelineStore.setAll({
+			markers: timelineStore.markers.map((candidate) =>
+				candidate.id === marker.id ? { ...candidate, frame } : candidate
+			)
+		});
+		setCurrentFrame(frame);
+		markerDrag.changed = true;
+	}
+
+	function moveMarkerDrag(event: PointerEvent): void {
+		if (!markerDrag || event.pointerId !== markerDrag.pointerId) return;
+		event.preventDefault();
+		applyMarkerDrag(event.clientX);
+	}
+
+	function cleanupMarkerDrag(): void {
+		if (!markerDrag) return;
+		document.body.style.cursor = markerDrag.bodyCursor;
+		document.body.style.userSelect = markerDrag.bodyUserSelect;
+		window.removeEventListener('pointermove', moveMarkerDrag);
+		window.removeEventListener('pointerup', finishMarkerDrag);
+		window.removeEventListener('pointercancel', cancelMarkerDrag);
+		window.removeEventListener('keydown', onMarkerDragKeydown);
+		markerDrag = null;
+	}
+
+	function completeMarkerDrag(cancelled: boolean): void {
+		if (!markerDrag) return;
+		const beforeSnapshot = markerDrag.beforeSnapshot;
+		const changed = markerDrag.changed;
+		if (cancelled && changed) restoreSnapshot(beforeSnapshot);
+		if (!cancelled && changed) timelineStore._setMarkers([...timelineStore.markers]);
+		cleanupMarkerDrag();
+		if (!cancelled && changed) {
+			commandHistory.addUndoEntry({ type: 'MOVE_MARKER' }, beforeSnapshot);
+			onedit();
+		}
+	}
+
+	function finishMarkerDrag(event: PointerEvent): void {
+		if (!markerDrag || event.pointerId !== markerDrag.pointerId) return;
+		event.preventDefault();
+		completeMarkerDrag(false);
+	}
+
+	function cancelMarkerDrag(event?: PointerEvent): void {
+		if (event && markerDrag && event.pointerId !== markerDrag.pointerId) return;
+		completeMarkerDrag(true);
+	}
+
+	function onMarkerDragKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		completeMarkerDrag(true);
+	}
+
+	function startMarkerDrag(event: PointerEvent, marker: TimelineMarker): void {
+		if (event.button !== 0 || markerDrag) return;
+		event.preventDefault();
+		event.stopPropagation();
+		editorSession.pausePlayback();
+		selectMarker(marker);
+		markerDrag = {
+			pointerId: event.pointerId,
+			markerId: marker.id,
+			beforeSnapshot: captureSnapshot(),
+			changed: false,
+			bodyCursor: document.body.style.cursor,
+			bodyUserSelect: document.body.style.userSelect
+		};
+		document.body.style.cursor = 'grabbing';
+		document.body.style.userSelect = 'none';
+		window.addEventListener('pointermove', moveMarkerDrag);
+		window.addEventListener('pointerup', finishMarkerDrag);
+		window.addEventListener('pointercancel', cancelMarkerDrag);
+		window.addEventListener('keydown', onMarkerDragKeydown);
+	}
+
+	function onMarkerKeydown(event: KeyboardEvent, marker: TimelineMarker): void {
+		if (event.key === 'Delete' || event.key === 'Backspace') {
+			event.preventDefault();
+			deleteTimelineMarker(marker.id);
+			return;
+		}
+		let frame: number | null = null;
+		if (event.key === 'ArrowLeft') frame = marker.frame - (event.shiftKey ? 10 : 1);
+		else if (event.key === 'ArrowRight') frame = marker.frame + (event.shiftKey ? 10 : 1);
+		else if (event.key === 'Home') frame = 0;
+		else if (event.key === 'End') frame = timelineStore.maxItemEndFrame;
+		else return;
+		event.preventDefault();
+		event.stopPropagation();
+		commitMarkerPatch(marker, { frame: Math.max(0, frame) });
 	}
 
 	function clearEffectDropPreview(): void {
@@ -1767,6 +1956,7 @@
 		if (marquee) finishMarquee();
 		if (rulerScrub) cancelRulerScrub();
 		if (trackHeightResize) completeTrackHeightResize(true);
+		if (markerDrag) completeMarkerDrag(true);
 		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
 		audioSkimController.dispose();
 		clearEffectDropPreview();
@@ -2045,6 +2235,38 @@
 		<Button
 			variant="ghost"
 			size="icon"
+			class="size-7 rounded"
+			disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
+			aria-label={m.video_editor_previous_marker()}
+			title={`${m.video_editor_previous_marker()} ([)`}
+			onclick={() => jumpToMarker(markerBefore(timelineStore.markers, timelineStore.currentFrame))}
+		>
+			<ChevronLeftIcon class="size-3.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded"
+			aria-label={m.video_editor_add_marker()}
+			title={`${m.video_editor_add_marker()} (M)`}
+			onclick={addMarkerAtPlayhead}
+		>
+			<FlagIcon class="size-3.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded"
+			disabled={!markerAfter(timelineStore.markers, timelineStore.currentFrame)}
+			aria-label={m.video_editor_next_marker()}
+			title={`${m.video_editor_next_marker()} (])`}
+			onclick={() => jumpToMarker(markerAfter(timelineStore.markers, timelineStore.currentFrame))}
+		>
+			<ChevronRightIcon class="size-3.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
 			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
 			data-active={timelineStore.snapEnabled}
 			aria-pressed={timelineStore.snapEnabled}
@@ -2238,6 +2460,67 @@
 	</div>
 </div>
 
+{#if selectedMarker}
+	<div
+		class="flex min-h-9 items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-[11px]"
+	>
+		<FlagIcon class="size-3.5 shrink-0" style={`color:${selectedMarker.color}`} />
+		<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>
+		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
+			{m.video_editor_marker_label()}
+			<input
+				class="h-7 w-44 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
+				value={markerLabelDraft}
+				oninput={(event) => (markerLabelDraft = event.currentTarget.value)}
+				onblur={() => commitMarkerPatch(selectedMarker, { label: markerLabelDraft.trim() })}
+				onkeydown={(event) => {
+					if (event.key === 'Enter') event.currentTarget.blur();
+					if (event.key === 'Escape') {
+						markerLabelDraft = selectedMarker.label ?? '';
+						event.currentTarget.blur();
+					}
+				}}
+			/>
+		</label>
+		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
+			{m.video_editor_marker_frame()}
+			<input
+				class="h-7 w-20 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 font-mono text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
+				type="number"
+				min="0"
+				step="1"
+				value={selectedMarker.frame}
+				onchange={(event) => {
+					const frame = Number(event.currentTarget.value);
+					if (Number.isFinite(frame)) {
+						commitMarkerPatch(selectedMarker, { frame: Math.max(0, Math.round(frame)) });
+					}
+				}}
+			/>
+		</label>
+		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
+			{m.video_editor_marker_color()}
+			<input
+				class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
+				type="color"
+				value={markerColorForInput(selectedMarker.color)}
+				onchange={(event) =>
+					commitMarkerPatch(selectedMarker, { color: event.currentTarget.value })}
+			/>
+		</label>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="ml-auto size-7 rounded text-red-300 hover:bg-red-500/15 hover:text-red-200"
+			aria-label={m.video_editor_delete_marker()}
+			title={`${m.video_editor_delete_marker()} (Shift+M)`}
+			onclick={() => deleteTimelineMarker(selectedMarker.id)}
+		>
+			<Trash2Icon class="size-3.5" />
+		</Button>
+	</div>
+{/if}
+
 <div
 	bind:this={scrollContainer}
 	onpointerdown={startMarquee}
@@ -2276,6 +2559,38 @@
 				>
 					{tickLabel(tick)}
 				</span>
+			{/each}
+		</div>
+		<div
+			class="pointer-events-none sticky top-0 z-40 -mt-6 mb-6 h-0"
+			role="group"
+			aria-label={m.video_editor_markers_lane()}
+		>
+			{#each [...timelineStore.markers].sort((left, right) => left.frame - right.frame) as marker (marker.id)}
+				<button
+					type="button"
+					class="pointer-events-auto absolute top-0 flex h-6 w-5 -translate-x-1/2 cursor-grab items-start justify-center pt-0.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white active:cursor-grabbing"
+					style="left:{timelineX(marker.frame)}px"
+					aria-label={`${markerName(marker)}, ${m.video_editor_marker_frame_value({ frame: marker.frame })}`}
+					aria-pressed={timelineStore.selectedMarkerId === marker.id}
+					title={`${markerName(marker)} · ${m.video_editor_marker_frame_value({ frame: marker.frame })} · ${m.video_editor_marker_keyboard()}`}
+					data-timeline-marker={marker.id}
+					data-marquee-ignore
+					onpointerdown={(event) => startMarkerDrag(event, marker)}
+					ondblclick={(event) => {
+						event.stopPropagation();
+						deleteTimelineMarker(marker.id);
+					}}
+					onkeydown={(event) => onMarkerKeydown(event, marker)}
+				>
+					<span
+						class="block h-0 w-0 border-r-[6px] border-l-[6px] border-r-transparent border-l-transparent drop-shadow-sm {timelineStore.selectedMarkerId ===
+						marker.id
+							? 'drop-shadow-[0_0_2px_white]'
+							: ''}"
+						style={`border-top:10px solid ${marker.color}`}
+					></span>
+				</button>
 			{/each}
 		</div>
 

@@ -17,9 +17,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		rippleDeleteItems,
 		splitAtFrame,
 		splitAtScenes,
+		removeMarker,
+		setCurrentFrame,
 		toggleMarkerAtPlayhead,
 		setItemSpeed
 	} from '$lib/video-editor/timeline/actions/items';
+	import { markerAfter, markerBefore } from '$lib/video-editor/timeline/markers';
 	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
 	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
 	import { insertFreezeFrame } from '$lib/video-editor/media/insert-freeze-frame.svelte';
@@ -47,7 +50,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
-	import ShapePanel from '$lib/video-editor/components/shape-panel.svelte';
+	import VectorAssetPanel from '$lib/video-editor/components/shape-panel.svelte';
 	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
 	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
@@ -104,7 +107,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		showToast(m.video_editor_local_ai_added(), 'success');
 	}
 
-	function handleShapeInserted(itemId: string): void {
+	function handleVectorAssetInserted(itemId: string): void {
 		selectedItemId = itemId;
 		selectedItemIds = [itemId];
 		selectedTransitionId = null;
@@ -506,6 +509,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedItemId) {
 			event.preventDefault();
 			handleDelete();
+		} else if (
+			(event.key === 'Delete' || event.key === 'Backspace') &&
+			timelineStore.selectedMarkerId
+		) {
+			event.preventDefault();
+			removeMarker(timelineStore.selectedMarkerId);
+			editorSession.scheduleAutosave();
 		} else if (event.key === 'b' || event.key === 'B') {
 			handleSplit();
 		} else if (
@@ -517,9 +527,26 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		) {
 			event.preventDefault();
 			void handleFreezeFrame();
+		} else if ((event.key === 'm' || event.key === 'M') && event.shiftKey) {
+			event.preventDefault();
+			if (timelineStore.selectedMarkerId) {
+				removeMarker(timelineStore.selectedMarkerId);
+				editorSession.scheduleAutosave();
+			}
 		} else if (event.key === 'm' || event.key === 'M') {
+			event.preventDefault();
 			toggleMarkerAtPlayhead();
 			editorSession.scheduleAutosave();
+		} else if (event.key === '[' || event.key === ']') {
+			const marker =
+				event.key === '['
+					? markerBefore(timelineStore.markers, timelineStore.currentFrame)
+					: markerAfter(timelineStore.markers, timelineStore.currentFrame);
+			if (marker) {
+				event.preventDefault();
+				timelineStore._setSelectedMarkerId(marker.id);
+				setCurrentFrame(marker.frame);
+			}
 		}
 	}
 </script>
@@ -636,7 +663,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					{:else if assetPanel === 'scenes'}
 						<SceneBrowserPanel />
 					{:else if assetPanel === 'shapes'}
-						<ShapePanel oninserted={handleShapeInserted} />
+						<VectorAssetPanel oninserted={handleVectorAssetInserted} />
 					{:else if assetPanel === 'lottie'}
 						<LottieBrowserPanel {projectId} />
 					{:else}

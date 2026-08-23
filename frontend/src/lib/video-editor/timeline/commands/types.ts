@@ -7,13 +7,19 @@
  * Ported from FreeCut (MIT) — commands/types.ts, trimmed to v1.
  */
 
-import type { TimelineItem, TimelineTrack, TimelineTransition } from '../../project/types';
+import type {
+	TimelineItem,
+	TimelineMarker,
+	TimelineTrack,
+	TimelineTransition
+} from '../../project/types';
 import type { SequenceRegistrySnapshot } from '../../sequences/sequence-store.svelte';
 
 export interface TimelineSnapshot {
 	items: TimelineItem[];
 	tracks: TimelineTrack[];
 	transitions: TimelineTransition[];
+	markers: TimelineMarker[];
 	inPoint: number | null;
 	outPoint: number | null;
 	fps: number;

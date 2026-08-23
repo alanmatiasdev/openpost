@@ -5,12 +5,16 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import {
 	addAdjustmentLayer,
+	addMarker,
 	addShapeItem,
 	addTextItem,
+	clearAllMarkers,
 	joinItems,
 	linkItems,
+	removeMarker,
 	setCurrentFrame,
 	setItemsReversed,
+	updateMarker,
 	unlinkItems
 } from './items';
 import { transitionsStore } from './transitions-store.svelte';
@@ -29,6 +33,41 @@ function clip(overrides: Partial<TimelineItem>): TimelineItem {
 		...overrides
 	};
 }
+
+describe('timeline marker actions', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		commandHistory.clearHistory();
+	});
+
+	it('adds, edits, removes, clears, and restores markers through history', () => {
+		const first = addMarker(12);
+		const second = addMarker(42);
+		expect(timelineStore.markers).toMatchObject([
+			{ id: first, frame: 12, color: '#d97746' },
+			{ id: second, frame: 42, color: '#d97746' }
+		]);
+
+		expect(updateMarker(first, { frame: 18, label: 'Beat', color: '#22c55e' })).toBe(true);
+		expect(timelineStore.markers[0]).toMatchObject({
+			id: first,
+			frame: 18,
+			label: 'Beat',
+			color: '#22c55e'
+		});
+		commandHistory.undo();
+		expect(timelineStore.markers[0]).toMatchObject({ id: first, frame: 12 });
+
+		timelineStore._setSelectedMarkerId(first);
+		removeMarker(first);
+		expect(timelineStore.selectedMarkerId).toBeNull();
+		expect(timelineStore.markers.map((marker) => marker.id)).toEqual([second]);
+		expect(clearAllMarkers()).toBe(true);
+		expect(timelineStore.markers).toEqual([]);
+		commandHistory.undo();
+		expect(timelineStore.markers.map((marker) => marker.id)).toEqual([second]);
+	});
+});
 
 describe('addTextItem', () => {
 	beforeEach(() => {

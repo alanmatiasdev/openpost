@@ -212,6 +212,85 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(onedit).toHaveBeenCalledTimes(2);
 	});
 
+	it('renders, selects, edits, and deletes project markers', async () => {
+		timelineStore.setAll({ markers: [{ id: 'marker-1', frame: 10, color: '#d97746' }] });
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const marker = screen.getByRole('button', { name: 'Marker 1, Frame 10' });
+		await marker.click();
+		expect(timelineStore.selectedMarkerId).toBe('marker-1');
+		expect(timelineStore.currentFrame).toBe(10);
+
+		const label = screen.getByLabelText('Label');
+		await label.fill('Beat drop');
+		label.element().dispatchEvent(new FocusEvent('blur'));
+		expect(timelineStore.markers[0]?.label).toBe('Beat drop');
+
+		const frame = screen.getByRole('spinbutton', { name: 'Frame', exact: true });
+		await frame.fill('33');
+		frame.element().dispatchEvent(new Event('change', { bubbles: true }));
+		expect(timelineStore.markers[0]?.frame).toBe(33);
+		expect(timelineStore.currentFrame).toBe(33);
+
+		const color = screen.getByLabelText('Color').element();
+		if (!(color instanceof HTMLInputElement)) throw new Error('Expected marker color input.');
+		color.value = '#22c55e';
+		color.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(timelineStore.markers[0]?.color).toBe('#22c55e');
+
+		await screen.getByRole('button', { name: 'Delete marker' }).click();
+		expect(timelineStore.markers).toEqual([]);
+		expect(timelineStore.selectedMarkerId).toBeNull();
+		expect(onedit).toHaveBeenCalledTimes(4);
+	});
+
+	it('drags markers atomically and navigates to adjacent markers', async () => {
+		timelineStore.setAll({
+			markers: [
+				{ id: 'first', frame: 10, color: '#d97746' },
+				{ id: 'middle', frame: 40, color: '#3b82f6', label: 'Middle' },
+				{ id: 'last', frame: 90, color: '#22c55e' }
+			]
+		});
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');
+		expect(region).not.toBeNull();
+		vi.spyOn(region!, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 300));
+		const first = screen.getByRole('button', { name: 'Marker 1, Frame 10' });
+
+		dispatchPointer(first.element(), 'pointerdown', 220);
+		dispatchPointer(window, 'pointermove', 260);
+		dispatchPointer(window, 'pointerup', 260);
+		expect(timelineStore.markers.find((marker) => marker.id === 'first')?.frame).toBe(20);
+		expect(commandHistory.getLastCommandType()).toBe('MOVE_MARKER');
+		expect(onedit).toHaveBeenCalledOnce();
+
+		timelineStore._setCurrentFrame(50);
+		await screen.getByRole('button', { name: 'Previous marker' }).click();
+		expect(timelineStore.currentFrame).toBe(40);
+		expect(timelineStore.selectedMarkerId).toBe('middle');
+		await screen.getByRole('button', { name: 'Next marker' }).click();
+		expect(timelineStore.currentFrame).toBe(90);
+
+		const last = screen.getByRole('button', { name: 'Marker 3, Frame 90' });
+		last
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true })
+			);
+		expect(timelineStore.markers.find((marker) => marker.id === 'last')?.frame).toBe(80);
+		await nextAnimationFrame();
+
+		const movedLast = screen.getByRole('button', { name: 'Marker 3, Frame 80' });
+		dispatchPointer(movedLast.element(), 'pointerdown', 500);
+		dispatchPointer(window, 'pointermove', 300);
+		expect(timelineStore.markers.find((marker) => marker.id === 'last')?.frame).toBe(30);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(timelineStore.markers.find((marker) => marker.id === 'last')?.frame).toBe(80);
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+
 	it('joins selected split siblings from the toolbar and Shift+J', async () => {
 		const left = item({
 			id: 'left',

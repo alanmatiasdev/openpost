@@ -442,13 +442,29 @@ export function addMarker(frame: number): string {
 	// SAFETY: execute returns the action's own string id unchanged.
 	return execute('ADD_MARKER', () => {
 		const id = crypto.randomUUID();
-		timelineStore._addMarker({ id, frame, color: 'oklch(0.66 0.14 45)' });
+		timelineStore._addMarker({ id, frame, color: '#d97746' });
 		return id;
 	}) as string;
 }
 
 export function removeMarker(id: string): void {
 	execute('REMOVE_MARKER', () => timelineStore._removeMarker(id));
+}
+
+export function updateMarker(
+	id: string,
+	patch: Partial<{ frame: number; label: string; color: string }>
+): boolean {
+	if (!timelineStore.markers.some((marker) => marker.id === id)) return false;
+	execute('UPDATE_MARKER', () => timelineStore._updateMarker(id, patch));
+	return true;
+}
+
+export function clearAllMarkers(): boolean {
+	if (timelineStore.markers.length === 0) return false;
+	execute('CLEAR_MARKERS', () => timelineStore._setMarkers([]));
+	timelineStore._setSelectedMarkerId(null);
+	return true;
 }
 
 export function toggleMarkerAtPlayhead(): void {
