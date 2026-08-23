@@ -66,6 +66,7 @@ import {
 } from './render-plan';
 import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 import { shapeMasksForTrack } from '../shapes/masks';
+import { LottieFrameProvider, mapTimelineFrameToLottieFrame } from '../lottie/frame-provider';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
@@ -281,6 +282,8 @@ export class TimelineFrameRenderer {
 	private readonly stackCompositor: CanvasStackCompositor;
 	private readonly textCanvas = new OffscreenCanvas(1, 1);
 	private readonly nestedRenderers = new Map<string, TimelineFrameRenderer>();
+	private readonly lottieProvider = new LottieFrameProvider();
+	private readonly lottieBlobs = new Map<string, Blob>();
 
 	constructor(
 		private readonly project: Project,
@@ -302,6 +305,7 @@ export class TimelineFrameRenderer {
 			(item) =>
 				item.type === 'video' ||
 				item.type === 'image' ||
+				item.type === 'lottie' ||
 				item.type === 'text' ||
 				item.type === 'shape' ||
 				item.type === 'composition' ||
@@ -377,6 +381,16 @@ export class TimelineFrameRenderer {
 		return decoder;
 	}
 
+	private async getLottieBlob(mediaId: string): Promise<Blob | null> {
+		const cached = this.lottieBlobs.get(mediaId);
+		if (cached) return cached;
+		const media = mediaPool.get(mediaId);
+		if (!media) return null;
+		const blob = await resolveMediaBlob(media);
+		this.lottieBlobs.set(mediaId, blob);
+		return blob;
+	}
+
 	private async sourceForItem(
 		resolvedItem: TimelineItem,
 		originalItem: TimelineItem,
@@ -433,6 +447,38 @@ export class TimelineFrameRenderer {
 			return { source, width: composition.width, height: composition.height };
 		}
 		if (!resolvedItem.mediaId) return null;
+		if (resolvedItem.type === 'lottie') {
+			const blob = await this.getLottieBlob(resolvedItem.mediaId);
+			if (!blob) return null;
+			const width = Math.max(
+				1,
+				Math.round(resolvedItem.transform?.width ?? resolvedItem.sourceWidth ?? this.width)
+			);
+			const height = Math.max(
+				1,
+				Math.round(resolvedItem.transform?.height ?? resolvedItem.sourceHeight ?? this.height)
+			);
+			const lottieFrame = mapTimelineFrameToLottieFrame({
+				localFrame: frame - originalItem.from,
+				projectFps: this.fps,
+				speed: originalItem.speed ?? 1,
+				totalFrames: originalItem.lottieTotalFrames ?? 1,
+				frameRate: originalItem.lottieFrameRate ?? originalItem.sourceFps ?? 30,
+				loop: originalItem.lottieLoop ?? true,
+				reversed: originalItem.lottieReversed,
+				loopMode: originalItem.lottieLoopMode,
+				segmentStart: originalItem.lottieSegmentStart,
+				segmentEnd: originalItem.lottieSegmentEnd
+			});
+			const source = await this.lottieProvider.source(
+				originalItem.id,
+				blob,
+				width,
+				height,
+				lottieFrame
+			);
+			return source ? { source, width, height } : null;
+		}
 		if (resolvedItem.type === 'video') {
 			const decoder = await this.getDecoder(resolvedItem.mediaId);
 			if (!decoder) return null;
@@ -549,6 +595,8 @@ export class TimelineFrameRenderer {
 		this.nestedRenderers.clear();
 		for (const bitmap of this.imageCache.values()) bitmap.close();
 		this.imageCache.clear();
+		this.lottieProvider.destroy();
+		this.lottieBlobs.clear();
 		this.stackCompositor.dispose();
 	}
 }

@@ -10,6 +10,7 @@
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
 	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
+	import LottiePropertiesPanel from './lottie-properties-panel.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -293,7 +294,7 @@
 			</section>
 		{/if}
 
-		{#if item.type === 'video' || item.type === 'image'}
+		{#if item.type === 'video' || item.type === 'image' || item.type === 'lottie'}
 			<section>
 				<h3
 					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
@@ -323,7 +324,11 @@
 			<ShapePropertiesPanel {item} {onedit} />
 		{/if}
 
-		{#if ['video', 'image', 'text', 'shape', 'subtitle', 'composition'].includes(item.type)}
+		{#if item.type === 'lottie'}
+			<LottiePropertiesPanel {item} {onedit} />
+		{/if}
+
+		{#if ['video', 'image', 'lottie', 'text', 'shape', 'subtitle', 'composition'].includes(item.type)}
 			<CornerPinPropertiesPanel {item} {onedit} />
 		{/if}
 

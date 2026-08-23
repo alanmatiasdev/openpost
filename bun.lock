@@ -37,6 +37,7 @@
         "@fontsource-variable/space-grotesk": "^5.3.0",
         "@huggingface/transformers": "4.1.0",
         "@imgly/background-removal": "1.7.0",
+        "@lottiefiles/dotlottie-web": "0.76.0",
         "@noble/hashes": "1.8.0",
         "@openpost/plan-catalog": "workspace:*",
         "@openpost/social-preview": "workspace:*",
@@ -688,6 +689,8 @@
     "@lix-js/sdk": ["@lix-js/sdk@0.4.10", "", { "dependencies": { "@lix-js/server-protocol-schema": "0.1.1", "dedent": "1.5.1", "human-id": "4.2.0", "js-sha256": "0.11.1", "kysely": "0.28.17", "sqlite-wasm-kysely": "0.3.0", "uuid": "14.0.1" } }, "sha512-0dMInAJK/67guTG5rRZaCEhvzC5cCXENOjaePA5AqMXrCE97kaY7SRor9e2vnoGsFIiGqXKlT0MCIoZj36G0gg=="],
 
     "@lix-js/server-protocol-schema": ["@lix-js/server-protocol-schema@0.1.1", "", {}, "sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ=="],
+
+    "@lottiefiles/dotlottie-web": ["@lottiefiles/dotlottie-web@0.76.0", "", {}, "sha512-uWJ86UJM6hjN4MY2aGSyyFcRQEAM4B9qDCnb/336dHab1zE6nyOF45b90t8xesZPwNtP/2moNGMrMQ1UJW6+lQ=="],
 
     "@lucide/svelte": ["@lucide/svelte@0.577.0", "", { "peerDependencies": { "svelte": "5.56.4" } }, "sha512-0P6mkySd2MapIEgq08tADPmcN4DHndC/02PWwaLkOerXlx5Sv9aT4BxyXLIY+eccr0g/nEyCYiJesqS61YdBZQ=="],
 

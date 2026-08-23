@@ -32,6 +32,10 @@
 	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
 	import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import {
+		LottieRenderer,
+		mapTimelineFrameToLottieFrame
+	} from '$lib/video-editor/lottie/frame-provider';
 
 	let {
 		item,
@@ -72,6 +76,10 @@
 	let rasterCanvas = $state<HTMLCanvasElement | null>(null);
 	let gpuCanvas = $state<HTMLCanvasElement | null>(null);
 	let compositionCanvas = $state<HTMLCanvasElement | null>(null);
+	let lottieCanvas = $state<HTMLCanvasElement | null>(null);
+	let lottieRenderer = $state<LottieRenderer | null>(null);
+	let lottieReadyRevision = $state(0);
+	let lottieRevision = $state(0);
 	let compositor = $state<GpuCompositor | null>(null);
 	let rasterRevision = $state(0);
 	let compositionRevision = $state(0);
@@ -103,7 +111,7 @@
 		)
 	);
 	const needsGpu = $derived(
-		['video', 'image', 'text', 'subtitle', 'shape'].includes(item.type) &&
+		['video', 'image', 'lottie', 'text', 'subtitle', 'shape'].includes(item.type) &&
 			!deferEffects &&
 			(gpuEffects.length > 0 || isNonNormalBlend(item.blendMode))
 	);
@@ -330,6 +338,51 @@
 	});
 
 	$effect(() => {
+		const canvas = lottieCanvas;
+		const sourceUrl = url;
+		if (item.type !== 'lottie' || !canvas || !sourceUrl) return;
+		const renderer = new LottieRenderer(canvas, { src: sourceUrl });
+		lottieRenderer = renderer;
+		let disposed = false;
+		void renderer.ready.then(() => {
+			if (!disposed) lottieReadyRevision = untrack(() => lottieReadyRevision) + 1;
+		});
+		return () => {
+			disposed = true;
+			renderer.destroy();
+			if (lottieRenderer === renderer) lottieRenderer = null;
+		};
+	});
+
+	$effect(() => {
+		const renderer = lottieRenderer;
+		const canvas = lottieCanvas;
+		const ready = lottieReadyRevision;
+		const frame = timelineStore.currentFrame;
+		if (!renderer || !canvas || !ready || item.type !== 'lottie' || !renderer.isLoaded) return;
+		const width = Math.max(1, Math.round(transform.width ?? item.sourceWidth ?? canvasWidth));
+		const height = Math.max(1, Math.round(transform.height ?? item.sourceHeight ?? canvasHeight));
+		renderer.resize(width, height);
+		renderer.renderFrame(
+			mapTimelineFrameToLottieFrame({
+				localFrame: frame - item.from,
+				projectFps: editorSession.fps,
+				speed: item.speed ?? 1,
+				totalFrames: item.lottieTotalFrames ?? 1,
+				frameRate: item.lottieFrameRate ?? item.sourceFps ?? 30,
+				loop: item.lottieLoop ?? true,
+				reversed: item.lottieReversed,
+				loopMode: item.lottieLoopMode,
+				segmentStart: item.lottieSegmentStart,
+				segmentEnd: item.lottieSegmentEnd
+			})
+		);
+		lottieRevision = untrack(() => lottieRevision) + 1;
+		onsourcechange?.();
+		if (selected && !needsGpu && !deferEffects) publishScopeSample(canvas);
+	});
+
+	$effect(() => {
 		const image = imageElement;
 		const imageUrl = url;
 		decodedImageElement = null;
@@ -367,6 +420,13 @@
 				source: decodedImageElement,
 				width: decodedImageElement.naturalWidth,
 				height: decodedImageElement.naturalHeight
+			};
+		}
+		if (resolved.type === 'lottie' && lottieCanvas && lottieRevision > 0) {
+			return {
+				source: lottieCanvas,
+				width: lottieCanvas.width,
+				height: lottieCanvas.height
 			};
 		}
 		if (['text', 'subtitle', 'shape'].includes(resolved.type) && rasterCanvas) {
@@ -413,14 +473,17 @@
 		const decodedImage = decodedImageElement;
 		const raster = rasterCanvas;
 		const nested = compositionCanvas;
+		const lottie = lottieCanvas;
 		const canvas = gpuCanvas;
 		const instance = compositor;
 		const revision = rasterRevision;
+		const animationRevision = lottieRevision;
 		const effects = gpuEffects;
 		const itemType = item.type;
 		const blendMode = item.blendMode ?? 'normal';
 		if (!canvas || !instance || !needsGpu) return;
 		if (['text', 'subtitle', 'shape'].includes(itemType) && revision === 0) return;
+		if (itemType === 'lottie' && animationRevision === 0) return;
 		if (itemType === 'composition' && compositionRevision === 0) return;
 		const draw = () => {
 			const source =
@@ -428,9 +491,11 @@
 					? video
 					: itemType === 'image'
 						? decodedImage
-						: itemType === 'composition'
-							? nested
-							: raster;
+						: itemType === 'lottie'
+							? lottie
+							: itemType === 'composition'
+								? nested
+								: raster;
 			if (!source) return;
 			const width =
 				source instanceof HTMLVideoElement
@@ -465,6 +530,7 @@
 			if (video) video.style.visibility = '';
 			if (image) image.style.visibility = '';
 			if (raster) raster.style.visibility = '';
+			if (lottie) lottie.style.visibility = '';
 		};
 	});
 
@@ -472,7 +538,8 @@
 		const image = decodedImageElement;
 		const raster = rasterCanvas;
 		const revision = rasterRevision;
-		if (!selected || needsGpu || deferEffects || item.type === 'video') return;
+		if (!selected || needsGpu || deferEffects || item.type === 'video' || item.type === 'lottie')
+			return;
 		const source =
 			item.type === 'image' ? image : item.type === 'composition' ? compositionCanvas : raster;
 		if (!source || (['text', 'subtitle', 'shape'].includes(item.type) && revision === 0)) return;
@@ -524,6 +591,8 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 		/>
+	{:else if resolved.type === 'lottie' && url}
+		<canvas bind:this={lottieCanvas} class="absolute object-fill" style={mediaCropStyle}></canvas>
 	{:else if resolved.type === 'composition'}
 		<canvas bind:this={compositionCanvas} class="absolute object-fill" style={mediaCropStyle}
 		></canvas>
@@ -545,7 +614,7 @@
 			bind:this={gpuCanvas}
 			data-gpu-preview
 			class="absolute object-fill"
-			style={resolved.type === 'video' || resolved.type === 'image' ? mediaCropStyle : ''}
+			style={['video', 'image', 'lottie'].includes(resolved.type) ? mediaCropStyle : ''}
 			aria-hidden="true"
 			hidden
 		></canvas>

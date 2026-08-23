@@ -30,6 +30,10 @@ const VIDEO_PROPERTIES: KeyframeProperty[] = [
 	'volume'
 ];
 
+const CROP_PROPERTIES: KeyframeProperty[] = VIDEO_PROPERTIES.filter(
+	(property) => property !== 'volume'
+);
+
 const TEXT_PROPERTIES: KeyframeProperty[] = [
 	'fontSize',
 	'fontWeight',
@@ -53,6 +57,8 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 		case 'text':
 			return [...VISUAL_PROPERTIES, ...TEXT_PROPERTIES];
 		case 'image':
+		case 'lottie':
+			return [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
 		case 'subtitle':
 		case 'shape':
 		case 'composition':

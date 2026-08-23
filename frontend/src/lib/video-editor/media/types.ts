@@ -11,6 +11,15 @@
  */
 export type MediaStorageType = 'handle' | 'workspace';
 
+export interface MediaAttribution {
+	provider: string;
+	author?: string;
+	authorUrl?: string;
+	sourceId?: string;
+	license: string;
+	licenseUrl?: string;
+}
+
 export interface MediaMetadata {
 	id: string;
 	storageType: MediaStorageType;
@@ -41,5 +50,9 @@ export interface MediaMetadata {
 	 */
 	keyframeTimestamps?: number[];
 	gopInterval?: number;
+	/** Native Lottie frame count. Present only when tags includes `lottie`. */
+	lottieTotalFrames?: number;
+	lottieMarkers?: Array<{ name: string; start: number; duration: number }>;
+	attribution?: MediaAttribution;
 	tags: string[];
 }

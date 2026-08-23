@@ -20,9 +20,10 @@ import {
 } from '../workspace-fs/paths';
 import { associateMediaWithProject } from '../workspace-fs/project-media';
 import { createMedia } from '../workspace-fs/media';
-import type { MediaMetadata } from './types';
+import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
+import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
 
 const logger = createLogger('MediaImport');
 
@@ -30,6 +31,7 @@ export interface ImportOptions {
 	projectId: string;
 	/** 'copy' collects bytes into the workspace; 'link' references in place. */
 	storageMode: 'copy' | 'link';
+	attribution?: MediaAttribution;
 }
 
 export interface GeneratedImageImportOptions {
@@ -111,34 +113,67 @@ export async function importFile(
 		}
 		void kind;
 
-		const probe = await probeMediaFile(file);
-		const metadata: MediaMetadata = {
-			id,
-			storageType: storageMode === 'copy' ? 'workspace' : 'handle',
-			fileHandle: storedHandle,
-			fileLastModified,
-			fileName: file.name,
-			fileSize: file.size,
-			mimeType: file.type || 'application/octet-stream',
-			duration: probe.durationSeconds,
-			width: probe.width,
-			height: probe.height,
-			fps: probe.fps,
-			codec: probe.videoCodec ?? '',
-			bitrate: Math.round((file.size * 8) / Math.max(probe.durationSeconds, 1)),
-			audioCodec: probe.audioCodec,
-			keyframeTimestamps: probe.keyframeTimestamps,
-			gopInterval: probe.gopInterval,
-			tags: [probe.kind]
-		};
+		let thumbnailBlob: Blob | undefined;
+		let metadata: MediaMetadata;
+		if (isLottieFile(file)) {
+			const lottie = parseLottieFileBytes(new Uint8Array(await file.arrayBuffer()));
+			if (!lottie) throw new Error('This file is not a valid Lottie animation.');
+			metadata = {
+				id,
+				storageType: storageMode === 'copy' ? 'workspace' : 'handle',
+				fileHandle: storedHandle,
+				fileLastModified,
+				fileName: file.name,
+				fileSize: file.size,
+				mimeType:
+					file.type || (/\.lottie$/i.test(file.name) ? 'application/zip' : 'application/json'),
+				duration: lottie.durationSeconds,
+				width: lottie.width,
+				height: lottie.height,
+				fps: lottie.frameRate,
+				codec: 'lottie',
+				bitrate: Math.round((file.size * 8) / Math.max(lottie.durationSeconds, 1)),
+				lottieTotalFrames: lottie.totalFrames,
+				lottieMarkers: lottie.markers,
+				attribution: options.attribution,
+				tags: ['lottie']
+			};
+			const { renderLottieThumbnail } = await import('../lottie/frame-provider');
+			thumbnailBlob =
+				(await renderLottieThumbnail(file, lottie.width, lottie.height, lottie.totalFrames)) ??
+				undefined;
+		} else {
+			const probe = await probeMediaFile(file);
+			metadata = {
+				id,
+				storageType: storageMode === 'copy' ? 'workspace' : 'handle',
+				fileHandle: storedHandle,
+				fileLastModified,
+				fileName: file.name,
+				fileSize: file.size,
+				mimeType: file.type || 'application/octet-stream',
+				duration: probe.durationSeconds,
+				width: probe.width,
+				height: probe.height,
+				fps: probe.fps,
+				codec: probe.videoCodec ?? '',
+				bitrate: Math.round((file.size * 8) / Math.max(probe.durationSeconds, 1)),
+				audioCodec: probe.audioCodec,
+				keyframeTimestamps: probe.keyframeTimestamps,
+				gopInterval: probe.gopInterval,
+				attribution: options.attribution,
+				tags: [probe.kind]
+			};
+			thumbnailBlob = probe.thumbnailBlob;
+		}
 
 		if (storageMode === 'copy') {
 			await writeBlob(root, mediaSourceByFileName(id, file.name), file);
 		}
 
 		await createMedia(metadata);
-		if (probe.thumbnailBlob) {
-			await writeBlob(root, mediaThumbnailPath(id), probe.thumbnailBlob);
+		if (thumbnailBlob) {
+			await writeBlob(root, mediaThumbnailPath(id), thumbnailBlob);
 		}
 		await writeJsonAtomic(root, mediaMetadataPath(id), {
 			...metadata,
@@ -153,6 +188,50 @@ export async function importFile(
 		mediaPool.setStatus(id, 'failed', error instanceof Error ? error.message : String(error));
 		throw error;
 	}
+}
+
+const MAX_REMOTE_LOTTIE_BYTES = 20 * 1024 * 1024;
+
+/** Download one public LottieFiles animation into the local workspace. */
+export async function importRemoteLottie(options: {
+	projectId: string;
+	url: string;
+	fileName: string;
+	attribution: MediaAttribution;
+}): Promise<string> {
+	const source = new URL(options.url);
+	if (source.protocol !== 'https:' || source.hostname !== 'assets-v2.lottiefiles.com') {
+		throw new Error('The animation source is not a trusted LottieFiles asset.');
+	}
+	const response = await fetch(source, {
+		credentials: 'omit',
+		referrerPolicy: 'no-referrer'
+	});
+	if (!response.ok) throw new Error(`Animation download failed (${response.status}).`);
+	const declaredSize = Number(response.headers.get('content-length') ?? 0);
+	if (declaredSize > MAX_REMOTE_LOTTIE_BYTES) {
+		throw new Error('The animation is larger than the 20 MB import limit.');
+	}
+	const blob = await response.blob();
+	if (blob.size > MAX_REMOTE_LOTTIE_BYTES) {
+		throw new Error('The animation is larger than the 20 MB import limit.');
+	}
+	const baseName = sanitizeWorkspaceFileName(options.fileName).replace(/\.(?:json|lottie)$/i, '');
+	const file = new File([blob], `${baseName || 'lottiefiles-animation'}.lottie`, {
+		type: 'application/zip',
+		lastModified: Date.now()
+	});
+	// SAFETY: importFile only reads name, kind, and getFile from this copy-only handle.
+	const handle = {
+		name: file.name,
+		kind: 'file',
+		getFile: async () => file
+	} as FileSystemFileHandle;
+	return importFile(handle, {
+		projectId: options.projectId,
+		storageMode: 'copy',
+		attribution: options.attribution
+	});
 }
 
 /** Resolve the playable blob for a media item (linked or collected). */
@@ -247,7 +326,9 @@ export async function importFromPicker(options: ImportOptions): Promise<string[]
 				accept: {
 					'video/*': ['.mp4', '.webm', '.mov', '.mkv', '.m4v'],
 					'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg'],
-					'image/*': ['.png', '.jpg', '.jpeg', '.webp']
+					'image/*': ['.png', '.jpg', '.jpeg', '.webp'],
+					'application/json': ['.json'],
+					'application/zip': ['.lottie']
 				}
 			}
 		]

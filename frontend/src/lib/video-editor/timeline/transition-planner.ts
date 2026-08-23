@@ -86,7 +86,12 @@ export function getAvailableTransitionHandle(
 	side: 'start' | 'end',
 	timelineFps: number
 ): number {
-	if (item.type === 'image' || item.type === 'text' || item.type === 'shape')
+	if (
+		item.type === 'image' ||
+		item.type === 'lottie' ||
+		item.type === 'text' ||
+		item.type === 'shape'
+	)
 		return Number.POSITIVE_INFINITY;
 	if (item.type !== 'video') return 0;
 	const { sourceStart, sourceEnd, sourceDuration, sourceFps, speed } = getSourceProperties(item);

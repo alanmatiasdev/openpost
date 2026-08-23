@@ -48,6 +48,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
 	import ShapePanel from '$lib/video-editor/components/shape-panel.svelte';
 	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
+	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
@@ -71,7 +72,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
-	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'ai'>('media');
+	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -517,7 +518,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					aria-label={m.video_editor_media_pool()}
 				>
 					<div class="flex items-center gap-1 p-2">
-						<div class="grid min-w-0 flex-1 grid-cols-4 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
+						<div class="grid min-w-0 flex-1 grid-cols-5 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
 							<button
 								type="button"
 								class:active={assetPanel === 'shapes'}
@@ -533,6 +534,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								onclick={() => (assetPanel = 'media')}
 							>
 								{m.video_editor_media_pool()}
+							</button>
+							<button
+								type="button"
+								class:active={assetPanel === 'lottie'}
+								class="rounded px-0.5 py-1 text-[10px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+								onclick={() => (assetPanel = 'lottie')}
+							>
+								{m.video_editor_lottie()}
 							</button>
 							<button
 								type="button"
@@ -568,6 +577,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						<SceneBrowserPanel />
 					{:else if assetPanel === 'shapes'}
 						<ShapePanel oninserted={handleShapeInserted} />
+					{:else if assetPanel === 'lottie'}
+						<LottieBrowserPanel {projectId} />
 					{:else}
 						<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 					{/if}

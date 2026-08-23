@@ -97,7 +97,7 @@
 	const anchorX = $derived(transform.anchorX ?? width / 2);
 	const anchorY = $derived(transform.anchorY ?? height / 2);
 	const rotation = $derived(transform.rotation ?? 0);
-	const canCrop = $derived(item.type === 'video' || item.type === 'image');
+	const canCrop = $derived(['video', 'image', 'lottie'].includes(item.type));
 	const canEditText = $derived(item.type === 'text');
 	const canEditPath = $derived(item.type === 'shape' && item.shapeType === 'path');
 	const canCornerPin = $derived(

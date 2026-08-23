@@ -2,7 +2,7 @@
  * Project document model for the OpenPost Video Editor.
  *
  * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
- * video / audio / image / text / subtitle / shape / adjustment / composition
+ * video / audio / image / Lottie / text / subtitle / shape / adjustment / composition
  * items and reusable nested sequences.
  */
 
@@ -23,6 +23,7 @@ export type TimelineItemKind =
 	| 'video'
 	| 'audio'
 	| 'image'
+	| 'lottie'
 	| 'text'
 	| 'subtitle'
 	| 'shape'
@@ -269,6 +270,16 @@ export interface TimelineItem extends TextStyleFields {
 	sourceDuration?: number;
 	sourceFps?: number;
 	speed?: number;
+
+	// Lottie playback
+	lottieTotalFrames?: number;
+	lottieFrameRate?: number;
+	lottieLoop?: boolean;
+	lottieReversed?: boolean;
+	lottieLoopMode?: 'loop' | 'pingpong';
+	lottieSegmentStart?: number;
+	lottieSegmentEnd?: number;
+	lottieMarkers?: Array<{ name: string; start: number; duration: number }>;
 
 	// Text items
 	text?: string;

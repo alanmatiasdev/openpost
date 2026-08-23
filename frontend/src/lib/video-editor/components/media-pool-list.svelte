@@ -1,5 +1,6 @@
 <!-- Media pool list: imported sources with probe status; click adds to timeline -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl } from '$lib/video-editor/media/media-source';
@@ -13,18 +14,30 @@
 	import ImageIcon from '@lucide/svelte/icons/image-plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import Music2Icon from '@lucide/svelte/icons/music-2';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import { readBlob } from '$lib/video-editor/workspace-fs/fs-primitives';
+	import { requireWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
+	import { mediaThumbnailPath } from '$lib/video-editor/workspace-fs/paths';
 
 	let { onsequenceopen = () => undefined }: { onsequenceopen?: () => void } = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
+	const ownedThumbnailUrls = new Set<string>();
 
 	async function previewUrl(id: string): Promise<void> {
 		const media = mediaPool.get(id);
 		if (!media || objectUrls[id]) return;
 		try {
-			objectUrls[id] = await getMediaObjectUrl(media);
+			const thumbnail = await readBlob(requireWorkspaceRoot(), mediaThumbnailPath(id));
+			if (thumbnail) {
+				const thumbnailUrl = URL.createObjectURL(thumbnail);
+				ownedThumbnailUrls.add(thumbnailUrl);
+				objectUrls[id] = thumbnailUrl;
+			} else if (media.tags.includes('image')) {
+				objectUrls[id] = await getMediaObjectUrl(media);
+			}
 		} catch {
 			// Preview unavailable; tile stays generic.
 		}
@@ -34,12 +47,20 @@
 		for (const id of mediaPool.order) void previewUrl(id);
 	});
 
+	onDestroy(() => {
+		for (const url of ownedThumbnailUrls) URL.revokeObjectURL(url);
+		ownedThumbnailUrls.clear();
+	});
+
 	function addToTimeline(mediaId: string): void {
 		const media = mediaPool.get(mediaId);
 		if (!media) return;
 		const fps = editorSession.fps;
 		const isAudio = media.tags.includes('audio');
-		const durationFrames = Math.max(1, Math.round((media.duration || 3) * fps));
+		const isLottie = media.tags.includes('lottie');
+		const isImage = media.tags.includes('image');
+		const itemType = isAudio ? 'audio' : isLottie ? 'lottie' : isImage ? 'image' : 'video';
+		const durationFrames = Math.max(1, Math.round((media.duration || (isImage ? 3 : 1)) * fps));
 		const targetTrack = timelineStore.tracks
 			.filter(
 				(track) => (isAudio ? track.kind === 'audio' : track.kind !== 'audio') && !track.locked
@@ -47,6 +68,13 @@
 			.toSorted((left, right) => right.order - left.order)[0];
 		if (!targetTrack) return;
 		const trackId = targetTrack.id;
+		const canvasWidth =
+			sequenceStore.activeSequence?.width ?? editorSession.project?.metadata.width ?? 1920;
+		const canvasHeight =
+			sequenceStore.activeSequence?.height ?? editorSession.project?.metadata.height ?? 1080;
+		const sourceWidth = media.width || canvasWidth;
+		const sourceHeight = media.height || canvasHeight;
+		const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
 		// Place after the last item on the target track.
 		const trackItems = timelineStore.itemsByTrackId.get(trackId) ?? [];
 		const end = trackItems.reduce(
@@ -60,11 +88,31 @@
 				from: end,
 				durationInFrames: durationFrames,
 				label: media.fileName,
-				type: isAudio ? 'audio' : 'video',
+				type: itemType,
 				mediaId,
 				sourceStart: 0,
-				sourceDuration: durationFrames * (media.fps > 0 ? 1 : 1),
-				sourceFps: media.fps > 0 ? media.fps : undefined
+				sourceEnd: isImage
+					? undefined
+					: Math.max(1, Math.round(media.duration * (media.fps || fps))),
+				sourceDuration: isImage
+					? durationFrames
+					: Math.max(1, Math.round(media.duration * (media.fps || fps))),
+				sourceFps: media.fps > 0 ? media.fps : undefined,
+				sourceWidth: isAudio ? undefined : sourceWidth,
+				sourceHeight: isAudio ? undefined : sourceHeight,
+				transform: isAudio
+					? undefined
+					: {
+							x: 0,
+							y: 0,
+							width: Math.round(sourceWidth * fitScale),
+							height: Math.round(sourceHeight * fitScale),
+							rotation: 0
+						},
+				lottieTotalFrames: isLottie ? (media.lottieTotalFrames ?? 1) : undefined,
+				lottieFrameRate: isLottie ? media.fps || 30 : undefined,
+				lottieLoop: isLottie ? true : undefined,
+				lottieMarkers: isLottie ? media.lottieMarkers : undefined
 			}
 		]);
 		editorSession.scheduleAutosave();
@@ -150,6 +198,8 @@
 							<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
 						{:else if objectUrls[id] && !entry?.media.tags.includes('audio')}
 							<img src={objectUrls[id]} alt="" class="size-full object-cover" />
+						{:else if entry?.media.tags.includes('lottie')}
+							<SparklesIcon class="size-4" aria-hidden="true" />
 						{:else if entry?.media.tags.includes('audio')}
 							<Music2Icon class="size-4" aria-hidden="true" />
 						{:else if entry?.status === 'failed'}

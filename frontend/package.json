@@ -71,6 +71,7 @@
 		"@fontsource-variable/space-grotesk": "^5.3.0",
 		"@huggingface/transformers": "4.1.0",
 		"@imgly/background-removal": "1.7.0",
+		"@lottiefiles/dotlottie-web": "0.76.0",
 		"@noble/hashes": "1.8.0",
 		"@openpost/social-preview": "workspace:*",
 		"@openpost/plan-catalog": "workspace:*",
