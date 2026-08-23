@@ -1,22 +1,20 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { getGpuEffect } from '$lib/video-editor/effects/gpu/registry';
-	import type { GpuParamValues } from '$lib/video-editor/effects/gpu/types';
 	import type { CssFilterType } from '$lib/video-editor/effects/types';
+	import type { EffectTemplate } from '$lib/video-editor/timeline/effect-drop';
 	import {
-		cssPreviewFilter,
 		EFFECT_PREVIEW_HEIGHT,
 		EFFECT_PREVIEW_WIDTH,
 		ensureEffectPreviewPipeline,
 		getEffectPreviewSample,
-		getShowcaseParams,
-		renderGpuEffectPreview
+		renderEffectPreviewFrame
 	} from '$lib/video-editor/effects/preview/effect-preview-engine';
 
 	let {
 		effectId,
 		cssEffect,
 		cssAmount,
+		effects,
 		viewport,
 		active = false,
 		class: className = ''
@@ -24,6 +22,7 @@
 		effectId?: string;
 		cssEffect?: CssFilterType;
 		cssAmount?: number;
+		effects?: readonly EffectTemplate[];
 		viewport?: HTMLElement | null;
 		active?: boolean;
 		class?: string;
@@ -36,48 +35,39 @@
 	let renderMode = $state<'gpu' | 'css' | 'fallback'>('fallback');
 	let animationFrame = 0;
 	let observer: IntersectionObserver | null = null;
+	let destroyed = false;
 
 	function draw(strength: number): void {
+		if (destroyed) return;
 		if (!canvas || !sample) return;
 		const context = canvas.getContext('2d');
 		if (!context) return;
 		context.clearRect(0, 0, canvas.width, canvas.height);
 
-		const definition = effectId ? getGpuEffect(effectId) : undefined;
-		if (effectId && definition) {
-			const target: GpuParamValues = getShowcaseParams(definition);
-			const output = renderGpuEffectPreview(sample, effectId, target, strength);
-			if (output) {
-				context.drawImage(output, 0, 0, canvas.width, canvas.height);
-				rendered = true;
-				renderMode = 'gpu';
-				return;
-			}
-		}
-
-		if (cssEffect && cssAmount !== undefined) {
-			context.save();
-			context.filter = cssPreviewFilter(cssEffect, cssAmount, strength);
-			context.drawImage(sample, 0, 0, canvas.width, canvas.height);
-			context.restore();
-			rendered = true;
-			renderMode = 'css';
-			return;
-		}
-
-		context.drawImage(sample, 0, 0, canvas.width, canvas.height);
+		const templates: readonly EffectTemplate[] =
+			effects ??
+			(effectId
+				? [{ kind: 'gpu', effectId }]
+				: cssEffect && cssAmount !== undefined
+					? [{ kind: 'css', effectType: cssEffect, amount: cssAmount }]
+					: []);
+		const frame = renderEffectPreviewFrame(sample, templates, strength);
+		context.drawImage(frame.canvas, 0, 0, canvas.width, canvas.height);
 		rendered = true;
-		renderMode = 'fallback';
+		renderMode = frame.mode;
 	}
 
 	async function loadAndDraw(): Promise<void> {
+		if (destroyed) return;
+		const hasGpu =
+			effectId !== undefined || effects?.some((effect) => effect.kind === 'gpu') === true;
 		const loaded = await getEffectPreviewSample();
-		if (!visible || !loaded) return;
+		if (destroyed || !visible || !loaded) return;
 		sample = loaded;
 		draw(1);
-		if (effectId) {
+		if (hasGpu) {
 			await ensureEffectPreviewPipeline();
-			if (visible) draw(1);
+			if (!destroyed && visible) draw(1);
 		}
 	}
 
@@ -136,6 +126,7 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		observer?.disconnect();
 		stopAnimation();
 	});

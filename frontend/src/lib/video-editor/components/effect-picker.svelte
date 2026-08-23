@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import type { CssFilterType } from '$lib/video-editor/effects/types';
+	import type { EffectTemplate } from '$lib/video-editor/timeline/effect-drop';
 
 	export interface EffectPickerOption {
 		value: string;
@@ -8,12 +9,15 @@
 		gpuEffectId?: string;
 		cssEffect?: CssFilterType;
 		cssAmount?: number;
+		previewEffects?: readonly EffectTemplate[];
+		removable?: boolean;
 	}
 </script>
 
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import * as Command from '$lib/components/ui/command';
 	import * as Popover from '$lib/components/ui/popover';
 	import { prewarmEffectPreviews } from '$lib/video-editor/effects/preview/effect-preview-engine';
@@ -26,7 +30,9 @@
 		searchPlaceholder,
 		emptyLabel,
 		disabled = false,
-		onValueChange
+		onValueChange,
+		onRemoveOption,
+		removeOptionLabel
 	}: {
 		value?: string;
 		options: EffectPickerOption[];
@@ -35,6 +41,8 @@
 		emptyLabel: string;
 		disabled?: boolean;
 		onValueChange?: (value: string) => void;
+		onRemoveOption?: (value: string) => void;
+		removeOptionLabel?: (label: string) => string;
 	} = $props();
 
 	let open = $state(false);
@@ -53,6 +61,12 @@
 		onValueChange?.(next);
 		open = false;
 		hoveredValue = null;
+	}
+
+	function removeOption(event: MouseEvent, option: EffectPickerOption): void {
+		event.preventDefault();
+		event.stopPropagation();
+		onRemoveOption?.(option.value);
 	}
 
 	onMount(() => {
@@ -107,11 +121,24 @@
 									effectId={option.gpuEffectId}
 									cssEffect={option.cssEffect}
 									cssAmount={option.cssAmount}
+									effects={option.previewEffects}
 									viewport={listElement}
 									active={hoveredValue === option.value}
 									class="h-[27px] w-12 shrink-0 rounded"
 								/>
 								<span class="min-w-0 truncate">{option.label}</span>
+								{#if option.removable && onRemoveOption}
+									<button
+										type="button"
+										class="ml-auto rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-primary"
+										aria-label={removeOptionLabel?.(option.label) ?? option.label}
+										data-effect-preset-remove={option.value}
+										onpointerdown={(event) => event.preventDefault()}
+										onclick={(event) => removeOption(event, option)}
+									>
+										<Trash2Icon class="size-3" />
+									</button>
+								{/if}
 							</Command.Item>
 						{/each}
 					</Command.Group>

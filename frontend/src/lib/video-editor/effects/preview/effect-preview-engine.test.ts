@@ -16,6 +16,9 @@ describe('effect preview engine', () => {
 		expect(target.amount).toBeGreaterThan(0);
 		expect(blendGpuPreviewParams(definition.id, target, 0).amount).toBe(0);
 		expect(blendGpuPreviewParams(definition.id, target, 1)).toEqual(target);
+		expect(
+			blendGpuPreviewParams(definition.id, { ...target, presetPayload: 'kept' }, 0.5).presetPayload
+		).toBe('kept');
 	});
 
 	it('sweeps CSS filters from their real identity values', () => {

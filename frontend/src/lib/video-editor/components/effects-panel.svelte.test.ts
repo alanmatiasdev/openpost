@@ -5,6 +5,7 @@ import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.
 import { clearEffectDragData, getEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
 import { ensureEffectPreviewPipeline } from '$lib/video-editor/effects/preview/effect-preview-engine';
+import { EFFECT_PRESETS_STORAGE_KEY } from '$lib/video-editor/effects/effect-presets';
 import EffectsPanel from './effects-panel.svelte';
 
 const videoTrack: TimelineTrack = {
@@ -30,6 +31,7 @@ const videoItem: TimelineItem = {
 
 beforeEach(() => {
 	clearEffectDragData();
+	localStorage.removeItem(EFFECT_PRESETS_STORAGE_KEY);
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({
 		tracks: [videoTrack],
@@ -104,6 +106,113 @@ describe('EffectsPanel effect drag source', () => {
 
 		addButton.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
 		expect(getEffectDragData()).toBeNull();
+	});
+
+	it('applies an exact built-in stack to every selected clip as one edit', async () => {
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [videoItem, { ...videoItem, id: 'video-2', from: 90, label: 'Video 2' }],
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(EffectsPanel, {
+			itemId: 'video',
+			itemIds: ['video', 'video-2'],
+			onedit
+		});
+		document
+			.querySelector<HTMLButtonElement>('button[aria-expanded][aria-label="Add effect"]')!
+			.click();
+		let presetSearch: HTMLInputElement | null = null;
+		await vi.waitFor(() => {
+			presetSearch = document.querySelector<HTMLInputElement>('[data-slot="command-input"]');
+			expect(presetSearch).not.toBeNull();
+		});
+		presetSearch!.value = 'Noir';
+		presetSearch!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		let noir: HTMLElement | null = null;
+		await vi.waitFor(() => {
+			noir = document.querySelector<HTMLElement>('[data-effect-option="preset:noir"]');
+			expect(noir).not.toBeNull();
+			expect(noir?.querySelector<HTMLCanvasElement>('canvas')?.dataset.renderMode).toBe('gpu');
+		});
+		await screen.getByText('Noir', { exact: true }).click();
+		await screen.getByText('Add effect', { exact: true }).click();
+
+		await vi.waitFor(() => {
+			for (const id of ['video', 'video-2']) {
+				expect(timelineStore.itemById.get(id)?.effects).toMatchObject([
+					{
+						type: 'gpu',
+						effectId: 'gpu-grayscale',
+						params: { amount: 1 },
+						enabled: true
+					},
+					{
+						type: 'gpu',
+						effectId: 'gpu-contrast',
+						params: { amount: 1.3 },
+						enabled: true
+					}
+				]);
+			}
+		});
+		expect(onedit).toHaveBeenCalledTimes(1);
+	});
+
+	it('saves, previews, and deletes a full user effect preset', async () => {
+		timelineStore.setAll({
+			items: [
+				{
+					...videoItem,
+					effects: [
+						{ id: 'blur', type: 'blur', amount: 7, enabled: false },
+						{
+							id: 'contrast',
+							type: 'gpu',
+							effectId: 'gpu-contrast',
+							params: { amount: 1.7 },
+							enabled: true
+						}
+					]
+				}
+			]
+		});
+		const screen = await render(EffectsPanel, { itemId: 'video', onedit: vi.fn() });
+		await screen.getByText('Save current effects as preset', { exact: true }).click();
+		const name = document.querySelector<HTMLInputElement>('[aria-label="Preset name"]');
+		expect(name).not.toBeNull();
+		name!.value = 'My stack';
+		name!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		await screen.getByText('Save', { exact: true }).click();
+
+		await vi.waitFor(() => {
+			const stored = localStorage.getItem(EFFECT_PRESETS_STORAGE_KEY);
+			expect(stored).toContain('My stack');
+			expect(stored).toContain('gpu-contrast');
+		});
+		document
+			.querySelector<HTMLButtonElement>('button[aria-expanded][aria-label="Add effect"]')!
+			.click();
+		let presetSearch: HTMLInputElement | null = null;
+		await vi.waitFor(() => {
+			presetSearch = document.querySelector<HTMLInputElement>('[data-slot="command-input"]');
+			expect(presetSearch).not.toBeNull();
+		});
+		presetSearch!.value = 'My stack';
+		presetSearch!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		let userOption: HTMLElement | null = null;
+		await vi.waitFor(() => {
+			userOption = document.querySelector<HTMLElement>('[data-effect-option^="user-preset:"]');
+			expect(userOption).not.toBeNull();
+			expect(userOption?.querySelector<HTMLCanvasElement>('canvas')?.dataset.renderMode).toBe(
+				'gpu'
+			);
+		});
+		await screen.getByRole('button', { name: 'Delete preset My stack' }).click();
+		await vi.waitFor(() => {
+			expect(localStorage.getItem(EFFECT_PRESETS_STORAGE_KEY)).toBe('[]');
+		});
 	});
 });
 

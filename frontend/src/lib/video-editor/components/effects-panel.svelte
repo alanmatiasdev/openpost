@@ -4,7 +4,7 @@
 	Sliders draft locally and commit one undoable update on release.
 -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { Slider } from '$lib/components/ui/slider';
 	import AppSelect from '$lib/components/app-select.svelte';
@@ -15,6 +15,8 @@
 	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import SaveIcon from '@lucide/svelte/icons/save';
+	import XIcon from '@lucide/svelte/icons/x';
 	import {
 		EFFECT_DEFINITIONS,
 		type GpuEffect,
@@ -23,8 +25,7 @@
 	} from '$lib/video-editor/effects/types';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
-		addEffect,
-		addGpuEffect,
+		addEffectTemplates,
 		isEffectAtDefaults,
 		moveEffectOnItems,
 		removeEffectOnItems,
@@ -55,6 +56,15 @@
 		type EffectDragData,
 		type EffectTemplate
 	} from '$lib/video-editor/timeline/effect-drop';
+	import {
+		BUILT_IN_EFFECT_PRESETS,
+		effectTemplatesFromItems,
+		loadEffectPresets,
+		persistEffectPresets,
+		removeEffectPreset,
+		saveEffectPreset,
+		type EffectPreset
+	} from '$lib/video-editor/effects/effect-presets';
 
 	let {
 		itemId,
@@ -71,6 +81,10 @@
 	/** In-flight slider values so dragging stays smooth before the undoable commit. */
 	let draftAmounts = $state<Record<string, number>>({});
 	let pendingKind = $state<string>('brightness');
+	let userPresets = $state<EffectPreset[]>([]);
+	let presetName = $state('');
+	let showPresetSave = $state(false);
+	let presetStatus = $state('');
 	let suppressAddAfterDrag = false;
 	let dragResetTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -92,6 +106,17 @@
 		distort: m.video_editor_gpu_category_distort(),
 		stylize: m.video_editor_gpu_category_stylize(),
 		keying: m.video_editor_gpu_category_keying()
+	});
+	const builtInPresetLabels = $derived<Record<string, string>>({
+		'trigger-wave-layer': m.video_editor_effect_preset_trigger_wave_layer(),
+		crt: m.video_editor_effect_preset_crt(),
+		'retro-tv': m.video_editor_effect_preset_retro_tv(),
+		vintage: m.video_editor_effect_preset_vintage(),
+		noir: m.video_editor_effect_preset_noir(),
+		cold: m.video_editor_effect_preset_cold(),
+		warm: m.video_editor_effect_preset_warm(),
+		dramatic: m.video_editor_effect_preset_dramatic(),
+		faded: m.video_editor_effect_preset_faded()
 	});
 
 	const blendModeLabels = $derived<Record<BlendMode, string>>({
@@ -145,7 +170,20 @@
 				group: gpuCategoryLabels[group.category],
 				gpuEffectId: definition.id
 			}))
-		)
+		),
+		...BUILT_IN_EFFECT_PRESETS.map((preset) => ({
+			value: `preset:${preset.id}`,
+			label: builtInPresetLabels[preset.id] ?? preset.name,
+			group: m.video_editor_effects_presets(),
+			previewEffects: preset.effects
+		})),
+		...userPresets.map((preset) => ({
+			value: `user-preset:${preset.id}`,
+			label: preset.name,
+			group: m.video_editor_effects_my_presets(),
+			previewEffects: preset.effects,
+			removable: true
+		}))
 	]);
 	const blendOptions = $derived(
 		BLEND_MODE_GROUPS.flatMap((group) =>
@@ -165,49 +203,91 @@
 			suppressAddAfterDrag = false;
 			return;
 		}
-		if (!itemId) return;
-		if (pendingKind.startsWith('gpu:')) {
-			if (addGpuEffect(itemId, pendingKind.slice(4))) onedit();
-			return;
-		}
-		const definition = definitionFor(pendingKind);
-		if (!definition) return;
-		if (addEffect(itemId, definition.type)) onedit();
+		const templates = pendingEffectTemplates();
+		if (templates.length > 0 && addEffectTemplates(selectedEffectItemIds, templates)) onedit();
 	}
 
-	function pendingEffectTemplate(): EffectTemplate | null {
+	function pendingEffectTemplates(): EffectTemplate[] {
 		if (pendingKind.startsWith('gpu:')) {
 			const effectId = pendingKind.slice(4);
-			return getGpuEffect(effectId) ? { kind: 'gpu', effectId } : null;
+			return getGpuEffect(effectId) ? [{ kind: 'gpu', effectId }] : [];
+		}
+		if (pendingKind.startsWith('preset:')) {
+			return (
+				BUILT_IN_EFFECT_PRESETS.find((preset) => preset.id === pendingKind.slice(7))?.effects ?? []
+			).map(cloneTemplate);
+		}
+		if (pendingKind.startsWith('user-preset:')) {
+			return (userPresets.find((preset) => preset.id === pendingKind.slice(12))?.effects ?? []).map(
+				cloneTemplate
+			);
 		}
 		const definition = definitionFor(pendingKind);
-		return definition ? { kind: 'css', effectType: definition.type } : null;
+		return definition ? [{ kind: 'css', effectType: definition.type }] : [];
 	}
 
 	function pendingEffectLabel(): string {
-		if (pendingKind.startsWith('gpu:')) {
-			return getGpuEffect(pendingKind.slice(4))?.label ?? pendingKind.slice(4);
-		}
-		const definition = definitionFor(pendingKind);
-		return definition ? typeLabels[definition.type] : pendingKind;
+		return effectOptions.find((option) => option.value === pendingKind)?.label ?? pendingKind;
 	}
 
 	function startEffectDrag(event: DragEvent): void {
-		const effect = pendingEffectTemplate();
-		if (!effect || !event.dataTransfer) {
+		const templates = pendingEffectTemplates();
+		if (templates.length === 0 || !event.dataTransfer) {
 			event.preventDefault();
 			return;
 		}
 		const payload: EffectDragData = {
 			type: 'timeline-effect',
 			label: pendingEffectLabel(),
-			effects: [effect]
+			effects: templates
 		};
 		suppressAddAfterDrag = true;
 		event.dataTransfer.effectAllowed = 'copy';
 		event.dataTransfer.setData('application/json', JSON.stringify(payload));
 		setEffectDragData(payload);
 	}
+
+	function cloneTemplate(template: EffectTemplate): EffectTemplate {
+		return template.kind === 'gpu'
+			? { ...template, params: template.params ? { ...template.params } : undefined }
+			: { ...template };
+	}
+
+	function saveCurrentPreset(): void {
+		const next = saveEffectPreset(userPresets, presetName, effectTemplatesFromItems(effects));
+		const saved = next.find(
+			(preset) => preset.name.toLocaleLowerCase() === presetName.trim().toLocaleLowerCase()
+		);
+		if (!saved) return;
+		if (!persistEffectPresets(next)) {
+			presetStatus = m.video_editor_effects_preset_save_failed();
+			return;
+		}
+		userPresets = next;
+		pendingKind = `user-preset:${saved.id}`;
+		presetStatus = m.video_editor_effects_preset_saved({ name: saved.name });
+		presetName = '';
+		showPresetSave = false;
+	}
+
+	function deleteUserPreset(value: string): void {
+		if (!value.startsWith('user-preset:')) return;
+		const presetId = value.slice(12);
+		const preset = userPresets.find((entry) => entry.id === presetId);
+		if (!preset) return;
+		const next = removeEffectPreset(userPresets, presetId);
+		if (!persistEffectPresets(next)) {
+			presetStatus = m.video_editor_effects_preset_delete_failed();
+			return;
+		}
+		userPresets = next;
+		if (pendingKind === value) pendingKind = 'brightness';
+		presetStatus = m.video_editor_effects_preset_deleted({ name: preset.name });
+	}
+
+	onMount(() => {
+		userPresets = loadEffectPresets();
+	});
 
 	function finishEffectDrag(): void {
 		clearEffectDragData();
@@ -299,6 +379,8 @@
 			ariaLabel={m.video_editor_effects_add()}
 			searchPlaceholder={m.video_editor_effects_search()}
 			emptyLabel={m.video_editor_effects_no_results()}
+			onRemoveOption={deleteUserPreset}
+			removeOptionLabel={(name) => m.video_editor_effects_preset_delete_named({ name })}
 		/>
 		<button
 			type="button"
@@ -314,6 +396,52 @@
 			{m.video_editor_effects_add()}
 		</button>
 	</div>
+	{#if showPresetSave}
+		<div class="flex items-center gap-1 px-1">
+			<input
+				type="text"
+				class="h-8 min-w-0 flex-1 rounded border border-[oklch(0.32_0.015_55)] bg-[oklch(0.16_0.008_50)] px-2 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				bind:value={presetName}
+				maxlength="80"
+				aria-label={m.video_editor_effects_preset_name()}
+				placeholder={m.video_editor_effects_preset_name()}
+				onkeydown={(event) => {
+					if (event.key === 'Enter') saveCurrentPreset();
+					if (event.key === 'Escape') showPresetSave = false;
+				}}
+			/>
+			<button
+				type="button"
+				class="flex h-8 items-center gap-1 rounded bg-[oklch(0.62_0.13_45)] px-2 text-xs font-medium text-black hover:bg-[oklch(0.68_0.14_45)] focus-visible:outline-2 focus-visible:outline-[oklch(0.8_0.12_45)] disabled:opacity-40"
+				disabled={!presetName.trim() || effects.length === 0}
+				onclick={saveCurrentPreset}
+			>
+				<SaveIcon class="size-3" />{m.video_editor_effects_preset_save()}
+			</button>
+			<button
+				type="button"
+				class="rounded p-1.5 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				aria-label={m.common_cancel()}
+				title={m.common_cancel()}
+				onclick={() => (showPresetSave = false)}
+			>
+				<XIcon class="size-3" />
+			</button>
+		</div>
+	{:else}
+		<button
+			type="button"
+			class="mx-1 flex h-7 items-center justify-center gap-1 rounded border border-[oklch(0.3_0.015_55)] text-xs text-[oklch(0.72_0.02_55)] hover:bg-[oklch(0.24_0.012_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-40"
+			disabled={effects.length === 0}
+			aria-expanded={showPresetSave}
+			onclick={() => (showPresetSave = true)}
+		>
+			<SaveIcon class="size-3" />{m.video_editor_effects_preset_save_current()}
+		</button>
+	{/if}
+	{#if presetStatus}<p class="px-1 text-[10px] text-[oklch(0.7_0.02_55)]" role="status">
+			{presetStatus}
+		</p>{/if}
 	{#if !itemId || effects.length === 0}
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_effects_none()}</p>
 	{:else}

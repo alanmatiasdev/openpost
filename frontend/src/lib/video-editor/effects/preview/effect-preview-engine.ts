@@ -6,7 +6,8 @@
 import { createGpuCompositor, type GpuCompositor } from '../gpu/compositor';
 import { getGpuEffect } from '../gpu/registry';
 import { normalizeGpuParam, type GpuParamValues, type GpuShaderDefinition } from '../gpu/types';
-import { effectUnit, type CssFilterType } from '../types';
+import { EFFECT_DEFINITIONS, effectUnit, type CssFilterType } from '../types';
+import type { EffectTemplate } from '../../timeline/effect-drop';
 
 export const EFFECT_PREVIEW_WIDTH = 160;
 export const EFFECT_PREVIEW_HEIGHT = 90;
@@ -21,6 +22,12 @@ interface PreviewPipeline {
 let pipeline: PreviewPipeline | null = null;
 let pipelinePromise: Promise<PreviewPipeline | null> | null = null;
 let samplePromise: Promise<HTMLCanvasElement | OffscreenCanvas | null> | null = null;
+let cssPreviewCanvas: HTMLCanvasElement | OffscreenCanvas | null = null;
+
+export interface EffectPreviewFrame {
+	canvas: HTMLCanvasElement | OffscreenCanvas;
+	mode: 'gpu' | 'css' | 'fallback';
+}
 
 function createCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null {
 	return createHtmlCanvas(width, height) ?? createOffscreenCanvas(width, height);
@@ -113,15 +120,18 @@ export function blendGpuPreviewParams(
 ): GpuParamValues {
 	const definition = getGpuEffect(effectId);
 	if (!definition) return target;
-	return Object.fromEntries(
-		definition.schema.map((param) => {
-			if (!param.type || param.type === 'number') {
-				const goal = Number(normalizeGpuParam(param, target[param.name] ?? param.default));
-				return [param.name, param.default + (goal - param.default) * strength];
-			}
-			return [param.name, target[param.name] ?? param.default];
-		})
-	);
+	return {
+		...target,
+		...Object.fromEntries(
+			definition.schema.map((param) => {
+				if (!param.type || param.type === 'number') {
+					const goal = Number(normalizeGpuParam(param, target[param.name] ?? param.default));
+					return [param.name, param.default + (goal - param.default) * strength];
+				}
+				return [param.name, target[param.name] ?? param.default];
+			})
+		)
+	};
 }
 
 export function cssPreviewFilter(type: CssFilterType, amount: number, strength = 1): string {
@@ -130,18 +140,77 @@ export function cssPreviewFilter(type: CssFilterType, amount: number, strength =
 	return `${type}(${blended}${effectUnit(type)})`;
 }
 
-export function renderGpuEffectPreview(
+function renderGpuEffectPreview(
 	sample: TexImageSource,
-	effectId: string,
-	target: GpuParamValues,
+	effects: readonly { effectId: string; target: GpuParamValues }[],
 	strength: number
 ): (HTMLCanvasElement | OffscreenCanvas) | null {
 	const ready = getReadyEffectPreviewPipeline();
 	if (!ready) return null;
-	const rendered = ready.compositor.render(sample, EFFECT_PREVIEW_WIDTH, EFFECT_PREVIEW_HEIGHT, [
-		{ effectId, params: blendGpuPreviewParams(effectId, target, strength) }
-	]);
+	const rendered = ready.compositor.render(
+		sample,
+		EFFECT_PREVIEW_WIDTH,
+		EFFECT_PREVIEW_HEIGHT,
+		effects.map((effect) => ({
+			effectId: effect.effectId,
+			params: blendGpuPreviewParams(effect.effectId, effect.target, strength)
+		}))
+	);
 	return rendered ? ready.canvas : null;
+}
+
+/** Render a CSS/GPU stack using the same GPU-first, CSS-second order as playback and export. */
+export function renderEffectPreviewFrame(
+	sample: HTMLCanvasElement | OffscreenCanvas,
+	effects: readonly EffectTemplate[],
+	strength: number
+): EffectPreviewFrame {
+	const enabled = effects.filter((effect) => effect.enabled !== false);
+	const cssEffects = enabled.filter((effect) => effect.kind === 'css');
+	const gpuEffects = enabled.flatMap((effect) => {
+		if (effect.kind !== 'gpu') return [];
+		const definition = getGpuEffect(effect.effectId);
+		if (!definition) return [];
+		return [
+			{
+				effectId: effect.effectId,
+				target: effect.params ? { ...effect.params } : getShowcaseParams(definition)
+			}
+		];
+	});
+
+	let source: HTMLCanvasElement | OffscreenCanvas = sample;
+	let gpuRendered = false;
+	if (gpuEffects.length > 0) {
+		const output = renderGpuEffectPreview(source, gpuEffects, strength);
+		if (output) {
+			source = output;
+			gpuRendered = true;
+		}
+	}
+	if (cssEffects.length > 0) {
+		cssPreviewCanvas ??= createCanvas(EFFECT_PREVIEW_WIDTH, EFFECT_PREVIEW_HEIGHT);
+		const context = cssPreviewCanvas?.getContext('2d');
+		if (cssPreviewCanvas && context) {
+			context.clearRect(0, 0, EFFECT_PREVIEW_WIDTH, EFFECT_PREVIEW_HEIGHT);
+			context.save();
+			context.filter = cssEffects
+				.map((effect) => {
+					const fallback = EFFECT_DEFINITIONS.find(
+						(entry) => entry.type === effect.effectType
+					)?.defaultAmount;
+					return cssPreviewFilter(effect.effectType, effect.amount ?? fallback ?? 0, strength);
+				})
+				.join(' ');
+			context.drawImage(sample, 0, 0, EFFECT_PREVIEW_WIDTH, EFFECT_PREVIEW_HEIGHT);
+			context.restore();
+			source = cssPreviewCanvas;
+		}
+	}
+
+	if (gpuRendered) return { canvas: source, mode: 'gpu' };
+	if (cssEffects.length > 0 && source !== sample) return { canvas: source, mode: 'css' };
+	return { canvas: sample, mode: 'fallback' };
 }
 
 export function prewarmEffectPreviews(): void {

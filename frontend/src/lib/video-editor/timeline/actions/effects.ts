@@ -531,20 +531,28 @@ function createEffectFromTemplate(template: EffectTemplate): ItemEffect | null {
 	if (template.kind === 'css') {
 		const definition = EFFECT_DEFINITIONS.find((entry) => entry.type === template.effectType);
 		if (!definition) return null;
+		const requested = template.amount ?? definition.defaultAmount;
+		const amount = Number.isFinite(requested)
+			? Math.min(definition.max, Math.max(definition.min, requested))
+			: definition.defaultAmount;
 		return {
 			id: crypto.randomUUID(),
 			type: definition.type,
-			amount: definition.defaultAmount,
-			enabled: true
+			amount,
+			enabled: template.enabled ?? true
 		};
 	}
 	const definition = getGpuEffect(template.effectId);
 	if (!definition) return null;
+	const params = { ...defaultGpuParams(definition.schema), ...(template.params ?? {}) };
+	for (const param of definition.schema) {
+		params[param.name] = normalizeGpuParam(param, params[param.name] ?? param.default);
+	}
 	return {
 		id: crypto.randomUUID(),
 		type: 'gpu',
 		effectId: definition.id,
-		params: defaultGpuParams(definition.schema),
-		enabled: true
+		params,
+		enabled: template.enabled ?? true
 	};
 }

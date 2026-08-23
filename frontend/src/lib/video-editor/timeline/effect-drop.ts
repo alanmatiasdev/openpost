@@ -7,11 +7,12 @@
  */
 
 import type { CssFilterType } from '$lib/video-editor/effects/types';
+import type { GpuParamValues } from '$lib/video-editor/effects/gpu/types';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 
 export type EffectTemplate =
-	| { kind: 'css'; effectType: CssFilterType }
-	| { kind: 'gpu'; effectId: string };
+	| { kind: 'css'; effectType: CssFilterType; amount?: number; enabled?: boolean }
+	| { kind: 'gpu'; effectId: string; params?: GpuParamValues; enabled?: boolean };
 
 export interface EffectDragData {
 	type: 'timeline-effect';

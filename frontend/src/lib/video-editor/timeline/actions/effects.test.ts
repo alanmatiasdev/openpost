@@ -76,6 +76,27 @@ describe('addEffectTemplates', () => {
 		expect(timelineStore.itemById.get('video')?.effects).toBeUndefined();
 		expect(timelineStore.itemById.get('title')?.effects).toBeUndefined();
 	});
+
+	it('preserves preset parameters and bypass state while normalizing bad values', () => {
+		expect(
+			addEffectTemplates(
+				['video'],
+				[
+					{ kind: 'css', effectType: 'blur', amount: 200, enabled: false },
+					{
+						kind: 'gpu',
+						effectId: 'gpu-contrast',
+						params: { amount: 99 },
+						enabled: false
+					}
+				]
+			)
+		).toBe(true);
+		expect(timelineStore.itemById.get('video')?.effects).toMatchObject([
+			{ type: 'blur', amount: 20, enabled: false },
+			{ type: 'gpu', effectId: 'gpu-contrast', params: { amount: 3 }, enabled: false }
+		]);
+	});
 });
 
 describe('setGpuEffectParam', () => {
