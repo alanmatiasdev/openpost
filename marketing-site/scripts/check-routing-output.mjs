@@ -59,9 +59,10 @@ assert.deepEqual(apiCatalog, {
 
 const authDiscovery = await readFile(path.join(outputRoot, 'auth.md'), 'utf8');
 assert.match(authDiscovery, /^# OpenPost Auth\.md$/m);
-assert.match(authDiscovery, /agent_auth:/);
 assert.match(authDiscovery, /\.well-known\/oauth-protected-resource/);
+assert.match(authDiscovery, /\.well-known\/oauth-authorization-server/);
 assert.match(authDiscovery, /Authorization: Bearer <token>/);
+assert.doesNotMatch(authDiscovery, /agent_auth:/);
 
 const notFound = await readFile(path.join(outputRoot, '404.html'), 'utf8');
 assert.match(notFound, /<title>Page not found · OpenPost<\/title>/);

@@ -19,22 +19,7 @@ MCP clients should discover the supported authorization flow from these public d
 
 The hosted service uses the OAuth authorization-code flow with PKCE. It supports `mcp:read` and `mcp:full`. A browser opens so the signed-in user can review and approve access.
 
-```yaml
-agent_auth:
-  skill: https://openpost.social/auth.md
-  register_uri: https://app.openpost.social/register
-  methods:
-    - type: oauth2
-      resource: https://app.openpost.social/mcp
-      protected_resource_metadata: https://app.openpost.social/.well-known/oauth-protected-resource
-      authorization_server_metadata: https://app.openpost.social/.well-known/oauth-authorization-server
-      scopes_supported:
-        - mcp:read
-        - mcp:full
-    - type: api_token
-      provision_uri: https://app.openpost.social/settings
-      bearer_method: header
-```
+This is a standard OAuth client authorization flow. OpenPost does not currently advertise the separate auth.md agent-registration protocol, so agents must not assume that `/agent-auth`, identity-assertion, claim, or revocation endpoints exist.
 
 ## API tokens
 
