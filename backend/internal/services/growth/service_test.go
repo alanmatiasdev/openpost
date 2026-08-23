@@ -331,6 +331,11 @@ func TestDismissalSurvivesAndFollowingDoesNotResurface(t *testing.T) {
 	require.NoError(t, db.NewSelect().Model(&bobRec).Where("handle = ? AND social_account_id = ?", "bob", "acc-1").Scan(context.Background()))
 	_, err = db.NewUpdate().Model(&bobRec).Set("follow_state = ?", models.GrowthRecommendationFollowFollowing).WherePK().Exec(context.Background())
 	require.NoError(t, err)
+	settled, err := svc.List(context.Background(), actor, "ws-1", "acc-1")
+	require.NoError(t, err)
+	require.Empty(t, settled.Items)
+	require.Len(t, settled.FollowUpdates, 1)
+	require.Equal(t, bobRec.ID, settled.FollowUpdates[0].ID)
 
 	// Refresh again includes same remote IDs, but dismissed/following should not reappear
 	_, err = svc.QueueRefresh(context.Background(), actor, "ws-1", "acc-1")

@@ -368,7 +368,6 @@ func (s *Service) List(ctx context.Context, actor workspaceaccess.ActorFacts, wo
 	if err := s.db.NewSelect().Model(&rows).
 		Where("social_account_id = ? AND generation_id = ?", acct.ID, state.CurrentGenerationID).
 		Where("dismissed_at IS NULL").
-		Where("follow_state NOT IN (?, ?)", models.GrowthRecommendationFollowFollowing, models.GrowthRecommendationFollowRequested).
 		Order("score DESC").
 		Order("mutual_count DESC").
 		Order("handle ASC").
@@ -377,28 +376,20 @@ func (s *Service) List(ctx context.Context, actor workspaceaccess.ActorFacts, wo
 		return ListResult{}, err
 	}
 	items := make([]RecommendationView, 0, len(rows))
+	followUpdates := make([]FollowUpdateView, 0)
 	for _, row := range rows {
+		if row.FollowState == models.GrowthRecommendationFollowFollowing || row.FollowState == models.GrowthRecommendationFollowRequested {
+			followUpdates = append(followUpdates, FollowUpdateView{
+				ID:                 row.ID,
+				FollowState:        row.FollowState,
+				FollowErrorCode:    row.FollowErrorCode,
+				FollowErrorMessage: row.FollowErrorMessage,
+				UpdatedAt:          row.UpdatedAt,
+				GenerationID:       row.GenerationID,
+			})
+			continue
+		}
 		items = append(items, recommendationToView(row))
-	}
-	// Compact follow_updates for current-generation terminal following/requested
-	var terminalRows []models.GrowthRecommendation
-	if err := s.db.NewSelect().Model(&terminalRows).
-		Where("social_account_id = ? AND generation_id = ?", acct.ID, state.CurrentGenerationID).
-		Where("dismissed_at IS NULL").
-		Where("follow_state IN (?, ?)", models.GrowthRecommendationFollowFollowing, models.GrowthRecommendationFollowRequested).
-		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return ListResult{}, err
-	}
-	followUpdates := make([]FollowUpdateView, 0, len(terminalRows))
-	for _, r := range terminalRows {
-		followUpdates = append(followUpdates, FollowUpdateView{
-			ID:                 r.ID,
-			FollowState:        r.FollowState,
-			FollowErrorCode:    r.FollowErrorCode,
-			FollowErrorMessage: r.FollowErrorMessage,
-			UpdatedAt:          r.UpdatedAt,
-			GenerationID:       r.GenerationID,
-		})
 	}
 	if followUpdates == nil {
 		followUpdates = []FollowUpdateView{}

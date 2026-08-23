@@ -339,14 +339,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			}
 
 			if (toShowTerminal.length) {
-				mergedItems = [...mergedItems, ...toShowTerminal];
+				const terminalIDs = new Set(toShowTerminal.map((item) => item.id));
+				mergedItems = [
+					...mergedItems.filter((item) => !terminalIDs.has(item.id)),
+					...toShowTerminal
+				];
 				items = mergedItems;
 				const delay = terminalRemovalDelay();
 				if (delay > 0) {
 					await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
 				}
 				if (destroyed || selectedAccountID !== acc || workspaceID !== ws) return;
-				const terminalIDs = new Set(toShowTerminal.map((item) => item.id));
 				items = items.filter((item) => !terminalIDs.has(item.id));
 				pendingSessionIds = new Set([...pendingSessionIds].filter((id) => !terminalIDs.has(id)));
 			} else {

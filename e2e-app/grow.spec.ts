@@ -115,6 +115,8 @@ function installGrowthRoutes(page: Page, workspaceID: string) {
   let refreshReads = 0;
   let refreshRequests = 0;
   let delayedAccount = "";
+  let overlapTerminalOnce = false;
+  let terminalOverlapReads = 0;
 
   page.route("**/api/v1/accounts?**", async (route) => {
     await route.fulfill({ contentType: "application/json", json: accounts });
@@ -198,7 +200,14 @@ function installGrowthRoutes(page: Page, workspaceID: string) {
       const all = Array.from({ length: 6 }, (_, index) =>
         recommendation(accountID, platform, index + 1, { workspace_id: workspaceID }),
       );
-      const items = all.filter((item) => !dismissed.has(item.id) && !terminal.has(item.id));
+      const includeTerminal = overlapTerminalOnce && terminal.size > 0;
+      const items = all.filter(
+        (item) => !dismissed.has(item.id) && (includeTerminal || !terminal.has(item.id)),
+      );
+      if (includeTerminal) {
+        overlapTerminalOnce = false;
+        terminalOverlapReads += 1;
+      }
       const followUpdates = [...terminal.entries()]
         .filter(([id]) => id.startsWith(platform === "bluesky" ? "b-" : "m-"))
         .map(([id, followState]) => ({
@@ -237,8 +246,14 @@ function installGrowthRoutes(page: Page, workspaceID: string) {
     delayNext(accountID: string) {
       delayedAccount = accountID;
     },
+    overlapNextTerminalRead() {
+      overlapTerminalOnce = true;
+    },
     refreshRequestCount() {
       return refreshRequests;
+    },
+    terminalOverlapReadCount() {
+      return terminalOverlapReads;
     },
   };
 }
@@ -258,6 +273,27 @@ async function prepareGrow(page: Page, request: Parameters<typeof registerUser>[
   await expect(page.getByTestId("growth-profile-card")).toHaveCount(6);
   return { fixture, workspace };
 }
+
+test("Grow keeps follow settlement stable across an overlapping list snapshot", async ({
+  page,
+  request,
+}, testInfo) => {
+  const eachKeyErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    if (error.message.includes("each_key_duplicate")) eachKeyErrors.push(error.message);
+  });
+  const { fixture } = await prepareGrow(
+    page,
+    request,
+    `follow-race-${Date.now().toString(36)}-${testInfo.workerIndex}`,
+  );
+
+  fixture.overlapNextTerminalRead();
+  await page.getByRole("button", { name: "Follow @person1.bsky.social" }).click();
+  await expect.poll(() => fixture.terminalOverlapReadCount(), { timeout: 8_000 }).toBe(1);
+  await expect(page.getByRole("button", { name: "Following @person1.bsky.social" })).toBeVisible();
+  expect(eachKeyErrors).toEqual([]);
+});
 
 test("Grow keeps account-specific evidence and follow outcomes clear", async ({
   page,
