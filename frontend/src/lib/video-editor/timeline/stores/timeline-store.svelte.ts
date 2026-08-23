@@ -12,6 +12,7 @@
  */
 
 import type { TimelineItem, TimelineMarker, TimelineTrack } from '$lib/video-editor/project/types';
+import { clampTimelineZoom } from '$lib/video-editor/timeline/zoom';
 import { calculateSplitSourceBoundaries } from '../utils/source-calculations';
 
 export interface TimelineSettings {
@@ -171,7 +172,7 @@ export const timelineStore = {
 			}
 		}
 		if (next.zoomLevel !== undefined && Number.isFinite(next.zoomLevel)) {
-			state.zoomLevel = Math.min(50, Math.max(0.01, next.zoomLevel));
+			state.zoomLevel = clampTimelineZoom(next.zoomLevel);
 		}
 		if (next.scrollPosition !== undefined && Number.isFinite(next.scrollPosition)) {
 			state.settings.scrollPosition = next.scrollPosition;
@@ -302,7 +303,7 @@ export const timelineStore = {
 	},
 
 	_setZoomLevel(level: number): void {
-		state.zoomLevel = Math.min(50, Math.max(0.01, level));
+		state.zoomLevel = clampTimelineZoom(level);
 	},
 
 	_setInPoint(frame: number | null): void {

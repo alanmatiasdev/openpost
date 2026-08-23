@@ -18,6 +18,19 @@
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
 	import { markerAfter, markerBefore, markerDisplayName } from '$lib/video-editor/timeline/markers';
+	import {
+		TIMELINE_ZOOM_STEP,
+		anchoredTimelineScrollLeft,
+		centeredTimelineScrollLeft,
+		clampTimelineZoom,
+		cursorZoomAnchor,
+		playheadZoomAnchor,
+		timelinePixelsPerFrame,
+		timelineSliderToZoom,
+		timelineZoomToFit,
+		timelineZoomToSlider,
+		type TimelineZoomAnchor
+	} from '$lib/video-editor/timeline/zoom';
 	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
@@ -151,6 +164,7 @@
 	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
+	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import ChartSplineIcon from '@lucide/svelte/icons/chart-spline';
 	import FlagIcon from '@lucide/svelte/icons/flag';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
@@ -177,6 +191,9 @@
 		selectedTransitionId?: string | null;
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
+	let lastTimelinePointerScreenX: number | null = null;
+	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
+	let timelineZoomAnimationFrame: number | null = null;
 	const audioSkimController = createTimelineAudioSkimController();
 	let audioSkimStopTimer: ReturnType<typeof setTimeout> | null = null;
 	let rulerScrub: {
@@ -429,7 +446,7 @@
 
 	const fps = $derived(editorSession.fps);
 	const zoom = $derived(timelineStore.zoomLevel);
-	const pxPerFrame = $derived(Math.max(0.25, 4 * zoom));
+	const pxPerFrame = $derived(timelinePixelsPerFrame(zoom));
 	const TRACK_HEADER_WIDTH = 180;
 	const DRAG_THRESHOLD_PIXELS = 3;
 	const timelineWidth = $derived(
@@ -1364,11 +1381,33 @@
 
 	function onPanelKeydown(event: KeyboardEvent): void {
 		const target = event.target;
-		if (
+		const editingText =
 			target instanceof HTMLElement &&
-			target.matches('input, textarea, select, [contenteditable="true"]')
-		)
+			target.matches('input, textarea, select, [contenteditable="true"]');
+		const commandKey = event.ctrlKey || event.metaKey;
+		if (commandKey && !event.altKey && (event.key === '=' || event.key === '+')) {
+			event.preventDefault();
+			zoomBy(TIMELINE_ZOOM_STEP);
 			return;
+		}
+		if (commandKey && !event.altKey && event.key === '-') {
+			event.preventDefault();
+			zoomBy(1 / TIMELINE_ZOOM_STEP);
+			return;
+		}
+		if (commandKey && !event.altKey && event.key === '0') {
+			event.preventDefault();
+			zoomTo100();
+			return;
+		}
+		if (editingText) return;
+		const isBackslash = event.code === 'Backslash' || event.key === '\\' || event.key === '|';
+		if (isBackslash && !event.altKey && !commandKey) {
+			event.preventDefault();
+			if (event.shiftKey) zoomTo100();
+			else zoomToFit();
+			return;
+		}
 		if (
 			(event.key === 'l' || event.key === 'L') &&
 			event.altKey &&
@@ -1958,14 +1997,152 @@
 		if (trackHeightResize) completeTrackHeightResize(true);
 		if (markerDrag) completeMarkerDrag(true);
 		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
+		if (timelineZoomAnimationFrame !== null) cancelAnimationFrame(timelineZoomAnimationFrame);
 		audioSkimController.dispose();
 		clearEffectDropPreview();
 		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
 	});
 
+	function zoomFrameLimit(): number {
+		return Math.max(fps * 10, timelineStore.maxItemEndFrame);
+	}
+
+	function cancelQueuedTimelineZoom(): void {
+		queuedTimelineZoom = null;
+		if (timelineZoomAnimationFrame === null) return;
+		cancelAnimationFrame(timelineZoomAnimationFrame);
+		timelineZoomAnimationFrame = null;
+	}
+
+	function applyTimelineZoom(level: number, anchor: TimelineZoomAnchor): void {
+		cancelQueuedTimelineZoom();
+		const nextLevel = clampTimelineZoom(level);
+		const nextScrollLeft = anchoredTimelineScrollLeft({
+			anchor,
+			nextZoomLevel: nextLevel,
+			headerWidth: TRACK_HEADER_WIDTH
+		});
+		timelineStore._setZoomLevel(nextLevel);
+		queueMicrotask(() => {
+			if (scrollContainer) scrollContainer.scrollLeft = nextScrollLeft;
+		});
+	}
+
+	function playheadAnchor(): TimelineZoomAnchor {
+		return playheadZoomAnchor({
+			frame: timelineStore.currentFrame,
+			zoomLevel: zoom,
+			scrollLeft: scrollContainer?.scrollLeft ?? 0,
+			headerWidth: TRACK_HEADER_WIDTH,
+			maxFrame: zoomFrameLimit()
+		});
+	}
+
 	function zoomBy(factor: number): void {
-		timelineStore._setZoomLevel(zoom * factor);
+		applyTimelineZoom(zoom * factor, playheadAnchor());
+	}
+
+	function changeTimelineZoomFromSlider(position: number): void {
+		// Bits UI normalizes an externally supplied value to the nearest step and
+		// reports it through onValueChange. Ignore that sub-step echo so buttons,
+		// wheel input, and restored project zoom remain exact.
+		if (Math.abs(position - timelineZoomToSlider(zoom)) <= 0.000_51) return;
+		applyTimelineZoom(timelineSliderToZoom(position), playheadAnchor());
+	}
+
+	function zoomToFit(): void {
+		if (!scrollContainer) return;
+		cancelQueuedTimelineZoom();
+		const level = timelineZoomToFit({
+			viewportWidth: scrollContainer.clientWidth,
+			headerWidth: TRACK_HEADER_WIDTH,
+			durationInFrames: timelineStore.maxItemEndFrame,
+			fps
+		});
+		timelineStore._setZoomLevel(level);
+		scrollContainer.scrollLeft = 0;
+	}
+
+	function zoomTo100(): void {
+		if (!scrollContainer) {
+			timelineStore._setZoomLevel(1);
+			return;
+		}
+		cancelQueuedTimelineZoom();
+		if (lastTimelinePointerScreenX !== null) {
+			applyTimelineZoom(
+				1,
+				cursorZoomAnchor({
+					zoomLevel: zoom,
+					pointerScreenX: lastTimelinePointerScreenX,
+					scrollLeft: scrollContainer.scrollLeft,
+					headerWidth: TRACK_HEADER_WIDTH,
+					maxFrame: zoomFrameLimit()
+				})
+			);
+			return;
+		}
+		timelineStore._setZoomLevel(1);
+		const scrollLeft = centeredTimelineScrollLeft({
+			frame: timelineStore.currentFrame,
+			zoomLevel: 1,
+			viewportWidth: scrollContainer.clientWidth,
+			headerWidth: TRACK_HEADER_WIDTH
+		});
+		queueMicrotask(() => {
+			if (scrollContainer) scrollContainer.scrollLeft = scrollLeft;
+		});
+	}
+
+	function rememberTimelinePointer(event: PointerEvent): void {
+		if (!scrollContainer) return;
+		lastTimelinePointerScreenX = event.clientX - scrollContainer.getBoundingClientRect().left;
+	}
+
+	function forgetTimelinePointer(): void {
+		lastTimelinePointerScreenX = null;
+	}
+
+	function flushQueuedTimelineZoom(): void {
+		timelineZoomAnimationFrame = null;
+		const queued = queuedTimelineZoom;
+		queuedTimelineZoom = null;
+		if (!queued) return;
+		timelineStore._setZoomLevel(queued.level);
+		queueMicrotask(() => {
+			if (scrollContainer) scrollContainer.scrollLeft = queued.scrollLeft;
+		});
+	}
+
+	function onTimelineWheel(event: WheelEvent): void {
+		if (!(event.ctrlKey || event.metaKey) || event.deltaY === 0 || !scrollContainer) return;
+		event.preventDefault();
+		const pointerScreenX = event.clientX - scrollContainer.getBoundingClientRect().left;
+		lastTimelinePointerScreenX = pointerScreenX;
+		const baseLevel = queuedTimelineZoom?.level ?? zoom;
+		const baseScrollLeft = queuedTimelineZoom?.scrollLeft ?? scrollContainer.scrollLeft;
+		const anchor = cursorZoomAnchor({
+			zoomLevel: baseLevel,
+			pointerScreenX,
+			scrollLeft: baseScrollLeft,
+			headerWidth: TRACK_HEADER_WIDTH,
+			maxFrame: zoomFrameLimit()
+		});
+		const level = clampTimelineZoom(
+			event.deltaY < 0 ? baseLevel * TIMELINE_ZOOM_STEP : baseLevel / TIMELINE_ZOOM_STEP
+		);
+		queuedTimelineZoom = {
+			level,
+			scrollLeft: anchoredTimelineScrollLeft({
+				anchor,
+				nextZoomLevel: level,
+				headerWidth: TRACK_HEADER_WIDTH
+			})
+		};
+		if (timelineZoomAnimationFrame === null) {
+			timelineZoomAnimationFrame = requestAnimationFrame(flushQueuedTimelineZoom);
+		}
 	}
 
 	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
@@ -2436,26 +2613,46 @@
 			type="button"
 			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 			aria-label={m.video_editor_zoom_out()}
-			onclick={() => zoomBy(1 / 1.3)}
+			title={m.video_editor_zoom_out_hint()}
+			onclick={() => zoomBy(1 / TIMELINE_ZOOM_STEP)}
 		>
 			<ZoomOutIcon class="size-4" />
 		</button>
 		<Slider
 			class="w-28"
-			min={0.01}
-			max={50}
-			step={0.01}
-			value={zoom}
+			min={0}
+			max={1}
+			step={0.001}
+			value={timelineZoomToSlider(zoom)}
 			ariaLabel={m.video_editor_zoom()}
-			onValueChange={(value) => timelineStore._setZoomLevel(value)}
+			onValueChange={changeTimelineZoomFromSlider}
 		/>
 		<button
 			type="button"
 			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 			aria-label={m.video_editor_zoom_in()}
-			onclick={() => zoomBy(1.3)}
+			title={m.video_editor_zoom_in_hint()}
+			onclick={() => zoomBy(TIMELINE_ZOOM_STEP)}
 		>
 			<ZoomInIcon class="size-4" />
+		</button>
+		<button
+			type="button"
+			class="min-w-10 rounded px-1 py-0.5 font-mono text-[10px] text-[oklch(0.7_0.015_55)] tabular-nums hover:bg-[oklch(0.22_0.01_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			aria-label={m.video_editor_zoom_100()}
+			title={m.video_editor_zoom_100_hint()}
+			onclick={zoomTo100}
+		>
+			{Math.round(zoom * 100)}%
+		</button>
+		<button
+			type="button"
+			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			aria-label={m.video_editor_zoom_fit()}
+			title={m.video_editor_zoom_fit_hint()}
+			onclick={zoomToFit}
+		>
+			<Maximize2Icon class="size-4" />
 		</button>
 	</div>
 </div>
@@ -2524,6 +2721,9 @@
 <div
 	bind:this={scrollContainer}
 	onpointerdown={startMarquee}
+	onpointermove={rememberTimelinePointer}
+	onpointerleave={forgetTimelinePointer}
+	onwheel={onTimelineWheel}
 	class="relative max-h-72 min-h-32 overflow-auto pb-2"
 	role="region"
 	aria-label={m.video_editor_timeline()}

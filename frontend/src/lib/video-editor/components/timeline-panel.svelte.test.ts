@@ -138,6 +138,73 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		await disabled.click();
 	});
 
+	it('fits, resets, shortcuts, and coalesces pointer-anchored wheel zoom', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');
+		expect(region).not.toBeNull();
+		region!.style.width = '1000px';
+		region!.style.maxWidth = '1000px';
+		region!.style.overflow = 'auto';
+		vi.spyOn(region!, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1_000, 300));
+		await nextAnimationFrame();
+		expect(region!.clientWidth).toBe(1_000);
+
+		await screen.getByRole('button', { name: 'Fit timeline' }).click();
+		expect(timelineStore.zoomLevel).toBeCloseTo(770 / (300 * 4));
+		expect(region!.scrollLeft).toBe(0);
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: '=', ctrlKey: true, bubbles: true, cancelable: true })
+		);
+		expect(timelineStore.zoomLevel).toBeCloseTo((770 / (300 * 4)) * 1.15);
+
+		timelineStore._setZoomLevel(1);
+		await nextAnimationFrame();
+		expect(region!.scrollWidth).toBeGreaterThan(1_000);
+		region!.scrollLeft = 200;
+		expect(region!.scrollLeft).toBe(200);
+		const firstWheel = new WheelEvent('wheel', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 500,
+			ctrlKey: true,
+			deltaY: -100
+		});
+		const secondWheel = new WheelEvent('wheel', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 500,
+			ctrlKey: true,
+			deltaY: -100
+		});
+		region!.dispatchEvent(firstWheel);
+		region!.dispatchEvent(secondWheel);
+		expect(firstWheel.defaultPrevented).toBe(true);
+		expect(timelineStore.zoomLevel).toBe(1);
+		expect(region!.scrollLeft).toBe(200);
+		await nextAnimationFrame();
+		expect(timelineStore.zoomLevel).toBeCloseTo(1.15 * 1.15);
+		await nextAnimationFrame();
+		expect(region!.scrollLeft).toBeCloseTo(367.7, 0);
+
+		region!.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+		timelineStore._setCurrentFrame(200);
+		await screen.getByRole('button', { name: 'Zoom timeline to 100%' }).click();
+		expect(timelineStore.zoomLevel).toBe(1);
+		expect(region!.scrollLeft).toBe(390);
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '\\',
+				code: 'Backslash',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		expect(timelineStore.zoomLevel).toBeCloseTo(770 / (300 * 4));
+		expect(region!.scrollLeft).toBe(0);
+	});
+
 	it('scrubs the ruler with pointer drag and precise keyboard steps', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');
