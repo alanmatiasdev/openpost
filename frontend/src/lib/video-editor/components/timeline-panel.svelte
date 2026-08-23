@@ -37,6 +37,7 @@
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
 	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
+	import PropertyRuntimePanel from './property-runtime-panel.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
 	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -3066,6 +3067,14 @@
 							? { property: keyframe.property, frame: keyframe.frame }
 							: null)}
 					onactiveproperty={(property) => (pendingKeyframeProperty = property)}
+					{onedit}
+				/>
+				<PropertyRuntimePanel
+					item={selectedItem}
+					items={timelineStore.items}
+					availableProperties={availableKeyframeProperties}
+					currentFrame={timelineStore.currentFrame}
+					fps={timelineStore.fps}
 					{onedit}
 				/>
 				{#if selectedKeyframe && selectedKeyframeIndex >= 0}
