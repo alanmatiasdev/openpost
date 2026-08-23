@@ -14,6 +14,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import {
 		addAdjustmentLayer,
 		addTextItem,
+		removeItems,
 		rippleDeleteItems,
 		splitAtFrame,
 		splitAtScenes,
@@ -163,12 +164,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		}
 	}
 
-	function handleDelete(): void {
+	function handleDelete(ripple: boolean): void {
 		if (!selectedItemId) return;
-		rippleDeleteItems(
-			selectedItemIds.length > 0 ? selectedItemIds : [selectedItemId],
-			timelineStore.linkedSelectionEnabled
-		);
+		const ids = selectedItemIds.length > 0 ? selectedItemIds : [selectedItemId];
+		const removedIds = ripple
+			? rippleDeleteItems(ids, timelineStore.linkedSelectionEnabled)
+			: removeItems(ids, timelineStore.linkedSelectionEnabled);
+		if (removedIds.length === 0) return;
 		selectedItemId = null;
 		selectedItemIds = [];
 		editorSession.scheduleAutosave();
@@ -506,16 +508,24 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} else if ((event.key === 's' || event.key === 'S') && !event.altKey) {
 			event.preventDefault();
 			timelineStore._setSnapEnabled(!timelineStore.snapEnabled);
-		} else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedItemId) {
-			event.preventDefault();
-			handleDelete();
-		} else if (
-			(event.key === 'Delete' || event.key === 'Backspace') &&
-			timelineStore.selectedMarkerId
-		) {
-			event.preventDefault();
-			removeMarker(timelineStore.selectedMarkerId);
-			editorSession.scheduleAutosave();
+		} else if (event.key === 'Delete' || event.key === 'Backspace') {
+			const ripple = event.ctrlKey || event.metaKey;
+			if (ripple && selectedItemId) {
+				event.preventDefault();
+				handleDelete(true);
+			} else if (!ripple && selectedTransitionId) {
+				event.preventDefault();
+				removeTransition(selectedTransitionId);
+				selectedTransitionId = null;
+				editorSession.scheduleAutosave();
+			} else if (!ripple && timelineStore.selectedMarkerId) {
+				event.preventDefault();
+				removeMarker(timelineStore.selectedMarkerId);
+				editorSession.scheduleAutosave();
+			} else if (!ripple && selectedItemId) {
+				event.preventDefault();
+				handleDelete(false);
+			}
 		} else if (event.key === 'b' || event.key === 'B') {
 			handleSplit();
 		} else if (
@@ -716,8 +726,23 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleSplit}>
 						{m.video_editor_split()}
 					</Button>
-					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleDelete}>
-						{m.video_editor_delete_clip()}
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={!selectedItemId}
+						title={m.video_editor_delete_leave_gap_hint()}
+						onclick={() => handleDelete(false)}
+					>
+						{m.video_editor_delete_leave_gap()}
+					</Button>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={!selectedItemId}
+						title={m.video_editor_ripple_delete_hint()}
+						onclick={() => handleDelete(true)}
+					>
+						{m.video_editor_ripple_delete()}
 					</Button>
 					{#if selectedIsCompound}
 						<Button size="sm" variant="outline" onclick={handleDissolveCompound}>

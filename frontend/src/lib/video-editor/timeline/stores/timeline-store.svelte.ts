@@ -244,17 +244,18 @@ export const timelineStore = {
 			label: item.label
 		};
 		if (
-			(rightItem.type === 'video' || rightItem.type === 'audio') &&
-			item.sourceFps &&
-			item.sourceFps > 0
+			rightItem.type === 'video' ||
+			rightItem.type === 'audio' ||
+			rightItem.type === 'composition'
 		) {
+			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : state.settings.fps;
 			const boundaries = calculateSplitSourceBoundaries(
 				item.sourceStart ?? 0,
 				leftDuration,
 				rightDuration,
 				item.speed ?? 1,
 				state.settings.fps,
-				item.sourceFps,
+				sourceFps,
 				item.isReversed,
 				item.sourceEnd
 			);

@@ -11,7 +11,9 @@ import {
 	clearAllMarkers,
 	joinItems,
 	linkItems,
+	removeItems,
 	removeMarker,
+	rippleDeleteItems,
 	setCurrentFrame,
 	setItemsReversed,
 	updateMarker,
@@ -66,6 +68,97 @@ describe('timeline marker actions', () => {
 		expect(timelineStore.markers).toEqual([]);
 		commandHistory.undo();
 		expect(timelineStore.markers.map((marker) => marker.id)).toEqual([second]);
+	});
+});
+
+describe('timeline delete actions', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		timelineStore._setTracks(createDefaultTracks());
+		commandHistory.clearHistory();
+		transitionsStore.clear();
+	});
+
+	it('deletes without closing the gap and honors linked-selection mode', () => {
+		timelineStore._setItems([
+			clip({ id: 'video', from: 30, linkedGroupId: 'pair' }),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				from: 30,
+				type: 'audio',
+				linkedGroupId: 'pair'
+			}),
+			clip({ id: 'later', from: 60 })
+		]);
+
+		expect(removeItems(['video'], false)).toEqual(['video']);
+		expect(timelineStore.items.map((item) => item.id)).toEqual(['audio', 'later']);
+		expect(timelineStore.itemById.get('later')?.from).toBe(60);
+		expect(commandHistory.getLastCommandType()).toBe('REMOVE_ITEMS');
+
+		commandHistory.undo();
+		expect(removeItems(['video'], true)).toEqual(['video', 'audio']);
+		expect(timelineStore.items.map((item) => item.id)).toEqual(['later']);
+	});
+
+	it('does not delete items from locked tracks', () => {
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-video-main' ? { ...track, locked: true } : track
+			)
+		);
+		timelineStore._setItems([clip({ id: 'locked' })]);
+
+		expect(removeItems(['locked'])).toEqual([]);
+		expect(rippleDeleteItems(['locked'])).toEqual([]);
+		expect(timelineStore.itemById.has('locked')).toBe(true);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('ripple deletes one range across edited and sync-locked tracks atomically', () => {
+		timelineStore._setItems([
+			clip({ id: 'before', from: 0 }),
+			clip({ id: 'remove', from: 30, sourceStart: 30, sourceEnd: 60 }),
+			clip({ id: 'after', from: 60, sourceStart: 60, sourceEnd: 90 }),
+			clip({
+				id: 'continuous-audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 0,
+				durationInFrames: 120,
+				sourceStart: 0,
+				sourceEnd: 120
+			})
+		]);
+
+		const removedIds = rippleDeleteItems(['remove'], false);
+		expect(removedIds).toContain('remove');
+		expect(timelineStore.itemById.get('after')?.from).toBe(30);
+		expect(
+			timelineStore.items
+				.filter((item) => item.trackId === 'track-audio')
+				.sort((left, right) => left.from - right.from)
+				.map(({ from, durationInFrames, sourceStart, sourceEnd }) => ({
+					from,
+					durationInFrames,
+					sourceStart,
+					sourceEnd
+				}))
+		).toEqual([
+			{ from: 0, durationInFrames: 30, sourceStart: 0, sourceEnd: 30 },
+			{ from: 30, durationInFrames: 60, sourceStart: 60, sourceEnd: 120 }
+		]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('RIPPLE_DELETE');
+
+		commandHistory.undo();
+		expect(timelineStore.items.map((item) => item.id)).toEqual([
+			'before',
+			'remove',
+			'after',
+			'continuous-audio'
+		]);
 	});
 });
 

@@ -2,8 +2,8 @@
  * Timeline item edit actions. Every public action runs inside `execute`
  * so it lands as one undoable step.
  *
- * Ported from FreeCut (MIT) — item-actions.ts / split-actions.ts, trimmed
- * to v1 (no transitions, no keyframes, no sync-lock ripple).
+ * Ported from FreeCut (MIT) - item-actions.ts / split-actions.ts and kept
+ * aligned with linked selection, transitions, and sync-lock ripple rules.
  */
 
 import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
@@ -16,7 +16,9 @@ import {
 	getLinkedItemIds,
 	getSynchronizedLinkedCounterpartPair
 } from '../utils/linked-items';
-import { pruneOrphanedTransitions } from './transitions.svelte';
+import { pruneInvalidTransitions, pruneOrphanedTransitions } from './transitions.svelte';
+import { propagateRemovedIntervalsToSyncLockedTracks } from './sync-lock-ripple';
+import { isTrackSyncLockEnabled } from '../utils/track-sync-lock';
 import { transitionsStore } from './transitions-store.svelte';
 import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
 import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
@@ -140,11 +142,27 @@ export function addAdjustmentLayer(label: string): string {
 	});
 }
 
-export function removeItems(ids: string[]): void {
-	execute('REMOVE_ITEMS', () => {
-		const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
-		timelineStore._removeItems(expanded);
+function deletableItemIds(ids: string[], expandLinked: boolean): string[] {
+	const requested = expandLinked
+		? expandSelectionWithLinkedItems(timelineStore.items, ids)
+		: [...new Set(ids)];
+	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	return requested.filter((id) => {
+		const item = timelineStore.itemById.get(id);
+		return item !== undefined && trackById.get(item.trackId)?.locked !== true;
+	});
+}
+
+export function removeItems(
+	ids: string[],
+	expandLinked = timelineStore.linkedSelectionEnabled
+): string[] {
+	const deletableIds = deletableItemIds(ids, expandLinked);
+	if (deletableIds.length === 0) return [];
+	return execute('REMOVE_ITEMS', () => {
+		timelineStore._removeItems(deletableIds);
 		pruneOrphanedTransitions();
+		return deletableIds;
 	});
 }
 
@@ -378,30 +396,84 @@ export function trimItemEnd(id: string, newEnd: number, newSourceEnd?: number): 
 	});
 }
 
-/** Ripple delete: remove items and pull later items on the same track left. */
-export function rippleDeleteItems(ids: string[], expandLinked = true): void {
-	execute('RIPPLE_DELETE', () => {
-		const items = timelineStore.items;
-		const expanded = new Set(expandLinked ? expandSelectionWithLinkedItems(items, ids) : ids);
-		const removedIntervals = items
-			.filter((item) => expanded.has(item.id))
-			.map((item) => ({
-				trackId: item.trackId,
-				start: item.from,
-				end: item.from + item.durationInFrames
-			}));
+/** Ripple delete selected ranges and close them across edited and sync-locked tracks. */
+export function rippleDeleteItems(
+	ids: string[],
+	expandLinked = timelineStore.linkedSelectionEnabled
+): string[] {
+	const items = timelineStore.items;
+	const deletableIds = deletableItemIds(ids, expandLinked);
+	if (deletableIds.length === 0) return [];
+	const idsToDelete = new Set(deletableIds);
+	const removedItems = items.filter((item) => idsToDelete.has(item.id));
+	const remainingItems = items.filter((item) => !idsToDelete.has(item.id));
+	const editedTrackIds = new Set(removedItems.map((item) => item.trackId));
+	const removedIntervals = removedItems.map((item) => ({
+		start: item.from,
+		end: item.from + item.durationInFrames
+	}));
 
-		const updates: Array<{ id: string; from: number }> = [];
-		for (const item of items) {
-			if (expanded.has(item.id)) continue;
-			const shift = removedIntervals
-				.filter((r) => r.trackId === item.trackId && r.end <= item.from)
-				.reduce((sum, r) => sum + (r.end - r.start), 0);
-			if (shift > 0) updates.push({ id: item.id, from: item.from - shift });
+	const baseShiftByItemId = new Map<string, number>();
+	for (const item of remainingItems) {
+		const shift = removedItems
+			.filter(
+				(removed) =>
+					removed.trackId === item.trackId && removed.from + removed.durationInFrames <= item.from
+			)
+			.reduce((sum, removed) => sum + removed.durationInFrames, 0);
+		if (shift > 0) baseShiftByItemId.set(item.id, shift);
+	}
+
+	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	const remainingById = new Map(remainingItems.map((item) => [item.id, item]));
+	const shiftByItemId = new Map<string, number>();
+	for (const [itemId, shift] of baseShiftByItemId) {
+		const relatedIds = expandLinked
+			? expandSelectionWithLinkedItems(remainingItems, [itemId])
+			: [itemId];
+		for (const relatedId of relatedIds) {
+			const related = remainingById.get(relatedId);
+			if (!related || trackById.get(related.trackId)?.locked) continue;
+			const handledBySyncLock =
+				!editedTrackIds.has(related.trackId) &&
+				isTrackSyncLockEnabled(trackById.get(related.trackId));
+			if (handledBySyncLock) continue;
+			shiftByItemId.set(relatedId, Math.max(shiftByItemId.get(relatedId) ?? 0, shift));
 		}
-		timelineStore._removeItems([...expanded]);
-		timelineStore._moveItems(updates);
-		pruneOrphanedTransitions();
+	}
+
+	const updates = remainingItems.flatMap((item) => {
+		const shift = shiftByItemId.get(item.id) ?? 0;
+		return shift > 0 ? [{ id: item.id, from: Math.max(0, item.from - shift) }] : [];
+	});
+	const shiftedFromById = new Map(updates.map((update) => [update.id, update.from]));
+	const coveredIds: string[] = [];
+	for (const item of remainingItems) {
+		if (shiftedFromById.has(item.id)) continue;
+		const itemEnd = item.from + item.durationInFrames;
+		for (const shifted of remainingItems) {
+			const newFrom = shiftedFromById.get(shifted.id);
+			if (newFrom === undefined || shifted.trackId !== item.trackId) continue;
+			if (newFrom < itemEnd && newFrom + shifted.durationInFrames > item.from) {
+				coveredIds.push(item.id);
+				break;
+			}
+		}
+	}
+	const coveredExpanded = deletableItemIds(coveredIds, expandLinked);
+	const coveredSet = new Set(coveredExpanded);
+	const directRemoveIds = [...new Set([...deletableIds, ...coveredExpanded])];
+	const safeUpdates = updates.filter((update) => !coveredSet.has(update.id));
+
+	return execute('RIPPLE_DELETE', () => {
+		timelineStore._removeItems(directRemoveIds);
+		if (safeUpdates.length > 0) timelineStore._moveItems(safeUpdates);
+		const syncLockResult = propagateRemovedIntervalsToSyncLockedTracks({
+			editedTrackIds,
+			intervals: removedIntervals
+		});
+		pruneInvalidTransitions();
+		return [...new Set([...directRemoveIds, ...syncLockResult.removedIds])];
 	});
 }
 
