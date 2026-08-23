@@ -46,8 +46,21 @@ async function fixtureDirectory() {
   return mkdtemp(path.join(os.tmpdir(), "openpost-agent-surface-"));
 }
 
+function headerRuleHas(contents, pathname, header) {
+  const lines = contents.split("\n");
+  const ruleIndex = lines.findIndex((line) => line === pathname);
+  if (ruleIndex === -1) return false;
+  for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
+    if (lines[index].trim() === header) return true;
+  }
+  return false;
+}
+
 test("origin Vary headers cover only canonical HTML and explicit Markdown within Pages limits", () => {
   const base = [
+    "/",
+    '  Link: </.well-known/api-catalog>; rel="api-catalog"',
+    "  Vary: Accept",
     "/*.md",
     "  Content-Type: text/markdown; charset=utf-8",
     "  Vary: Accept",
@@ -65,7 +78,9 @@ test("origin Vary headers cover only canonical HTML and explicit Markdown within
     rendered,
     /\/\*\.md\n  Content-Type: text\/markdown; charset=utf-8\n  Vary: Accept/u,
   );
-  assert.match(rendered, /\n\/\n  Vary: Accept\n/u);
+  assert.match(rendered, /(?:^|\n)\/\n  Link: [^\n]+\n  Vary: Accept\n/u);
+  assert.match(rendered, /<\/\.well-known\/api-catalog>; rel="api-catalog"/u);
+  assert.equal((rendered.match(/^\/$/gmu) ?? []).length, 1);
   assert.match(rendered, /\n\/features\n  Vary: Accept\n/u);
   assert.doesNotMatch(rendered, /\/assets|\/unknown/u);
   assert.equal(renderOriginVaryHeaders(rendered, pages), rendered);
@@ -78,7 +93,7 @@ test("origin Vary headers cover only canonical HTML and explicit Markdown within
           canonical: `https://openpost.social/page-${index}`,
         })),
       ),
-    /uses 101 rules; Free limit is 100/u,
+    /uses 102 rules; Free limit is 100/u,
   );
 });
 
@@ -1363,7 +1378,7 @@ test(
       }
       for (const pathname of canonicalPaths) {
         assert.ok(
-          headers.includes(`${pathname}\n  Vary: Accept`),
+          headerRuleHas(headers, pathname, "Vary: Accept"),
           `${surface} must vary canonical ${pathname} at the origin`,
         );
       }
@@ -1415,8 +1430,8 @@ test(
     );
     assert.deepEqual(
       await filesWithSuffix(marketingDirectory, ".md"),
-      expectedMarketingMarkdown.toSorted(),
-      "every manifest-owned marketing route must have one Markdown artifact and no stale alias",
+      ["auth.md", ...expectedMarketingMarkdown].toSorted(),
+      "every manifest-owned marketing route and the auth discovery file must have one Markdown artifact and no stale alias",
     );
     assert.deepEqual(
       await filesWithSuffix(marketingDirectory, ".html"),
@@ -1425,6 +1440,8 @@ test(
     );
     const firstMarketingSurface = await artifactSnapshot(marketingDirectory, [
       "_headers",
+      ".well-known/api-catalog",
+      "auth.md",
       "llms.txt",
       "sitemap.xml",
       ...expectedMarketingMarkdown,

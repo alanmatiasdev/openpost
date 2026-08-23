@@ -54,12 +54,25 @@ function headerRuleCount(contents) {
     .length;
 }
 
+function hasOriginVaryRule(contents, pathname) {
+  const lines = contents.split("\n");
+  const ruleIndex = lines.findIndex((line) => line === pathname);
+  if (ruleIndex === -1) return false;
+  for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
+    if (lines[index].trim() === "Vary: Accept") return true;
+  }
+  return false;
+}
+
 export function renderOriginVaryHeaders(baseHeaders, pages) {
   const [operatorHeaders] = baseHeaders.split(`\n${generatedVaryHeaderMarker}\n`, 1);
   const canonicalPaths = [...new Set(pages.map((page) => new URL(page.canonical).pathname))].sort(
     (left, right) => (left < right ? -1 : left > right ? 1 : 0),
   );
-  const blocks = canonicalPaths.map((pathname) => `${pathname}\n  Vary: Accept`).join("\n");
+  const blocks = canonicalPaths
+    .filter((pathname) => !hasOriginVaryRule(operatorHeaders, pathname))
+    .map((pathname) => `${pathname}\n  Vary: Accept`)
+    .join("\n");
   const rendered = `${operatorHeaders.trimEnd()}\n${generatedVaryHeaderMarker}\n${blocks}\n`;
   const count = headerRuleCount(rendered);
   if (count > maximumPagesHeaderRules) {
