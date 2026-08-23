@@ -14,11 +14,14 @@ import {
 	resolveAnimatedEffectsAt
 } from '$lib/video-editor/effects/effect-keyframes';
 import { applyMotionModifiers } from './motion-modifier-eval';
+import { resolveItemPropertyRuntime } from './property-runtime';
 
 export interface AnimatedItemMotionContext {
 	fps: number;
 	frameWidth: number;
 	frameHeight: number;
+	/** Items in the active sequence, used by links and expression references. */
+	items?: readonly TimelineItem[];
 }
 
 const VISUAL_PROPERTIES: KeyframeProperty[] = [
@@ -92,6 +95,43 @@ export function resolveAnimatedItemAt(
 	absoluteFrame: number,
 	motionContext?: AnimatedItemMotionContext
 ): TimelineItem {
+	let resolved = resolvePreExpressionItemAt(item, absoluteFrame);
+	if (motionContext?.items) {
+		resolved = resolveItemPropertyRuntime(item, resolved, {
+			absoluteFrame,
+			fps: motionContext.fps,
+			items: motionContext.items,
+			resolvePreExpressionItem: resolvePreExpressionItemAt
+		});
+	}
+	if (motionContext && item.motionModifiers?.length) {
+		const transform = resolved.transform ?? {};
+		const animated = applyMotionModifiers(
+			{
+				x: transform.x ?? 0,
+				y: transform.y ?? 0,
+				width: Math.max(1, transform.width ?? resolved.sourceWidth ?? motionContext.frameWidth),
+				height: Math.max(1, transform.height ?? resolved.sourceHeight ?? motionContext.frameHeight),
+				rotation: transform.rotation ?? 0,
+				opacity: transform.opacity ?? 1
+			},
+			item.motionModifiers,
+			{
+				frame: absoluteFrame - item.from,
+				fps: motionContext.fps,
+				frameWidth: motionContext.frameWidth,
+				frameHeight: motionContext.frameHeight
+			}
+		);
+		resolved = { ...resolved, transform: { ...transform, ...animated } };
+	}
+	return resolved;
+}
+
+export function resolvePreExpressionItemAt(
+	item: TimelineItem,
+	absoluteFrame: number
+): TimelineItem {
 	let resolved: TimelineItem = {
 		...item,
 		transform: item.transform ? { ...item.transform } : undefined,
@@ -116,27 +156,6 @@ export function resolveAnimatedItemAt(
 		const value = activeValueAt(item, property, absoluteFrame);
 		if (value === null) continue;
 		resolved = applyResolvedValue(resolved, property, value);
-	}
-	if (motionContext && item.motionModifiers?.length) {
-		const transform = resolved.transform ?? {};
-		const animated = applyMotionModifiers(
-			{
-				x: transform.x ?? 0,
-				y: transform.y ?? 0,
-				width: Math.max(1, transform.width ?? resolved.sourceWidth ?? motionContext.frameWidth),
-				height: Math.max(1, transform.height ?? resolved.sourceHeight ?? motionContext.frameHeight),
-				rotation: transform.rotation ?? 0,
-				opacity: transform.opacity ?? 1
-			},
-			item.motionModifiers,
-			{
-				frame: absoluteFrame - item.from,
-				fps: motionContext.fps,
-				frameWidth: motionContext.frameWidth,
-				frameHeight: motionContext.frameHeight
-			}
-		);
-		resolved = { ...resolved, transform: { ...transform, ...animated } };
 	}
 	return resolved;
 }

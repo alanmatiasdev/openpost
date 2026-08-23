@@ -22,6 +22,7 @@ import { isTrackSyncLockEnabled } from '../utils/track-sync-lock';
 import { transitionsStore } from './transitions-store.svelte';
 import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
 import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
+import { clonePropertyRuntime } from './property-runtime';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -270,13 +271,19 @@ export function joinItems(ids: string[]): string[] {
 export function duplicateItems(ids: string[]): string[] {
 	return execute('DUPLICATE_ITEMS', () => {
 		const byId = timelineStore.itemById;
+		const duplicateIdBySourceId = new Map<string, string>();
+		for (const id of ids) {
+			if (byId.has(id)) duplicateIdBySourceId.set(id, crypto.randomUUID());
+		}
 		const duplicates: TimelineItem[] = [];
 		for (const id of ids) {
 			const item = byId.get(id);
-			if (!item) continue;
+			const duplicateId = duplicateIdBySourceId.get(id);
+			if (!item || !duplicateId) continue;
 			duplicates.push({
 				...snapshotTimelineState(item),
-				id: crypto.randomUUID(),
+				...clonePropertyRuntime(item, duplicateIdBySourceId),
+				id: duplicateId,
 				originId: item.originId ?? item.id,
 				from: item.from + item.durationInFrames
 			});

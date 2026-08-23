@@ -108,7 +108,8 @@
 		resolveAnimatedItemAt(item, timelineStore.currentFrame, {
 			fps: timelineStore.fps,
 			frameWidth: canvasWidth,
-			frameHeight: canvasHeight
+			frameHeight: canvasHeight,
+			items: timelineStore.items
 		})
 	);
 	const resolved = $derived({

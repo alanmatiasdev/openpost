@@ -566,7 +566,8 @@ export class TimelineFrameRenderer {
 					resolveAnimatedItemAt(item, frame, {
 						fps: this.fps,
 						frameWidth: this.project.metadata.width,
-						frameHeight: this.project.metadata.height
+						frameHeight: this.project.metadata.height,
+						items: this.project.timeline?.items ?? []
 					}),
 					this.width / this.project.metadata.width,
 					this.height / this.project.metadata.height
@@ -581,7 +582,8 @@ export class TimelineFrameRenderer {
 				resolveAnimatedItemAt(item, frame, {
 					fps: this.fps,
 					frameWidth: this.project.metadata.width,
-					frameHeight: this.project.metadata.height
+					frameHeight: this.project.metadata.height,
+					items: this.project.timeline?.items ?? []
 				}),
 				this.width / this.project.metadata.width,
 				this.height / this.project.metadata.height

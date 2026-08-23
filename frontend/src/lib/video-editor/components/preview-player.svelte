@@ -148,7 +148,8 @@
 					(resolveAnimatedItemAt(item, timelineStore.currentFrame, {
 						fps: timelineStore.fps,
 						frameWidth: canvasWidth,
-						frameHeight: canvasHeight
+						frameHeight: canvasHeight,
+						items: timelineStore.items
 					}).transform?.opacity ?? 1) > 0
 			)
 	);
@@ -160,7 +161,8 @@
 			? resolveAnimatedItemAt(selectedItem, timelineStore.currentFrame, {
 					fps: timelineStore.fps,
 					frameWidth: canvasWidth,
-					frameHeight: canvasHeight
+					frameHeight: canvasHeight,
+					items: timelineStore.items
 				})
 			: undefined
 	);
@@ -259,7 +261,8 @@
 			const baseResolved = resolveAnimatedItemAt(item, frame, {
 				fps: timelineStore.fps,
 				frameWidth: canvasWidth,
-				frameHeight: canvasHeight
+				frameHeight: canvasHeight,
+				items: timelineStore.items
 			});
 			const directDraft = item.id === selectedItemId;
 			const resolved = scaleItemForCanvas(

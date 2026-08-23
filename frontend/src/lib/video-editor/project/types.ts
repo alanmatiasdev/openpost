@@ -254,6 +254,34 @@ export interface KeyframeTrack {
 /** Per-property keyframe tracks stored on a timeline item. */
 export type ItemKeyframes = Partial<Record<KeyframeProperty, KeyframeTrack>>;
 
+export type ScalarLinkableProperty =
+	| 'x'
+	| 'y'
+	| 'width'
+	| 'height'
+	| 'anchorX'
+	| 'anchorY'
+	| 'rotation'
+	| 'opacity'
+	| 'cornerRadius';
+export type DirectLinkableProperty = ScalarLinkableProperty | 'position';
+
+export interface DirectPropertyLink {
+	type: 'link';
+	targetProperty: DirectLinkableProperty;
+	sourceItemId: string;
+	sourceProperty: DirectLinkableProperty;
+	enabled: boolean;
+	timeOffsetFrames: number;
+}
+
+export interface PropertyExpression {
+	type: 'expression';
+	targetProperty: DirectLinkableProperty;
+	source: string;
+	enabled: boolean;
+}
+
 /** Two-dimensional value used by coupled transform animation. */
 export interface Vector2 {
 	x: number;
@@ -470,6 +498,10 @@ export interface TimelineItem extends TextStyleFields {
 	separatedVectorProperties?: VectorKeyframeProperty[];
 	/** Small deterministic live-motion records evaluated during preview and export. */
 	motionModifiers?: MotionModifier[];
+	/** Same-sequence property followers evaluated after keyframes. */
+	propertyLinks?: DirectPropertyLink[];
+	/** Sandboxed property expressions evaluated after direct links. */
+	expressions?: PropertyExpression[];
 	/** Independent per-unit text animation slots evaluated in preview and export. */
 	textMotion?: TextMotionSpec;
 
