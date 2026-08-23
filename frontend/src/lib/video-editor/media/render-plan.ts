@@ -147,7 +147,10 @@ export function transitionBlendAtFrame(
  * Items sorted bottom-layer-first for painting: tracks later in the order
  * list paint first, so the overlay track (order 0) ends up topmost.
  */
-export function paintOrder(items: TimelineItem[], tracks: TimelineTrack[]): TimelineItem[] {
+export function paintOrder(
+	items: TimelineItem[] = [],
+	tracks: TimelineTrack[] = []
+): TimelineItem[] {
 	const trackById = new Map(tracks.map((track) => [track.id, track]));
 	const anySolo = tracks.some((track) => track.solo);
 	return items

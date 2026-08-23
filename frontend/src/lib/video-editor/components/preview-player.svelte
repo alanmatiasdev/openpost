@@ -28,6 +28,18 @@
 		collectAdjustmentLayers,
 		effectsForItemAtFrame
 	} from '$lib/video-editor/effects/adjustment-layers';
+	import { isNonNormalBlend } from '$lib/video-editor/effects/gpu/blend-modes';
+	import {
+		CanvasStackCompositor,
+		itemOpacity
+	} from '$lib/video-editor/media/canvas-stack-compositor';
+	import { scaleItemForCanvas } from '$lib/video-editor/media/render-geometry';
+	import type {
+		PreviewSourceProvider,
+		RegisterPreviewSource
+	} from '$lib/video-editor/preview/source-provider';
+
+	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
 	let {
 		selectedItemId = $bindable(null),
@@ -40,6 +52,19 @@
 	let urls = $state<Record<string, string>>({});
 	let viewport = $state<HTMLDivElement | null>(null);
 	let draftTransform = $state<ItemTransform | null>(null);
+	let stackCanvas = $state<HTMLCanvasElement | null>(null);
+	let stackCompositor = $state<CanvasStackCompositor | null>(null);
+	let stackWidth = $state(1);
+	let stackHeight = $state(1);
+	let stackFrameRequest: number | null = null;
+	let pendingStackInputs: {
+		items: TimelineItem[];
+		layers: typeof adjustmentLayers;
+		orders: typeof trackOrderById;
+		width: number;
+		height: number;
+	} | null = null;
+	const sourceProviders = new Map<string, PreviewSourceProvider>();
 	const activeTransition = $derived.by(() => {
 		for (const transition of transitionsStore.list) {
 			const state = transitionAtFrame(transition, timelineStore.currentFrame, editorSession.fps);
@@ -62,6 +87,13 @@
 	);
 	const adjustmentLayers = $derived(
 		collectAdjustmentLayers(timelineStore.items, timelineStore.tracks)
+	);
+	const needsStackedComposition = $derived(
+		activeItems.some(
+			(item) =>
+				isNonNormalBlend(item.blendMode) &&
+				(resolveAnimatedItemAt(item, timelineStore.currentFrame).transform?.opacity ?? 1) > 0
+		)
 	);
 	const selectedItem = $derived(
 		selectedItemId ? activeItems.find((item) => item.id === selectedItemId) : undefined
@@ -87,6 +119,8 @@
 	});
 
 	onDestroy(() => {
+		if (stackFrameRequest !== null) cancelAnimationFrame(stackFrameRequest);
+		stackFrameRequest = null;
 		for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
 	});
 
@@ -97,14 +131,114 @@
 		return 1;
 	}
 
-	function effectiveEffects(item: TimelineItem) {
-		return effectsForItemAtFrame(
-			item,
-			trackOrderById.get(item.trackId) ?? 0,
-			adjustmentLayers,
-			timelineStore.currentFrame
-		);
+	function effectiveEffects(
+		item: TimelineItem,
+		layers = adjustmentLayers,
+		orders = trackOrderById,
+		frame = timelineStore.currentFrame
+	) {
+		return effectsForItemAtFrame(item, orders.get(item.trackId) ?? 0, layers, frame);
 	}
+
+	const registerPreviewSource: RegisterPreviewSource = (itemId, provider) => {
+		if (provider) sourceProviders.set(itemId, provider);
+		else sourceProviders.delete(itemId);
+		scheduleStackFrame();
+	};
+
+	function scheduleStackFrame(): void {
+		if (!needsStackedComposition) return;
+		pendingStackInputs = {
+			items: activeItems,
+			layers: adjustmentLayers,
+			orders: trackOrderById,
+			width: stackWidth,
+			height: stackHeight
+		};
+		if (stackFrameRequest !== null) return;
+		stackFrameRequest = requestAnimationFrame(() => {
+			stackFrameRequest = null;
+			renderStackFrame();
+		});
+	}
+
+	function renderStackFrame(): void {
+		const stack = stackCompositor;
+		const projectState = project;
+		const inputs = pendingStackInputs;
+		if (!stack || !projectState || !inputs || !needsStackedComposition) return;
+		stack.beginFrame(
+			inputs.width,
+			inputs.height,
+			projectState.metadata.backgroundColor ?? '#000000'
+		);
+		const frame = timelineStore.currentFrame;
+		for (const item of inputs.items) {
+			const source = sourceProviders.get(item.id)?.();
+			if (!source) continue;
+			const resolved = scaleItemForCanvas(
+				resolveAnimatedItemAt(item, frame),
+				inputs.width / canvasWidth,
+				inputs.height / canvasHeight
+			);
+			resolved.effects = effectiveEffects(item, inputs.layers, inputs.orders, frame);
+			const alpha = itemOpacity(resolved) * transitionOpacity(item);
+			if (alpha <= 0) continue;
+			stack.compositeLayer(source, resolved, alpha, frame / editorSession.fps);
+		}
+	}
+
+	$effect(() => {
+		const node = viewport;
+		if (!node) return;
+		const updateSize = () => {
+			const rect = node.getBoundingClientRect();
+			const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+			const scale = Math.min(
+				1,
+				Math.max(1, rect.width * pixelRatio) / canvasWidth,
+				Math.max(1, rect.height * pixelRatio) / canvasHeight
+			);
+			let nextWidth = Math.max(1, Math.round(canvasWidth * scale));
+			let nextHeight = Math.max(1, Math.round(canvasHeight * scale));
+			const pixelCount = nextWidth * nextHeight;
+			if (pixelCount > MAX_STACK_PREVIEW_PIXELS) {
+				const reduction = Math.sqrt(MAX_STACK_PREVIEW_PIXELS / pixelCount);
+				nextWidth = Math.max(1, Math.round(nextWidth * reduction));
+				nextHeight = Math.max(1, Math.round(nextHeight * reduction));
+			}
+			stackWidth = nextWidth;
+			stackHeight = nextHeight;
+			scheduleStackFrame();
+		};
+		const observer = new ResizeObserver(updateSize);
+		observer.observe(node);
+		updateSize();
+		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		const canvas = stackCanvas;
+		if (!canvas || !needsStackedComposition) return;
+		const stack = new CanvasStackCompositor(canvas);
+		stackCompositor = stack;
+		scheduleStackFrame();
+		return () => {
+			stack.dispose();
+			if (stackCompositor === stack) stackCompositor = null;
+		};
+	});
+
+	$effect(() => {
+		if (!needsStackedComposition) return;
+		scheduleStackFrame();
+		const offFrame = editorSession.clock.on('framechange', scheduleStackFrame);
+		const offPlay = editorSession.clock.on('play', scheduleStackFrame);
+		return () => {
+			offFrame();
+			offPlay();
+		};
+	});
 
 	function startGizmo(event: PointerEvent, mode: 'move' | 'resize'): void {
 		if (!selectedItem || !viewport) return;
@@ -169,6 +303,18 @@
 				{m.video_editor_preview_empty()}
 			</div>
 		{:else}
+			{#if needsStackedComposition}
+				<div class="absolute inset-0" role="img" aria-label={m.video_editor_preview_suggestion()}>
+					<canvas
+						bind:this={stackCanvas}
+						width={stackWidth}
+						height={stackHeight}
+						class="size-full object-fill"
+						aria-hidden="true"
+						data-stacked-preview
+					></canvas>
+				</div>
+			{/if}
 			{#each activeItems as item (item.id)}
 				<PreviewLayer
 					{item}
@@ -176,6 +322,9 @@
 					{canvasWidth}
 					{canvasHeight}
 					effectiveEffects={effectiveEffects(item)}
+					deferEffects={needsStackedComposition}
+					registersource={registerPreviewSource}
+					onsourcechange={scheduleStackFrame}
 					selected={item.id === selectedItemId}
 					opacityMultiplier={transitionOpacity(item)}
 					overrideTransform={item.id === selectedItemId ? (draftTransform ?? undefined) : undefined}

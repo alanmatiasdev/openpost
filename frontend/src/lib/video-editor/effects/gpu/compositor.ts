@@ -30,6 +30,8 @@ export interface GpuRenderOptions {
 	blendMode?: BlendMode;
 	/** Second source texture for the blend pass; opaque black when absent. */
 	backdrop?: TexImageSource | null;
+	/** Layer opacity used as dissolve coverage; ignored by other modes. */
+	dissolveAlpha?: number;
 }
 
 interface ProgramBundle {
@@ -395,7 +397,7 @@ export class GpuCompositor {
 			gl.uniform1i(this.location(blend, 'uLayerTex'), 0);
 			gl.uniform1i(this.location(blend, 'uBaseTex'), 1);
 			gl.uniform1f(this.location(blend, 'uOpacity'), 1);
-			gl.uniform1f(this.location(blend, 'uDissolveAlpha'), 0);
+			gl.uniform1f(this.location(blend, 'uDissolveAlpha'), options.dissolveAlpha ?? 1);
 			gl.uniform1i(this.location(blend, 'uMode'), mode);
 			gl.clearColor(0, 0, 0, 0);
 			gl.clear(gl.COLOR_BUFFER_BIT);

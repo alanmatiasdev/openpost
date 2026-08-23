@@ -38,15 +38,9 @@ import type { Project, TimelineItem, TimelineTransition } from '../project/types
 import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
-import { mediaDrawGeometry, scaleItemForCanvas } from './render-geometry';
+import { scaleItemForCanvas } from './render-geometry';
 import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
-import { effectsToCssFilter } from '../effects/filter';
-import {
-	createGpuCompositor,
-	type GpuCompositor,
-	type GpuRenderEffect
-} from '../effects/gpu/compositor';
-import { getGpuEffectDefaultParams } from '../effects/gpu/registry';
+import { CanvasStackCompositor, itemOpacity } from './canvas-stack-compositor';
 import {
 	collectAdjustmentLayers,
 	effectsForItemAtFrame,
@@ -239,58 +233,6 @@ async function feedEncodedAudio(
 	}
 }
 
-function baseOpacity(item: TimelineItem): number {
-	return Math.min(1, Math.max(0, item.transform?.opacity ?? 1));
-}
-
-function drawTransformed(
-	ctx: OffscreenCanvasRenderingContext2D,
-	image: CanvasImageSource,
-	sourceWidth: number,
-	sourceHeight: number,
-	item: TimelineItem,
-	canvasWidth: number,
-	canvasHeight: number,
-	alpha: number
-): void {
-	const transform = item.transform ?? {};
-	const geometry = mediaDrawGeometry(item, sourceWidth, sourceHeight, canvasWidth, canvasHeight);
-	ctx.save();
-	ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
-	ctx.filter = effectsToCssFilter(item.effects) || 'none';
-	ctx.translate(geometry.centerX, geometry.centerY);
-	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
-	ctx.scale(transform.flipHorizontal === true ? -1 : 1, transform.flipVertical === true ? -1 : 1);
-	const cornerRadius = Math.min(
-		Math.max(0, transform.cornerRadius ?? 0),
-		geometry.drawWidth / 2,
-		geometry.drawHeight / 2
-	);
-	if (cornerRadius > 0) {
-		ctx.beginPath();
-		ctx.roundRect(
-			-geometry.anchorX,
-			-geometry.anchorY,
-			geometry.drawWidth,
-			geometry.drawHeight,
-			cornerRadius
-		);
-		ctx.clip();
-	}
-	ctx.drawImage(
-		image,
-		geometry.sourceX,
-		geometry.sourceY,
-		geometry.sourceWidth,
-		geometry.sourceHeight,
-		-geometry.anchorX,
-		-geometry.anchorY,
-		geometry.drawWidth,
-		geometry.drawHeight
-	);
-	ctx.restore();
-}
-
 export interface TimelineFrameRenderOptions {
 	width?: number;
 	height?: number;
@@ -300,7 +242,6 @@ export interface TimelineFrameRenderOptions {
 /** Shared full-resolution compositor used by export and still-frame capture. */
 export class TimelineFrameRenderer {
 	readonly canvas: OffscreenCanvas;
-	private readonly ctx: OffscreenCanvasRenderingContext2D;
 	private readonly width: number;
 	private readonly height: number;
 	private readonly backgroundColor: string;
@@ -314,8 +255,7 @@ export class TimelineFrameRenderer {
 	private readonly decoders = new Map<string, VideoDecoder>();
 	private readonly imageCache = new Map<string, ImageBitmap>();
 	private readonly inputs: Input[] = [];
-	private readonly gpuCanvas = new OffscreenCanvas(1, 1);
-	private readonly gpuCompositor: GpuCompositor | null;
+	private readonly stackCompositor: CanvasStackCompositor;
 	private readonly textCanvas = new OffscreenCanvas(1, 1);
 
 	constructor(
@@ -325,11 +265,7 @@ export class TimelineFrameRenderer {
 		this.width = options.width ?? project.metadata.width;
 		this.height = options.height ?? project.metadata.height;
 		this.canvas = new OffscreenCanvas(this.width, this.height);
-		const context = this.canvas.getContext('2d');
-		if (!context) throw new Error('Failed to create the render canvas context.');
-		this.ctx = context;
-		this.ctx.imageSmoothingEnabled = true;
-		this.ctx.imageSmoothingQuality = 'high';
+		this.stackCompositor = new CanvasStackCompositor(this.canvas);
 		this.backgroundColor = project.metadata.backgroundColor ?? '#000000';
 		this.fps = project.metadata.fps;
 		const items = project.timeline?.items ?? [];
@@ -346,38 +282,9 @@ export class TimelineFrameRenderer {
 		);
 		this.transitions = project.timeline?.transitions ?? [];
 		this.itemsById = new Map(items.map((item) => [item.id, item]));
-		this.gpuCompositor = createGpuCompositor(this.gpuCanvas);
 	}
 
-	private renderGpuEffects(
-		source: CanvasImageSource,
-		width: number,
-		height: number,
-		item: TimelineItem,
-		frame: number
-	): CanvasImageSource {
-		const effects: GpuRenderEffect[] = (item.effects ?? []).flatMap((effect) =>
-			effect.type === 'gpu' && effect.enabled
-				? [
-						{
-							effectId: effect.effectId,
-							params: {
-								...getGpuEffectDefaultParams(effect.effectId),
-								...effect.params
-							}
-						}
-					]
-				: []
-		);
-		if (effects.length === 0 || !this.gpuCompositor) return source;
-		// SAFETY: callers only pass canvas and ImageBitmap sources, which satisfy TexImageSource.
-		const rendered = this.gpuCompositor.render(source as TexImageSource, width, height, effects, {
-			time: frame / this.fps
-		});
-		return rendered ? this.gpuCanvas : source;
-	}
-
-	private textSource(item: TimelineItem, frame: number) {
+	private textSource(item: TimelineItem) {
 		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
 		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
 		this.textCanvas.width = width;
@@ -386,13 +293,13 @@ export class TimelineFrameRenderer {
 		if (!context) throw new Error('Failed to create the text raster context.');
 		renderTextItemRaster(context, item, width, height);
 		return {
-			source: this.renderGpuEffects(this.textCanvas, width, height, item, frame),
+			source: this.textCanvas,
 			width,
 			height
 		};
 	}
 
-	private subtitleSource(item: TimelineItem, text: string, frame: number) {
+	private subtitleSource(item: TimelineItem, text: string) {
 		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
 		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
 		this.textCanvas.width = width;
@@ -401,7 +308,7 @@ export class TimelineFrameRenderer {
 		if (!context) throw new Error('Failed to create the subtitle raster context.');
 		renderSubtitleRaster(context, text, item, width, height);
 		return {
-			source: this.renderGpuEffects(this.textCanvas, width, height, item, frame),
+			source: this.textCanvas,
 			width,
 			height
 		};
@@ -426,10 +333,7 @@ export class TimelineFrameRenderer {
 	}
 
 	async render(frame: number): Promise<OffscreenCanvas> {
-		const ctx = this.ctx;
-		ctx.globalAlpha = 1;
-		ctx.fillStyle = this.backgroundColor;
-		ctx.fillRect(0, 0, this.width, this.height);
+		this.stackCompositor.beginFrame(this.width, this.height, this.backgroundColor);
 
 		const blend = transitionBlendAtFrame(this.transitions, this.itemsById, frame);
 		for (const item of this.orderedItems) {
@@ -450,7 +354,7 @@ export class TimelineFrameRenderer {
 				this.adjustmentLayers,
 				frame
 			);
-			let alpha = baseOpacity(resolvedItem);
+			let alpha = itemOpacity(resolvedItem);
 			if (blend) {
 				if (item.id === blend.outgoingId) alpha *= outgoingOpacity(blend.type, blend.progress);
 				else if (item.id === blend.incomingId) alpha *= incomingOpacity(blend.type, blend.progress);
@@ -459,31 +363,13 @@ export class TimelineFrameRenderer {
 			if (resolvedItem.type === 'subtitle') {
 				const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
 				if (!cue) continue;
-				const raster = this.subtitleSource(resolvedItem, cue.text, frame);
-				drawTransformed(
-					ctx,
-					raster.source,
-					raster.width,
-					raster.height,
-					resolvedItem,
-					this.width,
-					this.height,
-					alpha
-				);
+				const raster = this.subtitleSource(resolvedItem, cue.text);
+				this.stackCompositor.compositeLayer(raster, resolvedItem, alpha, frame / this.fps);
 				continue;
 			}
 			if (resolvedItem.type === 'text') {
-				const raster = this.textSource(resolvedItem, frame);
-				drawTransformed(
-					ctx,
-					raster.source,
-					raster.width,
-					raster.height,
-					resolvedItem,
-					this.width,
-					this.height,
-					alpha
-				);
+				const raster = this.textSource(resolvedItem);
+				this.stackCompositor.compositeLayer(raster, resolvedItem, alpha, frame / this.fps);
 				continue;
 			}
 			if (!resolvedItem.mediaId) continue;
@@ -493,22 +379,15 @@ export class TimelineFrameRenderer {
 				if (!decoder) continue;
 				const wrapped = await decoder.sink.getCanvas(frameToSourceSeconds(item, frame, this.fps));
 				if (!wrapped) continue;
-				const source = this.renderGpuEffects(
-					wrapped.canvas,
-					wrapped.canvas.width,
-					wrapped.canvas.height,
+				this.stackCompositor.compositeLayer(
+					{
+						source: wrapped.canvas,
+						width: wrapped.canvas.width,
+						height: wrapped.canvas.height
+					},
 					resolvedItem,
-					frame
-				);
-				drawTransformed(
-					ctx,
-					source,
-					wrapped.canvas.width,
-					wrapped.canvas.height,
-					resolvedItem,
-					this.width,
-					this.height,
-					alpha
+					alpha,
+					frame / this.fps
 				);
 			} else {
 				let bitmap = this.imageCache.get(resolvedItem.mediaId);
@@ -518,22 +397,11 @@ export class TimelineFrameRenderer {
 					bitmap = await createImageBitmap(await resolveMediaBlob(media));
 					this.imageCache.set(resolvedItem.mediaId, bitmap);
 				}
-				const source = this.renderGpuEffects(
-					bitmap,
-					bitmap.width,
-					bitmap.height,
+				this.stackCompositor.compositeLayer(
+					{ source: bitmap, width: bitmap.width, height: bitmap.height },
 					resolvedItem,
-					frame
-				);
-				drawTransformed(
-					ctx,
-					source,
-					bitmap.width,
-					bitmap.height,
-					resolvedItem,
-					this.width,
-					this.height,
-					alpha
+					alpha,
+					frame / this.fps
 				);
 			}
 		}
@@ -545,7 +413,7 @@ export class TimelineFrameRenderer {
 		for (const input of this.inputs) input.dispose?.();
 		for (const bitmap of this.imageCache.values()) bitmap.close();
 		this.imageCache.clear();
-		this.gpuCompositor?.dispose();
+		this.stackCompositor.dispose();
 	}
 }
 

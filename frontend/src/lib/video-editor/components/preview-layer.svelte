@@ -20,6 +20,7 @@
 	import { previewItemVolume } from '$lib/video-editor/preview/playback-settings';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
 	import type { ItemEffect } from '$lib/video-editor/effects/types';
+	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
 
 	let {
 		item,
@@ -28,6 +29,9 @@
 		canvasHeight,
 		opacityMultiplier = 1,
 		effectiveEffects,
+		deferEffects = false,
+		registersource,
+		onsourcechange,
 		overrideTransform,
 		selected = false,
 		onselect
@@ -38,6 +42,9 @@
 		canvasHeight: number;
 		opacityMultiplier?: number;
 		effectiveEffects?: ItemEffect[];
+		deferEffects?: boolean;
+		registersource?: RegisterPreviewSource;
+		onsourcechange?: () => void;
 		overrideTransform?: ItemTransform;
 		selected?: boolean;
 		onselect: () => void;
@@ -69,6 +76,7 @@
 	);
 	const needsGpu = $derived(
 		['video', 'image', 'text', 'subtitle'].includes(item.type) &&
+			!deferEffects &&
 			(gpuEffects.length > 0 || isNonNormalBlend(item.blendMode))
 	);
 	const layerStyle = $derived.by(() => {
@@ -82,9 +90,9 @@
 			`width:${(width / canvasWidth) * 100}%`,
 			`height:${(height / canvasHeight) * 100}%`,
 			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${transform.rotation ?? 0}deg) scaleX(${transform.flipHorizontal ? -1 : 1}) scaleY(${transform.flipVertical ? -1 : 1})`,
-			`opacity:${Math.max(0, Math.min(1, (transform.opacity ?? 1) * opacityMultiplier))}`,
+			`opacity:${deferEffects ? 0 : Math.max(0, Math.min(1, (transform.opacity ?? 1) * opacityMultiplier))}`,
 			`border-radius:${(Math.max(0, transform.cornerRadius ?? 0) / canvasWidth) * 100}cqw`,
-			`filter:${effectsToCssFilter(renderEffects)}`
+			`filter:${deferEffects ? 'none' : effectsToCssFilter(renderEffects)}`
 		].join(';');
 	});
 	const mediaCropStyle = $derived.by(() => {
@@ -159,6 +167,7 @@
 		lastRasterCanvas = canvas;
 		lastRasterKey = rasterKey;
 		rasterRevision = untrack(() => rasterRevision) + 1;
+		onsourcechange?.();
 	}
 
 	$effect(() => {
@@ -207,7 +216,10 @@
 			void image
 				.decode()
 				.then(() => {
-					if (!disposed) decodedImageElement = image;
+					if (!disposed) {
+						decodedImageElement = image;
+						onsourcechange?.();
+					}
 				})
 				.catch(() => undefined);
 		};
@@ -217,6 +229,36 @@
 			disposed = true;
 			image.removeEventListener('load', decode);
 		};
+	});
+
+	function rawSource() {
+		if (resolved.type === 'video' && mediaElement?.videoWidth && mediaElement.videoHeight) {
+			return {
+				source: mediaElement,
+				width: mediaElement.videoWidth,
+				height: mediaElement.videoHeight
+			};
+		}
+		if (resolved.type === 'image' && decodedImageElement) {
+			return {
+				source: decodedImageElement,
+				width: decodedImageElement.naturalWidth,
+				height: decodedImageElement.naturalHeight
+			};
+		}
+		if ((resolved.type === 'text' || resolved.type === 'subtitle') && rasterCanvas) {
+			paintRaster(rasterCanvas);
+			return { source: rasterCanvas, width: rasterCanvas.width, height: rasterCanvas.height };
+		}
+		return null;
+	}
+
+	$effect(() => {
+		const register = registersource;
+		const itemId = item.id;
+		if (!register) return;
+		register(itemId, rawSource);
+		return () => register(itemId, null);
 	});
 
 	$effect(() => {
@@ -303,6 +345,7 @@
 	class="absolute overflow-hidden"
 	style={layerStyle}
 	role="presentation"
+	aria-hidden={deferEffects ? 'true' : undefined}
 	onpointerdown={onselect}
 >
 	{#if resolved.type === 'video' && url}
@@ -314,6 +357,8 @@
 			style={mediaCropStyle}
 			playsinline
 			volume={previewVolume}
+			onloadeddata={onsourcechange}
+			onseeked={onsourcechange}
 		></video>
 	{:else if resolved.type === 'image' && url}
 		<img

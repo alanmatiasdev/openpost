@@ -116,7 +116,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Per-effect parameter keyframing                                                                                                                                                 | `effects/utils/effect-keyframes.ts`                                                      | MISSING                                                                                                                                                                                                                                                    | M      |
 | Built-in effect presets + user-saved presets                                                                                                                                    | `effects/stores/user-presets-store.ts`, `utils/grade-presets.ts`                         | MISSING                                                                                                                                                                                                                                                    | M      |
 | Adjustment layers (grade/effect everything below)                                                                                                                               | docs p13                                                                                 | PRESENT - timed non-rendering layers apply enabled effects, top-first, to active visual items on tracks below in preview and export (`effects/adjustment-layers.ts`)                                                                                       | -      |
-| Blend modes for compositing (25 modes incl. groups)                                                                                                                             | `types/blend-modes.ts`                                                                   | PARTIAL - all 25 modes and controls exist, but preview/export still composite a clip against an empty local backdrop instead of the finished layers below (`effects/gpu/blend-modes.ts`, `effects/gpu/compositor.ts`)                                      | M      |
+| Blend modes for compositing (25 modes incl. groups)                                                                                                                             | `types/blend-modes.ts`                                                                   | PRESENT - all 25 modes composite transformed full-frame layers against the finished backdrop in a shared preview/export stack, with an exact CPU fallback (`media/canvas-stack-compositor.ts`, `effects/gpu/cpu-blend.ts`)                                 | -      |
 | Scopes: Waveform, RGB Parade, Vectorscope, Histogram (GPU compute)                                                                                                              | `infrastructure/gpu-scopes/`                                                             | PARTIAL - live waveform, vectorscope, and histogram from selected-layer samples; no RGB Parade or compute path (`components/color-scopes.svelte`)                                                                                                          | M      |
 | Eyedropper color sampler with loupe                                                                                                                                             | docs p13 "eyedropper"                                                                    | MISSING                                                                                                                                                                                                                                                    | S      |
 | Effect thumbnails rendered per effect                                                                                                                                           | `effects/components/effect-thumbnail/engine.ts`                                          | MISSING                                                                                                                                                                                                                                                    | S      |
@@ -253,24 +253,23 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 63**
-- **PARTIAL: 30**
+- **PRESENT: 64**
+- **PARTIAL: 29**
 - **MISSING: 77**
 - (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)
 
-1. **M - Real backdrop blending**: composite all 25 modes against the finished layers below in preview and export.
-2. **L - Keyframe value graph and advanced dope-sheet gestures**: visual curve handles, marquee, clipboard, retime, alt-drag, and saved custom presets.
-3. **M - Finish color workspace depth**: RGB Parade, auto-balance, white-balance picker, before/after compare, and grade presets.
-4. **M - Finish on-canvas tools**: crop and anchor gizmos, direct text edit, and motion paths.
-5. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
-6. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
-7. **M - Scene Browser**: AI captions and semantic/color search on existing scene detection.
-8. **L - Local AI**: multi-engine transcription, TTS, and music generation.
-9. **M - Shapes & masks**: primitives, pen tool, and clip/alpha masks.
-10. **M - Media library upgrades**: URL/GIF/SVG import, info, filter/sort, relink, and embedded subtitle extraction.
-11. **M - Render queue**: batch, pause/resume, per-marker segmentation, worker rendering, and preflight.
-12. **M - Lottie support**, including the LottieFiles browser.
-13. **M - Voiceover narration locked to playhead** by extending the recorder.
-14. **M - Remaining UX and project tools**: shortcut customization, settings, filler-word removal, bundle import/export, and missing-media recovery.
+1. **L - Keyframe value graph and advanced dope-sheet gestures**: visual curve handles, marquee, clipboard, retime, alt-drag, and saved custom presets.
+2. **M - Finish color workspace depth**: RGB Parade, auto-balance, white-balance picker, before/after compare, and grade presets.
+3. **M - Finish on-canvas tools**: crop and anchor gizmos, direct text edit, and motion paths.
+4. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
+5. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
+6. **M - Scene Browser**: AI captions and semantic/color search on existing scene detection.
+7. **L - Local AI**: multi-engine transcription, TTS, and music generation.
+8. **M - Shapes & masks**: primitives, pen tool, and clip/alpha masks.
+9. **M - Media library upgrades**: URL/GIF/SVG import, info, filter/sort, relink, and embedded subtitle extraction.
+10. **M - Render queue**: batch, pause/resume, per-marker segmentation, worker rendering, and preflight.
+11. **M - Lottie support**, including the LottieFiles browser.
+12. **M - Voiceover narration locked to playhead** by extending the recorder.
+13. **M - Remaining UX and project tools**: shortcut customization, settings, filler-word removal, bundle import/export, and missing-media recovery.
