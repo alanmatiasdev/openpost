@@ -17,6 +17,7 @@ import {
 	removeKeyframes,
 	setAnimatedProperties,
 	setAnimatedProperty,
+	setPositionAtFrame,
 	setKeyframe,
 	setKeyframeEasing,
 	updateKeyframes
@@ -510,6 +511,39 @@ describe('setAnimatedProperty', () => {
 		setAnimatedProperties('animated', 15, { x: 12, y: -8 }, () => false);
 		expect(getItem('animated').transform).toMatchObject({ x: 12, y: -8 });
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('edits a motion point as one X/Y undo entry', () => {
+		timelineStore._updateItems([
+			{
+				id: 'animated',
+				patch: {
+					keyframes: {
+						x: {
+							frames: [0, 20],
+							values: [-10, 10],
+							easings: ['ease-in', 'linear'],
+							easingConfigs: [{ type: 'ease-in' }, null]
+						}
+					}
+				}
+			}
+		]);
+		commandHistory.clearHistory();
+		expect(setPositionAtFrame('animated', 20, 25, 30)).toBe(true);
+		expect(getItem('animated').keyframes?.x).toMatchObject({
+			frames: [0, 10, 20],
+			values: [-10, 25, 10]
+		});
+		expect(getItem('animated').keyframes?.y).toMatchObject({
+			frames: [0, 10, 20],
+			values: [0, 30, 0],
+			easings: ['ease-in', 'linear', 'linear'],
+			easingConfigs: [{ type: 'ease-in' }, null, null]
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(getItem('animated').keyframes?.y).toBeUndefined();
 	});
 });
 

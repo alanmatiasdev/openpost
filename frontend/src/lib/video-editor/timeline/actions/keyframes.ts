@@ -172,6 +172,63 @@ export function setAnimatedProperties(
 	});
 }
 
+/**
+ * Edit a position-path point as one atomic X/Y operation. Once either axis has
+ * position animation, both axes receive a key so the point remains a vector.
+ */
+export function setPositionAtFrame(
+	itemId: string,
+	absoluteFrame: number,
+	x: number,
+	y: number
+): boolean {
+	return execute('SET_POSITION_AT_FRAME', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (
+			!item ||
+			!Number.isFinite(x) ||
+			!Number.isFinite(y) ||
+			absoluteFrame < item.from ||
+			absoluteFrame >= item.from + item.durationInFrames
+		)
+			return false;
+		const relativeFrame = absoluteFrame - item.from;
+		if (!canWriteKeyframe(item, relativeFrame)) return false;
+		const hasPositionAnimation = Boolean(item.keyframes?.x || item.keyframes?.y);
+		if (!hasPositionAnimation) {
+			timelineStore._updateItems([
+				{ id: itemId, patch: { transform: { ...item.transform, x, y } } }
+			]);
+			return true;
+		}
+		const positionFrames = [
+			...new Set([...(item.keyframes?.x?.frames ?? []), ...(item.keyframes?.y?.frames ?? [])])
+		].sort((left, right) => left - right);
+		const template = item.keyframes?.x ?? item.keyframes?.y;
+		let keyframes: ItemKeyframes = { ...item.keyframes };
+		for (const property of ['x', 'y'] as const) {
+			if (keyframes[property]) continue;
+			keyframes[property] = {
+				frames: positionFrames,
+				values: positionFrames.map(() => item.transform?.[property] ?? 0),
+				ids: positionFrames.map((frame, index) => legacyKeyframeId(property, frame, index)),
+				easings: positionFrames.map((frame) => {
+					const index = template?.frames.indexOf(frame) ?? -1;
+					return index >= 0 ? (template?.easings?.[index] ?? 'linear') : 'linear';
+				}),
+				easingConfigs: positionFrames.map((frame) => {
+					const index = template?.frames.indexOf(frame) ?? -1;
+					return index >= 0 ? cloneEasingConfig(template?.easingConfigs?.[index] ?? null) : null;
+				})
+			};
+		}
+		keyframes = upsertTrack(keyframes, 'x', relativeFrame, x);
+		keyframes = upsertTrack(keyframes, 'y', relativeFrame, y);
+		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		return true;
+	});
+}
+
 /** Change the outgoing interpolation for the segment that starts at `frame`. */
 export function setKeyframeEasing(
 	itemId: string,

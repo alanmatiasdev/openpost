@@ -1,7 +1,7 @@
 <!-- One frame-synced visual layer in the composited editor preview. -->
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { ItemTransform, TimelineItem } from '$lib/video-editor/project/types';
+	import type { CropSettings, ItemTransform, TimelineItem } from '$lib/video-editor/project/types';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
@@ -33,6 +33,9 @@
 		registersource,
 		onsourcechange,
 		overrideTransform,
+		overrideCrop,
+		overrideText,
+		hideContent = false,
 		selected = false,
 		onselect
 	}: {
@@ -46,6 +49,9 @@
 		registersource?: RegisterPreviewSource;
 		onsourcechange?: () => void;
 		overrideTransform?: ItemTransform;
+		overrideCrop?: CropSettings;
+		overrideText?: string;
+		hideContent?: boolean;
 		selected?: boolean;
 		onselect: () => void;
 	} = $props();
@@ -59,7 +65,12 @@
 	let lastRasterCanvas: HTMLCanvasElement | null = null;
 	let lastRasterKey = '';
 	let lastScopeAt = 0;
-	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
+	const baseResolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
+	const resolved = $derived({
+		...baseResolved,
+		crop: overrideCrop ?? baseResolved.crop,
+		text: overrideText ?? baseResolved.text
+	});
 	const transform = $derived(overrideTransform ?? resolved.transform ?? {});
 	const renderEffects = $derived(effectiveEffects ?? resolved.effects ?? []);
 	const gpuEffects = $derived.by<GpuRenderEffect[]>(() =>
@@ -356,6 +367,7 @@
 <div
 	class="absolute overflow-hidden"
 	style={layerStyle}
+	style:visibility={hideContent ? 'hidden' : undefined}
 	role="presentation"
 	aria-hidden={deferEffects ? 'true' : undefined}
 	onpointerdown={onselect}

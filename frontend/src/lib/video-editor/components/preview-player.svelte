@@ -15,6 +15,8 @@
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperties } from '$lib/video-editor/timeline/actions/keyframes';
+	import { setPositionAtFrame } from '$lib/video-editor/timeline/actions/keyframes';
+	import { setCurrentFrame, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import {
 		incomingOpacity,
 		outgoingOpacity,
@@ -23,6 +25,7 @@
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import PreviewLayer from './preview-layer.svelte';
 	import PreviewAudioLayer from './preview-audio-layer.svelte';
+	import OnCanvasTools from './on-canvas-tools.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
 		collectAdjustmentLayers,
@@ -41,6 +44,7 @@
 	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { withoutColorGradeEffects } from '$lib/video-editor/effects/color-grade';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
+	import { toast } from 'svelte-sonner';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -55,6 +59,10 @@
 	let urls = $state<Record<string, string>>({});
 	let viewport = $state<HTMLDivElement | null>(null);
 	let draftTransform = $state<ItemTransform | null>(null);
+	let draftCrop = $state<NonNullable<TimelineItem['crop']> | null>(null);
+	let draftText = $state<string | null>(null);
+	let editingText = $state(false);
+	let isPlaying = $state(editorSession.clock.isPlaying);
 	let stackCanvas = $state<HTMLCanvasElement | null>(null);
 	let stackCompositor = $state<CanvasStackCompositor | null>(null);
 	let compareCanvas = $state<HTMLCanvasElement | null>(null);
@@ -138,6 +146,16 @@
 		for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
 	});
 
+	$effect(() => {
+		const sync = () => (isPlaying = editorSession.clock.isPlaying);
+		const offPlay = editorSession.clock.on('play', sync);
+		const offPause = editorSession.clock.on('pause', sync);
+		return () => {
+			offPlay();
+			offPause();
+		};
+	});
+
 	function transitionOpacity(item: TimelineItem): number {
 		const state = activeTransition;
 		if (state?.outgoing === item.id) return outgoingOpacity(state.type, state.progress);
@@ -199,8 +217,17 @@
 		for (const item of inputs.items) {
 			const source = sourceProviders.get(item.id)?.();
 			if (!source) continue;
+			const baseResolved = resolveAnimatedItemAt(item, frame);
+			const directDraft = item.id === selectedItemId;
 			const resolved = scaleItemForCanvas(
-				resolveAnimatedItemAt(item, frame),
+				{
+					...baseResolved,
+					transform: directDraft
+						? (draftTransform ?? baseResolved.transform)
+						: baseResolved.transform,
+					crop: directDraft ? (draftCrop ?? baseResolved.crop) : baseResolved.crop,
+					text: directDraft ? (draftText ?? baseResolved.text) : baseResolved.text
+				},
 				inputs.width / canvasWidth,
 				inputs.height / canvasHeight
 			);
@@ -414,50 +441,39 @@
 			.join('')}`.toUpperCase();
 	}
 
-	function startGizmo(event: PointerEvent, mode: 'move' | 'resize'): void {
-		if (!selectedItem || !viewport) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const startX = event.clientX;
-		const startY = event.clientY;
-		const base = { ...(selectedResolved?.transform ?? {}) };
-		const rect = viewport.getBoundingClientRect();
-		const scaleX = canvasWidth / rect.width;
-		const scaleY = canvasHeight / rect.height;
-		const move = (next: PointerEvent) => {
-			const dx = (next.clientX - startX) * scaleX;
-			const dy = (next.clientY - startY) * scaleY;
-			draftTransform =
-				mode === 'move'
-					? { ...base, x: (base.x ?? 0) + dx, y: (base.y ?? 0) + dy }
-					: {
-							...base,
-							width: Math.max(16, (base.width ?? canvasWidth) + dx),
-							height: Math.max(16, (base.height ?? canvasHeight) + dy)
-						};
-		};
-		const end = () => {
-			window.removeEventListener('pointermove', move);
-			window.removeEventListener('pointerup', end);
-			if (draftTransform && selectedItemId) {
-				const values =
-					mode === 'move'
-						? { x: draftTransform.x, y: draftTransform.y }
-						: { width: draftTransform.width, height: draftTransform.height };
-				setAnimatedProperties(
-					selectedItemId,
-					timelineStore.currentFrame,
-					values,
-					(property: KeyframeProperty) =>
-						autoKeyframeStore.isEnabled(selectedItemId ?? '', property)
-				);
-				onedit();
-			}
-			draftTransform = null;
-		};
-		window.addEventListener('pointermove', move);
-		window.addEventListener('pointerup', end, { once: true });
+	function commitCanvasValues(
+		frame: number,
+		values: Partial<Record<KeyframeProperty, number>>
+	): boolean {
+		if (!selectedItemId) return false;
+		const committed = setAnimatedProperties(selectedItemId, frame, values, (property) =>
+			autoKeyframeStore.isEnabled(selectedItemId ?? '', property)
+		);
+		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
+		return committed;
 	}
+
+	function commitCanvasPosition(frame: number, x: number, y: number): boolean {
+		const committed = selectedItemId ? setPositionAtFrame(selectedItemId, frame, x, y) : false;
+		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
+		return committed;
+	}
+
+	function commitCanvasText(text: string): void {
+		if (!selectedItemId || !selectedItem) return;
+		updateItemProperties(
+			selectedItemId,
+			{ text, label: text.slice(0, 48) || selectedItem.label },
+			'UPDATE_TEXT_ON_CANVAS'
+		);
+	}
+
+	$effect(() => {
+		void draftTransform;
+		void draftCrop;
+		void draftText;
+		if (needsStackedComposition) scheduleStackFrame();
+	});
 </script>
 
 <div
@@ -539,30 +555,29 @@
 					selected={item.id === selectedItemId}
 					opacityMultiplier={transitionOpacity(item)}
 					overrideTransform={item.id === selectedItemId ? (draftTransform ?? undefined) : undefined}
+					overrideCrop={item.id === selectedItemId ? (draftCrop ?? undefined) : undefined}
+					overrideText={item.id === selectedItemId ? (draftText ?? undefined) : undefined}
+					hideContent={item.id === selectedItemId && editingText}
 					onselect={() => (selectedItemId = item.id)}
 				/>
 			{/each}
 			{#if selectedResolved && !selectedTrackLocked}
-				{@const transform = draftTransform ?? selectedResolved.transform ?? {}}
-				{@const width = transform.width ?? canvasWidth}
-				{@const height = transform.height ?? canvasHeight}
-				<div
-					role="presentation"
-					class="absolute cursor-move border border-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_black]"
-					style:left={`${50 + ((transform.x ?? 0) / canvasWidth) * 100}%`}
-					style:top={`${50 + ((transform.y ?? 0) / canvasHeight) * 100}%`}
-					style:width={`${(width / canvasWidth) * 100}%`}
-					style:height={`${(height / canvasHeight) * 100}%`}
-					style:transform={`translate(-50%, -50%) rotate(${transform.rotation ?? 0}deg)`}
-					onpointerdown={(event) => startGizmo(event, 'move')}
-				>
-					<button
-						type="button"
-						class="absolute -right-2 -bottom-2 size-4 cursor-nwse-resize rounded-full border border-black bg-[oklch(0.72_0.16_45)] focus-visible:outline-2 focus-visible:outline-white"
-						aria-label={m.video_editor_preview_resize_selected()}
-						onpointerdown={(event) => startGizmo(event, 'resize')}
-					></button>
-				</div>
+				<OnCanvasTools
+					item={selectedResolved}
+					{canvasWidth}
+					{canvasHeight}
+					currentFrame={timelineStore.currentFrame}
+					{isPlaying}
+					ontransformdraft={(value) => (draftTransform = value)}
+					oncropdraft={(value) => (draftCrop = value)}
+					ontextdraft={(value) => (draftText = value)}
+					ontextediting={(value) => (editingText = value)}
+					oncommitvalues={commitCanvasValues}
+					oncommitposition={commitCanvasPosition}
+					oncommittext={commitCanvasText}
+					onseek={setCurrentFrame}
+					{onedit}
+				/>
 			{/if}
 			{#if colorPreviewStore.activePicker}
 				<button

@@ -35,6 +35,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Persistent work uses database jobs, not in-memory goroutines. Media goes through `BlobStorage`. Provider code lives in `backend/internal/platform/`.
 - Page reads use stored state; provider calls happen in explicit sync or job flows. Publications are the canonical user-visible content inventory.
 - Svelte uses runes, the typed API client, and shared UI/page controls; visible form fields belong in shared primitives. Secrets stay out of code and logs; stored provider tokens are encrypted.
+- Video Editor on-canvas gestures keep drafts out of undo history, commit once on release, and key animated position as one coupled X/Y operation.
 - CLI, MCP, API, and product surfaces share terms, permissions, and boundaries. Public contract changes are acceptable when deliberate and UX-improving; change the source, then regenerate.
 - AI features use maintained SDKs behind a small provider-neutral boundary (`backend/internal/ai/`); reuse the shared model and config choices instead of adding per-feature models.
 - Video Editor GPU effects share one WebGL2 ping-pong compositor; use point-scatter vertex passes for exact cross-texel writes that a fragment pass cannot express.

@@ -200,10 +200,10 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | Play/pause, frame step, home/end, timecode display                      | docs p08                                                                           | PRESENT — `transport-bar.svelte`, `preview/clock.ts`                                                                                                                                                                                                    | —      |
 | Multi-track composited preview (all visual items layered w/ transforms) | `preview/utils/transform-calculations.ts`                                          | PRESENT - ordered video, image, text, and subtitle layers with transitions, animated geometry, crop, and GPU effects (`components/preview-player.svelte`, `preview-layer.svelte`); backdrop-aware blend modes are tracked separately                    | -      |
-| Transform/crop gizmos + anchor gizmo on canvas                          | `preview/utils/anchor-gizmo.ts`, `crop-gizmo.ts`, `gizmo-transform-interaction.ts` | PARTIAL - direct move and resize are undoable; crop and anchor remain inspector-only                                                                                                                                                                    | M      |
+| Transform/crop gizmos + anchor gizmo on canvas                          | `preview/utils/anchor-gizmo.ts`, `crop-gizmo.ts`, `gizmo-transform-interaction.ts` | PARTIAL - direct move, resize, rotated source-pixel crop handles, and pose-preserving anchor edits are keyboard-accessible and commit one undo step; rotation and full edge/corner resize handles remain                                                | M      |
 | Mask path editing overlay                                               | `preview/utils/mask-path-utils.ts`                                                 | MISSING                                                                                                                                                                                                                                                 | M      |
-| Motion-path editing on canvas                                           | `preview/utils/motion-path-edit.ts`                                                | MISSING                                                                                                                                                                                                                                                 | L      |
-| Text scrub overlay / direct text edit on canvas                         | `dom-text-scrub-overlay.ts`                                                        | MISSING                                                                                                                                                                                                                                                 | S      |
+| Motion-path editing on canvas                                           | `preview/utils/motion-path-edit.ts`                                                | PARTIAL - sampled eased X/Y paths expose draggable and keyboard-nudgeable points with atomic vector keys, Shift axis lock, cancellation, transition guards, and playback hiding; spatial Bezier tangent storage and handles remain                      | L      |
+| Text scrub overlay / direct text edit on canvas                         | `dom-text-scrub-overlay.ts`                                                        | PRESENT - double-click or the Text canvas tool opens a scaled, vertically aligned plain-text editor with live raster/compositor preview, Escape cancel, and one commit on blur or Command/Control+Enter (`components/on-canvas-tools.svelte`)           | -      |
 | Save frame as image                                                     | `preview/utils/preview-capture-frame.ts`                                           | PRESENT - full-resolution PNG uses the shared export compositor, downloads, and joins project media (`media/render-export.ts`, `components/transport-bar.svelte`)                                                                                       | -      |
 | Fullscreen preview                                                      | docs p08                                                                           | PRESENT - native Fullscreen API with live enter/exit state (`components/transport-bar.svelte`)                                                                                                                                                          | -      |
 | Preview zoom (view only)                                                | docs p08                                                                           | PRESENT - fit/25/50/75/100 presets plus 20% step controls, persisted per device (`preview/playback-settings.svelte.ts`)                                                                                                                                 | -      |
@@ -253,14 +253,14 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 69**
-- **PARTIAL: 28**
-- **MISSING: 73**
+- **PRESENT: 70**
+- **PARTIAL: 29**
+- **MISSING: 71**
 - (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)
 
-1. **M - Finish on-canvas tools**: crop and anchor gizmos, direct text edit, and motion paths.
+1. **M - Finish on-canvas tools**: spatial Bezier motion handles plus rotation and full edge/corner transform handles.
 2. **M - Transitions catalog**: 2 fades vs about 30 GPU transitions with placement, easing, direction, and timeline resize.
 3. **L - Sequences/nesting + compound clips**: multi-timeline tabs and open-as-tab.
 4. **M - Scene Browser**: AI captions and semantic/color search on existing scene detection.
