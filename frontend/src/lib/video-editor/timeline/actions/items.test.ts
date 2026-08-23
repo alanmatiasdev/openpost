@@ -3,7 +3,14 @@ import { createDefaultTracks } from '$lib/video-editor/project/defaults';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
-import { addAdjustmentLayer, addTextItem, linkItems, setCurrentFrame, unlinkItems } from './items';
+import {
+	addAdjustmentLayer,
+	addShapeItem,
+	addTextItem,
+	linkItems,
+	setCurrentFrame,
+	unlinkItems
+} from './items';
 
 function clip(overrides: Partial<TimelineItem>): TimelineItem {
 	return {
@@ -48,6 +55,38 @@ describe('addTextItem', () => {
 	});
 });
 
+describe('addShapeItem', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		timelineStore._setTracks(createDefaultTracks());
+		commandHistory.clearHistory();
+	});
+
+	it('adds a fully styled primitive at the playhead', () => {
+		setCurrentFrame(42);
+		const id = addShapeItem('star');
+		const shape = timelineStore.itemById.get(id);
+
+		expect(shape).toMatchObject({
+			trackId: 'track-video-overlay',
+			from: 42,
+			durationInFrames: 90,
+			type: 'shape',
+			shapeType: 'star',
+			shapePoints: 5,
+			shapeInnerRadius: 0.5,
+			fillEnabled: true,
+			fillColor: '#f97316',
+			strokeEnabled: false
+		});
+		expect(shape?.transform?.width).toBeGreaterThan(0);
+		expect(shape?.transform?.height).toBeGreaterThan(0);
+		expect(commandHistory.getLastCommandType()).toBe('ADD_SHAPE_ITEM');
+		commandHistory.undo();
+		expect(timelineStore.itemById.has(id)).toBe(false);
+	});
+});
+
 describe('addAdjustmentLayer', () => {
 	beforeEach(() => {
 		timelineStore.__resetForTesting();
@@ -75,7 +114,12 @@ describe('addAdjustmentLayer', () => {
 
 	it('creates a higher visual track when the top track is occupied at the playhead', () => {
 		timelineStore._setItems([
-			clip({ id: 'overlay', trackId: 'track-video-overlay', from: 30, durationInFrames: 90 })
+			clip({
+				id: 'overlay',
+				trackId: 'track-video-overlay',
+				from: 30,
+				durationInFrames: 90
+			})
 		]);
 		setCurrentFrame(45);
 

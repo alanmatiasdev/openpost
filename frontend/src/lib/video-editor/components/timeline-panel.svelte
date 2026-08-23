@@ -316,7 +316,10 @@
 				})
 			);
 			filmstripCache.getFilmstrip(media).catch(() => {
-				filmstrips[mediaId] = { frames: filmstrips[mediaId]?.frames ?? [], failed: true };
+				filmstrips[mediaId] = {
+					frames: filmstrips[mediaId]?.frames ?? [],
+					failed: true
+				};
 			});
 		}
 	});
@@ -396,6 +399,7 @@
 		image: string;
 		text: string;
 		subtitle: string;
+		shape: string;
 		adjustment: string;
 		composition: string;
 	}
@@ -407,6 +411,7 @@
 			image: 'oklch(0.45 0.05 250)',
 			text: 'oklch(0.55 0.02 290)',
 			subtitle: 'oklch(0.55 0.02 290)',
+			shape: 'oklch(0.5 0.12 45)',
 			adjustment: 'oklch(0.48 0.09 45)',
 			composition: 'oklch(0.42 0.07 255)'
 		};
@@ -1134,7 +1139,10 @@
 			timelineStore._updateItems([
 				{ id: drag.id, patch: plan.patch },
 				...(plan.linkedPatches ?? []),
-				...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
+				...plan.moves.map((move) => ({
+					id: move.id,
+					patch: { from: move.from }
+				}))
 			]);
 			return;
 		}
@@ -1154,7 +1162,10 @@
 			timelineStore._updateItems([
 				{ id: drag.id, patch: plan.patch },
 				...(plan.linkedPatches ?? []),
-				...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
+				...plan.moves.map((move) => ({
+					id: move.id,
+					patch: { from: move.from }
+				}))
 			]);
 			drag.rippleMoveIds = plan.moves.map((move) => move.id);
 			const durationInFrames = plan.patch.durationInFrames ?? drag.original.durationInFrames;
@@ -1414,7 +1425,10 @@
 				timelineStore._updateItems([
 					{ id: item.id, patch: plan.patch },
 					...(plan.linkedPatches ?? []),
-					...plan.moves.map((move) => ({ id: move.id, patch: { from: move.from } }))
+					...plan.moves.map((move) => ({
+						id: move.id,
+						patch: { from: move.from }
+					}))
 				]);
 			}
 		} else if (event.altKey) {
@@ -1503,7 +1517,10 @@
 
 	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
 	let showValueGraph = $state(false);
-	let selectedKeyframe = $state<{ property: KeyframeProperty; frame: number } | null>(null);
+	let selectedKeyframe = $state<{
+		property: KeyframeProperty;
+		frame: number;
+	} | null>(null);
 	let customEasingPresets = $state<CustomEasingPreset[]>([]);
 	let selectedCustomPresetName = $state('');
 	let customPresetName = $state('');
@@ -1540,7 +1557,10 @@
 	]);
 	const bezierOptions = $derived([
 		{ value: '', label: 'Custom' },
-		...BEZIER_PRESETS.map((preset) => ({ value: preset.value, label: preset.label }))
+		...BEZIER_PRESETS.map((preset) => ({
+			value: preset.value,
+			label: preset.label
+		}))
 	]);
 	const selectedKeyframeTrack = $derived(
 		selectedItem && selectedKeyframe
@@ -1662,7 +1682,11 @@
 
 	function applyBezierPreset(value: string): void {
 		const preset = BEZIER_PRESETS.find((candidate) => candidate.value === value);
-		if (preset) commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier: preset.points });
+		if (preset)
+			commitEasing('cubic-bezier', {
+				type: 'cubic-bezier',
+				bezier: preset.points
+			});
 	}
 
 	function applyCustomPreset(value: string): void {
@@ -1837,7 +1861,8 @@
 				type="button"
 				class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 				onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
-				><DiamondIcon class="size-2.5 fill-current" /> {m.video_editor_keyframe_add()}</button
+				><DiamondIcon class="size-2.5 fill-current" />
+				{m.video_editor_keyframe_add()}</button
 			>
 			<Button
 				variant="ghost"
@@ -1989,14 +2014,18 @@
 								>
 									{#if effectDropHoveredItemId === item.id}
 										<span class="sr-only" role="status" aria-live="polite">
-											{m.video_editor_effects_drop_ready({ count: effectDropTargetIds.length })}
+											{m.video_editor_effects_drop_ready({
+												count: effectDropTargetIds.length
+											})}
 										</span>
 									{/if}
 									{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
 										<span
 											class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[oklch(0.16_0.008_55)]"
 										>
-											{m.video_editor_effects_drop_count({ count: effectDropTargetIds.length })}
+											{m.video_editor_effects_drop_count({
+												count: effectDropTargetIds.length
+											})}
 										</span>
 									{/if}
 								</div>
@@ -2258,7 +2287,9 @@
 				<span
 					class="absolute top-6 left-1 rounded border border-[oklch(0.48_0.11_45)] bg-[oklch(0.18_0.015_55)] px-1.5 py-0.5 font-mono text-[9px] whitespace-nowrap text-[oklch(0.88_0.09_65)]"
 				>
-					{m.video_editor_snapped_to({ time: tickLabel(activeSnapTarget.frame) })}
+					{m.video_editor_snapped_to({
+						time: tickLabel(activeSnapTarget.frame)
+					})}
 				</span>
 			</div>
 		{/if}

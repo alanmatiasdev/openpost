@@ -2,8 +2,8 @@
  * Project document model for the OpenPost Video Editor.
  *
  * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
- * video / audio / image / text / subtitle / adjustment / composition items,
- * reusable nested sequences, no shapes, masks, or per-band EQ.
+ * video / audio / image / text / subtitle / shape / adjustment / composition
+ * items and reusable nested sequences.
  */
 
 import type {
@@ -25,8 +25,27 @@ export type TimelineItemKind =
 	| 'image'
 	| 'text'
 	| 'subtitle'
+	| 'shape'
 	| 'adjustment'
 	| 'composition';
+
+export type ShapeType =
+	| 'rectangle'
+	| 'circle'
+	| 'triangle'
+	| 'ellipse'
+	| 'star'
+	| 'polygon'
+	| 'heart'
+	| 'path';
+
+/** One normalized Bezier vertex. Handles are offsets from the vertex. */
+export interface ShapePathVertex {
+	position: [number, number];
+	inHandle: [number, number];
+	outHandle: [number, number];
+	tangentMode?: 'corner' | 'smooth' | 'continuous' | 'broken';
+}
 
 export interface ItemTransform {
 	x?: number;
@@ -178,7 +197,12 @@ export interface TextStyleFields {
 	verticalAlign?: 'top' | 'middle' | 'bottom';
 	lineHeight?: number;
 	letterSpacing?: number;
-	textShadow?: { blur: number; color: string; offsetX: number; offsetY: number };
+	textShadow?: {
+		blur: number;
+		color: string;
+		offsetX: number;
+		offsetY: number;
+	};
 	strokeWidth?: number;
 	strokeColor?: string;
 	paddingX?: number;
@@ -238,6 +262,32 @@ export interface TimelineItem extends TextStyleFields {
 
 	// Text items
 	text?: string;
+
+	// Shape items
+	shapeType?: ShapeType;
+	fillColor?: string;
+	fillEnabled?: boolean;
+	fillType?: 'solid' | 'linear';
+	gradientStartColor?: string;
+	gradientEndColor?: string;
+	gradientAngle?: number;
+	strokeEnabled?: boolean;
+	strokeColor?: string;
+	strokeWidth?: number;
+	strokeLineCap?: 'butt' | 'round' | 'square';
+	strokeLineJoin?: 'miter' | 'round' | 'bevel';
+	strokeMiterLimit?: number;
+	shapeCornerRadius?: number;
+	shapeDirection?: 'up' | 'down' | 'left' | 'right';
+	shapePoints?: number;
+	shapeInnerRadius?: number;
+	pathVertices?: ShapePathVertex[];
+	pathClosed?: boolean;
+	isMask?: boolean;
+	maskType?: 'clip' | 'alpha';
+	maskFeather?: number;
+	maskOpacity?: number;
+	maskInvert?: boolean;
 
 	// Subtitle items own the full cue list and render the active cue per frame
 	captionSource?: CaptionSource;

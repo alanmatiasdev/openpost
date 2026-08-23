@@ -27,6 +27,7 @@
 	} from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
+	import { renderShapeItemRaster } from '$lib/video-editor/shapes/render';
 	import type { ItemEffect } from '$lib/video-editor/effects/types';
 	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
 	import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
@@ -92,14 +93,17 @@
 				? [
 						{
 							effectId: effect.effectId,
-							params: { ...getGpuEffectDefaultParams(effect.effectId), ...effect.params }
+							params: {
+								...getGpuEffectDefaultParams(effect.effectId),
+								...effect.params
+							}
 						}
 					]
 				: []
 		)
 	);
 	const needsGpu = $derived(
-		['video', 'image', 'text', 'subtitle'].includes(item.type) &&
+		['video', 'image', 'text', 'subtitle', 'shape'].includes(item.type) &&
 			!deferEffects &&
 			(gpuEffects.length > 0 || isNonNormalBlend(item.blendMode))
 	);
@@ -158,7 +162,7 @@
 	const previewVolume = $derived(previewItemVolumeWithFade(basePreviewVolume, crossfadeGain));
 
 	function paintRaster(canvas: HTMLCanvasElement): void {
-		if (resolved.type !== 'text' && resolved.type !== 'subtitle') return;
+		if (!['text', 'subtitle', 'shape'].includes(resolved.type)) return;
 		const width = Math.max(1, Math.round(transform.width ?? canvasWidth));
 		const height = Math.max(1, Math.round(transform.height ?? canvasHeight));
 		const rasterKey = JSON.stringify([
@@ -183,14 +187,36 @@
 			resolved.paddingX,
 			resolved.paddingY,
 			resolved.borderRadius,
-			resolved.subtitleStyleScale
+			resolved.subtitleStyleScale,
+			resolved.shapeType,
+			resolved.fillColor,
+			resolved.fillEnabled,
+			resolved.fillType,
+			resolved.gradientStartColor,
+			resolved.gradientEndColor,
+			resolved.gradientAngle,
+			resolved.strokeEnabled,
+			resolved.strokeColor,
+			resolved.strokeWidth,
+			resolved.strokeLineCap,
+			resolved.strokeLineJoin,
+			resolved.strokeMiterLimit,
+			resolved.shapeCornerRadius,
+			resolved.shapeDirection,
+			resolved.shapePoints,
+			resolved.shapeInnerRadius,
+			resolved.pathVertices,
+			resolved.pathClosed,
+			resolved.isMask
 		]);
 		if (canvas === lastRasterCanvas && rasterKey === lastRasterKey) return;
 		if (canvas.width !== width) canvas.width = width;
 		if (canvas.height !== height) canvas.height = height;
 		const context = canvas.getContext('2d');
 		if (!context) return;
-		if (resolved.type === 'text') {
+		if (resolved.type === 'shape') {
+			renderShapeItemRaster(context, resolved, width, height);
+		} else if (resolved.type === 'text') {
 			renderTextItemRaster(context, resolved, width, height);
 		} else if (activeSubtitle) {
 			renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
@@ -343,9 +369,13 @@
 				height: decodedImageElement.naturalHeight
 			};
 		}
-		if ((resolved.type === 'text' || resolved.type === 'subtitle') && rasterCanvas) {
+		if (['text', 'subtitle', 'shape'].includes(resolved.type) && rasterCanvas) {
 			paintRaster(rasterCanvas);
-			return { source: rasterCanvas, width: rasterCanvas.width, height: rasterCanvas.height };
+			return {
+				source: rasterCanvas,
+				width: rasterCanvas.width,
+				height: rasterCanvas.height
+			};
 		}
 		if (resolved.type === 'composition' && compositionCanvas && compositionRevision > 0) {
 			return {
@@ -390,7 +420,7 @@
 		const itemType = item.type;
 		const blendMode = item.blendMode ?? 'normal';
 		if (!canvas || !instance || !needsGpu) return;
-		if ((itemType === 'text' || itemType === 'subtitle') && revision === 0) return;
+		if (['text', 'subtitle', 'shape'].includes(itemType) && revision === 0) return;
 		if (itemType === 'composition' && compositionRevision === 0) return;
 		const draw = () => {
 			const source =
@@ -445,7 +475,7 @@
 		if (!selected || needsGpu || deferEffects || item.type === 'video') return;
 		const source =
 			item.type === 'image' ? image : item.type === 'composition' ? compositionCanvas : raster;
-		if (!source || ((item.type === 'text' || item.type === 'subtitle') && revision === 0)) return;
+		if (!source || (['text', 'subtitle', 'shape'].includes(item.type) && revision === 0)) return;
 		const frame = requestAnimationFrame(() => publishScopeSample(source));
 		return () => cancelAnimationFrame(frame);
 	});
@@ -503,6 +533,10 @@
 		</div>
 	{:else if resolved.type === 'subtitle'}
 		<div class="absolute size-full" role="img" aria-label={activeSubtitle?.text ?? resolved.label}>
+			<canvas bind:this={rasterCanvas} class="size-full object-fill" aria-hidden="true"></canvas>
+		</div>
+	{:else if resolved.type === 'shape'}
+		<div class="absolute size-full" role="img" aria-label={resolved.label}>
 			<canvas bind:this={rasterCanvas} class="size-full object-fill" aria-hidden="true"></canvas>
 		</div>
 	{/if}

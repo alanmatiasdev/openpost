@@ -54,6 +54,7 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			return [...VISUAL_PROPERTIES, ...TEXT_PROPERTIES];
 		case 'image':
 		case 'subtitle':
+		case 'shape':
 		case 'composition':
 			return [...VISUAL_PROPERTIES];
 		case 'adjustment':
@@ -119,11 +120,20 @@ function applyResolvedValue(
 		case 'strokeWidth':
 			return { ...item, [property]: value };
 		case 'textShadowOffsetX':
-			return { ...item, textShadow: { ...shadowOrDefault(item), offsetX: value } };
+			return {
+				...item,
+				textShadow: { ...shadowOrDefault(item), offsetX: value }
+			};
 		case 'textShadowOffsetY':
-			return { ...item, textShadow: { ...shadowOrDefault(item), offsetY: value } };
+			return {
+				...item,
+				textShadow: { ...shadowOrDefault(item), offsetY: value }
+			};
 		case 'textShadowBlur':
-			return { ...item, textShadow: { ...shadowOrDefault(item), blur: Math.max(0, value) } };
+			return {
+				...item,
+				textShadow: { ...shadowOrDefault(item), blur: Math.max(0, value) }
+			};
 	}
 }
 

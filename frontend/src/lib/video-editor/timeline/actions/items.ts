@@ -6,7 +6,7 @@
  * to v1 (no transitions, no keyframes, no sync-lock ripple).
  */
 
-import type { TimelineItem } from '$lib/video-editor/project/types';
+import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { editorSession } from '../../editor.svelte';
 import { execute } from '../commands/command-store.svelte';
@@ -40,6 +40,55 @@ export function addTextItem(label: string): string {
 			label,
 			text: label,
 			type: 'text'
+		});
+		return id;
+	});
+}
+
+const SHAPE_LABELS = {
+	rectangle: 'Rectangle',
+	circle: 'Circle',
+	triangle: 'Triangle',
+	ellipse: 'Ellipse',
+	star: 'Star',
+	polygon: 'Polygon',
+	heart: 'Heart',
+	path: 'Path'
+} satisfies Record<ShapeType, string>;
+
+/** Add a styled three-second shape on the top unlocked visual track. */
+export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeType]): string {
+	return execute('ADD_SHAPE_ITEM', () => {
+		const topVisualTrack = timelineStore.tracks
+			.filter((track) => track.kind !== 'audio' && !track.locked)
+			.toSorted((left, right) => left.order - right.order)[0];
+		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add a shape.');
+
+		const projectWidth = editorSession.project?.metadata.width ?? 1920;
+		const projectHeight = editorSession.project?.metadata.height ?? 1080;
+		const size = Math.max(80, Math.round(Math.min(projectWidth, projectHeight) * 0.28));
+		const id = crypto.randomUUID();
+		timelineStore._addItem({
+			id,
+			trackId: topVisualTrack.id,
+			from: timelineStore.currentFrame,
+			durationInFrames: timelineStore.fps * 3,
+			label,
+			type: 'shape',
+			shapeType,
+			fillColor: '#f97316',
+			fillEnabled: true,
+			strokeColor: '#ffffff',
+			strokeEnabled: false,
+			strokeWidth: 8,
+			shapePoints: shapeType === 'star' ? 5 : shapeType === 'polygon' ? 6 : undefined,
+			shapeInnerRadius: shapeType === 'star' ? 0.5 : undefined,
+			transform: {
+				width:
+					shapeType === 'rectangle' || shapeType === 'ellipse' ? Math.round(size * 1.35) : size,
+				height: size,
+				aspectRatioLocked: shapeType !== 'rectangle' && shapeType !== 'ellipse'
+			}
 		});
 		return id;
 	});

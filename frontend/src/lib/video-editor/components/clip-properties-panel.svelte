@@ -8,6 +8,7 @@
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+	import ShapePropertiesPanel from './shape-properties-panel.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -23,10 +24,34 @@
 	const transformFields: NumericField[] = [
 		{ property: 'x', label: 'X', min: -2, max: 2, step: 0.01 },
 		{ property: 'y', label: 'Y', min: -2, max: 2, step: 0.01 },
-		{ property: 'width', label: m.video_editor_property_width(), min: 1, max: 7680, step: 1 },
-		{ property: 'height', label: m.video_editor_property_height(), min: 1, max: 4320, step: 1 },
-		{ property: 'rotation', label: m.video_editor_rotation(), min: -360, max: 360, step: 1 },
-		{ property: 'opacity', label: m.video_editor_clip_opacity(), min: 0, max: 1, step: 0.01 },
+		{
+			property: 'width',
+			label: m.video_editor_property_width(),
+			min: 1,
+			max: 7680,
+			step: 1
+		},
+		{
+			property: 'height',
+			label: m.video_editor_property_height(),
+			min: 1,
+			max: 4320,
+			step: 1
+		},
+		{
+			property: 'rotation',
+			label: m.video_editor_rotation(),
+			min: -360,
+			max: 360,
+			step: 1
+		},
+		{
+			property: 'opacity',
+			label: m.video_editor_clip_opacity(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		},
 		{
 			property: 'cornerRadius',
 			label: m.video_editor_property_radius(),
@@ -37,10 +62,34 @@
 	];
 
 	const cropFields: NumericField[] = [
-		{ property: 'cropLeft', label: m.video_editor_align_left(), min: 0, max: 1, step: 0.01 },
-		{ property: 'cropRight', label: m.video_editor_align_right(), min: 0, max: 1, step: 0.01 },
-		{ property: 'cropTop', label: m.video_editor_property_top(), min: 0, max: 1, step: 0.01 },
-		{ property: 'cropBottom', label: m.video_editor_property_bottom(), min: 0, max: 1, step: 0.01 },
+		{
+			property: 'cropLeft',
+			label: m.video_editor_align_left(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		},
+		{
+			property: 'cropRight',
+			label: m.video_editor_align_right(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		},
+		{
+			property: 'cropTop',
+			label: m.video_editor_property_top(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		},
+		{
+			property: 'cropBottom',
+			label: m.video_editor_property_bottom(),
+			min: 0,
+			max: 1,
+			step: 0.01
+		},
 		{
 			property: 'cropSoftness',
 			label: m.video_editor_property_softness(),
@@ -51,7 +100,13 @@
 	];
 
 	const textFields: NumericField[] = [
-		{ property: 'fontSize', label: m.video_editor_property_size(), min: 8, max: 500, step: 1 },
+		{
+			property: 'fontSize',
+			label: m.video_editor_property_size(),
+			min: 8,
+			max: 500,
+			step: 1
+		},
 		{
 			property: 'fontWeight',
 			label: m.video_editor_property_weight(),
@@ -73,8 +128,20 @@
 			max: 50,
 			step: 0.1
 		},
-		{ property: 'paddingX', label: m.video_editor_property_padding_x(), min: 0, max: 500, step: 1 },
-		{ property: 'paddingY', label: m.video_editor_property_padding_y(), min: 0, max: 500, step: 1 },
+		{
+			property: 'paddingX',
+			label: m.video_editor_property_padding_x(),
+			min: 0,
+			max: 500,
+			step: 1
+		},
+		{
+			property: 'paddingY',
+			label: m.video_editor_property_padding_y(),
+			min: 0,
+			max: 500,
+			step: 1
+		},
 		{
 			property: 'borderRadius',
 			label: m.video_editor_property_box_radius(),
@@ -82,7 +149,13 @@
 			max: 500,
 			step: 1
 		},
-		{ property: 'strokeWidth', label: m.video_editor_property_stroke(), min: 0, max: 30, step: 0.5 }
+		{
+			property: 'strokeWidth',
+			label: m.video_editor_property_stroke(),
+			min: 0,
+			max: 30,
+			step: 0.5
+		}
 	];
 
 	function valueFor(source: TimelineItem, property: KeyframeProperty): number {
@@ -197,7 +270,9 @@
 									type="button"
 									class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
 									class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
-									aria-label={m.video_editor_property_auto_key({ property: field.label })}
+									aria-label={m.video_editor_property_auto_key({
+										property: field.label
+									})}
 									onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
 								>
 							</span>
@@ -241,6 +316,10 @@
 					{/each}
 				</div>
 			</section>
+		{/if}
+
+		{#if item.type === 'shape'}
+			<ShapePropertiesPanel {item} {onedit} />
 		{/if}
 
 		{#if item.type === 'video' || item.type === 'audio'}

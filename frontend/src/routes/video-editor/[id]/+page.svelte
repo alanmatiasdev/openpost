@@ -46,6 +46,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
+	import ShapePanel from '$lib/video-editor/components/shape-panel.svelte';
 	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
@@ -70,7 +71,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
-	let assetPanel = $state<'media' | 'scenes' | 'ai'>('media');
+	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'ai'>('media');
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -96,6 +97,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedTransitionId = null;
 		editorSession.scheduleAutosave();
 		showToast(m.video_editor_local_ai_added(), 'success');
+	}
+
+	function handleShapeInserted(itemId: string): void {
+		selectedItemId = itemId;
+		selectedItemIds = [itemId];
+		selectedTransitionId = null;
+		editorSession.scheduleAutosave();
 	}
 
 	function handleSplit(): void {
@@ -208,7 +216,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			const project = activeRenderProject();
 			if (!project) return;
 			const result = await exportProject(project, { format: 'mp4' });
-			await sendToOpenPost({ workspaceId, blob: result.blob, fileName: result.fileName });
+			await sendToOpenPost({
+				workspaceId,
+				blob: result.blob,
+				fileName: result.fileName
+			});
 			showToast(m.video_editor_sent(), 'success');
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -280,7 +292,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	async function handleImportCaptions(): Promise<void> {
 		const handles = await window.showOpenFilePicker?.({
-			types: [{ description: 'Subtitles', accept: { 'text/plain': ['.srt', '.vtt'] } }],
+			types: [
+				{
+					description: 'Subtitles',
+					accept: { 'text/plain': ['.srt', '.vtt'] }
+				}
+			],
 			multiple: false
 		});
 		if (!handles?.[0]) return;
@@ -483,7 +500,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		</main>
 	{:else if editorSession.loadError}
 		<main class="flex flex-1 flex-col items-center justify-center gap-3">
-			<p class="text-sm text-[oklch(0.65_0.015_55)]">{editorSession.loadError}</p>
+			<p class="text-sm text-[oklch(0.65_0.015_55)]">
+				{editorSession.loadError}
+			</p>
 			<Button variant="outline" href="/video-editor">{m.video_editor_go_back()}</Button>
 		</main>
 	{:else}
@@ -498,7 +517,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					aria-label={m.video_editor_media_pool()}
 				>
 					<div class="flex items-center gap-1 p-2">
-						<div class="grid min-w-0 flex-1 grid-cols-3 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
+						<div class="grid min-w-0 flex-1 grid-cols-4 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
+							<button
+								type="button"
+								class:active={assetPanel === 'shapes'}
+								class="rounded px-1 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+								onclick={() => (assetPanel = 'shapes')}
+							>
+								{m.video_editor_shapes()}
+							</button>
 							<button
 								type="button"
 								class:active={assetPanel === 'media'}
@@ -539,6 +566,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						<MediaPoolList onsequenceopen={resetTimelineSelection} />
 					{:else if assetPanel === 'scenes'}
 						<SceneBrowserPanel />
+					{:else if assetPanel === 'shapes'}
+						<ShapePanel oninserted={handleShapeInserted} />
 					{:else}
 						<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 					{/if}

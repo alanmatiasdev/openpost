@@ -1,0 +1,268 @@
+<script lang="ts">
+	import { m } from '$lib/paraglide/messages';
+	import { Input } from '$lib/components/ui/input';
+	import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
+	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
+
+	let { item, onedit }: { item: TimelineItem; onedit: () => void } = $props();
+
+	const shapeTypes: Array<{ type: ShapeType; label: () => string }> = [
+		{ type: 'rectangle', label: m.video_editor_shape_primitive_rectangle },
+		{ type: 'circle', label: m.video_editor_shape_primitive_circle },
+		{ type: 'ellipse', label: m.video_editor_shape_primitive_ellipse },
+		{ type: 'triangle', label: m.video_editor_shape_primitive_triangle },
+		{ type: 'star', label: m.video_editor_shape_primitive_star },
+		{ type: 'polygon', label: m.video_editor_shape_primitive_polygon },
+		{ type: 'heart', label: m.video_editor_shape_primitive_heart }
+	];
+
+	function commit(patch: Partial<TimelineItem>): void {
+		updateItemProperties(item.id, patch, 'UPDATE_SHAPE_PROPERTIES');
+		onedit();
+	}
+
+	function numberPatch(property: keyof TimelineItem, value: number): void {
+		if (Number.isFinite(value)) commit({ [property]: value });
+	}
+</script>
+
+<section class="flex flex-col gap-2">
+	<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
+		{m.video_editor_shapes()}
+	</h3>
+
+	<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+		{m.video_editor_shape_kind()}
+		<select
+			class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-2 text-xs text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			value={item.shapeType ?? 'rectangle'}
+			onchange={(event) => commit({ shapeType: event.currentTarget.value as ShapeType })}
+		>
+			{#each shapeTypes as shape (shape.type)}
+				<option value={shape.type}>{shape.label()}</option>
+			{/each}
+		</select>
+	</label>
+
+	<div class="grid grid-cols-2 gap-1">
+		<label class="flex items-center gap-1.5 text-[10px] text-[oklch(0.7_0.01_55)]">
+			<Input
+				type="checkbox"
+				class="size-3.5 accent-[oklch(0.66_0.14_45)]"
+				checked={item.fillEnabled ?? true}
+				onchange={(event) => commit({ fillEnabled: event.currentTarget.checked })}
+			/>
+			{m.video_editor_shape_fill_enabled()}
+		</label>
+		<label class="flex items-center gap-1.5 text-[10px] text-[oklch(0.7_0.01_55)]">
+			<Input
+				type="checkbox"
+				class="size-3.5 accent-[oklch(0.66_0.14_45)]"
+				checked={item.strokeEnabled ?? false}
+				onchange={(event) => commit({ strokeEnabled: event.currentTarget.checked })}
+			/>
+			{m.video_editor_shape_stroke_enabled()}
+		</label>
+	</div>
+
+	{#if item.fillEnabled ?? true}
+		<div class="grid grid-cols-2 gap-1">
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_fill_style()}
+				<select
+					class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-1.5 text-xs text-white"
+					value={item.fillType ?? 'solid'}
+					onchange={(event) =>
+						commit({
+							fillType: event.currentTarget.value as 'solid' | 'linear'
+						})}
+				>
+					<option value="solid">{m.video_editor_shape_fill_solid()}</option>
+					<option value="linear">{m.video_editor_shape_fill_linear()}</option>
+				</select>
+			</label>
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{item.fillType === 'linear'
+					? m.video_editor_shape_gradient_start()
+					: m.video_editor_shape_fill()}
+				<Input
+					type="color"
+					class="mt-0.5 h-8 w-full rounded bg-transparent"
+					value={item.fillType === 'linear'
+						? (item.gradientStartColor ?? item.fillColor ?? '#f97316')
+						: (item.fillColor ?? '#f97316')}
+					onchange={(event) =>
+						commit(
+							item.fillType === 'linear'
+								? { gradientStartColor: event.currentTarget.value }
+								: { fillColor: event.currentTarget.value }
+						)}
+				/>
+			</label>
+		</div>
+		{#if item.fillType === 'linear'}
+			<div class="grid grid-cols-2 gap-1">
+				<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_shape_gradient_end()}
+					<Input
+						type="color"
+						class="mt-0.5 h-8 w-full rounded bg-transparent"
+						value={item.gradientEndColor ?? '#fb7185'}
+						onchange={(event) => commit({ gradientEndColor: event.currentTarget.value })}
+					/>
+				</label>
+				<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_shape_gradient_angle()}
+					<Input
+						type="number"
+						min="-360"
+						max="360"
+						step="1"
+						class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+						value={item.gradientAngle ?? 0}
+						onchange={(event) => numberPatch('gradientAngle', event.currentTarget.valueAsNumber)}
+					/>
+				</label>
+			</div>
+		{/if}
+	{/if}
+
+	{#if item.strokeEnabled}
+		<div class="grid grid-cols-2 gap-1">
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_stroke()}
+				<Input
+					type="color"
+					class="mt-0.5 h-8 w-full rounded bg-transparent"
+					value={item.strokeColor ?? '#ffffff'}
+					onchange={(event) => commit({ strokeColor: event.currentTarget.value })}
+				/>
+			</label>
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_stroke_width()}
+				<Input
+					type="number"
+					min="0"
+					max="500"
+					step="1"
+					class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+					value={item.strokeWidth ?? 8}
+					onchange={(event) => numberPatch('strokeWidth', event.currentTarget.valueAsNumber)}
+				/>
+			</label>
+		</div>
+		<div class="grid grid-cols-2 gap-1">
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_line_cap()}
+				<select
+					class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-1.5 text-xs text-white"
+					value={item.strokeLineCap ?? 'butt'}
+					onchange={(event) =>
+						commit({
+							strokeLineCap: event.currentTarget.value as NonNullable<TimelineItem['strokeLineCap']>
+						})}
+				>
+					<option value="butt">{m.video_editor_shape_line_cap_butt()}</option>
+					<option value="round">{m.video_editor_shape_line_cap_round()}</option>
+					<option value="square">{m.video_editor_shape_line_cap_square()}</option>
+				</select>
+			</label>
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_line_join()}
+				<select
+					class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-1.5 text-xs text-white"
+					value={item.strokeLineJoin ?? 'miter'}
+					onchange={(event) =>
+						commit({
+							strokeLineJoin: event.currentTarget.value as NonNullable<
+								TimelineItem['strokeLineJoin']
+							>
+						})}
+				>
+					<option value="miter">{m.video_editor_shape_line_join_miter()}</option>
+					<option value="round">{m.video_editor_shape_line_join_round()}</option>
+					<option value="bevel">{m.video_editor_shape_line_join_bevel()}</option>
+				</select>
+			</label>
+		</div>
+		{#if (item.strokeLineJoin ?? 'miter') === 'miter'}
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_miter_limit()}
+				<Input
+					type="number"
+					min="1"
+					max="100"
+					step="0.5"
+					class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+					value={item.strokeMiterLimit ?? 4}
+					onchange={(event) => numberPatch('strokeMiterLimit', event.currentTarget.valueAsNumber)}
+				/>
+			</label>
+		{/if}
+	{/if}
+
+	{#if ['rectangle', 'triangle', 'star', 'polygon'].includes(item.shapeType ?? 'rectangle')}
+		<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+			{m.video_editor_corner_radius()}
+			<Input
+				type="number"
+				min="0"
+				max="1000"
+				step="1"
+				class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+				value={item.shapeCornerRadius ?? 0}
+				onchange={(event) => numberPatch('shapeCornerRadius', event.currentTarget.valueAsNumber)}
+			/>
+		</label>
+	{/if}
+
+	{#if item.shapeType === 'triangle'}
+		<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+			{m.video_editor_shape_direction()}
+			<select
+				class="mt-0.5 h-8 w-full rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_50)] px-2 text-xs text-white"
+				value={item.shapeDirection ?? 'up'}
+				onchange={(event) =>
+					commit({
+						shapeDirection: event.currentTarget.value as NonNullable<TimelineItem['shapeDirection']>
+					})}
+			>
+				<option value="up">{m.video_editor_shape_direction_up()}</option>
+				<option value="down">{m.video_editor_shape_direction_down()}</option>
+				<option value="left">{m.video_editor_shape_direction_left()}</option>
+				<option value="right">{m.video_editor_shape_direction_right()}</option>
+			</select>
+		</label>
+	{/if}
+
+	{#if item.shapeType === 'star' || item.shapeType === 'polygon'}
+		<div class="grid grid-cols-2 gap-1">
+			<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+				{m.video_editor_shape_points()}
+				<Input
+					type="number"
+					min="3"
+					max="64"
+					step="1"
+					class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+					value={item.shapePoints ?? (item.shapeType === 'star' ? 5 : 6)}
+					onchange={(event) => numberPatch('shapePoints', event.currentTarget.valueAsNumber)}
+				/>
+			</label>
+			{#if item.shapeType === 'star'}
+				<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+					{m.video_editor_shape_inner_radius()}
+					<Input
+						type="number"
+						min="0.05"
+						max="0.95"
+						step="0.01"
+						class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+						value={item.shapeInnerRadius ?? 0.5}
+						onchange={(event) => numberPatch('shapeInnerRadius', event.currentTarget.valueAsNumber)}
+					/>
+				</label>
+			{/if}
+		</div>
+	{/if}
+</section>

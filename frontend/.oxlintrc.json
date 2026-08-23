@@ -180,6 +180,12 @@
 				"anti-slop/no-unsafe-dictionary-type": "off",
 				"anti-slop/require-safety-comment-for-type-assertion": "off"
 			}
+		},
+		{
+			"files": ["src/lib/video-editor/**/*.ts", "src/lib/video-editor/**/*.svelte"],
+			"rules": {
+				"anti-slop/no-shape-in-symbol-names": "off"
+			}
 		}
 	]
 }

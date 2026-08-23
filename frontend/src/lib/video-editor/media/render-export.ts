@@ -40,6 +40,7 @@ import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { scaleItemForCanvas } from './render-geometry';
 import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
+import { renderShapeItemRaster } from '../shapes/render';
 import {
 	CanvasStackCompositor,
 	itemOpacity,
@@ -301,6 +302,7 @@ export class TimelineFrameRenderer {
 				item.type === 'video' ||
 				item.type === 'image' ||
 				item.type === 'text' ||
+				item.type === 'shape' ||
 				item.type === 'composition' ||
 				(this.burnSubtitles && item.type === 'subtitle')
 		);
@@ -338,6 +340,17 @@ export class TimelineFrameRenderer {
 		};
 	}
 
+	private shapeSource(item: TimelineItem) {
+		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
+		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
+		this.textCanvas.width = width;
+		this.textCanvas.height = height;
+		const context = this.textCanvas.getContext('2d');
+		if (!context) throw new Error('Failed to create the shape raster context.');
+		renderShapeItemRaster(context, item, width, height);
+		return { source: this.textCanvas, width, height };
+	}
+
 	private async getDecoder(mediaId: string): Promise<VideoDecoder | null> {
 		const existing = this.decoders.get(mediaId);
 		if (existing) return existing;
@@ -373,6 +386,7 @@ export class TimelineFrameRenderer {
 			return cue ? this.subtitleSource(resolvedItem, cue.text) : null;
 		}
 		if (resolvedItem.type === 'text') return this.textSource(resolvedItem);
+		if (resolvedItem.type === 'shape') return this.shapeSource(resolvedItem);
 		if (resolvedItem.type === 'composition' && resolvedItem.compositionId) {
 			if (this.ancestry.has(resolvedItem.compositionId)) return null;
 			const composition = this.project.timeline?.compositions?.find(
@@ -397,7 +411,11 @@ export class TimelineFrameRenderer {
 							compositions: this.project.timeline?.compositions
 						}
 					},
-					{ width: composition.width, height: composition.height, burnSubtitles: true },
+					{
+						width: composition.width,
+						height: composition.height,
+						burnSubtitles: true
+					},
 					new Set([...this.ancestry, composition.id])
 				);
 				this.nestedRenderers.set(composition.id, renderer);

@@ -106,7 +106,7 @@
 	const activeItems = $derived.by(() =>
 		paintOrder(timelineStore.items, timelineStore.tracks).filter(
 			(item) =>
-				['video', 'image', 'text', 'subtitle', 'composition'].includes(item.type) &&
+				['video', 'image', 'text', 'subtitle', 'shape', 'composition'].includes(item.type) &&
 				((timelineStore.currentFrame >= item.from &&
 					timelineStore.currentFrame < item.from + item.durationInFrames) ||
 					item.id === activeTransition?.outgoing ||
