@@ -81,6 +81,27 @@ describe('saved animation capture', () => {
 		expect(preset?.motionModifiers).toMatchObject([{ type: 'spin' }]);
 	});
 
+	it('captures text motion without requiring keyframes', () => {
+		const preset = captureAnimationFromItem(
+			item({
+				type: 'text',
+				textMotion: {
+					loop: {
+						presetId: 'wave',
+						durationFrames: 30,
+						staggerFrames: 3,
+						intensity: 1,
+						order: 'forward',
+						easing: 'linear',
+						seed: 0
+					}
+				}
+			}),
+			'Text wave'
+		);
+		expect(preset?.textMotion?.loop?.presetId).toBe('wave');
+	});
+
 	it('blocks whole-preset application on a different clip type', () => {
 		const preset = captureAnimationFromItem(
 			item({ keyframes: { opacity: { frames: [0], values: [1] } } }),

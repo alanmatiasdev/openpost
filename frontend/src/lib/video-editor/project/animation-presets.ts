@@ -31,7 +31,20 @@ export function cloneAnimationPreset(preset: AnimationPreset): AnimationPreset {
 		effects: preset.effects.map(cloneEffect),
 		...(preset.motionModifiers && {
 			motionModifiers: preset.motionModifiers.map(cloneMotionModifier)
+		}),
+		...(preset.textMotion && {
+			textMotion: cloneTextMotion(preset.textMotion)
 		})
+	};
+}
+
+function cloneTextMotion(
+	spec: NonNullable<AnimationPreset['textMotion']>
+): NonNullable<AnimationPreset['textMotion']> {
+	return {
+		...(spec.in && { in: { ...spec.in } }),
+		...(spec.out && { out: { ...spec.out } }),
+		...(spec.loop && { loop: { ...spec.loop } })
 	};
 }
 

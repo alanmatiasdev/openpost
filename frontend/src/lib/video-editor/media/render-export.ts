@@ -345,14 +345,14 @@ export class TimelineFrameRenderer {
 		this.itemsById = new Map(items.map((item) => [item.id, item]));
 	}
 
-	private textSource(item: TimelineItem) {
+	private textSource(item: TimelineItem, frame: number) {
 		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
 		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
 		this.textCanvas.width = width;
 		this.textCanvas.height = height;
 		const context = this.textCanvas.getContext('2d');
 		if (!context) throw new Error('Failed to create the text raster context.');
-		renderTextItemRaster(context, item, width, height);
+		renderTextItemRaster(context, item, width, height, { absoluteFrame: frame });
 		return {
 			source: this.textCanvas,
 			width,
@@ -450,7 +450,7 @@ export class TimelineFrameRenderer {
 			const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
 			return cue ? this.subtitleSource(resolvedItem, cue.text) : null;
 		}
-		if (resolvedItem.type === 'text') return this.textSource(resolvedItem);
+		if (resolvedItem.type === 'text') return this.textSource(resolvedItem, frame);
 		if (resolvedItem.type === 'shape') return this.shapeSource(resolvedItem);
 		if (resolvedItem.type === 'composition' && resolvedItem.compositionId) {
 			if (this.ancestry.has(resolvedItem.compositionId)) return null;

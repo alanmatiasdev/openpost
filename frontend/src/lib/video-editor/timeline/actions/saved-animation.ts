@@ -91,7 +91,11 @@ export function applySavedAnimation(
 		return { ok: false, reason: 'transition-blocked' };
 	}
 	const changed = prepared.filter(
-		(entry) => entry.writtenKeyframes > 0 || entry.addedEffects > 0 || entry.patch.motionModifiers
+		(entry) =>
+			entry.writtenKeyframes > 0 ||
+			entry.addedEffects > 0 ||
+			entry.patch.motionModifiers ||
+			entry.patch.textMotion
 	);
 	if (changed.length === 0) return { ok: false, reason: 'no-change' };
 
@@ -166,6 +170,11 @@ function prepareSavedAnimation(
 				? incomingModifiers
 				: mergeModifiers(item.motionModifiers, incomingModifiers)
 			: item.motionModifiers;
+	const textMotion = options.preset.textMotion
+		? options.mode === 'replace'
+			? cloneTextMotion(options.preset.textMotion)
+			: mergeTextMotion(item.textMotion, options.preset.textMotion)
+		: item.textMotion;
 	return {
 		item,
 		patch: {
@@ -175,12 +184,33 @@ function prepareSavedAnimation(
 			...(effectMapping.effects.length !== (item.effects ?? []).length && {
 				effects: effectMapping.effects
 			}),
-			...(incomingModifiers.length > 0 && { motionModifiers })
+			...(incomingModifiers.length > 0 && { motionModifiers }),
+			...(options.preset.textMotion && { textMotion })
 		},
 		writtenKeyframes,
 		addedEffects: effectMapping.addedEffects,
 		frames: [...new Set(writtenFrames)]
 	};
+}
+
+function mergeTextMotion(
+	existing: TimelineItem['textMotion'],
+	incoming: NonNullable<AnimationPreset['textMotion']>
+): NonNullable<AnimationPreset['textMotion']> {
+	return {
+		...(existing?.in && { in: { ...existing.in } }),
+		...(existing?.out && { out: { ...existing.out } }),
+		...(existing?.loop && { loop: { ...existing.loop } }),
+		...(incoming.in && { in: { ...incoming.in } }),
+		...(incoming.out && { out: { ...incoming.out } }),
+		...(incoming.loop && { loop: { ...incoming.loop } })
+	};
+}
+
+function cloneTextMotion(
+	spec: NonNullable<AnimationPreset['textMotion']>
+): NonNullable<AnimationPreset['textMotion']> {
+	return mergeTextMotion(undefined, spec);
 }
 
 function mapEffects(existing: readonly ItemEffect[], preset: AnimationPreset): EffectMapping {

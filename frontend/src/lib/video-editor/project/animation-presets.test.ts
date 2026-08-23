@@ -36,4 +36,23 @@ describe('animation preset project data', () => {
 		expect(original.properties[0]!.keyframes[0]!.value).toBe(1);
 		expect(original.properties[0]!.keyframes[0]!.easingConfig!.bezier!.x1).toBe(0.1);
 	});
+
+	it('deep clones text motion slots', () => {
+		const original = preset();
+		original.sourceItemType = 'text';
+		original.textMotion = {
+			in: {
+				presetId: 'rise',
+				durationFrames: 14,
+				staggerFrames: 4,
+				intensity: 1,
+				order: 'forward',
+				easing: 'ease-out',
+				seed: 0
+			}
+		};
+		const clone = cloneAnimationPreset(original);
+		clone.textMotion!.in!.intensity = 0.4;
+		expect(original.textMotion.in!.intensity).toBe(1);
+	});
 });

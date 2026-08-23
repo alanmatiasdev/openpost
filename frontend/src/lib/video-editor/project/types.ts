@@ -79,6 +79,68 @@ export interface MotionModifier {
 	channelGains?: MotionModifierChannelGains;
 }
 
+export const TEXT_MOTION_IN_PRESET_IDS = [
+	'typewriter',
+	'fade-up',
+	'rise',
+	'cascade',
+	'pop',
+	'blur-in',
+	'slide-mask',
+	'wave-in'
+] as const;
+export const TEXT_MOTION_OUT_PRESET_IDS = [
+	'fade-down',
+	'sink',
+	'pop-out',
+	'blur-out',
+	'typewriter-erase'
+] as const;
+export const TEXT_MOTION_LOOP_PRESET_IDS = ['pulse', 'wave', 'shimmer', 'swing'] as const;
+
+export type TextMotionInPresetId = (typeof TEXT_MOTION_IN_PRESET_IDS)[number];
+export type TextMotionOutPresetId = (typeof TEXT_MOTION_OUT_PRESET_IDS)[number];
+export type TextMotionLoopPresetId = (typeof TEXT_MOTION_LOOP_PRESET_IDS)[number];
+export type TextMotionPresetId =
+	| TextMotionInPresetId
+	| TextMotionOutPresetId
+	| TextMotionLoopPresetId;
+export type TextMotionUnit = 'character' | 'word' | 'line' | 'whole-clip';
+export type TextMotionOrder = 'forward' | 'backward' | 'center' | 'random';
+export type TextMotionEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'overshoot';
+export type TextMotionSlot = 'in' | 'out' | 'loop';
+
+export interface TextMotionEffectBase {
+	durationFrames: number;
+	offsetFrames?: number;
+	staggerFrames: number;
+	intensity: number;
+	order: TextMotionOrder;
+	easing: TextMotionEasing;
+	seed: number;
+	unit?: TextMotionUnit;
+}
+
+export interface TextMotionInEffect extends TextMotionEffectBase {
+	presetId: TextMotionInPresetId;
+}
+
+export interface TextMotionOutEffect extends TextMotionEffectBase {
+	presetId: TextMotionOutPresetId;
+}
+
+export interface TextMotionLoopEffect extends TextMotionEffectBase {
+	presetId: TextMotionLoopPresetId;
+}
+
+export type TextMotionEffect = TextMotionInEffect | TextMotionOutEffect | TextMotionLoopEffect;
+
+export interface TextMotionSpec {
+	in?: TextMotionInEffect;
+	out?: TextMotionOutEffect;
+	loop?: TextMotionLoopEffect;
+}
+
 export interface CropSettings {
 	top: number;
 	right: number;
@@ -247,6 +309,7 @@ export interface AnimationPreset {
 	vectorProperties?: AnimationPresetVectorProperty[];
 	effects: import('../effects/types').ItemEffect[];
 	motionModifiers?: MotionModifier[];
+	textMotion?: TextMotionSpec;
 	sourceDurationInFrames: number;
 	createdAt: number;
 }
@@ -407,6 +470,8 @@ export interface TimelineItem extends TextStyleFields {
 	separatedVectorProperties?: VectorKeyframeProperty[];
 	/** Small deterministic live-motion records evaluated during preview and export. */
 	motionModifiers?: MotionModifier[];
+	/** Independent per-unit text animation slots evaluated in preview and export. */
+	textMotion?: TextMotionSpec;
 
 	// Clip effects (CSS-filter-semantics color/blur stack; see effects/types.ts)
 	effects?: import('$lib/video-editor/effects/types').ItemEffect[];

@@ -39,10 +39,13 @@ export function captureAnimationFromItem(
 	const motionModifiers = (item.motionModifiers ?? [])
 		.filter((modifier) => modifier.enabled && modifier.amplitude > 0)
 		.map(cloneMotionModifier);
+	const textMotion =
+		item.type === 'text' && item.textMotion ? cloneTextMotion(item.textMotion) : undefined;
 	if (
 		scalarProperties.length === 0 &&
 		vectorProperties.length === 0 &&
-		motionModifiers.length === 0
+		motionModifiers.length === 0 &&
+		!textMotion
 	) {
 		return null;
 	}
@@ -74,8 +77,19 @@ export function captureAnimationFromItem(
 		...(normalizedVectors.length > 0 && { vectorProperties: normalizedVectors }),
 		effects: carriedEffects(item, properties),
 		...(motionModifiers.length > 0 && { motionModifiers }),
+		...(textMotion && { textMotion }),
 		sourceDurationInFrames: item.durationInFrames,
 		createdAt
+	};
+}
+
+function cloneTextMotion(
+	spec: NonNullable<AnimationPreset['textMotion']>
+): NonNullable<AnimationPreset['textMotion']> {
+	return {
+		...(spec.in && { in: { ...spec.in } }),
+		...(spec.out && { out: { ...spec.out } }),
+		...(spec.loop && { loop: { ...spec.loop } })
 	};
 }
 

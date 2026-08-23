@@ -35,6 +35,7 @@
 	} from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
+	import { isTextMotionActive } from '$lib/video-editor/timeline/text-motion-eval';
 	import { renderShapeItemRaster } from '$lib/video-editor/shapes/render';
 	import type { ItemEffect } from '$lib/video-editor/effects/types';
 	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
@@ -242,6 +243,15 @@
 			resolved.paddingX,
 			resolved.paddingY,
 			resolved.borderRadius,
+			resolved.textMotion,
+			resolved.textMotion &&
+			isTextMotionActive(
+				resolved.textMotion,
+				timelineStore.currentFrame - resolved.from,
+				resolved.durationInFrames
+			)
+				? timelineStore.currentFrame
+				: null,
 			resolved.subtitleStyleScale,
 			resolved.shapeType,
 			resolved.fillColor,
@@ -272,7 +282,9 @@
 		if (resolved.type === 'shape') {
 			renderShapeItemRaster(context, resolved, width, height);
 		} else if (resolved.type === 'text') {
-			renderTextItemRaster(context, resolved, width, height);
+			renderTextItemRaster(context, resolved, width, height, {
+				absoluteFrame: timelineStore.currentFrame
+			});
 		} else if (activeSubtitle) {
 			renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
 		} else {

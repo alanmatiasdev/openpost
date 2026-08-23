@@ -56,6 +56,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import MotionPresetsPanel from '$lib/video-editor/components/motion-presets-panel.svelte';
+	import TextMotionPanel from '$lib/video-editor/components/text-motion-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
@@ -391,6 +392,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	const selectedIsVideo = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
+	);
+	const selectedIsText = $derived(
+		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'text'
 	);
 	const selectedIsCompound = $derived(
 		selectedItemId !== null && Boolean(timelineStore.itemById.get(selectedItemId)?.compositionId)
@@ -827,6 +831,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
 								onedit={() => editorSession.scheduleAutosave()}
 							/>
+							{#if selectedIsText}
+								<TextMotionPanel
+									itemId={selectedItemId}
+									itemIds={selectedItemIds}
+									onedit={() => editorSession.scheduleAutosave()}
+								/>
+							{/if}
 						{/if}
 						<EffectsPanel
 							itemId={selectedItemId}

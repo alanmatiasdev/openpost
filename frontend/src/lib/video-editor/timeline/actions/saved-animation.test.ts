@@ -159,6 +159,54 @@ describe('applySavedAnimation', () => {
 		expect(timelineStore.itemById.get('one')?.motionModifiers?.[0]?.id).not.toBe('saved-spin');
 	});
 
+	it('replaces or merges saved text motion slots', () => {
+		timelineStore._setItems([
+			item('one', {
+				type: 'text',
+				textMotion: {
+					out: {
+						presetId: 'fade-down',
+						durationFrames: 12,
+						staggerFrames: 3,
+						intensity: 1,
+						order: 'forward',
+						easing: 'ease-in',
+						seed: 0
+					}
+				}
+			})
+		]);
+		const recipe = preset({
+			sourceItemType: 'text',
+			properties: [],
+			textMotion: {
+				in: {
+					presetId: 'rise',
+					durationFrames: 14,
+					staggerFrames: 4,
+					intensity: 1,
+					order: 'forward',
+					easing: 'ease-out',
+					seed: 0
+				}
+			}
+		});
+		expect(
+			applySavedAnimation({ itemIds: ['one'], preset: recipe, mode: 'add', retime: false }).ok
+		).toBe(true);
+		expect(timelineStore.itemById.get('one')?.textMotion).toMatchObject({
+			in: { presetId: 'rise' },
+			out: { presetId: 'fade-down' }
+		});
+		expect(
+			applySavedAnimation({ itemIds: ['one'], preset: recipe, mode: 'replace', retime: false }).ok
+		).toBe(true);
+		expect(timelineStore.itemById.get('one')?.textMotion).toMatchObject({
+			in: { presetId: 'rise' }
+		});
+		expect(timelineStore.itemById.get('one')?.textMotion?.out).toBeUndefined();
+	});
+
 	it('aborts every target before mutation when a transition owns a required frame', () => {
 		timelineStore._setItems([item('one'), item('two', { from: 100 })]);
 		transitionsStore.setAll([
