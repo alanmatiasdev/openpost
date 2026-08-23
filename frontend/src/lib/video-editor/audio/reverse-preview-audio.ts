@@ -9,7 +9,7 @@ export function previewAudioContext(): AudioContext {
 	return context;
 }
 
-async function decodedPreviewAudio(url: string): Promise<AudioBuffer> {
+export async function decodedPreviewAudio(url: string): Promise<AudioBuffer> {
 	let pending = decodedByUrl.get(url);
 	if (!pending) {
 		pending = fetch(url)

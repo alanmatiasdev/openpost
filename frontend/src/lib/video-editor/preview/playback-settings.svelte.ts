@@ -7,6 +7,7 @@ interface StoredPlaybackSettings {
 	zoom?: number;
 	volume?: number;
 	muted?: boolean;
+	audioSkimmingEnabled?: boolean;
 }
 
 function readStored(): StoredPlaybackSettings {
@@ -17,7 +18,11 @@ function readStored(): StoredPlaybackSettings {
 		return {
 			zoom: 'zoom' in parsed && typeof parsed.zoom === 'number' ? parsed.zoom : undefined,
 			volume: 'volume' in parsed && typeof parsed.volume === 'number' ? parsed.volume : undefined,
-			muted: 'muted' in parsed && typeof parsed.muted === 'boolean' ? parsed.muted : undefined
+			muted: 'muted' in parsed && typeof parsed.muted === 'boolean' ? parsed.muted : undefined,
+			audioSkimmingEnabled:
+				'audioSkimmingEnabled' in parsed && typeof parsed.audioSkimmingEnabled === 'boolean'
+					? parsed.audioSkimmingEnabled
+					: undefined
 		};
 	} catch {
 		return {};
@@ -28,14 +33,20 @@ const stored = readStored();
 const state = $state({
 	zoom: normalizePreviewZoom(stored.zoom ?? -1),
 	volume: clampMonitorVolume(stored.volume ?? 1),
-	muted: stored.muted ?? false
+	muted: stored.muted ?? false,
+	audioSkimmingEnabled: stored.audioSkimmingEnabled ?? true
 });
 
 function persist(): void {
 	if (!browser) return;
 	localStorage.setItem(
 		STORAGE_KEY,
-		JSON.stringify({ zoom: state.zoom, volume: state.volume, muted: state.muted })
+		JSON.stringify({
+			zoom: state.zoom,
+			volume: state.volume,
+			muted: state.muted,
+			audioSkimmingEnabled: state.audioSkimmingEnabled
+		})
 	);
 }
 
@@ -49,6 +60,9 @@ export const previewPlaybackSettings = {
 	get muted(): boolean {
 		return state.muted;
 	},
+	get audioSkimmingEnabled(): boolean {
+		return state.audioSkimmingEnabled;
+	},
 	setZoom(value: number): void {
 		state.zoom = normalizePreviewZoom(value);
 		persist();
@@ -60,6 +74,10 @@ export const previewPlaybackSettings = {
 	},
 	toggleMute(): void {
 		state.muted = !state.muted;
+		persist();
+	},
+	toggleAudioSkimming(): void {
+		state.audioSkimmingEnabled = !state.audioSkimmingEnabled;
 		persist();
 	}
 };

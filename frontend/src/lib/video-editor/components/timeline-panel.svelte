@@ -25,6 +25,8 @@
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
 	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
+	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Input } from '$lib/components/ui/input';
 	import AppSelect from '$lib/components/app-select.svelte';
@@ -160,6 +162,13 @@
 		selectedTransitionId?: string | null;
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
+	const audioSkimController = createTimelineAudioSkimController();
+	let audioSkimStopTimer: ReturnType<typeof setTimeout> | null = null;
+	let rulerScrub: {
+		pointerId: number;
+		latestClientX: number;
+		animationFrame: number | null;
+	} | null = null;
 	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
 
 	$effect(() => {
@@ -603,12 +612,91 @@
 		}
 	}
 
-	function seekFromEvent(event: MouseEvent): void {
+	function frameFromClientX(clientX: number): number | undefined {
 		if (!scrollContainer) return;
 		const rect = scrollContainer.getBoundingClientRect();
-		setCurrentFrame(
-			pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH)
-		);
+		return pxToFrame(clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH);
+	}
+
+	function seekAndSkim(clientX: number): void {
+		const frame = frameFromClientX(clientX);
+		if (frame === undefined) return;
+		setCurrentFrame(frame);
+		audioSkimController.schedule(frame);
+	}
+
+	function scheduleAudioSkimStop(): void {
+		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
+		audioSkimStopTimer = setTimeout(() => {
+			audioSkimStopTimer = null;
+			audioSkimController.stop();
+		}, 90);
+	}
+
+	function moveRulerScrub(event: PointerEvent): void {
+		if (!rulerScrub || rulerScrub.pointerId !== event.pointerId) return;
+		rulerScrub.latestClientX = event.clientX;
+		if (rulerScrub.animationFrame !== null) return;
+		rulerScrub.animationFrame = requestAnimationFrame(() => {
+			if (!rulerScrub) return;
+			rulerScrub.animationFrame = null;
+			seekAndSkim(rulerScrub.latestClientX);
+		});
+	}
+
+	function finishRulerScrub(event: PointerEvent): void {
+		if (!rulerScrub || rulerScrub.pointerId !== event.pointerId) return;
+		if (rulerScrub.animationFrame !== null) cancelAnimationFrame(rulerScrub.animationFrame);
+		seekAndSkim(event.clientX);
+		rulerScrub = null;
+		window.removeEventListener('pointermove', moveRulerScrub);
+		window.removeEventListener('pointerup', finishRulerScrub);
+		window.removeEventListener('pointercancel', cancelRulerScrub);
+		scheduleAudioSkimStop();
+	}
+
+	function cancelRulerScrub(event?: PointerEvent): void {
+		if (event && rulerScrub && rulerScrub.pointerId !== event.pointerId) return;
+		const animationFrame = rulerScrub?.animationFrame;
+		if (animationFrame !== null && animationFrame !== undefined) {
+			cancelAnimationFrame(animationFrame);
+		}
+		rulerScrub = null;
+		window.removeEventListener('pointermove', moveRulerScrub);
+		window.removeEventListener('pointerup', finishRulerScrub);
+		window.removeEventListener('pointercancel', cancelRulerScrub);
+		audioSkimController.stop();
+	}
+
+	function startRulerScrub(event: PointerEvent): void {
+		if (event.button !== 0 || rulerScrub) return;
+		event.preventDefault();
+		event.stopPropagation();
+		editorSession.pausePlayback();
+		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
+		audioSkimStopTimer = null;
+		rulerScrub = {
+			pointerId: event.pointerId,
+			latestClientX: event.clientX,
+			animationFrame: null
+		};
+		seekAndSkim(event.clientX);
+		window.addEventListener('pointermove', moveRulerScrub);
+		window.addEventListener('pointerup', finishRulerScrub);
+		window.addEventListener('pointercancel', cancelRulerScrub);
+	}
+
+	function onRulerKeydown(event: KeyboardEvent): void {
+		let frame = timelineStore.currentFrame;
+		if (event.key === 'ArrowLeft') frame -= event.shiftKey ? 10 : 1;
+		else if (event.key === 'ArrowRight') frame += event.shiftKey ? 10 : 1;
+		else if (event.key === 'Home') frame = 0;
+		else if (event.key === 'End') frame = timelineStore.maxItemEndFrame;
+		else return;
+		event.preventDefault();
+		setCurrentFrame(frame);
+		audioSkimController.schedule(frame);
+		scheduleAudioSkimStop();
 	}
 
 	function clearEffectDropPreview(): void {
@@ -1538,6 +1626,9 @@
 		if (drag) finishDrag(true);
 		if (transitionResize) finishTransitionResize(true);
 		if (marquee) finishMarquee();
+		if (rulerScrub) cancelRulerScrub();
+		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
+		audioSkimController.dispose();
 		clearEffectDropPreview();
 		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
@@ -1831,6 +1922,23 @@
 			variant="ghost"
 			size="icon"
 			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+			data-active={previewPlaybackSettings.audioSkimmingEnabled}
+			aria-pressed={previewPlaybackSettings.audioSkimmingEnabled}
+			aria-label={previewPlaybackSettings.audioSkimmingEnabled
+				? m.video_editor_audio_skimming_disable()
+				: m.video_editor_audio_skimming_enable()}
+			title={m.video_editor_audio_skimming_hint()}
+			onclick={() => {
+				previewPlaybackSettings.toggleAudioSkimming();
+				if (!previewPlaybackSettings.audioSkimmingEnabled) audioSkimController.stop();
+			}}
+		>
+			<AudioLinesIcon class="size-3.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
 			data-active={timelineStore.linkedSelectionEnabled}
 			aria-pressed={timelineStore.linkedSelectionEnabled}
 			aria-label={timelineStore.linkedSelectionEnabled
@@ -2006,10 +2114,16 @@
 			></div>
 		{/if}
 		<!-- Ruler -->
-		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -- ruler seeks on click; arrow-key transport is global (Space/step buttons) -->
 		<div
-			class="sticky top-0 z-20 h-6 cursor-pointer border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"
-			onclick={seekFromEvent}
+			class="sticky top-0 z-20 h-6 cursor-ew-resize touch-none border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+			role="slider"
+			tabindex="0"
+			aria-label={m.video_editor_playhead()}
+			aria-valuemin="0"
+			aria-valuemax={timelineStore.maxItemEndFrame}
+			aria-valuenow={timelineStore.currentFrame}
+			onkeydown={onRulerKeydown}
+			onpointerdown={startRulerScrub}
 		>
 			<div
 				class="sticky left-0 z-30 h-full border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"

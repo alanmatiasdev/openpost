@@ -126,6 +126,44 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		await expect.element(freeze).toBeDisabled();
 	});
 
+	it('exposes the persisted audio-skimming control', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const enabled = screen.getByRole('button', { name: 'Disable audio skimming' });
+		await expect.element(enabled).toHaveAttribute('aria-pressed', 'true');
+		await enabled.click();
+		const disabled = screen.getByRole('button', { name: 'Enable audio skimming' });
+		await expect.element(disabled).toHaveAttribute('aria-pressed', 'false');
+		await disabled.click();
+	});
+
+	it('scrubs the ruler with pointer drag and precise keyboard steps', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');
+		expect(region).not.toBeNull();
+		vi.spyOn(region!, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 300));
+		const ruler = screen.getByRole('slider', { name: 'Timeline playhead' });
+
+		dispatchPointer(ruler.element(), 'pointerdown', 220);
+		dispatchPointer(window, 'pointermove', 260);
+		await nextAnimationFrame();
+		dispatchPointer(window, 'pointerup', 260);
+		expect(timelineStore.currentFrame).toBe(20);
+		await expect.element(ruler).toHaveAttribute('aria-valuenow', '20');
+
+		ruler
+			.element()
+			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		expect(timelineStore.currentFrame).toBe(21);
+		ruler
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true })
+			);
+		expect(timelineStore.currentFrame).toBe(11);
+		ruler.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+		expect(timelineStore.currentFrame).toBe(120);
+	});
+
 	it('joins selected split siblings from the toolbar and Shift+J', async () => {
 		const left = item({
 			id: 'left',
