@@ -16397,7 +16397,15 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -17106,7 +17114,21 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "account_username",
+							"operation_id": "list-accounts",
+							"parameter": "account_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -27500,12 +27522,26 @@
 					"exposure": "alpha",
 					"idempotency": "none",
 					"pagination": {
-						"cursor_parameter": "cursor",
-						"has_more_header": "X-Has-More",
-						"next_cursor_header": "X-Next-Cursor",
-						"style": "cursor"
+						"cursor_parameter": "",
+						"has_more_header": "",
+						"limit_parameter": "limit",
+						"next_cursor_header": "",
+						"offset_parameter": "offset",
+						"style": "offset",
+						"total_path": "total"
 					},
-					"retry": "transient"
+					"result": {
+						"body_path": "media"
+					},
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -27960,7 +27996,15 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -32706,7 +32750,15 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -33350,7 +33402,15 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -33636,10 +33696,21 @@
 					"pagination": {
 						"cursor_parameter": "cursor",
 						"has_more_header": "X-Has-More",
+						"limit_parameter": "",
 						"next_cursor_header": "X-Next-Cursor",
-						"style": "cursor"
+						"offset_parameter": "",
+						"style": "cursor",
+						"total_path": ""
 					},
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			},
 			"post": {
@@ -33725,7 +33796,15 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -33905,7 +33984,21 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			},
 			"put": {
@@ -33971,7 +34064,21 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34089,7 +34196,21 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34196,10 +34317,27 @@
 					"pagination": {
 						"cursor_parameter": "cursor",
 						"has_more_header": "X-Has-More",
+						"limit_parameter": "",
 						"next_cursor_header": "X-Next-Cursor",
-						"style": "cursor"
+						"offset_parameter": "",
+						"style": "cursor",
+						"total_path": ""
 					},
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34267,7 +34405,21 @@
 					"effect": "external-action",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34335,7 +34487,21 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34696,7 +34862,21 @@
 					"effect": "external-action",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34764,7 +34944,21 @@
 					"effect": "local-mutation",
 					"exposure": "alpha",
 					"idempotency": "required",
-					"retry": "idempotent-transient"
+					"retry": "idempotent-transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -34812,7 +35006,21 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "title",
+							"operation_id": "list-publications",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			}
 		},
@@ -35297,13 +35505,15 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"pagination": {
-						"cursor_parameter": "cursor",
-						"has_more_header": "X-Has-More",
-						"next_cursor_header": "X-Next-Cursor",
-						"style": "cursor"
-					},
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						}
+					]
 				}
 			},
 			"post": {
@@ -35562,7 +35772,21 @@
 					"effect": "query",
 					"exposure": "alpha",
 					"idempotency": "none",
-					"retry": "transient"
+					"retry": "transient",
+					"selectors": [
+						{
+							"label_path": "name",
+							"operation_id": "list-workspaces",
+							"parameter": "workspace_id",
+							"value_path": "id"
+						},
+						{
+							"label_path": "name",
+							"operation_id": "list-social-sets",
+							"parameter": "id",
+							"value_path": "id"
+						}
+					]
 				}
 			},
 			"put": {
