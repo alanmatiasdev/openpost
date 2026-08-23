@@ -53,6 +53,7 @@
 	import { toast } from 'svelte-sonner';
 	import { isAudioTransitionParticipantAtFrame } from '$lib/video-editor/audio/transition-crossfade';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import { shapeMasksForTrack } from '$lib/video-editor/shapes/masks';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -133,6 +134,7 @@
 			colorPreviewStore.comparisonMode !== 'after' ||
 			colorPreviewStore.activePicker !== null ||
 			colorPreviewStore.frameCaptureItemId !== null ||
+			activeItems.some((item) => item.type === 'shape' && item.isMask === true) ||
 			activeItems.some(
 				(item) =>
 					isNonNormalBlend(item.blendMode) &&
@@ -236,9 +238,7 @@
 			);
 		}
 		const frame = timelineStore.currentFrame;
-		const resolveParticipant = (item: TimelineItem, beforeColor: boolean) => {
-			const source = sourceProviders.get(item.id)?.();
-			if (!source) return null;
+		const resolveVisualItem = (item: TimelineItem, beforeColor: boolean) => {
 			const baseResolved = resolveAnimatedItemAt(item, frame);
 			const directDraft = item.id === selectedItemId;
 			const resolved = scaleItemForCanvas(
@@ -255,7 +255,22 @@
 			);
 			const afterEffects = effectiveEffects(item, inputs.layers, inputs.orders, frame);
 			resolved.effects = beforeColor ? withoutColorGradeEffects(afterEffects) : afterEffects;
-			return { source, item: resolved, alpha: itemOpacity(resolved) };
+			return resolved;
+		};
+		const activeMasks = inputs.items
+			.filter((item) => item.type === 'shape' && item.isMask === true)
+			.map((item) => resolveVisualItem(item, false));
+		const resolveParticipant = (item: TimelineItem, beforeColor: boolean) => {
+			if (item.type === 'shape' && item.isMask === true) return null;
+			const source = sourceProviders.get(item.id)?.();
+			if (!source) return null;
+			const resolved = resolveVisualItem(item, beforeColor);
+			return {
+				source,
+				item: resolved,
+				alpha: itemOpacity(resolved),
+				masks: shapeMasksForTrack(activeMasks, inputs.orders.get(item.trackId) ?? 0, inputs.orders)
+			};
 		};
 		let transitionRendered = false;
 		for (const item of inputs.items) {
@@ -303,7 +318,8 @@
 				participant.source,
 				participant.item,
 				participant.alpha,
-				frame / editorSession.fps
+				frame / editorSession.fps,
+				participant.masks
 			);
 			if (comparisonMode === 'split' && compare) {
 				const beforeParticipant = resolveParticipant(item, true);
@@ -312,7 +328,8 @@
 						beforeParticipant.source,
 						beforeParticipant.item,
 						beforeParticipant.alpha,
-						frame / editorSession.fps
+						frame / editorSession.fps,
+						beforeParticipant.masks
 					);
 				}
 			}

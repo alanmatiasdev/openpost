@@ -334,6 +334,7 @@ export function renderShapeItemRaster(
 	context.save();
 	try {
 		context.clearRect(0, 0, width, height);
+		if (item.isMask) return;
 		buildShapePath(context, item, width, height);
 		const closedPath = item.shapeType !== 'path' || item.pathClosed !== false;
 		if ((item.fillEnabled ?? true) && closedPath) {

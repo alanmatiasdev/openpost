@@ -40,6 +40,9 @@ export function scaleItemForCanvas(
 		fontSize: item.fontSize === undefined ? undefined : item.fontSize * scaleY,
 		letterSpacing: item.letterSpacing === undefined ? undefined : item.letterSpacing * scaleX,
 		strokeWidth: item.strokeWidth === undefined ? undefined : item.strokeWidth * radiusScale,
+		shapeCornerRadius:
+			item.shapeCornerRadius === undefined ? undefined : item.shapeCornerRadius * radiusScale,
+		maskFeather: item.maskFeather === undefined ? undefined : item.maskFeather * radiusScale,
 		paddingX: item.paddingX === undefined ? undefined : item.paddingX * scaleX,
 		paddingY: item.paddingY === undefined ? undefined : item.paddingY * scaleY,
 		borderRadius: item.borderRadius === undefined ? undefined : item.borderRadius * radiusScale,

@@ -65,6 +65,7 @@ import {
 	type MixEntry
 } from './render-plan';
 import { buildTransitionGainCurve } from '../audio/transition-crossfade';
+import { shapeMasksForTrack } from '../shapes/masks';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
@@ -458,6 +459,17 @@ export class TimelineFrameRenderer {
 
 	async render(frame: number): Promise<OffscreenCanvas> {
 		this.stackCompositor.beginFrame(this.width, this.height, this.backgroundColor);
+		const activeMasks = this.orderedItems
+			.filter(
+				(item) => item.type === 'shape' && item.isMask === true && isVisibleAtFrame(item, frame)
+			)
+			.map((item) =>
+				scaleItemForCanvas(
+					resolveAnimatedItemAt(item, frame),
+					this.width / this.project.metadata.width,
+					this.height / this.project.metadata.height
+				)
+			);
 
 		const blend = transitionBlendAtFrame(this.transitions, this.itemsById, frame);
 		const resolveParticipant = async (
@@ -475,10 +487,22 @@ export class TimelineFrameRenderer {
 				frame
 			);
 			const source = await this.sourceForItem(resolvedItem, item, frame);
-			return source ? { source, item: resolvedItem, alpha: itemOpacity(resolvedItem) } : null;
+			return source
+				? {
+						source,
+						item: resolvedItem,
+						alpha: itemOpacity(resolvedItem),
+						masks: shapeMasksForTrack(
+							activeMasks,
+							this.trackOrderById.get(item.trackId) ?? 0,
+							this.trackOrderById
+						)
+					}
+				: null;
 		};
 		let transitionRendered = false;
 		for (const item of this.orderedItems) {
+			if (item.type === 'shape' && item.isMask === true) continue;
 			if (
 				!isVisibleAtFrame(item, frame) &&
 				item.id !== blend?.outgoingId &&
@@ -511,7 +535,8 @@ export class TimelineFrameRenderer {
 				participant.source,
 				participant.item,
 				participant.alpha,
-				frame / this.fps
+				frame / this.fps,
+				participant.masks
 			);
 		}
 

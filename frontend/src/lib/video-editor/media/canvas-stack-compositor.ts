@@ -13,6 +13,7 @@ import { blendImageData } from '../effects/gpu/cpu-blend';
 import { mediaDrawGeometry } from './render-geometry';
 import { transitionRegistry } from '../transitions';
 import { TransitionPipeline } from '../transitions/gpu/pipeline';
+import { ShapeMaskRasterizer } from '../shapes/masks';
 
 type StackCanvas = HTMLCanvasElement | OffscreenCanvas;
 type StackContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -31,6 +32,7 @@ export interface StackTransitionParticipant {
 	source: StackLayerSource;
 	item: TimelineItem;
 	alpha: number;
+	masks?: TimelineItem[];
 }
 
 function createStackCanvas(): StackCanvas {
@@ -111,6 +113,7 @@ export class CanvasStackCompositor {
 	private readonly layerContext: StackContext;
 	private readonly gpuCanvas: StackCanvas;
 	private readonly gpuCompositor: GpuCompositor | null;
+	private readonly maskRasterizer = new ShapeMaskRasterizer();
 	private readonly transitionLeftCanvas: StackCanvas | null;
 	private readonly transitionRightCanvas: StackCanvas | null;
 	private readonly transitionOutputCanvas: StackCanvas | null;
@@ -245,10 +248,17 @@ export class CanvasStackCompositor {
 		return this.gpuCanvas;
 	}
 
-	compositeLayer(source: StackLayerSource, item: TimelineItem, alpha: number, time: number): void {
+	compositeLayer(
+		source: StackLayerSource,
+		item: TimelineItem,
+		alpha: number,
+		time: number,
+		masks: readonly TimelineItem[] = []
+	): void {
 		const processed = this.renderGpuEffects(source, item, time);
 		const blendMode = item.blendMode ?? 'normal';
-		if (!isNonNormalBlend(blendMode)) {
+		const needsLayerCanvas = masks.length > 0 || isNonNormalBlend(blendMode);
+		if (!needsLayerCanvas) {
 			drawTransformedLayer(
 				this.context,
 				processed,
@@ -276,6 +286,15 @@ export class CanvasStackCompositor {
 			this.height,
 			alpha
 		);
+		this.maskRasterizer.apply(this.layerContext, masks, this.width, this.height);
+
+		if (!isNonNormalBlend(blendMode)) {
+			this.context.globalAlpha = 1;
+			this.context.globalCompositeOperation = 'source-over';
+			this.context.filter = 'none';
+			this.context.drawImage(this.layerCanvas, 0, 0, this.width, this.height);
+			return;
+		}
 
 		if (
 			this.gpuCompositor?.render(this.layerCanvas, this.width, this.height, [], {
@@ -335,8 +354,8 @@ export class CanvasStackCompositor {
 
 		leftStack.beginFromBackdrop(this.canvas, this.width, this.height);
 		rightStack.beginFromBackdrop(this.canvas, this.width, this.height);
-		leftStack.compositeLayer(outgoing.source, outgoing.item, outgoing.alpha, time);
-		rightStack.compositeLayer(incoming.source, incoming.item, incoming.alpha, time);
+		leftStack.compositeLayer(outgoing.source, outgoing.item, outgoing.alpha, time, outgoing.masks);
+		rightStack.compositeLayer(incoming.source, incoming.item, incoming.alpha, time, incoming.masks);
 		if (outputCanvas.width !== this.width) outputCanvas.width = this.width;
 		if (outputCanvas.height !== this.height) outputCanvas.height = this.height;
 		outputContext.globalAlpha = 1;

@@ -499,7 +499,7 @@
 <div
 	class="absolute overflow-hidden"
 	style={layerStyle}
-	style:visibility={hideContent ? 'hidden' : undefined}
+	style:visibility={hideContent || resolved.isMask ? 'hidden' : undefined}
 	role="presentation"
 	aria-hidden={deferEffects ? 'true' : undefined}
 	onpointerdown={onselect}

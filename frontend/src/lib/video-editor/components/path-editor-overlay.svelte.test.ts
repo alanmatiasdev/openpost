@@ -97,4 +97,39 @@ describe('PathEditorOverlay', () => {
 		expect(item?.transform?.height).toBeLessThan(200);
 		expect(onedit).toHaveBeenCalledTimes(3);
 	});
+
+	it('reuses the path editor for masks and only permits a closed result', async () => {
+		const mask = { ...pathItem(), isMask: true, maskType: 'clip' as const };
+		timelineStore.setAll({ fps: 30, currentFrame: 0, tracks: [track], items: [mask] });
+		const screen = await render(PathEditorOverlay, {
+			item: timelineStore.itemById.get('path')!,
+			canvasWidth: 400,
+			canvasHeight: 200,
+			boxStyle: 'left:0;top:0;width:400px;height:200px;transform:none',
+			screenScale: 1,
+			onedit: vi.fn()
+		});
+		screen.container.style.width = '400px';
+		screen.container.style.height = '240px';
+		screen.container.style.position = 'relative';
+		const currentSvg = () => {
+			const svg = screen.container.querySelector<SVGSVGElement>('svg');
+			if (!svg) throw new Error('mask path editor did not render');
+			return svg;
+		};
+
+		drawPoint(currentSvg(), 40, 40);
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+		drawPoint(currentSvg(), 340, 40);
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+		drawPoint(currentSvg(), 200, 160);
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+
+		expect(timelineStore.itemById.get('path')?.pathVertices).toHaveLength(3);
+		expect(screen.getByRole('button', { name: 'Finish open' }).query()).toBeNull();
+		screen.container
+			.querySelector<HTMLElement>('[data-path-editor]')
+			?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(timelineStore.itemById.get('path')?.pathClosed).toBe(true);
+	});
 });

@@ -4,6 +4,7 @@ import { blendImageData } from '../effects/gpu/cpu-blend';
 import { createGpuCompositor } from '../effects/gpu/compositor';
 import type { TimelineItem } from '../project/types';
 import { CanvasStackCompositor } from './canvas-stack-compositor';
+import { doesShapeMaskAffectTrack } from '../shapes/masks';
 
 function solid(color: string, width = 4, height = 4): HTMLCanvasElement {
 	const canvas = document.createElement('canvas');
@@ -27,6 +28,29 @@ function layer(blendMode: BlendMode, opacity = 1): TimelineItem {
 		blendMode,
 		transform: { width: 4, height: 4, opacity }
 	};
+}
+
+function mask(overrides: Partial<TimelineItem> = {}): TimelineItem {
+	return {
+		id: 'mask',
+		trackId: 'mask-track',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Mask',
+		type: 'shape',
+		shapeType: 'rectangle',
+		isMask: true,
+		maskType: 'clip',
+		maskOpacity: 100,
+		transform: { width: 4, height: 8 },
+		...overrides
+	};
+}
+
+function pixelAt(canvas: HTMLCanvasElement, x: number, y: number): number[] {
+	const context = canvas.getContext('2d', { willReadFrequently: true });
+	if (!context) throw new Error('2D canvas unavailable');
+	return Array.from(context.getImageData(x, y, 1, 1).data);
 }
 
 function pixel(canvas: HTMLCanvasElement): number[] {
@@ -54,6 +78,73 @@ function displayedPixels(canvas: HTMLCanvasElement): Uint8ClampedArray {
 }
 
 describe('CanvasStackCompositor', () => {
+	it('scopes masks to tracks below their timeline position', () => {
+		expect(doesShapeMaskAffectTrack(0, 1)).toBe(true);
+		expect(doesShapeMaskAffectTrack(0, 3)).toBe(true);
+		expect(doesShapeMaskAffectTrack(1, 1)).toBe(false);
+		expect(doesShapeMaskAffectTrack(2, 0)).toBe(false);
+	});
+
+	it('clips one layer without clipping the project background', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		stack.beginFrame(8, 8, '#0000ff');
+		const item = { ...layer('normal'), transform: { width: 8, height: 8 } };
+
+		stack.compositeLayer({ source: solid('#ff0000', 8, 8), width: 8, height: 8 }, item, 1, 0, [
+			mask()
+		]);
+
+		expect(pixelAt(output, 4, 4)).toEqual([255, 0, 0, 255]);
+		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 255, 255]);
+		stack.dispose();
+	});
+
+	it('supports inverted and partial-opacity alpha masks', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		const item = { ...layer('normal'), transform: { width: 8, height: 8 } };
+		stack.beginFrame(8, 8, '#000000');
+		stack.compositeLayer({ source: solid('#ff0000', 8, 8), width: 8, height: 8 }, item, 1, 0, [
+			mask({ maskType: 'alpha', maskOpacity: 50 })
+		]);
+		const [insideRed] = pixelAt(output, 4, 4);
+		expect(insideRed).toBeGreaterThanOrEqual(126);
+		expect(insideRed).toBeLessThanOrEqual(129);
+		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 0, 255]);
+
+		stack.beginFrame(8, 8, '#000000');
+		stack.compositeLayer({ source: solid('#ff0000', 8, 8), width: 8, height: 8 }, item, 1, 0, [
+			mask({ maskInvert: true })
+		]);
+		expect(pixelAt(output, 4, 4)).toEqual([0, 0, 0, 255]);
+		expect(pixelAt(output, 0, 4)).toEqual([255, 0, 0, 255]);
+		stack.dispose();
+	});
+
+	it('intersects multiple masks and feathers alpha edges', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		const item = { ...layer('normal'), transform: { width: 16, height: 16 } };
+		stack.beginFrame(16, 16, '#000000');
+		stack.compositeLayer({ source: solid('#ffffff', 16, 16), width: 16, height: 16 }, item, 1, 0, [
+			mask({ transform: { width: 8, height: 16 } }),
+			mask({ id: 'mask-2', transform: { width: 16, height: 8 } })
+		]);
+		expect(pixelAt(output, 8, 8)).toEqual([255, 255, 255, 255]);
+		expect(pixelAt(output, 8, 1)).toEqual([0, 0, 0, 255]);
+		expect(pixelAt(output, 1, 8)).toEqual([0, 0, 0, 255]);
+
+		stack.beginFrame(16, 16, '#000000');
+		stack.compositeLayer({ source: solid('#ffffff', 16, 16), width: 16, height: 16 }, item, 1, 0, [
+			mask({ maskType: 'alpha', maskFeather: 2, transform: { width: 8, height: 16 } })
+		]);
+		const [edge] = pixelAt(output, 4, 8);
+		expect(edge).toBeGreaterThan(0);
+		expect(edge).toBeLessThan(255);
+		stack.dispose();
+	});
+
 	it.each([
 		{ mode: 'multiply' as const, expected: [64, 64, 64, 255] },
 		{ mode: 'screen' as const, expected: [192, 192, 192, 255] }
@@ -215,6 +306,42 @@ describe('CanvasStackCompositor', () => {
 			0
 		);
 		expect(pixel(output)).toEqual([0, 0, 255, 255]);
+		stack.dispose();
+	});
+
+	it('applies each transition participant mask before blending scene branches', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		const outgoing = { ...layer('normal'), transform: { width: 8, height: 8 } };
+		const incoming = { ...outgoing, id: 'incoming' };
+		stack.beginFrame(8, 8, '#0000ff');
+		stack.compositeTransition(
+			{
+				source: { source: solid('#ff0000', 8, 8), width: 8, height: 8 },
+				item: outgoing,
+				alpha: 1,
+				masks: [mask()]
+			},
+			{
+				source: { source: solid('#00ff00', 8, 8), width: 8, height: 8 },
+				item: incoming,
+				alpha: 1,
+				masks: [mask()]
+			},
+			{
+				id: 'transition',
+				type: 'crossfade',
+				presentation: 'dissolve',
+				durationInFrames: 10,
+				fromItemId: outgoing.id,
+				toItemId: incoming.id
+			},
+			0,
+			0
+		);
+
+		expect(pixelAt(output, 4, 4)).toEqual([255, 0, 0, 255]);
+		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 255, 255]);
 		stack.dispose();
 	});
 

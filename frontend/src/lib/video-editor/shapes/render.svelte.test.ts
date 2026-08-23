@@ -131,4 +131,235 @@ describe('shape browser raster', () => {
 			renderer.dispose();
 		}
 	});
+
+	it('masks only lower tracks in the full export compositor', async () => {
+		const tracks = [
+			{
+				id: 'overlay',
+				name: 'Overlay',
+				kind: 'video' as const,
+				height: 64,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: -1
+			},
+			{
+				id: 'mask',
+				name: 'Mask',
+				kind: 'video' as const,
+				height: 64,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: 0
+			},
+			{
+				id: 'content',
+				name: 'Content',
+				kind: 'video' as const,
+				height: 64,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: 1
+			}
+		];
+		const content: TimelineItem = {
+			id: 'content',
+			trackId: 'content',
+			from: 0,
+			durationInFrames: 30,
+			label: 'Content',
+			type: 'text',
+			text: ' ',
+			backgroundColor: '#ff0000',
+			transform: { width: 200, height: 100 }
+		};
+		const circleMask = shape({
+			id: 'mask',
+			trackId: 'mask',
+			shapeType: 'circle',
+			isMask: true,
+			maskType: 'clip',
+			transform: { width: 60, height: 60 }
+		});
+		const overlay: TimelineItem = {
+			...content,
+			id: 'overlay',
+			trackId: 'overlay',
+			backgroundColor: '#0000ff',
+			transform: { x: -90, y: -40, width: 20, height: 20 }
+		};
+		const project: Project = {
+			id: 'mask-export',
+			name: 'Mask export',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 200, height: 100, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks, items: [content, circleMask, overlay] }
+		};
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const output = await renderer.render(0);
+			const context = output.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('Canvas2D is required for mask export validation.');
+			expect([...context.getImageData(100, 50, 1, 1).data]).toEqual([255, 0, 0, 255]);
+			expect([...context.getImageData(50, 50, 1, 1).data]).toEqual([0, 0, 0, 255]);
+			expect([...context.getImageData(5, 5, 1, 1).data]).toEqual([0, 0, 255, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('resolves mask transform keyframes for every rendered frame', async () => {
+		const maskTrack = {
+			id: 'mask',
+			name: 'Mask',
+			kind: 'video' as const,
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const contentTrack = { ...maskTrack, id: 'content', name: 'Content', order: 1 };
+		const content: TimelineItem = {
+			id: 'content',
+			trackId: 'content',
+			from: 0,
+			durationInFrames: 30,
+			label: 'Content',
+			type: 'text',
+			text: ' ',
+			backgroundColor: '#ff0000',
+			transform: { width: 200, height: 100 }
+		};
+		const animatedMask = shape({
+			id: 'mask',
+			trackId: 'mask',
+			isMask: true,
+			maskType: 'clip',
+			transform: { width: 80, height: 100 },
+			keyframes: { x: { frames: [0, 10], values: [-50, 50] } }
+		});
+		const project: Project = {
+			id: 'animated-mask',
+			name: 'Animated mask',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 200, height: 100, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [maskTrack, contentTrack], items: [content, animatedMask] }
+		};
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const first = await renderer.render(0);
+			const firstContext = first.getContext('2d', { willReadFrequently: true });
+			if (!firstContext) throw new Error('Canvas2D is required for animated mask validation.');
+			expect([...firstContext.getImageData(50, 50, 1, 1).data]).toEqual([255, 0, 0, 255]);
+			expect([...firstContext.getImageData(150, 50, 1, 1).data]).toEqual([0, 0, 0, 255]);
+
+			const last = await renderer.render(10);
+			const lastContext = last.getContext('2d', { willReadFrequently: true });
+			if (!lastContext) throw new Error('Canvas2D is required for animated mask validation.');
+			expect([...lastContext.getImageData(50, 50, 1, 1).data]).toEqual([0, 0, 0, 255]);
+			expect([...lastContext.getImageData(150, 50, 1, 1).data]).toEqual([255, 0, 0, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('keeps shape masks inside nested composition rendering', async () => {
+		const mainTrack = {
+			id: 'main',
+			name: 'Main',
+			kind: 'video' as const,
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const maskTrack = { ...mainTrack, id: 'mask', name: 'Mask' };
+		const contentTrack = { ...mainTrack, id: 'content', name: 'Content', order: 1 };
+		const content: TimelineItem = {
+			id: 'content',
+			trackId: 'content',
+			from: 0,
+			durationInFrames: 30,
+			label: 'Content',
+			type: 'text',
+			text: ' ',
+			backgroundColor: '#ff0000',
+			transform: { width: 200, height: 100 }
+		};
+		const nestedMask = shape({
+			id: 'mask',
+			trackId: 'mask',
+			shapeType: 'circle',
+			isMask: true,
+			maskType: 'clip',
+			transform: { width: 60, height: 60 }
+		});
+		const wrapper: TimelineItem = {
+			id: 'wrapper',
+			trackId: 'main',
+			from: 0,
+			durationInFrames: 30,
+			label: 'Nested mask',
+			type: 'composition',
+			compositionId: 'masked-composition',
+			sourceStart: 0,
+			sourceEnd: 30,
+			sourceFps: 30,
+			speed: 1,
+			transform: { width: 200, height: 100 }
+		};
+		const project: Project = {
+			id: 'nested-mask',
+			name: 'Nested mask',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 200, height: 100, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [mainTrack],
+				items: [wrapper],
+				compositions: [
+					{
+						id: 'masked-composition',
+						name: 'Masked composition',
+						items: [content, nestedMask],
+						tracks: [maskTrack, contentTrack],
+						transitions: [],
+						fps: 30,
+						width: 200,
+						height: 100,
+						durationInFrames: 30,
+						backgroundColor: '#0000ff'
+					}
+				]
+			}
+		};
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const output = await renderer.render(0);
+			const context = output.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('Canvas2D is required for nested mask validation.');
+			expect([...context.getImageData(100, 50, 1, 1).data]).toEqual([255, 0, 0, 255]);
+			expect([...context.getImageData(20, 50, 1, 1).data]).toEqual([0, 0, 255, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
 });

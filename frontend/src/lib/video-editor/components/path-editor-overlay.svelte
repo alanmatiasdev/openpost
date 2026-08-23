@@ -40,11 +40,17 @@
 	const width = $derived(Math.max(1, item.transform?.width ?? canvasWidth));
 	const height = $derived(Math.max(1, item.transform?.height ?? canvasHeight));
 	const storedVertices = $derived(item.pathVertices ?? []);
+	const mustClose = $derived(item.isMask === true);
 	const visibleVertices = $derived(
 		draftVertices ?? (pendingVertex ? [...storedVertices, pendingVertex] : storedVertices)
 	);
 	const pathData = $derived(
-		pathSvgData(visibleVertices, width, height, drawing ? false : item.pathClosed !== false)
+		pathSvgData(
+			visibleVertices,
+			width,
+			height,
+			drawing ? false : mustClose || item.pathClosed !== false
+		)
 	);
 	const selectedVertex = $derived(
 		selectedIndex === null ? undefined : visibleVertices[selectedIndex]
@@ -126,7 +132,8 @@
 
 	function finishDrawing(closed: boolean): void {
 		const vertices = storedVertices;
-		if (vertices.length < (closed ? 3 : 2)) return;
+		const resolvedClosed = mustClose || closed;
+		if (vertices.length < (resolvedClosed ? 3 : 2)) return;
 		const fitted = fitDrawnPath(
 			vertices,
 			item.transform ?? { width: canvasWidth, height: canvasHeight },
@@ -138,10 +145,14 @@
 		selectedIndex = null;
 		commit({
 			pathVertices: fitted.vertices,
-			pathClosed: closed,
+			pathClosed: resolvedClosed,
 			transform: fitted.transform,
-			fillEnabled: closed ? (item.fillEnabled ?? true) : false,
-			strokeEnabled: true
+			fillEnabled: item.isMask
+				? item.fillEnabled
+				: resolvedClosed
+					? (item.fillEnabled ?? true)
+					: false,
+			strokeEnabled: item.isMask ? item.strokeEnabled : true
 		});
 	}
 
@@ -253,7 +264,7 @@
 		const vertices = removePathVertex(
 			storedVertices,
 			selectedIndex,
-			item.pathClosed === false ? 2 : 3
+			mustClose || item.pathClosed !== false ? 3 : 2
 		);
 		if (!vertices) return;
 		selectedIndex = Math.min(selectedIndex, vertices.length - 1);
@@ -285,7 +296,7 @@
 	function editorKeydown(event: KeyboardEvent): void {
 		if (drawing && (event.key === 'Enter' || event.key === 'Escape')) {
 			event.preventDefault();
-			finishDrawing(false);
+			finishDrawing(mustClose);
 		} else if (drawing && event.key === 'Backspace') {
 			event.preventDefault();
 			if (storedVertices.length > 0) commit({ pathVertices: storedVertices.slice(0, -1) });
@@ -425,12 +436,14 @@
 		</div>
 		<div class="flex gap-1 rounded bg-black/85 p-1 text-[10px] text-white shadow-lg">
 			{#if drawing}
-				<button
-					type="button"
-					class="rounded px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white"
-					disabled={storedVertices.length < 2}
-					onclick={() => finishDrawing(false)}>{m.video_editor_path_finish_open()}</button
-				>
+				{#if !mustClose}
+					<button
+						type="button"
+						class="rounded px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white"
+						disabled={storedVertices.length < 2}
+						onclick={() => finishDrawing(false)}>{m.video_editor_path_finish_open()}</button
+					>
+				{/if}
 				<button
 					type="button"
 					class="rounded px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white"

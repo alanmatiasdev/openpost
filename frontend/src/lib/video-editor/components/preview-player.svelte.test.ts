@@ -57,6 +57,37 @@ function blendProject(): Project {
 	};
 }
 
+function maskedProject(): Project {
+	const content = colorLayer('content', 'content-track', '#ff0000');
+	content.transform = { width: 8, height: 8 };
+	const mask: TimelineItem = {
+		id: 'mask',
+		trackId: 'mask-track',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Mask',
+		type: 'shape',
+		shapeType: 'circle',
+		isMask: true,
+		maskType: 'clip',
+		maskOpacity: 100,
+		transform: { width: 4, height: 4 }
+	};
+	return {
+		id: 'masked-project',
+		name: 'Masked project',
+		description: '',
+		createdAt: 0,
+		updatedAt: 0,
+		duration: 1,
+		metadata: { width: 8, height: 8, fps: 30, backgroundColor: '#0000ff' },
+		timeline: {
+			tracks: [track('mask-track', 0), track('content-track', 1)],
+			items: [content, mask]
+		}
+	};
+}
+
 function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 	const context = canvas.getContext('2d', { willReadFrequently: true });
 	if (!context) throw new Error('2D canvas unavailable');
@@ -97,6 +128,42 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('matches export pixels for a track-scoped shape mask', async () => {
+		const project = maskedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewPlayer, { selectedItemId: 'mask', onedit: vi.fn() });
+		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
+		expect(preview).not.toBeNull();
+		if (!preview) return;
+
+		await vi.waitFor(() => {
+			const context = preview.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			const center = [...context.getImageData(4, 4, 1, 1).data];
+			const outside = [...context.getImageData(0, 0, 1, 1).data];
+			expect(center).toEqual([255, 0, 0, 255]);
+			expect(outside).toEqual([0, 0, 255, 255]);
+		});
+
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const exported = await renderer.render(0);
+			const context = exported.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('2D canvas unavailable');
+			expect([...context.getImageData(4, 4, 1, 1).data]).toEqual([255, 0, 0, 255]);
+			expect([...context.getImageData(0, 0, 1, 1).data]).toEqual([0, 0, 255, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
 	it('matches export pixels when a top layer multiplies the finished layer below', async () => {
 		const project = blendProject();
 		editorSession.project = project;
