@@ -34,6 +34,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		transcribeClip,
 		addGeneratedSubtitleItem
 	} from '$lib/video-editor/transcript/transcribe-action';
+	import type {
+		ResolvedTranscriptionEngine,
+		TranscribeProgress,
+		TranscriptionSelection
+	} from '$lib/video-editor/transcript/engine/types';
 	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { exportProject } from '$lib/video-editor/media/export';
@@ -46,6 +51,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
+	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
@@ -203,6 +209,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	let transcribing = $state(false);
+	let transcriptionProgress = $state<TranscribeProgress | null>(null);
+	let transcriptionBackend = $state<'webgpu' | 'wasm' | null>(null);
+	let transcriptionFallback = $state<ResolvedTranscriptionEngine | null>(null);
+	let transcriptionAbort: AbortController | null = null;
 
 	function handleAddText(): void {
 		const id = addTextItem(m.video_editor_text_default_label());
@@ -216,25 +226,47 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
-	async function handleTranscribe(): Promise<void> {
+	async function handleTranscribe(selection: TranscriptionSelection): Promise<void> {
 		if (!selectedItemId || transcribing) return;
 		const item = timelineStore.itemById.get(selectedItemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
 		if (!item || !media) return;
 		transcribing = true;
+		transcriptionProgress = null;
+		transcriptionBackend = null;
+		transcriptionFallback = null;
+		const abort = new AbortController();
+		transcriptionAbort = abort;
 		try {
 			const blob = await resolveMediaBlob(media);
 			const file =
 				blob instanceof File ? blob : new File([blob], media.fileName, { type: media.mimeType });
-			const words = await transcribeClip(item, file);
+			const words = await transcribeClip(item, file, {
+				model: selection.model,
+				language: selection.language,
+				quantization: selection.quantization,
+				signal: abort.signal,
+				onProgress: (progress) => (transcriptionProgress = progress),
+				onRuntimeInfo: (runtime) => {
+					if (runtime.backend) transcriptionBackend = runtime.backend;
+				},
+				onFallback: (fallback) => (transcriptionFallback = fallback)
+			});
 			addGeneratedSubtitleItem(item.id, words);
 			editorSession.scheduleAutosave();
 			showToast(m.video_editor_transcribe_done(), 'success');
 		} catch (err) {
-			showToast(err instanceof Error ? err.message : String(err), 'error');
+			if (!(err instanceof DOMException && err.name === 'AbortError')) {
+				showToast(err instanceof Error ? err.message : String(err), 'error');
+			}
 		} finally {
 			transcribing = false;
+			transcriptionAbort = null;
 		}
+	}
+
+	function cancelTranscription(): void {
+		transcriptionAbort?.abort();
 	}
 
 	async function handleImportCaptions(): Promise<void> {
@@ -595,6 +627,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{showTranscript ? m.video_editor_transcript_hide() : m.video_editor_transcript_show()}
 						</Button>
 						{#if showTranscript}
+							<TranscriptionControls
+								canTranscribe={selectedIsMedia}
+								busy={transcribing}
+								progress={transcriptionProgress}
+								backend={transcriptionBackend}
+								fallback={transcriptionFallback}
+								onstart={(selection) => void handleTranscribe(selection)}
+								oncancel={cancelTranscription}
+							/>
 							<div
 								class="mt-1 max-h-64 overflow-y-auto rounded-md border border-[oklch(0.25_0.015_55)] p-1"
 							>

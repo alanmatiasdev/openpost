@@ -35,15 +35,15 @@ Ported from FreeCut (adapt React→Svelte 5 runes, Tailwind 4 + bits-ui `ui/` pr
 | Export pipeline (settings resolution, packet-remux fast path, canvas render orchestrator/engine, render queue)                                                                               | FreeCut `features/export`                                 | Verbatim engine core; reduced item-type renderer surface                                                        |
 | Preview composition rendering                                                                                                                                                                | FreeCut `runtime/composition-runtime`                     | Rewrite in Svelte (largest rewrite surface): `<video>` pool + transform wrappers + text/subtitle canvas overlay |
 
-Dependencies already in `frontend/package.json`: `mediabunny@^1.51.0`, `@huggingface/transformers@3.8.1`, `onnxruntime-web@1.21.0`, `fflate`. No new runtime deps required for v1.
+Dependencies in `frontend/package.json`: `mediabunny@^1.51.0`, `@huggingface/transformers@4.1.0`, `onnxruntime-web@1.26.0-dev.20260410-5e55544225`, and `fflate`.
 
 ### Deliberate reductions vs FreeCut (v1)
 
 - Item types: video, audio, image, text, subtitle-segment. No shape/lottie/gif/composition-nesting/adjustment/controller items.
-- No TTS, music generation, LLM scene detection, semantic search, embeddings, AI vision captions, upscale, frame interpolation.
-- Keyframes: keep data-model hooks if they ride along free; no dopesheet UI in v1.
-- Single top-level sequence per project.
-- Whisper transcription only (base/small/large-v3 turbo, WebGPU→WASM fallback). Parakeet worker deferred.
+- TTS, music generation, upscale, and frame interpolation remain parity work. Local scene captions, semantic and visual search, and embeddings are present.
+- Keyframes include the value graph, dope sheet, spatial curves, transition guards, and shared multi-key editing.
+- Projects support reusable top-level sequences and nested compound clips.
+- Local transcription uses Parakeet by default and offers Whisper Tiny, Base, Small, and Large v3 Turbo, with language and WebGPU fallback.
 - No bundled models/audio: transcription downloads on first use (HF CDN) and caches in-browser; self-hosted offline installs get everything except transcription. Supersedes nothing in ADR 0006 (that ADR concerns distribution of assets we no longer bundle). Editor interaction sounds use `cuelume`, not bundled clips.
 
 ## Quick Cut (lossless)
@@ -80,4 +80,4 @@ Docs/marketing/legal: docs-site `usage/video-editor.md` rewritten for the new mo
 
 ## Out of scope (v1)
 
-Compositions/nesting, keyframe dopesheet UI, Parakeet ASR, TTS/musicgen/AI captions, proxies UI (engine kept), Android wrapper optimization for editors (Chromium-gate applies), collaborative editing, cloud anything.
+TTS, music generation, generated images, upscale, frame interpolation, Android wrapper optimization for editors, collaborative editing, and cloud editing remain outside the initial v1 build. They stay in the active FreeCut parity backlog where applicable.
