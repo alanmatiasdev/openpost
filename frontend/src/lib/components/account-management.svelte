@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { client, type SocialAccount, type ProviderInfo } from '$lib/api/client';
 	import type { AccountManagementProps } from '$lib/account-management';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -57,6 +58,14 @@
 		kind: AccountRemovalKind;
 		account: SocialAccount;
 	};
+
+	function isConnectorAccount(account: SocialAccount): boolean {
+		return Boolean(account.provider_installation_id);
+	}
+
+	function isConnectorProvider(provider: ProviderEntry): boolean {
+		return provider.auth_mode === 'preconfigured' && Boolean(provider.installation_id);
+	}
 
 	let embedded = $derived(mode === 'settings');
 	let selectedWorkspaceId = $derived(workspace?.id ?? '');
@@ -325,7 +334,7 @@
 	}
 
 	function accountRemovalActionLabel(account: SocialAccount, kind: AccountRemovalKind): string {
-		if (account.provider_installation_id) return m.accounts_connector_remove_action();
+		if (isConnectorAccount(account)) return m.accounts_connector_remove_action();
 		if (kind === 'disconnect-destination') return m.accounts_disconnect_destination();
 		const count = grantDestinationCount(account);
 		return count > 1
@@ -337,7 +346,7 @@
 		const action = accountRemovalAction;
 		if (!action) return '';
 		const account = accountDisplayName(action.account);
-		if (action.account.provider_installation_id) {
+		if (isConnectorAccount(action.account)) {
 			return m.accounts_connector_remove_title({ account });
 		}
 		if (action.kind === 'disconnect-destination') {
@@ -354,7 +363,7 @@
 		if (!action) return '';
 		const account = accountDisplayName(action.account);
 		const count = grantDestinationCount(action.account);
-		if (action.account.provider_installation_id) {
+		if (isConnectorAccount(action.account)) {
 			return m.accounts_connector_remove_body({ account });
 		}
 		if (action.kind === 'disconnect-destination') {
@@ -372,7 +381,7 @@
 	function accountRemovalConfirmLabel(): string {
 		const action = accountRemovalAction;
 		if (!action) return '';
-		if (action.account.provider_installation_id) return m.accounts_connector_remove_action();
+		if (isConnectorAccount(action.account)) return m.accounts_connector_remove_action();
 		if (action.kind === 'disconnect-destination') return m.accounts_disconnect_destination();
 		return grantDestinationCount(action.account) > 1
 			? m.accounts_remove_authorization()
@@ -400,7 +409,7 @@
 			if (result.error) throw new Error(result.error.detail || fallback);
 			await loadAccounts();
 			onAccountsChanged();
-			const successMessage = account.provider_installation_id
+			const successMessage = isConnectorAccount(account)
 				? m.accounts_connector_removed_success({ account: accountDisplayName(account) })
 				: action.kind === 'disconnect-destination'
 					? m.accounts_destination_disconnected_success({ account: accountDisplayName(account) })
@@ -810,7 +819,7 @@
 	}
 
 	function providerStatusLabel(provider: ProviderEntry): string {
-		if (provider.auth_mode === 'preconfigured' && providerCanConnect(provider)) {
+		if (isConnectorProvider(provider) && providerCanConnect(provider)) {
 			return m.accounts_custom_connector();
 		}
 		if (provider.status === 'planned') return m.accounts_provider_planned();
@@ -842,6 +851,9 @@
 	}
 
 	function providerStatusClass(provider: ProviderEntry): string {
+		if (isConnectorProvider(provider)) {
+			return 'border-border bg-muted text-muted-foreground';
+		}
 		if (provider.status === 'planned') {
 			return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300';
 		}
@@ -1055,7 +1067,7 @@
 	}
 
 	function beginProviderConnection(provider: ProviderEntry) {
-		if (provider.auth_mode === 'preconfigured') {
+		if (isConnectorProvider(provider)) {
 			void connectConnector(provider);
 			return;
 		}
@@ -1290,11 +1302,12 @@
 												<h3 class="line-clamp-2 min-w-0 text-sm font-semibold break-words">
 													{accountPlatformName(account)}
 												</h3>
-												{#if account.provider_installation_id}
-													<span
-														class="inline-flex shrink-0 items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap text-blue-700 dark:text-blue-300"
-														>{m.accounts_custom_connector()}</span
+												{#if isConnectorAccount(account)}
+													<Badge
+														class="shrink-0 rounded-full border-border bg-muted text-[11px] whitespace-nowrap text-muted-foreground shadow-none"
 													>
+														{m.accounts_custom_connector()}
+													</Badge>
 												{/if}
 												{#if !account.is_active}
 													<span
@@ -1441,14 +1454,14 @@
 												<div class="min-w-0 flex-1">
 													<div class="flex flex-wrap items-center gap-2">
 														<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
-														{#if provider.auth_mode === 'preconfigured' || provider.status === 'planned' || !providerReadiness(provider).quiet}
-															<span
-																class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
+														{#if isConnectorProvider(provider) || provider.status === 'planned' || !providerReadiness(provider).quiet}
+															<Badge
+																class="rounded-full px-2 py-0.5 text-[11px] shadow-none {providerStatusClass(
 																	provider
 																)}"
 															>
 																{providerStatusLabel(provider)}
-															</span>
+															</Badge>
 														{/if}
 													</div>
 													<p class="truncate text-sm text-muted-foreground">
