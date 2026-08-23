@@ -4,6 +4,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -175,7 +176,12 @@
 		accountFeaturesLoading = true;
 		try {
 			const { data, error: err } = await client.GET('/account-features', {
-				params: { query: { workspace_id: workspaceID, account_ids: accountIds.join(',') } }
+				params: {
+					query: {
+						workspace_id: workspaceID,
+						account_ids: accountIds.join(',')
+					}
+				}
 			});
 			if (err) {
 				accountFeatures = [];
@@ -410,12 +416,18 @@
 			await loadAccounts();
 			onAccountsChanged();
 			const successMessage = isConnectorAccount(account)
-				? m.accounts_connector_removed_success({ account: accountDisplayName(account) })
+				? m.accounts_connector_removed_success({
+						account: accountDisplayName(account)
+					})
 				: action.kind === 'disconnect-destination'
-					? m.accounts_destination_disconnected_success({ account: accountDisplayName(account) })
+					? m.accounts_destination_disconnected_success({
+							account: accountDisplayName(account)
+						})
 					: count > 1
 						? m.accounts_authorization_removed_success({ count })
-						: m.accounts_connection_removed_success({ account: accountDisplayName(account) });
+						: m.accounts_connection_removed_success({
+								account: accountDisplayName(account)
+							});
 			return { ok: true, successMessage };
 		} catch (e) {
 			return {
@@ -471,7 +483,9 @@
 		editFeaturesLoading = true;
 		try {
 			const { data, error: err } = await client.GET('/account-features', {
-				params: { query: { workspace_id: selectedWorkspaceId, account_ids: account.id } }
+				params: {
+					query: { workspace_id: selectedWorkspaceId, account_ids: account.id }
+				}
 			});
 			if (err) {
 				editFeaturesError = err.detail ?? m.account_setup_error_load_failed();
@@ -552,13 +566,20 @@
 			const { data, error: err } = await client.GET('/accounts/{platform}/auth-url', {
 				params: {
 					path: { platform: 'x' },
-					query: { workspace_id: selectedWorkspaceId, account_management_mode: mode }
+					query: {
+						workspace_id: selectedWorkspaceId,
+						account_management_mode: mode
+					}
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_x_connection_start_failed());
 			if (!data?.url) throw new Error(m.accounts_x_connection_start_failed());
 			clearConnectionFailure();
-			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
+			onContinue({
+				kind: 'external-oauth',
+				url: data.url,
+				workspaceID: selectedWorkspaceId
+			});
 		} catch (e) {
 			const provider = providerEntries.find((entry) => entry.platform === 'x') ?? null;
 			showConnectError(
@@ -569,7 +590,10 @@
 		}
 	}
 
-	type MastodonConnectionOptions = { serverName?: string; instanceURL?: string };
+	type MastodonConnectionOptions = {
+		serverName?: string;
+		instanceURL?: string;
+	};
 
 	async function connectMastodon(options: MastodonConnectionOptions) {
 		if (!selectedWorkspaceId) {
@@ -750,13 +774,20 @@
 			const { data, error: err } = await client.GET('/accounts/{platform}/auth-url', {
 				params: {
 					path: { platform },
-					query: { workspace_id: selectedWorkspaceId, account_management_mode: mode }
+					query: {
+						workspace_id: selectedWorkspaceId,
+						account_management_mode: mode
+					}
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			if (!data?.url) throw new Error(m.accounts_connect_failed());
 			clearConnectionFailure();
-			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
+			onContinue({
+				kind: 'external-oauth',
+				url: data.url,
+				workspaceID: selectedWorkspaceId
+			});
 		} catch (e) {
 			const provider = providerEntries.find((entry) => entry.platform === platform) ?? null;
 			showConnectError(
@@ -972,7 +1003,9 @@
 				provider.name?.toLowerCase() === instance.toLowerCase()
 		);
 		if (configuredProvider) {
-			return { serverName: configuredProvider.name || configuredProvider.instance_url };
+			return {
+				serverName: configuredProvider.name || configuredProvider.instance_url
+			};
 		}
 
 		if (mastodonProviders.some(isCustomMastodonProvider)) {
@@ -1124,7 +1157,9 @@
 			await loadAccounts();
 			onAccountsChanged();
 			showToast(
-				m.accounts_connector_connected({ count: data?.account_ids?.length ?? 0 }),
+				m.accounts_connector_connected({
+					count: data?.account_ids?.length ?? 0
+				}),
 				undefined,
 				'neutral'
 			);
@@ -1210,12 +1245,18 @@
 					>
 						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 							<div class="space-y-1">
-								<p class="text-sm font-medium">{m.account_features_reminder_title()}</p>
+								<p class="text-sm font-medium">
+									{m.account_features_reminder_title()}
+								</p>
 								<p class="text-xs leading-5 text-muted-foreground">
 									{#if undecidedAccountIds.length === 1}
-										{m.account_features_reminder_body({ account: reminderAccountName() })}
+										{m.account_features_reminder_body({
+											account: reminderAccountName()
+										})}
 									{:else}
-										{m.account_features_reminder_body_plural({ count: undecidedAccountIds.length })}
+										{m.account_features_reminder_body_plural({
+											count: undecidedAccountIds.length
+										})}
 									{/if}
 								</p>
 							</div>
@@ -1453,7 +1494,9 @@
 												</div>
 												<div class="min-w-0 flex-1">
 													<div class="flex flex-wrap items-center gap-2">
-														<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
+														<h3 class="text-sm font-medium">
+															{providerTitle(provider)}
+														</h3>
 														{#if isConnectorProvider(provider) || provider.status === 'planned' || !providerReadiness(provider).quiet}
 															<Badge
 																class="rounded-full px-2 py-0.5 text-[11px] shadow-none {providerStatusClass(
@@ -1536,7 +1579,9 @@
 														</div>
 														<div class="min-w-0 flex-1">
 															<div class="flex flex-wrap items-center gap-2">
-																<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
+																<h3 class="text-sm font-medium">
+																	{providerTitle(provider)}
+																</h3>
 																<span
 																	class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
 																		provider
@@ -1784,7 +1829,9 @@
 					spellcheck="false"
 					required
 				/>
-				<p class="text-sm text-muted-foreground">{m.accounts_discord_url_help()}</p>
+				<p class="text-sm text-muted-foreground">
+					{m.accounts_discord_url_help()}
+				</p>
 			</div>
 			{#if discordError}
 				<InlineNotice
@@ -1808,111 +1855,160 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root open={editAccountDialogOpen} onOpenChange={handleEditAccountDialogOpen}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.accounts_details()}</Dialog.Title>
-			<Dialog.Description>
+<Sheet.Root open={editAccountDialogOpen} onOpenChange={handleEditAccountDialogOpen}>
+	<Sheet.Content
+		side="right"
+		class="w-full! gap-0 overflow-hidden p-0 sm:max-w-lg!"
+		data-testid="account-settings-drawer"
+	>
+		<Sheet.Header class="shrink-0 border-b px-4 py-4 pr-16 text-left sm:px-5">
+			<Sheet.Title>{m.accounts_details()}</Sheet.Title>
+			<Sheet.Description>
 				{m.accounts_details_description()}
-			</Dialog.Description>
-		</Dialog.Header>
+			</Sheet.Description>
+		</Sheet.Header>
 		{#if editingAccount}
 			<form
-				class="space-y-4"
+				class="flex min-h-0 flex-1 flex-col"
 				onsubmit={(e) => {
 					e.preventDefault();
 					updateAccountSlug();
 				}}
 			>
-				<div class="rounded-md bg-muted/40 p-3 text-sm">
-					<div class="font-medium">{accountDisplayName(editingAccount)}</div>
-					<div class="text-muted-foreground">{getPlatformName(editingAccount.platform)}</div>
-					{#if editingAccount.account_kind}
-						<div class="mt-1 text-xs text-muted-foreground capitalize">
-							{editingAccount.account_kind.replaceAll('_', ' ')}
+				<div
+					class="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5"
+					data-testid="account-settings-scroll"
+				>
+					<div class="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
+						<div
+							class="flex size-10 shrink-0 items-center justify-center rounded-lg {getPlatformColor(
+								editingAccount.platform
+							)}"
+						>
+							<PlatformIcon platform={editingAccount.platform} class="size-5 text-white" />
 						</div>
-					{/if}
-					{#if accountServer(editingAccount)}
-						<div class="mt-1 text-xs text-muted-foreground">
-							{m.accounts_server()}: {accountServer(editingAccount)}
+						<div class="min-w-0 flex-1">
+							<div class="truncate text-sm font-semibold">
+								{accountDisplayName(editingAccount)}
+							</div>
+							<div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+								<span>{getPlatformName(editingAccount.platform)}</span>
+								{#if editingAccount.account_kind}
+									<span aria-hidden="true">·</span>
+									<span class="capitalize">
+										{editingAccount.account_kind.replaceAll('_', ' ')}
+									</span>
+								{/if}
+							</div>
+							{#if accountServer(editingAccount)}
+								<div class="truncate text-xs text-muted-foreground">
+									{m.accounts_server()}: {accountServer(editingAccount)}
+								</div>
+							{/if}
 						</div>
-					{/if}
-				</div>
-				{#if editFeaturesLoading}
-					<div class="rounded-md border p-3 text-sm text-muted-foreground">
-						{m.common_loading()}
 					</div>
-				{:else if editFeaturesError}
-					<InlineNotice
-						tone="error"
-						message={editFeaturesError}
-						dismissLabel={m.common_dismiss()}
-						onDismiss={() => (editFeaturesError = '')}
-					/>
-				{:else if editFeatures.filter((f) => f.availability !== 'unsupported').length > 0}
-					<div class="space-y-3">
-						<div class="space-y-1">
-							<h3 class="text-sm font-medium">{m.account_features_details_heading()}</h3>
+					{#if editFeaturesLoading}
+						<div class="rounded-lg border p-3 text-sm text-muted-foreground">
+							{m.common_loading()}
+						</div>
+					{:else if editFeaturesError}
+						<InlineNotice
+							tone="error"
+							message={editFeaturesError}
+							dismissLabel={m.common_dismiss()}
+							onDismiss={() => (editFeaturesError = '')}
+						/>
+					{:else if editFeatures.filter((f) => f.availability !== 'unsupported').length > 0}
+						<section class="space-y-3" aria-labelledby="account-feature-settings-heading">
+							<div class="space-y-1">
+								<h3 id="account-feature-settings-heading" class="text-sm font-semibold">
+									{m.account_features_details_heading()}
+								</h3>
+								<p class="text-xs leading-5 text-muted-foreground">
+									{m.account_features_details_description()}
+								</p>
+							</div>
+							<AccountFeaturePresentation
+								accountId={editingAccount.id}
+								features={editFeatures}
+								selections={editFeatureSelections}
+								mode="details"
+								busy={editAccountLoading}
+								onToggle={(feature, checked) => {
+									editFeatureSelections = {
+										...editFeatureSelections,
+										[feature]: checked
+									};
+								}}
+							/>
 							<p class="text-xs leading-5 text-muted-foreground">
-								{m.account_features_details_description()}
+								{m.account_setup_provider_auth_note()}
 							</p>
+						</section>
+					{/if}
+
+					<details class="group rounded-lg border bg-muted/10">
+						<summary
+							class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium marker:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						>
+							{m.accounts_developer_shortcut()}
+							<span
+								class="text-muted-foreground transition-transform group-open:rotate-180"
+								aria-hidden="true">⌄</span
+							>
+						</summary>
+						<div class="space-y-3 border-t px-3 py-3">
+							<p class="text-xs leading-5 text-muted-foreground">
+								{m.accounts_shortcut_example()}
+								<code class="rounded bg-muted px-1 py-0.5 break-all"
+									>openpost post create --accounts {editAccountSlug || 'main-x'}</code
+								>.
+							</p>
+							<div class="space-y-2">
+								<Label for="account-slug">{m.accounts_shortcut()}</Label>
+								<Input
+									id="account-slug"
+									class="min-h-11 sm:min-h-9"
+									bind:value={editAccountSlug}
+									placeholder="main-x"
+									pattern={accountSlugPattern}
+									required
+								/>
+								<p class="text-xs text-muted-foreground">
+									{m.accounts_shortcut_hint()}
+								</p>
+							</div>
 						</div>
-						<AccountFeaturePresentation
-							accountId={editingAccount.id}
-							features={editFeatures}
-							selections={editFeatureSelections}
-							mode="details"
-							busy={editAccountLoading}
-							onToggle={(feature, checked) => {
-								editFeatureSelections = { ...editFeatureSelections, [feature]: checked };
-							}}
+					</details>
+					{#if editAccountError}
+						<InlineNotice
+							tone="error"
+							message={editAccountError}
+							dismissLabel={m.common_dismiss()}
+							onDismiss={() => (editAccountError = '')}
 						/>
-						<p class="text-xs leading-5 text-muted-foreground">
-							{m.account_setup_provider_auth_note()}
-						</p>
-					</div>
-				{/if}
-				<div class="space-y-3 rounded-md border p-3">
-					<h3 class="text-sm font-medium">{m.accounts_developer_shortcut()}</h3>
-					<p class="text-xs text-muted-foreground">
-						{m.accounts_shortcut_example()}
-						<code class="rounded bg-muted px-1 py-0.5"
-							>openpost post create --accounts {editAccountSlug || 'main-x'}</code
-						>.
-					</p>
-					<div class="space-y-2">
-						<Label for="account-slug">{m.accounts_shortcut()}</Label>
-						<Input
-							id="account-slug"
-							bind:value={editAccountSlug}
-							placeholder="main-x"
-							pattern={accountSlugPattern}
-							required
-						/>
-						<p class="text-xs text-muted-foreground">
-							{m.accounts_shortcut_hint()}
-						</p>
-					</div>
+					{/if}
 				</div>
-				{#if editAccountError}
-					<InlineNotice
-						tone="error"
-						message={editAccountError}
-						dismissLabel={m.common_dismiss()}
-						onDismiss={() => (editAccountError = '')}
-					/>
-				{/if}
-				<div class="flex justify-end gap-2">
-					<Dialog.Close>
+				<Sheet.Footer
+					class="shrink-0 border-t bg-background px-4 py-3 sm:flex-row sm:justify-end sm:px-5"
+					data-testid="account-settings-footer"
+				>
+					<Sheet.Close>
 						{#snippet child({ props })}
-							<Button {...props} variant="outline" type="button">{m.common_cancel()}</Button>
+							<Button {...props} class="min-h-11 sm:min-h-9" variant="outline" type="button">
+								{m.common_cancel()}
+							</Button>
 						{/snippet}
-					</Dialog.Close>
-					<Button type="submit" disabled={editAccountLoading || !editAccountSlug.trim()}>
+					</Sheet.Close>
+					<Button
+						class="min-h-11 sm:min-h-9"
+						type="submit"
+						disabled={editAccountLoading || !editAccountSlug.trim()}
+					>
 						{editAccountLoading ? m.common_saving() : m.accounts_save_details()}
 					</Button>
-				</div>
+				</Sheet.Footer>
 			</form>
 		{/if}
-	</Dialog.Content>
-</Dialog.Root>
+	</Sheet.Content>
+</Sheet.Root>

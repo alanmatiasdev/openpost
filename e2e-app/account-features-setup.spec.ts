@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 function featureResponse(
@@ -662,7 +664,7 @@ test.describe("account setup", () => {
     await expect(focused).toBeVisible();
   });
 
-  test("Account details reflects stored choices and saves", async ({ page, request }) => {
+  test("Account settings drawer reflects stored choices and saves", async ({ page, request }) => {
     const unique = Date.now().toString(36);
     const auth = await registerUser(request, `setup-details-${unique}@example.com`);
     const ws = await createWorkspace(request, auth.token, "Details");
@@ -772,13 +774,84 @@ test.describe("account setup", () => {
       await route.fulfill({ contentType: "application/json", json: [] });
     });
     await page.goto("/accounts");
-    await page
-      .getByTestId(`account-card-${accountId}`)
-      .getByRole("button", { name: /Actions for/ })
-      .click();
-    await page.getByRole("menuitem", { name: "Details" }).click();
+    const openDetails = async () => {
+      await page
+        .getByTestId(`account-card-${accountId}`)
+        .getByRole("button", { name: /Actions for/ })
+        .click();
+      await page.getByRole("menuitem", { name: "Details" }).click();
+    };
+    await openDetails();
     const dialog = page.getByRole("dialog", { name: "Account details" });
+    const drawer = page.getByTestId("account-settings-drawer");
     await expect(dialog).toBeVisible();
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByTestId("account-settings-scroll")).toBeVisible();
+    await expect(drawer.getByTestId("account-settings-footer")).toBeVisible();
+    await expect(drawer.getByText("Developer shortcut")).toBeVisible();
+    const drawerBox = await drawer.boundingBox();
+    expect(drawerBox?.width).toBeLessThanOrEqual(520);
+    expect(drawerBox?.height).toBe(720);
+    if (process.env.OPENPOST_ACCOUNT_SETTINGS_SCREENSHOTS === "1") {
+      const reviewDir = path.resolve(".impeccable/review");
+      await mkdir(reviewDir, { recursive: true });
+      for (const scenario of [
+        {
+          name: "account-settings-desktop-light.png",
+          width: 1280,
+          height: 720,
+          dark: false,
+        },
+        {
+          name: "account-settings-desktop-dark.png",
+          width: 1280,
+          height: 720,
+          dark: true,
+        },
+        {
+          name: "account-settings-phone-390-light.png",
+          width: 390,
+          height: 844,
+          dark: false,
+        },
+        {
+          name: "account-settings-phone-320-dark.png",
+          width: 320,
+          height: 568,
+          dark: true,
+        },
+      ] as const) {
+        await page.setViewportSize({
+          width: scenario.width,
+          height: scenario.height,
+        });
+        await page.evaluate(
+          (dark) => localStorage.setItem("mode-watcher-mode", dark ? "dark" : "light"),
+          scenario.dark,
+        );
+        await page.reload();
+        await openDetails();
+        await expect(drawer).toBeVisible();
+        await expect(page.locator("html")).toHaveClass(scenario.dark ? /dark/u : /^(?!.*dark)/u);
+        await page.waitForTimeout(300);
+        const scenarioBox = await drawer.boundingBox();
+        expect(scenarioBox?.width).toBeLessThanOrEqual(scenario.width < 640 ? scenario.width : 520);
+        expect(scenarioBox?.height).toBe(scenario.height);
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () =>
+                document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+            ),
+          )
+          .toBe(true);
+        await page.screenshot({
+          path: path.join(reviewDir, scenario.name),
+          fullPage: false,
+        });
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
     await expect(dialog.getByLabel("Direct messages")).toBeChecked();
     await expect(dialog.getByLabel("Comments and replies")).not.toBeChecked();
     await expect(dialog.getByLabel("Analytics")).not.toBeChecked();

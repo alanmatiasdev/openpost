@@ -19,7 +19,7 @@ Account management is available directly at `/accounts` and inside **Settings â†
 
 Direct messages, Comments and replies, Analytics, and Grow are optional and per connected account. Each feature starts off for a newly connected account.
 
-After a new connection, OpenPost shows the features that this account supports. You can enable any of them, keep all off, and change them later in Account details. The setup page may group Direct messages and Comments and replies under an Inbox heading, but OpenPost saves and enforces them as separate choices.
+After a new connection, OpenPost shows the features that this account supports on a focused setup page. You can enable any of them, keep all off, and change them later in the Account details drawer. The drawer keeps feature choices together and collapses the developer shortcut until you need it. The setup page may group Direct messages and Comments and replies under an Inbox heading, but OpenPost saves and enforces them as separate choices.
 
 Enabling a feature queues an initial durable refresh for that account. Disabling a feature stops future provider reads and writes for that account without deleting previously collected messages, replies, metrics, or recommendations and without revoking provider authorization. Use provider settings or account removal to revoke provider authorization.
 

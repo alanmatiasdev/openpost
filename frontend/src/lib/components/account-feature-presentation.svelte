@@ -88,15 +88,27 @@
 	{#if f && isOffered(f)}
 		{@const disabled = isDisabled(f) || busy}
 		{@const note = availabilityNote(f)}
-		<label
-			for={`feature-${accountId}-${key}`}
+		<div
 			class={[
-				'flex cursor-pointer gap-3 rounded-md border px-3 py-3 transition-colors',
-				'min-h-11',
-				disabled ? 'cursor-not-allowed bg-muted/20 opacity-85' : 'hover:bg-muted/30',
-				checkedFor(key) && !disabled ? 'border-primary/30 bg-primary/5' : 'border-border bg-card'
+				'flex min-h-11 cursor-pointer items-start gap-3 py-3 transition-colors',
+				disabled ? 'cursor-not-allowed opacity-85' : 'hover:bg-muted/30',
+				checkedFor(key) && !disabled ? 'bg-primary/5' : ''
 			]}
 		>
+			<Label
+				for={`feature-${accountId}-${key}`}
+				class={['min-w-0 flex-1 cursor-pointer items-start', disabled ? 'cursor-not-allowed' : '']}
+			>
+				<span class="min-w-0 flex-1 space-y-1">
+					<span class="block text-sm leading-5 font-medium text-foreground">{labelFor(key)}</span>
+					<span class="block text-xs leading-5 font-normal text-muted-foreground">
+						{descriptionFor(key)}
+					</span>
+					{#if note}
+						<span class="block text-xs leading-5 font-normal text-muted-foreground">{note}</span>
+					{/if}
+				</span>
+			</Label>
 			<Checkbox
 				id={`feature-${accountId}-${key}`}
 				class="mt-0.5 shrink-0"
@@ -104,38 +116,42 @@
 				{disabled}
 				onCheckedChange={(v) => onToggle(key, Boolean(v))}
 			/>
-			<span class="min-w-0 flex-1 space-y-1">
-				<span class="block text-sm leading-5 font-medium text-foreground">{labelFor(key)}</span>
-				<span class="block text-xs leading-5 text-muted-foreground">{descriptionFor(key)}</span>
-				{#if note}
-					<span class="block text-xs leading-5 text-muted-foreground">{note}</span>
-				{/if}
-			</span>
-		</label>
+		</div>
 	{/if}
 {/snippet}
 
-<div class="space-y-4">
-	{#if inboxKeys.some((k) => isOffered(featureFor(k)))}
-		<div class="space-y-3 rounded-lg border bg-card p-3 sm:p-4">
-			<div class="space-y-1">
-				<h3 class="text-sm font-semibold tracking-tight">{m.account_setup_inbox_title()}</h3>
-				<p class="text-xs leading-5 text-muted-foreground">
-					{m.account_setup_inbox_description()}
-				</p>
+{#if mode === 'details'}
+	<div class="divide-y rounded-lg border bg-card px-3">
+		{#each [...inboxKeys, ...soloKeys] as key (key)}
+			{@render featureRow(key)}
+		{/each}
+	</div>
+{:else}
+	<div class="space-y-4">
+		{#if inboxKeys.some((k) => isOffered(featureFor(k)))}
+			<div class="space-y-3">
+				<div class="space-y-1">
+					<h3 class="text-sm font-semibold tracking-tight">
+						{m.account_setup_inbox_title()}
+					</h3>
+					<p class="text-xs leading-5 text-muted-foreground">
+						{m.account_setup_inbox_description()}
+					</p>
+				</div>
+				<div class="divide-y rounded-lg border bg-card px-3">
+					{#each inboxKeys as key (key)}
+						{@render featureRow(key)}
+					{/each}
+				</div>
 			</div>
-			<div class="space-y-2">
-				{#each inboxKeys as key (key)}
+		{/if}
+
+		{#if soloKeys.some((key) => isOffered(featureFor(key)))}
+			<div class="divide-y rounded-lg border bg-card px-3">
+				{#each soloKeys as key (key)}
 					{@render featureRow(key)}
 				{/each}
 			</div>
-		</div>
-	{/if}
-
-	{#each soloKeys as key (key)}
-		{@const f = featureFor(key)}
-		{#if f && isOffered(f)}
-			{@render featureRow(key)}
 		{/if}
-	{/each}
-</div>
+	</div>
+{/if}

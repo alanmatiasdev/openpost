@@ -274,6 +274,39 @@ async function prepareGrow(page: Page, request: Parameters<typeof registerUser>[
   return { fixture, workspace };
 }
 
+test("Grow filters and orders the selected account's recommendations", async ({
+  page,
+  request,
+}, testInfo) => {
+  await prepareGrow(page, request, `controls-${Date.now().toString(36)}-${testInfo.workerIndex}`);
+
+  await expect(page.getByTestId("grow-result-count")).toHaveText("6 people");
+
+  await page.getByTestId("grow-view-select").click();
+  await page.getByRole("option", { name: "Follows you" }).click();
+  await expect(page.getByTestId("growth-profile-card")).toHaveCount(1);
+  await expect(page.getByText("Pieter Levels")).toBeVisible();
+
+  await page.getByTestId("grow-view-select").click();
+  await page.getByRole("option", { name: "All recommendations" }).click();
+  await page.getByTestId("grow-mutuals-select").click();
+  await page.getByRole("option", { name: "5 or more" }).click();
+  await expect(page.getByTestId("growth-profile-card")).toHaveCount(1);
+  await expect(page.getByText("Pieter Levels")).toBeVisible();
+
+  await page.getByRole("button", { name: "Reset filters" }).click();
+  await page.getByTestId("grow-sort-select").click();
+  await page.getByRole("option", { name: "Most mutuals" }).click();
+  await expect(page.getByTestId("growth-profile-card").first()).toContainText("Pieter Levels");
+
+  await page.getByTestId("grow-sort-select").click();
+  await page.getByRole("option", { name: "Follow-back potential" }).click();
+  await expect(page.getByTestId("growth-profile-card").first()).toContainText("Pieter Levels");
+  await expect(
+    page.getByText("Estimated from follows, mutuals, and account balance."),
+  ).toBeVisible();
+});
+
 test("Grow keeps follow settlement stable across an overlapping list snapshot", async ({
   page,
   request,

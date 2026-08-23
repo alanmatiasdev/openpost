@@ -11,6 +11,7 @@ import {
 	isSyncOk,
 	canonicalSyncStatuses,
 	syncErrorKind,
+	applyGrowthControls,
 	growthRankBucket,
 	growthMutualBucket,
 	StaleGuard,
@@ -92,6 +93,82 @@ describe('growth-helpers', () => {
 		expect(selectInitialAccount(list, null)).toBe('1');
 		expect(selectInitialAccount(list, '2')).toBe('2');
 		expect(selectInitialAccount(list, 'unknown')).toBe('1');
+	});
+
+	it('filters recommendations to people who already follow the selected account', () => {
+		const recommendations = [
+			rec({ id: 'all-1', handle: 'one', follows_viewer: false, score: 90 }),
+			rec({
+				id: 'follower',
+				handle: 'follower',
+				follows_viewer: true,
+				score: 20
+			}),
+			rec({ id: 'all-2', handle: 'two', follows_viewer: false, score: 80 })
+		];
+
+		expect(
+			applyGrowthControls(recommendations, {
+				view: 'follows_you',
+				sort: 'best_match',
+				minimumMutuals: 0
+			}).map((item) => item.id)
+		).toEqual(['follower']);
+	});
+
+	it('sorts follow-back potential from known followers to balanced accounts', () => {
+		const recommendations = [
+			rec({
+				id: 'celebrity',
+				handle: 'celebrity',
+				followers_count: 100_000,
+				following_count: 100,
+				mutual_count: 8,
+				score: 99
+			}),
+			rec({
+				id: 'balanced',
+				handle: 'balanced',
+				followers_count: 800,
+				following_count: 720,
+				mutual_count: 3,
+				score: 60
+			}),
+			rec({
+				id: 'follows-you',
+				handle: 'follows-you',
+				follows_viewer: true,
+				followers_count: 50_000,
+				following_count: 10,
+				mutual_count: 0,
+				score: 10
+			})
+		];
+
+		expect(
+			applyGrowthControls(recommendations, {
+				view: 'all',
+				sort: 'follow_back',
+				minimumMutuals: 0
+			}).map((item) => item.id)
+		).toEqual(['follows-you', 'balanced', 'celebrity']);
+	});
+
+	it('applies a minimum mutual count without mutating the stored order', () => {
+		const recommendations = [
+			rec({ id: 'one', handle: 'one', mutual_count: 1, score: 30 }),
+			rec({ id: 'five', handle: 'five', mutual_count: 5, score: 20 }),
+			rec({ id: 'three', handle: 'three', mutual_count: 3, score: 10 })
+		];
+
+		expect(
+			applyGrowthControls(recommendations, {
+				view: 'all',
+				sort: 'mutuals',
+				minimumMutuals: 3
+			}).map((item) => item.id)
+		).toEqual(['five', 'three']);
+		expect(recommendations.map((item) => item.id)).toEqual(['one', 'five', 'three']);
 	});
 
 	it('maps exact mutual copy with remaining count', () => {
@@ -206,7 +283,10 @@ describe('growth-helpers', () => {
 	it('maps syncErrorKind for canonical failure statuses', () => {
 		expect(syncErrorKind({ status: 'rate_limited' } as never)).toBe('rate_limited');
 		expect(
-			syncErrorKind({ status: 'permission_required', error_code: 'permission' } as never)
+			syncErrorKind({
+				status: 'permission_required',
+				error_code: 'permission'
+			} as never)
 		).toBe('auth');
 		expect(syncErrorKind({ status: 'failed' } as never)).toBe('failed');
 		expect(syncErrorKind({ status: 'temporarily_unavailable' } as never)).toBe('failed');

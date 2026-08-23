@@ -32,10 +32,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		syncErrorKind,
 		growthRankBucket,
 		growthMutualBucket,
+		applyGrowthControls,
 		StaleGuard,
 		terminalRemovalDelay
 	} from '$lib/growth-helpers';
-	import type { RecommendationView, SyncStateView } from '$lib/growth-helpers';
+	import type {
+		GrowthSort,
+		GrowthView,
+		RecommendationView,
+		SyncStateView
+	} from '$lib/growth-helpers';
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import UserRoundPlusIcon from '@lucide/svelte/icons/user-round-plus';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
@@ -62,6 +68,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	let toastMessage = $state('');
 	let toastTone = $state<'neutral' | 'success' | 'error'>('neutral');
 	let refreshQueued = $state(false);
+	let growthView = $state<GrowthView>('all');
+	let growthSort = $state<GrowthSort>('best_match');
+	let minimumMutuals = $state(0);
 	const growthGuard = new StaleGuard();
 	const accountsGuard = new StaleGuard();
 	let pendingSessionIds = $state.raw<Set<string>>(new Set());
@@ -130,6 +139,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		!isStaleDisabled && !growDisabled && Boolean(selectedAccountID) && !noCompatible && !noEligible
 	);
 	const canFollow = $derived(!isStaleDisabled && !growDisabled);
+	const visibleItems = $derived(
+		applyGrowthControls(items, {
+			view: growthView,
+			sort: growthSort,
+			minimumMutuals
+		})
+	);
+	const controlsActive = $derived(
+		growthView !== 'all' || growthSort !== 'best_match' || minimumMutuals !== 0
+	);
+	const filterEmpty = $derived(showGrid && items.length > 0 && visibleItems.length === 0);
+	const resultCountText = $derived(
+		visibleItems.length === 1
+			? m.grow_result_count_one()
+			: m.grow_result_count_many({ count: visibleItems.length })
+	);
 
 	function resetGrowthForSwitch() {
 		growthGuard.next();
@@ -140,6 +165,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		pendingSessionIds = new Set();
 		refreshQueued = false;
 		loading = true;
+	}
+
+	function resetControls() {
+		growthView = 'all';
+		growthSort = 'best_match';
+		minimumMutuals = 0;
 	}
 
 	onMount(async () => {
@@ -514,7 +545,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	}
 
 	function handleOpenProfile(rec: RecommendationView) {
-		const idx = items.findIndex((r) => r.id === rec.id);
+		const idx = visibleItems.findIndex((r) => r.id === rec.id);
 		captureTelemetryEvent('growth profile opened', {
 			platform: rec.platform,
 			rank_bucket: growthRankBucket(idx >= 0 ? idx + 1 : 1),
@@ -530,9 +561,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		try {
 			const d = new Date(dateStr);
 			if (Number.isNaN(d.getTime())) return dateStr;
-			return new Intl.DateTimeFormat(localeTag, { dateStyle: 'medium', timeStyle: 'short' }).format(
-				d
-			);
+			return new Intl.DateTimeFormat(localeTag, {
+				dateStyle: 'medium',
+				timeStyle: 'short'
+			}).format(d);
 		} catch {
 			return dateStr;
 		}
@@ -661,8 +693,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		{#if isStaleDisabled}
 			<div data-testid="grow-disabled-notice">
 				<InlineNotice tone="warning" message={m.grow_feature_disabled_title()}>
-					<p class="mt-1 text-xs leading-5">{staleDetailMessage(staleGrowFeature)}</p>
-					<p class="mt-1 text-xs leading-5">{m.grow_feature_disabled_notice()}</p>
+					<p class="mt-1 text-xs leading-5">
+						{staleDetailMessage(staleGrowFeature)}
+					</p>
+					<p class="mt-1 text-xs leading-5">
+						{m.grow_feature_disabled_notice()}
+					</p>
 					{#snippet actions()}
 						{#if staleGrowFeature?.availability === 'plan_restricted'}
 							<Button
@@ -711,6 +747,127 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			</div>
 		{/if}
 
+		{#if showGrid && items.length > 0}
+			<section
+				class="rounded-lg border bg-muted/20 p-3"
+				aria-label={m.grow_controls_label()}
+				data-testid="grow-controls"
+			>
+				<div class="flex items-center justify-between gap-3">
+					<p class="text-sm font-medium tabular-nums" data-testid="grow-result-count">
+						{resultCountText}
+					</p>
+					{#if controlsActive}
+						<Button variant="ghost" size="sm" onclick={resetControls}>
+							{m.grow_reset_filters()}
+						</Button>
+					{/if}
+				</div>
+				<div class="mt-3 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:grid-cols-3">
+					<div class="min-w-0 space-y-1.5">
+						<label for="grow-view-select" class="text-xs font-medium text-muted-foreground">
+							{m.grow_view_label()}
+						</label>
+						<Select.Root
+							type="single"
+							value={growthView}
+							onValueChange={(value) => {
+								if (value === 'all' || value === 'follows_you') growthView = value;
+							}}
+						>
+							<Select.Trigger
+								id="grow-view-select"
+								class="h-9 w-full"
+								aria-label={m.grow_view_label()}
+								data-testid="grow-view-select"
+							>
+								<span class="truncate">
+									{growthView === 'follows_you' ? m.grow_view_follows_you() : m.grow_view_all()}
+								</span>
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="all">{m.grow_view_all()}</Select.Item>
+								<Select.Item value="follows_you">{m.grow_view_follows_you()}</Select.Item>
+							</Select.Content>
+						</Select.Root>
+					</div>
+
+					<div class="min-w-0 space-y-1.5 sm:order-3">
+						<label for="grow-mutuals-select" class="text-xs font-medium text-muted-foreground">
+							{m.grow_mutuals_label()}
+						</label>
+						<Select.Root
+							type="single"
+							value={String(minimumMutuals)}
+							onValueChange={(value) => {
+								const next = Number(value);
+								if ([0, 1, 3, 5].includes(next)) minimumMutuals = next;
+							}}
+						>
+							<Select.Trigger
+								id="grow-mutuals-select"
+								class="h-9 w-full"
+								aria-label={m.grow_mutuals_label()}
+								data-testid="grow-mutuals-select"
+							>
+								<span class="truncate">
+									{minimumMutuals === 0
+										? m.grow_mutuals_any()
+										: m.grow_mutuals_minimum({ count: minimumMutuals })}
+								</span>
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="0">{m.grow_mutuals_any()}</Select.Item>
+								<Select.Item value="1">{m.grow_mutuals_minimum({ count: 1 })}</Select.Item>
+								<Select.Item value="3">{m.grow_mutuals_minimum({ count: 3 })}</Select.Item>
+								<Select.Item value="5">{m.grow_mutuals_minimum({ count: 5 })}</Select.Item>
+							</Select.Content>
+						</Select.Root>
+					</div>
+
+					<div class="min-w-0 space-y-1.5 min-[360px]:col-span-2 sm:order-2 sm:col-span-1">
+						<label for="grow-sort-select" class="text-xs font-medium text-muted-foreground">
+							{m.grow_sort_label()}
+						</label>
+						<Select.Root
+							type="single"
+							value={growthSort}
+							onValueChange={(value) => {
+								if (value === 'best_match' || value === 'follow_back' || value === 'mutuals') {
+									growthSort = value;
+								}
+							}}
+						>
+							<Select.Trigger
+								id="grow-sort-select"
+								class="h-9 w-full"
+								aria-label={m.grow_sort_label()}
+								data-testid="grow-sort-select"
+							>
+								<span class="truncate">
+									{growthSort === 'follow_back'
+										? m.grow_sort_follow_back()
+										: growthSort === 'mutuals'
+											? m.grow_sort_mutuals()
+											: m.grow_sort_best_match()}
+								</span>
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="best_match">{m.grow_sort_best_match()}</Select.Item>
+								<Select.Item value="follow_back">{m.grow_sort_follow_back()}</Select.Item>
+								<Select.Item value="mutuals">{m.grow_sort_mutuals()}</Select.Item>
+							</Select.Content>
+						</Select.Root>
+					</div>
+				</div>
+				{#if growthSort === 'follow_back'}
+					<p class="mt-2 text-xs leading-5 text-muted-foreground">
+						{m.grow_follow_back_explanation()}
+					</p>
+				{/if}
+			</section>
+		{/if}
+
 		{#if loading && items.length === 0}
 			<PageLoading layout="grid" items={6} label={m.grow_loading()} />
 		{:else if noCompatible}
@@ -732,12 +889,20 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		{:else if isStaleDisabled}
 			{#if loading}
 				<PageLoading layout="grid" items={6} label={m.grow_loading()} />
-			{:else if items.length > 0}
+			{:else if filterEmpty}
+				<EmptyState
+					icon={UsersIcon}
+					title={m.grow_no_filter_results_title()}
+					description={m.grow_no_filter_results_description()}
+					actionLabel={m.grow_reset_filters()}
+					onAction={resetControls}
+				/>
+			{:else if visibleItems.length > 0}
 				<div
 					class="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
 					data-testid="growth-grid"
 				>
-					{#each items as rec, index (rec.id)}
+					{#each visibleItems as rec, index (rec.id)}
 						<GrowthProfileCard
 							recommendation={rec}
 							position={index + 1}
@@ -776,15 +941,25 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				actionLabel={m.grow_refresh()}
 				onAction={canRefresh ? handleRefresh : undefined}
 			/>
+		{:else if filterEmpty}
+			<EmptyState
+				icon={UsersIcon}
+				title={m.grow_no_filter_results_title()}
+				description={m.grow_no_filter_results_description()}
+				actionLabel={m.grow_reset_filters()}
+				onAction={resetControls}
+			/>
 		{:else if showGrid}
 			{#if busy && items.length > 0}
-				<div class="text-xs text-muted-foreground" aria-live="polite">{m.grow_refreshing()}</div>
+				<div class="text-xs text-muted-foreground" aria-live="polite">
+					{m.grow_refreshing()}
+				</div>
 			{/if}
 			<div
 				class="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
 				data-testid="growth-grid"
 			>
-				{#each items as rec, index (rec.id)}
+				{#each visibleItems as rec, index (rec.id)}
 					<GrowthProfileCard
 						recommendation={rec}
 						position={index + 1}

@@ -5,6 +5,15 @@ export type RecommendationView = components['schemas']['RecommendationView'];
 export type SyncStateView = components['schemas']['SyncStateView'];
 export type SocialAccount = components['schemas']['AccountResponse'];
 
+export type GrowthView = 'all' | 'follows_you';
+export type GrowthSort = 'best_match' | 'follow_back' | 'mutuals';
+
+export interface GrowthControls {
+	view: GrowthView;
+	sort: GrowthSort;
+	minimumMutuals: number;
+}
+
 export function isCompatibleAccount(account: SocialAccount): boolean {
 	if (!account.is_active) return false;
 	const key = getPlatformKey(account.platform);
@@ -48,6 +57,52 @@ export function formatLastUpdated(dateStr: string | null | undefined, locale = '
 	} catch {
 		return '';
 	}
+}
+
+function followBackPotential(rec: RecommendationView): number {
+	if (rec.follows_viewer) return 1_000;
+
+	// Balanced networks carry most of the estimate. Mutuals add bounded support,
+	// so this ordering never implies a certain follow-back outcome.
+	const reciprocitySigma = 1.2;
+	const reciprocityWeight = 100;
+	const maximumMutualEvidence = 15;
+	const mutualEvidenceWeight = 5;
+	const followers = Math.max(0, rec.followers_count) + 1;
+	const following = Math.max(0, rec.following_count) + 1;
+	const logRatio = Math.log(followers / following);
+	const reciprocity = Math.exp(-(logRatio * logRatio) / (2 * reciprocitySigma * reciprocitySigma));
+	const mutualEvidence = Math.min(
+		maximumMutualEvidence,
+		Math.log1p(Math.max(0, rec.mutual_count)) * mutualEvidenceWeight
+	);
+	return reciprocity * reciprocityWeight + mutualEvidence;
+}
+
+function compareFallback(a: RecommendationView, b: RecommendationView): number {
+	if (a.score !== b.score) return b.score - a.score;
+	if (a.mutual_count !== b.mutual_count) return b.mutual_count - a.mutual_count;
+	return a.handle.localeCompare(b.handle, undefined, { sensitivity: 'base' });
+}
+
+export function applyGrowthControls(
+	recommendations: RecommendationView[],
+	controls: GrowthControls
+): RecommendationView[] {
+	const filtered = recommendations.filter((recommendation) => {
+		if (controls.view === 'follows_you' && !recommendation.follows_viewer) return false;
+		return recommendation.mutual_count >= controls.minimumMutuals;
+	});
+
+	return filtered.sort((a, b) => {
+		if (controls.sort === 'follow_back') {
+			const potentialDifference = followBackPotential(b) - followBackPotential(a);
+			if (potentialDifference !== 0) return potentialDifference;
+		} else if (controls.sort === 'mutuals' && a.mutual_count !== b.mutual_count) {
+			return b.mutual_count - a.mutual_count;
+		}
+		return compareFallback(a, b);
+	});
 }
 
 export function shouldPollSync(
@@ -138,7 +193,10 @@ export function mapReasonChips(rec: RecommendationView, translate: TranslateFn):
 	const signals = rec.signals ?? [];
 
 	if (rec.follows_viewer) {
-		chips.push({ key: 'follows_you', label: translate('grow_reason_follows_you') });
+		chips.push({
+			key: 'follows_you',
+			label: translate('grow_reason_follows_you')
+		});
 	}
 	if (rec.mutual_count > 0) {
 		chips.push({
@@ -153,9 +211,15 @@ export function mapReasonChips(rec: RecommendationView, translate: TranslateFn):
 	const hasPopular = signals.includes('most_followed');
 
 	if (hasSuggestion && platformKey === 'bluesky') {
-		chips.push({ key: 'suggested_bluesky', label: translate('grow_reason_suggested_bluesky') });
+		chips.push({
+			key: 'suggested_bluesky',
+			label: translate('grow_reason_suggested_bluesky')
+		});
 	} else if (hasSuggestion && platformKey === 'mastodon') {
-		chips.push({ key: 'suggested_mastodon', label: translate('grow_reason_suggested_mastodon') });
+		chips.push({
+			key: 'suggested_mastodon',
+			label: translate('grow_reason_suggested_mastodon')
+		});
 	}
 
 	if (hasSimilar) {
@@ -185,13 +249,19 @@ export function formatMutualCopy(
 		.filter(Boolean);
 	if (names.length === 0) return null;
 
-	const formatter = new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' });
+	const formatter = new Intl.ListFormat(locale, {
+		style: 'long',
+		type: 'conjunction'
+	});
 	const namesJoined = formatter.format(names);
 
 	if (rec.mutual_exact) {
 		if (rec.mutual_count > names.length) {
 			const remaining = rec.mutual_count - names.length;
-			return translate('grow_followed_by_with_others', { names: namesJoined, count: remaining });
+			return translate('grow_followed_by_with_others', {
+				names: namesJoined,
+				count: remaining
+			});
 		}
 		return translate('grow_followed_by', { names: namesJoined });
 	} else {
@@ -208,11 +278,23 @@ export type FollowButtonState = {
 export function followButtonState(followState: string): FollowButtonState {
 	switch (followState) {
 		case 'pending':
-			return { labelKey: 'grow_following_progress', disabled: true, variant: 'secondary' };
+			return {
+				labelKey: 'grow_following_progress',
+				disabled: true,
+				variant: 'secondary'
+			};
 		case 'requested':
-			return { labelKey: 'grow_requested', disabled: true, variant: 'secondary' };
+			return {
+				labelKey: 'grow_requested',
+				disabled: true,
+				variant: 'secondary'
+			};
 		case 'following':
-			return { labelKey: 'grow_following', disabled: true, variant: 'secondary' };
+			return {
+				labelKey: 'grow_following',
+				disabled: true,
+				variant: 'secondary'
+			};
 		case 'failed':
 			return { labelKey: 'grow_follow', disabled: false, variant: 'default' };
 		default:

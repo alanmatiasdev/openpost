@@ -27,6 +27,10 @@ Existing accounts keep their current behavior after upgrade. Grow becomes enable
 - Following a recommendation always requires Grow to remain enabled for that account and remains an explicit user action. OpenPost never follows an account automatically.
 - The Grow page reads saved recommendations and shows notices for reconnects, unsupported accounts, missing permission, plan restrictions, and update errors.
 
+The account selector scopes recommendations to one connected account. Use **Show** to focus on people who already follow that account, **Minimum mutuals** to require stronger shared-network evidence, and **Sort** to choose Best match, Follow-back potential, or Most mutuals. Reset returns all controls to their defaults and the result count always reflects the current choices.
+
+Follow-back potential is an estimate, not a promised probability. It puts known followers first, then uses mutual connections and the balance between follower and following counts. OpenPost does not display a percentage because providers do not supply enough evidence for a reliable probability.
+
 ## Stored data
 
 OpenPost saves recommendation data and its update status for the account. Grow records do not store provider tokens, post text, or raw provider responses. Changing the feature choice does not revoke provider authorization. Use provider settings or account removal to revoke provider authorization.
