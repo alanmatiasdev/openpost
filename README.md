@@ -3,7 +3,7 @@
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/lockup-dark.svg">
       <source media="(prefers-color-scheme: light)" srcset="./assets/brand/lockup.svg">
-      <img alt="OpenPost" src="./assets/brand/lockup.svg" width="210">
+      <img alt="OpenPost" src="./assets/brand/lockup.svg" width="168" height="42">
     </picture>
   </a>
 </p>
@@ -16,28 +16,16 @@
 
 <p align="center">
   <a href="https://github.com/getopenpost/openpost/releases">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
-      <img src="https://shieldcn.dev/github/release/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Latest release">
-    </picture>
+    <img src="https://img.shields.io/github/v/release/getopenpost/openpost?label=release" alt="Latest release">
   </a>
   <a href="https://github.com/getopenpost/openpost/actions/workflows/ci.yml">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
-      <img src="https://shieldcn.dev/github/ci/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Build status">
-    </picture>
+    <img src="https://img.shields.io/github/actions/workflow/status/getopenpost/openpost/ci.yml?label=build" alt="Build status">
   </a>
   <a href="https://github.com/getopenpost/openpost">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
-      <img src="https://shieldcn.dev/github/stars/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="GitHub stars">
-    </picture>
+    <img src="https://img.shields.io/github/stars/getopenpost/openpost" alt="GitHub stars">
   </a>
   <a href="https://github.com/getopenpost/openpost/releases">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/downloads/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
-      <img src="https://shieldcn.dev/github/downloads/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Release downloads">
-    </picture>
+    <img src="https://img.shields.io/github/downloads/getopenpost/openpost/total" alt="Release downloads">
   </a>
 </p>
 
@@ -52,7 +40,7 @@
 </p>
 
 <p align="center">
-  <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.png" width="94%">
+  <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
 </p>
 
 You already have the material. A launch. An update. Something you learned the hard way. OpenPost takes that and makes it fit each channel. It shows you what each destination allows before you publish, lets you schedule it, and then shows you what actually happened. No hidden rules.
@@ -60,21 +48,21 @@ You already have the material. A launch. An update. Something you learned the ha
 <table>
   <tr>
     <td width="50%" align="center">
-      <img alt="OpenPost monthly publishing calendar with published and scheduled posts" src="./assets/screenshots/calendar-dark.png">
+      <img alt="OpenPost monthly publishing calendar with published and scheduled posts" src="./assets/screenshots/calendar-dark.webp" width="100%">
       <br><strong>Plan the month</strong><br><sub>Drafts, scheduled posts, and published work stay in one calendar.</sub>
     </td>
     <td width="50%" align="center">
-      <img alt="OpenPost analytics with account growth, content results, and follower trend" src="./assets/screenshots/analytics-dark.png">
+      <img alt="OpenPost analytics with account growth, content results, and follower trend" src="./assets/screenshots/analytics-dark.webp" width="100%">
       <br><strong>See what worked</strong><br><sub>Track real provider metrics without mixing views, impressions, and reach.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img alt="OpenPost media library with reusable branded assets" src="./assets/screenshots/media-dark.png">
+      <img alt="OpenPost media library with reusable branded assets" src="./assets/screenshots/media-dark.webp" width="100%">
       <br><strong>Reuse your brand</strong><br><sub>Keep images, videos, designs, and their usage in the shared library.</sub>
     </td>
     <td width="50%" align="center">
-      <img alt="OpenPost connected social channels and available provider connections" src="./assets/screenshots/accounts-dark.png">
+      <img alt="OpenPost connected social channels and available provider connections" src="./assets/screenshots/accounts-dark.webp" width="100%">
       <br><strong>Keep provider truth visible</strong><br><sub>Connect each channel once, then see its real setup and publishing state.</sub>
     </td>
   </tr>
@@ -84,7 +72,7 @@ You already have the material. A launch. An update. Something you learned the ha
 
 - **A composer that respects each channel.** Write once, then fix the text, media, and timing for each account. It will not let you push a 280-character thread to LinkedIn and pretend it worked.
 - **A queue that remembers.** Everything scheduled lives in the database. Restart the server and it is still there. You see if it is queued, published, failed, or waiting to retry.
-- **One place for your work.** Publications, media, calendar, analytics, comments — all in the same workspace. Not five tabs pretending to be one product.
+- **One place for your work.** Publications, media, calendar, analytics, and comments live in the same workspace. Not five tabs pretending to be one product.
 - **Tools where you need them.** Edit an image. Cut a short video. Make a meme. Write alt text. It saves back to your library. No need to open another app.
 - **Same app everywhere.** Web, Android, API, CLI, MCP. Same words, same permissions, same state. I built it that way because different behavior on different surfaces breaks trust.
 
