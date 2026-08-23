@@ -94,4 +94,49 @@ describe('on-canvas motion paths', () => {
 			isKeyframe: true
 		});
 	});
+
+	it('samples stored spatial curves and exposes editable handle coordinates', () => {
+		const vectorItem: TimelineItem = {
+			...item,
+			keyframes: undefined,
+			vectorKeyframes: {
+				position: [
+					{
+						id: 'start',
+						frame: 0,
+						value: { x: -100, y: 0 },
+						easing: 'linear',
+						spatial: {
+							inTangent: { x: -40, y: 0 },
+							outTangent: { x: 0, y: 100 },
+							continuous: false
+						}
+					},
+					{
+						id: 'end',
+						frame: 20,
+						value: { x: 100, y: 0 },
+						easing: 'linear',
+						spatial: {
+							inTangent: { x: 0, y: 100 },
+							outTangent: { x: 40, y: 0 },
+							continuous: false
+						}
+					}
+				]
+			}
+		};
+		const points = buildMotionPathPoints({
+			item: vectorItem,
+			canvasWidth: 1000,
+			canvasHeight: 500,
+			maxSamples: 5
+		});
+		expect(points.find((point) => point.frame === 20)).toMatchObject({ x: 500, y: 325 });
+		expect(points[0]).toMatchObject({
+			vectorId: 'start',
+			inHandle: { x: 360, y: 250 },
+			outHandle: { x: 400, y: 350 }
+		});
+	});
 });

@@ -7,6 +7,7 @@
  */
 import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 import { activeValueAt } from './actions/keyframes';
+import { activePositionKeyframes, interpolatePosition } from './vector-keyframes';
 
 const VISUAL_PROPERTIES: KeyframeProperty[] = [
 	'x',
@@ -66,8 +67,19 @@ export function resolveAnimatedItemAt(item: TimelineItem, absoluteFrame: number)
 		crop: item.crop ? { ...item.crop } : undefined,
 		textShadow: item.textShadow ? { ...item.textShadow } : undefined
 	};
+	const positionTrack = activePositionKeyframes(item);
+	if (positionTrack) {
+		const position = interpolatePosition(positionTrack, absoluteFrame - item.from);
+		if (position) {
+			resolved = {
+				...resolved,
+				transform: { ...resolved.transform, x: position.x, y: position.y }
+			};
+		}
+	}
 
 	for (const property of getAnimatablePropertiesForItem(item)) {
+		if (positionTrack && (property === 'x' || property === 'y')) continue;
 		const value = activeValueAt(item, property, absoluteFrame);
 		if (value === null) continue;
 		resolved = applyResolvedValue(resolved, property, value);

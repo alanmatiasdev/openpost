@@ -162,6 +162,14 @@ function clipboardEntryToInsert(entry: KeyframeClipboardEntry, frame: number): K
 		frame,
 		value: entry.value,
 		easing: entry.easing,
+		...(entry.vectorGroupId && { vectorGroupId: entry.vectorGroupId }),
+		...(entry.spatial && {
+			spatial: {
+				...entry.spatial,
+				inTangent: { ...entry.spatial.inTangent },
+				outTangent: { ...entry.spatial.outTangent }
+			}
+		}),
 		...(entry.easingConfig && {
 			easingConfig: {
 				...entry.easingConfig,

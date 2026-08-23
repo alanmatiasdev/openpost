@@ -6,6 +6,7 @@
 		CropSettings,
 		ItemTransform,
 		KeyframeProperty,
+		SpatialBezierTangents,
 		TimelineItem
 	} from '$lib/video-editor/project/types';
 	import {
@@ -19,6 +20,7 @@
 		type MotionPathPoint,
 		type Point
 	} from '$lib/video-editor/preview/on-canvas-tools';
+	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
 
 	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion';
 	type AnimatedValues = Partial<Record<KeyframeProperty, number>>;
@@ -35,6 +37,8 @@
 		ontextediting,
 		oncommitvalues,
 		oncommitposition,
+		oncreatespatial,
+		oncommitspatial,
 		oncommittext,
 		onseek,
 		onedit
@@ -50,6 +54,8 @@
 		ontextediting: (editing: boolean) => void;
 		oncommitvalues: (frame: number, values: AnimatedValues) => boolean;
 		oncommitposition: (frame: number, x: number, y: number) => boolean;
+		oncreatespatial: (frame: number) => boolean;
+		oncommitspatial: (frame: number, spatial: SpatialBezierTangents) => boolean;
 		oncommittext: (text: string) => void;
 		onseek: (frame: number) => void;
 		onedit: () => void;
@@ -62,6 +68,8 @@
 	let draftCrop = $state<CropSettings | null>(null);
 	let draftText = $state<string | null>(null);
 	let motionDraft = $state<{ frame: number; x: number; y: number } | null>(null);
+	let spatialDraft = $state<{ frame: number; spatial: SpatialBezierTangents } | null>(null);
+	let activeMotionFrame = $state<number | null>(null);
 	let textSession = $state(false);
 	let screenScale = $state(1);
 	let cancellingText = false;
@@ -78,7 +86,18 @@
 	const canEditText = $derived(item.type === 'text');
 	const hasMotion = $derived(positionKeyframeFrames(item).length > 0);
 	const motionPoints = $derived(
-		buildMotionPathPoints({ item, canvasWidth, canvasHeight, preview: motionDraft ?? undefined })
+		buildMotionPathPoints({
+			item,
+			canvasWidth,
+			canvasHeight,
+			preview: motionDraft ?? undefined,
+			spatialPreview: spatialDraft ?? undefined
+		})
+	);
+	const activeMotionPoint = $derived(
+		motionPoints.find(
+			(point) => point.isKeyframe && point.frame === (activeMotionFrame ?? currentFrame)
+		)
 	);
 	const currentTransform = $derived.by(() => {
 		const point = motionPoints.find((candidate) => candidate.frame === motionDraft?.frame);
@@ -120,6 +139,7 @@
 	$effect(() => {
 		if (!isPlaying) return;
 		motionDraft = null;
+		spatialDraft = null;
 		if (activeTool === 'motion') activeTool = 'transform';
 	});
 
@@ -176,6 +196,7 @@
 		draftTransform = null;
 		draftCrop = null;
 		motionDraft = null;
+		spatialDraft = null;
 		ontransformdraft(null);
 		oncropdraft(null);
 		ontextdraft(null);
@@ -491,6 +512,7 @@
 	}
 
 	function startMotionPoint(event: PointerEvent, point: MotionPathPoint): void {
+		activeMotionFrame = point.frame;
 		onseek(point.frame);
 		const start = canvasPoint(event);
 		let axis: 'x' | 'y' | null = null;
@@ -517,6 +539,90 @@
 			},
 			() => (motionDraft = null)
 		);
+	}
+
+	function createMotionHandles(event: MouseEvent, point: MotionPathPoint): void {
+		event.preventDefault();
+		event.stopPropagation();
+		activeMotionFrame = point.frame;
+		onseek(point.frame);
+		if (!point.spatial && oncreatespatial(point.frame)) onedit();
+	}
+
+	function startMotionHandle(
+		event: PointerEvent,
+		point: MotionPathPoint,
+		handle: 'in' | 'out'
+	): void {
+		if (!point.spatial) return;
+		event.stopPropagation();
+		activeMotionFrame = point.frame;
+		onseek(point.frame);
+		const start = canvasPoint(event);
+		const initial = handle === 'in' ? point.spatial.inTangent : point.spatial.outTangent;
+		attachPointerGesture(
+			event,
+			(current, pointer) => {
+				let tangent = {
+					x: initial.x + current.x - start.x,
+					y: initial.y + current.y - start.y
+				};
+				if (pointer.shiftKey) {
+					if (Math.abs(tangent.x) >= Math.abs(tangent.y)) tangent = { x: tangent.x, y: 0 };
+					else tangent = { x: 0, y: tangent.y };
+				}
+				const base = pointer.altKey ? { ...point.spatial!, continuous: false } : point.spatial!;
+				spatialDraft = {
+					frame: point.frame,
+					spatial: withSpatialTangent(base, handle, tangent)
+				};
+			},
+			() => {
+				if (spatialDraft && oncommitspatial(spatialDraft.frame, spatialDraft.spatial)) onedit();
+				spatialDraft = null;
+			},
+			() => (spatialDraft = null)
+		);
+	}
+
+	function motionHandleKeydown(
+		event: KeyboardEvent,
+		point: MotionPathPoint,
+		handle: 'in' | 'out'
+	): void {
+		if (!point.spatial) return;
+		const dx = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+		const dy = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+		if (!dx && !dy) return;
+		event.preventDefault();
+		const step = event.shiftKey ? 10 : 1;
+		const current = handle === 'in' ? point.spatial.inTangent : point.spatial.outTangent;
+		const base = event.altKey ? { ...point.spatial, continuous: false } : point.spatial;
+		if (
+			oncommitspatial(
+				point.frame,
+				withSpatialTangent(base, handle, {
+					x: current.x + dx * step,
+					y: current.y + dy * step
+				})
+			)
+		)
+			onedit();
+	}
+
+	function toggleMotionContinuity(
+		event: MouseEvent,
+		point: MotionPathPoint,
+		handle: 'in' | 'out'
+	): void {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!point.spatial) return;
+		const tangent = handle === 'in' ? point.spatial.inTangent : point.spatial.outTangent;
+		const next = point.spatial.continuous
+			? { ...point.spatial, continuous: false }
+			: withSpatialTangent({ ...point.spatial, continuous: true }, handle, tangent);
+		if (oncommitspatial(point.frame, next)) onedit();
 	}
 
 	function motionKeydown(event: KeyboardEvent, point: MotionPathPoint): void {
@@ -609,6 +715,62 @@
 				stroke-linejoin="round"
 				vector-effect="non-scaling-stroke"
 			></polyline>
+			{#if activeMotionPoint?.spatial && activeMotionPoint.inHandle && activeMotionPoint.outHandle}
+				<line
+					x1={activeMotionPoint.inHandle.x}
+					y1={activeMotionPoint.inHandle.y}
+					x2={activeMotionPoint.outHandle.x}
+					y2={activeMotionPoint.outHandle.y}
+					stroke="black"
+					stroke-width="4"
+					vector-effect="non-scaling-stroke"
+				></line>
+				<line
+					x1={activeMotionPoint.inHandle.x}
+					y1={activeMotionPoint.inHandle.y}
+					x2={activeMotionPoint.outHandle.x}
+					y2={activeMotionPoint.outHandle.y}
+					stroke="white"
+					stroke-width="1.5"
+					vector-effect="non-scaling-stroke"
+				></line>
+				{#each ['in', 'out'] as handle}
+					{@const handlePoint =
+						handle === 'in' ? activeMotionPoint.inHandle : activeMotionPoint.outHandle}
+					<circle
+						class="pointer-events-none"
+						cx={handlePoint.x}
+						cy={handlePoint.y}
+						r={4 / screenScale}
+						fill="white"
+						stroke="black"
+						stroke-width="2"
+						vector-effect="non-scaling-stroke"
+					></circle>
+					<circle
+						class="pointer-events-auto cursor-crosshair focus:outline-none focus-visible:stroke-[oklch(0.78_0.16_45)]"
+						cx={handlePoint.x}
+						cy={handlePoint.y}
+						r={12 / screenScale}
+						fill="transparent"
+						stroke="transparent"
+						stroke-width="2"
+						vector-effect="non-scaling-stroke"
+						role="button"
+						tabindex="0"
+						aria-label={handle === 'in'
+							? m.video_editor_motion_in_tangent({ frame: activeMotionPoint.frame })
+							: m.video_editor_motion_out_tangent({ frame: activeMotionPoint.frame })}
+						onpointerdown={(event) =>
+							startMotionHandle(event, activeMotionPoint, handle as 'in' | 'out')}
+						ondblclick={(event) =>
+							toggleMotionContinuity(event, activeMotionPoint, handle as 'in' | 'out')}
+						onkeydown={(event) =>
+							motionHandleKeydown(event, activeMotionPoint, handle as 'in' | 'out')}
+						><title>{m.video_editor_motion_tangent_hint()}</title></circle
+					>
+				{/each}
+			{/if}
 			{#each motionPoints.filter((point) => point.isKeyframe) as point (point.frame)}
 				<circle
 					class="pointer-events-none"
@@ -633,6 +795,7 @@
 					tabindex="0"
 					aria-label={m.video_editor_motion_keyframe({ frame: point.frame })}
 					onpointerdown={(event) => startMotionPoint(event, point)}
+					ondblclick={(event) => createMotionHandles(event, point)}
 					onkeydown={(event) => motionKeydown(event, point)}
 				></circle>
 			{/each}

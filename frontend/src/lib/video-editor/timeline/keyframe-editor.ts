@@ -5,15 +5,19 @@ import type {
 	EasingType,
 	KeyframeProperty,
 	KeyframeTrack,
+	SpatialBezierTangents,
 	TimelineItem
 } from '$lib/video-editor/project/types';
 import { applyEasingConfig } from './easing';
+import { activePositionKeyframes } from './vector-keyframes';
 
 export interface KeyframeRef {
 	property: KeyframeProperty;
 	frame: number;
 	id?: string;
 	index?: number;
+	/** Shared vector point ID for virtual X/Y lanes. */
+	vectorId?: string;
 }
 
 export interface EditorKeyframe extends KeyframeRef {
@@ -21,6 +25,7 @@ export interface EditorKeyframe extends KeyframeRef {
 	value: number;
 	easing: EasingType;
 	easingConfig?: EasingConfig;
+	spatial?: SpatialBezierTangents;
 }
 
 export interface GraphViewport {
@@ -93,6 +98,22 @@ export const PROPERTY_VALUE_RANGES = {
 } satisfies Record<KeyframeProperty, PropertyValueRange>;
 
 export function editorKeyframes(item: TimelineItem, property: KeyframeProperty): EditorKeyframe[] {
+	if (property === 'x' || property === 'y') {
+		const position = activePositionKeyframes(item);
+		if (position) {
+			return position.map((keyframe, index) => ({
+				property,
+				frame: keyframe.frame,
+				id: property === 'x' ? keyframe.id : `${keyframe.id}:y`,
+				vectorId: keyframe.id,
+				index,
+				value: keyframe.value[property],
+				easing: keyframe.easing,
+				easingConfig: keyframe.easingConfig,
+				spatial: keyframe.spatial
+			}));
+		}
+	}
 	const track = item.keyframes?.[property];
 	if (!track) return [];
 	return track.frames.map((frame, index) => ({

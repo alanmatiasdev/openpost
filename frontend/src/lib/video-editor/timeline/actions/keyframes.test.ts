@@ -6,10 +6,12 @@ import type {
 } from '$lib/video-editor/project/types';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
 import { editorKeyframes } from '../keyframe-editor';
 import {
 	activeValueAt,
+	createPositionSpatialTangents,
 	duplicateKeyframes,
 	insertKeyframes,
 	interpolateAt,
@@ -18,6 +20,7 @@ import {
 	setAnimatedProperties,
 	setAnimatedProperty,
 	setPositionAtFrame,
+	setPositionSpatialTangents,
 	setKeyframe,
 	setKeyframeEasing,
 	updateKeyframes
@@ -146,6 +149,7 @@ describe('removeKeyframe', () => {
 	beforeEach(() => {
 		timelineStore.__resetForTesting();
 		commandHistory.clearHistory();
+		keyframeSelectionStore.clear();
 		timelineStore._setItems([
 			{
 				id: 'a',
@@ -327,6 +331,46 @@ describe('batch keyframe editing', () => {
 		expect(getItem('a').keyframes?.rotation).toBeUndefined();
 	});
 
+	it('pastes a coupled position point with spatial handles and stable virtual refs', () => {
+		const spatial = {
+			inTangent: { x: -30, y: 5 },
+			outTangent: { x: 40, y: 20 },
+			continuous: false
+		};
+		const refs = insertKeyframes('a', [
+			{
+				property: 'x',
+				frame: 25,
+				value: 120,
+				easing: 'ease-out',
+				vectorGroupId: 'source-position',
+				spatial
+			},
+			{
+				property: 'y',
+				frame: 25,
+				value: -80,
+				easing: 'ease-out',
+				vectorGroupId: 'source-position',
+				spatial
+			}
+		]);
+		const position = getItem('a').vectorKeyframes?.position;
+		expect(position).toHaveLength(1);
+		expect(position?.[0]).toMatchObject({
+			frame: 25,
+			value: { x: 120, y: -80 },
+			easing: 'ease-out',
+			spatial
+		});
+		expect(refs).toMatchObject([
+			{ property: 'x', frame: 25, vectorId: position?.[0]?.id },
+			{ property: 'y', frame: 25, vectorId: position?.[0]?.id }
+		]);
+		expect(refs[1]?.id).toBe(`${position?.[0]?.id}:y`);
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
 	it('replaces a paste collision without changing its stable identity', () => {
 		const refs = insertKeyframes('a', [
 			{ property: 'opacity', frame: 20, value: 0.8, easing: 'ease-out' }
@@ -469,6 +513,7 @@ describe('setAnimatedProperty', () => {
 	beforeEach(() => {
 		timelineStore.__resetForTesting();
 		commandHistory.clearHistory();
+		keyframeSelectionStore.clear();
 		timelineStore._setItems([
 			{
 				id: 'animated',
@@ -531,19 +576,102 @@ describe('setAnimatedProperty', () => {
 		]);
 		commandHistory.clearHistory();
 		expect(setPositionAtFrame('animated', 20, 25, 30)).toBe(true);
-		expect(getItem('animated').keyframes?.x).toMatchObject({
-			frames: [0, 10, 20],
-			values: [-10, 25, 10]
-		});
-		expect(getItem('animated').keyframes?.y).toMatchObject({
-			frames: [0, 10, 20],
-			values: [0, 30, 0],
-			easings: ['ease-in', 'linear', 'linear'],
-			easingConfigs: [{ type: 'ease-in' }, null, null]
-		});
+		expect(getItem('animated').keyframes?.x).toBeUndefined();
+		expect(getItem('animated').keyframes?.y).toBeUndefined();
+		expect(getItem('animated').vectorKeyframes?.position).toMatchObject([
+			{ frame: 0, value: { x: -10, y: 0 }, easing: 'ease-in' },
+			{ frame: 10, value: { x: 25, y: 30 }, easing: 'ease-in' },
+			{ frame: 20, value: { x: 10, y: 0 }, easing: 'linear' }
+		]);
+		expect(getItem('animated').animationVersion).toBe(2);
 		expect(commandHistory.undoStack).toHaveLength(1);
 		commandHistory.undo();
-		expect(getItem('animated').keyframes?.y).toBeUndefined();
+		expect(getItem('animated').vectorKeyframes).toBeUndefined();
+		expect(getItem('animated').keyframes?.x).toBeDefined();
+	});
+
+	it('promotes a legacy path when spatial handles are created and keeps edits coupled', () => {
+		timelineStore._updateItems([
+			{
+				id: 'animated',
+				patch: {
+					keyframes: {
+						x: { frames: [0, 20], values: [-30, 30], ids: ['x-a', 'x-b'] },
+						y: { frames: [0, 20], values: [0, 60], ids: ['y-a', 'y-b'] }
+					}
+				}
+			}
+		]);
+		commandHistory.clearHistory();
+		keyframeSelectionStore.replace('animated', ['x-a', 'y-a']);
+
+		expect(createPositionSpatialTangents('animated', 10)).toBe(true);
+		let position = getItem('animated').vectorKeyframes?.position;
+		expect(position?.[0]?.spatial).toEqual({
+			inTangent: { x: -20, y: -20 },
+			outTangent: { x: 20, y: 20 },
+			continuous: true
+		});
+		expect(getItem('animated').keyframes).toBeUndefined();
+		expect([...keyframeSelectionStore.forItem('animated')]).toEqual(['x-a', 'x-a:y']);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		expect(
+			setPositionSpatialTangents('animated', 10, {
+				inTangent: { x: -40, y: 10 },
+				outTangent: { x: 15, y: 25 },
+				continuous: false
+			})
+		).toBe(true);
+		position = getItem('animated').vectorKeyframes?.position;
+		expect(position?.[0]?.spatial).toMatchObject({
+			inTangent: { x: -40, y: 10 },
+			outTangent: { x: 15, y: 25 },
+			continuous: false
+		});
+
+		const xRef = editorKeyframes(getItem('animated'), 'x')[0];
+		if (!xRef) throw new Error('missing promoted X keyframe');
+		expect(updateKeyframes('animated', [{ ref: xRef, frame: 2, value: -25 }])).toBe(true);
+		position = getItem('animated').vectorKeyframes?.position;
+		expect(position?.[0]).toMatchObject({
+			frame: 2,
+			value: { x: -25, y: 0 },
+			spatial: {
+				inTangent: { x: -40, y: 10 },
+				outTangent: { x: 15, y: 25 }
+			}
+		});
+
+		const refs = [
+			editorKeyframes(getItem('animated'), 'x')[0]!,
+			editorKeyframes(getItem('animated'), 'y')[0]!
+		];
+		expect(
+			duplicateKeyframes(
+				'animated',
+				refs.map((ref) => ({ ref, frame: 8, value: ref.value + 5 }))
+			)
+		).toBe(true);
+		position = getItem('animated').vectorKeyframes?.position;
+		expect(position?.map((keyframe) => keyframe.frame)).toEqual([2, 8, 20]);
+		expect(position?.[1]).toMatchObject({
+			value: { x: -20, y: 5 },
+			spatial: {
+				inTangent: { x: -40, y: 10 },
+				outTangent: { x: 15, y: 25 }
+			}
+		});
+		expect(position?.[1]?.id).not.toBe(position?.[0]?.id);
+
+		const yDuplicate = editorKeyframes(getItem('animated'), 'y').find(
+			(keyframe) => keyframe.frame === 8
+		);
+		if (!yDuplicate) throw new Error('missing duplicated Y keyframe');
+		expect(removeKeyframes('animated', [yDuplicate])).toBe(true);
+		expect(
+			getItem('animated').vectorKeyframes?.position?.map((keyframe) => keyframe.frame)
+		).toEqual([2, 20]);
 	});
 });
 

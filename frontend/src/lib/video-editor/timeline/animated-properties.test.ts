@@ -78,4 +78,41 @@ describe('resolveAnimatedItemAt', () => {
 		expect(resolvedText.textShadow).toMatchObject({ blur: 10, color: '#000000' });
 		expect(video.transform).toMatchObject({ x: 10, opacity: 1 });
 	});
+
+	it('uses coupled spatial position ahead of stale scalar X/Y tracks', () => {
+		const video: TimelineItem = {
+			...item('video'),
+			transform: { x: 999, y: 999 },
+			keyframes: {
+				x: { frames: [0, 30], values: [-500, -500] },
+				y: { frames: [0, 30], values: [-500, -500] }
+			},
+			vectorKeyframes: {
+				position: [
+					{
+						id: 'start',
+						frame: 0,
+						value: { x: 0, y: 0 },
+						easing: 'linear',
+						spatial: {
+							inTangent: { x: 0, y: -100 },
+							outTangent: { x: 0, y: 100 }
+						}
+					},
+					{
+						id: 'end',
+						frame: 30,
+						value: { x: 60, y: 0 },
+						easing: 'linear',
+						spatial: {
+							inTangent: { x: 0, y: 100 },
+							outTangent: { x: 0, y: -100 }
+						}
+					}
+				]
+			}
+		};
+
+		expect(resolveAnimatedItemAt(video, 115).transform).toMatchObject({ x: 30, y: 75 });
+	});
 });

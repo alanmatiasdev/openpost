@@ -120,6 +120,33 @@ export interface KeyframeTrack {
 /** Per-property keyframe tracks stored on a timeline item. */
 export type ItemKeyframes = Partial<Record<KeyframeProperty, KeyframeTrack>>;
 
+/** Two-dimensional value used by coupled transform animation. */
+export interface Vector2 {
+	x: number;
+	y: number;
+}
+
+/** Spatial Bezier handles stored as offsets from their keyframe value. */
+export interface SpatialBezierTangents {
+	inTangent: Vector2;
+	outTangent: Vector2;
+	/** Keep the handles opposite and collinear while either handle moves. */
+	continuous?: boolean;
+}
+
+/** A coupled vector keyframe with temporal and spatial interpolation. */
+export interface VectorKeyframe {
+	id: string;
+	frame: number;
+	value: Vector2;
+	easing: EasingType;
+	easingConfig?: EasingConfig;
+	spatial?: SpatialBezierTangents;
+}
+
+export type VectorKeyframeProperty = 'position';
+export type ItemVectorKeyframes = Partial<Record<VectorKeyframeProperty, VectorKeyframe[]>>;
+
 /** Styling for text items and caption rendering. */
 export interface TextStyleFields {
 	fontFamily?: string;
@@ -211,6 +238,14 @@ export interface TimelineItem extends TextStyleFields {
 
 	// Animated properties (keyframes override the static values above)
 	keyframes?: ItemKeyframes;
+	/**
+	 * Coupled transform animation. Kept beside the scalar map so legacy
+	 * projects remain valid and scalar-property code cannot mistake metadata
+	 * for a numeric track.
+	 */
+	vectorKeyframes?: ItemVectorKeyframes;
+	animationVersion?: 2;
+	separatedVectorProperties?: VectorKeyframeProperty[];
 
 	// Clip effects (CSS-filter-semantics color/blur stack; see effects/types.ts)
 	effects?: import('$lib/video-editor/effects/types').ItemEffect[];

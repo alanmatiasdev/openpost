@@ -5,6 +5,7 @@
 	import type {
 		ItemTransform,
 		KeyframeProperty,
+		SpatialBezierTangents,
 		TimelineItem
 	} from '$lib/video-editor/project/types';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
@@ -14,8 +15,12 @@
 	import { paintOrder } from '$lib/video-editor/media/render-plan';
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
-	import { setAnimatedProperties } from '$lib/video-editor/timeline/actions/keyframes';
-	import { setPositionAtFrame } from '$lib/video-editor/timeline/actions/keyframes';
+	import {
+		createPositionSpatialTangents,
+		setAnimatedProperties,
+		setPositionAtFrame,
+		setPositionSpatialTangents
+	} from '$lib/video-editor/timeline/actions/keyframes';
 	import { setCurrentFrame, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import {
 		incomingOpacity,
@@ -459,6 +464,20 @@
 		return committed;
 	}
 
+	function createCanvasSpatialTangents(frame: number): boolean {
+		const committed = selectedItemId ? createPositionSpatialTangents(selectedItemId, frame) : false;
+		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
+		return committed;
+	}
+
+	function commitCanvasSpatialTangents(frame: number, spatial: SpatialBezierTangents): boolean {
+		const committed = selectedItemId
+			? setPositionSpatialTangents(selectedItemId, frame, spatial)
+			: false;
+		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
+		return committed;
+	}
+
 	function commitCanvasText(text: string): void {
 		if (!selectedItemId || !selectedItem) return;
 		updateItemProperties(
@@ -574,6 +593,8 @@
 					ontextediting={(value) => (editingText = value)}
 					oncommitvalues={commitCanvasValues}
 					oncommitposition={commitCanvasPosition}
+					oncreatespatial={createCanvasSpatialTangents}
+					oncommitspatial={commitCanvasSpatialTangents}
 					oncommittext={commitCanvasText}
 					onseek={setCurrentFrame}
 					{onedit}

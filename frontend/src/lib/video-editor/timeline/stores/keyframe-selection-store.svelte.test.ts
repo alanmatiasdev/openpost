@@ -58,4 +58,51 @@ describe('keyframeSelectionStore', () => {
 		expect(keyframeSelectionStore.clipboard).toBeNull();
 		expect(keyframeSelectionStore.isCut).toBe(false);
 	});
+
+	it('copies coupled position values with shared spatial identity', () => {
+		const item = {
+			id: 'clip-a',
+			trackId: 'video',
+			from: 0,
+			durationInFrames: 100,
+			label: 'Clip',
+			type: 'video' as const,
+			vectorKeyframes: {
+				position: [
+					{
+						id: 'position-a',
+						frame: 10,
+						value: { x: 20, y: -30 },
+						easing: 'ease-in' as const,
+						spatial: {
+							inTangent: { x: -10, y: 5 },
+							outTangent: { x: 30, y: 15 },
+							continuous: false
+						}
+					}
+				]
+			}
+		};
+		expect(keyframeSelectionStore.copy(item, new Set(['position-a:y']))).toBe(true);
+		expect(keyframeSelectionStore.clipboard?.keyframes).toMatchObject([
+			{
+				property: 'x',
+				frame: 0,
+				value: 20,
+				vectorGroupId: 'position-a',
+				spatial: { outTangent: { x: 30, y: 15 } }
+			},
+			{
+				property: 'y',
+				frame: 0,
+				value: -30,
+				vectorGroupId: 'position-a',
+				spatial: { outTangent: { x: 30, y: 15 } }
+			}
+		]);
+		expect(keyframeSelectionStore.clipboard?.sourceRefs).toMatchObject([
+			{ property: 'x', vectorId: 'position-a' },
+			{ property: 'y', vectorId: 'position-a' }
+		]);
+	});
 });

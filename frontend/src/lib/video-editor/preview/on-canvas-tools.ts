@@ -4,9 +4,16 @@ import type {
 	ItemKeyframes,
 	ItemTransform,
 	KeyframeProperty,
+	SpatialBezierTangents,
 	TimelineItem
 } from '$lib/video-editor/project/types';
 import { applyEasing, applyEasingConfig } from '$lib/video-editor/timeline/easing';
+import {
+	activePositionKeyframes,
+	interpolatePosition,
+	upsertPositionKeyframe,
+	vectorKeyframesPatch
+} from '$lib/video-editor/timeline/vector-keyframes';
 
 export type CropEdge = 'left' | 'right' | 'top' | 'bottom';
 
@@ -25,6 +32,10 @@ export interface Point {
 export interface MotionPathPoint extends Point {
 	frame: number;
 	isKeyframe: boolean;
+	vectorId?: string;
+	spatial?: SpatialBezierTangents;
+	inHandle?: Point;
+	outHandle?: Point;
 }
 
 const MIN_VISIBLE_RATIO = 0.001;
@@ -131,6 +142,12 @@ export function calculateAnchorDrag(
 }
 
 export function positionKeyframeFrames(item: TimelineItem): number[] {
+	const vector = activePositionKeyframes(item);
+	if (vector) {
+		return vector
+			.filter((keyframe) => keyframe.frame >= 0 && keyframe.frame < item.durationInFrames)
+			.map((keyframe) => item.from + keyframe.frame);
+	}
 	const frames = new Set<number>();
 	for (const property of ['x', 'y'] as const) {
 		for (const frame of item.keyframes?.[property]?.frames ?? []) {
@@ -150,6 +167,14 @@ function evenFrames(start: number, end: number, maxSamples: number): number[] {
 }
 
 function trackValueAt(item: TimelineItem, property: 'x' | 'y', absoluteFrame: number): number {
+	const vector = activePositionKeyframes(item);
+	if (vector) {
+		return (
+			interpolatePosition(vector, absoluteFrame - item.from)?.[property] ??
+			item.transform?.[property] ??
+			0
+		);
+	}
 	const track = item.keyframes?.[property];
 	if (!track || track.frames.length === 0) return item.transform?.[property] ?? 0;
 	const frame = absoluteFrame - item.from;
@@ -178,6 +203,14 @@ function upsertPreviewPosition(
 ): TimelineItem {
 	if (!preview) return item;
 	const relativeFrame = preview.frame - item.from;
+	const vector = activePositionKeyframes(item);
+	if (vector) {
+		const position = upsertPositionKeyframe(vector, relativeFrame, {
+			x: preview.x,
+			y: preview.y
+		});
+		return { ...item, ...vectorKeyframesPatch(item, position) };
+	}
 	const keyframes: ItemKeyframes = { ...item.keyframes };
 	const positionFrames = [
 		...new Set([...(item.keyframes?.x?.frames ?? []), ...(item.keyframes?.y?.frames ?? [])])
@@ -237,36 +270,88 @@ function upsertPreviewPosition(
 	return { ...item, keyframes };
 }
 
+function applySpatialPreview(
+	item: TimelineItem,
+	preview: { frame: number; spatial: SpatialBezierTangents } | undefined
+): TimelineItem {
+	if (!preview) return item;
+	const position = activePositionKeyframes(item)?.map((keyframe) => ({
+		...keyframe,
+		value: { ...keyframe.value },
+		...(keyframe.spatial && {
+			spatial: {
+				...keyframe.spatial,
+				inTangent: { ...keyframe.spatial.inTangent },
+				outTangent: { ...keyframe.spatial.outTangent }
+			}
+		})
+	}));
+	if (!position) return item;
+	const index = position.findIndex((keyframe) => item.from + keyframe.frame === preview.frame);
+	const keyframe = position[index];
+	if (!keyframe) return item;
+	position[index] = {
+		...keyframe,
+		spatial: {
+			...preview.spatial,
+			inTangent: { ...preview.spatial.inTangent },
+			outTangent: { ...preview.spatial.outTangent }
+		}
+	};
+	return { ...item, ...vectorKeyframesPatch(item, position) };
+}
+
 /** Build a bounded sampled position path plus every editable X/Y keyframe. */
 export function buildMotionPathPoints({
 	item,
 	canvasWidth,
 	canvasHeight,
-	maxSamples = 36,
-	preview
+	maxSamples = 96,
+	preview,
+	spatialPreview
 }: {
 	item: TimelineItem;
 	canvasWidth: number;
 	canvasHeight: number;
 	maxSamples?: number;
 	preview?: { frame: number; x: number; y: number };
+	spatialPreview?: { frame: number; spatial: SpatialBezierTangents };
 }): MotionPathPoint[] {
 	const keyframes = positionKeyframeFrames(item);
 	if (keyframes.length === 0) return [];
 	const end = item.from + Math.max(0, item.durationInFrames - 1);
 	if (end <= item.from) return [];
-	const previewed = upsertPreviewPosition(item, preview);
+	const previewed = applySpatialPreview(upsertPreviewPosition(item, preview), spatialPreview);
 	const frames = new Set([...evenFrames(item.from, end, maxSamples), ...keyframes]);
 	if (preview) frames.add(preview.frame);
 	const keyframeSet = new Set(keyframes);
 	const points = [...frames]
 		.sort((left, right) => left - right)
-		.map((frame) => {
+		.map((frame): MotionPathPoint => {
+			const vector = activePositionKeyframes(previewed)?.find(
+				(keyframe) => previewed.from + keyframe.frame === frame
+			);
+			const x = canvasWidth / 2 + trackValueAt(previewed, 'x', frame);
+			const y = canvasHeight / 2 + trackValueAt(previewed, 'y', frame);
 			return {
 				frame,
-				x: canvasWidth / 2 + trackValueAt(previewed, 'x', frame),
-				y: canvasHeight / 2 + trackValueAt(previewed, 'y', frame),
-				isKeyframe: keyframeSet.has(frame) || preview?.frame === frame
+				x,
+				y,
+				isKeyframe: keyframeSet.has(frame) || preview?.frame === frame,
+				...(vector && {
+					vectorId: vector.id,
+					...(vector.spatial && {
+						spatial: vector.spatial,
+						inHandle: {
+							x: x + vector.spatial.inTangent.x,
+							y: y + vector.spatial.inTangent.y
+						},
+						outHandle: {
+							x: x + vector.spatial.outTangent.x,
+							y: y + vector.spatial.outTangent.y
+						}
+					})
+				})
 			};
 		});
 	const first = points[0];

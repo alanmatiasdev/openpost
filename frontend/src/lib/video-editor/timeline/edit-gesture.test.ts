@@ -487,13 +487,20 @@ describe('timeline edit gestures', () => {
 			sourceEnd: 100,
 			sourceDuration: 200,
 			linkedGroupId: 'current',
-			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } }
+			keyframes: { opacity: { frames: [0, 50, 99], values: [0, 0.5, 1] } },
+			vectorKeyframes: {
+				position: [
+					{ id: 'start', frame: 0, value: { x: 0, y: 0 }, easing: 'linear' },
+					{ id: 'end', frame: 99, value: { x: 100, y: 50 }, easing: 'linear' }
+				]
+			}
 		});
 		const audio = mediaItem({
 			...video,
 			id: 'audio',
 			trackId: 'audio',
 			type: 'audio',
+			vectorKeyframes: undefined,
 			keyframes: { volume: { frames: [25], values: [0.5] } }
 		});
 		const nextVideo = mediaItem({
@@ -520,7 +527,13 @@ describe('timeline edit gestures', () => {
 		expect(plan?.patch).toMatchObject({
 			durationInFrames: 200,
 			speed: 0.5,
-			keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } }
+			keyframes: { opacity: { frames: [0, 100, 198], values: [0, 0.5, 1] } },
+			vectorKeyframes: {
+				position: [
+					{ id: 'start', frame: 0, value: { x: 0, y: 0 } },
+					{ id: 'end', frame: 198, value: { x: 100, y: 50 } }
+				]
+			}
 		});
 		expect(plan?.linkedPatches).toEqual([
 			{

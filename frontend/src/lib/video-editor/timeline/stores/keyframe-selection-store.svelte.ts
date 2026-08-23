@@ -4,6 +4,7 @@ import type {
 	EasingConfig,
 	EasingType,
 	KeyframeProperty,
+	SpatialBezierTangents,
 	TimelineItem
 } from '$lib/video-editor/project/types';
 import {
@@ -11,6 +12,7 @@ import {
 	keyframeIdentity,
 	type KeyframeRef
 } from '$lib/video-editor/timeline/keyframe-editor';
+import { activePositionKeyframes } from '$lib/video-editor/timeline/vector-keyframes';
 
 export interface KeyframeClipboardEntry {
 	property: KeyframeProperty;
@@ -19,6 +21,8 @@ export interface KeyframeClipboardEntry {
 	value: number;
 	easing: EasingType;
 	easingConfig?: EasingConfig;
+	vectorGroupId?: string;
+	spatial?: SpatialBezierTangents;
 }
 
 export interface KeyframeClipboard {
@@ -71,13 +75,25 @@ class KeyframeSelectionStore {
 	}
 
 	copy(item: TimelineItem, ids: ReadonlySet<string>, cut = false): boolean {
-		const selected = Object.keys(item.keyframes ?? {}).flatMap((rawProperty) => {
-			// SAFETY: ItemKeyframes only permits KeyframeProperty keys.
-			const property = rawProperty as KeyframeProperty;
-			return editorKeyframes(item, property).filter((keyframe) =>
-				ids.has(keyframeIdentity(keyframe))
-			);
-		});
+		// SAFETY: ItemKeyframes only permits KeyframeProperty keys.
+		const properties = new Set<KeyframeProperty>(
+			Object.keys(item.keyframes ?? {}) as KeyframeProperty[]
+		);
+		if (activePositionKeyframes(item)) {
+			properties.add('x');
+			properties.add('y');
+		}
+		const allKeyframes = [...properties].flatMap((property) => editorKeyframes(item, property));
+		const selectedVectorIds = new Set(
+			allKeyframes.flatMap((keyframe) =>
+				keyframe.vectorId && ids.has(keyframeIdentity(keyframe)) ? [keyframe.vectorId] : []
+			)
+		);
+		const selected = allKeyframes.filter(
+			(keyframe) =>
+				ids.has(keyframeIdentity(keyframe)) ||
+				Boolean(keyframe.vectorId && selectedVectorIds.has(keyframe.vectorId))
+		);
 		if (selected.length === 0) return false;
 		const originFrame = Math.min(...selected.map((keyframe) => keyframe.frame));
 		this.#clipboard = {
@@ -86,6 +102,8 @@ class KeyframeSelectionStore {
 				frame: keyframe.frame - originFrame,
 				value: keyframe.value,
 				easing: keyframe.easing,
+				...(keyframe.vectorId && { vectorGroupId: keyframe.vectorId }),
+				...(keyframe.spatial && { spatial: cloneSpatial(keyframe.spatial) }),
 				...(keyframe.easingConfig && {
 					easingConfig: cloneEasingConfig(keyframe.easingConfig)
 				})
@@ -96,7 +114,8 @@ class KeyframeSelectionStore {
 				property: keyframe.property,
 				frame: keyframe.frame,
 				id: keyframe.id,
-				index: keyframe.index
+				index: keyframe.index,
+				vectorId: keyframe.vectorId
 			}))
 		};
 		this.#isCut = cut;
@@ -116,5 +135,13 @@ function cloneEasingConfig(config: EasingConfig): EasingConfig {
 		...config,
 		...(config.bezier && { bezier: { ...config.bezier } }),
 		...(config.spring && { spring: { ...config.spring } })
+	};
+}
+
+function cloneSpatial(spatial: SpatialBezierTangents): SpatialBezierTangents {
+	return {
+		...spatial,
+		inTangent: { ...spatial.inTangent },
+		outTangent: { ...spatial.outTangent }
 	};
 }

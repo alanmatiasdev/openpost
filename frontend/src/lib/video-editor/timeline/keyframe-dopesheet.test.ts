@@ -124,4 +124,55 @@ describe('buildKeyframePastePlan', () => {
 		expect(plan.inserts).toEqual([{ property: 'opacity', frame: 50, value: 0, easing: 'linear' }]);
 		expect(plan.skippedBlocked).toBe(1);
 	});
+
+	it('preserves vector grouping and spatial handles in the paste plan', () => {
+		const spatial = {
+			inTangent: { x: -20, y: 10 },
+			outTangent: { x: 30, y: 15 },
+			continuous: false
+		};
+		const plan = buildKeyframePastePlan({
+			clipboard: {
+				sourceItemId: 'source',
+				originFrame: 10,
+				sourceRefs: [],
+				keyframes: [
+					{
+						property: 'x',
+						frame: 0,
+						value: 40,
+						easing: 'ease-out',
+						vectorGroupId: 'position-a',
+						spatial
+					},
+					{
+						property: 'y',
+						frame: 0,
+						value: -15,
+						easing: 'ease-out',
+						vectorGroupId: 'position-a',
+						spatial
+					}
+				]
+			},
+			item,
+			anchorFrame: 25,
+			availableProperties: ['x', 'y'],
+			blockedRanges: []
+		});
+		expect(plan.inserts).toMatchObject([
+			{
+				property: 'x',
+				frame: 25,
+				vectorGroupId: 'position-a',
+				spatial: { outTangent: { x: 30, y: 15 } }
+			},
+			{
+				property: 'y',
+				frame: 25,
+				vectorGroupId: 'position-a',
+				spatial: { outTangent: { x: 30, y: 15 } }
+			}
+		]);
+	});
 });

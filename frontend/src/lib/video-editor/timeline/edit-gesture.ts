@@ -20,6 +20,7 @@ import {
 	scaleItemKeyframes,
 	type TimelineEditUpdate
 } from './edit-constraints';
+import { scaleItemVectorKeyframes } from './vector-keyframes';
 import {
 	getLinkedItems,
 	getSynchronizedLinkedCounterpartPair,
@@ -633,7 +634,14 @@ export function planRateStretchGesture(
 						participant.keyframes,
 						participant.durationInFrames,
 						durationInFrames
-					)
+					),
+					...(participant.vectorKeyframes && {
+						vectorKeyframes: scaleItemVectorKeyframes(
+							participant.vectorKeyframes,
+							participant.durationInFrames,
+							durationInFrames
+						)
+					})
 				}
 			})),
 			...buildMoves(durationDelta).map((move) => ({
@@ -668,7 +676,14 @@ export function planRateStretchGesture(
 	const anchorPatch: Partial<TimelineItem> = {
 		durationInFrames,
 		speed,
-		keyframes: scaleItemKeyframes(item.keyframes, item.durationInFrames, durationInFrames)
+		keyframes: scaleItemKeyframes(item.keyframes, item.durationInFrames, durationInFrames),
+		...(item.vectorKeyframes && {
+			vectorKeyframes: scaleItemVectorKeyframes(
+				item.vectorKeyframes,
+				item.durationInFrames,
+				durationInFrames
+			)
+		})
 	};
 	if (handle === 'start') anchorPatch.from = item.from + fromDelta;
 	return appendLinkedPatches(
@@ -687,7 +702,14 @@ export function planRateStretchGesture(
 						participant.keyframes,
 						participant.durationInFrames,
 						durationInFrames
-					)
+					),
+					...(participant.vectorKeyframes && {
+						vectorKeyframes: scaleItemVectorKeyframes(
+							participant.vectorKeyframes,
+							participant.durationInFrames,
+							durationInFrames
+						)
+					})
 				};
 				if (handle === 'start') patch.from = participant.from + fromDelta;
 				return { id: participant.id, patch };

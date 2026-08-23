@@ -29,6 +29,8 @@ async function renderTools(item: TimelineItem) {
 		ontextediting: vi.fn(),
 		oncommitvalues: vi.fn(() => true),
 		oncommitposition: vi.fn(() => true),
+		oncreatespatial: vi.fn(() => true),
+		oncommitspatial: vi.fn(() => true),
 		oncommittext: vi.fn(),
 		onseek: vi.fn(),
 		onedit: vi.fn()
@@ -194,6 +196,80 @@ describe('OnCanvasTools', () => {
 		window.dispatchEvent(new PointerEvent('pointerup', { ...start, clientX: endX, clientY: endY }));
 		expect(callbacks.onseek).toHaveBeenCalledWith(0);
 		expect(callbacks.oncommitposition).toHaveBeenCalledWith(0, -80, 30);
+		expect(callbacks.onedit).toHaveBeenCalledOnce();
+	});
+
+	it('edits continuous spatial handles on the visible motion curve', async () => {
+		const { screen, callbacks } = await renderTools(
+			imageItem({
+				vectorKeyframes: {
+					position: [
+						{
+							id: 'position-a',
+							frame: 0,
+							value: { x: -100, y: 0 },
+							easing: 'linear',
+							spatial: {
+								inTangent: { x: -50, y: 0 },
+								outTangent: { x: 50, y: 0 },
+								continuous: true
+							}
+						},
+						{
+							id: 'position-b',
+							frame: 20,
+							value: { x: 100, y: 100 },
+							easing: 'linear'
+						}
+					]
+				}
+			})
+		);
+		await screen.getByRole('button', { name: 'Motion' }).click();
+		const keyframe = screen.container.querySelector<SVGCircleElement>(
+			'[aria-label="Position keyframe at frame 0"]'
+		);
+		if (!keyframe) throw new Error('motion keyframe missing');
+		keyframe.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+		await vi.waitFor(() =>
+			expect(
+				screen.container.querySelector('[aria-label="Outgoing position curve handle at frame 0"]')
+			).not.toBeNull()
+		);
+		await page.screenshot({
+			element: canvasRoot(screen.container),
+			path: '../../../../.svelte-kit/openpost-on-canvas-spatial.png'
+		});
+		const handle = screen.container.querySelector<SVGCircleElement>(
+			'[aria-label="Outgoing position curve handle at frame 0"]'
+		);
+		if (!handle) throw new Error('outgoing spatial handle missing');
+		const root = canvasRoot(screen.container);
+		const rect = root.getBoundingClientRect();
+		const start = {
+			bubbles: true,
+			clientX: rect.left + (450 / 1000) * rect.width,
+			clientY: rect.top + (250 / 500) * rect.height,
+			pointerId: 7
+		};
+		const endX = rect.left + (470 / 1000) * rect.width;
+		const endY = rect.top + (280 / 500) * rect.height;
+		handle.dispatchEvent(new PointerEvent('pointerdown', start));
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				...start,
+				clientX: endX,
+				clientY: endY,
+				buttons: 1
+			})
+		);
+		window.dispatchEvent(new PointerEvent('pointerup', { ...start, clientX: endX, clientY: endY }));
+		expect(callbacks.oncommitspatial).toHaveBeenCalledWith(0, {
+			inTangent: { x: -70, y: -30 },
+			outTangent: { x: 70, y: 30 },
+			continuous: true
+		});
+		expect(callbacks.oncreatespatial).not.toHaveBeenCalled();
 		expect(callbacks.onedit).toHaveBeenCalledOnce();
 	});
 

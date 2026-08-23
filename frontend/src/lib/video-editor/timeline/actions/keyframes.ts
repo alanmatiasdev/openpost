@@ -17,14 +17,26 @@ import type {
 	ItemKeyframes,
 	KeyframeProperty,
 	KeyframeTrack,
-	TimelineItem
+	SpatialBezierTangents,
+	TimelineItem,
+	VectorKeyframe
 } from '$lib/video-editor/project/types';
 import { applyEasing, applyEasingConfig } from '../easing';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { isFrameInTransitionRegion } from '../edit-constraints';
 import { transitionsStore } from './transitions-store.svelte';
 import { legacyKeyframeId, trackEntryAt, type KeyframeRef } from '../keyframe-editor';
+import {
+	activePositionKeyframes,
+	cloneVectorKeyframe,
+	defaultSpatialTangents,
+	interpolatePosition,
+	promotePositionKeyframes,
+	upsertPositionKeyframe,
+	vectorKeyframesPatch
+} from '../vector-keyframes';
 
 export interface KeyframeEdit {
 	ref: KeyframeRef;
@@ -38,6 +50,8 @@ export interface KeyframeInsert {
 	value: number;
 	easing?: EasingType;
 	easingConfig?: EasingConfig;
+	vectorGroupId?: string;
+	spatial?: SpatialBezierTangents;
 }
 
 function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
@@ -59,6 +73,10 @@ export function interpolateAt(
 	property: KeyframeProperty,
 	frame: number
 ): number | null {
+	if (property === 'x' || property === 'y') {
+		const position = activePositionKeyframes(item);
+		if (position) return interpolatePosition(position, frame)?.[property] ?? null;
+	}
 	const track: KeyframeTrack | undefined = item.keyframes?.[property];
 	if (!track || track.frames.length === 0) return null;
 	const { frames, values } = track;
@@ -98,6 +116,21 @@ export function setKeyframe(
 	return execute('SET_KEYFRAME', () => {
 		const item = timelineStore.itemById.get(itemId);
 		if (!item || !canWriteKeyframe(item, frame)) return false;
+		if (property === 'x' || property === 'y') {
+			const promoted = promotePositionKeyframes(item, frame);
+			if (!promoted) return false;
+			remapPromotedSelection(itemId, promoted.identityRemap);
+			const current = interpolatePosition(promoted.position, frame) ?? {
+				x: item.transform?.x ?? 0,
+				y: item.transform?.y ?? 0
+			};
+			const position = upsertPositionKeyframe(promoted.position, frame, {
+				...current,
+				[property]: value
+			});
+			timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+			return true;
+		}
 		const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, frame, value);
 		timelineStore._updateItems([{ id: itemId, patch: { keyframes: nextKeyframes } }]);
 		return true;
@@ -123,6 +156,23 @@ export function setAnimatedProperty(
 		}
 		const relativeFrame = absoluteFrame - item.from;
 		const track = item.keyframes?.[property];
+		const hasVectorPosition = Boolean(activePositionKeyframes(item));
+		if ((property === 'x' || property === 'y') && (hasVectorPosition || track || autoKeyEnabled)) {
+			if (!canWriteKeyframe(item, relativeFrame)) return false;
+			const promoted = promotePositionKeyframes(item, relativeFrame);
+			if (!promoted) return false;
+			remapPromotedSelection(itemId, promoted.identityRemap);
+			const current = interpolatePosition(promoted.position, relativeFrame) ?? {
+				x: item.transform?.x ?? 0,
+				y: item.transform?.y ?? 0
+			};
+			const position = upsertPositionKeyframe(promoted.position, relativeFrame, {
+				...current,
+				[property]: value
+			});
+			timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+			return true;
+		}
 		if (track || autoKeyEnabled) {
 			if (!canWriteKeyframe(item, relativeFrame)) return false;
 			const nextKeyframes = upsertTrack(item.keyframes ?? {}, property, relativeFrame, value);
@@ -149,17 +199,44 @@ export function setAnimatedProperties(
 		let keyframes = item.keyframes;
 		let patch: Partial<TimelineItem> = {};
 		const relativeFrame = absoluteFrame - item.from;
+		const hasPositionValue = values.x !== undefined || values.y !== undefined;
+		const shouldWritePosition =
+			hasPositionValue &&
+			(Boolean(activePositionKeyframes(item)) ||
+				Boolean(item.keyframes?.x || item.keyframes?.y) ||
+				(values.x !== undefined && isAutoKeyEnabled('x')) ||
+				(values.y !== undefined && isAutoKeyEnabled('y')));
 		const shouldWriteKey = Object.entries(values).some(([rawProperty, value]) => {
 			if (value === undefined) return false;
 			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
 			const property = rawProperty as KeyframeProperty;
-			return item.keyframes?.[property] !== undefined || isAutoKeyEnabled(property);
+			return (
+				((property === 'x' || property === 'y') && shouldWritePosition) ||
+				item.keyframes?.[property] !== undefined ||
+				isAutoKeyEnabled(property)
+			);
 		});
 		if (shouldWriteKey && !canWriteKeyframe(item, relativeFrame)) return false;
+		if (shouldWritePosition) {
+			const promoted = promotePositionKeyframes(item, relativeFrame);
+			if (!promoted) return false;
+			remapPromotedSelection(itemId, promoted.identityRemap);
+			const current = interpolatePosition(promoted.position, relativeFrame) ?? {
+				x: item.transform?.x ?? 0,
+				y: item.transform?.y ?? 0
+			};
+			const position = upsertPositionKeyframe(promoted.position, relativeFrame, {
+				x: values.x ?? current.x,
+				y: values.y ?? current.y
+			});
+			patch = { ...patch, ...vectorKeyframesPatch(item, position) };
+			keyframes = patch.keyframes;
+		}
 		for (const [rawProperty, value] of Object.entries(values)) {
 			if (value === undefined) continue;
 			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
 			const property = rawProperty as KeyframeProperty;
+			if (shouldWritePosition && (property === 'x' || property === 'y')) continue;
 			if (item.keyframes?.[property] || isAutoKeyEnabled(property)) {
 				keyframes = upsertTrack(keyframes ?? {}, property, relativeFrame, value);
 			} else {
@@ -194,37 +271,71 @@ export function setPositionAtFrame(
 			return false;
 		const relativeFrame = absoluteFrame - item.from;
 		if (!canWriteKeyframe(item, relativeFrame)) return false;
-		const hasPositionAnimation = Boolean(item.keyframes?.x || item.keyframes?.y);
+		const hasPositionAnimation = Boolean(
+			activePositionKeyframes(item) || item.keyframes?.x || item.keyframes?.y
+		);
 		if (!hasPositionAnimation) {
 			timelineStore._updateItems([
 				{ id: itemId, patch: { transform: { ...item.transform, x, y } } }
 			]);
 			return true;
 		}
-		const positionFrames = [
-			...new Set([...(item.keyframes?.x?.frames ?? []), ...(item.keyframes?.y?.frames ?? [])])
-		].sort((left, right) => left - right);
-		const template = item.keyframes?.x ?? item.keyframes?.y;
-		let keyframes: ItemKeyframes = { ...item.keyframes };
-		for (const property of ['x', 'y'] as const) {
-			if (keyframes[property]) continue;
-			keyframes[property] = {
-				frames: positionFrames,
-				values: positionFrames.map(() => item.transform?.[property] ?? 0),
-				ids: positionFrames.map((frame, index) => legacyKeyframeId(property, frame, index)),
-				easings: positionFrames.map((frame) => {
-					const index = template?.frames.indexOf(frame) ?? -1;
-					return index >= 0 ? (template?.easings?.[index] ?? 'linear') : 'linear';
-				}),
-				easingConfigs: positionFrames.map((frame) => {
-					const index = template?.frames.indexOf(frame) ?? -1;
-					return index >= 0 ? cloneEasingConfig(template?.easingConfigs?.[index] ?? null) : null;
-				})
-			};
-		}
-		keyframes = upsertTrack(keyframes, 'x', relativeFrame, x);
-		keyframes = upsertTrack(keyframes, 'y', relativeFrame, y);
-		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		const promoted = promotePositionKeyframes(item, relativeFrame);
+		if (!promoted) return false;
+		remapPromotedSelection(itemId, promoted.identityRemap);
+		const position = upsertPositionKeyframe(promoted.position, relativeFrame, { x, y });
+		timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+		return true;
+	});
+}
+
+/** Add smooth spatial handles to an existing position point. */
+export function createPositionSpatialTangents(itemId: string, absoluteFrame: number): boolean {
+	return execute('CREATE_POSITION_SPATIAL_TANGENTS', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item) return false;
+		const relativeFrame = absoluteFrame - item.from;
+		if (!canWriteKeyframe(item, relativeFrame)) return false;
+		const promoted = promotePositionKeyframes(item);
+		if (!promoted) return false;
+		remapPromotedSelection(itemId, promoted.identityRemap);
+		const index = promoted.position.findIndex((keyframe) => keyframe.frame === relativeFrame);
+		if (index < 0) return false;
+		const spatial = defaultSpatialTangents(promoted.position, index);
+		if (!spatial) return false;
+		const position = promoted.position.map((keyframe, keyframeIndex) =>
+			keyframeIndex === index ? { ...keyframe, spatial } : keyframe
+		);
+		timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+		return true;
+	});
+}
+
+/** Commit a spatial-handle drag as one undoable edit. */
+export function setPositionSpatialTangents(
+	itemId: string,
+	absoluteFrame: number,
+	spatial: SpatialBezierTangents
+): boolean {
+	return execute('SET_POSITION_SPATIAL_TANGENTS', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item) return false;
+		const relativeFrame = absoluteFrame - item.from;
+		if (!canWriteKeyframe(item, relativeFrame)) return false;
+		const position = activePositionKeyframes(item)?.map(cloneVectorKeyframe);
+		if (!position) return false;
+		const index = position.findIndex((keyframe) => keyframe.frame === relativeFrame);
+		const keyframe = position[index];
+		if (!keyframe) return false;
+		position[index] = {
+			...keyframe,
+			spatial: {
+				...spatial,
+				inTangent: { ...spatial.inTangent },
+				outTangent: { ...spatial.outTangent }
+			}
+		};
+		timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
 		return true;
 	});
 }
@@ -239,6 +350,19 @@ export function setKeyframeEasing(
 ): boolean {
 	return execute('SET_KEYFRAME_EASING', () => {
 		const item = timelineStore.itemById.get(itemId);
+		const vectorPosition = item ? activePositionKeyframes(item) : undefined;
+		if (item && vectorPosition && (property === 'x' || property === 'y')) {
+			const position = vectorPosition.map(cloneVectorKeyframe);
+			const index = position?.findIndex((keyframe) => keyframe.frame === frame) ?? -1;
+			const keyframe = position?.[index];
+			if (!position || !keyframe) return false;
+			const nextKeyframe = { ...keyframe, easing };
+			if (easingConfig) nextKeyframe.easingConfig = cloneEasingConfig(easingConfig) ?? undefined;
+			else delete nextKeyframe.easingConfig;
+			position[index] = nextKeyframe;
+			timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+			return true;
+		}
 		const track = item?.keyframes?.[property];
 		if (!item || !track) return false;
 		const index = track.frames.indexOf(frame);
@@ -261,6 +385,14 @@ export function setKeyframeEasing(
 export function removeKeyframe(itemId: string, property: KeyframeProperty, frame: number): boolean {
 	return execute('REMOVE_KEYFRAME', () => {
 		const item = timelineStore.itemById.get(itemId);
+		const vectorPosition = item ? activePositionKeyframes(item) : undefined;
+		if (item && vectorPosition && (property === 'x' || property === 'y')) {
+			const source = vectorPosition;
+			const position = source.filter((keyframe) => keyframe.frame !== frame);
+			if (position.length === source.length) return false;
+			timelineStore._updateItems([{ id: itemId, patch: vectorKeyframesPatch(item, position) }]);
+			return true;
+		}
 		const track = item?.keyframes?.[property];
 		if (!item || !track) return false;
 		const index = track.frames.indexOf(frame);
@@ -290,8 +422,20 @@ export function updateKeyframes(itemId: string, edits: readonly KeyframeEdit[]):
 			return false;
 		}
 
-		const byProperty = Map.groupBy(edits, (edit) => edit.ref.property);
-		const keyframes: ItemKeyframes = { ...item.keyframes };
+		const positionSource = activePositionKeyframes(item);
+		const vectorEdits = positionSource
+			? edits.filter((edit) => vectorIdForRef(positionSource, edit.ref) !== null)
+			: [];
+		const scalarEdits = edits.filter((edit) => !vectorEdits.includes(edit));
+		let patch: Partial<TimelineItem> = {};
+		if (positionSource && vectorEdits.length > 0) {
+			const position = updatePositionKeyframes(positionSource, vectorEdits);
+			if (!position) return false;
+			patch = { ...patch, ...vectorKeyframesPatch(item, position) };
+		}
+
+		const byProperty = Map.groupBy(scalarEdits, (edit) => edit.ref.property);
+		const keyframes: ItemKeyframes = { ...(patch.keyframes ?? item.keyframes) };
 		for (const [property, propertyEdits] of byProperty) {
 			const source = item.keyframes?.[property];
 			if (!source) return false;
@@ -333,7 +477,8 @@ export function updateKeyframes(itemId: string, edits: readonly KeyframeEdit[]):
 				easingConfigs: sorted.map((entry) => entry.easingConfig)
 			};
 		}
-		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		if (scalarEdits.length > 0) patch.keyframes = keyframes;
+		timelineStore._updateItems([{ id: itemId, patch }]);
 		return true;
 	});
 }
@@ -346,8 +491,19 @@ export function duplicateKeyframes(itemId: string, edits: readonly KeyframeEdit[
 		if (edits.some((edit) => !canWriteKeyframe(item, edit.frame) || !Number.isFinite(edit.value))) {
 			return false;
 		}
-		let keyframes: ItemKeyframes = { ...item.keyframes };
-		for (const edit of edits) {
+		const positionSource = activePositionKeyframes(item);
+		const vectorEdits = positionSource
+			? edits.filter((edit) => vectorIdForRef(positionSource, edit.ref) !== null)
+			: [];
+		const scalarEdits = edits.filter((edit) => !vectorEdits.includes(edit));
+		let patch: Partial<TimelineItem> = {};
+		if (positionSource && vectorEdits.length > 0) {
+			const position = duplicatePositionKeyframes(positionSource, vectorEdits);
+			if (!position) return false;
+			patch = { ...patch, ...vectorKeyframesPatch(item, position) };
+		}
+		let keyframes: ItemKeyframes = { ...(patch.keyframes ?? item.keyframes) };
+		for (const edit of scalarEdits) {
 			const source = keyframes[edit.ref.property];
 			if (!source) return false;
 			const track = withCompleteMetadata(source, edit.ref.property);
@@ -373,7 +529,8 @@ export function duplicateKeyframes(itemId: string, edits: readonly KeyframeEdit[
 			}
 			keyframes = { ...keyframes, [edit.ref.property]: track };
 		}
-		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		if (scalarEdits.length > 0) patch.keyframes = keyframes;
+		timelineStore._updateItems([{ id: itemId, patch }]);
 		return true;
 	});
 }
@@ -392,8 +549,74 @@ export function insertKeyframes(itemId: string, inserts: readonly KeyframeInsert
 		}
 
 		const refsByInsert = new Map<KeyframeInsert, KeyframeRef>();
-		let keyframes: ItemKeyframes = { ...item.keyframes };
-		for (const [property, propertyInserts] of Map.groupBy(inserts, (insert) => insert.property)) {
+		const shouldUseVectorPosition =
+			Boolean(activePositionKeyframes(item)) || inserts.some((insert) => insert.vectorGroupId);
+		const vectorInserts = shouldUseVectorPosition
+			? inserts.filter((insert) => insert.property === 'x' || insert.property === 'y')
+			: [];
+		const scalarInserts = inserts.filter((insert) => !vectorInserts.includes(insert));
+		let patch: Partial<TimelineItem> = {};
+		let position: VectorKeyframe[] | undefined;
+		if (vectorInserts.length > 0) {
+			const firstFrame = vectorInserts[0]?.frame;
+			const promoted = promotePositionKeyframes(item, firstFrame);
+			if (!promoted) return [];
+			remapPromotedSelection(itemId, promoted.identityRemap);
+			position = promoted.position;
+			const groups = new Map<string, KeyframeInsert[]>();
+			for (const insert of vectorInserts) {
+				const key = `${insert.vectorGroupId ?? 'legacy'}:${insert.frame}`;
+				const group = groups.get(key) ?? [];
+				group.push(insert);
+				groups.set(key, group);
+			}
+			for (const group of groups.values()) {
+				const first = group[0];
+				if (!first) continue;
+				const current = interpolatePosition(position, first.frame) ?? {
+					x: item.transform?.x ?? 0,
+					y: item.transform?.y ?? 0
+				};
+				position = upsertPositionKeyframe(position, first.frame, current);
+				const index = position.findIndex((keyframe) => keyframe.frame === first.frame);
+				const keyframe = position[index];
+				if (!keyframe) return [];
+				const value = { ...keyframe.value };
+				for (const insert of group) setPositionComponent(value, insert.property, insert.value);
+				const nextKeyframe: VectorKeyframe = {
+					...keyframe,
+					value,
+					easing: first.easing ?? 'linear'
+				};
+				if (first.easingConfig)
+					nextKeyframe.easingConfig = cloneEasingConfig(first.easingConfig) ?? undefined;
+				else delete nextKeyframe.easingConfig;
+				if (first.spatial) {
+					nextKeyframe.spatial = {
+						...first.spatial,
+						inTangent: { ...first.spatial.inTangent },
+						outTangent: { ...first.spatial.outTangent }
+					};
+				} else delete nextKeyframe.spatial;
+				position[index] = nextKeyframe;
+				for (const insert of group) {
+					refsByInsert.set(insert, {
+						property: insert.property,
+						frame: insert.frame,
+						id: insert.property === 'x' ? keyframe.id : `${keyframe.id}:y`,
+						vectorId: keyframe.id,
+						index
+					});
+				}
+			}
+			patch = { ...patch, ...vectorKeyframesPatch(item, position) };
+		}
+
+		let keyframes: ItemKeyframes = { ...(patch.keyframes ?? item.keyframes) };
+		for (const [property, propertyInserts] of Map.groupBy(
+			scalarInserts,
+			(insert) => insert.property
+		)) {
 			const track = withCompleteMetadata(
 				keyframes[property] ?? { frames: [], values: [], ids: [], easings: [], easingConfigs: [] },
 				property
@@ -435,11 +658,14 @@ export function insertKeyframes(itemId: string, inserts: readonly KeyframeInsert
 			};
 		}
 
-		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		if (scalarInserts.length > 0) patch.keyframes = keyframes;
+		timelineStore._updateItems([{ id: itemId, patch }]);
 		return inserts.flatMap((insert) => {
 			const ref = refsByInsert.get(insert);
 			if (!ref) return [];
-			const sortedIndex = keyframes[ref.property]?.ids?.indexOf(ref.id ?? '') ?? -1;
+			const sortedIndex = ref.vectorId
+				? (position?.findIndex((keyframe) => keyframe.id === ref.vectorId) ?? -1)
+				: (keyframes[ref.property]?.ids?.indexOf(ref.id ?? '') ?? -1);
 			return [{ ...ref, index: sortedIndex >= 0 ? sortedIndex : ref.index }];
 		});
 	});
@@ -459,8 +685,25 @@ export function removeKeyframes(itemId: string, refs: readonly KeyframeRef[]): b
 	return execute('REMOVE_KEYFRAMES', () => {
 		const item = timelineStore.itemById.get(itemId);
 		if (!item || refs.length === 0) return false;
-		let keyframes = item.keyframes;
-		for (const [property, propertyRefs] of Map.groupBy(refs, (ref) => ref.property)) {
+		const positionSource = activePositionKeyframes(item);
+		const vectorIds = new Set(
+			positionSource
+				? refs.flatMap((ref) => {
+						const id = vectorIdForRef(positionSource, ref);
+						return id ? [id] : [];
+					})
+				: []
+		);
+		let patch: Partial<TimelineItem> = {};
+		if (positionSource && vectorIds.size > 0) {
+			const position = positionSource.filter((keyframe) => !vectorIds.has(keyframe.id));
+			patch = { ...patch, ...vectorKeyframesPatch(item, position) };
+		}
+		const scalarRefs = refs.filter(
+			(ref) => !positionSource || vectorIdForRef(positionSource, ref) === null
+		);
+		let keyframes = patch.keyframes ?? item.keyframes;
+		for (const [property, propertyRefs] of Map.groupBy(scalarRefs, (ref) => ref.property)) {
 			const source = keyframes?.[property];
 			if (!source) continue;
 			const indexes = new Set(
@@ -481,10 +724,115 @@ export function removeKeyframes(itemId: string, refs: readonly KeyframeRef[]): b
 			};
 			keyframes = pruneTrack(keyframes ?? {}, property, nextTrack);
 		}
-		if (keyframes === item.keyframes) return false;
-		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		if (keyframes !== (patch.keyframes ?? item.keyframes)) patch.keyframes = keyframes;
+		if (Object.keys(patch).length === 0) return false;
+		timelineStore._updateItems([{ id: itemId, patch }]);
 		return true;
 	});
+}
+
+function vectorIdForRef(position: readonly VectorKeyframe[], ref: KeyframeRef): string | null {
+	if (ref.property !== 'x' && ref.property !== 'y') return null;
+	const candidate = ref.vectorId ?? (ref.id?.endsWith(':y') ? ref.id.slice(0, -2) : ref.id);
+	if (candidate && position.some((keyframe) => keyframe.id === candidate)) return candidate;
+	const byIndex = ref.index === undefined ? undefined : position[ref.index];
+	if (byIndex?.frame === ref.frame) return byIndex.id;
+	return position.find((keyframe) => keyframe.frame === ref.frame)?.id ?? null;
+}
+
+function remapPromotedSelection(itemId: string, identityRemap: ReadonlyMap<string, string>): void {
+	if (identityRemap.size === 0) return;
+	const selected = keyframeSelectionStore.forItem(itemId);
+	if (selected.size === 0) return;
+	keyframeSelectionStore.replace(
+		itemId,
+		[...selected].map((id) => identityRemap.get(id) ?? id)
+	);
+}
+
+function updatePositionKeyframes(
+	source: readonly VectorKeyframe[],
+	edits: readonly KeyframeEdit[]
+): VectorKeyframe[] | null {
+	const grouped = new Map<string, KeyframeEdit[]>();
+	for (const edit of edits) {
+		const id = vectorIdForRef(source, edit.ref);
+		if (!id) return null;
+		const group = grouped.get(id) ?? [];
+		group.push(edit);
+		grouped.set(id, group);
+	}
+	const targetFrames = new Set<number>();
+	const edited = new Map<string, VectorKeyframe>();
+	for (const [id, group] of grouped) {
+		const original = source.find((keyframe) => keyframe.id === id);
+		if (!original) return null;
+		const frames = new Set(group.map((edit) => edit.frame));
+		if (frames.size !== 1) return null;
+		const frame = group[0]?.frame;
+		if (frame === undefined || targetFrames.has(frame)) return null;
+		targetFrames.add(frame);
+		const value = { ...original.value };
+		for (const edit of group) setPositionComponent(value, edit.ref.property, edit.value);
+		edited.set(id, { ...cloneVectorKeyframe(original), frame, value });
+	}
+	const byFrame = new Map<number, { keyframe: VectorKeyframe; edited: boolean }>();
+	for (const original of source) {
+		const next = edited.get(original.id) ?? cloneVectorKeyframe(original);
+		const isEdited = edited.has(original.id);
+		const existing = byFrame.get(next.frame);
+		if (!existing || isEdited) byFrame.set(next.frame, { keyframe: next, edited: isEdited });
+	}
+	return [...byFrame.values()]
+		.map((entry) => entry.keyframe)
+		.toSorted((left, right) => left.frame - right.frame);
+}
+
+function duplicatePositionKeyframes(
+	source: readonly VectorKeyframe[],
+	edits: readonly KeyframeEdit[]
+): VectorKeyframe[] | null {
+	const groups = new Map<string, KeyframeEdit[]>();
+	for (const edit of edits) {
+		const id = vectorIdForRef(source, edit.ref);
+		if (!id) return null;
+		const key = `${id}:${edit.frame}`;
+		const group = groups.get(key) ?? [];
+		group.push(edit);
+		groups.set(key, group);
+	}
+	let position = source.map(cloneVectorKeyframe);
+	for (const group of groups.values()) {
+		const first = group[0];
+		if (!first) continue;
+		const sourceId = vectorIdForRef(source, first.ref);
+		const original = source.find((keyframe) => keyframe.id === sourceId);
+		if (!original) return null;
+		const targetIndex = position.findIndex((keyframe) => keyframe.frame === first.frame);
+		const existing = targetIndex >= 0 ? position[targetIndex] : undefined;
+		const value = existing?.value ??
+			interpolatePosition(position, first.frame) ?? { ...original.value };
+		const duplicate: VectorKeyframe = {
+			...cloneVectorKeyframe(original),
+			id: existing?.id ?? crypto.randomUUID(),
+			frame: first.frame,
+			value: { ...value }
+		};
+		for (const edit of group) setPositionComponent(duplicate.value, edit.ref.property, edit.value);
+		if (targetIndex >= 0) position[targetIndex] = duplicate;
+		else position.push(duplicate);
+		position = position.toSorted((left, right) => left.frame - right.frame);
+	}
+	return position;
+}
+
+function setPositionComponent(
+	value: { x: number; y: number },
+	property: KeyframeProperty,
+	next: number
+): void {
+	if (property === 'x') value.x = next;
+	else if (property === 'y') value.y = next;
 }
 
 function upsertTrack(
