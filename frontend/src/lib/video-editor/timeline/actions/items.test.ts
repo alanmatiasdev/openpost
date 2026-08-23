@@ -85,6 +85,21 @@ describe('addShapeItem', () => {
 		commandHistory.undo();
 		expect(timelineStore.itemById.has(id)).toBe(false);
 	});
+
+	it('starts a pen path across the full project canvas', () => {
+		const id = addShapeItem('path');
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			type: 'shape',
+			shapeType: 'path',
+			fillEnabled: false,
+			strokeEnabled: true,
+			transform: {
+				width: 1920,
+				height: 1080,
+				aspectRatioLocked: false
+			}
+		});
+	});
 });
 
 describe('addAdjustmentLayer', () => {

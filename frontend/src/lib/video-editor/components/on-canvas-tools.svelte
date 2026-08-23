@@ -27,8 +27,9 @@
 		type TransformHandle
 	} from '$lib/video-editor/preview/on-canvas-tools';
 	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
+	import PathEditorOverlay from './path-editor-overlay.svelte';
 
-	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion';
+	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion' | 'path';
 	type TransformOperation = 'move' | 'resize' | 'rotate';
 	type AnimatedValues = Partial<Record<KeyframeProperty, number>>;
 	const TRANSFORM_HANDLES: TransformHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -92,6 +93,7 @@
 	const rotation = $derived(transform.rotation ?? 0);
 	const canCrop = $derived(item.type === 'video' || item.type === 'image');
 	const canEditText = $derived(item.type === 'text');
+	const canEditPath = $derived(item.type === 'shape' && item.shapeType === 'path');
 	const hasMotion = $derived(positionKeyframeFrames(item).length > 0);
 	const motionPoints = $derived(
 		buildMotionPathPoints({
@@ -130,13 +132,14 @@
 		if (item.id === previousItemId) return;
 		previousItemId = item.id;
 		cancelDrafts();
-		activeTool = 'transform';
+		activeTool = canEditPath ? 'path' : 'transform';
 	});
 
 	$effect(() => {
 		if (activeTool === 'crop' && !canCrop) activeTool = 'transform';
 		if (activeTool === 'text' && !canEditText) activeTool = 'transform';
 		if (activeTool === 'motion' && !hasMotion) activeTool = 'transform';
+		if (activeTool === 'path' && !canEditPath) activeTool = 'transform';
 	});
 
 	$effect(() => {
@@ -149,6 +152,7 @@
 		motionDraft = null;
 		spatialDraft = null;
 		if (activeTool === 'motion') activeTool = 'transform';
+		if (activeTool === 'path') activeTool = 'transform';
 	});
 
 	$effect(() => {
@@ -857,6 +861,14 @@
 				onclick={() => setTool('motion')}>{m.video_editor_canvas_tool_motion()}</button
 			>
 		{/if}
+		{#if canEditPath && !isPlaying}
+			<button
+				type="button"
+				class:active={activeTool === 'path'}
+				class="rounded px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&.active]:bg-[oklch(0.72_0.16_45)] [&.active]:text-black"
+				onclick={() => setTool('path')}>{m.video_editor_canvas_tool_path()}</button
+			>
+		{/if}
 	</div>
 
 	{#if activeTool === 'motion' && !isPlaying && motionPoints.length > 0}
@@ -978,6 +990,8 @@
 				vector-effect="non-scaling-stroke"
 			></circle>
 		</svg>
+	{:else if activeTool === 'path' && canEditPath && !isPlaying}
+		<PathEditorOverlay {item} {canvasWidth} {canvasHeight} {boxStyle} {screenScale} {onedit} />
 	{:else}
 		<div
 			class="pointer-events-auto absolute border border-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_black]"

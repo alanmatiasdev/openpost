@@ -13,7 +13,8 @@
 		{ type: 'triangle', label: m.video_editor_shape_primitive_triangle },
 		{ type: 'star', label: m.video_editor_shape_primitive_star },
 		{ type: 'polygon', label: m.video_editor_shape_primitive_polygon },
-		{ type: 'heart', label: m.video_editor_shape_primitive_heart }
+		{ type: 'heart', label: m.video_editor_shape_primitive_heart },
+		{ type: 'path', label: m.video_editor_shape_primitive_pen }
 	];
 
 	function commit(patch: Partial<TimelineItem>): void {

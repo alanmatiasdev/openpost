@@ -40,6 +40,11 @@
 			type: 'heart',
 			label: m.video_editor_shape_primitive_heart,
 			path: 'M12 21S3 16 3 9.5C3 4.7 9.1 3 12 7c2.9-4 9-2.3 9 2.5C21 16 12 21 12 21Z'
+		},
+		{
+			type: 'path',
+			label: m.video_editor_shape_primitive_pen,
+			path: 'M4 19c3.5-8 6-12 9-12 2.7 0 2.7 4 5.5 4 1.1 0 1.8-.7 2.5-2M4 19l4-1-3-3-1 4Z'
 		}
 	];
 
@@ -62,7 +67,7 @@
 				<svg viewBox="0 0 24 24" class="size-8" aria-hidden="true">
 					<path
 						d={shape.path}
-						fill="oklch(0.66 0.14 45)"
+						fill={shape.type === 'path' ? 'none' : 'oklch(0.66 0.14 45)'}
 						stroke="oklch(0.9 0.01 70)"
 						stroke-width="0.8"
 						stroke-linejoin="round"

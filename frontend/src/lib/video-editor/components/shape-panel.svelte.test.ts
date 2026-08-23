@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 
 describe('ShapePanel', () => {
-	it('shows all seven presets and inserts the chosen shape at the playhead', async () => {
+	it('shows all primitives and the pen tool, then inserts the chosen shape', async () => {
 		const oninserted = vi.fn();
 		const screen = await render(ShapePanel, { oninserted });
 
@@ -23,7 +23,8 @@ describe('ShapePanel', () => {
 			'Triangle',
 			'Star',
 			'Polygon',
-			'Heart'
+			'Heart',
+			'Pen'
 		]) {
 			await expect.element(screen.getByRole('button', { name: label })).toBeVisible();
 		}

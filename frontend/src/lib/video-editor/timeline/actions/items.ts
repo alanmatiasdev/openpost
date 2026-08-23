@@ -77,17 +77,22 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 			type: 'shape',
 			shapeType,
 			fillColor: '#f97316',
-			fillEnabled: true,
+			fillEnabled: shapeType !== 'path',
 			strokeColor: '#ffffff',
-			strokeEnabled: false,
+			strokeEnabled: shapeType === 'path',
 			strokeWidth: 8,
 			shapePoints: shapeType === 'star' ? 5 : shapeType === 'polygon' ? 6 : undefined,
 			shapeInnerRadius: shapeType === 'star' ? 0.5 : undefined,
 			transform: {
 				width:
-					shapeType === 'rectangle' || shapeType === 'ellipse' ? Math.round(size * 1.35) : size,
-				height: size,
-				aspectRatioLocked: shapeType !== 'rectangle' && shapeType !== 'ellipse'
+					shapeType === 'path'
+						? projectWidth
+						: shapeType === 'rectangle' || shapeType === 'ellipse'
+							? Math.round(size * 1.35)
+							: size,
+				height: shapeType === 'path' ? projectHeight : size,
+				aspectRatioLocked:
+					shapeType !== 'path' && shapeType !== 'rectangle' && shapeType !== 'ellipse'
 			}
 		});
 		return id;
