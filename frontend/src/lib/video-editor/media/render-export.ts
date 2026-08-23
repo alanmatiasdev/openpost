@@ -39,6 +39,7 @@ import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { mediaDrawGeometry, scaleItemForCanvas } from './render-geometry';
+import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
 import { effectsToCssFilter } from '../effects/filter';
 import {
 	createGpuCompositor,
@@ -285,75 +286,6 @@ function drawTransformed(
 	ctx.restore();
 }
 
-function drawTextItem(
-	ctx: OffscreenCanvasRenderingContext2D,
-	item: TimelineItem,
-	canvasWidth: number,
-	canvasHeight: number
-): void {
-	const transform = item.transform ?? {};
-	const width = Math.max(1, transform.width ?? canvasWidth * 0.7);
-	const height = Math.max(1, transform.height ?? canvasHeight * 0.3);
-	const centerX = canvasWidth / 2 + (transform.x ?? 0);
-	const centerY = canvasHeight / 2 + (transform.y ?? 0);
-	const fontSize = item.fontSize ?? Math.round(canvasHeight / 15);
-	ctx.save();
-	ctx.globalAlpha = Math.min(1, Math.max(0, transform.opacity ?? 1));
-	ctx.translate(centerX, centerY);
-	ctx.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
-	ctx.textAlign = item.textAlign ?? 'center';
-	ctx.textBaseline = 'middle';
-	ctx.font = `${item.fontWeight ?? 600} ${fontSize}px ${item.fontFamily ?? 'sans-serif'}`;
-	if (item.backgroundColor) {
-		ctx.fillStyle = item.backgroundColor;
-		ctx.beginPath();
-		ctx.roundRect(-width / 2, -height / 2, width, height, item.borderRadius ?? 0);
-		ctx.fill();
-	}
-	if (item.textShadow) {
-		ctx.shadowColor = item.textShadow.color;
-		ctx.shadowBlur = item.textShadow.blur;
-		ctx.shadowOffsetX = item.textShadow.offsetX;
-		ctx.shadowOffsetY = item.textShadow.offsetY;
-	}
-	ctx.lineWidth = item.strokeWidth ?? 0;
-	ctx.strokeStyle = item.strokeColor ?? '#000000';
-	ctx.fillStyle = item.color ?? '#ffffff';
-	const lines = (item.text ?? item.label).split('\n');
-	const lineHeight = fontSize * (item.lineHeight ?? 1.2);
-	for (const [index, line] of lines.entries()) {
-		const y = (index - (lines.length - 1) / 2) * lineHeight;
-		if ((item.strokeWidth ?? 0) > 0) ctx.strokeText(line, 0, y, width);
-		ctx.fillText(line, 0, y, width);
-	}
-	ctx.restore();
-}
-
-function drawSubtitleText(
-	ctx: OffscreenCanvasRenderingContext2D,
-	text: string,
-	canvasWidth: number,
-	canvasHeight: number,
-	scale: number
-): void {
-	const fontSize = Math.round((canvasHeight / 18) * Math.max(0.1, scale ?? 1));
-	ctx.save();
-	ctx.font = `600 ${fontSize}px sans-serif`;
-	ctx.textAlign = 'center';
-	ctx.textBaseline = 'bottom';
-	ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-	ctx.shadowBlur = fontSize / 6;
-	ctx.fillStyle = '#ffffff';
-	const lines = text.split('\n');
-	const lineHeight = fontSize * 1.25;
-	const bottomOffset = canvasHeight / 16;
-	lines.forEach((line, index) => {
-		const y = canvasHeight - bottomOffset - (lines.length - 1 - index) * lineHeight;
-		ctx.fillText(line, canvasWidth / 2, y);
-	});
-	ctx.restore();
-}
-
 export interface TimelineFrameRenderOptions {
 	width?: number;
 	height?: number;
@@ -369,7 +301,6 @@ export class TimelineFrameRenderer {
 	private readonly backgroundColor: string;
 	private readonly fps: number;
 	private readonly orderedItems: TimelineItem[];
-	private readonly subtitleItems: TimelineItem[];
 	private readonly transitions: TimelineTransition[];
 	private readonly itemsById: Map<string, TimelineItem>;
 	private readonly burnSubtitles: boolean;
@@ -378,6 +309,7 @@ export class TimelineFrameRenderer {
 	private readonly inputs: Input[] = [];
 	private readonly gpuCanvas = new OffscreenCanvas(1, 1);
 	private readonly gpuCompositor: GpuCompositor | null;
+	private readonly textCanvas = new OffscreenCanvas(1, 1);
 
 	constructor(
 		private readonly project: Project,
@@ -395,16 +327,16 @@ export class TimelineFrameRenderer {
 		this.fps = project.metadata.fps;
 		const items = project.timeline?.items ?? [];
 		const tracks = project.timeline?.tracks ?? [];
+		this.burnSubtitles = options.burnSubtitles ?? true;
 		this.orderedItems = paintOrder(items, tracks).filter(
-			(item) => item.type === 'video' || item.type === 'image' || item.type === 'text'
-		);
-		this.subtitleItems = paintOrder(
-			items.filter((item) => item.type === 'subtitle'),
-			tracks
+			(item) =>
+				item.type === 'video' ||
+				item.type === 'image' ||
+				item.type === 'text' ||
+				(this.burnSubtitles && item.type === 'subtitle')
 		);
 		this.transitions = project.timeline?.transitions ?? [];
 		this.itemsById = new Map(items.map((item) => [item.id, item]));
-		this.burnSubtitles = options.burnSubtitles ?? true;
 		this.gpuCompositor = createGpuCompositor(this.gpuCanvas);
 	}
 
@@ -434,6 +366,36 @@ export class TimelineFrameRenderer {
 			time: frame / this.fps
 		});
 		return rendered ? this.gpuCanvas : source;
+	}
+
+	private textSource(item: TimelineItem, frame: number) {
+		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
+		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
+		this.textCanvas.width = width;
+		this.textCanvas.height = height;
+		const context = this.textCanvas.getContext('2d');
+		if (!context) throw new Error('Failed to create the text raster context.');
+		renderTextItemRaster(context, item, width, height);
+		return {
+			source: this.renderGpuEffects(this.textCanvas, width, height, item, frame),
+			width,
+			height
+		};
+	}
+
+	private subtitleSource(item: TimelineItem, text: string, frame: number) {
+		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
+		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
+		this.textCanvas.width = width;
+		this.textCanvas.height = height;
+		const context = this.textCanvas.getContext('2d');
+		if (!context) throw new Error('Failed to create the subtitle raster context.');
+		renderSubtitleRaster(context, text, item, width, height);
+		return {
+			source: this.renderGpuEffects(this.textCanvas, width, height, item, frame),
+			width,
+			height
+		};
 	}
 
 	private async getDecoder(mediaId: string): Promise<VideoDecoder | null> {
@@ -473,17 +435,43 @@ export class TimelineFrameRenderer {
 				this.width / this.project.metadata.width,
 				this.height / this.project.metadata.height
 			);
-			if (resolvedItem.type === 'text') {
-				drawTextItem(ctx, resolvedItem, this.width, this.height);
-				continue;
-			}
-			if (!resolvedItem.mediaId) continue;
 			let alpha = baseOpacity(resolvedItem);
 			if (blend) {
 				if (item.id === blend.outgoingId) alpha *= outgoingOpacity(blend.type, blend.progress);
 				else if (item.id === blend.incomingId) alpha *= incomingOpacity(blend.type, blend.progress);
 			}
 			if (alpha <= 0) continue;
+			if (resolvedItem.type === 'subtitle') {
+				const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
+				if (!cue) continue;
+				const raster = this.subtitleSource(resolvedItem, cue.text, frame);
+				drawTransformed(
+					ctx,
+					raster.source,
+					raster.width,
+					raster.height,
+					resolvedItem,
+					this.width,
+					this.height,
+					alpha
+				);
+				continue;
+			}
+			if (resolvedItem.type === 'text') {
+				const raster = this.textSource(resolvedItem, frame);
+				drawTransformed(
+					ctx,
+					raster.source,
+					raster.width,
+					raster.height,
+					resolvedItem,
+					this.width,
+					this.height,
+					alpha
+				);
+				continue;
+			}
+			if (!resolvedItem.mediaId) continue;
 
 			if (resolvedItem.type === 'video') {
 				const decoder = await this.getDecoder(resolvedItem.mediaId);
@@ -535,15 +523,6 @@ export class TimelineFrameRenderer {
 			}
 		}
 
-		if (this.burnSubtitles) {
-			for (const item of this.subtitleItems) {
-				if (!isVisibleAtFrame(item, frame)) continue;
-				const cue = selectCuesAtFrame(item.cues ?? [], frame)[0];
-				if (cue) {
-					drawSubtitleText(ctx, cue.text, this.width, this.height, item.subtitleStyleScale ?? 1);
-				}
-			}
-		}
 		return this.canvas;
 	}
 

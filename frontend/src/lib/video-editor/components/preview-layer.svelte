@@ -18,6 +18,7 @@
 	import { selectCuesAtFrame } from '$lib/video-editor/media/render-plan';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import { previewItemVolume } from '$lib/video-editor/preview/playback-settings';
+	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
 
 	let {
 		item,
@@ -39,13 +40,19 @@
 		onselect: () => void;
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
+	let imageElement = $state<HTMLImageElement | null>(null);
+	let decodedImageElement = $state<HTMLImageElement | null>(null);
+	let rasterCanvas = $state<HTMLCanvasElement | null>(null);
 	let gpuCanvas = $state<HTMLCanvasElement | null>(null);
 	let compositor = $state<GpuCompositor | null>(null);
+	let rasterRevision = $state(0);
+	let lastRasterCanvas: HTMLCanvasElement | null = null;
+	let lastRasterKey = '';
 	let lastScopeAt = 0;
 	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
 	const transform = $derived(overrideTransform ?? resolved.transform ?? {});
 	const gpuEffects = $derived.by<GpuRenderEffect[]>(() =>
-		(resolved.effects ?? []).flatMap((effect) =>
+		(item.effects ?? []).flatMap((effect) =>
 			effect.type === 'gpu' && effect.enabled
 				? [
 						{
@@ -57,7 +64,8 @@
 		)
 	);
 	const needsGpu = $derived(
-		resolved.type === 'video' && (gpuEffects.length > 0 || isNonNormalBlend(resolved.blendMode))
+		['video', 'image', 'text', 'subtitle'].includes(item.type) &&
+			(gpuEffects.length > 0 || isNonNormalBlend(item.blendMode))
 	);
 	const layerStyle = $derived.by(() => {
 		const width = transform.width ?? canvasWidth;
@@ -104,6 +112,56 @@
 		)
 	);
 
+	function paintRaster(canvas: HTMLCanvasElement): void {
+		if (resolved.type !== 'text' && resolved.type !== 'subtitle') return;
+		const width = Math.max(1, Math.round(transform.width ?? canvasWidth));
+		const height = Math.max(1, Math.round(transform.height ?? canvasHeight));
+		const rasterKey = JSON.stringify([
+			resolved.type,
+			resolved.text,
+			resolved.label,
+			activeSubtitle?.text,
+			width,
+			height,
+			resolved.fontFamily,
+			resolved.fontSize,
+			resolved.fontWeight,
+			resolved.color,
+			resolved.backgroundColor,
+			resolved.textAlign,
+			resolved.verticalAlign,
+			resolved.lineHeight,
+			resolved.letterSpacing,
+			resolved.textShadow,
+			resolved.strokeWidth,
+			resolved.strokeColor,
+			resolved.paddingX,
+			resolved.paddingY,
+			resolved.borderRadius,
+			resolved.subtitleStyleScale
+		]);
+		if (canvas === lastRasterCanvas && rasterKey === lastRasterKey) return;
+		if (canvas.width !== width) canvas.width = width;
+		if (canvas.height !== height) canvas.height = height;
+		const context = canvas.getContext('2d');
+		if (!context) return;
+		if (resolved.type === 'text') {
+			renderTextItemRaster(context, resolved, width, height);
+		} else if (activeSubtitle) {
+			renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
+		} else {
+			context.clearRect(0, 0, width, height);
+		}
+		lastRasterCanvas = canvas;
+		lastRasterKey = rasterKey;
+		rasterRevision = untrack(() => rasterRevision) + 1;
+	}
+
+	$effect(() => {
+		const canvas = rasterCanvas;
+		if (canvas) paintRaster(canvas);
+	});
+
 	$effect(() => {
 		const video = mediaElement;
 		if (!video || item.type !== 'video') return;
@@ -136,6 +194,28 @@
 	});
 
 	$effect(() => {
+		const image = imageElement;
+		const imageUrl = url;
+		decodedImageElement = null;
+		if (!image || !imageUrl) return;
+		let disposed = false;
+		const decode = () => {
+			void image
+				.decode()
+				.then(() => {
+					if (!disposed) decodedImageElement = image;
+				})
+				.catch(() => undefined);
+		};
+		if (image.complete) decode();
+		else image.addEventListener('load', decode);
+		return () => {
+			disposed = true;
+			image.removeEventListener('load', decode);
+		};
+	});
+
+	$effect(() => {
 		const canvas = gpuCanvas;
 		if (!canvas || !needsGpu) return;
 		const instance = createGpuCompositor(canvas);
@@ -149,18 +229,42 @@
 
 	$effect(() => {
 		const video = mediaElement;
+		const image = imageElement;
+		const decodedImage = decodedImageElement;
+		const raster = rasterCanvas;
 		const canvas = gpuCanvas;
 		const instance = compositor;
-		if (!video || !canvas || !instance || !needsGpu) return;
+		const revision = rasterRevision;
+		const effects = gpuEffects;
+		const itemType = item.type;
+		const blendMode = item.blendMode ?? 'normal';
+		if (!canvas || !instance || !needsGpu) return;
+		if ((itemType === 'text' || itemType === 'subtitle') && revision === 0) return;
 		const draw = () => {
-			if (!video.videoWidth || !video.videoHeight) return;
-			const rendered = instance.render(video, video.videoWidth, video.videoHeight, gpuEffects, {
-				time: timelineStore.currentFrame / editorSession.fps,
-				blendMode: resolved.blendMode ?? 'normal'
+			const source = itemType === 'video' ? video : itemType === 'image' ? decodedImage : raster;
+			if (!source) return;
+			const width =
+				source instanceof HTMLVideoElement
+					? source.videoWidth
+					: source instanceof HTMLImageElement
+						? source.naturalWidth
+						: source.width;
+			const height =
+				source instanceof HTMLVideoElement
+					? source.videoHeight
+					: source instanceof HTMLImageElement
+						? source.naturalHeight
+						: source.height;
+			if (!width || !height) return;
+			const rendered = instance.render(source, width, height, effects, {
+				time: untrack(() => timelineStore.currentFrame) / editorSession.fps,
+				blendMode
 			});
 			canvas.hidden = !rendered;
-			video.style.visibility = rendered ? 'hidden' : '';
-			if (selected) publishScopeSample(rendered ? canvas : video);
+			if (itemType === 'image' && image) image.style.visibility = rendered ? 'hidden' : '';
+			else if (source instanceof HTMLVideoElement || source instanceof HTMLCanvasElement)
+				source.style.visibility = rendered ? 'hidden' : '';
+			if (selected) publishScopeSample(rendered ? canvas : source);
 		};
 		draw();
 		const offFrame = editorSession.clock.on('framechange', () => requestAnimationFrame(draw));
@@ -168,7 +272,10 @@
 		return () => {
 			offFrame();
 			offPlay();
-			video.style.visibility = '';
+			canvas.hidden = true;
+			if (video) video.style.visibility = '';
+			if (image) image.style.visibility = '';
+			if (raster) raster.style.visibility = '';
 		};
 	});
 
@@ -204,48 +311,31 @@
 			playsinline
 			volume={previewVolume}
 		></video>
-		{#if needsGpu}<canvas
-				bind:this={gpuCanvas}
-				class="absolute object-fill"
-				style={mediaCropStyle}
-				hidden
-			></canvas>{/if}
 	{:else if resolved.type === 'image' && url}
-		<img src={url} alt="" class="absolute object-fill" style={mediaCropStyle} />
+		<img
+			bind:this={imageElement}
+			src={url}
+			alt=""
+			class="absolute object-fill"
+			style={mediaCropStyle}
+		/>
 	{:else if resolved.type === 'text'}
-		<div
-			class="flex size-full whitespace-pre-wrap"
-			style:color={resolved.color ?? '#ffffff'}
-			style:background={resolved.backgroundColor ?? 'transparent'}
-			style:font-family={resolved.fontFamily ?? 'sans-serif'}
-			style:font-size={`${((resolved.fontSize ?? 48) / canvasHeight) * 100}cqh`}
-			style:font-weight={resolved.fontWeight ?? 600}
-			style:line-height={resolved.lineHeight ?? 1.2}
-			style:letter-spacing={`${resolved.letterSpacing ?? 0}px`}
-			style:justify-content={resolved.textAlign === 'left'
-				? 'flex-start'
-				: resolved.textAlign === 'right'
-					? 'flex-end'
-					: 'center'}
-			style:align-items={resolved.verticalAlign === 'top'
-				? 'flex-start'
-				: resolved.verticalAlign === 'bottom'
-					? 'flex-end'
-					: 'center'}
-			style:padding={`${resolved.paddingY ?? 0}px ${resolved.paddingX ?? 0}px`}
-		>
-			{resolved.text ?? resolved.label}
+		<div class="absolute size-full" role="img" aria-label={resolved.text ?? resolved.label}>
+			<canvas bind:this={rasterCanvas} class="size-full object-fill" aria-hidden="true"></canvas>
 		</div>
-	{:else if resolved.type === 'subtitle' && activeSubtitle}
-		<div class="flex size-full items-end justify-center p-[5%] text-center">
-			<span
-				class="font-semibold whitespace-pre-wrap text-white [text-shadow:0_2px_8px_rgb(0_0_0/0.9)]"
-				style:font-size={`${
-					(((canvasHeight / 18) * (resolved.subtitleStyleScale ?? 1)) / canvasHeight) * 100
-				}cqh`}
-			>
-				{activeSubtitle.text}
-			</span>
+	{:else if resolved.type === 'subtitle'}
+		<div class="absolute size-full" role="img" aria-label={activeSubtitle?.text ?? resolved.label}>
+			<canvas bind:this={rasterCanvas} class="size-full object-fill" aria-hidden="true"></canvas>
 		</div>
+	{/if}
+	{#if needsGpu}
+		<canvas
+			bind:this={gpuCanvas}
+			data-gpu-preview
+			class="absolute object-fill"
+			style={resolved.type === 'video' || resolved.type === 'image' ? mediaCropStyle : ''}
+			aria-hidden="true"
+			hidden
+		></canvas>
 	{/if}
 </div>
