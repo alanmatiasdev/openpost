@@ -88,6 +88,29 @@ function maskedProject(): Project {
 	};
 }
 
+function cornerPinnedProject(): Project {
+	const content = colorLayer('content', 'content-track', '#ff0000');
+	content.transform = { width: 8, height: 8 };
+	content.cornerPin = {
+		topLeft: [2, 0],
+		topRight: [0, 0],
+		bottomRight: [0, 0],
+		bottomLeft: [2, 0],
+		referenceWidth: 8,
+		referenceHeight: 8
+	};
+	return {
+		id: 'corner-pin-project',
+		name: 'Corner pin project',
+		description: '',
+		createdAt: 0,
+		updatedAt: 0,
+		duration: 1,
+		metadata: { width: 8, height: 8, fps: 30, backgroundColor: '#0000ff' },
+		timeline: { tracks: [track('content-track', 0)], items: [content] }
+	};
+}
+
 function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 	const context = canvas.getContext('2d', { willReadFrequently: true });
 	if (!context) throw new Error('2D canvas unavailable');
@@ -128,6 +151,38 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('matches export pixels for a projective corner pin', async () => {
+		const project = cornerPinnedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewPlayer, { selectedItemId: 'content', onedit: vi.fn() });
+		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
+		expect(preview).not.toBeNull();
+		if (!preview) return;
+		await vi.waitFor(() => {
+			const context = preview.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('2D canvas unavailable');
+			expect([...context.getImageData(0, 4, 1, 1).data]).toEqual([0, 0, 255, 255]);
+			expect([...context.getImageData(4, 4, 1, 1).data]).toEqual([255, 0, 0, 255]);
+		});
+
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const exported = await renderer.render(0);
+			const context = exported.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('2D canvas unavailable');
+			expect([...context.getImageData(0, 4, 1, 1).data]).toEqual([0, 0, 255, 255]);
+			expect([...context.getImageData(4, 4, 1, 1).data]).toEqual([255, 0, 0, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
 	it('matches export pixels for a track-scoped shape mask', async () => {
 		const project = maskedProject();
 		editorSession.project = project;

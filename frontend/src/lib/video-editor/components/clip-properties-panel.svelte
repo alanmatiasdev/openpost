@@ -9,6 +9,7 @@
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
+	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -320,6 +321,10 @@
 
 		{#if item.type === 'shape'}
 			<ShapePropertiesPanel {item} {onedit} />
+		{/if}
+
+		{#if ['video', 'image', 'text', 'shape', 'subtitle', 'composition'].includes(item.type)}
+			<CornerPinPropertiesPanel {item} {onedit} />
 		{/if}
 
 		{#if item.type === 'video' || item.type === 'audio'}

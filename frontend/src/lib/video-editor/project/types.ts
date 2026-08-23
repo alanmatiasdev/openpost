@@ -70,6 +70,16 @@ export interface CropSettings {
 	softness?: number;
 }
 
+/** Four local-pixel offsets stored against the item size where they were authored. */
+export interface TimelineItemCornerPin {
+	topLeft: [number, number];
+	topRight: [number, number];
+	bottomRight: [number, number];
+	bottomLeft: [number, number];
+	referenceWidth?: number;
+	referenceHeight?: number;
+}
+
 /**
  * Ported from FreeCut (MIT) - types/keyframe.ts.
  */
@@ -300,6 +310,7 @@ export interface TimelineItem extends TextStyleFields {
 
 	transform?: ItemTransform;
 	crop?: CropSettings;
+	cornerPin?: TimelineItemCornerPin;
 
 	// Audio properties
 	volume?: number;

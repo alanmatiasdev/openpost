@@ -6,7 +6,8 @@
 		ItemTransform,
 		KeyframeProperty,
 		SpatialBezierTangents,
-		TimelineItem
+		TimelineItem,
+		TimelineItemCornerPin
 	} from '$lib/video-editor/project/types';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -54,6 +55,7 @@
 	import { isAudioTransitionParticipantAtFrame } from '$lib/video-editor/audio/transition-crossfade';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { shapeMasksForTrack } from '$lib/video-editor/shapes/masks';
+	import { hasCornerPin } from '$lib/video-editor/preview/corner-pin';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -74,6 +76,7 @@
 	let draftTransform = $state<ItemTransform | null>(null);
 	let draftCrop = $state<NonNullable<TimelineItem['crop']> | null>(null);
 	let draftText = $state<string | null>(null);
+	let draftCornerPin = $state<TimelineItemCornerPin | null>(null);
 	let editingText = $state(false);
 	let isPlaying = $state(editorSession.clock.isPlaying);
 	let stackCanvas = $state<HTMLCanvasElement | null>(null);
@@ -134,7 +137,9 @@
 			colorPreviewStore.comparisonMode !== 'after' ||
 			colorPreviewStore.activePicker !== null ||
 			colorPreviewStore.frameCaptureItemId !== null ||
+			draftCornerPin !== null ||
 			activeItems.some((item) => item.type === 'shape' && item.isMask === true) ||
+			activeItems.some((item) => hasCornerPin(item.cornerPin)) ||
 			activeItems.some(
 				(item) =>
 					isNonNormalBlend(item.blendMode) &&
@@ -244,6 +249,9 @@
 			const resolved = scaleItemForCanvas(
 				{
 					...baseResolved,
+					cornerPin: directDraft
+						? (draftCornerPin ?? baseResolved.cornerPin)
+						: baseResolved.cornerPin,
 					transform: directDraft
 						? (draftTransform ?? baseResolved.transform)
 						: baseResolved.transform,
@@ -570,10 +578,16 @@
 		);
 	}
 
+	function commitCanvasCornerPin(cornerPin: TimelineItemCornerPin): void {
+		if (!selectedItemId) return;
+		updateItemProperties(selectedItemId, { cornerPin }, 'UPDATE_CORNER_PIN_ON_CANVAS');
+	}
+
 	$effect(() => {
 		void draftTransform;
 		void draftCrop;
 		void draftText;
+		void draftCornerPin;
 		if (needsStackedComposition) scheduleStackFrame();
 	});
 </script>
@@ -673,12 +687,14 @@
 					ontransformdraft={(value) => (draftTransform = value)}
 					oncropdraft={(value) => (draftCrop = value)}
 					ontextdraft={(value) => (draftText = value)}
+					oncornerpindraft={(value) => (draftCornerPin = value)}
 					ontextediting={(value) => (editingText = value)}
 					oncommitvalues={commitCanvasValues}
 					oncommitposition={commitCanvasPosition}
 					oncreatespatial={createCanvasSpatialTangents}
 					oncommitspatial={commitCanvasSpatialTangents}
 					oncommittext={commitCanvasText}
+					oncommitcornerpin={commitCanvasCornerPin}
 					onseek={setCurrentFrame}
 					{onedit}
 				/>

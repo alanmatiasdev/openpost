@@ -1,6 +1,7 @@
 import type { TimelineItem } from '../project/types';
 import { mediaDrawGeometry } from '../media/render-geometry';
 import { buildShapePath } from './render';
+import { drawCornerPinImage, hasCornerPin, resolveCornerPinForSize } from '../preview/corner-pin';
 
 type MaskCanvas = HTMLCanvasElement | OffscreenCanvas;
 type MaskContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -90,17 +91,30 @@ export class ShapeMaskRasterizer {
 			transform.flipHorizontal === true ? -1 : 1,
 			transform.flipVertical === true ? -1 : 1
 		);
-		this.matteContext.drawImage(
-			this.localCanvas,
-			0,
-			0,
-			localWidth,
-			localHeight,
-			-geometry.anchorX,
-			-geometry.anchorY,
-			geometry.drawWidth,
-			geometry.drawHeight
-		);
+		const pin = resolveCornerPinForSize(mask.cornerPin, localWidth, localHeight);
+		if (pin && hasCornerPin(pin)) {
+			drawCornerPinImage(
+				this.matteContext,
+				this.localCanvas,
+				localWidth,
+				localHeight,
+				-geometry.anchorX,
+				-geometry.anchorY,
+				pin
+			);
+		} else {
+			this.matteContext.drawImage(
+				this.localCanvas,
+				0,
+				0,
+				localWidth,
+				localHeight,
+				-geometry.anchorX,
+				-geometry.anchorY,
+				geometry.drawWidth,
+				geometry.drawHeight
+			);
+		}
 		this.matteContext.restore();
 	}
 

@@ -14,6 +14,7 @@ import { mediaDrawGeometry } from './render-geometry';
 import { transitionRegistry } from '../transitions';
 import { TransitionPipeline } from '../transitions/gpu/pipeline';
 import { ShapeMaskRasterizer } from '../shapes/masks';
+import { drawCornerPinImage, hasCornerPin, resolveCornerPinForSize } from '../preview/corner-pin';
 
 type StackCanvas = HTMLCanvasElement | OffscreenCanvas;
 type StackContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -114,6 +115,8 @@ export class CanvasStackCompositor {
 	private readonly gpuCanvas: StackCanvas;
 	private readonly gpuCompositor: GpuCompositor | null;
 	private readonly maskRasterizer = new ShapeMaskRasterizer();
+	private readonly cornerPinCanvas = createStackCanvas();
+	private readonly cornerPinContext: StackContext;
 	private readonly transitionLeftCanvas: StackCanvas | null;
 	private readonly transitionRightCanvas: StackCanvas | null;
 	private readonly transitionOutputCanvas: StackCanvas | null;
@@ -142,6 +145,11 @@ export class CanvasStackCompositor {
 		this.layerContext = layerContext;
 		this.layerContext.imageSmoothingEnabled = true;
 		this.layerContext.imageSmoothingQuality = 'high';
+		const cornerPinContext = this.cornerPinCanvas.getContext('2d');
+		if (!cornerPinContext) throw new Error('Failed to create the corner pin canvas context.');
+		this.cornerPinContext = cornerPinContext;
+		this.cornerPinContext.imageSmoothingEnabled = true;
+		this.cornerPinContext.imageSmoothingQuality = 'high';
 		this.gpuCanvas = createStackCanvas();
 		this.gpuCompositor = createGpuCompositor(this.gpuCanvas);
 		if (withTransitionBranches) {
@@ -248,6 +256,71 @@ export class CanvasStackCompositor {
 		return this.gpuCanvas;
 	}
 
+	private drawLayer(
+		context: StackContext,
+		image: CanvasImageSource,
+		source: StackLayerSource,
+		item: TimelineItem,
+		alpha: number
+	): void {
+		const geometry = mediaDrawGeometry(item, source.width, source.height, this.width, this.height);
+		const pinWidth = Math.max(1, Math.round(geometry.drawWidth));
+		const pinHeight = Math.max(1, Math.round(geometry.drawHeight));
+		const pin = resolveCornerPinForSize(item.cornerPin, pinWidth, pinHeight);
+		if (!pin || !hasCornerPin(pin)) {
+			drawTransformedLayer(
+				context,
+				image,
+				source.width,
+				source.height,
+				item,
+				this.width,
+				this.height,
+				alpha
+			);
+			return;
+		}
+
+		if (this.cornerPinCanvas.width !== pinWidth) this.cornerPinCanvas.width = pinWidth;
+		if (this.cornerPinCanvas.height !== pinHeight) this.cornerPinCanvas.height = pinHeight;
+		this.cornerPinContext.globalAlpha = 1;
+		this.cornerPinContext.globalCompositeOperation = 'source-over';
+		this.cornerPinContext.filter = 'none';
+		this.cornerPinContext.clearRect(0, 0, pinWidth, pinHeight);
+		this.cornerPinContext.drawImage(
+			image,
+			geometry.sourceX,
+			geometry.sourceY,
+			geometry.sourceWidth,
+			geometry.sourceHeight,
+			0,
+			0,
+			pinWidth,
+			pinHeight
+		);
+
+		const transform = item.transform ?? {};
+		context.save();
+		context.globalAlpha = Math.min(1, Math.max(0, alpha));
+		context.filter = effectsToCssFilter(item.effects) || 'none';
+		context.translate(geometry.centerX, geometry.centerY);
+		context.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
+		context.scale(
+			transform.flipHorizontal === true ? -1 : 1,
+			transform.flipVertical === true ? -1 : 1
+		);
+		drawCornerPinImage(
+			context,
+			this.cornerPinCanvas,
+			pinWidth,
+			pinHeight,
+			-geometry.anchorX,
+			-geometry.anchorY,
+			pin
+		);
+		context.restore();
+	}
+
 	compositeLayer(
 		source: StackLayerSource,
 		item: TimelineItem,
@@ -257,7 +330,8 @@ export class CanvasStackCompositor {
 	): void {
 		const processed = this.renderGpuEffects(source, item, time);
 		const blendMode = item.blendMode ?? 'normal';
-		const needsLayerCanvas = masks.length > 0 || isNonNormalBlend(blendMode);
+		const needsLayerCanvas =
+			masks.length > 0 || isNonNormalBlend(blendMode) || hasCornerPin(item.cornerPin);
 		if (!needsLayerCanvas) {
 			drawTransformedLayer(
 				this.context,
@@ -276,16 +350,7 @@ export class CanvasStackCompositor {
 		this.layerContext.globalCompositeOperation = 'source-over';
 		this.layerContext.filter = 'none';
 		this.layerContext.clearRect(0, 0, this.width, this.height);
-		drawTransformedLayer(
-			this.layerContext,
-			processed,
-			source.width,
-			source.height,
-			item,
-			this.width,
-			this.height,
-			alpha
-		);
+		this.drawLayer(this.layerContext, processed, source, item, alpha);
 		this.maskRasterizer.apply(this.layerContext, masks, this.width, this.height);
 
 		if (!isNonNormalBlend(blendMode)) {

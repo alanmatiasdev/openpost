@@ -7,7 +7,8 @@
 		ItemTransform,
 		KeyframeProperty,
 		SpatialBezierTangents,
-		TimelineItem
+		TimelineItem,
+		TimelineItemCornerPin
 	} from '$lib/video-editor/project/types';
 	import {
 		buildMotionPathPoints,
@@ -28,8 +29,9 @@
 	} from '$lib/video-editor/preview/on-canvas-tools';
 	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
 	import PathEditorOverlay from './path-editor-overlay.svelte';
+	import CornerPinOverlay from './corner-pin-overlay.svelte';
 
-	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion' | 'path';
+	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion' | 'path' | 'corner-pin';
 	type TransformOperation = 'move' | 'resize' | 'rotate';
 	type AnimatedValues = Partial<Record<KeyframeProperty, number>>;
 	const TRANSFORM_HANDLES: TransformHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -43,12 +45,14 @@
 		ontransformdraft,
 		oncropdraft,
 		ontextdraft,
+		oncornerpindraft,
 		ontextediting,
 		oncommitvalues,
 		oncommitposition,
 		oncreatespatial,
 		oncommitspatial,
 		oncommittext,
+		oncommitcornerpin,
 		onseek,
 		onedit
 	}: {
@@ -60,12 +64,14 @@
 		ontransformdraft: (transform: ItemTransform | null) => void;
 		oncropdraft: (crop: CropSettings | null) => void;
 		ontextdraft: (text: string | null) => void;
+		oncornerpindraft: (pin: TimelineItemCornerPin | null) => void;
 		ontextediting: (editing: boolean) => void;
 		oncommitvalues: (frame: number, values: AnimatedValues) => boolean;
 		oncommitposition: (frame: number, x: number, y: number) => boolean;
 		oncreatespatial: (frame: number) => boolean;
 		oncommitspatial: (frame: number, spatial: SpatialBezierTangents) => boolean;
 		oncommittext: (text: string) => void;
+		oncommitcornerpin: (pin: TimelineItemCornerPin) => void;
 		onseek: (frame: number) => void;
 		onedit: () => void;
 	} = $props();
@@ -94,6 +100,9 @@
 	const canCrop = $derived(item.type === 'video' || item.type === 'image');
 	const canEditText = $derived(item.type === 'text');
 	const canEditPath = $derived(item.type === 'shape' && item.shapeType === 'path');
+	const canCornerPin = $derived(
+		['video', 'image', 'text', 'shape', 'subtitle', 'composition'].includes(item.type)
+	);
 	const hasMotion = $derived(positionKeyframeFrames(item).length > 0);
 	const motionPoints = $derived(
 		buildMotionPathPoints({
@@ -140,6 +149,7 @@
 		if (activeTool === 'text' && !canEditText) activeTool = 'transform';
 		if (activeTool === 'motion' && !hasMotion) activeTool = 'transform';
 		if (activeTool === 'path' && !canEditPath) activeTool = 'transform';
+		if (activeTool === 'corner-pin' && !canCornerPin) activeTool = 'transform';
 	});
 
 	$effect(() => {
@@ -212,6 +222,7 @@
 		ontransformdraft(null);
 		oncropdraft(null);
 		ontextdraft(null);
+		oncornerpindraft(null);
 		if (textSession) {
 			textSession = false;
 			ontextediting(false);
@@ -869,6 +880,14 @@
 				onclick={() => setTool('path')}>{m.video_editor_canvas_tool_path()}</button
 			>
 		{/if}
+		{#if canCornerPin && !isPlaying}
+			<button
+				type="button"
+				class:active={activeTool === 'corner-pin'}
+				class="rounded px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&.active]:bg-[oklch(0.76_0.13_220)] [&.active]:text-black"
+				onclick={() => setTool('corner-pin')}>{m.video_editor_canvas_tool_corner_pin()}</button
+			>
+		{/if}
 	</div>
 
 	{#if activeTool === 'motion' && !isPlaying && motionPoints.length > 0}
@@ -992,6 +1011,19 @@
 		</svg>
 	{:else if activeTool === 'path' && canEditPath && !isPlaying}
 		<PathEditorOverlay {item} {canvasWidth} {canvasHeight} {boxStyle} {screenScale} {onedit} />
+	{:else if activeTool === 'corner-pin' && canCornerPin && !isPlaying}
+		<CornerPinOverlay
+			{item}
+			{canvasWidth}
+			{canvasHeight}
+			{boxStyle}
+			{screenScale}
+			onpreview={oncornerpindraft}
+			oncommit={(pin) => {
+				oncommitcornerpin(pin);
+				onedit();
+			}}
+		/>
 	{:else}
 		<div
 			class="pointer-events-auto absolute border border-[oklch(0.72_0.16_45)] shadow-[0_0_0_1px_black]"

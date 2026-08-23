@@ -27,6 +27,7 @@ async function renderTools(item: TimelineItem) {
 		ontransformdraft: vi.fn(),
 		oncropdraft: vi.fn(),
 		ontextdraft: vi.fn(),
+		oncornerpindraft: vi.fn(),
 		ontextediting: vi.fn(),
 		oncommitvalues: vi.fn(
 			(_frame: number, _values: Partial<Record<KeyframeProperty, number>>) => true
@@ -35,6 +36,7 @@ async function renderTools(item: TimelineItem) {
 		oncreatespatial: vi.fn((_frame: number) => true),
 		oncommitspatial: vi.fn(() => true),
 		oncommittext: vi.fn((_text: string) => undefined),
+		oncommitcornerpin: vi.fn(),
 		onseek: vi.fn((_frame: number) => undefined),
 		onedit: vi.fn()
 	};
@@ -100,6 +102,13 @@ function clientCanvasPoint(
 }
 
 describe('OnCanvasTools', () => {
+	it('opens the direct corner-pin editor for visual clips', async () => {
+		const { screen } = await renderTools(imageItem());
+		await screen.getByRole('button', { name: 'Corner pin' }).click();
+		expect(screen.container.querySelector('[data-corner-pin-editor]')).not.toBeNull();
+		await expect.element(screen.getByRole('button', { name: 'Move topLeft corner' })).toBeVisible();
+	});
+
 	it('commits a rotated crop drag in clip-local coordinates', async () => {
 		const { screen, callbacks } = await renderTools(
 			imageItem({ transform: { x: 0, y: 0, width: 100, height: 100, rotation: 90 } })

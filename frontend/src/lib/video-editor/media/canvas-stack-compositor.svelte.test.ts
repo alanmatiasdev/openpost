@@ -5,6 +5,11 @@ import { createGpuCompositor } from '../effects/gpu/compositor';
 import type { TimelineItem } from '../project/types';
 import { CanvasStackCompositor } from './canvas-stack-compositor';
 import { doesShapeMaskAffectTrack } from '../shapes/masks';
+import {
+	computeCornerPinHomography,
+	projectCornerPinPoint,
+	resolveCornerPinForSize
+} from '../preview/corner-pin';
 
 function solid(color: string, width = 4, height = 4): HTMLCanvasElement {
 	const canvas = document.createElement('canvas');
@@ -78,6 +83,57 @@ function displayedPixels(canvas: HTMLCanvasElement): Uint8ClampedArray {
 }
 
 describe('CanvasStackCompositor', () => {
+	it('preserves corner offsets across item resizing and maps exact quad corners', () => {
+		const pin = resolveCornerPinForSize(
+			{
+				topLeft: [10, 5],
+				topRight: [-10, 0],
+				bottomRight: [0, -5],
+				bottomLeft: [5, 0],
+				referenceWidth: 100,
+				referenceHeight: 50
+			},
+			200,
+			100
+		);
+		expect(pin).toEqual({
+			topLeft: [20, 10],
+			topRight: [-20, 0],
+			bottomRight: [0, -10],
+			bottomLeft: [10, 0]
+		});
+		if (!pin) return;
+		const homography = computeCornerPinHomography(200, 100, pin);
+		expect(projectCornerPinPoint(homography, 0, 0)).toEqual([20, 10]);
+		const bottomRight = projectCornerPinPoint(homography, 200, 100);
+		expect(bottomRight[0]).toBeCloseTo(200);
+		expect(bottomRight[1]).toBeCloseTo(90);
+	});
+
+	it('warps a layer before it reaches the shared preview and export stack', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		stack.beginFrame(8, 8, '#0000ff');
+		const item: TimelineItem = {
+			...layer('normal'),
+			transform: { width: 8, height: 8 },
+			cornerPin: {
+				topLeft: [2, 0],
+				topRight: [0, 0],
+				bottomRight: [0, 0],
+				bottomLeft: [2, 0],
+				referenceWidth: 8,
+				referenceHeight: 8
+			}
+		};
+
+		stack.compositeLayer({ source: solid('#ff0000', 8, 8), width: 8, height: 8 }, item, 1, 0);
+
+		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 255, 255]);
+		expect(pixelAt(output, 4, 4)).toEqual([255, 0, 0, 255]);
+		stack.dispose();
+	});
+
 	it('scopes masks to tracks below their timeline position', () => {
 		expect(doesShapeMaskAffectTrack(0, 1)).toBe(true);
 		expect(doesShapeMaskAffectTrack(0, 3)).toBe(true);
@@ -97,6 +153,32 @@ describe('CanvasStackCompositor', () => {
 
 		expect(pixelAt(output, 4, 4)).toEqual([255, 0, 0, 255]);
 		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 255, 255]);
+		stack.dispose();
+	});
+
+	it('uses the same projective warp for shape masks', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		stack.beginFrame(8, 8, '#0000ff');
+		const item = { ...layer('normal'), transform: { width: 8, height: 8 } };
+		const pinnedMask = mask({
+			transform: { width: 8, height: 8 },
+			cornerPin: {
+				topLeft: [2, 0],
+				topRight: [0, 0],
+				bottomRight: [0, 0],
+				bottomLeft: [2, 0],
+				referenceWidth: 8,
+				referenceHeight: 8
+			}
+		});
+
+		stack.compositeLayer({ source: solid('#ff0000', 8, 8), width: 8, height: 8 }, item, 1, 0, [
+			pinnedMask
+		]);
+
+		expect(pixelAt(output, 0, 4)).toEqual([0, 0, 255, 255]);
+		expect(pixelAt(output, 4, 4)).toEqual([255, 0, 0, 255]);
 		stack.dispose();
 	});
 
