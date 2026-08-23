@@ -43,7 +43,7 @@ type memeProviderStub struct {
 	renderedData   []byte
 }
 
-func (p *memeProviderStub) Key() string     { return memes.MemegenProviderKey }
+func (p *memeProviderStub) Key() string     { return memes.BuiltinProviderKey }
 func (p *memeProviderStub) Available() bool { return p != nil && p.available }
 func (p *memeProviderStub) Health(context.Context) (memes.Health, error) {
 	return memes.Health{Available: p.Available(), Ready: p.Available(), TemplateCount: len(p.catalog.Templates)}, nil
@@ -229,6 +229,11 @@ func newMemeHandlerTestServer(t *testing.T, suggester memegeneration.Suggester) 
 					BlankURL:  "https://api.memegen.test/images/drake.png",
 					Example:   memes.TemplateExample{Text: []string{"no", "yes"}},
 					SourceURL: "https://knowyourmeme.com/memes/drakeposting", Keywords: []string{"choice", "preference"},
+					Semantic: memes.TemplateSemantic{
+						Visual:  "Drake rejects the upper choice and approves the lower choice.",
+						Meaning: "Reject the first option and approve the second.", Mechanism: "reject_prefer",
+						CaptionRoles: []string{"rejected option", "preferred option"}, Tags: []string{"choice", "contrast"},
+					},
 				},
 				{
 					ID: "3hd", Name: "Three Headed Dragon", Lines: 3, Overlays: 1,
@@ -294,7 +299,7 @@ func TestMemeTemplatesReturnsConfigurationAndCatalogMetadata(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &output.Body))
 	require.True(t, output.Body.Configured)
 	require.True(t, output.Body.AIConfigured)
-	require.Equal(t, memes.MemegenProviderKey, output.Body.Catalog.ProviderKey)
+	require.Equal(t, memes.BuiltinProviderKey, output.Body.Catalog.ProviderKey)
 	require.Equal(t, 2, output.Body.Catalog.TotalTemplates)
 	require.Equal(t, 1, output.Body.Catalog.Returned)
 	require.True(t, strings.HasPrefix(output.Body.Catalog.Revision, "sha256:"))
@@ -315,11 +320,9 @@ func TestMemeTemplateThumbnailIsAuthenticatedProxiedAndCached(t *testing.T) {
 	first := srv.request(t, http.MethodGet, path, nil)
 	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 	require.Equal(t, "private, max-age=3600", first.Header().Get("Cache-Control"))
-	var output GetMemeTemplateThumbnailOutput
-	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &output.Body))
-	require.Equal(t, "drake", output.Body.TemplateID)
-	require.Equal(t, "image/png", output.Body.MIMEType)
-	require.Equal(t, validMemePNG(t), mustDecodeBase64(t, output.Body.DataBase64))
+	require.Equal(t, "image/png", first.Header().Get("Content-Type"))
+	require.Equal(t, validMemePNG(t), first.Body.Bytes())
+	require.NotEmpty(t, first.Header().Get("ETag"))
 
 	second := srv.request(t, http.MethodGet, path, nil)
 	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
@@ -359,6 +362,8 @@ func TestMemeSuggestionsRanksBoundedTemplatesAndReturnsMetadata(t *testing.T) {
 	}
 	require.Equal(t, []string{"no", "yes"}, drakeTemplate.ExampleLines)
 	require.Equal(t, []string{"rejected option", "preferred option"}, drakeTemplate.Semantics.CaptionRoles)
+	require.Equal(t, "Drake rejects the upper choice and approves the lower choice.", drakeTemplate.Semantics.Visual)
+	require.Equal(t, "reject_prefer", drakeTemplate.Semantics.Mechanism)
 	require.LessOrEqual(t, len(received.Templates), memegeneration.MaxCandidateTemplates)
 
 	var output GenerateMemeSuggestionsOutput
@@ -389,7 +394,7 @@ func TestMemeSuggestionFallbackPrefersReviewedDiverseTemplates(t *testing.T) {
 	})
 }
 
-func TestMemePreviewResolvesWorkspaceOverlayToHTTPSAndDoesNotPersist(t *testing.T) {
+func TestMemePreviewLoadsWorkspaceOverlayBytesWithoutPublicURLAndDoesNotPersist(t *testing.T) {
 	t.Parallel()
 
 	srv := newMemeHandlerTestServer(t, nil)
@@ -399,6 +404,7 @@ func TestMemePreviewResolvesWorkspaceOverlayToHTTPSAndDoesNotPersist(t *testing.
 		Size: int64(len(validMemePNG(t))), Width: 1, Height: 1,
 	}).Exec(t.Context())
 	require.NoError(t, err)
+	srv.storage.objects["overlay-1.png"] = validMemePNG(t)
 
 	response := srv.request(t, http.MethodPost, "/api/v1/memes/preview", map[string]any{
 		"workspace_id": "ws-1", "template_id": "3hd",
@@ -413,7 +419,10 @@ func TestMemePreviewResolvesWorkspaceOverlayToHTTPSAndDoesNotPersist(t *testing.
 
 	requests := srv.provider.renderedRequests()
 	require.Len(t, requests, 1)
-	require.Equal(t, []string{"https://cdn.openpost.test/media/overlay-1.png"}, requests[0].OverlayURLs)
+	require.Empty(t, requests[0].OverlayURLs)
+	require.Len(t, requests[0].OverlayImages, 1)
+	require.Equal(t, "image/png", requests[0].OverlayImages[0].MIMEType)
+	require.Equal(t, validMemePNG(t), requests[0].OverlayImages[0].Data)
 	count, err := srv.db.NewSelect().Model((*models.MediaGenerationRecipe)(nil)).Count(t.Context())
 	require.NoError(t, err)
 	require.Zero(t, count)
@@ -447,6 +456,7 @@ func TestMemeRenderImportsMediaPersistsImmutableRecipeAndAllowsRecipeRead(t *tes
 		Size: int64(len(validMemePNG(t))), Width: 1, Height: 1,
 	}).Exec(t.Context())
 	require.NoError(t, err)
+	srv.storage.objects["overlay-1.png"] = validMemePNG(t)
 	_, err = srv.db.NewInsert().Model(&models.MediaAttachment{
 		ID: "parent-1", WorkspaceID: "ws-1", FilePath: "parent-1.png",
 		MimeType: "image/png", ProcessingStatus: mediaReadyStatus,

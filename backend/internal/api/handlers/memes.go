@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/medialifecycle"
+	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/memegeneration"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/ratelimit"
@@ -75,48 +77,6 @@ var preferredMemeSuggestionTemplateIDs = []string{
 	"drake", "db", "cmm", "doge", "blb", "both", "fry", "disastergirl",
 	"bihw", "dbg", "bus", "aag", "rollsafe", "stonks", "astronaut", "gru",
 	"success", "wonka", "oprah", "chair", "3hd", "sad-obama",
-}
-
-// Memegen supplies positional caption examples but not explicit rhetorical
-// roles. A small reviewed dossier prevents the model from reversing the joke
-// on common templates while the generic path still supports the full catalog.
-var memeTemplateSemantics = map[string]memegeneration.SemanticHint{
-	"aag": {
-		Meaning:      "An overconfident speaker jumps from weak evidence to an absurd explanation.",
-		CaptionRoles: []string{"observation or weak evidence", "absurd confident conclusion"},
-	},
-	"bihw": {
-		Meaning:      "A modest result is acknowledged with sincere, understated pride.",
-		CaptionRoles: []string{"small or imperfect achievement", "earnest qualification that it still counts"},
-	},
-	"blb": {
-		Meaning:      "An ordinary setup leads to an unusually unlucky outcome.",
-		CaptionRoles: []string{"ordinary setup", "bad-luck payoff"},
-	},
-	"both": {
-		Meaning:      "A forced choice is rejected because combining both options is better or funnier.",
-		CaptionRoles: []string{"two presented alternatives", "why not both punchline"},
-	},
-	"bus": {
-		Meaning:      "Two people in the same situation interpret it through opposite outlooks.",
-		CaptionRoles: []string{"pessimistic framing", "optimistic framing"},
-	},
-	"cmm": {
-		Meaning:      "A concise debatable opinion is presented as a challenge.",
-		CaptionRoles: []string{"specific provocative claim"},
-	},
-	"dbg": {
-		Meaning:      "An appealing expectation is immediately contrasted with a disappointing reality.",
-		CaptionRoles: []string{"expectation", "reality"},
-	},
-	"disastergirl": {
-		Meaning:      "A calm observer appears to have secretly caused or planned the surrounding problem.",
-		CaptionRoles: []string{"the problem or chaos", "quietly culpable punchline"},
-	},
-	"drake": {
-		Meaning:      "The first option is rejected and the second option is enthusiastically preferred.",
-		CaptionRoles: []string{"rejected option", "preferred option"},
-	},
 }
 
 type memeConcurrencyLimiter struct {
@@ -200,13 +160,6 @@ type memeThumbnailCacheEntry struct {
 	expiresAt  time.Time
 }
 
-// MemeMediaURLResolver resolves workspace-owned media to the HTTPS URLs that
-// an external renderer may fetch. The persisted recipe stores media IDs, not
-// these short-lived URLs.
-type MemeMediaURLResolver interface {
-	URL(models.MediaAttachment) string
-}
-
 // MemeMediaImport is the bounded input to the existing media pipeline.
 type MemeMediaImport struct {
 	WorkspaceID   string
@@ -287,7 +240,7 @@ type MemeHandler struct {
 	auth           middleware.Authenticator
 	provider       memes.Provider
 	suggester      memegeneration.Suggester
-	mediaURLs      MemeMediaURLResolver
+	mediaStorage   mediastore.BlobStorage
 	importer       MemeMediaImporter
 	limiter        *ratelimit.Limiter
 	renders        *memeConcurrencyLimiter
@@ -304,7 +257,7 @@ func NewMemeHandler(
 	db *bun.DB,
 	authn middleware.Authenticator,
 	mediaHandler *MediaHandler,
-	publicMedia *publicurl.MediaVerifier,
+	_ *publicurl.MediaVerifier,
 	renderer memes.Provider,
 	suggester memegeneration.Suggester,
 ) *MemeHandler {
@@ -320,11 +273,7 @@ func NewMemeHandler(
 	}
 	if mediaHandler != nil {
 		handler.importer = mediaHandlerMemeImporter{handler: mediaHandler}
-	}
-	if publicMedia != nil {
-		handler.mediaURLs = publicMedia
-	} else if mediaHandler != nil {
-		handler.mediaURLs = mediaHandler.publicMedia
+		handler.mediaStorage = mediaHandler.storage
 	}
 	return handler
 }
@@ -355,17 +304,16 @@ type ListMemeTemplatesOutput struct {
 }
 
 type GetMemeTemplateThumbnailInput struct {
-	PathTemplateID string `path:"template_id" doc:"Memegen template ID"`
-	WorkspaceID    string `query:"workspace_id" required:"true" doc:"Workspace ID"`
+	PathTemplateID  string `path:"template_id" doc:"Meme template ID"`
+	WorkspaceID     string `query:"workspace_id" required:"true" doc:"Workspace ID"`
+	CatalogRevision string `query:"catalog_revision,omitempty" doc:"Catalog revision returned by the template list"`
 }
 
 type GetMemeTemplateThumbnailOutput struct {
 	CacheControl string `header:"Cache-Control"`
-	Body         struct {
-		TemplateID string `json:"template_id"`
-		MIMEType   string `json:"mime_type"`
-		DataBase64 string `json:"data_base64" doc:"Base64-encoded template thumbnail bytes"`
-	}
+	ContentType  string `header:"Content-Type"`
+	ETag         string `header:"ETag"`
+	Body         []byte
 }
 
 type GenerateMemeSuggestionsInput struct {
@@ -501,9 +449,17 @@ func (h *MemeHandler) RegisterRoutes(api huma.API) {
 		OperationID: "get-meme-template-thumbnail",
 		Method:      http.MethodGet,
 		Path:        "/memes/templates/{template_id}/thumbnail",
-		Summary:     "Load a proxied meme template thumbnail",
-		Description: "Returns a bounded OpenPost-proxied image so private Memegen hosts and server-only provider credentials are never exposed to the browser.",
+		Summary:     "Load a meme template thumbnail",
+		Description: "Returns bounded cacheable image bytes from OpenPost's configured template catalog.",
 		Tags:        []string{tagMedia},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "JPEG template thumbnail",
+				Content: map[string]*huma.MediaType{
+					"image/jpeg": {Schema: &huma.Schema{Type: "string", Format: "binary"}},
+				},
+			},
+		},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 429, 502, 503},
 	}, h.getTemplateThumbnail)
@@ -606,8 +562,9 @@ func (h *MemeHandler) getTemplateThumbnail(
 		return nil, err
 	}
 	cacheKey := memeCatalogRevision(catalog) + ":" + template.ID
+	immutable := input.CatalogRevision != "" && input.CatalogRevision == memeCatalogRevision(catalog)
 	if cached, ok := h.cachedMemeThumbnail(cacheKey); ok {
-		return memeThumbnailOutput(cached), nil
+		return memeThumbnailOutput(cached, immutable), nil
 	}
 	release, acquired := h.thumbnails.acquire(middleware.GetUserID(ctx))
 	if !acquired {
@@ -642,7 +599,7 @@ func (h *MemeHandler) getTemplateThumbnail(
 		templateID: template.ID, expiresAt: h.now().Add(memeThumbnailTTL),
 	}
 	h.storeMemeThumbnail(cacheKey, entry)
-	return memeThumbnailOutput(entry), nil
+	return memeThumbnailOutput(entry, immutable), nil
 }
 
 //nolint:gocyclo // Keep authorization, admission, provider validation, and response shaping explicit at the API boundary.
@@ -702,7 +659,7 @@ func (h *MemeHandler) generateSuggestions(ctx context.Context, input *GenerateMe
 			return nil, huma.Error502BadGateway("AI meme suggestions returned an invalid template")
 		}
 		for _, caption := range candidate.CaptionLines {
-			if memes.ValidateMemegenCaption(caption) != nil {
+			if memes.ValidateCaption(caption) != nil {
 				return nil, huma.Error502BadGateway("AI meme suggestions returned caption text that Memegen cannot render")
 			}
 		}
@@ -885,13 +842,13 @@ func (h *MemeHandler) render(ctx context.Context, input memeRenderParameters) (m
 	if err := validateMemeRenderValues(template, input.Captions, input.OverlayMediaIDs, input.Format); err != nil {
 		return memes.RenderedImage{}, memes.Template{}, memes.Catalog{}, err
 	}
-	overlayURLs, err := h.resolveOverlayURLs(ctx, input.WorkspaceID, input.OverlayMediaIDs)
+	overlayImages, err := h.loadOverlayImages(ctx, input.WorkspaceID, input.OverlayMediaIDs)
 	if err != nil {
 		return memes.RenderedImage{}, memes.Template{}, memes.Catalog{}, err
 	}
 	rendered, err := h.provider.Render(ctx, memes.RenderRequest{
 		TemplateID: template.ID, Text: append([]string(nil), input.Captions...),
-		OverlayURLs: overlayURLs, Extension: normalizedMemeExtension(input.Format),
+		OverlayImages: overlayImages, Extension: normalizedMemeExtension(input.Format),
 	})
 	if err != nil {
 		return memes.RenderedImage{}, memes.Template{}, memes.Catalog{}, memeProviderError(err)
@@ -942,19 +899,20 @@ func (h *MemeHandler) loadTemplate(ctx context.Context, templateID string) (meme
 	return memes.Catalog{}, memes.Template{}, huma.Error404NotFound("meme template not found")
 }
 
-//nolint:gocyclo // Each media safety bound is intentionally checked before issuing any public URL to the renderer.
-func (h *MemeHandler) resolveOverlayURLs(ctx context.Context, workspaceID string, mediaIDs []string) ([]string, error) {
+//nolint:gocyclo // Each media safety bound is checked before local bytes reach the renderer.
+func (h *MemeHandler) loadOverlayImages(ctx context.Context, workspaceID string, mediaIDs []string) ([]memes.OverlayImage, error) {
 	if len(mediaIDs) == 0 {
 		return nil, nil
 	}
 	if len(mediaIDs) > maxMemeOverlayMedia {
 		return nil, huma.Error400BadRequest("a meme can use at most 8 overlay images")
 	}
-	if h.db == nil || h.mediaURLs == nil {
-		return nil, huma.Error503ServiceUnavailable("public media URLs are not configured for meme overlays")
+	if h.db == nil || h.mediaStorage == nil {
+		return nil, huma.Error503ServiceUnavailable("media storage is not configured for meme overlays")
 	}
-	result := make([]string, 0, len(mediaIDs))
-	var totalBytes int64
+	result := make([]memes.OverlayImage, 0, len(mediaIDs))
+	var declaredTotalBytes int64
+	var loadedTotalBytes int64
 	for _, rawID := range mediaIDs {
 		mediaID := strings.TrimSpace(rawID)
 		if mediaID == "" || utf8.RuneCountInString(mediaID) > 80 || hasMemeControl(mediaID, false) {
@@ -980,16 +938,34 @@ func (h *MemeHandler) resolveOverlayURLs(ctx context.Context, workspaceID string
 			pixels <= 0 || pixels > maxMemeImagePixels {
 			return nil, huma.Error400BadRequest("overlay image is too large for meme rendering")
 		}
-		totalBytes += media.Size
-		if totalBytes > maxMemeOverlayTotalBytes {
+		declaredTotalBytes += media.Size
+		if declaredTotalBytes > maxMemeOverlayTotalBytes {
 			return nil, huma.Error400BadRequest("combined overlay images are too large for meme rendering")
 		}
-		resolved := strings.TrimSpace(h.mediaURLs.URL(media))
-		parsed, err := url.Parse(resolved)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
-			return nil, huma.Error503ServiceUnavailable("overlay media does not have a safe public HTTPS URL")
+		reader, err := h.mediaStorage.Open(filepath.Base(media.FilePath))
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open overlay media")
 		}
-		result = append(result, resolved)
+		data, readErr := io.ReadAll(io.LimitReader(reader, maxMemeOverlayBytes+1))
+		closeErr := reader.Close()
+		if readErr != nil || closeErr != nil {
+			return nil, huma.Error500InternalServerError("failed to read overlay media")
+		}
+		if len(data) == 0 || len(data) > maxMemeOverlayBytes {
+			return nil, huma.Error400BadRequest("overlay image is too large for meme rendering")
+		}
+		loadedTotalBytes += int64(len(data))
+		if loadedTotalBytes > maxMemeOverlayTotalBytes {
+			return nil, huma.Error400BadRequest("combined overlay images are too large for meme rendering")
+		}
+		config, _, decodeErr := image.DecodeConfig(bytes.NewReader(data))
+		actualPixels := int64(config.Width) * int64(config.Height)
+		if decodeErr != nil || config.Width <= 0 || config.Height <= 0 ||
+			config.Width > maxMemeImageDimension || config.Height > maxMemeImageDimension ||
+			actualPixels <= 0 || actualPixels > maxMemeImagePixels {
+			return nil, huma.Error400BadRequest("overlay media must contain a valid bounded image")
+		}
+		result = append(result, memes.OverlayImage{Data: data, MIMEType: mimeType})
 	}
 	return result, nil
 }
@@ -1097,7 +1073,38 @@ func memeGenerationTemplate(template memes.Template) memegeneration.Template {
 	return memegeneration.Template{
 		ID: template.ID, Name: truncateMemeText(template.Name, memegeneration.MaxTemplateNameCharacters),
 		LineCount: template.Lines, OverlayCount: min(template.Overlays, memegeneration.MaxTemplateOverlays),
-		Keywords: keywords, ExampleLines: exampleLines, Semantics: memeTemplateSemantics[template.ID],
+		Keywords: keywords, ExampleLines: exampleLines, Semantics: memeGenerationSemantic(template.Semantic, template.Lines),
+	}
+}
+
+func memeGenerationSemantic(source memes.TemplateSemantic, lineCount int) memegeneration.SemanticHint {
+	roles := make([]string, 0, min(len(source.CaptionRoles), lineCount))
+	if len(source.CaptionRoles) == lineCount {
+		for _, value := range source.CaptionRoles {
+			value = truncateMemeText(strings.TrimSpace(value), memegeneration.MaxCaptionRoleCharacters)
+			if value == "" || hasMemeControl(value, false) {
+				roles = nil
+				break
+			}
+			roles = append(roles, value)
+		}
+	}
+	tags := make([]string, 0, min(len(source.Tags), memegeneration.MaxSemanticTags))
+	for _, value := range source.Tags {
+		if len(tags) == memegeneration.MaxSemanticTags {
+			break
+		}
+		value = truncateMemeText(strings.TrimSpace(value), memegeneration.MaxSemanticTagCharacters)
+		if value != "" && !hasMemeControl(value, false) {
+			tags = append(tags, value)
+		}
+	}
+	return memegeneration.SemanticHint{
+		Visual:       truncateMemeText(strings.TrimSpace(source.Visual), memegeneration.MaxVisualCharacters),
+		Meaning:      truncateMemeText(strings.TrimSpace(source.Meaning), memegeneration.MaxSemanticCharacters),
+		Mechanism:    truncateMemeText(strings.TrimSpace(source.Mechanism), memegeneration.MaxMechanismCharacters),
+		CaptionRoles: roles,
+		Tags:         tags,
 	}
 }
 
@@ -1113,7 +1120,7 @@ func validateMemeRenderValues(template memes.Template, captions, overlayMediaIDs
 	}
 	for _, caption := range captions {
 		if !utf8.ValidString(caption) || utf8.RuneCountInString(caption) > memegeneration.MaxCaptionLineCharacters ||
-			hasMemeControl(caption, true) || memes.ValidateMemegenCaption(caption) != nil {
+			hasMemeControl(caption, true) || memes.ValidateCaption(caption) != nil {
 			return huma.Error400BadRequest("meme captions must fit Memegen's 200-byte text limit")
 		}
 	}
@@ -1306,12 +1313,18 @@ func (h *MemeHandler) storeMemeThumbnail(key string, entry memeThumbnailCacheEnt
 	h.thumbnailBytes += int64(len(entry.data))
 }
 
-func memeThumbnailOutput(entry memeThumbnailCacheEntry) *GetMemeTemplateThumbnailOutput {
-	output := &GetMemeTemplateThumbnailOutput{CacheControl: "private, max-age=3600"}
-	output.Body.TemplateID = entry.templateID
-	output.Body.MIMEType = entry.mimeType
-	output.Body.DataBase64 = base64.StdEncoding.EncodeToString(entry.data)
-	return output
+func memeThumbnailOutput(entry memeThumbnailCacheEntry, immutable bool) *GetMemeTemplateThumbnailOutput {
+	digest := sha256.Sum256(entry.data)
+	cacheControl := "private, max-age=3600"
+	if immutable {
+		cacheControl = "private, max-age=31536000, immutable"
+	}
+	return &GetMemeTemplateThumbnailOutput{
+		CacheControl: cacheControl,
+		ContentType:  entry.mimeType,
+		ETag:         `"` + hex.EncodeToString(digest[:16]) + `"`,
+		Body:         append([]byte(nil), entry.data...),
+	}
 }
 
 func publicMemeTemplates(templates []memes.Template) []memes.Template {

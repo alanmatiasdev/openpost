@@ -467,12 +467,9 @@ func main() {
 	var memeProvider memes.Provider
 	var memeSuggester memegeneration.Suggester
 	if cfg.MemeGeneratorEnabled {
-		memeProvider, err = memes.NewMemegenProvider(memes.MemegenConfig{
-			BaseURL: cfg.MemegenBaseURL,
-			APIKey:  cfg.MemegenAPIKey,
-		})
+		memeProvider, err = memes.NewBuiltinProvider()
 		if err != nil {
-			log.Fatalf("failed to initialize Memegen: %v", err)
+			log.Fatalf("failed to initialize built-in meme catalog: %v", err)
 		}
 		if generator != nil {
 			memeSuggester, err = memegeneration.New(generator, cfg.MemeGenerationModel)

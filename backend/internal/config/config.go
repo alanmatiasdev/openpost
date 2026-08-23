@@ -49,8 +49,6 @@ type Config struct {
 	ImageCaptionProvider     string
 	ImageCaptionRequireZDR   bool
 	MemeGeneratorEnabled     bool
-	MemegenBaseURL           string
-	MemegenAPIKey            string
 	MemeGenerationModel      string
 	ImageEditorEnabled       bool
 	ImageEditorModelBaseURL  string
@@ -217,9 +215,7 @@ func Load() *Config {
 		ImageCaptionModel:       strings.TrimSpace(getEnvDefault("OPENPOST_IMAGE_CAPTION_MODEL", "openai/gpt-5.6-luna")),
 		ImageCaptionProvider:    strings.TrimSpace(getEnvDefault("OPENPOST_IMAGE_CAPTION_PROVIDER", "")),
 		ImageCaptionRequireZDR:  getEnvBoolWithAliases(false, "OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR"),
-		MemeGeneratorEnabled:    getEnvBoolWithAliases(false, "OPENPOST_MEME_GENERATOR_ENABLED"),
-		MemegenBaseURL:          strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_MEMEGEN_URL", "https://api.memegen.link")), "/"),
-		MemegenAPIKey:           strings.TrimSpace(getEnvDefault("OPENPOST_MEMEGEN_API_KEY", "")),
+		MemeGeneratorEnabled:    getEnvBoolWithAliases(true, "OPENPOST_MEME_GENERATOR_ENABLED"),
 		MemeGenerationModel:     strings.TrimSpace(getEnvDefault("OPENPOST_MEME_GENERATION_MODEL", "openai/gpt-5.6-luna")),
 		ImageEditorEnabled: getEnvBoolWithAliases(
 			true,

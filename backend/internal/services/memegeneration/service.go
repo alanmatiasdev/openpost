@@ -30,7 +30,11 @@ const (
 	MaxKeywordCharacters      = 60
 	MaxExampleLineCharacters  = 240
 	MaxSemanticCharacters     = 300
+	MaxVisualCharacters       = 180
+	MaxMechanismCharacters    = 60
 	MaxCaptionRoleCharacters  = 80
+	MaxSemanticTags           = 6
+	MaxSemanticTagCharacters  = 40
 
 	MaxCaptionLineCharacters = 200
 	MaxRationaleCharacters   = 300
@@ -79,8 +83,11 @@ type Template struct {
 // SemanticHint describes a template's joke mechanism and caption order. When
 // omitted, the service derives conservative slot-order guidance from LineCount.
 type SemanticHint struct {
+	Visual       string
 	Meaning      string
+	Mechanism    string
 	CaptionRoles []string
+	Tags         []string
 }
 
 type Candidate struct {

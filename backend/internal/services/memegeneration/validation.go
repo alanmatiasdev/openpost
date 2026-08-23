@@ -140,6 +140,14 @@ func normalizeTemplate(input Template) (Template, error) {
 	if err != nil {
 		return Template{}, invalidInput("template meaning must be at most %d characters", MaxSemanticCharacters)
 	}
+	visual, err := normalizeInputText(input.Semantics.Visual, MaxVisualCharacters, false)
+	if err != nil {
+		return Template{}, invalidInput("template visual must be at most %d characters", MaxVisualCharacters)
+	}
+	mechanism, err := normalizeInputText(input.Semantics.Mechanism, MaxMechanismCharacters, false)
+	if err != nil {
+		return Template{}, invalidInput("template mechanism must be at most %d characters", MaxMechanismCharacters)
+	}
 	roles := make([]string, 0, len(input.Semantics.CaptionRoles))
 	if len(input.Semantics.CaptionRoles) != 0 && len(input.Semantics.CaptionRoles) != input.LineCount {
 		return Template{}, invalidInput("template caption roles must be empty or match its line count")
@@ -151,6 +159,26 @@ func normalizeTemplate(input Template) (Template, error) {
 		}
 		roles = append(roles, role)
 	}
+	if len(input.Semantics.Tags) > MaxSemanticTags {
+		return Template{}, invalidInput("template semantic tags must contain at most %d entries", MaxSemanticTags)
+	}
+	tags := make([]string, 0, len(input.Semantics.Tags))
+	seenTags := make(map[string]struct{}, len(input.Semantics.Tags))
+	for _, value := range input.Semantics.Tags {
+		tag, tagErr := normalizeInputText(value, MaxSemanticTagCharacters, false)
+		if tagErr != nil {
+			return Template{}, invalidInput("template semantic tag must be at most %d characters", MaxSemanticTagCharacters)
+		}
+		key := strings.ToLower(tag)
+		if tag == "" {
+			continue
+		}
+		if _, exists := seenTags[key]; exists {
+			continue
+		}
+		seenTags[key] = struct{}{}
+		tags = append(tags, tag)
+	}
 
 	return Template{
 		ID:           id,
@@ -160,8 +188,11 @@ func normalizeTemplate(input Template) (Template, error) {
 		Keywords:     keywords,
 		ExampleLines: exampleLines,
 		Semantics: SemanticHint{
+			Visual:       visual,
 			Meaning:      meaning,
+			Mechanism:    mechanism,
 			CaptionRoles: roles,
+			Tags:         tags,
 		},
 	}, nil
 }

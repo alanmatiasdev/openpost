@@ -32,10 +32,17 @@ func normalizeSearchValue(value string) string {
 }
 
 func buildSearchMetadata(template Template) ([]string, string) {
-	values := make([]string, 0, 2+len(template.Keywords)+len(template.Example.Text))
+	values := make(
+		[]string,
+		0,
+		5+len(template.Keywords)+len(template.Example.Text)+len(template.Semantic.CaptionRoles)+len(template.Semantic.Tags),
+	)
 	values = append(values, template.ID, template.Name)
 	values = append(values, template.Keywords...)
 	values = append(values, template.Example.Text...)
+	values = append(values, template.Semantic.Visual, template.Semantic.Meaning, template.Semantic.Mechanism)
+	values = append(values, template.Semantic.CaptionRoles...)
+	values = append(values, template.Semantic.Tags...)
 
 	seen := make(map[string]struct{})
 	terms := make([]string, 0, len(values)*2)

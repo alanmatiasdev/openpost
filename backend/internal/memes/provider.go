@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 )
 
-const MemegenProviderKey = "memegen"
+const BuiltinProviderKey = "openpost"
 
 var (
 	ErrDisabled          = errors.New("meme provider is disabled")
@@ -38,8 +37,8 @@ const (
 	ErrorKindUnsafeResponseURL ErrorKind = "unsafe_response_url"
 )
 
-// ProviderError deliberately excludes response bodies, request URLs, and
-// captions from Error(). Memegen's canonical image URL contains the captions.
+// ProviderError deliberately excludes response bodies and user captions from
+// Error() so render failures never leak draft content into logs.
 type ProviderError struct {
 	Kind       ErrorKind
 	Operation  string
@@ -100,21 +99,32 @@ type TemplateExample struct {
 	URL  string   `json:"url"`
 }
 
-// Template is a normalized Memegen template. SearchTerms are generated from
+// Template is a normalized OpenPost template. SearchTerms are generated from
 // stable discovery fields so callers do not need to reproduce normalization.
 type Template struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Lines       int             `json:"lines"`
-	Overlays    int             `json:"overlays"`
-	Styles      []string        `json:"styles"`
-	BlankURL    string          `json:"blank_url"`
-	Example     TemplateExample `json:"example"`
-	SourceURL   string          `json:"source_url"`
-	Keywords    []string        `json:"keywords"`
-	SearchTerms []string        `json:"search_terms"`
-	Animated    bool            `json:"animated"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Lines       int              `json:"lines"`
+	Overlays    int              `json:"overlays"`
+	Styles      []string         `json:"styles"`
+	BlankURL    string           `json:"blank_url"`
+	Example     TemplateExample  `json:"example"`
+	SourceURL   string           `json:"source_url"`
+	Keywords    []string         `json:"keywords"`
+	SearchTerms []string         `json:"search_terms"`
+	Animated    bool             `json:"animated"`
+	Semantic    TemplateSemantic `json:"semantic"`
 	searchText  string
+}
+
+// TemplateSemantic gives AI and user interfaces the visual joke contract for
+// a built-in template. CaptionRoles always follow the rendered field order.
+type TemplateSemantic struct {
+	Visual       string   `json:"visual"`
+	Meaning      string   `json:"meaning"`
+	Mechanism    string   `json:"mechanism"`
+	CaptionRoles []string `json:"caption_roles"`
+	Tags         []string `json:"tags"`
 }
 
 type Catalog struct {
@@ -124,13 +134,21 @@ type Catalog struct {
 }
 
 type RenderRequest struct {
-	TemplateID  string   `json:"template_id"`
-	Text        []string `json:"text"`
-	Styles      []string `json:"styles,omitempty"`
-	OverlayURLs []string `json:"overlay_urls,omitempty"`
-	Extension   string   `json:"extension,omitempty"`
-	Layout      string   `json:"layout,omitempty"`
-	Font        string   `json:"font,omitempty"`
+	TemplateID    string         `json:"template_id"`
+	Text          []string       `json:"text"`
+	Styles        []string       `json:"styles,omitempty"`
+	OverlayURLs   []string       `json:"overlay_urls,omitempty"`
+	OverlayImages []OverlayImage `json:"-"`
+	Extension     string         `json:"extension,omitempty"`
+	Layout        string         `json:"layout,omitempty"`
+	Font          string         `json:"font,omitempty"`
+}
+
+// OverlayImage keeps workspace media inside OpenPost's process. The built-in
+// renderer only reads these bounded bytes.
+type OverlayImage struct {
+	Data     []byte
+	MIMEType string
 }
 
 type RenderedImage struct {
@@ -163,24 +181,4 @@ type Provider interface {
 // provider URLs or server-only credentials to browsers.
 type TemplateImageProvider interface {
 	TemplateImage(context.Context, string) (RenderedImage, error)
-}
-
-type MemegenConfig struct {
-	BaseURL string
-	APIKey  string
-	Client  *http.Client
-
-	RequestTimeout time.Duration
-	RenderTimeout  time.Duration
-	CacheTTL       time.Duration
-	StaleTTL       time.Duration
-
-	MaxTemplates    int
-	MaxCatalogBytes int64
-	MaxImageBytes   int64
-	MaxRedirects    int
-
-	// AllowedRenderHosts extends the default exact host allowlist, which
-	// always contains BaseURL's host. Entries are host[:port], not URLs.
-	AllowedRenderHosts []string
 }

@@ -5,6 +5,7 @@
     ".agents/",
     ".commandcode/",
     ".impeccable/",
+    "backend/internal/memes/catalog/",
     "launch-kit/",
     "provider-certification/",
     "references/",
