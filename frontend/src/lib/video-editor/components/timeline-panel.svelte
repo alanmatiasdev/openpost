@@ -4,7 +4,7 @@
 	FreeCut (MIT).
 -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -20,6 +20,7 @@
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
+	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
 	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -28,7 +29,6 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import {
 		activeValueAt,
-		removeKeyframe,
 		setKeyframe,
 		setKeyframeEasing
 	} from '$lib/video-editor/timeline/actions/keyframes';
@@ -41,6 +41,15 @@
 	} from '$lib/video-editor/project/types';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
+	import {
+		easingConfigFromPreset,
+		loadCustomEasingPresets,
+		presetFromEasing,
+		saveCustomEasingPresets,
+		suggestedCustomPresetName,
+		upsertCustomEasingPreset,
+		type CustomEasingPreset
+	} from '$lib/video-editor/timeline/custom-easing-presets';
 	import {
 		planLinkedMoveGesture,
 		planLinkedSlipGesture,
@@ -1242,6 +1251,10 @@
 	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
 	let showValueGraph = $state(false);
 	let selectedKeyframe = $state<{ property: KeyframeProperty; frame: number } | null>(null);
+	let customEasingPresets = $state<CustomEasingPreset[]>([]);
+	let selectedCustomPresetName = $state('');
+	let customPresetName = $state('');
+	let presetSelectionKey = '';
 	const BEZIER_KEYS = ['x1', 'y1', 'x2', 'y2'] satisfies Array<'x1' | 'y1' | 'x2' | 'y2'>;
 	const SPRING_KEYS = ['tension', 'friction', 'mass'] satisfies Array<
 		'tension' | 'friction' | 'mass'
@@ -1254,12 +1267,6 @@
 	const canUnlinkSelectedItems = $derived(
 		selectedItemIds.some((id) => timelineStore.itemById.get(id)?.linkedGroupId !== undefined)
 	);
-	const keyframeRows = $derived.by(() => {
-		if (!selectedItem) return [];
-		return getAnimatablePropertiesForItem(selectedItem).filter(
-			(property) => (selectedItem.keyframes?.[property]?.frames.length ?? 0) > 0
-		);
-	});
 	const availableKeyframeProperties = $derived(
 		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
 	);
@@ -1270,13 +1277,13 @@
 		}))
 	);
 	const easingOptions = $derived([
-		{ value: 'linear', label: 'Linear' },
-		{ value: 'hold', label: 'Hold' },
-		{ value: 'ease-in', label: 'Ease in' },
-		{ value: 'ease-out', label: 'Ease out' },
-		{ value: 'ease-in-out', label: 'Ease in/out' },
-		{ value: 'cubic-bezier', label: 'Cubic bezier' },
-		{ value: 'spring', label: 'Spring' }
+		{ value: 'linear', label: m.video_editor_keyframe_easing_linear() },
+		{ value: 'hold', label: m.video_editor_keyframe_easing_hold() },
+		{ value: 'ease-in', label: m.video_editor_keyframe_easing_in() },
+		{ value: 'ease-out', label: m.video_editor_keyframe_easing_out() },
+		{ value: 'ease-in-out', label: m.video_editor_keyframe_easing_in_out() },
+		{ value: 'cubic-bezier', label: m.video_editor_keyframe_easing_bezier() },
+		{ value: 'spring', label: m.video_editor_keyframe_easing_spring() }
 	]);
 	const bezierOptions = $derived([
 		{ value: '', label: 'Custom' },
@@ -1302,6 +1309,29 @@
 			? (selectedKeyframeTrack?.easingConfigs?.[selectedKeyframeIndex] ?? undefined)
 			: undefined
 	);
+	const customPresetOptions = $derived([
+		{ value: '', label: m.video_editor_keyframe_custom_presets() },
+		...customEasingPresets
+			.filter((preset) =>
+				selectedEasing === 'spring' ? preset.type === 'Spring' : preset.type === 'Easing'
+			)
+			.map((preset) => ({ value: preset.name, label: preset.name }))
+	]);
+	const suggestedPresetName = $derived(suggestedCustomPresetName(customEasingPresets));
+
+	onMount(() => {
+		customEasingPresets = loadCustomEasingPresets();
+	});
+
+	$effect(() => {
+		const nextKey = selectedKeyframe
+			? `${selectedKeyframe.property}:${selectedKeyframe.frame}`
+			: '';
+		if (nextKey === presetSelectionKey) return;
+		presetSelectionKey = nextKey;
+		selectedCustomPresetName = '';
+		customPresetName = '';
+	});
 
 	function keyframeLabel(property: KeyframeProperty): string {
 		return property.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -1315,12 +1345,6 @@
 			activeValueAt(item, property, timelineStore.currentFrame) ??
 			(property === 'opacity' || property === 'volume' ? 1 : 0);
 		if (setKeyframe(item.id, property, frame, value)) onedit();
-	}
-
-	function removeKeyframeAt(property: KeyframeProperty, frame: number): void {
-		const item = selectedItem;
-		if (!item) return;
-		if (removeKeyframe(item.id, property, frame)) onedit();
 	}
 
 	function commitEasing(easing: EasingType, config?: EasingConfig): void {
@@ -1386,6 +1410,34 @@
 	function applyBezierPreset(value: string): void {
 		const preset = BEZIER_PRESETS.find((candidate) => candidate.value === value);
 		if (preset) commitEasing('cubic-bezier', { type: 'cubic-bezier', bezier: preset.points });
+	}
+
+	function applyCustomPreset(value: string): void {
+		const preset = customEasingPresets.find((candidate) => candidate.name === value);
+		if (!preset) return;
+		const config = easingConfigFromPreset(preset);
+		selectedCustomPresetName = preset.name;
+		customPresetName = preset.name;
+		commitEasing(config.type, config);
+	}
+
+	function saveCustomPreset(): void {
+		const preset = presetFromEasing(customPresetName, selectedEasingConfig);
+		if (!preset) return;
+		customEasingPresets = upsertCustomEasingPreset(customEasingPresets, preset);
+		saveCustomEasingPresets(customEasingPresets);
+		selectedCustomPresetName = preset.name;
+		customPresetName = preset.name;
+	}
+
+	function deleteCustomPreset(): void {
+		if (!selectedCustomPresetName) return;
+		customEasingPresets = customEasingPresets.filter(
+			(preset) => preset.name !== selectedCustomPresetName
+		);
+		saveCustomEasingPresets(customEasingPresets);
+		selectedCustomPresetName = '';
+		customPresetName = '';
 	}
 
 	function bezierValue(key: 'x1' | 'y1' | 'x2' | 'y2'): number {
@@ -1775,46 +1827,30 @@
 		{/each}
 
 		<!-- Keyframe dopesheet for the selected clip -->
-		{#if selectedItem && keyframeRows.length > 0}
-			<div class="relative border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)]">
-				<span
-					class="pointer-events-none absolute -top-4 left-1 text-[9px] text-[oklch(0.65_0.015_55)] uppercase"
-				>
-					{m.video_editor_keyframes()}
-				</span>
-				{#each keyframeRows as property (property)}
-					<div class="relative h-5 border-b border-[oklch(0.22_0.01_50)] last:border-b-0">
-						<span
-							class="pointer-events-none absolute top-1/2 left-1 z-10 -translate-y-1/2 text-[9px] text-[oklch(0.65_0.015_55)] uppercase"
-						>
-							{keyframeLabel(property)}
-						</span>
-						{#each selectedItem.keyframes?.[property]?.frames ?? [] as frame (frame)}
-							<button
-								type="button"
-								class="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[oklch(0.66_0.14_45)] hover:bg-[oklch(0.78_0.14_45)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-								style="left:{timelineX(selectedItem.from + frame)}px"
-								title="{keyframeLabel(property)} — {m.video_editor_marker_remove_hint()}"
-								onclick={() => setCurrentFrame(selectedItem.from + frame)}
-								onfocus={() => (selectedKeyframe = { property, frame })}
-								ondblclick={() => removeKeyframeAt(property, frame)}
-								onkeydown={(event) => {
-									if (event.key === 'Enter') setCurrentFrame(selectedItem.from + frame);
-									if (event.key === 'Delete' || event.key === 'Backspace') {
-										removeKeyframeAt(property, frame);
-									}
-								}}
-							></button>
-						{/each}
-					</div>
-				{/each}
+		{#if selectedItem}
+			<div class="relative bg-[oklch(0.145_0.008_55)]">
+				<KeyframeDopesheet
+					item={selectedItem}
+					availableProperties={availableKeyframeProperties}
+					currentFrame={timelineStore.currentFrame}
+					pixelsPerFrame={pxPerFrame}
+					{timelineWidth}
+					{timelineX}
+					onscrub={setCurrentFrame}
+					onselect={(keyframe) =>
+						(selectedKeyframe = keyframe
+							? { property: keyframe.property, frame: keyframe.frame }
+							: null)}
+					onactiveproperty={(property) => (pendingKeyframeProperty = property)}
+					{onedit}
+				/>
 				{#if selectedKeyframe && selectedKeyframeIndex >= 0}
 					<div
 						class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-[10px]"
 					>
 						<span class="font-medium capitalize">{keyframeLabel(selectedKeyframe.property)}</span>
 						<label class="flex items-center gap-1">
-							Easing
+							{m.video_editor_keyframe_easing()}
 							<AppSelect
 								class="h-7 w-28 text-[10px]"
 								value={selectedEasing}
@@ -1827,7 +1863,7 @@
 								class="h-7 w-32 text-[10px]"
 								value=""
 								options={bezierOptions}
-								ariaLabel="Bezier preset"
+								ariaLabel={m.video_editor_keyframe_bezier_preset()}
 								onValueChange={applyBezierPreset}
 							/>
 							{#each BEZIER_KEYS as key (key)}<label
@@ -1846,11 +1882,44 @@
 									>{key}<Input
 										class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
 										type="number"
-										step="0.1"
+										step={key === 'tension' || key === 'friction' ? 1 : 0.1}
+										min={key === 'tension' || key === 'friction' ? 1 : 0.1}
+										max={key === 'tension' ? 1000 : key === 'friction' ? 100 : 10}
 										value={springValue(key)}
 										onchange={(event) => commitSpring(key, event.currentTarget.valueAsNumber)}
 									/></label
 								>{/each}
+						{/if}
+						{#if selectedEasing === 'cubic-bezier' || selectedEasing === 'spring'}
+							<div class="flex items-center gap-1 border-l border-[oklch(0.28_0.012_55)] pl-2">
+								<AppSelect
+									class="h-7 w-32 text-[10px]"
+									value={selectedCustomPresetName}
+									options={customPresetOptions}
+									ariaLabel={m.video_editor_keyframe_custom_presets()}
+									onValueChange={applyCustomPreset}
+								/>
+								<Input
+									class="h-7 w-28 rounded bg-[oklch(0.22_0.01_50)] px-1"
+									value={customPresetName}
+									placeholder={suggestedPresetName}
+									aria-label={m.video_editor_keyframe_preset_name()}
+									oninput={(event) => (customPresetName = event.currentTarget.value)}
+								/>
+								<button
+									type="button"
+									class="h-7 rounded border border-[oklch(0.32_0.015_55)] px-2 font-medium hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
+									disabled={!customPresetName.trim()}
+									onclick={saveCustomPreset}>{m.video_editor_keyframe_preset_save()}</button
+								>
+								{#if selectedCustomPresetName}
+									<button
+										type="button"
+										class="h-7 rounded px-2 text-[oklch(0.72_0.1_28)] hover:bg-[oklch(0.3_0.08_28_/_0.22)]"
+										onclick={deleteCustomPreset}>{m.video_editor_keyframe_preset_delete()}</button
+									>
+								{/if}
+							</div>
 						{/if}
 					</div>
 				{/if}

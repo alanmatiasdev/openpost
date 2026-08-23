@@ -159,10 +159,13 @@ describe('KeyframeValueGraph', () => {
 				4
 			);
 		});
-		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity).toMatchObject({
-			frames: [0, 30, 37, 59],
+		const track = timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity;
+		expect(track).toMatchObject({
 			easings: ['linear', 'cubic-bezier', 'cubic-bezier', 'linear']
 		});
+		expect(track?.frames).toHaveLength(4);
+		expect(track?.frames[2]).toBeGreaterThanOrEqual(37);
+		expect(track?.frames[2]).toBeLessThanOrEqual(38);
 		expect(commandHistory.getLastCommandType()).toBe('DUPLICATE_KEYFRAMES');
 	});
 

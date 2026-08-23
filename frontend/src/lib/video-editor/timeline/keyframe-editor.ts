@@ -98,7 +98,7 @@ export function editorKeyframes(item: TimelineItem, property: KeyframeProperty):
 	return track.frames.map((frame, index) => ({
 		property,
 		frame,
-		id: track.ids?.[index],
+		id: track.ids?.[index] ?? legacyKeyframeId(property, frame, index),
 		index,
 		value: track.values[index] ?? 0,
 		easing: track.easings?.[index] ?? 'linear',
@@ -107,7 +107,11 @@ export function editorKeyframes(item: TimelineItem, property: KeyframeProperty):
 }
 
 export function keyframeIdentity(keyframe: KeyframeRef): string {
-	return keyframe.id ?? `${keyframe.property}:${keyframe.frame}:${keyframe.index ?? ''}`;
+	return keyframe.id ?? legacyKeyframeId(keyframe.property, keyframe.frame, keyframe.index ?? -1);
+}
+
+export function legacyKeyframeId(property: KeyframeProperty, frame: number, index: number): string {
+	return `legacy:${property}:${frame}:${index}`;
 }
 
 const MIN_VALUE_RANGE = 0.0001;

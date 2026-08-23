@@ -41,6 +41,17 @@ describe('keyframe editor math', () => {
 		expect(keyframeIdentity(points[0]!)).toBe('a');
 	});
 
+	it('gives legacy lanes deterministic identities before their first write', () => {
+		const legacy: TimelineItem = {
+			...item,
+			keyframes: { opacity: { frames: [10, 20], values: [0.25, 0.75] } }
+		};
+		const firstRead = editorKeyframes(legacy, 'opacity');
+		const secondRead = editorKeyframes(legacy, 'opacity');
+		expect(firstRead.map(keyframeIdentity)).toEqual(['legacy:opacity:10:0', 'legacy:opacity:20:1']);
+		expect(secondRead.map(keyframeIdentity)).toEqual(firstRead.map(keyframeIdentity));
+	});
+
 	it('auto-fits values with FreeCut padding inside property bounds', () => {
 		expect(graphValueRange('opacity', editorKeyframes(item, 'opacity'))).toEqual({
 			min: 0,

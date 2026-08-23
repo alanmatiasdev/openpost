@@ -24,12 +24,20 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import { isFrameInTransitionRegion } from '../edit-constraints';
 import { transitionsStore } from './transitions-store.svelte';
-import { trackEntryAt, type KeyframeRef } from '../keyframe-editor';
+import { legacyKeyframeId, trackEntryAt, type KeyframeRef } from '../keyframe-editor';
 
 export interface KeyframeEdit {
 	ref: KeyframeRef;
 	frame: number;
 	value: number;
+}
+
+export interface KeyframeInsert {
+	property: KeyframeProperty;
+	frame: number;
+	value: number;
+	easing?: EasingType;
+	easingConfig?: EasingConfig;
 }
 
 function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
@@ -179,7 +187,7 @@ export function setKeyframeEasing(
 		const index = track.frames.indexOf(frame);
 		if (index === -1) return false;
 
-		const nextTrack = withCompleteMetadata(track);
+		const nextTrack = withCompleteMetadata(track, property);
 		nextTrack.easings[index] = easing;
 		nextTrack.easingConfigs[index] = easingConfig ?? null;
 		timelineStore._updateItems([
@@ -230,7 +238,7 @@ export function updateKeyframes(itemId: string, edits: readonly KeyframeEdit[]):
 		for (const [property, propertyEdits] of byProperty) {
 			const source = item.keyframes?.[property];
 			if (!source) return false;
-			const track = withCompleteMetadata(source);
+			const track = withCompleteMetadata(source, property);
 			const targets = new Set<number>();
 			const editById = new Map<string, KeyframeEdit>();
 			for (const edit of propertyEdits) {
@@ -285,7 +293,7 @@ export function duplicateKeyframes(itemId: string, edits: readonly KeyframeEdit[
 		for (const edit of edits) {
 			const source = keyframes[edit.ref.property];
 			if (!source) return false;
-			const track = withCompleteMetadata(source);
+			const track = withCompleteMetadata(source, edit.ref.property);
 			const sourceIndex = trackEntryAt(track, edit.ref);
 			if (sourceIndex < 0) return false;
 			const targetIndex = track.frames.indexOf(edit.frame);
@@ -310,6 +318,73 @@ export function duplicateKeyframes(itemId: string, edits: readonly KeyframeEdit[
 		}
 		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
 		return true;
+	});
+}
+
+/** Insert or replace several clipboard keyframes as one undo step. */
+export function insertKeyframes(itemId: string, inserts: readonly KeyframeInsert[]): KeyframeRef[] {
+	return execute('INSERT_KEYFRAMES', () => {
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || inserts.length === 0) return [];
+		if (
+			inserts.some(
+				(insert) => !canWriteKeyframe(item, insert.frame) || !Number.isFinite(insert.value)
+			)
+		) {
+			return [];
+		}
+
+		const refsByInsert = new Map<KeyframeInsert, KeyframeRef>();
+		let keyframes: ItemKeyframes = { ...item.keyframes };
+		for (const [property, propertyInserts] of Map.groupBy(inserts, (insert) => insert.property)) {
+			const track = withCompleteMetadata(
+				keyframes[property] ?? { frames: [], values: [], ids: [], easings: [], easingConfigs: [] },
+				property
+			);
+			for (const insert of propertyInserts) {
+				let index = track.frames.indexOf(insert.frame);
+				if (index < 0) {
+					index = track.frames.length;
+					track.frames.push(insert.frame);
+					track.values.push(insert.value);
+					track.ids.push(crypto.randomUUID());
+					track.easings.push(insert.easing ?? 'linear');
+					track.easingConfigs.push(cloneEasingConfig(insert.easingConfig ?? null));
+				} else {
+					track.values[index] = insert.value;
+					track.easings[index] = insert.easing ?? 'linear';
+					track.easingConfigs[index] = cloneEasingConfig(insert.easingConfig ?? null);
+				}
+				refsByInsert.set(insert, {
+					property,
+					frame: insert.frame,
+					id: track.ids[index],
+					index
+				});
+			}
+
+			const indexes = track.frames
+				.map((_, index) => index)
+				.toSorted((left, right) => track.frames[left] - track.frames[right]);
+			keyframes = {
+				...keyframes,
+				[property]: {
+					frames: indexes.map((index) => track.frames[index]),
+					values: indexes.map((index) => track.values[index]),
+					ids: indexes.map((index) => track.ids[index]),
+					easings: indexes.map((index) => track.easings[index]),
+					easingConfigs: indexes.map((index) => track.easingConfigs[index])
+				}
+			};
+		}
+
+		timelineStore._updateItems([{ id: itemId, patch: { keyframes } }]);
+		return inserts.flatMap((insert) => {
+			const ref = refsByInsert.get(insert);
+			if (!ref) return [];
+			const sortedIndex = keyframes[ref.property]?.ids?.indexOf(ref.id ?? '') ?? -1;
+			return [{ ...ref, index: sortedIndex >= 0 ? sortedIndex : ref.index }];
+		});
 	});
 }
 
@@ -362,7 +437,7 @@ function upsertTrack(
 	value: number
 ): ItemKeyframes {
 	const source = keyframes[property];
-	const complete = withCompleteMetadata(source ?? { frames: [], values: [] });
+	const complete = withCompleteMetadata(source ?? { frames: [], values: [] }, property);
 	const { frames, values, ids, easings, easingConfigs } = complete;
 	const index = frames.indexOf(frame);
 	if (index !== -1) {
@@ -387,11 +462,16 @@ function upsertTrack(
 	};
 }
 
-function withCompleteMetadata(track: KeyframeTrack): Required<KeyframeTrack> {
+function withCompleteMetadata(
+	track: KeyframeTrack,
+	property: KeyframeProperty
+): Required<KeyframeTrack> {
 	return {
 		frames: [...track.frames],
 		values: [...track.values],
-		ids: track.frames.map((_, index) => track.ids?.[index] ?? crypto.randomUUID()),
+		ids: track.frames.map(
+			(frame, index) => track.ids?.[index] ?? legacyKeyframeId(property, frame, index)
+		),
 		easings: track.frames.map((_, index) => track.easings?.[index] ?? 'linear'),
 		easingConfigs: track.frames.map((_, index) => track.easingConfigs?.[index] ?? null)
 	};

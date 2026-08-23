@@ -1,8 +1,38 @@
-/** Shared keyframe selection for the dope sheet and value graph. */
+/** Shared keyframe selection and clipboard for the dope sheet and value graph. */
+
+import type {
+	EasingConfig,
+	EasingType,
+	KeyframeProperty,
+	TimelineItem
+} from '$lib/video-editor/project/types';
+import {
+	editorKeyframes,
+	keyframeIdentity,
+	type KeyframeRef
+} from '$lib/video-editor/timeline/keyframe-editor';
+
+export interface KeyframeClipboardEntry {
+	property: KeyframeProperty;
+	/** Frame offset from the first copied keyframe. */
+	frame: number;
+	value: number;
+	easing: EasingType;
+	easingConfig?: EasingConfig;
+}
+
+export interface KeyframeClipboard {
+	keyframes: KeyframeClipboardEntry[];
+	sourceItemId: string;
+	originFrame: number;
+	sourceRefs: KeyframeRef[];
+}
 
 class KeyframeSelectionStore {
 	#itemId = $state<string | null>(null);
 	#ids = $state<Set<string>>(new Set());
+	#clipboard = $state<KeyframeClipboard | null>(null);
+	#isCut = $state(false);
 
 	get itemId(): string | null {
 		return this.#itemId;
@@ -10,6 +40,14 @@ class KeyframeSelectionStore {
 
 	get ids(): ReadonlySet<string> {
 		return this.#ids;
+	}
+
+	get clipboard(): KeyframeClipboard | null {
+		return this.#clipboard;
+	}
+
+	get isCut(): boolean {
+		return this.#isCut;
 	}
 
 	forItem(itemId: string): ReadonlySet<string> {
@@ -31,6 +69,52 @@ class KeyframeSelectionStore {
 		const next = new Set([...this.#ids].filter((id) => validIds.has(id)));
 		if (next.size !== this.#ids.size) this.#ids = next;
 	}
+
+	copy(item: TimelineItem, ids: ReadonlySet<string>, cut = false): boolean {
+		const selected = Object.keys(item.keyframes ?? {}).flatMap((rawProperty) => {
+			// SAFETY: ItemKeyframes only permits KeyframeProperty keys.
+			const property = rawProperty as KeyframeProperty;
+			return editorKeyframes(item, property).filter((keyframe) =>
+				ids.has(keyframeIdentity(keyframe))
+			);
+		});
+		if (selected.length === 0) return false;
+		const originFrame = Math.min(...selected.map((keyframe) => keyframe.frame));
+		this.#clipboard = {
+			keyframes: selected.map((keyframe) => ({
+				property: keyframe.property,
+				frame: keyframe.frame - originFrame,
+				value: keyframe.value,
+				easing: keyframe.easing,
+				...(keyframe.easingConfig && {
+					easingConfig: cloneEasingConfig(keyframe.easingConfig)
+				})
+			})),
+			sourceItemId: item.id,
+			originFrame,
+			sourceRefs: selected.map((keyframe) => ({
+				property: keyframe.property,
+				frame: keyframe.frame,
+				id: keyframe.id,
+				index: keyframe.index
+			}))
+		};
+		this.#isCut = cut;
+		return true;
+	}
+
+	clearClipboard(): void {
+		this.#clipboard = null;
+		this.#isCut = false;
+	}
 }
 
 export const keyframeSelectionStore = new KeyframeSelectionStore();
+
+function cloneEasingConfig(config: EasingConfig): EasingConfig {
+	return {
+		...config,
+		...(config.bezier && { bezier: { ...config.bezier } }),
+		...(config.spring && { spring: { ...config.spring } })
+	};
+}

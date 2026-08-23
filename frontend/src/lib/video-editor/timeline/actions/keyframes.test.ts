@@ -7,9 +7,11 @@ import type {
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { transitionsStore } from './transitions-store.svelte';
+import { editorKeyframes } from '../keyframe-editor';
 import {
 	activeValueAt,
 	duplicateKeyframes,
+	insertKeyframes,
 	interpolateAt,
 	removeKeyframe,
 	removeKeyframes,
@@ -290,6 +292,92 @@ describe('batch keyframe editing', () => {
 		expect(trackOf(getItem('a'), 'opacity').frames).toEqual([10, 30]);
 		expect(getItem('a').keyframes?.rotation).toBeUndefined();
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('pastes several lanes with easing as one undoable insert', () => {
+		const refs = insertKeyframes('a', [
+			{
+				property: 'opacity',
+				frame: 40,
+				value: 0.25,
+				easing: 'cubic-bezier',
+				easingConfig: {
+					type: 'cubic-bezier',
+					bezier: { x1: 0.1, y1: 0.3, x2: 0.7, y2: 0.9 }
+				}
+			},
+			{ property: 'rotation', frame: 15, value: 90, easing: 'hold' }
+		]);
+		expect(refs).toHaveLength(2);
+		expect(refs.every((ref) => Boolean(ref.id))).toBe(true);
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			frames: [10, 20, 30, 40],
+			values: [0, 0.5, 1, 0.25],
+			easings: ['hold', 'cubic-bezier', 'linear', 'cubic-bezier']
+		});
+		expect(trackOf(getItem('a'), 'rotation')).toMatchObject({
+			frames: [15],
+			values: [90],
+			easings: ['hold']
+		});
+		expect(commandHistory.getLastCommandType()).toBe('INSERT_KEYFRAMES');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(getItem('a').keyframes?.rotation).toBeUndefined();
+	});
+
+	it('replaces a paste collision without changing its stable identity', () => {
+		const refs = insertKeyframes('a', [
+			{ property: 'opacity', frame: 20, value: 0.8, easing: 'ease-out' }
+		]);
+		expect(refs).toMatchObject([{ property: 'opacity', frame: 20, id: 'b' }]);
+		expect(trackOf(getItem('a'), 'opacity')).toMatchObject({
+			frames: [10, 20, 30],
+			values: [0, 0.8, 1],
+			ids: ['a', 'b', 'c'],
+			easings: ['hold', 'ease-out', 'linear']
+		});
+	});
+
+	it('rejects a mixed valid and transition-blocked paste without a partial write', () => {
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 12,
+				fromItemId: 'a',
+				toItemId: 'right'
+			}
+		]);
+		expect(
+			insertKeyframes('a', [
+				{ property: 'rotation', frame: 12, value: 30 },
+				{ property: 'opacity', frame: 54, value: 0.2 }
+			])
+		).toEqual([]);
+		expect(getItem('a').keyframes?.rotation).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(0);
+	});
+
+	it('keeps a legacy key identity stable when the first edit materializes metadata', () => {
+		timelineStore._updateItems([
+			{
+				id: 'a',
+				patch: {
+					keyframes: {
+						...getItem('a').keyframes,
+						rotation: { frames: [12, 24], values: [45, 90] }
+					}
+				}
+			}
+		]);
+		commandHistory.clearHistory();
+		const keyframe = editorKeyframes(getItem('a'), 'rotation')[0]!;
+		expect(updateKeyframes('a', [{ ref: keyframe, frame: 14, value: 50 }])).toBe(true);
+		expect(trackOf(getItem('a'), 'rotation')).toMatchObject({
+			frames: [14, 24],
+			ids: [keyframe.id, 'legacy:rotation:24:1']
+		});
 	});
 });
 
