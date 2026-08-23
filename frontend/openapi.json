@@ -5576,30 +5576,6 @@
 				"required": ["usage", "count"],
 				"type": "object"
 			},
-			"GetMemeTemplateThumbnailOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/GetMemeTemplateThumbnailOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"data_base64": {
-						"description": "Base64-encoded template thumbnail bytes",
-						"type": "string"
-					},
-					"mime_type": {
-						"type": "string"
-					},
-					"template_id": {
-						"type": "string"
-					}
-				},
-				"required": ["template_id", "mime_type", "data_base64"],
-				"type": "object"
-			},
 			"GetPromptCategoriesOutputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -10426,7 +10402,7 @@
 						"type": ["array", "null"]
 					},
 					"template_id": {
-						"description": "Memegen template ID",
+						"description": "OpenPost meme template ID",
 						"maxLength": 80,
 						"minLength": 1,
 						"type": "string"
@@ -12308,7 +12284,7 @@
 						"type": "string"
 					},
 					"template_id": {
-						"description": "Memegen template ID",
+						"description": "OpenPost meme template ID",
 						"maxLength": 80,
 						"minLength": 1,
 						"type": "string"
@@ -14683,6 +14659,9 @@
 						},
 						"type": ["array", "null"]
 					},
+					"semantic": {
+						"$ref": "#/components/schemas/TemplateSemantic"
+					},
 					"source_url": {
 						"type": "string"
 					},
@@ -14704,7 +14683,8 @@
 					"source_url",
 					"keywords",
 					"search_terms",
-					"animated"
+					"animated",
+					"semantic"
 				],
 				"type": "object"
 			},
@@ -14722,6 +14702,34 @@
 					}
 				},
 				"required": ["text", "url"],
+				"type": "object"
+			},
+			"TemplateSemantic": {
+				"additionalProperties": false,
+				"properties": {
+					"caption_roles": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"meaning": {
+						"type": "string"
+					},
+					"mechanism": {
+						"type": "string"
+					},
+					"tags": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"visual": {
+						"type": "string"
+					}
+				},
+				"required": ["visual", "meaning", "mechanism", "caption_roles", "tags"],
 				"type": "object"
 			},
 			"TextConstraint": {
@@ -28990,16 +28998,16 @@
 		},
 		"/memes/templates/{template_id}/thumbnail": {
 			"get": {
-				"description": "Returns a bounded OpenPost-proxied image so private Memegen hosts and server-only provider credentials are never exposed to the browser.",
+				"description": "Returns bounded cacheable image bytes from OpenPost's configured template catalog.",
 				"operationId": "get-meme-template-thumbnail",
 				"parameters": [
 					{
-						"description": "Memegen template ID",
+						"description": "Meme template ID",
 						"in": "path",
 						"name": "template_id",
 						"required": true,
 						"schema": {
-							"description": "Memegen template ID",
+							"description": "Meme template ID",
 							"type": "string"
 						}
 					},
@@ -29013,20 +29021,42 @@
 							"description": "Workspace ID",
 							"type": "string"
 						}
+					},
+					{
+						"description": "Catalog revision returned by the template list",
+						"explode": false,
+						"in": "query",
+						"name": "catalog_revision",
+						"schema": {
+							"description": "Catalog revision returned by the template list",
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
 					"200": {
 						"content": {
-							"application/json": {
+							"image/jpeg": {
 								"schema": {
-									"$ref": "#/components/schemas/GetMemeTemplateThumbnailOutputBody"
+									"contentMediaType": "application/octet-stream",
+									"format": "binary",
+									"type": "string"
 								}
 							}
 						},
-						"description": "OK",
+						"description": "JPEG template thumbnail",
 						"headers": {
 							"Cache-Control": {
+								"schema": {
+									"type": "string"
+								}
+							},
+							"Content-Type": {
+								"schema": {
+									"type": "string"
+								}
+							},
+							"ETag": {
 								"schema": {
 									"type": "string"
 								}
@@ -29114,7 +29144,7 @@
 						"description": "Service Unavailable"
 					}
 				},
-				"summary": "Load a proxied meme template thumbnail",
+				"summary": "Load a meme template thumbnail",
 				"tags": ["Media"]
 			}
 		},

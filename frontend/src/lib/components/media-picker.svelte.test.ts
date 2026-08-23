@@ -9,7 +9,7 @@ const mocks = {
 	listMedia: vi.fn(),
 	listTags: vi.fn(),
 	listTemplates: vi.fn(),
-	thumbnail: vi.fn(),
+	thumbnailURL: vi.fn(),
 	suggest: vi.fn(),
 	preview: vi.fn(),
 	render: vi.fn()
@@ -21,7 +21,7 @@ const services = {
 	listTemplates: mocks.listTemplates,
 	memeAPI: {
 		listTemplates: mocks.listTemplates,
-		thumbnail: mocks.thumbnail,
+		thumbnailURL: mocks.thumbnailURL,
 		suggest: mocks.suggest,
 		preview: mocks.preview,
 		render: mocks.render
@@ -39,7 +39,14 @@ const template: MemeTemplate = {
 	source_url: 'https://knowyourmeme.com/memes/futurama-fry-not-sure-if',
 	keywords: ['fry'],
 	search_terms: ['fry', 'futurama'],
-	animated: false
+	animated: false,
+	semantic: {
+		visual: 'Fry squints at an uncertain situation.',
+		meaning: 'Doubt between two explanations.',
+		mechanism: 'setup_payoff',
+		caption_roles: ['uncertain setup', 'alternative explanation'],
+		tags: ['doubt', 'comparison']
+	}
 };
 
 const overlayMedia: ImageEditorMediaItem = {
@@ -80,7 +87,7 @@ function templateResult(configured = true): MemeTemplateListResult {
 		configured,
 		ai_configured: configured,
 		catalog: {
-			provider_key: 'memegen',
+			provider_key: 'openpost',
 			returned: configured ? 1 : 0,
 			revision: 'catalog-1',
 			stale: false,
@@ -145,11 +152,9 @@ describe('MediaPicker meme source', () => {
 		mocks.listMedia.mockReset().mockResolvedValue([]);
 		mocks.listTags.mockReset().mockResolvedValue({ tags: [], canEdit: true });
 		mocks.listTemplates.mockReset().mockResolvedValue(templateResult());
-		mocks.thumbnail.mockReset().mockResolvedValue({
-			template_id: template.id,
-			mime_type: 'image/svg+xml',
-			data_base64: svgBase64('Futurama Fry')
-		});
+		mocks.thumbnailURL
+			.mockReset()
+			.mockReturnValue(`data:image/svg+xml;base64,${svgBase64('Futurama Fry')}`);
 		mocks.suggest.mockReset().mockResolvedValue({ candidates: [] });
 		mocks.preview.mockReset().mockImplementation(({ captions }) =>
 			Promise.resolve({
@@ -209,7 +214,7 @@ describe('MediaPicker meme source', () => {
 		}
 	});
 
-	it('fits the desktop Meme dialog to its content instead of leaving a blank scroll region', async () => {
+	it('uses the desktop viewport for a full Meme workbench', async () => {
 		await page.viewport(1280, 900);
 		const screen = await renderPicker(true);
 
@@ -221,9 +226,11 @@ describe('MediaPicker meme source', () => {
 		const dialogBox = dialog.getBoundingClientRect();
 		const generatorBox = generator.getBoundingClientRect();
 
-		expect(dialog.className).toContain('sm:h-auto');
-		expect(dialog.className).not.toContain('sm:h-[min(760px');
-		expect(Math.round(dialogBox.bottom - generatorBox.bottom)).toBeLessThanOrEqual(64);
+		expect(dialog.className).toContain('meme-picker-workbench');
+		expect(dialog.className).toContain('sm:max-w-[90rem]');
+		expect(dialogBox.width).toBeGreaterThanOrEqual(1100);
+		expect(dialogBox.height).toBeGreaterThanOrEqual(800);
+		expect(generatorBox.height).toBeGreaterThanOrEqual(700);
 	});
 
 	it('keeps a degraded Meme path usable and recovers an overlay picker at 320px', async () => {

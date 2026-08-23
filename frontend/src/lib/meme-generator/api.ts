@@ -12,8 +12,7 @@ import type {
 	MemeTemplate,
 	MemeTemplateListInput,
 	MemeTemplateListResult,
-	MemeThumbnailInput,
-	MemeThumbnailResult
+	MemeThumbnailInput
 } from './types';
 
 interface APIProblem {
@@ -91,24 +90,14 @@ export async function listMemeTemplates({
 	return { ...data, templates: (data.templates ?? []).map(normalizeTemplate) };
 }
 
-export async function getMemeThumbnail({
+export function memeThumbnailURL({
 	workspaceId,
 	templateId,
-	signal
-}: MemeThumbnailInput): Promise<MemeThumbnailResult> {
-	const result = await client.GET('/memes/templates/{template_id}/thumbnail', {
-		params: {
-			path: { template_id: templateId },
-			query: { workspace_id: workspaceId }
-		},
-		signal
-	});
-	return responseData(
-		result.data,
-		result.error,
-		result.response,
-		m.meme_generator_templates_failed()
-	);
+	catalogRevision
+}: MemeThumbnailInput): string {
+	const query = new URLSearchParams({ workspace_id: workspaceId });
+	if (catalogRevision) query.set('catalog_revision', catalogRevision);
+	return `/api/v1/memes/templates/${encodeURIComponent(templateId)}/thumbnail?${query.toString()}`;
 }
 
 export async function suggestMemes({
@@ -172,7 +161,7 @@ export async function renderMeme(input: MemeRecipeInput): Promise<MemeRenderResu
 	return responseData(result.data, result.error, result.response, m.meme_generator_render_failed());
 }
 
-export function memePreviewDataURL(result: MemePreviewResult | MemeThumbnailResult): string {
+export function memePreviewDataURL(result: MemePreviewResult): string {
 	if (!result.mime_type.startsWith('image/') || !result.data_base64) {
 		throw new Error(m.meme_generator_preview_failed());
 	}
@@ -181,7 +170,7 @@ export function memePreviewDataURL(result: MemePreviewResult | MemeThumbnailResu
 
 export const memeGeneratorAPI: MemeGeneratorAPI = {
 	listTemplates: listMemeTemplates,
-	thumbnail: getMemeThumbnail,
+	thumbnailURL: memeThumbnailURL,
 	suggest: suggestMemes,
 	preview: previewMeme,
 	render: renderMeme

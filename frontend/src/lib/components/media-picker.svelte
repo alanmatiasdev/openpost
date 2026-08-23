@@ -792,7 +792,7 @@
 			</Button>
 		</div>
 	{:else if pickerMode === 'meme'}
-		<div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+		<div class="meme-picker-body flex min-h-0 flex-1 overflow-hidden p-0">
 			<MemeGenerator
 				{workspaceId}
 				api={services.memeAPI}
@@ -827,15 +827,22 @@
 
 {#if presentation === 'sheet'}
 	<Sheet.Root bind:open onOpenChange={handleOpenChange}>
-		<Sheet.Content side="right" class="flex h-dvh w-full flex-col gap-0 p-0 sm:max-w-2xl">
-			<div class="contents" {@attach initializePicker}></div>
+		<Sheet.Content
+			side="right"
+			class="flex h-dvh w-full flex-col gap-0 p-0 {pickerMode === 'meme'
+				? 'sm:max-w-[90rem]!'
+				: 'sm:max-w-2xl'}"
+		>
+			<div class="media-picker-initializer contents" {@attach initializePicker}></div>
 			<Sheet.Header class="border-b px-4 py-3 pr-14 text-left">
-				<Sheet.Title>{title}</Sheet.Title>
+				<Sheet.Title>{pickerMode === 'meme' ? m.meme_generator_title() : title}</Sheet.Title>
 				<Sheet.Description>
-					{m.media_picker_selected_count({
-						selected: selectedIDs.length,
-						maximum: maxSelection
-					})}
+					{pickerMode === 'meme'
+						? m.meme_generator_description()
+						: m.media_picker_selected_count({
+								selected: selectedIDs.length,
+								maximum: maxSelection
+							})}
 				</Sheet.Description>
 			</Sheet.Header>
 			{@render pickerBody()}
@@ -846,19 +853,21 @@
 		<Dialog.Content
 			class="top-0 left-0 flex h-dvh max-h-dvh max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl {pickerMode ===
 			'meme'
-				? 'sm:h-auto sm:max-h-[min(760px,calc(100dvh-2rem))] sm:max-w-5xl'
+				? 'meme-picker-workbench overflow-hidden sm:w-[min(96vw,90rem)] sm:max-w-[90rem]'
 				: desktopSize === 'compact'
 					? 'sm:h-[min(640px,calc(100dvh-2rem))] sm:max-w-3xl'
 					: 'sm:h-[min(760px,calc(100dvh-2rem))] sm:max-w-5xl'}"
 		>
-			<div class="contents" {@attach initializePicker}></div>
+			<div class="media-picker-initializer contents" {@attach initializePicker}></div>
 			<Dialog.Header class="border-b px-4 py-3 pr-14">
-				<Dialog.Title>{title}</Dialog.Title>
+				<Dialog.Title>{pickerMode === 'meme' ? m.meme_generator_title() : title}</Dialog.Title>
 				<Dialog.Description>
-					{m.media_picker_selected_count({
-						selected: selectedIDs.length,
-						maximum: maxSelection
-					})}
+					{pickerMode === 'meme'
+						? m.meme_generator_description()
+						: m.media_picker_selected_count({
+								selected: selectedIDs.length,
+								maximum: maxSelection
+							})}
 				</Dialog.Description>
 			</Dialog.Header>
 			{@render pickerBody()}
@@ -964,3 +973,34 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<style>
+	:global([data-slot='dialog-content'].meme-picker-workbench) {
+		display: grid;
+		height: 100dvh;
+		max-height: 100dvh;
+		grid-template-rows: auto auto minmax(0, 1fr);
+		overflow: hidden;
+	}
+
+	:global([data-slot='dialog-content'].meme-picker-workbench > [data-slot='dialog-close']) {
+		position: absolute;
+	}
+
+	.media-picker-initializer {
+		display: contents;
+	}
+
+	.meme-picker-body {
+		display: flex;
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	@media (min-width: 40rem) {
+		:global(.meme-picker-workbench) {
+			height: min(56.25rem, calc(100dvh - 2rem));
+			max-height: min(56.25rem, calc(100dvh - 2rem));
+		}
+	}
+</style>

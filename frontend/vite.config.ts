@@ -145,7 +145,12 @@ export default defineConfig({
 	},
 	server: {
 		proxy: {
-			'/api': 'http://localhost:8080',
+			'/api': {
+				target: 'http://localhost:8080',
+				changeOrigin: false,
+				timeout: 30_000,
+				proxyTimeout: 30_000
+			},
 			'^/media/[^/]+': {
 				target: 'http://localhost:8080'
 			}

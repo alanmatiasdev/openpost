@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { client } from '$lib/api/client';
 import { setLocale } from '$lib/paraglide/runtime';
 import {
-	getMemeThumbnail,
 	listMemeTemplates,
 	memePreviewDataURL,
+	memeThumbnailURL,
 	previewMeme,
 	renderMeme,
 	suggestMemes
@@ -37,27 +37,17 @@ describe('meme generator API', () => {
 		});
 	});
 
-	it('loads template images through the authenticated OpenPost thumbnail route', async () => {
-		const thumbnail = {
-			template_id: 'drake',
-			mime_type: 'image/png',
-			data_base64: 'aW1hZ2U='
-		};
-		mocks.get.mockResolvedValue({
-			data: thumbnail,
-			response: new Response(null, { status: 200 })
-		});
-
-		await expect(
-			getMemeThumbnail({ workspaceId: 'workspace-1', templateId: 'drake' })
-		).resolves.toEqual(thumbnail);
-		expect(mocks.get).toHaveBeenCalledWith('/memes/templates/{template_id}/thumbnail', {
-			params: {
-				path: { template_id: 'drake' },
-				query: { workspace_id: 'workspace-1' }
-			},
-			signal: undefined
-		});
+	it('gives the browser a revisioned raw thumbnail URL', () => {
+		expect(
+			memeThumbnailURL({
+				workspaceId: 'workspace one',
+				templateId: 'template/one',
+				catalogRevision: 'sha256:catalog'
+			})
+		).toBe(
+			'/api/v1/memes/templates/template%2Fone/thumbnail?workspace_id=workspace+one&catalog_revision=sha256%3Acatalog'
+		);
+		expect(mocks.get).not.toHaveBeenCalled();
 	});
 
 	it('requests structured AI candidates with an explicit tone and language', async () => {
@@ -140,7 +130,7 @@ describe('meme generator API', () => {
 		});
 
 		await expect(listMemeTemplates({ workspaceId: 'workspace-1' })).rejects.toMatchObject({
-			message: 'O OpenPost não conseguiu carregar o catálogo de modelos do Memegen.',
+			message: 'O OpenPost não conseguiu carregar o catálogo de modelos incluído.',
 			status: 502
 		});
 	});

@@ -37,10 +37,8 @@ export interface MemeTemplateListResult extends Omit<
 export interface MemeThumbnailInput {
 	workspaceId: string;
 	templateId: string;
-	signal?: AbortSignal;
+	catalogRevision?: string;
 }
-
-export type MemeThumbnailResult = components['schemas']['GetMemeTemplateThumbnailOutputBody'];
 
 export interface MemeSuggestionCandidate extends Omit<
 	APIMemeSuggestionCandidate,
@@ -90,7 +88,7 @@ export interface MemeOverlaySelection {
 
 export interface MemeGeneratorAPI {
 	listTemplates(input: MemeTemplateListInput): Promise<MemeTemplateListResult>;
-	thumbnail(input: MemeThumbnailInput): Promise<MemeThumbnailResult>;
+	thumbnailURL(input: MemeThumbnailInput): string;
 	suggest(input: MemeSuggestionInput): Promise<MemeSuggestionResult>;
 	preview(input: MemeRecipeInput): Promise<MemePreviewResult>;
 	render(input: MemeRecipeInput): Promise<MemeRenderResult>;

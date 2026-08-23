@@ -2635,8 +2635,8 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Load a proxied meme template thumbnail
-     * @description Returns a bounded OpenPost-proxied image so private Memegen hosts and server-only provider credentials are never exposed to the browser.
+     * Load a meme template thumbnail
+     * @description Returns bounded cacheable image bytes from OpenPost's configured template catalog.
      */
     get: operations["get-meme-template-thumbnail"];
     put?: never;
@@ -6615,18 +6615,6 @@ export interface components {
       /** @description Publications and reusable assets using this media */
       usage: components["schemas"]["MediaUsageItem"][] | null;
     };
-    GetMemeTemplateThumbnailOutputBody: {
-      /**
-       * Format: uri
-       * @description A URL to the JSON Schema for this object.
-       * @example https://example.com/schemas/GetMemeTemplateThumbnailOutputBody.json
-       */
-      readonly $schema?: string;
-      /** @description Base64-encoded template thumbnail bytes */
-      data_base64: string;
-      mime_type: string;
-      template_id: string;
-    };
     GetPromptCategoriesOutputBody: {
       /**
        * Format: uri
@@ -8648,7 +8636,7 @@ export interface components {
       format: "png" | "jpg" | "jpeg" | "gif" | "webp";
       /** @description Workspace media IDs for replaceable image slots */
       overlay_media_ids?: string[] | null;
-      /** @description Memegen template ID */
+      /** @description OpenPost meme template ID */
       template_id: string;
       /** @description Workspace ID */
       workspace_id: string;
@@ -9497,7 +9485,7 @@ export interface components {
       overlay_media_ids?: string[] | null;
       /** @description Prior generated media when this is an edited version */
       parent_media_id?: string;
-      /** @description Memegen template ID */
+      /** @description OpenPost meme template ID */
       template_id: string;
       /** @description Workspace ID */
       workspace_id: string;
@@ -10490,12 +10478,20 @@ export interface components {
       /** Format: int64 */
       overlays: number;
       search_terms: string[] | null;
+      semantic: components["schemas"]["TemplateSemantic"];
       source_url: string;
       styles: string[] | null;
     };
     TemplateExample: {
       text: string[] | null;
       url: string;
+    };
+    TemplateSemantic: {
+      caption_roles: string[] | null;
+      meaning: string;
+      mechanism: string;
+      tags: string[] | null;
+      visual: string;
     };
     TextConstraint: {
       /** Format: int64 */
@@ -21274,24 +21270,28 @@ export interface operations {
       query: {
         /** @description Workspace ID */
         workspace_id: string;
+        /** @description Catalog revision returned by the template list */
+        catalog_revision?: string;
       };
       header?: never;
       path: {
-        /** @description Memegen template ID */
+        /** @description Meme template ID */
         template_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description OK */
+      /** @description JPEG template thumbnail */
       200: {
         headers: {
           "Cache-Control"?: string;
+          "Content-Type"?: string;
+          ETag?: string;
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["GetMemeTemplateThumbnailOutputBody"];
+          "image/jpeg": string;
         };
       };
       /** @description Bad Request */

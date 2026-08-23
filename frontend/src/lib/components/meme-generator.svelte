@@ -40,10 +40,8 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 
 	const MAX_IDEA_CHARACTERS = 1000;
 	const MAX_CAPTION_CHARACTERS = 200;
-	const TEMPLATE_PAGE_SIZE = 24;
+	const TEMPLATE_PAGE_SIZE = 48;
 	const MAX_TEMPLATE_LIMIT = 250;
-	const MAX_CACHED_THUMBNAILS = 32;
-	const MAX_CONCURRENT_THUMBNAILS = 2;
 	const PREVIEW_DEBOUNCE_MS = 320;
 	const SUGGESTION_COUNT = 4;
 	type CandidatePreviewState = 'idle' | 'queued' | 'loading' | 'ready' | 'failed';
@@ -86,6 +84,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	let templatesError = $state('');
 	let templateLimit = $state(TEMPLATE_PAGE_SIZE);
 	let templateTotal = $state(0);
+	let catalogRevision = $state('');
 	let rendererConfigured = $state(true);
 	let aiConfigured = $state(true);
 	let suggestions = $state.raw<MemeSuggestionCandidate[]>([]);
@@ -94,9 +93,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	let suggestionsError = $state('');
 	let candidatePreviews = $state.raw<Record<string, string>>({});
 	let candidatePreviewStates = $state.raw<Record<string, CandidatePreviewState>>({});
-	let templateThumbnails = $state.raw<Record<string, string>>({});
 	let templateThumbnailFailures = $state.raw<Record<string, true>>({});
-	let thumbnailOrder: string[] = [];
 	let selectedTemplateID = $state('');
 	let selectedTemplateSnapshot = $state.raw<MemeTemplate | null>(null);
 	let selectedCandidate = $state.raw<MemeSuggestionCandidate | null>(null);
@@ -115,9 +112,6 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	let candidatePreviewController: AbortController | null = null;
 	let previewController: AbortController | null = null;
 	let renderController: AbortController | null = null;
-	const thumbnailControllers: Record<string, AbortController> = {};
-	let thumbnailQueue: string[] = [];
-	let thumbnailActive = 0;
 	let previewTimer: ReturnType<typeof setTimeout> | undefined;
 	let previewSequence = 0;
 	let recipeRevision = $state(0);
@@ -169,7 +163,6 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		candidatePreviewController?.abort();
 		previewController?.abort();
 		renderController?.abort();
-		cancelThumbnailLoads();
 		if (previewTimer) clearTimeout(previewTimer);
 	});
 
@@ -202,7 +195,6 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 			templatesLoadingMore = true;
 		} else {
 			templatesLoading = true;
-			cancelThumbnailLoads();
 			templateThumbnailFailures = {};
 		}
 		templatesError = '';
@@ -218,6 +210,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 			templates = result.templates;
 			templateLimit = limit;
 			templateTotal = result.catalog.total_templates;
+			catalogRevision = result.catalog.revision ?? '';
 			templateCatalog = searchedFor
 				? mergeTemplates(templateCatalog, result.templates)
 				: result.templates;
@@ -284,36 +277,8 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		);
 	}
 
-	function memegenCaptionBytes(caption: string): number {
-		let value = caption;
-		try {
-			value = decodeURIComponent(caption);
-		} catch {
-			// Memegen keeps malformed percent escapes as literal text.
-		}
-		for (const [current, replacement] of [
-			['_', '__'],
-			['-', '--'],
-			[' ', '_'],
-			['?', '~q'],
-			['%', '~p'],
-			['#', '~h'],
-			['"', "''"],
-			['/', '~s'],
-			['\\', '~b'],
-			['\n', '~n'],
-			['&', '~a'],
-			['<', '~l'],
-			['>', '~g'],
-			['‘', "'"],
-			['’', "'"],
-			['“', '"'],
-			['”', '"'],
-			['–', '-']
-		] as const) {
-			value = value.replaceAll(current, replacement);
-		}
-		return new TextEncoder().encode(value).length;
+	function captionCharacters(caption: string): number {
+		return Array.from(caption).length;
 	}
 
 	function hasInvalidCaptionControl(caption: string): boolean {
@@ -329,98 +294,16 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 
 	function isCaptionValid(caption: string): boolean {
 		return (
-			Array.from(caption).length <= MAX_CAPTION_CHARACTERS &&
-			!hasInvalidCaptionControl(caption) &&
-			memegenCaptionBytes(caption) <= MAX_CAPTION_CHARACTERS
+			captionCharacters(caption) <= MAX_CAPTION_CHARACTERS && !hasInvalidCaptionControl(caption)
 		);
 	}
 
-	function cancelThumbnailLoads(): void {
-		for (const controller of Object.values(thumbnailControllers)) controller.abort();
-		for (const templateID of Object.keys(thumbnailControllers)) {
-			delete thumbnailControllers[templateID];
-		}
-		thumbnailQueue = [];
-		thumbnailActive = 0;
+	function templateThumbnailURL(templateID: string): string {
+		return api.thumbnailURL({ workspaceId, templateId: templateID, catalogRevision });
 	}
 
-	function observeTemplateThumbnail(element: HTMLElement, templateID: string): () => void {
-		if (templateThumbnails[templateID] || templateThumbnailFailures[templateID]) return () => {};
-		if (typeof IntersectionObserver === 'undefined') {
-			queueTemplateThumbnail(templateID);
-			return () => {};
-		}
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (!entries.some((entry) => entry.isIntersecting)) return;
-				observer.disconnect();
-				queueTemplateThumbnail(templateID);
-			},
-			{ rootMargin: '160px' }
-		);
-		observer.observe(element);
-		return () => observer.disconnect();
-	}
-
-	function queueTemplateThumbnail(templateID: string): void {
-		if (
-			templateThumbnails[templateID] ||
-			templateThumbnailFailures[templateID] ||
-			thumbnailControllers[templateID] ||
-			thumbnailQueue.includes(templateID)
-		) {
-			return;
-		}
-		thumbnailQueue = [...thumbnailQueue, templateID];
-		drainThumbnailQueue();
-	}
-
-	function drainThumbnailQueue(): void {
-		while (thumbnailActive < MAX_CONCURRENT_THUMBNAILS && thumbnailQueue.length > 0) {
-			const [templateID, ...rest] = thumbnailQueue;
-			thumbnailQueue = rest;
-			void loadTemplateThumbnail(templateID);
-		}
-	}
-
-	async function loadTemplateThumbnail(templateID: string): Promise<void> {
-		const controller = new AbortController();
-		thumbnailControllers[templateID] = controller;
-		thumbnailActive += 1;
-		try {
-			const result = await api.thumbnail({
-				workspaceId,
-				templateId: templateID,
-				signal: controller.signal
-			});
-			if (!controller.signal.aborted) {
-				const nextThumbnails = {
-					...templateThumbnails,
-					[templateID]: memePreviewDataURL(result)
-				};
-				thumbnailOrder = [...thumbnailOrder.filter((item) => item !== templateID), templateID];
-				while (thumbnailOrder.length > MAX_CACHED_THUMBNAILS) {
-					const evicted = thumbnailOrder.shift();
-					if (!evicted) break;
-					if (evicted === selectedTemplateID) {
-						thumbnailOrder.push(evicted);
-						continue;
-					}
-					delete nextThumbnails[evicted];
-				}
-				templateThumbnails = nextThumbnails;
-			}
-		} catch (cause) {
-			if (!isAbortError(cause)) {
-				templateThumbnailFailures = { ...templateThumbnailFailures, [templateID]: true };
-			}
-		} finally {
-			if (thumbnailControllers[templateID] === controller) {
-				delete thumbnailControllers[templateID];
-				thumbnailActive = Math.max(0, thumbnailActive - 1);
-			}
-			drainThumbnailQueue();
-		}
+	function handleTemplateThumbnailError(templateID: string): void {
+		templateThumbnailFailures = { ...templateThumbnailFailures, [templateID]: true };
 	}
 
 	async function generateSuggestions(): Promise<void> {
@@ -472,35 +355,35 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 			candidates.map((candidate) => [candidateKey(candidate), 'queued' as const])
 		);
 		try {
-			// Keep speculative rendering deliberately serial. Hosted renderers can be rate-limited,
-			// and selecting a candidate must be able to take over the single preview slot immediately.
-			for (const candidate of candidates) {
-				if (controller.signal.aborted) break;
-				const key = candidateKey(candidate);
-				setCandidatePreviewState(key, 'loading');
-				try {
-					const result = await api.preview({
-						workspaceId,
-						templateId: candidate.template_id,
-						captions: candidate.caption_lines,
-						overlayMediaIds: [],
-						format: 'webp',
-						signal: controller.signal
-					});
-					if (!controller.signal.aborted && candidatePreviewController === controller) {
-						candidatePreviews = {
-							...candidatePreviews,
-							[key]: memePreviewDataURL(result)
-						};
-						setCandidatePreviewState(key, 'ready');
+			await Promise.all(
+				candidates.map(async (candidate) => {
+					if (controller.signal.aborted) return;
+					const key = candidateKey(candidate);
+					setCandidatePreviewState(key, 'loading');
+					try {
+						const result = await api.preview({
+							workspaceId,
+							templateId: candidate.template_id,
+							captions: candidate.caption_lines,
+							overlayMediaIds: [],
+							format: 'webp',
+							signal: controller.signal
+						});
+						if (!controller.signal.aborted && candidatePreviewController === controller) {
+							candidatePreviews = {
+								...candidatePreviews,
+								[key]: memePreviewDataURL(result)
+							};
+							setCandidatePreviewState(key, 'ready');
+						}
+					} catch (cause) {
+						if (controller.signal.aborted || isAbortError(cause)) return;
+						if (candidatePreviewController === controller) {
+							setCandidatePreviewState(key, 'failed');
+						}
 					}
-				} catch (cause) {
-					if (controller.signal.aborted || isAbortError(cause)) break;
-					if (candidatePreviewController === controller) {
-						setCandidatePreviewState(key, 'failed');
-					}
-				}
-			}
+				})
+			);
 		} finally {
 			if (candidatePreviewController === controller) {
 				candidatePreviewController = null;
@@ -625,12 +508,11 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		previewController?.abort();
 		previewSequence += 1;
 		const candidatePreview = candidate ? candidatePreviews[candidateKey(candidate)] : '';
-		selectedPreview = candidatePreview || templateThumbnails[template.id] || '';
+		selectedPreview = candidatePreview || templateThumbnailURL(template.id);
 		previewedRevision = candidatePreview ? recipeRevision : -1;
 		previewLoading = false;
 		if (candidate && !candidatePreview)
 			setCandidatePreviewState(candidateKey(candidate), 'loading');
-		queueTemplateThumbnail(template.id);
 		previewError = '';
 		editorError = '';
 		attached = false;
@@ -821,22 +703,16 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	}
 </script>
 
-<div class="meme-generator min-w-0" style="container-type: inline-size;">
-	<header class="mb-4 space-y-1">
-		<h2 class="text-base font-semibold tracking-[-0.02em] text-foreground">
-			{m.meme_generator_title()}
-		</h2>
-		<p class="max-w-2xl text-sm leading-5 text-muted-foreground">
-			{m.meme_generator_description()}
-		</p>
-	</header>
-
+<div class="meme-generator min-h-0 min-w-0 flex-1" style="container-type: inline-size;">
 	{#if !rendererConfigured && !templatesLoading}
-		<InlineNotice tone="warning" message={m.meme_generator_renderer_unavailable()} class="mb-4" />
+		<InlineNotice tone="warning" message={m.meme_generator_renderer_unavailable()} class="m-3" />
 	{/if}
 
 	<div class="meme-workspace">
-		<section class="min-w-0" aria-label={m.meme_generator_templates_heading()}>
+		<section
+			class="meme-browser min-w-0 p-3 sm:p-4"
+			aria-label={m.meme_generator_templates_heading()}
+		>
 			<Tabs.Root bind:value={mode}>
 				<Tabs.List class="grid w-full grid-cols-2">
 					<Tabs.Trigger value="ideas">
@@ -1091,7 +967,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 
 					{#if templatesLoading}
 						<div class="template-grid" aria-label={m.common_loading()}>
-							{#each ['one', 'two', 'three', 'four', 'five', 'six'] as key (key)}
+							{#each ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'] as key (key)}
 								<div class="overflow-hidden rounded-lg border border-border bg-card p-2">
 									<Skeleton class="aspect-[4/3] w-full" />
 									<Skeleton class="mt-2 h-4 w-3/4" />
@@ -1112,26 +988,22 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 									aria-label={m.meme_generator_template_select({ name: template.name })}
 								>
 									<span class="block w-full">
-										<span
-											{@attach (element) => observeTemplateThumbnail(element, template.id)}
-											class="relative block aspect-[4/3] overflow-hidden rounded-md bg-muted"
-										>
-											{#if templateThumbnails[template.id]}
-												<img
-													src={templateThumbnails[template.id]}
-													alt=""
-													aria-hidden="true"
-													class="size-full object-contain"
-													loading="lazy"
-													decoding="async"
-												/>
-											{:else if templateThumbnailFailures[template.id]}
+										<span class="relative block aspect-[4/3] overflow-hidden rounded-md bg-muted">
+											{#if templateThumbnailFailures[template.id]}
 												<span class="grid size-full place-items-center text-muted-foreground">
 													<ImageIcon class="size-6" />
 													<span class="sr-only">{m.media_preview_unavailable()}</span>
 												</span>
 											{:else}
-												<Skeleton class="size-full" />
+												<img
+													src={templateThumbnailURL(template.id)}
+													alt=""
+													aria-hidden="true"
+													class="size-full object-contain"
+													loading="lazy"
+													decoding="async"
+													onerror={() => handleTemplateThumbnailError(template.id)}
+												/>
 											{/if}
 											{#if selectedTemplateID === template.id && !selectedCandidate}
 												<span
@@ -1189,7 +1061,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 
 		<section
 			{@attach captureEditorElement}
-			class="meme-editor min-w-0 rounded-xl border border-border bg-card p-3 sm:p-4"
+			class="meme-editor min-w-0 bg-muted/15 p-3 sm:p-4"
 			aria-labelledby={`${uid}-editor-heading`}
 		>
 			<div class="mb-3 flex items-start justify-between gap-3">
@@ -1232,13 +1104,13 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 			{:else}
 				<div class="space-y-4">
 					<figure
-						class="relative grid min-h-56 place-items-center overflow-hidden rounded-lg bg-muted/70 p-2 sm:min-h-72"
+						class="meme-preview relative grid place-items-center overflow-hidden rounded-lg bg-muted/70 p-2"
 					>
 						{#if selectedPreview}
 							<img
 								src={selectedPreview}
 								alt={m.meme_generator_preview_alt({ name: selectedTemplate.name })}
-								class="max-h-[28rem] max-w-full object-contain"
+								class="max-h-[32rem] max-w-full object-contain"
 								loading="eager"
 								decoding="async"
 							/>
@@ -1276,7 +1148,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 					<fieldset class="min-w-0 space-y-3" disabled={rendering}>
 						<legend class="sr-only">{m.meme_generator_editor_heading()}</legend>
 						{#each captions as caption, index (`caption-${index + 1}`)}
-							{@const captionLength = memegenCaptionBytes(caption)}
+							{@const captionLength = captionCharacters(caption)}
 							{@const captionIsValid = isCaptionValid(caption)}
 							<div class="space-y-1.5">
 								<div class="flex items-center justify-between gap-3">
@@ -1377,7 +1249,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 					{/if}
 
 					<div
-						class="flex flex-col-reverse gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between"
+						class="editor-actions flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between"
 					>
 						<p class="text-xs leading-5 text-muted-foreground">
 							{m.meme_generator_editor_description()}
@@ -1412,16 +1284,32 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 </div>
 
 <style>
+	.meme-generator {
+		display: flex;
+		height: 100%;
+		width: 100%;
+		min-width: 0;
+		flex: 1;
+		flex-direction: column;
+	}
+
 	.meme-workspace {
 		display: grid;
-		gap: 1rem;
+		min-height: 0;
+		flex: 1;
+		overflow-y: auto;
 	}
 
 	.candidate-grid,
-	.template-grid,
 	.overlay-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
+		gap: 0.625rem;
+	}
+
+	.template-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.625rem;
 	}
 
@@ -1431,11 +1319,35 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		gap: 0.75rem;
 	}
 
+	.meme-preview {
+		min-height: 16rem;
+	}
+
+	.editor-actions {
+		position: sticky;
+		bottom: -0.75rem;
+		z-index: 10;
+		margin-inline: -0.75rem;
+		margin-bottom: -0.75rem;
+		border-top: 1px solid var(--border);
+		background: var(--card);
+		padding: 0.75rem 1rem 1rem;
+	}
+
 	@container (min-width: 34rem) {
+		.editor-actions {
+			bottom: -1rem;
+			margin-inline: -1rem;
+			margin-bottom: -1rem;
+		}
+
 		.candidate-grid,
-		.template-grid,
 		.overlay-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.template-grid {
+			grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr));
 		}
 
 		.idea-actions {
@@ -1445,13 +1357,22 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 
 	@container (min-width: 54rem) {
 		.meme-workspace {
-			grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1.1fr);
-			align-items: start;
+			grid-template-columns: minmax(0, 1.18fr) minmax(22rem, 0.82fr);
+			overflow: hidden;
 		}
 
+		.meme-browser,
 		.meme-editor {
-			position: sticky;
-			top: 1rem;
+			min-height: 0;
+			overflow-y: auto;
+		}
+
+		.meme-browser {
+			border-right: 1px solid var(--border);
+		}
+
+		.meme-preview {
+			min-height: 20rem;
 		}
 	}
 </style>
