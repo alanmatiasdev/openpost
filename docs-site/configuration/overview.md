@@ -15,6 +15,7 @@ OpenPost settings fall into these groups:
 - Secrets: JWT signing and token encryption
 - Media: local filesystem path by default, or S3-compatible storage for cloud deployments
 - Social networks: [provider application](/configuration/provider-applications) ownership, client keys, callback addresses, and server-specific settings
+- Custom destinations: [connector](/configuration/custom-connectors) services installed by a self-hosted operator
 - Operations: self-hosted update checks and cloud-only limits on social network costs
 - Platform-specific behavior: options such as LinkedIn thread reply disabling
 

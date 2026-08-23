@@ -99,6 +99,22 @@ export const docsPageCatalog = Object.freeze([
     }
   },
   {
+    "page": "configuration/custom-connectors.md",
+    "title": "Custom connectors",
+    "description": "Add operator-run text publishing destinations to a self-hosted OpenPost instance.",
+    "route": "/configuration/custom-connectors",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "configuration"
+    }
+  },
+  {
     "page": "configuration/database.md",
     "title": "Database",
     "description": "OpenPost uses SQLite by default when you run it yourself.",
@@ -360,6 +376,22 @@ export const docsPageCatalog = Object.freeze([
     "title": "API and schema compatibility",
     "description": "This page is for contributors deprecating or removing public API and stored-data contracts.",
     "route": "/development/compatibility-policy",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "development"
+    }
+  },
+  {
+    "page": "development/connector-protocol.md",
+    "title": "Connector Protocol 1.0",
+    "description": "Implement the authenticated Connector Protocol 1.0 contract for custom text destinations.",
+    "route": "/development/connector-protocol",
     "agentRepresentation": {
       "membership": "ordinary"
     },

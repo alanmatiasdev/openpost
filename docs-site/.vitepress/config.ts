@@ -187,6 +187,10 @@ const developmentSidebar = [
       },
       { text: "Backend", link: "/development/backend" },
       { text: "Platform Adapters", link: "/development/platform-adapters" },
+      {
+        text: "Connector Protocol",
+        link: "/development/connector-protocol",
+      },
       { text: "Background Jobs", link: "/development/background-jobs" },
       { text: "Analytics Architecture", link: "/development/analytics" },
       { text: "Testing", link: "/development/testing" },

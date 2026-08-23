@@ -2,6 +2,11 @@
 
 This sidecar implements OpenPost Connector Protocol 1.0 and creates one Directus item for each published rendition. OpenPost talks only to the sidecar. The sidecar owns the Directus URL and token.
 
+The full setup guide covers collection permissions, secret files, network policy, connection, duplicate-write checks, and troubleshooting:
+
+- [Custom connectors](https://docs.openpost.social/configuration/custom-connectors)
+- [Connector Protocol 1.0](https://docs.openpost.social/development/connector-protocol)
+
 Create a Directus collection with these fields:
 
 - `title`: string

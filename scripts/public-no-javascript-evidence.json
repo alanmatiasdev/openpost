@@ -179,6 +179,10 @@
     "audience": "This page is for operators configuring public URLs and allowed browser origins.",
     "boundary": "Self-hosted mode also allows local browser development origins by default. Cloud mode is stricter: it allows OPENPOST_APP_URL and explicit extra origins only, and rejects wildcard * origins at startup. The native Expo app calls the HTTP API directly and does not need a browser CORS origin."
   },
+  "https://docs.openpost.social/configuration/custom-connectors": {
+    "audience": "Self-hosted operators use this page to install publishing destinations that OpenPost does not ship with.",
+    "boundary": "Connector Protocol 1.0 supports operator-configured text destinations. It does not support media, threads, browser automation, user-supplied connection forms, analytics, comments, inboxes, or connector-supplied UI."
+  },
   "https://docs.openpost.social/configuration/database": {
     "audience": "OpenPost uses SQLite by default when you run it yourself. Hosted installs can use Postgres by changing the database driver.",
     "boundary": "Do not keep the database inside ephemeral container layers."
@@ -246,6 +250,10 @@
   "https://docs.openpost.social/development/compatibility-policy": {
     "audience": "This page is for contributors deprecating or removing public API and stored-data contracts.",
     "boundary": "OpenPost does not remove a public API or stored-data contract because repository search reports no caller."
+  },
+  "https://docs.openpost.social/development/connector-protocol": {
+    "audience": "Connector authors use this page to implement the authenticated Connector Protocol 1.0 text publishing contract.",
+    "boundary": "A connector runs outside OpenPost, keeps destination credentials, and must make every repeated operation ID safe without a second destination write."
   },
   "https://docs.openpost.social/development/contributing": {
     "audience": "This page is for contributors preparing a change to OpenPost.",
