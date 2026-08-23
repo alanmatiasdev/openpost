@@ -104,6 +104,7 @@ const selfHostingSidebar = [
         text: "Provider Applications",
         link: "/configuration/provider-applications",
       },
+      { text: "Custom Connectors", link: "/configuration/custom-connectors" },
       { text: "Update Status", link: "/configuration/update-status" },
       { text: "User Feedback", link: "/configuration/feedback" },
       { text: "Database", link: "/configuration/database" },

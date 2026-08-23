@@ -57,6 +57,7 @@ This page lists the most common core and provider variables. Use [Environment Va
 | `OPENPOST_X_POST_CREATE_COST_MICROUSD`          | `15000`   | Estimated X post-create cost without a URL, in millionths of a US dollar.     |
 | `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD` | `200000`  | Estimated X post-create cost with a URL, in millionths of a US dollar.        |
 | `OPENPOST_PROVIDER_USAGE_RETENTION_DAYS`        | `180`     | Immutable provider-cost event retention; the current month is never pruned.   |
+| `OPENPOST_CONNECTORS_FILE`                      | empty     | Absolute path to the self-hosted custom connector registry.                   |
 
 Most variables loaded through the main backend config loader can also be loaded from `<VARIABLE>_FILE`; direct env values win over file-backed values. Instance admins can manage the optional account, email, authentication, OpenPost Image Editor, feedback, and provider behavior values from **Settings → Instance → Configuration**. An encrypted admin override takes precedence over those environment values after restart, and the screen keeps the environment source visible as the fallback. Provider apps use a separate environment-first merge path. Legacy aliases support the same suffix, for example `DATABASE_URL_FILE`, `JWT_SECRET_FILE`, and `ENCRYPTION_KEY_FILE`. Adapter-only variables read directly by provider code, such as `META_GRAPH_API_VERSION`, do not currently support `_FILE` variants.
 
@@ -84,6 +85,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_FEEDBACK_RECIPIENT`                   | Recipient label disclosed to users                                                                |
 | `OPENPOST_FEEDBACK_SUPPORT_URL`                 | Fallback support URL                                                                              |
 | `OPENPOST_UPDATE_CHECK_ENABLED`                 | Enable read-only stable release checks for self-hosted instance admins                            |
+| `OPENPOST_CONNECTORS_FILE`                      | Absolute path to the self-hosted custom connector registry                                        |
 | `OPENROUTER_API_KEY`                            | Enable server-side automatic image alt text; supports `_FILE`                                     |
 | `OPENPOST_IMAGE_CAPTION_MODEL`                  | OpenRouter model ID for automatic image alt text                                                  |
 | `OPENPOST_IMAGE_CAPTION_PROVIDER`               | Exact OpenRouter provider slug allowed for automatic image alt text                               |

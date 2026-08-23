@@ -27,6 +27,7 @@ Review the [OpenPost source](https://github.com/getopenpost/openpost), [security
 
 - [Configuration Overview](/configuration/overview) groups the main settings.
 - [Environment Variables](/configuration/environment-variables) is the full configuration reference.
+- [Custom Connectors](/configuration/custom-connectors) adds operator-run HTTP services as publishing destinations.
 - [Database](/configuration/database) covers SQLite and Postgres.
 - [Media Storage](/configuration/media-storage) covers local files and S3/R2 storage.
 - [CORS and URLs](/configuration/cors-and-urls) covers public app and media web addresses.
