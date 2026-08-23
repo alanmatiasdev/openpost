@@ -97,6 +97,23 @@ describe('_splitItem source boundaries', () => {
 		expect(result.rightItem.from).toBe(item.from + 18);
 	});
 
+	it('splits a reversed clip into descending source windows without a discontinuity', () => {
+		const item = videoItem({
+			durationInFrames: 60,
+			sourceStart: 300,
+			sourceEnd: 360,
+			sourceDuration: 600,
+			sourceFps: 30,
+			speed: 1,
+			isReversed: true
+		});
+		timelineStore._setItems([item]);
+
+		const result = timelineStore._splitItem(item.id, item.from + 18);
+		expect(result?.leftItem).toMatchObject({ sourceStart: 342, sourceEnd: 360 });
+		expect(result?.rightItem).toMatchObject({ sourceStart: 300, sourceEnd: 342 });
+	});
+
 	it('refuses to split outside the item span', () => {
 		const item = videoItem();
 		timelineStore._setItems([item]);

@@ -12,6 +12,7 @@
 		setCurrentFrame,
 		toggleMarkerAtPlayhead,
 		removeMarker,
+		joinItems,
 		linkItems,
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
@@ -40,6 +41,7 @@
 		TimelineTransition
 	} from '$lib/video-editor/project/types';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
+	import { canJoinMultipleItems } from '$lib/video-editor/timeline/join-items';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
 	import {
 		easingConfigFromPreset,
@@ -126,6 +128,7 @@
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import MagnetIcon from '@lucide/svelte/icons/magnet';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
+	import CombineIcon from '@lucide/svelte/icons/combine';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
 	import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -929,6 +932,14 @@
 		onedit();
 	}
 
+	function joinSelection(): void {
+		const joinedIds = joinItems(selectedItemIds);
+		if (joinedIds.length === 0) return;
+		selectedItemIds = joinedIds;
+		selectedItemId = joinedIds.at(-1) ?? null;
+		onedit();
+	}
+
 	function onPanelKeydown(event: KeyboardEvent): void {
 		const target = event.target;
 		if (
@@ -946,6 +957,15 @@
 		} else if ((event.key === 'l' || event.key === 'L') && event.altKey && event.shiftKey) {
 			event.preventDefault();
 			unlinkSelection();
+		} else if (
+			(event.key === 'j' || event.key === 'J') &&
+			event.shiftKey &&
+			!event.altKey &&
+			!event.ctrlKey &&
+			!event.metaKey
+		) {
+			event.preventDefault();
+			joinSelection();
 		} else if (
 			(event.key === 'r' || event.key === 'R') &&
 			!event.altKey &&
@@ -1543,6 +1563,21 @@
 	const canUnlinkSelectedItems = $derived(
 		selectedItemIds.some((id) => timelineStore.itemById.get(id)?.linkedGroupId !== undefined)
 	);
+	const canJoinSelectedItems = $derived.by(() => {
+		const lockedTrackIds = new Set(
+			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		);
+		const groups = new Map<string, TimelineItem[]>();
+		for (const id of selectedItemIds) {
+			const item = timelineStore.itemById.get(id);
+			if (!item || lockedTrackIds.has(item.trackId)) continue;
+			const key = `${item.trackId}\u0000${item.type}`;
+			const group = groups.get(key) ?? [];
+			group.push(item);
+			groups.set(key, group);
+		}
+		return [...groups.values()].some(canJoinMultipleItems);
+	});
 	const availableKeyframeProperties = $derived(
 		selectedItem ? getAnimatablePropertiesForItem(selectedItem) : []
 	);
@@ -1829,6 +1864,17 @@
 	</div>
 	<div class="ml-auto flex items-center gap-1">
 		{#if selectedItem}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded"
+				disabled={!canJoinSelectedItems}
+				aria-label={m.video_editor_join_selected()}
+				title={m.video_editor_join_selected_hint()}
+				onclick={joinSelection}
+			>
+				<CombineIcon class="size-3.5" />
+			</Button>
 			<Button
 				variant="ghost"
 				size="icon"

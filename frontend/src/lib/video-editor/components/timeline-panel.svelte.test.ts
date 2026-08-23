@@ -107,6 +107,77 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel sync-lock ripple trim', () => {
+	it('joins selected split siblings from the toolbar and Shift+J', async () => {
+		const left = item({
+			id: 'left',
+			originId: 'origin',
+			mediaId: 'media',
+			durationInFrames: 30,
+			sourceEnd: 30
+		});
+		const right = item({
+			id: 'right',
+			originId: 'origin',
+			mediaId: 'media',
+			from: 30,
+			durationInFrames: 30,
+			sourceStart: 30,
+			sourceEnd: 60
+		});
+		timelineStore._setItems([left, right]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: 'right',
+			selectedItemIds: ['left', 'right']
+		});
+		const join = screen.getByRole('button', { name: 'Join selected clips' });
+		await expect.element(join).toBeEnabled();
+		await join.click();
+		expect(timelineStore.items).toHaveLength(1);
+		expect(timelineStore.items[0]).toMatchObject({
+			id: 'left',
+			durationInFrames: 60,
+			sourceStart: 0,
+			sourceEnd: 60
+		});
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(commandHistory.getLastCommandType()).toBe('JOIN_ITEMS');
+
+		commandHistory.undo();
+		expect(timelineStore.items).toHaveLength(2);
+	});
+
+	it('joins selected split siblings with Shift+J', async () => {
+		timelineStore._setItems([
+			item({
+				id: 'left',
+				originId: 'origin',
+				mediaId: 'media',
+				durationInFrames: 30,
+				sourceEnd: 30
+			}),
+			item({
+				id: 'right',
+				originId: 'origin',
+				mediaId: 'media',
+				from: 30,
+				durationInFrames: 30,
+				sourceStart: 30,
+				sourceEnd: 60
+			})
+		]);
+		const onedit = vi.fn();
+		await render(TimelinePanel, {
+			onedit,
+			selectedItemId: 'right',
+			selectedItemIds: ['left', 'right']
+		});
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'J', shiftKey: true, bubbles: true }));
+		expect(timelineStore.items).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('previews and inserts a dragged scene at the exact pointer frame', async () => {
 		const onedit = vi.fn();
 		await render(TimelinePanel, { onedit });

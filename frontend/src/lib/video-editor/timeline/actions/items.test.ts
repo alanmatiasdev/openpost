@@ -7,11 +7,13 @@ import {
 	addAdjustmentLayer,
 	addShapeItem,
 	addTextItem,
+	joinItems,
 	linkItems,
 	setCurrentFrame,
 	setItemsReversed,
 	unlinkItems
 } from './items';
+import { transitionsStore } from './transitions-store.svelte';
 
 function clip(overrides: Partial<TimelineItem>): TimelineItem {
 	return {
@@ -33,6 +35,7 @@ describe('addTextItem', () => {
 		timelineStore.__resetForTesting();
 		timelineStore._setTracks(createDefaultTracks());
 		commandHistory.clearHistory();
+		transitionsStore.clear();
 	});
 
 	it('adds three seconds of text to the top visual track at the playhead and undoes it', () => {
@@ -157,6 +160,7 @@ describe('linked item actions', () => {
 		timelineStore.__resetForTesting();
 		timelineStore._setTracks(createDefaultTracks());
 		commandHistory.clearHistory();
+		transitionsStore.clear();
 	});
 
 	it('links the full existing groups behind a multi-item selection', () => {
@@ -244,5 +248,85 @@ describe('linked item actions', () => {
 		expect(setItemsReversed(['video'], true)).toEqual([]);
 		expect(timelineStore.itemById.get('video')?.isReversed).toBeUndefined();
 		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('joins linked split siblings and repairs transition endpoints as one undo step', () => {
+		const linkedGroupId = 'linked';
+		const originId = 'source-edit';
+		const videoLeft = clip({ id: 'video-left', originId, linkedGroupId, sourceEnd: 30 });
+		const videoRight = clip({
+			id: 'video-right',
+			originId,
+			linkedGroupId,
+			from: 30,
+			sourceStart: 30,
+			sourceEnd: 60
+		});
+		const audioLeft = clip({
+			id: 'audio-left',
+			originId,
+			linkedGroupId,
+			trackId: 'track-audio',
+			type: 'audio',
+			sourceEnd: 30
+		});
+		const audioRight = clip({
+			id: 'audio-right',
+			originId,
+			linkedGroupId,
+			trackId: 'track-audio',
+			type: 'audio',
+			from: 30,
+			sourceStart: 30,
+			sourceEnd: 60
+		});
+		const next = clip({
+			id: 'next',
+			originId: 'next-origin',
+			from: 60,
+			sourceStart: 60,
+			sourceEnd: 90
+		});
+		timelineStore._setItems([videoLeft, videoRight, audioLeft, audioRight, next]);
+		transitionsStore.setAll([
+			{
+				id: 'internal',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video-left',
+				toItemId: 'video-right'
+			},
+			{
+				id: 'external',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video-right',
+				toItemId: 'next'
+			}
+		]);
+
+		expect(joinItems(['video-left', 'video-right'])).toEqual(['video-left', 'audio-left']);
+		expect(timelineStore.items.map((item) => item.id)).toEqual([
+			'video-left',
+			'audio-left',
+			'next'
+		]);
+		expect(timelineStore.itemById.get('video-left')).toMatchObject({
+			durationInFrames: 60,
+			sourceStart: 0,
+			sourceEnd: 60
+		});
+		expect(transitionsStore.list).toEqual([
+			expect.objectContaining({
+				id: 'external',
+				fromItemId: 'video-left',
+				toItemId: 'next'
+			})
+		]);
+		expect(commandHistory.getLastCommandType()).toBe('JOIN_ITEMS');
+
+		commandHistory.undo();
+		expect(timelineStore.items).toHaveLength(5);
+		expect(transitionsStore.list).toHaveLength(2);
 	});
 });

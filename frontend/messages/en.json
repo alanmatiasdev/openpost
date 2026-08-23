@@ -3849,6 +3849,8 @@
 	"video_editor_link_selected_hint": "Link selected clips (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Unlink selected clips",
 	"video_editor_unlink_selected_hint": "Unlink selected clips (Alt+Shift+L)",
+	"video_editor_join_selected": "Join selected clips",
+	"video_editor_join_selected_hint": "Restore continuous split clips as one clip (Shift+J)",
 	"video_editor_items_selected": "{count} clips selected",
 	"video_editor_primary_sequence": "Primary sequence",
 	"video_editor_main_sequence": "Main",

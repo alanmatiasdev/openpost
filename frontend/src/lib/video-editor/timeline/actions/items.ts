@@ -13,10 +13,13 @@ import { execute } from '../commands/command-store.svelte';
 import {
 	canLinkSelection,
 	expandSelectionWithLinkedItems,
-	getLinkedItemIds
+	getLinkedItemIds,
+	getSynchronizedLinkedCounterpartPair
 } from '../utils/linked-items';
 import { pruneOrphanedTransitions } from './transitions.svelte';
+import { transitionsStore } from './transitions-store.svelte';
 import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
+import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -180,6 +183,70 @@ export function setItemsReversed(ids: string[], isReversed: boolean): string[] {
 		timelineStore._updateItems(targets.map((id) => ({ id, patch: { isReversed } })));
 	});
 	return targets;
+}
+
+/** Join continuous split siblings, including synchronized linked A/V counterparts. */
+export function joinItems(ids: string[]): string[] {
+	const selected = ids
+		.map((id) => timelineStore.itemById.get(id))
+		.filter((item): item is TimelineItem => item !== undefined);
+	if (selected.length < 2) return [];
+	const candidates = new Map(selected.map((item) => [item.id, item]));
+	if (selected.length === 2 && timelineStore.linkedSelectionEnabled) {
+		const pair = getSynchronizedLinkedCounterpartPair(
+			timelineStore.items,
+			selected[0]!.id,
+			selected[1]!.id
+		);
+		if (pair) {
+			candidates.set(pair.leftCounterpart.id, pair.leftCounterpart);
+			candidates.set(pair.rightCounterpart.id, pair.rightCounterpart);
+		}
+	}
+
+	const groups = new Map<string, TimelineItem[]>();
+	for (const item of candidates.values()) {
+		const key = `${item.trackId}\u0000${item.type}`;
+		const group = groups.get(key) ?? [];
+		group.push(item);
+		groups.set(key, group);
+	}
+	const lockedTrackIds = new Set(
+		timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+	);
+	const joinableGroups = [...groups.values()].filter(
+		(group) => !lockedTrackIds.has(group[0]!.trackId) && canJoinMultipleItems(group)
+	);
+	if (joinableGroups.length === 0) return [];
+
+	return execute('JOIN_ITEMS', () => {
+		const joinedByPrimaryId = new Map<string, TimelineItem>();
+		const replacementByRemovedId = new Map<string, string>();
+		for (const group of joinableGroups) {
+			const sorted = group.toSorted((left, right) => left.from - right.from);
+			const joined = joinedTimelineItem(sorted);
+			if (!joined) continue;
+			joinedByPrimaryId.set(joined.id, joined);
+			for (const removed of sorted.slice(1)) replacementByRemovedId.set(removed.id, joined.id);
+		}
+		if (joinedByPrimaryId.size === 0) return [];
+
+		timelineStore._setItems(
+			timelineStore.items
+				.filter((item) => !replacementByRemovedId.has(item.id))
+				.map((item) => joinedByPrimaryId.get(item.id) ?? item)
+		);
+		transitionsStore.setAll(
+			transitionsStore.list.flatMap((transition) => {
+				const fromItemId =
+					replacementByRemovedId.get(transition.fromItemId) ?? transition.fromItemId;
+				const toItemId = replacementByRemovedId.get(transition.toItemId) ?? transition.toItemId;
+				return fromItemId === toItemId ? [] : [{ ...transition, fromItemId, toItemId }];
+			})
+		);
+		pruneOrphanedTransitions();
+		return [...joinedByPrimaryId.keys()];
+	});
 }
 
 export function duplicateItems(ids: string[]): string[] {

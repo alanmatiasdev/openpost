@@ -48,7 +48,8 @@ export function getSynchronizedLinkedItems(items: TimelineItem[], itemId: string
 				item.durationInFrames === anchor.durationInFrames &&
 				(item.sourceStart ?? null) === (anchor.sourceStart ?? null) &&
 				(item.sourceEnd ?? null) === (anchor.sourceEnd ?? null) &&
-				(item.speed ?? 1) === (anchor.speed ?? 1))
+				(item.speed ?? 1) === (anchor.speed ?? 1) &&
+				item.isReversed === anchor.isReversed)
 	);
 }
 

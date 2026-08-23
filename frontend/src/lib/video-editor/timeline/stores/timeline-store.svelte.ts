@@ -242,9 +242,11 @@ export const timelineStore = {
 				rightDuration,
 				item.speed ?? 1,
 				state.settings.fps,
-				item.sourceFps
+				item.sourceFps,
+				item.isReversed,
+				item.sourceEnd
 			);
-			item.sourceStart = item.sourceStart ?? 0;
+			item.sourceStart = boundaries.left.sourceStart;
 			item.sourceEnd = boundaries.left.sourceEnd;
 			rightItem.sourceStart = boundaries.right.sourceStart;
 			rightItem.sourceEnd = boundaries.right.sourceEnd;

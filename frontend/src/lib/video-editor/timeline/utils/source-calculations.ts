@@ -11,7 +11,7 @@
  * - timelineFrames = sourceFrames / speed
  *
  * Ported from FreeCut (MIT) - utils/source-calculations.ts - trimmed to the
- * supported surface (video, audio, and composition items; no reverse playback).
+ * supported surface (video, audio, and composition items).
  */
 
 import type { TimelineItemKind } from '../../project/types';
@@ -293,18 +293,20 @@ export function isMediaItem(item: SourceCalculationItem): boolean {
 }
 
 export interface SplitSourceBoundaries {
-	left: { sourceEnd: number };
+	left: { sourceStart: number; sourceEnd: number };
 	right: { sourceStart: number; sourceEnd: number };
 }
 
-/** Calculate source boundaries for split items (left keeps the start). */
+/** Calculate source boundaries for split items in timeline playback order. */
 export function calculateSplitSourceBoundaries(
 	sourceStart: number,
 	leftDuration: number,
 	rightDuration: number,
 	speed: number,
 	timelineFps: number = DEFAULT_TIMELINE_FPS,
-	sourceFps: number = timelineFps
+	sourceFps: number = timelineFps,
+	isReversed = false,
+	explicitSourceEnd?: number
 ): SplitSourceBoundaries {
 	const leftSourceFrames = timelineToSourceFrames(leftDuration, speed, timelineFps, sourceFps);
 	const totalSourceFrames = timelineToSourceFrames(
@@ -314,11 +316,20 @@ export function calculateSplitSourceBoundaries(
 		sourceFps
 	);
 
+	const sourceEnd = explicitSourceEnd ?? sourceStart + totalSourceFrames;
+	if (isReversed) {
+		const splitSourceFrame = sourceEnd - leftSourceFrames;
+		return {
+			left: { sourceStart: splitSourceFrame, sourceEnd },
+			right: { sourceStart, sourceEnd: splitSourceFrame }
+		};
+	}
+
 	return {
-		left: { sourceEnd: sourceStart + leftSourceFrames },
+		left: { sourceStart, sourceEnd: sourceStart + leftSourceFrames },
 		right: {
 			sourceStart: sourceStart + leftSourceFrames,
-			sourceEnd: sourceStart + totalSourceFrames
+			sourceEnd
 		}
 	};
 }
