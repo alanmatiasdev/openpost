@@ -119,7 +119,7 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 | Blend modes for compositing (25 modes incl. groups)                                                                                                                             | `types/blend-modes.ts`                                                                   | PRESENT - all 25 modes composite transformed full-frame layers against the finished backdrop in a shared preview/export stack, with an exact CPU fallback (`media/canvas-stack-compositor.ts`, `effects/gpu/cpu-blend.ts`)                                                                                                                                     | -      |
 | Scopes: Waveform, RGB Parade, Vectorscope, Histogram (GPU compute)                                                                                                              | `infrastructure/gpu-scopes/`                                                             | PARTIAL - all four live scopes render from the selected visual's graded samples, including separate RGB Parade lanes; the current path remains CPU-binned instead of WebGPU compute (`components/color-scopes.svelte`, `effects/scopes.ts`)                                                                                                                    | M      |
 | Eyedropper color sampler with loupe                                                                                                                                             | docs p13 "eyedropper"                                                                    | PRESENT - a preview-only crosshair overlay shows a pixel loupe and hex value, supports Escape cancellation, and feeds white-balance and point pickers without changing project or export state (`components/preview-player.svelte`, `effects/color-preview-store.svelte.ts`)                                                                                   | -      |
-| Effect thumbnails rendered per effect                                                                                                                                           | `effects/components/effect-thumbnail/engine.ts`                                          | MISSING                                                                                                                                                                                                                                                                                                                                                        | S      |
+| Effect thumbnails rendered per effect                                                                                                                                           | `effects/components/effect-thumbnail/engine.ts`                                          | PRESENT - the searchable picker renders all CSS and GPU effects through a cached sample frame, using the production WebGL2 compositor for GPU effects, full-strength poster frames, reduced-motion-safe hover sweeps, and scroll-viewport lazy rendering (`effects/preview/effect-preview-engine.ts`, `components/effect-thumbnail.svelte`)                    | -      |
 
 ## 6. Keyframes & animation
 
@@ -253,9 +253,9 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 102**
+- **PRESENT: 103**
 - **PARTIAL: 24**
-- **MISSING: 44**
+- **MISSING: 43**
 - (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)

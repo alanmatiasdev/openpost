@@ -47,6 +47,7 @@
 	import ColorScopes from './color-scopes.svelte';
 	import ColorWorkspace from './color-workspace.svelte';
 	import GpuParamControl from './gpu-param-control.svelte';
+	import EffectPicker, { type EffectPickerOption } from './effect-picker.svelte';
 	import type { GpuParamValue } from '$lib/video-editor/effects/gpu/types';
 	import {
 		clearEffectDragData,
@@ -129,15 +130,20 @@
 		inversion: m.video_editor_blend_group_inversion(),
 		component: m.video_editor_blend_group_component()
 	});
-	const effectOptions = $derived([
+	const effectOptions = $derived<EffectPickerOption[]>([
 		...EFFECT_DEFINITIONS.map((definition) => ({
 			value: definition.type,
-			label: typeLabels[definition.type]
+			label: typeLabels[definition.type],
+			group: m.video_editor_effects_basic(),
+			cssEffect: definition.type,
+			cssAmount: definition.defaultAmount
 		})),
 		...gpuCategories.flatMap((group) =>
 			group.effects.map((definition) => ({
 				value: `gpu:${definition.id}`,
-				label: `${gpuCategoryLabels[group.category]}: ${definition.label}`
+				label: definition.label,
+				group: gpuCategoryLabels[group.category],
+				gpuEffectId: definition.id
 			}))
 		)
 	]);
@@ -287,11 +293,12 @@
 		{m.video_editor_effects()}
 	</h3>
 	<div class="flex items-center gap-1">
-		<AppSelect
-			class="h-8 min-w-0 flex-1 text-xs"
+		<EffectPicker
 			bind:value={pendingKind}
-			ariaLabel={m.video_editor_effects_add()}
 			options={effectOptions}
+			ariaLabel={m.video_editor_effects_add()}
+			searchPlaceholder={m.video_editor_effects_search()}
+			emptyLabel={m.video_editor_effects_no_results()}
 		/>
 		<button
 			type="button"

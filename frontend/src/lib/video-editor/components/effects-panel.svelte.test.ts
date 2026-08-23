@@ -4,6 +4,7 @@ import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/type
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { clearEffectDragData, getEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
+import { ensureEffectPreviewPipeline } from '$lib/video-editor/effects/preview/effect-preview-engine';
 import EffectsPanel from './effects-panel.svelte';
 
 const videoTrack: TimelineTrack = {
@@ -38,6 +39,45 @@ beforeEach(() => {
 });
 
 describe('EffectsPanel effect drag source', () => {
+	it('shows real lazily-rendered previews in the searchable effect picker', async () => {
+		await render(EffectsPanel, { itemId: 'video', onedit: vi.fn() });
+		const picker = document.querySelector<HTMLButtonElement>(
+			'button[aria-expanded][aria-label="Add effect"]'
+		);
+		expect(picker).not.toBeNull();
+		picker!.click();
+		expect(await ensureEffectPreviewPipeline()).not.toBeNull();
+
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-effect-option="brightness"] canvas')).not.toBeNull();
+			expect(
+				document.querySelector('[data-effect-option="gpu:gpu-brightness"] canvas')
+			).not.toBeNull();
+		});
+		const cssCanvas = document.querySelector<HTMLCanvasElement>(
+			'[data-effect-option="brightness"] canvas'
+		);
+		await vi.waitFor(() => expect(cssCanvas?.dataset.renderMode).toBe('css'));
+		expect(cssCanvas?.dataset.rendered).toBe('true');
+
+		const search = document.querySelector<HTMLInputElement>('[data-slot="command-input"]');
+		expect(search).not.toBeNull();
+		search!.value = 'pixelate';
+		search!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-effect-option="gpu:gpu-pixelate"]')).not.toBeNull();
+			expect(document.querySelector('[data-effect-option="brightness"]')).toBeNull();
+		});
+		const gpuCanvas = document.querySelector<HTMLCanvasElement>(
+			'[data-effect-option="gpu:gpu-pixelate"] canvas'
+		);
+		await vi.waitFor(() => expect(gpuCanvas?.dataset.renderMode).toBe('gpu'), {
+			timeout: 10_000
+		});
+		const pixels = gpuCanvas?.getContext('2d')?.getImageData(0, 0, 4, 4).data;
+		expect(pixels && [...pixels].some((channel) => channel !== 0)).toBe(true);
+	});
+
 	it('only offers dragging when a clip is selected', async () => {
 		const screen = await render(EffectsPanel, { itemId: null, onedit: vi.fn() });
 		const addButton = screen.getByText('Add effect', { exact: true }).element();
