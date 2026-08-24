@@ -24,6 +24,23 @@
 @import '@fontsource/roboto-slab/latin-700.css';
 
 .video-editor-theme {
+	--background: oklch(0.145 0.008 55);
+	--foreground: oklch(0.92 0.005 85);
+	--card: oklch(0.19 0.01 50);
+	--card-foreground: oklch(0.92 0.005 85);
+	--popover: oklch(0.19 0.01 50);
+	--popover-foreground: oklch(0.92 0.005 85);
+	--primary: oklch(0.66 0.14 45);
+	--primary-foreground: oklch(0.1 0.01 50);
+	--secondary: oklch(0.25 0.015 60);
+	--secondary-foreground: oklch(0.9 0.005 85);
+	--muted: oklch(0.25 0.015 55);
+	--muted-foreground: oklch(0.7 0.01 55);
+	--accent: oklch(0.25 0.015 55);
+	--accent-foreground: oklch(0.9 0.005 85);
+	--border: oklch(0.29 0.012 55);
+	--input: oklch(0.25 0.015 55);
+	--ring: oklch(0.66 0.14 45);
 	--video-editor-canvas: oklch(0.145 0.008 55);
 	--video-editor-panel: oklch(0.19 0.01 50);
 	--video-editor-control: oklch(0.22 0.01 50);

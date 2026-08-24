@@ -15,17 +15,29 @@
 		type RenderExportResult
 	} from '$lib/video-editor/media/render-export';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import {
+		assessExportPreflight,
+		summarizePreflightSeverity,
+		type ExportPreflightCheck
+	} from '$lib/video-editor/media/export-preflight';
+	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
+	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import XCircleIcon from '@lucide/svelte/icons/circle-x';
 
 	let {
 		project,
 		disabled,
 		ondone,
-		onerror
+		onerror,
+		probeCodec = canEncodeVideo
 	}: {
 		project: Project | null;
 		disabled?: boolean;
 		ondone: (result: RenderExportResult) => void;
 		onerror: (error: Error) => void;
+		probeCodec?: typeof canEncodeVideo;
 	} = $props();
 
 	let open = $state(false);
@@ -39,6 +51,7 @@
 	let subtitleMode = $state<NonNullable<RenderExportOptions['subtitleMode']>>('burn');
 	let progress = $state<{ done: number; total: number } | null>(null);
 	let controller = $state<AbortController | null>(null);
+	let codecProbeVersion = 0;
 	const videoFormat = $derived(
 		format === 'mp3' || format === 'aac' || format === 'wav' ? null : format
 	);
@@ -69,11 +82,49 @@
 		{ value: 'sidecar', label: m.video_editor_export_subtitles_sidecar() },
 		{ value: 'embedded', label: m.video_editor_export_subtitles_embedded() }
 	]);
+	const outputDimensions = $derived.by(() => {
+		if (!project) return { width: 1920, height: 1080 };
+		const [width, height] =
+			resolution === 'source'
+				? [project.metadata.width, project.metadata.height]
+				: resolution.split('x').map(Number);
+		return { width: width ?? project.metadata.width, height: height ?? project.metadata.height };
+	});
+	const selectedRange = $derived(
+		useRange && timelineStore.inPoint !== null && timelineStore.outPoint !== null
+			? { startFrame: timelineStore.inPoint, endFrame: timelineStore.outPoint }
+			: undefined
+	);
+	const preflight = $derived.by(() =>
+		assessExportPreflight({
+			settings: {
+				format,
+				codec: videoFormat ? codec : undefined,
+				quality,
+				width: outputDimensions.width,
+				height: outputDimensions.height,
+				subtitleMode,
+				range: selectedRange
+			},
+			fps: timelineStore.fps,
+			items: timelineStore.items,
+			tracks: timelineStore.tracks,
+			codecSupported: videoFormat ? codecSupport[codec] : true,
+			mediaStatuses: Object.fromEntries(
+				mediaPool.order.map((id) => [id, mediaPool.entry(id)?.status])
+			)
+		})
+	);
+	const visiblePreflightChecks = $derived(
+		preflight.checks.filter((check) => check.severity !== 'ok').slice(0, 4)
+	);
 
 	$effect(() => {
 		const selectedFormat = videoFormat;
 		const selectedResolution = resolution;
 		if (!selectedFormat || !project) return;
+		const probeVersion = ++codecProbeVersion;
+		codecSupport = {};
 		const [width, height] =
 			selectedResolution === 'source'
 				? [project.metadata.width, project.metadata.height]
@@ -83,11 +134,10 @@
 		const requestFormat = selectedFormat;
 		void Promise.all(
 			availableCodecs.map(
-				async (candidate) =>
-					[candidate, await canEncodeVideo(candidate, { width, height })] as const
+				async (candidate) => [candidate, await probeCodec(candidate, { width, height })] as const
 			)
 		).then((results) => {
-			if (videoFormat !== requestFormat) return;
+			if (probeVersion !== codecProbeVersion || videoFormat !== requestFormat) return;
 			codecSupport = Object.fromEntries(results);
 			if (codecSupport[codec] === false) {
 				const fallback = results.find(([, supported]) => supported)?.[0];
@@ -95,6 +145,39 @@
 			}
 		});
 	});
+
+	function formatBytes(bytes: number): string {
+		if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+		if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+		return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+	}
+
+	function preflightMessage(check: ExportPreflightCheck): string {
+		switch (check.id) {
+			case 'empty-range':
+				return m.video_editor_preflight_empty_range();
+			case 'no-renderable-content':
+				return m.video_editor_preflight_no_content();
+			case 'no-audible-content':
+				return m.video_editor_preflight_no_audio();
+			case 'missing-media':
+				return m.video_editor_preflight_missing_media({ count: check.count ?? 0 });
+			case 'video-codec-checking':
+				return m.video_editor_preflight_codec_checking();
+			case 'video-codec-unavailable':
+				return m.video_editor_preflight_codec_unavailable({ codec: codec.toUpperCase() });
+			case 'subtitle-burn-fallback':
+				return m.video_editor_preflight_subtitle_fallback({ format: format.toUpperCase() });
+			case 'long-render':
+				return m.video_editor_preflight_long_render({ minutes: check.minutes ?? 0 });
+			case 'output-too-large':
+				return m.video_editor_preflight_too_large({
+					size: formatBytes(check.sizeBytes ?? 0)
+				});
+			default:
+				return '';
+		}
+	}
 
 	function setFormat(value: string): void {
 		switch (value) {
@@ -125,19 +208,16 @@
 	}
 
 	async function start(): Promise<void> {
-		if (!project || rendering) return;
+		if (!project || rendering || !preflight.canExport) return;
 		rendering = true;
 		progress = null;
 		controller = new AbortController();
-		const [width, height] =
-			resolution === 'source'
-				? [project.metadata.width, project.metadata.height]
-				: resolution.split('x').map(Number);
+		const { width, height } = outputDimensions;
 		try {
-			const range =
-				useRange && timelineStore.inPoint !== null && timelineStore.outPoint !== null
-					? { startFrame: timelineStore.inPoint, endFrame: timelineStore.outPoint }
-					: undefined;
+			const range = {
+				startFrame: preflight.range.startFrame,
+				endFrame: preflight.range.endFrame
+			};
 			const result =
 				format === 'mp3' || format === 'aac' || format === 'wav'
 					? await renderTimelineAudio(project, { format, range, signal: controller.signal })
@@ -181,7 +261,7 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-xl border border-[oklch(0.3_0.015_55)] bg-[oklch(0.17_0.01_55)] p-4 shadow-2xl"
+			class="video-editor-theme w-full max-w-md rounded-xl border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] p-4 text-[var(--video-editor-text)] shadow-2xl"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="export-title"
@@ -245,6 +325,58 @@
 					disabled={rendering || timelineStore.inPoint === null || timelineStore.outPoint === null}
 				/>{m.video_editor_export_range()}
 			</label>
+			<div
+				class="mt-3 rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
+				aria-live="polite"
+			>
+				<div class="flex items-start gap-2">
+					{#if preflight.pending}
+						<LoaderIcon
+							class="mt-0.5 size-4 shrink-0 animate-spin text-[var(--video-editor-muted)]"
+							aria-hidden="true"
+						/>
+					{:else if summarizePreflightSeverity(preflight.checks) === 'error'}
+						<XCircleIcon class="mt-0.5 size-4 shrink-0 text-red-300" aria-hidden="true" />
+					{:else if summarizePreflightSeverity(preflight.checks) === 'warning'}
+						<AlertTriangleIcon class="mt-0.5 size-4 shrink-0 text-amber-300" aria-hidden="true" />
+					{:else}
+						<CheckCircleIcon class="mt-0.5 size-4 shrink-0 text-emerald-300" aria-hidden="true" />
+					{/if}
+					<div class="min-w-0 flex-1">
+						<p class="text-xs font-medium">
+							{preflight.pending
+								? m.video_editor_preflight_checking()
+								: preflight.canExport
+									? m.video_editor_preflight_ready()
+									: m.video_editor_preflight_blocked()}
+						</p>
+						<p class="mt-0.5 text-[11px] text-[var(--video-editor-muted)] tabular-nums">
+							{m.video_editor_preflight_estimate({
+								duration: preflight.estimatedDurationSeconds.toFixed(1),
+								size: formatBytes(preflight.estimatedFileSizeBytes)
+							})}
+						</p>
+					</div>
+				</div>
+				{#if visiblePreflightChecks.length > 0}
+					<ul class="mt-2 space-y-1 border-t border-[var(--video-editor-border)] pt-2">
+						{#each visiblePreflightChecks as check (check.id)}
+							<li
+								class={[
+									'text-[11px]',
+									check.severity === 'error'
+										? 'text-red-200'
+										: check.severity === 'warning'
+											? 'text-amber-200'
+											: 'text-[var(--video-editor-muted)]'
+								]}
+							>
+								{preflightMessage(check)}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 			{#if progress}<div class="mt-2" role="status">
 					<p class="text-center text-xs text-[oklch(0.7_0.01_55)]">
 						{m.video_editor_render_progress({ done: progress.done, total: progress.total })}
@@ -264,7 +396,9 @@
 						if (rendering) controller?.abort();
 						else open = false;
 					}}>{m.video_editor_export_cancel()}</Button
-				><Button disabled={rendering} onclick={start}>{m.video_editor_export_start()}</Button>
+				><Button disabled={rendering || !preflight.canExport} onclick={start}
+					>{m.video_editor_export_start()}</Button
+				>
 			</div>
 		</div>
 	</div>
