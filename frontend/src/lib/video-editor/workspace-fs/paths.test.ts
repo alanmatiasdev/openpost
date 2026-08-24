@@ -3,6 +3,7 @@ import {
 	sanitizeWorkspaceFileName,
 	projectJsonPath,
 	mediaMetadataPath,
+	mediaEmbeddedSubtitlesPath,
 	mediaReversePreviewPath,
 	exportFilePath,
 	recordingFilePath,
@@ -43,6 +44,12 @@ describe('path builders', () => {
 	});
 
 	it('keeps reverse conforms under their source cache', () => {
+		expect(mediaEmbeddedSubtitlesPath('m1')).toEqual([
+			'media',
+			'm1',
+			'cache',
+			'embedded-subtitles.json'
+		]);
 		expect(mediaReversePreviewPath('m1', 'v1-fingerprint')).toEqual([
 			'media',
 			'm1',

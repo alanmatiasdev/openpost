@@ -78,6 +78,7 @@ const CACHE_DECODED_AUDIO_DIR = 'decoded-audio';
 const CACHE_AI_DIR = 'ai';
 const CACHE_SCENE_THUMBS_DIR = 'scene-thumbs';
 const CACHE_REVERSE_DIR = 'reverse';
+const CACHE_EMBEDDED_SUBTITLES_FILENAME = 'embedded-subtitles.json';
 /** Non-browser audio codecs are decoded once to WAV and reused for preview. */
 const CACHE_PREVIEW_AUDIO_FILENAME = 'preview-audio.wav';
 /** Header-indexed multi-res binary for timeline waveform rendering. */
@@ -146,6 +147,11 @@ export function mediaThumbnailPath(id: string): string[] {
 /** Segments for a fingerprinted reverse-conform preview in the media cache. */
 export function mediaReversePreviewPath(id: string, key: string): string[] {
 	return [...mediaDir(id), MEDIA_CACHE_DIR, CACHE_REVERSE_DIR, `${key}.webm`];
+}
+
+/** Parsed text subtitle tracks for one source fingerprint. */
+export function mediaEmbeddedSubtitlesPath(id: string): string[] {
+	return [...mediaDir(id), MEDIA_CACHE_DIR, CACHE_EMBEDDED_SUBTITLES_FILENAME];
 }
 
 /**

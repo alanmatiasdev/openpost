@@ -578,7 +578,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]">
+<div
+	class="video-editor-theme flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
+>
 	<header
 		class="flex items-center justify-between border-b border-[oklch(0.25_0.015_55)] px-3 py-2"
 	>

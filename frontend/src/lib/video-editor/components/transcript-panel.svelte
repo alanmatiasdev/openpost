@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import BoldIcon from '@lucide/svelte/icons/bold';
@@ -160,7 +161,7 @@
 	}
 </script>
 
-<div class="flex flex-col gap-1">
+<div class="video-editor-theme flex flex-col gap-1">
 	<h3 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 		{m.video_editor_transcript()}
 	</h3>
@@ -187,14 +188,15 @@
 									if (event.key === 'Enter') event.currentTarget.blur();
 								}}
 							/>
-							<button
+							<Button
 								type="button"
-								class="rounded p-0.5 hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								variant="ghost"
+								size="icon-xs"
 								aria-label={m.video_editor_transcript_delete_line()}
 								onclick={() => deleteCue(item, cue.id)}
 							>
 								<Trash2Icon class="size-3" />
-							</button>
+							</Button>
 						</div>
 						<div class="mt-1 grid grid-cols-2 gap-1">
 							<label class="text-[9px] text-[oklch(0.62_0.01_55)]"
@@ -219,36 +221,36 @@
 							>
 						</div>
 						<div class="mt-1 flex gap-0.5" role="group" aria-label={m.video_editor_caption_style()}>
-							<button
+							<Button
 								type="button"
-								class="format-button"
-								class:active={cueFlags(cue).bold}
+								variant={cueFlags(cue).bold ? 'secondary' : 'ghost'}
+								size="icon-xs"
 								aria-label={m.video_editor_caption_bold()}
 								aria-pressed={cueFlags(cue).bold}
 								onclick={() => toggleFormat(item, cue, 'bold')}
 							>
 								<BoldIcon class="size-3" aria-hidden="true" />
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								class="format-button"
-								class:active={cueFlags(cue).italic}
+								variant={cueFlags(cue).italic ? 'secondary' : 'ghost'}
+								size="icon-xs"
 								aria-label={m.video_editor_text_italic()}
 								aria-pressed={cueFlags(cue).italic}
 								onclick={() => toggleFormat(item, cue, 'italic')}
 							>
 								<ItalicIcon class="size-3" aria-hidden="true" />
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								class="format-button"
-								class:active={cueFlags(cue).underline}
+								variant={cueFlags(cue).underline ? 'secondary' : 'ghost'}
+								size="icon-xs"
 								aria-label={m.video_editor_text_underline()}
 								aria-pressed={cueFlags(cue).underline}
 								onclick={() => toggleFormat(item, cue, 'underline')}
 							>
 								<UnderlineIcon class="size-3" aria-hidden="true" />
-							</button>
+							</Button>
 						</div>
 						{#if cue.words?.length}
 							<div class="mt-1 flex flex-wrap gap-1">
@@ -290,15 +292,19 @@
 															event.currentTarget.valueAsNumber
 														)
 													})}
-											/><button
+											/><Button
 												type="button"
-												class="ml-auto text-[9px] opacity-60 hover:opacity-100"
+												variant="ghost"
+												size="icon-xs"
+												class="ml-auto"
 												aria-label={m.video_editor_transcript_word_delete()}
 												onclick={(event) => {
 													event.stopPropagation();
 													deleteWord(item, cue, word.id);
-												}}>×</button
+												}}
 											>
+												<Trash2Icon class="size-3" aria-hidden="true" />
+											</Button>
 										</div>
 									</div>
 								{/each}
@@ -310,33 +316,3 @@
 		{/each}
 	{/if}
 </div>
-
-<style>
-	.format-button {
-		display: grid;
-		height: 1.75rem;
-		width: 1.75rem;
-		place-items: center;
-		border-radius: 0.375rem;
-		color: oklch(0.68 0.015 55);
-	}
-	.format-button:hover,
-	.format-button:focus-visible {
-		background: oklch(0.27 0.015 55);
-		color: white;
-	}
-	.format-button:focus-visible {
-		outline: 2px solid oklch(0.66 0.14 45);
-		outline-offset: 1px;
-	}
-	.format-button.active {
-		background: oklch(0.66 0.14 45);
-		color: oklch(0.16 0.008 55);
-	}
-	@media (pointer: coarse) {
-		.format-button {
-			height: 2.75rem;
-			width: 2.75rem;
-		}
-	}
-</style>

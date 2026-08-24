@@ -76,10 +76,10 @@
 	}
 </script>
 
-<section class="space-y-2" aria-labelledby={`caption-style-${activeItem.id}`}>
+<section class="video-editor-theme space-y-2" aria-labelledby={`caption-style-${activeItem.id}`}>
 	<h3
 		id={`caption-style-${activeItem.id}`}
-		class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+		class="text-[10px] font-semibold tracking-wider text-[var(--video-editor-muted)] uppercase"
 	>
 		{m.video_editor_caption_style()}
 	</h3>
@@ -224,47 +224,47 @@
 		display: block;
 		font-size: 0.625rem;
 		line-height: 1rem;
-		color: oklch(0.7 0.01 55);
+		color: var(--video-editor-muted);
 	}
 	:global(.field-input) {
 		width: 100%;
 		height: 2rem;
 		margin-top: 0.125rem;
-		border-color: oklch(0.3 0.012 55);
-		background: oklch(0.22 0.01 50);
+		border-color: var(--video-editor-border);
+		background: var(--video-editor-control);
 		padding-inline: 0.375rem;
 		font-size: 0.75rem;
-		color: white;
+		color: var(--video-editor-text);
 	}
 	.preset-strip {
 		display: flex;
 		gap: 0.375rem;
 		overflow-x: auto;
 		padding: 0.125rem 0.125rem 0.375rem;
-		scrollbar-color: oklch(0.35 0.015 55) transparent;
+		scrollbar-color: var(--video-editor-border) transparent;
 		scrollbar-width: thin;
 	}
 	.preset-strip > button {
 		width: 5.25rem;
 		flex: 0 0 5.25rem;
-		border: 1px solid oklch(0.29 0.012 55);
+		border: 1px solid var(--video-editor-border);
 		border-radius: 0.5rem;
 		padding: 0.25rem;
-		color: oklch(0.72 0.01 55);
+		color: var(--video-editor-muted);
 		text-align: left;
 	}
 	.preset-strip > button:hover,
 	.preset-strip > button:focus-visible {
-		border-color: oklch(0.48 0.08 45);
-		color: white;
+		border-color: var(--video-editor-focus-border);
+		color: var(--video-editor-text);
 	}
 	.preset-strip > button:focus-visible {
-		outline: 2px solid oklch(0.66 0.14 45);
+		outline: 2px solid var(--video-editor-focus);
 		outline-offset: 1px;
 	}
 	.preset-strip > button.active {
-		border-color: oklch(0.66 0.14 45);
-		box-shadow: inset 0 0 0 1px oklch(0.66 0.14 45);
+		border-color: var(--video-editor-focus);
+		box-shadow: inset 0 0 0 1px var(--video-editor-focus);
 	}
 	.preset-preview {
 		display: grid;

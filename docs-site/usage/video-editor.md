@@ -32,6 +32,8 @@ Transcription, voice activity detection, filler candidates, smart framing, and f
 
 Changing caption text changes only the caption. Each locally timed transcript word is also a selectable edit range. Select one or more words, then remove them as one undoable ripple edit that retimes the remaining caption words, overlays, detached audio, markers, fades, and keyframes. Removing a complete timed passage still supports a ripple cut. Silence and filler batches show the time they remove, preview before application, and apply as one undoable action.
 
+MKV, MKA, and WebM sources with text subtitle tracks show an **Extract embedded subtitles** action in the media pool. The picker lists each track's language, codec, cue count, and default or forced status. Inserting a track maps its cues through every matching clip's trim and speed, clips cues to visible source ranges, and replaces an earlier embedded-subtitle import as one undoable edit. UTF-8, WebVTT, ASS, and SSA text tracks are supported; image-based subtitle tracks are not. Select caption clips and choose **Consolidate captions** to turn them into one editable subtitle item per source without changing their timing.
+
 ## Record screen, camera, and sound
 
 The browser chooser controls which screen, window, or tab is shared. Camera, microphone, and browser-supplied system or tab audio are recorded as separate synchronized sources. System audio depends on the browser and operating system and is available only when the returned capture stream includes it.

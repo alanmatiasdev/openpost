@@ -159,6 +159,10 @@
 	} from '$lib/video-editor/timeline/effect-drop';
 	import { addEffectTemplates } from '$lib/video-editor/timeline/actions/effects';
 	import {
+		consolidateCaptionItems,
+		type CaptionConsolidationOptions
+	} from '$lib/video-editor/timeline/actions/captions';
+	import {
 		clearSceneDragData,
 		getSceneDragData
 	} from '$lib/video-editor/media/scene-search/scene-drag';
@@ -170,6 +174,7 @@
 	import MagnetIcon from '@lucide/svelte/icons/magnet';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
 	import CombineIcon from '@lucide/svelte/icons/combine';
+	import CaptionsIcon from '@lucide/svelte/icons/captions';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import SnowflakeIcon from '@lucide/svelte/icons/snowflake';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
@@ -1394,6 +1399,15 @@
 		onedit();
 	}
 
+	function consolidateSelection(): void {
+		if (!captionConsolidationTarget) return;
+		const result = consolidateCaptionItems(captionConsolidationTarget);
+		if (result.itemIds.length === 0) return;
+		selectedItemIds = result.itemIds;
+		selectedItemId = result.itemIds.at(-1) ?? null;
+		onedit();
+	}
+
 	function onPanelKeydown(event: KeyboardEvent): void {
 		const target = event.target;
 		const editingText =
@@ -2197,6 +2211,39 @@
 		}
 		return [...groups.values()].some(canJoinMultipleItems);
 	});
+	const captionConsolidationTarget = $derived.by<CaptionConsolidationOptions | null>(() => {
+		const lockedTrackIds = new Set(
+			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		);
+		const selected = selectedItemIds
+			.map((id) => timelineStore.itemById.get(id))
+			.filter((item): item is TimelineItem => item !== undefined);
+		const sourceClip = selected.find(
+			(item) =>
+				(item.type === 'video' || item.type === 'audio') &&
+				!item.isReversed &&
+				timelineStore.items.some(
+					(candidate) =>
+						candidate.type === 'text' &&
+						!lockedTrackIds.has(candidate.trackId) &&
+						(candidate.captionSource?.type === 'subtitle-import' ||
+							candidate.captionSource?.type === 'embedded-subtitles') &&
+						candidate.captionSource.clipId === item.id
+				)
+		);
+		if (sourceClip) return { clipId: sourceClip.id };
+
+		const itemIds = selected
+			.filter(
+				(item) =>
+					item.type === 'text' &&
+					!lockedTrackIds.has(item.trackId) &&
+					(item.captionSource?.type === 'subtitle-import' ||
+						item.captionSource?.type === 'embedded-subtitles')
+			)
+			.map((item) => item.id);
+		return itemIds.length > 0 ? { itemIds } : null;
+	});
 	const canFreezeSelectedItem = $derived.by(() => {
 		if (!selectedItem || selectedItem.type !== 'video') return false;
 		if (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked)
@@ -2608,6 +2655,18 @@
 			>
 				<CombineIcon class="size-3.5" />
 			</Button>
+			{#if captionConsolidationTarget}
+				<Button
+					variant="ghost"
+					size="icon"
+					class="size-7 rounded"
+					aria-label={m.video_editor_consolidate_captions()}
+					title={m.video_editor_consolidate_captions_hint()}
+					onclick={consolidateSelection}
+				>
+					<CaptionsIcon class="size-3.5" />
+				</Button>
+			{/if}
 			<Button
 				variant="ghost"
 				size="icon"

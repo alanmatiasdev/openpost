@@ -126,7 +126,9 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	<title>{m.video_editor_title()}</title>
 </svelte:head>
 
-<div class="flex min-h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]">
+<div
+	class="video-editor-theme flex min-h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
+>
 	<header
 		class="flex items-center justify-between border-b border-[oklch(0.25_0.015_55)] px-4 py-2"
 	>

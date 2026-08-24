@@ -17,6 +17,14 @@
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import CaptionsIcon from '@lucide/svelte/icons/captions';
+	import { Button } from '$lib/components/ui/button';
+	import EmbeddedSubtitlePicker from './embedded-subtitle-picker.svelte';
+	import {
+		canExtractEmbeddedSubtitles,
+		type EmbeddedSubtitleInsertResult
+	} from '$lib/video-editor/media/embedded-subtitle-service';
+	import type { MediaMetadata } from '$lib/video-editor/media/types';
 	import { readBlob } from '$lib/video-editor/workspace-fs/fs-primitives';
 	import { requireWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
 	import { mediaThumbnailPath } from '$lib/video-editor/workspace-fs/paths';
@@ -27,7 +35,15 @@
 	}: { onsequenceopen?: () => void; onsourceopen?: (mediaId: string) => void } = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
+	let subtitlePickerOpen = $state(false);
+	let subtitleMedia = $state<MediaMetadata | null>(null);
 	const ownedThumbnailUrls = new Set<string>();
+	const canvasWidth = $derived(
+		sequenceStore.activeSequence?.width ?? editorSession.project?.metadata.width ?? 1920
+	);
+	const canvasHeight = $derived(
+		sequenceStore.activeSequence?.height ?? editorSession.project?.metadata.height ?? 1080
+	);
 
 	async function previewUrl(id: string): Promise<void> {
 		const media = mediaPool.get(id);
@@ -138,6 +154,20 @@
 			showToast(error instanceof Error ? error.message : m.video_editor_sequence_cycle(), 'error');
 		}
 	}
+
+	function openSubtitlePicker(media: MediaMetadata): void {
+		subtitleMedia = media;
+		subtitlePickerOpen = true;
+	}
+
+	function handleSubtitleInsert(result: EmbeddedSubtitleInsertResult): void {
+		if (result.itemIds.length === 0) {
+			showToast(m.video_editor_subtitle_outside_clips(), 'error');
+			return;
+		}
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_subtitle_inserted({ count: result.cueCount }), 'success');
+	}
 </script>
 
 <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -220,6 +250,18 @@
 						{/if}
 					</span>
 				</button>
+				{#if entry?.status === 'ready' && canExtractEmbeddedSubtitles(entry.media)}
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						class="text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100"
+						aria-label={`${m.video_editor_extract_embedded_subtitles()}: ${entry.media.fileName}`}
+						title={m.video_editor_extract_embedded_subtitles()}
+						onclick={() => openSubtitlePicker(entry.media)}
+					>
+						<CaptionsIcon class="size-3.5" aria-hidden="true" />
+					</Button>
+				{/if}
 				<button
 					type="button"
 					class="rounded p-1.5 text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
@@ -239,3 +281,11 @@
 		{/if}
 	</ul>
 </div>
+
+<EmbeddedSubtitlePicker
+	media={subtitleMedia}
+	bind:open={subtitlePickerOpen}
+	{canvasWidth}
+	{canvasHeight}
+	oninsert={handleSubtitleInsert}
+/>

@@ -421,18 +421,35 @@ export type TextStylePresetId =
 	| 'launch-stack'
 	| 'badge';
 
-/**
- * Where a subtitle item's cues come from. Transcript captions are generated
- * from the media's speech recognition output; imports come from .srt/.vtt.
- */
-export interface CaptionSource {
-	type: 'transcript' | 'subtitle-import';
+/** Where a subtitle item's cues came from. */
+interface CaptionSourceBase {
 	clipId: string;
 	mediaId: string;
-	fileName?: string;
-	format?: 'srt' | 'vtt';
 	importedAt?: number;
 }
+
+export interface TranscriptCaptionSource extends CaptionSourceBase {
+	type: 'transcript';
+}
+
+export interface SubtitleImportCaptionSource extends CaptionSourceBase {
+	type: 'subtitle-import';
+	fileName?: string;
+	format?: 'srt' | 'vtt' | 'ass';
+}
+
+export interface EmbeddedSubtitleCaptionSource extends CaptionSourceBase {
+	type: 'embedded-subtitles';
+	trackNumber: number;
+	language: string;
+	trackName?: string;
+	codecId: string;
+}
+
+export type CaptionSource =
+	| TranscriptCaptionSource
+	| SubtitleImportCaptionSource
+	| EmbeddedSubtitleCaptionSource;
 
 export interface SubtitleCue {
 	id: string;
