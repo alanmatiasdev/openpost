@@ -67,7 +67,7 @@ const SHAPE_LABELS = {
 /** Add a styled three-second shape on the top unlocked visual track. */
 export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeType]): string {
 	return execute('ADD_SHAPE_ITEM', () => {
-		const topVisualTrack = timelineStore.tracks
+		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
 			.filter((track) => track.kind !== 'audio' && !track.locked)
 			.toSorted((left, right) => left.order - right.order)[0];
 		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add a shape.');

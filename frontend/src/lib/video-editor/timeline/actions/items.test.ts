@@ -245,6 +245,31 @@ describe('addShapeItem', () => {
 		expect(timelineStore.itemById.has(id)).toBe(false);
 	});
 
+	it('skips a visual track locked by its group', () => {
+		const [overlay, main, audio] = createDefaultTracks();
+		if (!overlay || !main || !audio) throw new Error('Default tracks are required.');
+		timelineStore._setTracks([
+			{
+				id: 'locked-group',
+				name: 'Locked visuals',
+				isGroup: true,
+				height: 96,
+				order: 0,
+				locked: true,
+				visible: true,
+				muted: false,
+				solo: false,
+				volume: 1
+			},
+			{ ...overlay, order: 1, parentTrackId: 'locked-group' },
+			{ ...main, order: 2 },
+			{ ...audio, order: 3 }
+		]);
+
+		const id = addShapeItem('rectangle');
+		expect(timelineStore.itemById.get(id)?.trackId).toBe(main.id);
+	});
+
 	it('starts a pen path across the full project canvas', () => {
 		const id = addShapeItem('path');
 		expect(timelineStore.itemById.get(id)).toMatchObject({
