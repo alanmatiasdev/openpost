@@ -9,14 +9,13 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
-		renderMultiTrackVideo,
-		renderTimelineAudio,
 		defaultVideoCodec,
 		supportedExportVideoCodecs,
 		type RenderExportOptions,
 		type RenderExportProgress,
 		type RenderExportResult
 	} from '$lib/video-editor/media/render-export';
+	import { renderAudioExport, renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import {
@@ -48,16 +47,16 @@
 		ondone,
 		onerror,
 		probeCodec = canEncodeVideo,
-		renderVideo = renderMultiTrackVideo,
-		renderAudio = renderTimelineAudio
+		renderVideo = renderVideoExport,
+		renderAudio = renderAudioExport
 	}: {
 		project: Project | null;
 		disabled?: boolean;
 		ondone: (result: RenderExportResult) => void;
 		onerror: (error: Error) => void;
 		probeCodec?: typeof canEncodeVideo;
-		renderVideo?: typeof renderMultiTrackVideo;
-		renderAudio?: typeof renderTimelineAudio;
+		renderVideo?: typeof renderVideoExport;
+		renderAudio?: typeof renderAudioExport;
 	} = $props();
 
 	let open = $state(false);
@@ -341,19 +340,36 @@
 		controller = abortController;
 		const { width, height } = outputDimensions;
 		try {
+			const snapshot = captureSnapshot();
+			const renderProject: Project = {
+				...project,
+				metadata: { ...project.metadata, fps: snapshot.fps },
+				timeline: {
+					...project.timeline,
+					tracks: snapshot.tracks,
+					items: snapshot.items,
+					transitions: snapshot.transitions,
+					markers: snapshot.markers,
+					inPoint: snapshot.inPoint ?? undefined,
+					outPoint: snapshot.outPoint ?? undefined,
+					currentFrame: snapshot.currentFrame,
+					scrollPosition: snapshot.scrollPosition,
+					compositions: snapshot.sequenceRegistry.compositions
+				}
+			};
 			const range = {
 				startFrame: preflight.range.startFrame,
 				endFrame: preflight.range.endFrame
 			};
 			const result =
 				format === 'mp3' || format === 'aac' || format === 'wav'
-					? await renderAudio(project, {
+					? await renderAudio(renderProject, {
 							format,
 							range,
 							signal: abortController.signal,
 							onProgress: (value) => (progress = value)
 						})
-					: await renderVideo(project, {
+					: await renderVideo(renderProject, {
 							format,
 							codec,
 							quality,

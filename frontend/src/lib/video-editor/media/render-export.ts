@@ -4,8 +4,8 @@
  *
  * Ported from FreeCut (MIT) — features/export/utils/canvas-render-orchestrator.ts,
  * client-renderer.ts, and canvas-audio.ts — retargeted to OpenPost's
- * TimelineItem model and trimmed to a single main-thread render loop with a
- * whole-timeline OfflineAudioContext mixdown (48 kHz stereo).
+ * TimelineItem model with a worker-safe render loop, explicit main-thread
+ * fallback, and whole-timeline OfflineAudioContext mixdown (48 kHz stereo).
  */
 
 import {
@@ -33,10 +33,9 @@ import {
 	WavOutputFormat,
 	WebMOutputFormat
 } from 'mediabunny';
-import { saveExportFile } from '../workspace-fs/exports';
 import type { Project, TimelineItem, TimelineTransition } from '../project/types';
 import { mediaPool } from './pool.svelte';
-import { resolveMediaBlob } from './import.svelte';
+import { resolveMediaBlob } from './resolve-media-blob';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { scaleItemForCanvas } from './render-geometry';
 import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
@@ -73,6 +72,7 @@ import {
 	resolveLottieRenderSpec,
 	type LottieRenderSpec
 } from '../lottie/render-spec';
+import { saveRenderedExportArtifact } from './persist-rendered-export';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -100,7 +100,7 @@ export interface RenderExportResult {
 	blob: Blob;
 }
 
-interface InMemoryVideoRender {
+export interface RenderedExportArtifact {
 	fileName: string;
 	blob: Blob;
 	sidecar?: { fileName: string; blob: Blob };
@@ -680,10 +680,10 @@ export async function renderTimelineFrame(
 }
 
 /** Render the full timeline without choosing where the resulting bytes are stored. */
-async function renderMultiTrackVideoInMemory(
+export async function renderMultiTrackVideoArtifact(
 	project: Project,
 	options: RenderExportOptions = {}
-): Promise<InMemoryVideoRender> {
+): Promise<RenderedExportArtifact> {
 	const fps = project.metadata.fps;
 	const width = options.width ?? project.metadata.width;
 	const height = options.height ?? project.metadata.height;
@@ -830,7 +830,7 @@ async function renderMultiTrackVideoInMemory(
 	if (!buffer) throw new Error('Render produced no data.');
 	const blob = new Blob([buffer], { type: outputFormat.mimeType });
 	const baseName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${format}`;
-	let sidecar: InMemoryVideoRender['sidecar'];
+	let sidecar: RenderedExportArtifact['sidecar'];
 	if (subtitleMode === 'sidecar') {
 		const srt = subtitleSidecarSrt(items, fps, startFrame, endFrame);
 		if (srt) {
@@ -848,7 +848,7 @@ export async function renderMultiTrackVideoBlob(
 	project: Project,
 	options: RenderExportOptions = {}
 ): Promise<Blob> {
-	return (await renderMultiTrackVideoInMemory(project, options)).blob;
+	return (await renderMultiTrackVideoArtifact(project, options)).blob;
 }
 
 /** Render the full timeline into one composed file and save it to exports. */
@@ -856,19 +856,17 @@ export async function renderMultiTrackVideo(
 	project: Project,
 	options: RenderExportOptions = {}
 ): Promise<RenderExportResult> {
-	const rendered = await renderMultiTrackVideoInMemory(project, options);
-	const saved = await saveExportFile(project.id, rendered.fileName, rendered.blob);
-	if (rendered.sidecar) {
-		await saveExportFile(project.id, rendered.sidecar.fileName, rendered.sidecar.blob);
-	}
-	return { ...saved, blob: rendered.blob };
+	return saveRenderedExportArtifact(
+		project.id,
+		await renderMultiTrackVideoArtifact(project, options)
+	);
 }
 
-/** Render the audible timeline mix without a video track. */
-export async function renderTimelineAudio(
+/** Render the audible timeline mix to an in-memory artifact. */
+export async function renderTimelineAudioArtifact(
 	project: Project,
 	options: AudioExportOptions
-): Promise<RenderExportResult> {
+): Promise<RenderedExportArtifact> {
 	const fps = project.metadata.fps;
 	const items = project.timeline?.items ?? [];
 	const tracks = project.timeline?.tracks ?? [];
@@ -925,8 +923,18 @@ export async function renderTimelineAudio(
 	if (!target.buffer) throw new Error('Audio render produced no data.');
 	const blob = new Blob([target.buffer], { type: format.mimeType });
 	const fileName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${options.format}`;
-	const saved = await saveExportFile(project.id, fileName, blob);
-	return { ...saved, blob };
+	return { fileName, blob };
+}
+
+/** Render the audible timeline mix without a video track and save it. */
+export async function renderTimelineAudio(
+	project: Project,
+	options: AudioExportOptions
+): Promise<RenderExportResult> {
+	return saveRenderedExportArtifact(
+		project.id,
+		await renderTimelineAudioArtifact(project, options)
+	);
 }
 
 function outputFormatFor(format: NonNullable<RenderExportOptions['format']>): OutputFormat {

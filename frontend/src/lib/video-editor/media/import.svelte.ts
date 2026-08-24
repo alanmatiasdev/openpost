@@ -11,7 +11,7 @@
 
 import { createLogger } from '../workspace-fs/logger';
 import { requireWorkspaceRoot } from '../workspace-fs/root';
-import { readBlob, writeBlob, writeJsonAtomic } from '../workspace-fs/fs-primitives';
+import { writeBlob, writeJsonAtomic } from '../workspace-fs/fs-primitives';
 import {
 	mediaMetadataPath,
 	mediaSourceByFileName,
@@ -245,20 +245,7 @@ export async function importRemoteLottie(options: {
 	});
 }
 
-/** Resolve the playable blob for a media item (linked or collected). */
-export async function resolveMediaBlob(media: MediaMetadata): Promise<Blob> {
-	const root = requireWorkspaceRoot();
-	if (media.storageType === 'handle' && media.fileHandle) {
-		try {
-			return await media.fileHandle.getFile();
-		} catch {
-			// Fall through to the mirrored workspace copy below.
-		}
-	}
-	const blob = await readBlob(root, mediaSourceByFileName(media.id, sanitizeOrName(media)));
-	if (!blob) throw new Error(`Source bytes missing for ${media.fileName}`);
-	return blob;
-}
+export { resolveMediaBlob } from './resolve-media-blob';
 
 /** Save a renderer-created image into the workspace media pool. */
 export async function importGeneratedImage(
@@ -331,10 +318,6 @@ export async function importGeneratedAudio(
 		await rollbackNewGeneratedMedia(options.projectId, id);
 		throw error;
 	}
-}
-
-function sanitizeOrName(media: MediaMetadata): string {
-	return sanitizeWorkspaceFileName(media.fileName);
 }
 
 /** Open the platform file picker and import every selection. */

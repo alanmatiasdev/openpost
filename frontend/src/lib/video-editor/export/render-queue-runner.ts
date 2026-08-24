@@ -35,7 +35,7 @@ async function executeRenderJob(
 	job: RenderQueueJob,
 	options: { signal: AbortSignal; onProgress: (progress: RenderExportProgress) => void }
 ): Promise<RenderExportResult> {
-	const { renderMultiTrackVideo, renderTimelineAudio } = await import('../media/render-export');
+	const { renderVideoExport, renderAudioExport } = await import('../media/render-execution');
 	const project = projectForJob(job);
 	const range = job.settings.range;
 	if (
@@ -43,14 +43,14 @@ async function executeRenderJob(
 		job.settings.format === 'aac' ||
 		job.settings.format === 'wav'
 	) {
-		return renderTimelineAudio(project, {
+		return renderAudioExport(project, {
 			format: job.settings.format,
 			range,
 			signal: options.signal,
 			onProgress: options.onProgress
 		});
 	}
-	return renderMultiTrackVideo(project, {
+	return renderVideoExport(project, {
 		format: job.settings.format,
 		codec: job.settings.codec,
 		quality: job.settings.quality,
