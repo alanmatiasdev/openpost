@@ -50,7 +50,7 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 	<div class="marketing-shell grid gap-12 py-16 sm:py-24 lg:grid-cols-[1fr_24rem] lg:items-end">
 		<div class="max-w-4xl">
 			<p class="section-label">Features</p>
-			<h1 class="marketing-title mt-5">One system for the whole publishing job.</h1>
+			<h1 class="marketing-title mt-5">The whole publishing job, one workspace.</h1>
 			<p class="mt-5 text-sm font-medium text-foreground">
 				This page is for founders and teams evaluating the complete OpenPost workflow.
 			</p>
@@ -99,9 +99,7 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 	<div class="marketing-shell workbench-layout">
 		<div class="workbench-intro">
 			<p class="section-label">The working loop</p>
-			<h2 id="workbench-title" class="marketing-heading mt-4">
-				Every station keeps its limits visible.
-			</h2>
+			<h2 id="workbench-title" class="marketing-heading mt-4">Every feature shows its limits.</h2>
 			<p class="marketing-copy mt-5">
 				Product scope comes from the current application and documentation. Provider implementation
 				does not become a Hosted service availability claim without current certification evidence.

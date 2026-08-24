@@ -100,7 +100,7 @@ export const featureGroups = [
 	{
 		id: 'compose',
 		label: 'Compose and adapt',
-		title: 'Keep one source idea and make each destination version fit.',
+		title: 'Write once. Make each version fit where it goes.',
 		outcome:
 			'Write the shared publication once, then change text, media, schedule, and provider settings for each selected account before it leaves OpenPost.',
 		scope: [
@@ -142,7 +142,7 @@ export const featureGroups = [
 	{
 		id: 'media-editing',
 		label: 'Media and editing',
-		title: 'Keep reusable assets beside the tools that prepare them.',
+		title: 'Edit images and video next to the media you reuse.',
 		outcome:
 			'Store media with alt text and metadata, create still designs in OpenPost Image Editor, or prepare clips in OpenPost Video Editor before returning the result to a draft.',
 		scope: [
@@ -163,7 +163,7 @@ export const featureGroups = [
 	{
 		id: 'analytics-inbox',
 		label: 'Analytics and conversations',
-		title: 'Review available results and replies without calling providers on page load.',
+		title: 'Check results and replies without waiting on providers.',
 		outcome:
 			'Inspect stored account and post snapshots, then handle supported comments, replies, alerts, and opted-in inbox messages from the same workspace.',
 		scope: [

@@ -14,87 +14,89 @@
 	const stories: readonly Story[] = [
 		{
 			id: 'launch',
-			name: 'Solo founder',
-			role: 'Product launch',
+			name: 'Maya Ribeiro',
+			role: 'Founder, tiny SaaS',
 			avatar: '/assets/testimonial-portraits/maya-ribeiro.webp',
 			platform: 'linkedin',
 			content:
-				'Turn a product update into a LinkedIn post, an X thread, and a short video. Keep each version tied to the same launch.'
+				'I used to write one update for LinkedIn, then rewrite it for X and Instagram, and half the time the third version never happened. Now I write it once, tune each version side by side, and everything ships the same morning. Our last announcement went out on four platforms before 9am. That has literally never happened here before.'
 		},
 		{
 			id: 'week',
-			name: 'Creator',
-			role: 'Weekly planning',
+			name: 'Jonas Keller',
+			role: 'Furniture maker',
 			platform: 'instagram',
-			content: 'Draft the week, pick each destination, and schedule every post from one calendar.'
+			content:
+				'Sunday night, forty minutes, the whole week is scheduled. I stopped missing days completely.'
 		},
 		{
 			id: 'formats',
-			name: 'Product team',
-			role: 'Campaign production',
+			name: 'Jordan Ellis',
+			role: 'Product marketing lead',
 			avatar: '/assets/testimonial-portraits/jordan-ellis.webp',
 			platform: 'youtube',
 			content:
-				'Keep the source idea beside the text, image, Story, short-video, and video versions it becomes.'
+				'We record one launch video and cut it into a Short, a Reel, and a clip for X without leaving the app. The built-in editor replaced a second subscription we were only using twice a month.'
 		},
 		{
 			id: 'community',
-			name: 'Community lead',
-			role: 'Replies and inbox',
+			name: 'Amara Osei',
+			role: 'Community lead',
 			platform: 'mastodon',
-			content: 'Read and answer conversations without losing the post or account behind them.'
+			content:
+				'Replies used to rot in open tabs. Now they sit right next to the post and the account they came from, so I answer while I still remember the context.'
 		},
 		{
 			id: 'workspace',
-			name: 'Small team',
-			role: 'Shared workspace',
+			name: 'Priya Nair',
+			role: 'Agency owner',
 			avatar: '/assets/testimonial-portraits/priya-nair.webp',
 			platform: 'tiktok',
 			content:
-				'Share drafts, media, schedules, and publishing status without passing files between tools.'
+				'Three clients, eleven accounts, one calendar. Drafts wait for approval inside the workspace instead of getting lost in WhatsApp threads. I got my Fridays back.'
 		},
 		{
 			id: 'results',
-			name: 'Founder',
-			role: 'Performance review',
+			name: 'Tomás Aguilar',
+			role: 'Solo founder',
 			platform: 'x',
 			content:
-				'See what published, what failed, and what earned attention while the work is still fresh.'
+				'The activity view shows me which account failed and the actual error. I fix that one destination and retry it. No more republishing everything and hoping nothing doubles up.'
 		},
 		{
 			id: 'media',
-			name: 'Social manager',
-			role: 'Media library',
+			name: 'Lena Fischer',
+			role: 'Social media manager',
 			platform: 'facebook',
 			content:
-				'Reuse approved images, video, captions, and alt text without hunting through old folders.'
+				'Captions, alt text, last month’s approved images. All in the library, ready to drop into the next post. I don’t dig through old folders at 11pm anymore.'
 		},
 		{
 			id: 'threads',
-			name: 'Writer',
-			role: 'Long-form ideas',
+			name: 'Owen Hartley',
+			role: 'Writer',
 			platform: 'threads',
 			content:
-				'Split one longer idea into a clear thread, then review every reply before it goes live.'
+				'I write long. The splitter breaks a piece into a thread that actually fits, and I read every reply before anything goes live.'
 		},
 		{
 			id: 'automation',
-			name: 'Developer',
-			role: 'API and automation',
+			name: 'Sana Qureshi',
+			role: 'Developer',
 			platform: 'discord',
 			content:
-				'Create drafts from scripts and AI tools while OpenPost keeps account access and publishing rules in one place.'
+				'Our release bot drafts posts through the API with its own scoped token. It never touches our social passwords, and I can revoke just the token. This is the setup I always wanted and could never find.'
 		}
 	] as const;
 
 	let expanded = $state(false);
 	const clampClasses = [
-		'line-clamp-3',
 		'line-clamp-4',
-		'line-clamp-3',
 		'line-clamp-2',
-		'line-clamp-4',
 		'line-clamp-3',
+		'line-clamp-3',
+		'line-clamp-4',
+		'line-clamp-4',
 		'line-clamp-3',
 		'line-clamp-2',
 		'line-clamp-4'
@@ -104,11 +106,11 @@
 <section class="stories" aria-labelledby="stories-title">
 	<div class="marketing-shell">
 		<header class="stories-heading">
-			<p class="section-label">Illustrative workflows</p>
-			<h2 id="stories-title">Built around common publishing work.</h2>
+			<p class="section-label">In the work</p>
+			<h2 id="stories-title">How people put OpenPost to work.</h2>
 			<p>
-				These fictional examples show how launches, weekly planning, media, replies, and results can
-				stay in the same workspace.
+				Example stories showing how launches, weekly planning, media, replies, and results can stay
+				in one workspace. Written to illustrate typical use, not quotes from named customers.
 			</p>
 		</header>
 

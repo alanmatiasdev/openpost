@@ -24,7 +24,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		{
 			eyebrow: 'One workspace',
 			title: 'Create in one place.',
-			description: 'Write posts and threads, schedule them, and see what published.',
+			description:
+				'Posts, threads, Stories, short videos, and full videos each get their own editor. Write them, schedule them, and see what actually went out.',
 			image: '/assets/screenshots/main-dark.png',
 			alt: 'OpenPost publication composer with destination-specific versions',
 			icon: Layers3
@@ -32,7 +33,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		{
 			eyebrow: 'Every platform',
 			title: 'Adapt every post.',
-			description: 'Change the copy, media, and settings for each platform before you publish.',
+			description:
+				'The same publication can carry different copy, media, and settings per account. Change what each network needs before anything publishes.',
 			image: '/assets/screenshots/accounts-dark.png',
 			alt: 'OpenPost connected social accounts page',
 			icon: LockKeyhole
@@ -40,7 +42,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		{
 			eyebrow: 'Media workspace',
 			title: 'Reuse your media.',
-			description: 'Keep assets and alt text ready for the next post.',
+			description:
+				'Images, video, captions, and alt text stay in one library, ready for the next post. Edit stills and clips without opening another app.',
 			image: '/assets/screenshots/media-dark.png',
 			alt: 'OpenPost media library with reusable assets',
 			icon: CalendarRange
@@ -53,18 +56,20 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
-			Your socials, <span>on steroids.</span>
+			Write it once. <span>Publish it everywhere.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create better content, adapt it for every platform,<br class="hidden sm:block" /> and publish it
-			everywhere from one workspace.
+			OpenPost turns one idea into the right version for every platform,<br
+				class="hidden sm:block"
+			/>
+			schedules it, and shows you exactly what published.
 		</p>
 		<p class="hero-enter hero-enter-2 mx-auto mt-4 max-w-2xl text-sm text-white/70">
-			This page is for solo founders evaluating one workspace for social publishing.
+			Ten networks supported, including X, LinkedIn, Instagram, TikTok, YouTube, and Bluesky.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
-				Hop on
+				Start free
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
@@ -100,8 +105,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			<p class="section-label">The workspace</p>
 			<h2 id="product-title" class="marketing-heading">Everything you need to publish.</h2>
 			<p class="marketing-copy mt-5">
-				Write once, tune the version for each account, preview it, and schedule it without leaving
-				the page.
+				Write once. Adjust each version for its platform, preview it, and schedule it without
+				leaving the page.
 			</p>
 		</ScrollReveal>
 
@@ -212,7 +217,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			Start publishing.
 		</h2>
 		<p class="mx-auto mt-6 max-w-xl leading-7 text-white/62">
-			Create, adapt, and schedule every post from one place.
+			One idea in, the right post on every platform. Your first 14 days are free.
 		</p>
 		<div class="mt-8 flex flex-wrap justify-center gap-3">
 			<Button href={managedSignupUrl} size="lg">
