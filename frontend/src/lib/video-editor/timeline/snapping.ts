@@ -12,6 +12,7 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import { resolveTransitionWindow } from './transition-planner';
+import { effectiveMediaTracks } from './utils/track-groups';
 
 export const BASE_SNAP_THRESHOLD_PIXELS = 8;
 
@@ -100,7 +101,11 @@ export function calculateMoveSnap(
 	const endDistance = nearestEnd ? Math.abs(targetEndFrame - nearestEnd.frame) : Infinity;
 
 	if (startDistance < endDistance && nearestStart) {
-		return { snappedFrame: nearestStart.frame, snapTarget: nearestStart, didSnap: true };
+		return {
+			snappedFrame: nearestStart.frame,
+			snapTarget: nearestStart,
+			didSnap: true
+		};
 	}
 	if (nearestEnd) {
 		return {
@@ -138,7 +143,9 @@ interface BuildSnapTargetsOptions {
 export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[] {
 	const excluded = new Set(options.excludeItemIds ?? []);
 	const visibleTrackIds = new Set(
-		options.tracks.filter((track) => track.visible !== false).map((track) => track.id)
+		effectiveMediaTracks(options.tracks)
+			.filter((track) => track.visible !== false)
+			.map((track) => track.id)
 	);
 	const itemById = new Map(options.items.map((item) => [item.id, item]));
 	const suppressEnd = new Set<string>();

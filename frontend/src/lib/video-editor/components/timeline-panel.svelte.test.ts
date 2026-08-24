@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import '../../../routes/layout.css';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import {
@@ -130,10 +132,14 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 
 	it('exposes the persisted audio-skimming control', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
-		const enabled = screen.getByRole('button', { name: 'Disable audio skimming' });
+		const enabled = screen.getByRole('button', {
+			name: 'Disable audio skimming'
+		});
 		await expect.element(enabled).toHaveAttribute('aria-pressed', 'true');
 		await enabled.click();
-		const disabled = screen.getByRole('button', { name: 'Enable audio skimming' });
+		const disabled = screen.getByRole('button', {
+			name: 'Enable audio skimming'
+		});
 		await expect.element(disabled).toHaveAttribute('aria-pressed', 'false');
 		await disabled.click();
 	});
@@ -154,7 +160,12 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(region!.scrollLeft).toBe(0);
 
 		window.dispatchEvent(
-			new KeyboardEvent('keydown', { key: '=', ctrlKey: true, bubbles: true, cancelable: true })
+			new KeyboardEvent('keydown', {
+				key: '=',
+				ctrlKey: true,
+				bubbles: true,
+				cancelable: true
+			})
 		);
 		expect(timelineStore.zoomLevel).toBeCloseTo((770 / (300 * 4)) * 1.15);
 
@@ -223,11 +234,13 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			.element()
 			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 		expect(timelineStore.currentFrame).toBe(21);
-		ruler
-			.element()
-			.dispatchEvent(
-				new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true })
-			);
+		ruler.element().dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowLeft',
+				shiftKey: true,
+				bubbles: true
+			})
+		);
 		expect(timelineStore.currentFrame).toBe(11);
 		ruler.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 		expect(timelineStore.currentFrame).toBe(120);
@@ -236,7 +249,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 	it('resizes one track as one undoable pointer gesture', async () => {
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, { onedit });
-		const resize = screen.getByRole('slider', { name: 'Resize video-track track height' });
+		const resize = screen.getByRole('slider', {
+			name: 'Resize video-track track height'
+		});
 
 		dispatchPointer(resize.element(), 'pointerdown', 0, false, 100);
 		dispatchPointer(window, 'pointermove', 0, false, 130);
@@ -258,7 +273,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 	it('supports resize-all, cancellation, keyboard bounds, and reset', async () => {
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, { onedit });
-		const audioResize = screen.getByRole('slider', { name: 'Resize audio-track track height' });
+		const audioResize = screen.getByRole('slider', {
+			name: 'Resize audio-track track height'
+		});
 
 		dispatchPointer(audioResize.element(), 'pointerdown', 0, false, 100, true);
 		dispatchPointer(window, 'pointermove', 0, false, 110);
@@ -267,11 +284,17 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([64, 64]);
 		expect(onedit).not.toHaveBeenCalled();
 
-		audioResize
-			.element()
-			.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', altKey: true, bubbles: true }));
+		audioResize.element().dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'End',
+				altKey: true,
+				bubbles: true
+			})
+		);
 		expect(timelineStore.tracks.map((candidate) => candidate.height)).toEqual([140, 140]);
-		const videoResize = screen.getByRole('slider', { name: 'Resize video-track track height' });
+		const videoResize = screen.getByRole('slider', {
+			name: 'Resize video-track track height'
+		});
 		videoResize
 			.element()
 			.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, altKey: true }));
@@ -280,7 +303,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 	});
 
 	it('renders, selects, edits, and deletes project markers', async () => {
-		timelineStore.setAll({ markers: [{ id: 'marker-1', frame: 10, color: '#d97746' }] });
+		timelineStore.setAll({
+			markers: [{ id: 'marker-1', frame: 10, color: '#d97746' }]
+		});
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, { onedit });
 		const marker = screen.getByRole('button', { name: 'Marker 1, Frame 10' });
@@ -293,7 +318,10 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		label.element().dispatchEvent(new FocusEvent('blur'));
 		expect(timelineStore.markers[0]?.label).toBe('Beat drop');
 
-		const frame = screen.getByRole('spinbutton', { name: 'Frame', exact: true });
+		const frame = screen.getByRole('spinbutton', {
+			name: 'Frame',
+			exact: true
+		});
 		await frame.fill('33');
 		frame.element().dispatchEvent(new Event('change', { bubbles: true }));
 		expect(timelineStore.markers[0]?.frame).toBe(33);
@@ -341,15 +369,19 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.currentFrame).toBe(90);
 
 		const last = screen.getByRole('button', { name: 'Marker 3, Frame 90' });
-		last
-			.element()
-			.dispatchEvent(
-				new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true })
-			);
+		last.element().dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowLeft',
+				shiftKey: true,
+				bubbles: true
+			})
+		);
 		expect(timelineStore.markers.find((marker) => marker.id === 'last')?.frame).toBe(80);
 		await nextAnimationFrame();
 
-		const movedLast = screen.getByRole('button', { name: 'Marker 3, Frame 80' });
+		const movedLast = screen.getByRole('button', {
+			name: 'Marker 3, Frame 80'
+		});
 		dispatchPointer(movedLast.element(), 'pointerdown', 500);
 		dispatchPointer(window, 'pointermove', 300);
 		expect(timelineStore.markers.find((marker) => marker.id === 'last')?.frame).toBe(30);
@@ -485,7 +517,12 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 				sourceStart: undefined,
 				sourceEnd: undefined
 			}),
-			item({ id: 'locked-video', trackId: 'locked-track', label: 'Locked video', from: 140 }),
+			item({
+				id: 'locked-video',
+				trackId: 'locked-track',
+				label: 'Locked video',
+				from: 140
+			}),
 			item({
 				id: 'music-bed',
 				trackId: 'audio-track',
@@ -517,7 +554,12 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		dataTransfer.setData('application/json', JSON.stringify(payload));
 
 		videoClip.dispatchEvent(
-			new DragEvent('dragover', { bubbles: true, clientX: 100, clientY: 100, dataTransfer })
+			new DragEvent('dragover', {
+				bubbles: true,
+				clientX: 100,
+				clientY: 100,
+				dataTransfer
+			})
 		);
 		await nextAnimationFrame();
 		const videoPreview = videoClip.querySelector<HTMLElement>('[data-effect-drop-preview]');
@@ -529,14 +571,27 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(videoClip.textContent).toContain('2 clips');
 
 		videoClip.dispatchEvent(
-			new DragEvent('drop', { bubbles: true, clientX: 100, clientY: 100, dataTransfer })
+			new DragEvent('drop', {
+				bubbles: true,
+				clientX: 100,
+				clientY: 100,
+				dataTransfer
+			})
 		);
 		await nextAnimationFrame();
 		expect(timelineStore.itemById.get('video')?.effects).toEqual([
-			expect.objectContaining({ type: 'brightness', amount: 1.2, enabled: true })
+			expect.objectContaining({
+				type: 'brightness',
+				amount: 1.2,
+				enabled: true
+			})
 		]);
 		expect(timelineStore.itemById.get('title')?.effects).toEqual([
-			expect.objectContaining({ type: 'brightness', amount: 1.2, enabled: true })
+			expect.objectContaining({
+				type: 'brightness',
+				amount: 1.2,
+				enabled: true
+			})
 		]);
 		expect(timelineStore.itemById.get('music-bed')?.effects).toBeUndefined();
 		expect(timelineStore.itemById.get('locked-video')?.effects).toBeUndefined();
@@ -601,7 +656,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		dispatchPointer(window, 'pointerup', 360);
 		await nextAnimationFrame();
 
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 50 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 50
+		});
 		expect(
 			timelineStore.items
 				.filter((candidate) => candidate.trackId === 'audio-track')
@@ -621,9 +678,15 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(onedit).toHaveBeenCalledOnce();
 
 		commandHistory.undo();
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 60 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 60
+		});
 		expect(timelineStore.items.filter((candidate) => candidate.trackId === 'audio-track')).toEqual([
-			expect.objectContaining({ id: 'music-bed', from: 0, durationInFrames: 120 })
+			expect.objectContaining({
+				id: 'music-bed',
+				from: 0,
+				durationInFrames: 120
+			})
 		]);
 	});
 
@@ -646,7 +709,9 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		dispatchPointer(window, 'pointerup', 360);
 		await nextAnimationFrame();
 
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 50 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 50
+		});
 		expect(timelineStore.itemById.get('music-bed')).toMatchObject({
 			from: 0,
 			durationInFrames: 120
@@ -669,9 +734,15 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await nextAnimationFrame();
 
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 60 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 60
+		});
 		expect(timelineStore.items.filter((candidate) => candidate.trackId === 'audio-track')).toEqual([
-			expect.objectContaining({ id: 'music-bed', from: 0, durationInFrames: 120 })
+			expect.objectContaining({
+				id: 'music-bed',
+				from: 0,
+				durationInFrames: 120
+			})
 		]);
 		expect(commandHistory.undoStack).toHaveLength(0);
 	});
@@ -705,7 +776,10 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			}
 		]);
 		const ontransitionbreak = vi.fn();
-		const screen = await render(TimelinePanel, { onedit: vi.fn(), ontransitionbreak });
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			ontransitionbreak
+		});
 		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement;
 		const trimEnd = videoClip?.querySelector<HTMLButtonElement>(
 			'button[aria-label="Trim clip end"]'
@@ -726,16 +800,24 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 
 		dispatchPointer(window, 'pointerup', 360);
 		await nextAnimationFrame();
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 50 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 50
+		});
 		expect(transitionsStore.list).toEqual([]);
 		expect(ontransitionbreak).toHaveBeenCalledOnce();
 		expect(ontransitionbreak).toHaveBeenCalledWith(1);
 		expect(commandHistory.getLastCommandType()).toBe('TRIM_ITEM_END');
 
 		commandHistory.undo();
-		expect(timelineStore.itemById.get('video')).toMatchObject({ durationInFrames: 60 });
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			durationInFrames: 60
+		});
 		expect(transitionsStore.list).toEqual([
-			expect.objectContaining({ id: 'transition', fromItemId: 'video', toItemId: 'next-video' })
+			expect.objectContaining({
+				id: 'transition',
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			})
 		]);
 	});
 
@@ -857,9 +939,70 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		resizeEnd.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 		expect(transitionsStore.list[0]?.durationInFrames).toBe(11);
 		resizeEnd.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				shiftKey: true,
+				bubbles: true
+			})
 		);
 		expect(transitionsStore.list[0]?.durationInFrames).toBe(21);
 		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('TimelinePanel track groups', () => {
+	it('groups selected track names and collapses only their timeline rows', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const videoName = screen.getByRole('button', { name: 'video-track' }).element();
+		const audioName = screen.getByRole('button', { name: 'audio-track' }).element();
+		videoName.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		audioName.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+		await screen.getByRole('button', { name: 'Group selected tracks' }).click();
+		expect(timelineStore.tracks.filter((track) => track.isGroup)).toHaveLength(1);
+		expect(timelineStore.tracks.filter((track) => track.parentTrackId)).toHaveLength(2);
+		await expect.element(screen.getByText('Track group 1')).toBeVisible();
+		const groupRow = document.querySelector<HTMLElement>(
+			'[data-track][aria-label="Track group 1"]'
+		)!;
+		const groupHeader = groupRow.querySelector<HTMLElement>('[data-track-header]')!;
+		const groupBottom = groupRow.getBoundingClientRect().bottom;
+		expect(
+			Math.max(
+				...[...groupHeader.querySelectorAll<HTMLElement>('[data-track-primary-control]')].map(
+					(button) => button.getBoundingClientRect().bottom
+				)
+			)
+		).toBeLessThanOrEqual(groupBottom);
+
+		await screen.getByRole('button', { name: 'Collapse track group' }).click();
+		expect(document.querySelector('[data-track="video-track"]')).toBeNull();
+		expect(document.querySelector('[data-track="audio-track"]')).toBeNull();
+		expect(timelineStore.items).toHaveLength(2);
+		await screen.getByRole('button', { name: 'Expand track group' }).click();
+		expect(document.querySelector('[data-track="video-track"]')).not.toBeNull();
+		expect(onedit).toHaveBeenCalledTimes(3);
+	});
+
+	it('keeps clips on ungroup and confirms before deleting group contents', async () => {
+		const groupId = createTrackGroup(['video-track'], 'Production')!;
+		commandHistory.clearHistory();
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		await screen.getByRole('button', { name: 'More track actions' }).nth(0).click();
+		await screen.getByRole('menuitem', { name: 'Ungroup and keep tracks' }).click();
+		expect(timelineStore.items).toHaveLength(2);
+		expect(timelineStore.tracks.some((track) => track.id === groupId)).toBe(false);
+
+		commandHistory.undo();
+		await screen.getByRole('button', { name: 'More track actions' }).nth(0).click();
+		await screen.getByRole('menuitem', { name: 'Delete group and tracks' }).click();
+		await expect.element(screen.getByText('Delete group and its tracks?')).toBeVisible();
+		await expect
+			.element(screen.getByText(/Ungroup instead if you want to keep the tracks/))
+			.toBeVisible();
+		await screen.getByRole('button', { name: 'Delete group and tracks' }).click();
+		expect(timelineStore.items.map((item) => item.id)).toEqual(['music-bed']);
+		expect(timelineStore.tracks.some((track) => track.id === groupId)).toBe(false);
 	});
 });

@@ -7,6 +7,7 @@
 
 import type { Project, ProjectTimeline, SubComposition, TimelineTrack } from './types';
 import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
+import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-groups';
 
 export { CURRENT_SCHEMA_VERSION } from './migrations';
 
@@ -107,7 +108,21 @@ export function normalizeProject(project: Project): NormalizedProject {
 			message: 'Project had no timeline; created an empty one.'
 		});
 	}
-	if (!timeline.tracks.some((track) => track.kind !== 'audio')) {
+	const originalTracks = timeline.tracks;
+	const repairedTracks = normalizeTrackGroups(originalTracks);
+	if (
+		repairedTracks.length !== originalTracks.length ||
+		repairedTracks.some(
+			(track, index) => track.parentTrackId !== originalTracks[index]?.parentTrackId
+		)
+	) {
+		warnings.push({
+			code: 'TRACK_GROUPS_REPAIRED',
+			message: 'Removed invalid, nested, or empty timeline groups.'
+		});
+	}
+	timeline.tracks = repairedTracks;
+	if (!mediaTracks(timeline.tracks).some((track) => track.kind !== 'audio')) {
 		timeline.tracks.push({
 			id: 'track-video-main',
 			name: 'Video',
@@ -119,7 +134,10 @@ export function normalizeProject(project: Project): NormalizedProject {
 			solo: false,
 			order: timeline.tracks.length
 		});
-		warnings.push({ code: 'TRACK_ADDED', message: 'Project had no video track; added one.' });
+		warnings.push({
+			code: 'TRACK_ADDED',
+			message: 'Project had no video track; added one.'
+		});
 	}
 	if (!timeline.items) timeline.items = [];
 	const normalizedCompositions = (timeline.compositions ?? []).map(normalizeSubComposition);
@@ -148,7 +166,9 @@ export function normalizeProject(project: Project): NormalizedProject {
 }
 
 function normalizeSubComposition(composition: SubComposition): SubComposition {
-	const tracks = composition.tracks?.length > 0 ? composition.tracks : createDefaultTracks();
+	const tracks = normalizeTrackGroups(
+		composition.tracks?.length > 0 ? composition.tracks : createDefaultTracks()
+	);
 	const items = composition.items ?? [];
 	const contentDuration = items.reduce(
 		(max, item) => Math.max(max, item.from + item.durationInFrames),

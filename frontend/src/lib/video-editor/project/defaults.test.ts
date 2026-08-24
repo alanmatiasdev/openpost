@@ -13,7 +13,11 @@ describe('createBlankProject', () => {
 		const project = createBlankProject('My cut');
 		expect(project.name).toBe('My cut');
 		expect(project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-		expect(project.metadata).toMatchObject({ width: 1920, height: 1080, fps: 30 });
+		expect(project.metadata).toMatchObject({
+			width: 1920,
+			height: 1080,
+			fps: 30
+		});
 		expect(project.timeline?.tracks.map((t) => t.id)).toEqual([
 			'track-video-overlay',
 			'track-video-main',
@@ -43,6 +47,33 @@ describe('migrateProjectDocument', () => {
 		stored.timeline!.tracks = stored.timeline!.tracks.filter((t) => t.kind === 'audio');
 		const { project } = normalizeProject(stored);
 		expect(project.timeline!.tracks.some((t) => t.kind !== 'audio')).toBe(true);
+	});
+
+	it('preserves valid track groups and repairs empty or orphaned hierarchy on load', () => {
+		const stored = createBlankProject();
+		const [child, loose] = stored.timeline!.tracks;
+		stored.timeline!.tracks = [
+			{
+				...child!,
+				id: 'group',
+				name: 'Visuals',
+				kind: undefined,
+				isGroup: true,
+				height: 72
+			},
+			{ ...child!, parentTrackId: 'group' },
+			{ ...loose!, id: 'orphan', parentTrackId: 'missing' },
+			{ ...loose!, id: 'empty', isGroup: true, kind: undefined }
+		];
+		const result = normalizeProject(stored);
+		expect(
+			result.project.timeline!.tracks.find((track) => track.id === child!.id)?.parentTrackId
+		).toBe('group');
+		expect(
+			result.project.timeline!.tracks.find((track) => track.id === 'orphan')?.parentTrackId
+		).toBeUndefined();
+		expect(result.project.timeline!.tracks.some((track) => track.id === 'empty')).toBe(false);
+		expect(result.warnings.some((warning) => warning.code === 'TRACK_GROUPS_REPAIRED')).toBe(true);
 	});
 
 	it('flags future schema versions instead of failing', () => {

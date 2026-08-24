@@ -12,6 +12,7 @@
 	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
 	import {
@@ -188,9 +189,7 @@
 			: undefined
 	);
 	const selectedTrackLocked = $derived(
-		selectedItem
-			? (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked ?? false)
-			: false
+		selectedItem ? isTrackEffectivelyLocked(selectedItem.trackId, timelineStore.tracks) : false
 	);
 	const timelineMediaIds = $derived(
 		new Set(timelineStore.items.flatMap((item) => (item.mediaId ? [item.mediaId] : [])))

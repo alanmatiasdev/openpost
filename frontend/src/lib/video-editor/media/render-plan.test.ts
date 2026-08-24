@@ -119,6 +119,22 @@ describe('frameToSourceSeconds', () => {
 });
 
 describe('planMixdown', () => {
+	it('applies parent group mute without changing the child track state', () => {
+		const group = track('dialogue-group', 'audio', 0, {
+			kind: undefined,
+			isGroup: true,
+			muted: true
+		});
+		const child = track('dialogue', 'audio', 1, { parentTrackId: group.id });
+		const entries = planMixdown(
+			[item({ trackId: child.id, type: 'audio', mediaId: 'voice' })],
+			[group, child],
+			30
+		);
+		expect(entries).toEqual([]);
+		expect(child.muted).toBe(false);
+	});
+
 	it('schedules clips at their timeline offsets with volume gain', () => {
 		const entries = planMixdown(
 			[

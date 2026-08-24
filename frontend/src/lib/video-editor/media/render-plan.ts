@@ -16,6 +16,7 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import { activeValueAt } from '../timeline/keyframe-interpolation';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import {
 	calculateTransitionProgress,
 	resolveTransitionWindow
@@ -100,9 +101,10 @@ export function planMixdown(
 	fps: number,
 	transitions: TimelineTransition[] = []
 ): MixEntry[] {
-	const trackById = new Map(tracks.map((track) => [track.id, track]));
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const trackById = new Map(resolvedTracks.map((track) => [track.id, track]));
 	const itemsById = new Map(items.map((item) => [item.id, item]));
-	const anySolo = tracks.some((track) => track.solo);
+	const anySolo = resolvedTracks.some((track) => track.solo);
 	const entries: MixEntry[] = [];
 	for (const item of items) {
 		if (!AUDIO_BEARING_TYPES.has(item.type) || !item.mediaId) continue;
@@ -167,9 +169,10 @@ export function planNestedMixdown(
 	ancestry: ReadonlySet<string> = new Set()
 ): MixEntry[] {
 	const entries = planMixdown(items, tracks, fps, transitions);
+	const resolvedTracks = effectiveMediaTracks(tracks);
 	const compositionById = new Map(compositions.map((composition) => [composition.id, composition]));
-	const trackById = new Map(tracks.map((track) => [track.id, track]));
-	const anySolo = tracks.some((track) => track.solo);
+	const trackById = new Map(resolvedTracks.map((track) => [track.id, track]));
+	const anySolo = resolvedTracks.some((track) => track.solo);
 	const itemsById = new Map(items.map((item) => [item.id, item]));
 	for (const wrapper of items) {
 		if (!wrapper.compositionId || (wrapper.type !== 'composition' && wrapper.type !== 'audio'))
@@ -345,8 +348,9 @@ export function paintOrder(
 	items: TimelineItem[] = [],
 	tracks: TimelineTrack[] = []
 ): TimelineItem[] {
-	const trackById = new Map(tracks.map((track) => [track.id, track]));
-	const anySolo = tracks.some((track) => track.solo);
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const trackById = new Map(resolvedTracks.map((track) => [track.id, track]));
+	const anySolo = resolvedTracks.some((track) => track.solo);
 	return items
 		.filter((item) => {
 			const track = trackById.get(item.trackId);

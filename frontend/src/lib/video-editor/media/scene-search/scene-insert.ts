@@ -3,6 +3,7 @@
 import type { TimelineItem, TimelineTrack } from '../../project/types';
 import { execute } from '../../timeline/commands/command-store.svelte';
 import { timelineStore } from '../../timeline/stores/timeline-store.svelte';
+import { effectiveMediaTracks } from '../../timeline/utils/track-groups';
 import type { MediaMetadata } from '../types';
 import type { MediaScene } from './types';
 
@@ -13,13 +14,14 @@ function collides(trackId: string, from: number, end: number): boolean {
 }
 
 function targetTrack(from: number, end: number, preferredTrackId?: string): TimelineTrack {
+	const tracks = effectiveMediaTracks(timelineStore.tracks);
 	const preferred = preferredTrackId
-		? timelineStore.tracks.find((track) => track.id === preferredTrackId)
+		? tracks.find((track) => track.id === preferredTrackId)
 		: undefined;
 	if (preferred?.kind === 'video' && !preferred.locked && !collides(preferred.id, from, end)) {
 		return preferred;
 	}
-	const unlocked = timelineStore.tracks
+	const unlocked = tracks
 		.filter((track) => track.kind === 'video' && !track.locked)
 		.toSorted((left, right) => right.order - left.order);
 	const open = unlocked.find((track) => !collides(track.id, from, end));

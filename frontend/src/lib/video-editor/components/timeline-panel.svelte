@@ -135,15 +135,31 @@
 	import { localizedTransitionLabel } from '$lib/video-editor/transitions/labels';
 	import {
 		addTrack,
+		createTrackGroup,
+		moveTrack,
+		renameTrack,
+		removeTrackGroupWithContents,
 		removeTrack,
 		toggleTrackLock,
 		toggleTrackMute,
 		toggleTrackSolo,
 		toggleTrackSyncLock,
 		toggleTrackVisibility,
+		toggleTrackGroupCollapsed,
+		ungroupTracks,
 		type TrackKind
 	} from '$lib/video-editor/timeline/actions/tracks';
+	import {
+		effectiveMediaTracks,
+		effectiveTrackState,
+		isTrackEffectivelyLocked,
+		isTrackGroup,
+		mediaTracks,
+		trackChildren,
+		visibleTrackRows
+	} from '$lib/video-editor/timeline/utils/track-groups';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import TimelineVoiceoverOverlay from './timeline-voiceover-overlay.svelte';
 	import {
 		canLinkSelection,
@@ -192,6 +208,7 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 
 	let {
 		onedit,
@@ -213,6 +230,9 @@
 		selectedTransitionId?: string | null;
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
+	let selectedTrackIds = $state<string[]>([]);
+	let deleteGroupTarget = $state<{ id: string; name: string; trackCount: number } | null>(null);
+	let deleteGroupDialogOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
@@ -1087,7 +1107,9 @@
 	function resolveEffectTargets(itemId: string, payload: EffectDragData | null): string[] {
 		if (!payload) return [];
 		const lockedTrackIds = new Set(
-			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+			effectiveMediaTracks(timelineStore.tracks)
+				.filter((track) => track.locked)
+				.map((track) => track.id)
 		);
 		return resolveEffectDropTargetIds({
 			hoveredItemId: itemId,
@@ -1142,10 +1164,11 @@
 	}
 
 	function openSceneTrack(preferredTrackId: string, from: number, end: number): string | null {
-		const preferred = timelineStore.tracks.find((track) => track.id === preferredTrackId);
+		const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
+		const preferred = effectiveTracks.find((track) => track.id === preferredTrackId);
 		const candidates = [
 			...(preferred ? [preferred] : []),
-			...timelineStore.tracks
+			...effectiveTracks
 				.filter((track) => track.id !== preferredTrackId)
 				.toSorted((left, right) => right.order - left.order)
 		];
@@ -1306,7 +1329,7 @@
 	}
 
 	function trackForItem(item: TimelineItem) {
-		return timelineStore.tracks.find((track) => track.id === item.trackId);
+		return effectiveMediaTracks(timelineStore.tracks).find((track) => track.id === item.trackId);
 	}
 
 	function snapTargetsFor(ids: string[]): SnapTarget[] {
@@ -1371,7 +1394,9 @@
 
 	function unlockedEditItems(snapshot: TimelineSnapshot): TimelineItem[] {
 		const lockedTrackIds = new Set(
-			snapshot.tracks.filter((track) => track.locked).map((track) => track.id)
+			effectiveMediaTracks(snapshot.tracks)
+				.filter((track) => track.locked)
+				.map((track) => track.id)
 		);
 		return snapshot.items.map((item) =>
 			(!timelineStore.linkedSelectionEnabled || lockedTrackIds.has(item.trackId)) &&
@@ -2007,7 +2032,8 @@
 	}
 
 	function addNamedTrack(kind: TrackKind): void {
-		const number = timelineStore.tracks.filter((track) => track.kind === kind).length + 1;
+		const number =
+			mediaTracks(timelineStore.tracks).filter((track) => track.kind === kind).length + 1;
 		addTrack(
 			kind,
 			kind === 'video'
@@ -2015,6 +2041,44 @@
 				: m.video_editor_track_audio_name({ number })
 		);
 		onedit();
+	}
+
+	function selectTrack(event: MouseEvent, trackId: string): void {
+		const track = timelineStore.tracks.find((candidate) => candidate.id === trackId);
+		if (!track) return;
+		const ids = isTrackGroup(track)
+			? trackChildren(timelineStore.tracks, track.id).map((childTrack) => childTrack.id)
+			: [track.id];
+		if (event.shiftKey || event.metaKey || event.ctrlKey) {
+			const next = new Set(selectedTrackIds);
+			const removing = ids.every((id) => next.has(id));
+			for (const id of ids) removing ? next.delete(id) : next.add(id);
+			selectedTrackIds = [...next];
+			return;
+		}
+		selectedTrackIds = ids;
+	}
+
+	function createGroupFromSelection(): void {
+		const validIds = selectedTrackIds.filter((id) =>
+			mediaTracks(timelineStore.tracks).some((track) => track.id === id)
+		);
+		if (validIds.length === 0) return;
+		const number = timelineStore.tracks.filter(isTrackGroup).length + 1;
+		if (!createTrackGroup(validIds, m.video_editor_track_group_name({ number }))) return;
+		selectedTrackIds = [];
+		onedit();
+	}
+
+	function requestDeleteGroup(trackId: string): void {
+		const group = timelineStore.tracks.find((track) => track.id === trackId && isTrackGroup(track));
+		if (!group) return;
+		deleteGroupTarget = {
+			id: group.id,
+			name: group.name,
+			trackCount: trackChildren(timelineStore.tracks, group.id).length
+		};
+		deleteGroupDialogOpen = true;
 	}
 
 	function toggleEditTool(tool: AdvancedEditTool): void {
@@ -2026,10 +2090,14 @@
 	}
 
 	function deleteTrack(trackId: string): void {
-		const selectedWasRemoved =
-			timelineStore.itemById.get(selectedItemId ?? '')?.trackId === trackId;
+		const removedItemIds = new Set(
+			timelineStore.items.filter((item) => item.trackId === trackId).map((item) => item.id)
+		);
+		const selectedWasRemoved = selectedItemId ? removedItemIds.has(selectedItemId) : false;
 		if (!removeTrack(trackId)) return;
 		if (selectedWasRemoved) selectedItemId = null;
+		selectedItemIds = selectedItemIds.filter((id) => !removedItemIds.has(id));
+		selectedTrackIds = selectedTrackIds.filter((id) => id !== trackId);
 		onedit();
 	}
 
@@ -2213,7 +2281,9 @@
 	);
 	const canJoinSelectedItems = $derived.by(() => {
 		const lockedTrackIds = new Set(
-			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+			effectiveMediaTracks(timelineStore.tracks)
+				.filter((track) => track.locked)
+				.map((track) => track.id)
 		);
 		const groups = new Map<string, TimelineItem[]>();
 		for (const id of selectedItemIds) {
@@ -2228,7 +2298,9 @@
 	});
 	const captionConsolidationTarget = $derived.by<CaptionConsolidationOptions | null>(() => {
 		const lockedTrackIds = new Set(
-			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+			effectiveMediaTracks(timelineStore.tracks)
+				.filter((track) => track.locked)
+				.map((track) => track.id)
 		);
 		const selected = selectedItemIds
 			.map((id) => timelineStore.itemById.get(id))
@@ -2261,8 +2333,7 @@
 	});
 	const canFreezeSelectedItem = $derived.by(() => {
 		if (!selectedItem || selectedItem.type !== 'video') return false;
-		if (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked)
-			return false;
+		if (isTrackEffectivelyLocked(selectedItem.trackId, timelineStore.tracks)) return false;
 		const frame = timelineStore.currentFrame;
 		return (
 			frame > selectedItem.from &&
@@ -2529,6 +2600,19 @@
 			variant="ghost"
 			size="icon"
 			class="size-7 rounded"
+			disabled={selectedTrackIds.length === 0}
+			aria-label={m.video_editor_track_group_selected()}
+			title={selectedTrackIds.length === 0
+				? m.video_editor_track_group_select_hint()
+				: m.video_editor_track_group_selected_count({ count: selectedTrackIds.length })}
+			onclick={createGroupFromSelection}
+		>
+			<FolderPlusIcon class="size-3.5" />
+		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded"
 			disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
 			aria-label={m.video_editor_previous_marker()}
 			title={`${m.video_editor_previous_marker()} ([)`}
@@ -2785,6 +2869,36 @@
 	</div>
 </div>
 
+<DestructiveConfirmDialog
+	bind:open={deleteGroupDialogOpen}
+	title={m.video_editor_track_group_delete_title()}
+	description={m.video_editor_track_group_delete_body({
+		name: deleteGroupTarget?.name ?? '',
+		count: deleteGroupTarget?.trackCount ?? 0
+	})}
+	confirmLabel={m.video_editor_track_group_delete()}
+	onConfirm={() => {
+		const target = deleteGroupTarget;
+		const removedTrackIds = target
+			? new Set(trackChildren(timelineStore.tracks, target.id).map((track) => track.id))
+			: new Set<string>();
+		deleteGroupTarget = null;
+		if (!target || !removeTrackGroupWithContents(target.id)) {
+			return { ok: false, message: m.video_editor_track_group_delete_failed() };
+		}
+		selectedTrackIds = selectedTrackIds.filter((id) =>
+			mediaTracks(timelineStore.tracks).some((track) => track.id === id)
+		);
+		selectedItemIds = selectedItemIds.filter((id) => {
+			const item = timelineStore.itemById.get(id);
+			return item ? !removedTrackIds.has(item.trackId) : false;
+		});
+		if (selectedItemId && !timelineStore.itemById.has(selectedItemId)) selectedItemId = null;
+		onedit();
+		return { ok: true };
+	}}
+/>
+
 {#if selectedMarker}
 	<div
 		class="flex min-h-9 items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-[11px]"
@@ -2925,20 +3039,24 @@
 		<TimelineVoiceoverOverlay {timelineX} pixelsPerFrame={pxPerFrame} />
 
 		<!-- Tracks -->
-		{#each [...timelineStore.tracks].sort((a, b) => a.order - b.order) as track (track.id)}
+		{#each visibleTrackRows(timelineStore.tracks) as track (track.id)}
+			{@const parentTrack = track.parentTrackId
+				? timelineStore.tracks.find((candidate) => candidate.id === track.parentTrackId)
+				: undefined}
+			{@const resolvedTrack = { ...track, ...effectiveTrackState(track, timelineStore.tracks) }}
 			<div
-				class="relative border-b border-[oklch(0.22_0.01_50)] {track.visible === false ||
-				(track.kind === 'audio' && track.muted)
+				class="relative border-b border-[oklch(0.22_0.01_50)] {resolvedTrack.visible === false ||
+				(track.kind === 'audio' && resolvedTrack.muted)
 					? 'bg-[oklch(0.13_0.006_55)]'
-					: ''}"
+					: ''} {track.isGroup ? 'z-[31] bg-[oklch(0.18_0.012_55)]' : ''}"
 				style="height:{track.height}px"
 				data-track={track.id}
 				role="group"
 				aria-label={track.name}
-				ondragenter={(event) => previewSceneDrop(event, track.id)}
-				ondragover={(event) => previewSceneDrop(event, track.id)}
-				ondragleave={leaveSceneDrop}
-				ondrop={(event) => dropScene(event, track.id)}
+				ondragenter={track.isGroup ? undefined : (event) => previewSceneDrop(event, track.id)}
+				ondragover={track.isGroup ? undefined : (event) => previewSceneDrop(event, track.id)}
+				ondragleave={track.isGroup ? undefined : leaveSceneDrop}
+				ondrop={track.isGroup ? undefined : (event) => dropScene(event, track.id)}
 			>
 				<div
 					class="sticky left-0 z-30 h-full"
@@ -2947,8 +3065,39 @@
 				>
 					<TimelineTrackHeader
 						{track}
-						itemCount={(timelineStore.itemsByTrackId.get(track.id) ?? []).length}
-						canDelete={timelineStore.tracks.length > 1}
+						effectiveTrack={resolvedTrack}
+						itemCount={track.isGroup
+							? trackChildren(timelineStore.tracks, track.id).length
+							: (timelineStore.itemsByTrackId.get(track.id) ?? []).length}
+						canDelete={track.isGroup
+							? mediaTracks(timelineStore.tracks).length -
+									trackChildren(timelineStore.tracks, track.id).length >=
+								1
+							: mediaTracks(timelineStore.tracks).length > 1}
+						selected={track.isGroup
+							? trackChildren(timelineStore.tracks, track.id).every((childTrack) =>
+									selectedTrackIds.includes(childTrack.id)
+								)
+							: selectedTrackIds.includes(track.id)}
+						child={Boolean(parentTrack)}
+						inheritedLocked={Boolean(parentTrack?.locked)}
+						inheritedVisible={parentTrack?.visible === false}
+						inheritedMuted={Boolean(parentTrack?.muted)}
+						inheritedSolo={Boolean(parentTrack?.solo)}
+						onselect={(event) => selectTrack(event, track.id)}
+						oncollapse={() => editTrack(() => toggleTrackGroupCollapsed(track.id))}
+						onungroup={() =>
+							editTrack(() => {
+								selectedTrackIds = selectedTrackIds.filter(
+									(id) =>
+										!trackChildren(timelineStore.tracks, track.id).some((child) => child.id === id)
+								);
+								return ungroupTracks(track.id);
+							})}
+						ondeletegroup={() => requestDeleteGroup(track.id)}
+						onmoveup={() => editTrack(() => moveTrack(track.id, -1))}
+						onmovedown={() => editTrack(() => moveTrack(track.id, 1))}
+						onrename={(name) => editTrack(() => renameTrack(track.id, name))}
 						onvisibility={() => editTrack(() => toggleTrackVisibility(track.id))}
 						onmute={() => editTrack(() => toggleTrackMute(track.id))}
 						onsolo={() => editTrack(() => toggleTrackSolo(track.id))}
@@ -2982,7 +3131,7 @@
 								item.id
 							)
 								? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
-								: 'border-transparent'} {track.locked ? 'opacity-75' : ''}"
+								: 'border-transparent'} {resolvedTrack.locked ? 'opacity-75' : ''}"
 							style={clipStyle(displayItem)}
 							data-timeline-item-id={item.id}
 							ondragenter={(event) => previewEffectDrop(event, item.id)}
@@ -3153,22 +3302,22 @@
 						</div>
 					{/if}
 				{/each}
-				<div
-					class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none"
-					role="slider"
-					tabindex="0"
-					aria-orientation="vertical"
-					aria-label={m.video_editor_track_resize({ name: track.name })}
-					aria-valuemin={MIN_TRACK_HEIGHT}
-					aria-valuemax={MAX_TRACK_HEIGHT}
-					aria-valuenow={track.height}
-					title={m.video_editor_track_resize_hint()}
-					data-track-resize={track.id}
-					data-marquee-ignore
-					onpointerdown={(event) => startTrackHeightResize(event, track.id)}
-					ondblclick={(event) => resetTrackHeight(event, track.id)}
-					onkeydown={(event) => resizeTrackHeightFromKeyboard(event, track.id)}
-				></div>
+				{#if !track.isGroup}<div
+						class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none"
+						role="slider"
+						tabindex="0"
+						aria-orientation="vertical"
+						aria-label={m.video_editor_track_resize({ name: track.name })}
+						aria-valuemin={MIN_TRACK_HEIGHT}
+						aria-valuemax={MAX_TRACK_HEIGHT}
+						aria-valuenow={track.height}
+						title={m.video_editor_track_resize_hint()}
+						data-track-resize={track.id}
+						data-marquee-ignore
+						onpointerdown={(event) => startTrackHeightResize(event, track.id)}
+						ondblclick={(event) => resetTrackHeight(event, track.id)}
+						onkeydown={(event) => resizeTrackHeightFromKeyboard(event, track.id)}
+					></div>{/if}
 			</div>
 		{/each}
 

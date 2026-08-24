@@ -12,6 +12,7 @@ import { transitionsStore } from '../timeline/actions/transitions.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { expandSelectionWithLinkedItems } from '../timeline/utils/linked-items';
 import { snapshotTimelineState } from '../timeline/utils/state-snapshot.svelte';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import {
 	mapSourceWindowOverlap,
 	timelineToSourceFrames
@@ -107,10 +108,11 @@ export function nestSequence(compositionId: string, from = timelineStore.current
 			)
 		)
 			throw new Error('A sequence cannot contain itself.');
-		const visualTrack = timelineStore.tracks
+		const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
+		const visualTrack = effectiveTracks
 			.filter((track) => track.kind !== 'audio' && !track.locked)
 			.toSorted((left, right) => left.order - right.order)[0];
-		const audioTrack = timelineStore.tracks
+		const audioTrack = effectiveTracks
 			.filter((track) => track.kind === 'audio' && !track.locked)
 			.toSorted((left, right) => right.order - left.order)[0];
 		const linkedGroupId =

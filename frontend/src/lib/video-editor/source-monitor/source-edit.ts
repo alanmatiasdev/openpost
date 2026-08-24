@@ -5,6 +5,7 @@ import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { pruneInvalidTransitions } from '../timeline/actions/transitions.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 
 export type SourcePatchTarget = 'auto' | 'create' | string;
 
@@ -44,7 +45,7 @@ function mediaKind(media: MediaMetadata): 'video' | 'audio' | 'image' | 'lottie'
 }
 
 function availableTracks(kind: 'video' | 'audio'): TimelineTrack[] {
-	return timelineStore.tracks
+	return effectiveMediaTracks(timelineStore.tracks)
 		.filter((track) => (kind === 'audio' ? track.kind === 'audio' : track.kind !== 'audio'))
 		.toSorted((left, right) => left.order - right.order);
 }

@@ -7,6 +7,7 @@
 import type { TimelineItem, TimelineTrack } from '../../project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { isTrackSyncLockEnabled } from '../utils/track-sync-lock';
+import { effectiveMediaTracks } from '../utils/track-groups';
 import { transitionsStore } from './transitions-store.svelte';
 
 export interface RipplePropagationResult {
@@ -66,13 +67,14 @@ function candidateTrackIdsFromState(
 	tracks: TimelineTrack[],
 	editedTrackIds: ReadonlySet<string>
 ): string[] {
+	const effectiveTracks = effectiveMediaTracks(tracks);
 	const trackIds = new Set<string>();
-	for (const track of tracks) {
+	for (const track of effectiveTracks) {
 		if (!editedTrackIds.has(track.id) && isTrackSyncLockEnabled(track)) trackIds.add(track.id);
 	}
 	for (const item of items) {
 		if (editedTrackIds.has(item.trackId) || trackIds.has(item.trackId)) continue;
-		const track = tracks.find((candidate) => candidate.id === item.trackId);
+		const track = effectiveTracks.find((candidate) => candidate.id === item.trackId);
 		if (isTrackSyncLockEnabled(track)) trackIds.add(item.trackId);
 	}
 	return [...trackIds];
@@ -83,7 +85,10 @@ function setPreviewUpdate(
 	itemId: string,
 	updates: Omit<SyncLockPreviewUpdate, 'id'>
 ): void {
-	updatesById.set(itemId, { ...(updatesById.get(itemId) ?? { id: itemId }), ...updates });
+	updatesById.set(itemId, {
+		...(updatesById.get(itemId) ?? { id: itemId }),
+		...updates
+	});
 }
 
 function removedIntervalPreviewUpdatesForTrack(
@@ -91,7 +96,12 @@ function removedIntervalPreviewUpdatesForTrack(
 	intervals: TimeInterval[]
 ): SyncLockPreviewUpdate[] {
 	let previewItems: PreviewTrackItemState[] = trackItems
-		.map(({ id, trackId, from, durationInFrames }) => ({ id, trackId, from, durationInFrames }))
+		.map(({ id, trackId, from, durationInFrames }) => ({
+			id,
+			trackId,
+			from,
+			durationInFrames
+		}))
 		.sort((left, right) => left.from - right.from);
 	const updatesById = new Map<string, SyncLockPreviewUpdate>();
 	let removedFrames = 0;
@@ -112,7 +122,10 @@ function removedIntervalPreviewUpdatesForTrack(
 				continue;
 			}
 			if (item.from >= currentInterval.end) {
-				const updated = { ...item, from: Math.max(0, item.from - intervalLength) };
+				const updated = {
+					...item,
+					from: Math.max(0, item.from - intervalLength)
+				};
 				nextPreviewItems.push(updated);
 				setPreviewUpdate(updatesById, item.id, { from: updated.from });
 				continue;
@@ -308,7 +321,10 @@ function removeItemsOnTrackInterval(
 		removedIds.push(split.leftItem.id);
 		affectedIds.push(split.rightItem.id);
 	}
-	return { affectedIds: uniqueIds(affectedIds), removedIds: uniqueIds(removedIds) };
+	return {
+		affectedIds: uniqueIds(affectedIds),
+		removedIds: uniqueIds(removedIds)
+	};
 }
 
 function shiftTrackItems(
@@ -356,7 +372,10 @@ export function propagateRemovedIntervalsToSyncLockedTracks(params: {
 			removedFrames += intervalLength;
 		}
 	}
-	return { affectedIds: uniqueIds(affectedIds), removedIds: uniqueIds(removedIds) };
+	return {
+		affectedIds: uniqueIds(affectedIds),
+		removedIds: uniqueIds(removedIds)
+	};
 }
 
 export function propagateInsertedGapToSyncLockedTracks(params: {

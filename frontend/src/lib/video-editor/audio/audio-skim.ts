@@ -2,6 +2,7 @@ import type { TimelineItem, TimelineTrack, TimelineTransition } from '../project
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { hasLinkedAudioCompanion, audioCrossfadeGainAtFrame } from './transition-crossfade';
 import { frameToSourceSeconds } from '../media/render-plan';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import { decodedPreviewAudio, previewAudioContext } from './reverse-preview-audio';
 
 const DEFAULT_TIMELINE_FPS = 30;
@@ -122,8 +123,9 @@ export function selectAudioSkimSource(
 	depth = 0,
 	parentGain = 1
 ): AudioSkimSource | null {
-	const byTrack = new Map(tracks.map((track) => [track.id, track]));
-	const anySolo = tracks.some((track) => track.solo);
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const byTrack = new Map(resolvedTracks.map((track) => [track.id, track]));
+	const anySolo = resolvedTracks.some((track) => track.solo);
 	let leaf: { item: PlayableItem; gain: number; rank: number } | null = null;
 	let nested: { item: TimelineItem; gain: number; rank: number } | null = null;
 

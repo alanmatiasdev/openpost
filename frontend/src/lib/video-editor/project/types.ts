@@ -597,6 +597,12 @@ export interface TimelineItem extends TextStyleFields {
 export interface TimelineTrack {
 	id: string;
 	name: string;
+	/** Organizational rows never accept timeline items. Groups are one level deep. */
+	isGroup?: boolean;
+	/** A media track may belong to one group. Group rows cannot have a parent. */
+	parentTrackId?: string;
+	/** Presentation state only. It does not hide children from preview or export. */
+	isCollapsed?: boolean;
 	kind?: 'video' | 'audio';
 	height: number;
 	locked: boolean;

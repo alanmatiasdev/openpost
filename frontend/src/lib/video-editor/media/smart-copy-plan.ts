@@ -10,6 +10,7 @@ import {
 	type VideoCodec
 } from 'mediabunny';
 import type { Project, TimelineItem, TimelineTrack } from '../project/types';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import type { MediaMetadata } from './types';
 
 export type SmartCopyFormat = 'webm' | 'mp4' | 'mov' | 'mkv';
@@ -106,8 +107,9 @@ function activeItems(
 	startFrame: number,
 	endFrame: number
 ): TimelineItem[] {
-	const byId = new Map(tracks.map((track) => [track.id, track]));
-	const activeIds = activeTrackIds(tracks);
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const byId = new Map(resolvedTracks.map((track) => [track.id, track]));
+	const activeIds = activeTrackIds(resolvedTracks);
 	return items.filter((item) => {
 		const track = byId.get(item.trackId);
 		return Boolean(
@@ -248,7 +250,9 @@ export function assessSmartCopy(
 	if (!media) return { eligible: false, blocker: 'missing-media' };
 	if (!unmodifiedVideo(video, media)) return { eligible: false, blocker: 'edited-video' };
 
-	const trackById = new Map(timeline.tracks.map((track) => [track.id, track]));
+	const trackById = new Map(
+		effectiveMediaTracks(timeline.tracks).map((track) => [track.id, track])
+	);
 	const videoTrack = trackById.get(video.trackId);
 	if (!videoTrack) return { eligible: false, blocker: 'timeline-layout' };
 	if (companion) {

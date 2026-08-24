@@ -2,6 +2,7 @@
 
 import type { ItemEffect } from './types';
 import type { TimelineItem, TimelineTrack } from '../project/types';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 
 export interface AdjustmentLayerScope {
 	layer: TimelineItem;
@@ -13,10 +14,11 @@ export function collectAdjustmentLayers(
 	items: readonly TimelineItem[],
 	tracks: readonly TimelineTrack[]
 ): AdjustmentLayerScope[] {
-	const orderByTrack = new Map(tracks.map((track) => [track.id, track.order]));
-	const anySolo = tracks.some((track) => track.solo);
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const orderByTrack = new Map(resolvedTracks.map((track) => [track.id, track.order]));
+	const anySolo = resolvedTracks.some((track) => track.solo);
 	const visibleTracks = new Set(
-		tracks
+		resolvedTracks
 			.filter((track) => (anySolo ? track.solo : track.visible !== false))
 			.map((track) => track.id)
 	);

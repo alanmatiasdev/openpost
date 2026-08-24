@@ -4,12 +4,17 @@ import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import {
 	addTrack,
+	createTrackGroup,
+	moveTrack,
+	renameTrack,
+	removeTrackGroupWithContents,
 	removeTrack,
 	toggleTrackLock,
 	toggleTrackMute,
 	toggleTrackSolo,
 	toggleTrackSyncLock,
-	toggleTrackVisibility
+	toggleTrackVisibility,
+	ungroupTracks
 } from './tracks';
 
 describe('timeline track actions', () => {
@@ -71,5 +76,67 @@ describe('timeline track actions', () => {
 			syncLock: false
 		});
 		expect(commandHistory.undoStack).toHaveLength(5);
+	});
+
+	it('groups non-contiguous tracks into one ordered block and undoes atomically', () => {
+		const groupId = createTrackGroup(['track-video-overlay', 'track-audio'], 'Talking head');
+		expect(groupId).toBeTruthy();
+		const ordered = timelineStore.tracks.toSorted((left, right) => left.order - right.order);
+		expect(ordered.map((track) => track.id)).toEqual([
+			groupId,
+			'track-video-overlay',
+			'track-audio',
+			'track-video-main'
+		]);
+		expect(ordered.slice(1, 3).every((track) => track.parentTrackId === groupId)).toBe(true);
+		expect(commandHistory.getLastCommandType()).toBe('CREATE_TRACK_GROUP');
+		commandHistory.undo();
+		expect(timelineStore.tracks.some((track) => track.isGroup)).toBe(false);
+	});
+
+	it('ungroups without losing clips and requires an explicit action to delete contents', () => {
+		timelineStore._setItems([
+			{
+				id: 'clip',
+				trackId: 'track-video-overlay',
+				from: 0,
+				durationInFrames: 30,
+				label: 'Clip',
+				type: 'video'
+			}
+		]);
+		const groupId = createTrackGroup(['track-video-overlay'], 'Overlay group')!;
+		expect(ungroupTracks(groupId)).toBe(true);
+		expect(timelineStore.itemById.has('clip')).toBe(true);
+		commandHistory.undo();
+		expect(removeTrackGroupWithContents(groupId)).toBe(true);
+		expect(timelineStore.itemById.has('clip')).toBe(false);
+		commandHistory.undo();
+		expect(timelineStore.itemById.has('clip')).toBe(true);
+	});
+
+	it('moves a group as one block and reorders children only inside their group', () => {
+		const groupId = createTrackGroup(['track-video-overlay', 'track-video-main'], 'Visuals')!;
+		expect(moveTrack(groupId, 1)).toBe(true);
+		expect(
+			timelineStore.tracks.toSorted((a, b) => a.order - b.order).map((track) => track.id)
+		).toEqual(['track-audio', groupId, 'track-video-overlay', 'track-video-main']);
+		expect(moveTrack('track-video-main', -1)).toBe(true);
+		expect(
+			timelineStore.tracks.toSorted((a, b) => a.order - b.order).map((track) => track.id)
+		).toEqual(['track-audio', groupId, 'track-video-main', 'track-video-overlay']);
+		expect(commandHistory.getLastCommandType()).toBe('MOVE_TRACK');
+	});
+
+	it('renames with trimmed non-empty text and keeps the edit undoable', () => {
+		expect(renameTrack('track-video-main', '  Primary video  ')).toBe(true);
+		expect(timelineStore.tracks.find((track) => track.id === 'track-video-main')?.name).toBe(
+			'Primary video'
+		);
+		expect(renameTrack('track-video-main', '   ')).toBe(false);
+		commandHistory.undo();
+		expect(timelineStore.tracks.find((track) => track.id === 'track-video-main')?.name).toBe(
+			'Video'
+		);
 	});
 });

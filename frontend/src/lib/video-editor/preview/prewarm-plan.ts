@@ -1,5 +1,6 @@
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { frameToSourceSeconds } from '../media/render-plan';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 
 export interface PreviewPrewarmTarget {
 	itemId: string;
@@ -19,7 +20,9 @@ export function collectPreviewPrewarmTargets(input: {
 	const lookaheadFrames = Math.max(1, Math.round((input.lookaheadSeconds ?? 2.5) * input.fps));
 	const limit = Math.max(0, Math.floor(input.limit ?? 2));
 	const visibleTracks = new Set(
-		input.tracks.filter((track) => track.visible).map((track) => track.id)
+		effectiveMediaTracks(input.tracks)
+			.filter((track) => track.visible)
+			.map((track) => track.id)
 	);
 	const seen = new Set<string>();
 	const targets: PreviewPrewarmTarget[] = [];

@@ -7,6 +7,7 @@
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { LottieRenderer } from '$lib/video-editor/lottie/frame-provider';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
 	import {
 		applySourceEdit,
 		SourceEditError,
@@ -52,10 +53,14 @@
 	const hasVideo = $derived(kind !== 'audio');
 	const hasAudio = $derived(kind === 'audio' || (kind === 'video' && !!media?.audioCodec));
 	const videoTracks = $derived(
-		timelineStore.tracks.filter((track) => track.kind !== 'audio' && !track.locked)
+		effectiveMediaTracks(timelineStore.tracks).filter(
+			(track) => track.kind !== 'audio' && !track.locked
+		)
 	);
 	const audioTracks = $derived(
-		timelineStore.tracks.filter((track) => track.kind === 'audio' && !track.locked)
+		effectiveMediaTracks(timelineStore.tracks).filter(
+			(track) => track.kind === 'audio' && !track.locked
+		)
 	);
 
 	let sourceUrl = $state('');

@@ -24,6 +24,7 @@ import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
 import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
 import { clonePropertyRuntime } from './property-runtime';
 import { hasPathVertexKeyframes } from '../path-vertex-keyframes';
+import { effectiveMediaTracks } from '../utils/track-groups';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -33,10 +34,10 @@ export function addItems(newItems: TimelineItem[]): void {
 
 export function addTextItem(label: string): string {
 	return execute('ADD_TEXT_ITEM', () => {
-		const topVisualTrack = timelineStore.tracks
-			.filter((track) => track.kind !== 'audio')
+		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
+			.filter((track) => track.kind !== 'audio' && !track.locked)
 			.toSorted((left, right) => left.order - right.order)[0];
-		if (!topVisualTrack) throw new Error('A visual track is required to add text.');
+		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add text.');
 
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
@@ -109,7 +110,7 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 /** Add a three-second adjustment layer on the top visual track at the playhead. */
 export function addAdjustmentLayer(label: string): string {
 	return execute('ADD_ADJUSTMENT_LAYER', () => {
-		let topVisualTrack = timelineStore.tracks
+		let topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
 			.filter((track) => track.kind !== 'audio' && !track.locked)
 			.toSorted((left, right) => left.order - right.order)[0];
 		if (!topVisualTrack) throw new Error('An unlocked visual track is required.');
@@ -148,7 +149,9 @@ function deletableItemIds(ids: string[], expandLinked: boolean): string[] {
 	const requested = expandLinked
 		? expandSelectionWithLinkedItems(timelineStore.items, ids)
 		: [...new Set(ids)];
-	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
 	return requested.filter((id) => {
 		const item = timelineStore.itemById.get(id);
 		return item !== undefined && trackById.get(item.trackId)?.locked !== true;
@@ -205,7 +208,9 @@ function pathTopologyChangeIsLocked(item: TimelineItem, patch: Partial<TimelineI
 /** Toggle reverse playback for media clips and their linked A/V companions. */
 export function setItemsReversed(ids: string[], isReversed: boolean): string[] {
 	const expanded = expandSelectionWithLinkedItems(timelineStore.items, ids);
-	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
 	const targets = expanded.filter((id) => {
 		const item = timelineStore.itemById.get(id);
 		return (
@@ -249,7 +254,9 @@ export function joinItems(ids: string[]): string[] {
 		groups.set(key, group);
 	}
 	const lockedTrackIds = new Set(
-		timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		effectiveMediaTracks(timelineStore.tracks)
+			.filter((track) => track.locked)
+			.map((track) => track.id)
 	);
 	const joinableGroups = [...groups.values()].filter(
 		(group) => !lockedTrackIds.has(group[0]!.trackId) && canJoinMultipleItems(group)
@@ -449,7 +456,9 @@ export function rippleDeleteItems(
 		if (shift > 0) baseShiftByItemId.set(item.id, shift);
 	}
 
-	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
 	const remainingById = new Map(remainingItems.map((item) => [item.id, item]));
 	const shiftByItemId = new Map<string, number>();
 	for (const [itemId, shift] of baseShiftByItemId) {

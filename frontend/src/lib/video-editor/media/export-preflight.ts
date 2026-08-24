@@ -2,6 +2,7 @@
 
 import type { VideoCodec } from 'mediabunny';
 import type { Project, TimelineItem, TimelineTrack, TimelineTransition } from '../project/types';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import type { MediaPreparationStatus } from './pool.svelte';
 import { assessSmartCopy, type SmartCopyFormat } from './smart-copy-plan';
 import type { MediaMetadata } from './types';
@@ -102,7 +103,11 @@ function resolveRange(
 ): ExportPreflightRange {
 	const startFrame = Math.max(0, Math.floor(range?.startFrame ?? 0));
 	const endFrame = Math.max(0, Math.floor(range?.endFrame ?? projectEnd(items)));
-	return { startFrame, endFrame, frameCount: Math.max(0, endFrame - startFrame) };
+	return {
+		startFrame,
+		endFrame,
+		frameCount: Math.max(0, endFrame - startFrame)
+	};
 }
 
 function overlapsRange(item: TimelineItem, range: ExportPreflightRange): boolean {
@@ -119,8 +124,9 @@ function visibleItems(
 	tracks: readonly TimelineTrack[],
 	range: ExportPreflightRange
 ): TimelineItem[] {
-	const byId = new Map(tracks.map((track) => [track.id, track]));
-	const activeIds = activeTrackIds(tracks);
+	const resolvedTracks = effectiveMediaTracks(tracks);
+	const byId = new Map(resolvedTracks.map((track) => [track.id, track]));
+	const activeIds = activeTrackIds(resolvedTracks);
 	return items.filter((item) => {
 		const track = byId.get(item.trackId);
 		return Boolean(track && activeIds.has(track.id) && track.visible && overlapsRange(item, range));
@@ -135,7 +141,7 @@ function hasAudibleContent(
 	items: readonly TimelineItem[],
 	tracks: readonly TimelineTrack[]
 ): boolean {
-	const byId = new Map(tracks.map((track) => [track.id, track]));
+	const byId = new Map(effectiveMediaTracks(tracks).map((track) => [track.id, track]));
 	return items.some((item) => {
 		if (item.type !== 'audio' && item.type !== 'video') return false;
 		const track = byId.get(item.trackId);
@@ -226,7 +232,11 @@ export function assessExportPreflight(input: ExportPreflightInput): ExportPrefli
 	const mediaIds = referencedMediaIds(input.items);
 	const missingCount = [...mediaIds].filter((id) => input.mediaStatuses[id] !== 'ready').length;
 	if (missingCount > 0) {
-		checks.push({ id: 'missing-media', severity: 'error', count: missingCount });
+		checks.push({
+			id: 'missing-media',
+			severity: 'error',
+			count: missingCount
+		});
 	} else if (mediaIds.size > 0) {
 		checks.push({ id: 'media-ready', severity: 'ok', count: mediaIds.size });
 	}

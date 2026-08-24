@@ -3,6 +3,7 @@
 import type { CaptionSource, TextStyleFields, TimelineItem } from '../../project/types';
 import { execute } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { effectiveMediaTracks } from '../utils/track-groups';
 
 export interface CaptionConsolidationOptions {
 	clipId?: string;
@@ -22,7 +23,9 @@ export interface CaptionConsolidationResult {
 type ConsolidatableCaptionItem = TimelineItem & {
 	type: 'text';
 	text: string;
-	captionSource: CaptionSource & { type: 'subtitle-import' | 'embedded-subtitles' };
+	captionSource: CaptionSource & {
+		type: 'subtitle-import' | 'embedded-subtitles';
+	};
 };
 
 function textStyle(item: TimelineItem): TextStyleFields {
@@ -120,7 +123,9 @@ export function consolidateCaptionItems(
 	options: CaptionConsolidationOptions = {}
 ): CaptionConsolidationResult {
 	const lockedTrackIds = new Set(
-		timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		effectiveMediaTracks(timelineStore.tracks)
+			.filter((track) => track.locked)
+			.map((track) => track.id)
 	);
 	const eligibleItems = timelineStore.items.filter((item) => !lockedTrackIds.has(item.trackId));
 	const plan = planCaptionConsolidation(eligibleItems, options);

@@ -3,6 +3,7 @@
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import {
 	extractMatroskaTextSubtitleTracksFromBlob,
 	type EmbeddedSubtitleScanOptions,
@@ -66,8 +67,16 @@ export async function scanEmbeddedSubtitleTracks(
 ): Promise<EmbeddedSubtitleScanResult> {
 	const cached = await getEmbeddedSubtitleCache(media);
 	if (cached) {
-		options.onProgress?.({ bytesRead: blob.size, totalBytes: blob.size, clusters: 0 });
-		return { tracks: cached.tracks, scannedAt: cached.scannedAt, fromCache: true };
+		options.onProgress?.({
+			bytesRead: blob.size,
+			totalBytes: blob.size,
+			clusters: 0
+		});
+		return {
+			tracks: cached.tracks,
+			scannedAt: cached.scannedAt,
+			fromCache: true
+		};
 	}
 	const tracks = await extractMatroskaTextSubtitleTracksFromBlob(blob, options);
 	let scannedAt = Date.now();
@@ -178,7 +187,12 @@ function buildSubtitleForClip(
 		paddingX: 16,
 		paddingY: 8,
 		borderRadius: 8,
-		textShadow: { offsetX: 0, offsetY: 3, blur: 10, color: 'rgba(0, 0, 0, 0.75)' },
+		textShadow: {
+			offsetX: 0,
+			offsetY: 3,
+			blur: 10,
+			color: 'rgba(0, 0, 0, 0.75)'
+		},
 		transform: {
 			x: 0,
 			y: Math.round(options.canvasHeight * 0.32),
@@ -207,7 +221,9 @@ function chooseCaptionTrack(
 	remainingItems: readonly TimelineItem[],
 	segments: readonly TimelineItem[]
 ): CaptionTrackChoice {
-	for (const track of tracks.toSorted((left, right) => left.order - right.order)) {
+	for (const track of effectiveMediaTracks(tracks).toSorted(
+		(left, right) => left.order - right.order
+	)) {
 		if (track.kind === 'audio' || track.locked) continue;
 		const items = remainingItems.filter((item) => item.trackId === track.id);
 		if (segments.every((segment) => items.every((item) => !rangesOverlap(segment, item)))) {
@@ -255,7 +271,11 @@ export function insertEmbeddedSubtitleTrack(
 		.map((clip) => buildSubtitleForClip(media, track, clip, options))
 		.filter((item): item is TimelineItem => item !== null);
 	if (segments.length === 0 && obsoleteIds.size === 0) {
-		return { itemIds: [], cueCount: 0, trackLabel: formatEmbeddedSubtitleTrackLabel(track) };
+		return {
+			itemIds: [],
+			cueCount: 0,
+			trackLabel: formatEmbeddedSubtitleTrackLabel(track)
+		};
 	}
 
 	return execute('INSERT_EMBEDDED_SUBTITLES', () => {

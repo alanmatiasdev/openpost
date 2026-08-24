@@ -4,6 +4,7 @@ import { resolveAnimatedItemAt } from '../animated-properties';
 import { execute } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { snapshotTimelineState } from '../utils/state-snapshot.svelte';
+import { isTrackEffectivelyLocked } from '../utils/track-groups';
 import { pruneInvalidTransitions } from './transitions.svelte';
 import { transitionsStore } from './transitions-store.svelte';
 
@@ -33,7 +34,7 @@ export function freezeFrameBlockReason(
 	playheadFrame: number
 ): FreezeFrameBlockReason | null {
 	if (!item || item.type !== 'video') return 'not-video';
-	if (timelineStore.tracks.find((track) => track.id === item.trackId)?.locked) {
+	if (isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) {
 		return 'locked-track';
 	}
 	if (playheadFrame <= item.from || playheadFrame >= item.from + item.durationInFrames) {

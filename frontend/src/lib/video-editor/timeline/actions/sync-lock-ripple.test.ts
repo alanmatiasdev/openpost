@@ -50,10 +50,32 @@ beforeEach(() => {
 });
 
 describe('sync-lock ripple previews', () => {
+	it('does not ripple children of a locked group', () => {
+		const tracks = [
+			track('video'),
+			track('group', { isGroup: true, kind: undefined, locked: true }),
+			track('audio', { parentTrackId: 'group' })
+		];
+		expect(
+			buildInsertedGapPreviewUpdatesForSyncLockedTracks({
+				items: [item({ id: 'audio', trackId: 'audio', from: 60 })],
+				tracks,
+				editedTrackIds: new Set(['video']),
+				cutFrame: 30,
+				amount: 15
+			})
+		).toEqual([]);
+	});
+
 	it('previews every removed-interval overlap shape on sync-locked tracks', () => {
 		const items = [
 			item({ id: 'edited', trackId: 'video', from: 50, durationInFrames: 30 }),
-			item({ id: 'straddled', trackId: 'audio', from: 40, durationInFrames: 60 }),
+			item({
+				id: 'straddled',
+				trackId: 'audio',
+				from: 40,
+				durationInFrames: 60
+			}),
 			item({ id: 'covered', trackId: 'audio', from: 50, durationInFrames: 30 }),
 			item({ id: 'after', trackId: 'audio', from: 110, durationInFrames: 10 })
 		];
@@ -74,7 +96,12 @@ describe('sync-lock ripple previews', () => {
 
 	it('previews an inserted gap by growing straddlers and shifting later items', () => {
 		const items = [
-			item({ id: 'straddled', trackId: 'audio', from: 90, durationInFrames: 30 }),
+			item({
+				id: 'straddled',
+				trackId: 'audio',
+				from: 90,
+				durationInFrames: 30
+			}),
 			item({ id: 'after', trackId: 'audio', from: 130, durationInFrames: 10 })
 		];
 
@@ -244,7 +271,10 @@ describe('sync-lock ripple commits', () => {
 		);
 		expect(splitTail).toMatchObject({ from: 20, durationInFrames: 20 });
 		expect(transitionsStore.list).toEqual([
-			expect.objectContaining({ fromItemId: splitTail?.id, toItemId: 'video-2' })
+			expect.objectContaining({
+				fromItemId: splitTail?.id,
+				toItemId: 'video-2'
+			})
 		]);
 	});
 

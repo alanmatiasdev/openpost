@@ -18,6 +18,7 @@ import { getUniqueLinkedItemAnchorIds } from '../utils/linked-items';
 import { getItemSourceSpanSeconds, sourceSecondsToTimelineFrame } from '../utils/media-item-frames';
 import { pruneInvalidTransitions } from './transitions.svelte';
 import { propagateRemovedIntervalsToSyncLockedTracks } from './sync-lock-ripple';
+import { effectiveMediaTracks } from '../utils/track-groups';
 
 export interface SourceRange {
 	start: number;
@@ -113,14 +114,21 @@ export function removeTimelineRangesFromItems(
 	afterRemove?: () => void
 ): RangeRemovalResult {
 	if (itemIds.length === 0) {
-		return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 };
+		return {
+			analyzedItemCount: 0,
+			removedRangeCount: 0,
+			removedItemCount: 0,
+			splitCount: 0
+		};
 	}
 
 	return execute(commandType, () => {
 		const timelineFps = timelineStore.fps;
 		const initialItems = timelineStore.items;
 		const lockedTrackIds = new Set(
-			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+			effectiveMediaTracks(timelineStore.tracks)
+				.filter((track) => track.locked)
+				.map((track) => track.id)
 		);
 		const anchorIds = getUniqueLinkedItemAnchorIds(initialItems, itemIds);
 		const anchors = anchorIds
@@ -135,7 +143,12 @@ export function removeTimelineRangesFromItems(
 			);
 
 		if (anchors.length === 0) {
-			return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 };
+			return {
+				analyzedItemCount: 0,
+				removedRangeCount: 0,
+				removedItemCount: 0,
+				splitCount: 0
+			};
 		}
 
 		const anchorDescriptors = anchors.map((item) => ({

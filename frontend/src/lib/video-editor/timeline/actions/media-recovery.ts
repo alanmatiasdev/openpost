@@ -3,6 +3,7 @@ import { mediaCanRecoverItemType } from '../../media/media-recovery';
 import type { MediaMetadata } from '../../media/types';
 import { execute } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { isTrackEffectivelyLocked } from '../utils/track-groups';
 
 export type OrphanRelinkResult =
 	| { ok: true; itemIds: string[] }
@@ -60,7 +61,6 @@ export function relinkOrphanedClip(itemId: string, replacement: MediaMetadata): 
 export function relinkOrphanedClips(
 	requests: readonly { itemId: string; replacement: MediaMetadata }[]
 ): OrphanRelinkResult {
-	const trackById = new Map(timelineStore.tracks.map((track) => [track.id, track]));
 	const updates = new Map<string, { item: TimelineItem; replacement: MediaMetadata }>();
 	for (const request of requests) {
 		const anchor = timelineStore.itemById.get(request.itemId);
@@ -71,7 +71,7 @@ export function relinkOrphanedClips(
 		const targets = timelineStore.items.filter(
 			(item) => item.mediaId === anchor.mediaId && itemAcceptsMedia(item, request.replacement)
 		);
-		if (targets.some((item) => trackById.get(item.trackId)?.locked === true)) {
+		if (targets.some((item) => isTrackEffectivelyLocked(item.trackId, timelineStore.tracks))) {
 			return { ok: false, reason: 'locked' };
 		}
 		for (const item of targets) updates.set(item.id, { item, replacement: request.replacement });

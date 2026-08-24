@@ -45,6 +45,23 @@ describe('preview playback settings', () => {
 		);
 	});
 
+	it('applies group visibility, mute, and solo to preview gain', () => {
+		const group = {
+			...track,
+			id: 'group',
+			isGroup: true,
+			muted: true
+		};
+		const child = { ...track, parentTrackId: group.id };
+		expect(previewItemVolume(item, [group, child], 1, false)).toBe(0);
+		expect(
+			previewItemVolume(item, [{ ...group, muted: false, visible: false }, child], 1, false)
+		).toBe(0);
+		expect(
+			previewItemVolume(item, [{ ...group, muted: false, solo: true }, child], 1, false)
+		).toBeCloseTo(0.4);
+	});
+
 	it('builds stable frame capture names', () => {
 		expect(buildFrameFileName(48, 24, 240)).toBe('frame-048-00-00-02-00.png');
 		expect(buildFrameFileName(-1, 0, 0)).toBe('frame-0-00-00-00-00.png');

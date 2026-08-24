@@ -6,6 +6,7 @@
 	import { getMediaObjectUrl } from '$lib/video-editor/media/media-source';
 	import { addItems } from '$lib/video-editor/timeline/actions/items';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { nestSequence, switchSequence } from '$lib/video-editor/sequences/sequence-actions';
@@ -166,7 +167,7 @@
 		const isImage = media.tags.includes('image');
 		const itemType = isAudio ? 'audio' : isLottie ? 'lottie' : isImage ? 'image' : 'video';
 		const durationFrames = Math.max(1, Math.round((media.duration || (isImage ? 3 : 1)) * fps));
-		const targetTrack = timelineStore.tracks
+		const targetTrack = effectiveMediaTracks(timelineStore.tracks)
 			.filter(
 				(track) => (isAudio ? track.kind === 'audio' : track.kind !== 'audio') && !track.locked
 			)
