@@ -43,10 +43,10 @@
 	<div class="marketing-shell grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
 		<div class="max-w-4xl">
 			<p class="section-label">Self-hosted deployment</p>
-			<h1 class="marketing-title mt-5">Operate OpenPost on your infrastructure.</h1>
+			<h1 class="marketing-title mt-5">Your server. Your data. The same OpenPost.</h1>
 			<p class="marketing-copy mt-6 max-w-3xl">
-				Run the complete AGPL-licensed product on a server you control. You choose the data location
-				and deployment settings, and you own the service work described below.
+				Run the complete AGPL-licensed product on infrastructure you control. You choose the data
+				location and deployment settings, and you own the operating work described below.
 			</p>
 			<div class="mt-8 flex flex-wrap gap-3">
 				<Button href={selfHostedDeploymentSummary.docsUrl} size="lg">

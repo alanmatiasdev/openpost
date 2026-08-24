@@ -75,9 +75,10 @@
 		<div class="grid gap-12 lg:grid-cols-[1fr_22rem] lg:items-end">
 			<div class="max-w-4xl">
 				<p class="section-label">Open source</p>
-				<h1 class="marketing-title mt-5">Run OpenPost your way.</h1>
+				<h1 class="marketing-title mt-5">The whole server, in the open.</h1>
 				<p class="mt-5 text-sm font-medium text-foreground">
-					This page is for operators and developers evaluating the open-source deployment path.
+					AGPL-3.0-only. Every adapter, job queue, and encryption path is in the repository you can
+					read right now.
 				</p>
 				<p class="marketing-copy mt-6">
 					Use the Hosted service or deploy the AGPL-licensed server yourself. Both use the same

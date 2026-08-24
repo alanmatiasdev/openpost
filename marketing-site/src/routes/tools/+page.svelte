@@ -77,7 +77,7 @@
 			</h1>
 		</div>
 		<div>
-			<p class="marketing-copy">This page is for creators preparing a post before signing up.</p>
+			<p class="marketing-copy">Eight free tools. No account, no upload, no signup wall.</p>
 			<p class="marketing-copy mt-3">
 				Preview posts, check limits, split copy, prepare media, and plan a weekly schedule in your
 				browser.

@@ -24,9 +24,9 @@
 	<div class="marketing-shell grid gap-10 py-16 sm:py-24 lg:grid-cols-[1fr_21rem] lg:items-end">
 		<div class="max-w-4xl">
 			<p class="section-label">FAQ</p>
-			<h1 class="marketing-title mt-5">Know the boundary before you start.</h1>
+			<h1 class="marketing-title mt-5">Straight answers, including the limits.</h1>
 			<p class="mt-5 text-sm font-medium text-foreground">
-				This page is for people checking OpenPost setup, publishing, billing, and access rules.
+				Setup, publishing, billing, privacy, and self-hosting - answered without the sales filter.
 			</p>
 			<p class="marketing-copy mt-7">
 				These answers cover the questions that change setup, publishing, billing, or access. Each

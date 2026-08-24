@@ -72,11 +72,13 @@
 		<div class="grid gap-12 lg:grid-cols-[1fr_22rem] lg:items-end">
 			<div class="max-w-4xl">
 				<p class="section-label">Security</p>
-				<h1 class="marketing-title mt-5">Keep social credentials inside the publishing system.</h1>
+				<h1 class="marketing-title mt-5">
+					Your social keys stay encrypted. Tools get scoped tokens instead.
+				</h1>
 				<p class="marketing-copy mt-6">
-					People, AI tools, and API clients use OpenPost access that you can remove. Social account
-					keys stay encrypted inside OpenPost. If you self-host, you must secure the server, keys,
-					backups, and social apps.
+					AI tools and API clients never see your social account passwords; they use OpenPost tokens
+					you can scope and revoke. If you self-host, securing the server, keys, backups, and social
+					apps stays with you.
 				</p>
 				<div class="mt-8 flex flex-wrap gap-3">
 					<Button href={`${githubUrl}/blob/main/SECURITY.md`} size="lg">

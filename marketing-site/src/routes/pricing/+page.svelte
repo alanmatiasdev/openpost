@@ -42,12 +42,14 @@
 <section class="pricing-hero">
 	<div class="marketing-shell text-center">
 		<p class="section-label">Simple pricing</p>
-		<h1>Choose your plan.</h1>
-		<p>This page is for founders, teams, and agencies choosing a Hosted service plan.</p>
-		<p>Every plan includes the complete publishing workflow. Choose the limits that fit.</p>
+		<h1>Every feature on every plan. Pick your limits.</h1>
 		<p>
-			Hosted service plans cap workspaces, social accounts, scheduled posts, media storage, and
-			included seats at the values listed below.
+			The full publishing workflow ships on all plans: composer, calendar, media library, analytics,
+			API, CLI, and MCP.
+		</p>
+		<p>
+			Plans differ only in their caps: workspaces, social accounts, scheduled posts, media storage,
+			and seats. The exact numbers are below.
 		</p>
 	</div>
 </section>
@@ -68,8 +70,8 @@
 			<p class="section-label">Deployment alternative</p>
 			<h2 id="self-hosted-title">Run OpenPost yourself.</h2>
 			<p>
-				Self-hosting has <strong>no software fee</strong>. It is a deployment you operate, not a
-				Hosted service plan or a free tier of the Hosted service.
+				Self-hosting has <strong>no software fee</strong>. You run a deployment you own, not a
+				hosted plan and not a free tier of one. Your infrastructure, your provider API costs.
 			</p>
 		</div>
 		<div class="self-hosted-action">
