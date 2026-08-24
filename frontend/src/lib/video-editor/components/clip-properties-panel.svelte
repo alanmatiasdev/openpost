@@ -23,6 +23,7 @@
 	import TextPropertiesPanel from './text-properties-panel.svelte';
 	import SubtitlePropertiesPanel from './subtitle-properties-panel.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import CompositionControlOverrides from './composition-control-overrides.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -337,6 +338,9 @@
 				{m.video_editor_adjustment_layer_hint()}
 			</p>
 		{:else}
+			{#if item.type === 'composition'}
+				<CompositionControlOverrides {item} {onedit} />
+			{/if}
 			<section>
 				<h3
 					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"

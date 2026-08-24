@@ -315,6 +315,27 @@ export interface PropertyExpression {
 	enabled: boolean;
 }
 
+export const COMPOSITION_CONTROLS_VERSION = 1 as const;
+export type CompositionControlProperty =
+	| 'text.text'
+	| 'text.color'
+	| 'shape.fillColor'
+	| 'shape.strokeColor';
+export type CompositionControlKind = 'text' | 'color';
+export interface CompositionControlDefinition {
+	id: string;
+	name: string;
+	targetItemId: string;
+	property: CompositionControlProperty;
+	kind: CompositionControlKind;
+	defaultValue: string;
+}
+export interface CompositionControlSchema {
+	version: typeof COMPOSITION_CONTROLS_VERSION;
+	controls: CompositionControlDefinition[];
+}
+export type CompositionControlOverrides = Record<string, string>;
+
 /** Two-dimensional value used by coupled transform animation. */
 export interface Vector2 {
 	x: number;
@@ -502,6 +523,8 @@ export interface TimelineItem extends TextStyleFields {
 	compositionId?: string;
 	compositionWidth?: number;
 	compositionHeight?: number;
+	/** Per-instance values for controls published by a reusable composition. */
+	compositionControlOverrides?: CompositionControlOverrides;
 
 	// Source boundaries for media items (frames at the source's frame rate)
 	sourceStart?: number;
@@ -685,6 +708,7 @@ export interface SubComposition {
 	id: string;
 	name: string;
 	editorKind?: 'sequence' | 'composite-2d';
+	compositionControls?: CompositionControlSchema;
 	items: TimelineItem[];
 	tracks: TimelineTrack[];
 	transitions: TimelineTransition[];

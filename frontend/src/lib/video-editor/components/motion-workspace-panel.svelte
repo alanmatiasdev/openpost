@@ -12,6 +12,7 @@
 	import ClipPropertiesPanel from './clip-properties-panel.svelte';
 	import MotionPresetsPanel from './motion-presets-panel.svelte';
 	import TextMotionPanel from './text-motion-panel.svelte';
+	import CompositionControlsAuthoring from './composition-controls-authoring.svelte';
 
 	let {
 		itemId,
@@ -144,6 +145,7 @@
 			</Button>
 		{/if}
 	</section>
+	<CompositionControlsAuthoring {onedit} />
 	{#if supportsMotion}
 		<section class="rounded-md border border-[oklch(0.28_0.015_55)] bg-[oklch(0.16_0.01_55)] p-3">
 			<h3 class="text-sm font-medium">{m.video_editor_motion_parent_title()}</h3>

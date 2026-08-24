@@ -75,6 +75,7 @@ import {
 import { saveRenderedExportArtifact } from './persist-rendered-export';
 import { assessSmartCopy } from './smart-copy-plan';
 import { smartCopy } from './smart-copy';
+import { applyCompositionControlOverrides } from '../sequences/composition-controls';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -462,8 +463,14 @@ export class TimelineFrameRenderer {
 				(candidate) => candidate.id === resolvedItem.compositionId
 			);
 			if (!composition) return null;
-			let renderer = this.nestedRenderers.get(composition.id);
+			const rendererKey = `${composition.id}:${originalItem.id}:${JSON.stringify(originalItem.compositionControlOverrides ?? {})}`;
+			let renderer = this.nestedRenderers.get(rendererKey);
 			if (!renderer) {
+				const compositionItems = applyCompositionControlOverrides(
+					composition.items,
+					composition.compositionControls,
+					originalItem.compositionControlOverrides
+				);
 				renderer = new TimelineFrameRenderer(
 					{
 						...this.project,
@@ -474,7 +481,7 @@ export class TimelineFrameRenderer {
 							backgroundColor: composition.backgroundColor ?? '#000000'
 						},
 						timeline: {
-							items: composition.items,
+							items: compositionItems,
 							tracks: composition.tracks,
 							transitions: composition.transitions,
 							compositions: this.project.timeline?.compositions
@@ -487,7 +494,7 @@ export class TimelineFrameRenderer {
 					},
 					new Set([...this.ancestry, composition.id])
 				);
-				this.nestedRenderers.set(composition.id, renderer);
+				this.nestedRenderers.set(rendererKey, renderer);
 			}
 			const sourceFps = originalItem.sourceFps ?? composition.fps;
 			const nestedFrame = Math.max(

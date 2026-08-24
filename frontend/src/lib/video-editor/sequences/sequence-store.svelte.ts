@@ -11,6 +11,7 @@ import { createEmptyTimeline } from '../project/defaults';
 import { transitionsStore } from '../timeline/actions/transitions.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { snapshotTimelineState } from '../timeline/utils/state-snapshot.svelte';
+import { sanitizeCompositionControlSchema } from './composition-controls';
 
 export interface SequenceRegistrySnapshot {
 	compositions: SubComposition[];
@@ -120,6 +121,10 @@ function flushActive(): void {
 	);
 	if (index < 0) return;
 	const current = state.compositions[index]!;
+	const compositionControls = sanitizeCompositionControlSchema(
+		current.compositionControls,
+		snapshot.items
+	);
 	state.sequenceViewById[state.activeSequenceId] = {
 		currentFrame: timelineStore.currentFrame,
 		zoomLevel: timelineStore.zoomLevel,
@@ -127,6 +132,7 @@ function flushActive(): void {
 	};
 	state.compositions[index] = {
 		...current,
+		compositionControls,
 		items: snapshot.items,
 		tracks: snapshot.tracks,
 		transitions: snapshot.transitions ?? [],
@@ -165,10 +171,17 @@ export const sequenceStore = {
 		return sequenceStore.activeSequence?.height ?? state.rootResolution.height;
 	},
 	load(timeline: ProjectTimeline, rootResolution: ProjectResolution): void {
-		state.compositions = copy(timeline.compositions ?? []).map((composition) => ({
-			...composition,
-			editorKind: composition.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence'
-		}));
+		state.compositions = copy(timeline.compositions ?? []).map((composition) => {
+			const compositionControls = sanitizeCompositionControlSchema(
+				composition.compositionControls,
+				composition.items
+			);
+			return {
+				...composition,
+				editorKind: composition.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence',
+				compositionControls
+			};
+		});
 		const validIds = new Set(
 			state.compositions
 				.filter((composition) => composition.editorKind !== 'composite-2d')

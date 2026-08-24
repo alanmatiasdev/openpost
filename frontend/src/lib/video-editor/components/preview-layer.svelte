@@ -41,6 +41,7 @@
 	import type { RegisterPreviewSource } from '$lib/video-editor/preview/source-provider';
 	import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import { applyCompositionControlOverrides } from '$lib/video-editor/sequences/composition-controls';
 	import {
 		LottieRenderer,
 		mapTimelineFrameToLottieFrame
@@ -519,6 +520,11 @@
 		if (item.type !== 'composition' || !compositionId || !canvas || !editorSession.project) return;
 		const composition = sequenceStore.compositionById.get(compositionId);
 		if (!composition) return;
+		const compositionItems = applyCompositionControlOverrides(
+			composition.items,
+			composition.compositionControls,
+			item.compositionControlOverrides
+		);
 		const renderer = new TimelineFrameRenderer(
 			{
 				...editorSession.project,
@@ -529,7 +535,7 @@
 					backgroundColor: composition.backgroundColor ?? '#000000'
 				},
 				timeline: {
-					items: composition.items,
+					items: compositionItems,
 					tracks: composition.tracks,
 					transitions: composition.transitions,
 					compositions: sequenceStore.compositions

@@ -129,6 +129,9 @@ function remapItem(
 		originId: mapped(item.originId, maps.origin),
 		linkedGroupId: mapped(item.linkedGroupId, maps.linkedGroup),
 		compositionId: mapped(item.compositionId, maps.composition),
+		compositionControlOverrides: item.compositionControlOverrides
+			? { ...item.compositionControlOverrides }
+			: undefined,
 		...(item.transformParent && {
 			transformParent: {
 				...item.transformParent,
@@ -214,6 +217,15 @@ function remapComposition(
 			id: maps.track.get(track.id) ?? track.id
 		})),
 		items: composition.items.map((item) => remapItem(item, maps, mediaIdMap, createId)),
+		compositionControls: composition.compositionControls
+			? {
+					...composition.compositionControls,
+					controls: composition.compositionControls.controls.map((control) => ({
+						...control,
+						targetItemId: mapped(control.targetItemId, maps.item) ?? control.targetItemId
+					}))
+				}
+			: undefined,
 		transitions: composition.transitions.map((transition) =>
 			remapTransition(transition, maps, createId)
 		),

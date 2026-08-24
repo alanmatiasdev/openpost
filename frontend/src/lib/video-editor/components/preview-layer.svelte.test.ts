@@ -138,6 +138,82 @@ function nestedProject(): Project {
 	};
 }
 
+function publishedControlProject(): Project {
+	const accent: TimelineItem = {
+		id: 'accent',
+		trackId: 'visuals',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Accent',
+		type: 'shape',
+		shapeType: 'rectangle',
+		fillEnabled: true,
+		fillColor: '#ff0000',
+		transform: { width: WIDTH, height: HEIGHT, opacity: 1 }
+	};
+	const wrapper: TimelineItem = {
+		id: 'card-instance',
+		trackId: 'visuals',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Card',
+		type: 'composition',
+		compositionId: 'card',
+		compositionControlOverrides: { accent: '#22c55e' },
+		sourceStart: 0,
+		sourceEnd: 30,
+		sourceFps: 30,
+		speed: 1,
+		transform: { width: WIDTH, height: HEIGHT, opacity: 1 }
+	};
+	const visualTrack = {
+		id: 'visuals',
+		name: 'Visuals',
+		kind: 'video' as const,
+		height: 64,
+		locked: false,
+		visible: true,
+		muted: false,
+		solo: false,
+		order: 0
+	};
+	return {
+		...project(wrapper),
+		id: 'published-control-project',
+		timeline: {
+			tracks: [visualTrack],
+			items: [wrapper],
+			compositions: [
+				{
+					id: 'card',
+					name: 'Card',
+					editorKind: 'composite-2d',
+					items: [accent],
+					tracks: [visualTrack],
+					transitions: [],
+					fps: 30,
+					width: WIDTH,
+					height: HEIGHT,
+					durationInFrames: 30,
+					compositionControls: {
+						version: 1,
+						controls: [
+							{
+								id: 'accent',
+								name: 'Accent color',
+								targetItemId: accent.id,
+								property: 'shape.fillColor',
+								kind: 'color',
+								defaultValue: '#ff0000'
+							}
+						]
+					}
+				}
+			]
+		}
+	};
+}
+
 function projectWithAdjustment(item: TimelineItem): Project {
 	const adjustment: TimelineItem = {
 		id: 'grade',
@@ -533,6 +609,44 @@ describe('PreviewLayer GPU rendering', () => {
 			expect(context).not.toBeNull();
 			if (!context) return;
 			expect(Array.from(context.getImageData(4, HEIGHT - 5, 1, 1).data)).toEqual([255, 0, 0, 255]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('applies published control overrides in live preview and export', async () => {
+		const controlled = publishedControlProject();
+		const wrapper = controlled.timeline?.items[0];
+		expect(wrapper).toBeDefined();
+		if (!wrapper || !controlled.timeline) return;
+		editorSession.project = controlled;
+		sequenceStore.load(controlled.timeline, controlled.metadata);
+		const screen = await render(PreviewLayer, {
+			item: wrapper,
+			url: null,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const preview = screen.container.querySelector<HTMLCanvasElement>('canvas');
+		expect(preview).not.toBeNull();
+		if (!preview) return;
+		await vi.waitFor(() => {
+			const context = preview.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			expect(Array.from(context.getImageData(4, 4, 1, 1).data)).toEqual([34, 197, 94, 255]);
+		});
+
+		const renderer = new TimelineFrameRenderer(controlled);
+		try {
+			const frame = await renderer.render(0);
+			const context = frame.getContext('2d', { willReadFrequently: true });
+			expect(context).not.toBeNull();
+			if (!context) return;
+			expect(Array.from(context.getImageData(4, HEIGHT - 5, 1, 1).data)).toEqual([
+				34, 197, 94, 255
+			]);
 		} finally {
 			renderer.dispose();
 		}

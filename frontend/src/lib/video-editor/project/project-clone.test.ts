@@ -152,13 +152,48 @@ describe('cloneProjectDocument', () => {
 			{
 				id: 'sequence',
 				name: 'Sequence',
-				items: [],
-				tracks: [],
+				items: [
+					{
+						id: 'composition-title',
+						trackId: 'composition-track',
+						from: 0,
+						durationInFrames: 30,
+						label: 'Title',
+						type: 'text',
+						text: 'Hello'
+					}
+				],
+				tracks: [
+					{
+						id: 'composition-track',
+						name: 'Visual',
+						kind: 'video',
+						height: 64,
+						locked: false,
+						visible: true,
+						muted: false,
+						solo: false,
+						order: 0
+					}
+				],
 				transitions: [],
 				fps: 30,
 				width: 1920,
 				height: 1080,
-				durationInFrames: 30
+				durationInFrames: 30,
+				compositionControls: {
+					version: 1,
+					controls: [
+						{
+							id: 'headline',
+							name: 'Headline',
+							targetItemId: 'composition-title',
+							property: 'text.text',
+							kind: 'text',
+							defaultValue: 'Hello'
+						}
+					]
+				}
 			}
 		];
 		project.timeline!.topLevelSequenceIds = ['sequence'];
@@ -189,7 +224,8 @@ describe('cloneProjectDocument', () => {
 				durationInFrames: 30,
 				label: 'Nested',
 				type: 'composition',
-				compositionId: 'sequence'
+				compositionId: 'sequence',
+				compositionControlOverrides: { headline: 'Instance title' }
 			}
 		];
 
@@ -200,5 +236,13 @@ describe('cloneProjectDocument', () => {
 		expect(nested?.compositionId).toBe(sequenceId);
 		expect(captions?.captionSource?.clipId).toBe(source?.id);
 		expect(captions?.cues?.[0]?.id).not.toBe('cue');
+		const clonedComposition = clone.timeline!.compositions?.[0];
+		expect(clonedComposition?.compositionControls?.controls[0]?.targetItemId).toBe(
+			clonedComposition?.items[0]?.id
+		);
+		expect(nested?.compositionControlOverrides).toEqual({ headline: 'Instance title' });
+		expect(nested?.compositionControlOverrides).not.toBe(
+			project.timeline!.items[2]?.compositionControlOverrides
+		);
 	});
 });
