@@ -31,7 +31,7 @@ class EditorSession {
 	saving = $state(false);
 	saveError = $state('');
 
-	clock = new Clock({ fps: 30 });
+	clock = new Clock({ fps: 30, canSeek: () => !timelineStore.seekLocked });
 
 	private projectId: string | null = null;
 	private saveTimer: ReturnType<typeof setTimeout> | null = null;

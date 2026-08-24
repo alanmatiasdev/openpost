@@ -59,6 +59,8 @@ export interface GeneratedAudioImportOptions {
 	tags?: string[];
 }
 
+export type RecordedAudioImportOptions = GeneratedAudioImportOptions;
+
 async function writeFileForHandle(
 	handle: FileSystemFileHandle
 ): Promise<{ file: File; lastModified: number }> {
@@ -262,10 +264,11 @@ export async function importGeneratedImage(
 	}
 }
 
-/** Save locally generated speech or music into the workspace media pool. */
-export async function importGeneratedAudio(
+async function importWorkspaceAudio(
 	file: File,
-	options: GeneratedAudioImportOptions
+	options: GeneratedAudioImportOptions,
+	baseTags: string[],
+	probe?: { audioCodec?: string; bitrate?: number }
 ): Promise<MediaMetadata> {
 	const root = requireWorkspaceRoot();
 	const id = crypto.randomUUID();
@@ -281,11 +284,16 @@ export async function importGeneratedAudio(
 		width: 0,
 		height: 0,
 		fps: 0,
-		codec: '',
-		bitrate: duration > 0 ? Math.round((file.size * 8) / duration) : 0,
-		audioCodec: file.type === 'audio/wav' ? 'pcm_f32le' : undefined,
+		codec: probe?.audioCodec ?? '',
+		bitrate:
+			probe?.bitrate && probe.bitrate > 0
+				? probe.bitrate
+				: duration > 0
+					? Math.round((file.size * 8) / duration)
+					: 0,
+		audioCodec: probe?.audioCodec ?? (file.type === 'audio/wav' ? 'pcm_f32le' : undefined),
 		audioCodecSupported: true,
-		tags: [...new Set(['audio', 'ai-generated', ...(options.tags ?? [])])]
+		tags: [...new Set(['audio', ...baseTags, ...(options.tags ?? [])])]
 	};
 
 	try {
@@ -298,6 +306,37 @@ export async function importGeneratedAudio(
 		await rollbackNewGeneratedMedia(options.projectId, id);
 		throw error;
 	}
+}
+
+/** Save locally generated speech or music into the workspace media pool. */
+export async function importGeneratedAudio(
+	file: File,
+	options: GeneratedAudioImportOptions
+): Promise<MediaMetadata> {
+	return importWorkspaceAudio(file, options, ['ai-generated']);
+}
+
+/** Save a microphone take without classifying it as AI-generated media. */
+export async function importRecordedAudio(
+	file: File,
+	options: RecordedAudioImportOptions
+): Promise<MediaMetadata> {
+	let duration = options.duration;
+	let probe: { audioCodec?: string; bitrate?: number } | undefined;
+	try {
+		const result = await probeMediaFile(file);
+		if (
+			result.kind === 'audio' &&
+			Number.isFinite(result.durationSeconds) &&
+			result.durationSeconds > 0
+		) {
+			duration = result.durationSeconds;
+			probe = { audioCodec: result.audioCodec, bitrate: result.bitrate };
+		}
+	} catch (error) {
+		logger.warn('Could not probe recorded audio; using decoded capture duration', error);
+	}
+	return importWorkspaceAudio(file, { ...options, duration }, ['recorded'], probe);
 }
 
 /** Open the platform file picker and import every selection. */

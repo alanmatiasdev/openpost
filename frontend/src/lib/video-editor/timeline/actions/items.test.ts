@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { editorSession } from '$lib/video-editor/editor.svelte';
 import { createDefaultTracks } from '$lib/video-editor/project/defaults';
 import { commandHistory } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
@@ -69,6 +70,27 @@ describe('timeline marker actions', () => {
 		expect(timelineStore.markers).toEqual([]);
 		commandHistory.undo();
 		expect(timelineStore.markers.map((marker) => marker.id)).toEqual([second]);
+	});
+});
+
+describe('timeline navigation lock', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+	});
+
+	it('blocks user seeks during a voiceover take and restores them after unlock', () => {
+		setCurrentFrame(12);
+		expect(timelineStore.currentFrame).toBe(12);
+
+		timelineStore._setSeekLocked(true);
+		setCurrentFrame(90);
+		expect(timelineStore.currentFrame).toBe(12);
+		editorSession.clock.seek(75);
+		expect(timelineStore.currentFrame).toBe(12);
+
+		timelineStore._setSeekLocked(false);
+		setCurrentFrame(90);
+		expect(timelineStore.currentFrame).toBe(90);
 	});
 });
 

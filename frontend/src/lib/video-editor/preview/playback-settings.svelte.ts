@@ -87,6 +87,10 @@ export const previewPlaybackSettings = {
 		state.muted = !state.muted;
 		persist();
 	},
+	setMuted(muted: boolean): void {
+		state.muted = muted;
+		persist();
+	},
 	toggleAudioSkimming(): void {
 		state.audioSkimmingEnabled = !state.audioSkimmingEnabled;
 		persist();

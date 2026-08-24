@@ -604,5 +604,6 @@ export function setItemSpeed(id: string, speed: number): void {
 
 export function setCurrentFrame(frame: number): void {
 	// Playhead moves are not undoable — they're navigation, not edits.
+	if (timelineStore.seekLocked) return;
 	editorSession.clock.seek(frame);
 }

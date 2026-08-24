@@ -60,6 +60,7 @@ interface TimelineState {
 	selectedMarkerId: string | null;
 	settings: TimelineSettings;
 	zoomLevel: number;
+	seekLocked: boolean;
 	isDirty: boolean;
 }
 
@@ -79,6 +80,7 @@ const state = $state<TimelineState>({
 		maxUndoHistory: 100
 	},
 	zoomLevel: 1,
+	seekLocked: false,
 	isDirty: false
 });
 
@@ -128,6 +130,9 @@ export const timelineStore = {
 	},
 	get zoomLevel(): number {
 		return state.zoomLevel;
+	},
+	get seekLocked(): boolean {
+		return state.seekLocked;
 	},
 	get isDirty(): boolean {
 		return state.isDirty;
@@ -188,6 +193,7 @@ export const timelineStore = {
 		state.markers = [];
 		state.selectedMarkerId = null;
 		state.settings.currentFrame = 0;
+		state.seekLocked = false;
 		state.isDirty = false;
 		reindex();
 	},
@@ -291,6 +297,10 @@ export const timelineStore = {
 		state.settings.currentFrame = Math.max(0, Math.round(frame));
 	},
 
+	_setSeekLocked(locked: boolean): void {
+		state.seekLocked = locked;
+	},
+
 	_setScrollPosition(position: number): void {
 		state.settings.scrollPosition = position;
 	},
@@ -361,5 +371,6 @@ export const timelineStore = {
 		state.settings.maxUndoHistory = 100;
 		state.markers = [];
 		state.selectedMarkerId = null;
+		state.seekLocked = false;
 	}
 };

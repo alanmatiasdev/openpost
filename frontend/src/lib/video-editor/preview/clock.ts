@@ -44,6 +44,8 @@ export class AudioContextTimeSource implements ClockTimeSource {
 export interface ClockOptions {
 	fps: number;
 	timeSource?: ClockTimeSource;
+	/** Return false to reject external playhead seeks while a linear capture is active. */
+	canSeek?: () => boolean;
 	/** Throttle window for timeupdate events, seconds. */
 	timeUpdateInterval?: number;
 }
@@ -67,12 +69,14 @@ export class Clock {
 	private fps: number;
 	private readonly timeSource: ClockTimeSource;
 	private readonly timeUpdateInterval: number;
+	private readonly canSeek: () => boolean;
 	private onVisibility = (): void => this.catchUp();
 
 	constructor(options: ClockOptions) {
 		this.fps = options.fps > 0 ? options.fps : 30;
 		this.timeSource = options.timeSource ?? new PerformanceTimeSource();
 		this.timeUpdateInterval = options.timeUpdateInterval ?? 0.1;
+		this.canSeek = options.canSeek ?? (() => true);
 		this.frame = 0;
 		if (typeof document !== 'undefined') {
 			document.addEventListener('visibilitychange', this.onVisibility);
@@ -141,6 +145,7 @@ export class Clock {
 	}
 
 	seek(frame: number): void {
+		if (!this.canSeek()) return;
 		const next = Math.max(0, Math.round(frame));
 		const wasPlaying = this.playing;
 		if (wasPlaying) this.pause();

@@ -7,11 +7,12 @@ import { timelineStore } from '../timeline/stores/timeline-store.svelte';
  * Add generated audio to a fresh audio track at the captured playhead. The track and clip
  * share one command so one undo removes both.
  */
-export function insertGeneratedAudioOnNewTrack(
+function insertAudioOnNewTrack(
 	media: MediaMetadata,
-	playheadFrame: number
+	playheadFrame: number,
+	options: { commandType: string; trackName?: string }
 ): string {
-	return execute('INSERT_GENERATED_AUDIO', () => {
+	return execute(options.commandType, () => {
 		const from = Number.isFinite(playheadFrame) ? Math.max(0, Math.round(playheadFrame)) : 0;
 		const fps = timelineStore.fps;
 		const sourceFps = media.fps > 0 ? media.fps : fps;
@@ -24,7 +25,7 @@ export function insertGeneratedAudioOnNewTrack(
 				: -1) + 1;
 		const track: TimelineTrack = {
 			id: crypto.randomUUID(),
-			name: `Audio ${audioTrackCount + 1}`,
+			name: options.trackName ?? `Audio ${audioTrackCount + 1}`,
 			kind: 'audio',
 			height: 72,
 			locked: false,
@@ -54,5 +55,23 @@ export function insertGeneratedAudioOnNewTrack(
 		timelineStore._setTracks([...timelineStore.tracks, track]);
 		timelineStore._addItem(item);
 		return item.id;
+	});
+}
+
+export function insertGeneratedAudioOnNewTrack(
+	media: MediaMetadata,
+	playheadFrame: number
+): string {
+	return insertAudioOnNewTrack(media, playheadFrame, { commandType: 'INSERT_GENERATED_AUDIO' });
+}
+
+export function insertVoiceoverOnNewTrack(
+	media: MediaMetadata,
+	playheadFrame: number,
+	trackName: string
+): string {
+	return insertAudioOnNewTrack(media, playheadFrame, {
+		commandType: 'INSERT_VOICEOVER',
+		trackName
 	});
 }

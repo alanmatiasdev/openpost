@@ -3,7 +3,10 @@ import type { MediaMetadata } from '../media/types';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
-import { insertGeneratedAudioOnNewTrack } from './insert-generated-audio';
+import {
+	insertGeneratedAudioOnNewTrack,
+	insertVoiceoverOnNewTrack
+} from './insert-generated-audio';
 
 const media: MediaMetadata = {
 	id: 'generated-media',
@@ -84,5 +87,32 @@ describe('insertGeneratedAudioOnNewTrack', () => {
 			'video-track',
 			'audio-track'
 		]);
+	});
+
+	it('inserts a named voiceover take as one undoable action', () => {
+		const id = insertVoiceoverOnNewTrack(
+			{ ...media, id: 'voiceover-media', fileName: 'voiceover.webm', duration: 3.25 },
+			-12,
+			'Voiceover'
+		);
+		const inserted = timelineStore.itemById.get(id);
+
+		expect(inserted).toMatchObject({
+			from: 0,
+			durationInFrames: 98,
+			label: 'voiceover.webm',
+			mediaId: 'voiceover-media',
+			type: 'audio'
+		});
+		expect(timelineStore.tracks.find((track) => track.id === inserted?.trackId)).toMatchObject({
+			name: 'Voiceover',
+			kind: 'audio',
+			order: 2
+		});
+		expect(commandHistory.getLastCommandType()).toBe('INSERT_VOICEOVER');
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.has(id)).toBe(false);
+		expect(timelineStore.tracks).toHaveLength(2);
 	});
 });

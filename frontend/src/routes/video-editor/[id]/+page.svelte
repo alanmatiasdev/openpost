@@ -69,6 +69,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
 	import TimelinePanel from '$lib/video-editor/components/timeline-panel.svelte';
+	import { voiceoverRecorder } from '$lib/video-editor/recorder/voiceover-recorder.svelte';
 	import SequenceTabs from '$lib/video-editor/components/sequence-tabs.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import {
@@ -94,6 +95,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	});
 
 	$effect(() => {
+		voiceoverRecorder.reconcileProject(projectId);
 		if (projectId) void editorSession.load(projectId);
 		return () => {
 			editorSession.pausePlayback();
@@ -117,6 +119,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedTransitionId = null;
 		editorSession.scheduleAutosave();
 		showToast(m.video_editor_local_ai_added(), 'success');
+	}
+
+	function handleVoiceoverInserted(itemId: string): void {
+		selectedItemId = itemId;
+		selectedItemIds = [itemId];
+		selectedTransitionId = null;
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_voiceover_added(), 'success');
 	}
 
 	function handleVectorAssetInserted(itemId: string): void {
@@ -776,7 +786,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							</div>
 						{/if}
 						<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
-						<TransportBar />
+						<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
 					</section>
 				</div>
 

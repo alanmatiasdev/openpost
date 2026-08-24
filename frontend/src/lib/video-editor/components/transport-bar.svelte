@@ -20,6 +20,7 @@
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import { adaptivePreviewQuality } from '$lib/video-editor/preview/adaptive-preview-quality.svelte';
 	import { toast } from 'svelte-sonner';
+	import TimelineVoiceoverControl from './timeline-voiceover-control.svelte';
 	import {
 		setCurrentFrame,
 		setInPoint,
@@ -42,6 +43,11 @@
 	import VolumeXIcon from '@lucide/svelte/icons/volume-x';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
+
+	let {
+		projectId,
+		onvoiceoverinserted = () => {}
+	}: { projectId: string; onvoiceoverinserted?: (itemId: string) => void } = $props();
 
 	const playing = $derived(editorSession.clock.isPlaying);
 	const fps = $derived(editorSession.fps);
@@ -157,6 +163,7 @@
 			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
+			disabled={timelineStore.seekLocked}
 			aria-label={m.video_editor_go_to_start()}
 			onclick={() => setCurrentFrame(0)}
 		>
@@ -166,6 +173,7 @@
 			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
+			disabled={timelineStore.seekLocked}
 			aria-label={m.video_editor_step_back()}
 			onclick={() => setCurrentFrame(timelineStore.currentFrame - 1)}
 		>
@@ -189,6 +197,7 @@
 			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
+			disabled={timelineStore.seekLocked}
 			aria-label={m.video_editor_stop()}
 			onclick={() => editorSession.stopPlayback()}
 		>
@@ -198,11 +207,13 @@
 			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
+			disabled={timelineStore.seekLocked}
 			aria-label={m.video_editor_step_forward()}
 			onclick={() => setCurrentFrame(timelineStore.currentFrame + 1)}
 		>
 			<ChevronRightIcon />
 		</Button>
+		<TimelineVoiceoverControl {projectId} oninserted={onvoiceoverinserted} />
 
 		<Popover.Root>
 			<Popover.Trigger>

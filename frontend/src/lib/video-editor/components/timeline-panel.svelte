@@ -144,6 +144,7 @@
 		type TrackKind
 	} from '$lib/video-editor/timeline/actions/tracks';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import TimelineVoiceoverOverlay from './timeline-voiceover-overlay.svelte';
 	import {
 		canLinkSelection,
 		expandSelectionWithLinkedItems,
@@ -719,6 +720,7 @@
 	}
 
 	function seekAndSkim(clientX: number): void {
+		if (timelineStore.seekLocked) return;
 		const frame = frameFromClientX(clientX);
 		if (frame === undefined) return;
 		setCurrentFrame(frame);
@@ -769,7 +771,7 @@
 	}
 
 	function startRulerScrub(event: PointerEvent): void {
-		if (event.button !== 0 || rulerScrub) return;
+		if (event.button !== 0 || rulerScrub || timelineStore.seekLocked) return;
 		event.preventDefault();
 		event.stopPropagation();
 		editorSession.pausePlayback();
@@ -787,6 +789,7 @@
 	}
 
 	function onRulerKeydown(event: KeyboardEvent): void {
+		if (timelineStore.seekLocked) return;
 		let frame = timelineStore.currentFrame;
 		if (event.key === 'ArrowLeft') frame -= event.shiftKey ? 10 : 1;
 		else if (event.key === 'ArrowRight') frame += event.shiftKey ? 10 : 1;
@@ -2870,6 +2873,7 @@
 			aria-valuemin="0"
 			aria-valuemax={timelineStore.maxItemEndFrame}
 			aria-valuenow={timelineStore.currentFrame}
+			aria-disabled={timelineStore.seekLocked}
 			onkeydown={onRulerKeydown}
 			onpointerdown={startRulerScrub}
 		>
@@ -2918,6 +2922,7 @@
 				</button>
 			{/each}
 		</div>
+		<TimelineVoiceoverOverlay {timelineX} pixelsPerFrame={pxPerFrame} />
 
 		<!-- Tracks -->
 		{#each [...timelineStore.tracks].sort((a, b) => a.order - b.order) as track (track.id)}
