@@ -417,6 +417,54 @@ function mappedEffectTargets(
 	});
 }
 
+/** IDs of the compatible effect instances that selection-wide drafts and commits target. */
+export function getCompatibleGpuEffectIds(
+	displayItemId: string,
+	itemIds: readonly string[],
+	displayEffectId: string
+): string[] {
+	return mappedEffectTargets(displayItemId, itemIds, displayEffectId).flatMap((target) =>
+		target.effect.type === 'gpu' ? [target.effect.id] : []
+	);
+}
+
+/** Patch one compatible GPU effect across the current selection as one undo step. */
+export function setGpuEffectDataOnItems(
+	displayItemId: string,
+	itemIds: readonly string[],
+	effectId: string,
+	params: Record<string, GpuParamValue>
+): boolean {
+	const targets = mappedEffectTargets(displayItemId, itemIds, effectId).filter(
+		(target): target is MappedEffectTarget & { effect: GpuEffect } => {
+			const effect = target.effect;
+			return (
+				effect.type === 'gpu' &&
+				Object.entries(params).some(([name, value]) => effect.params[name] !== value)
+			);
+		}
+	);
+	if (targets.length === 0) return false;
+	return execute(
+		'SET_GPU_EFFECT_DATA_ON_ITEMS',
+		() => {
+			timelineStore._updateItems(
+				targets.map((target) => ({
+					id: target.itemId,
+					patch: {
+						effects: replaceAt(target.effects, target.index, {
+							...target.effect,
+							params: { ...target.effect.params, ...params }
+						})
+					}
+				}))
+			);
+			return true;
+		},
+		{ count: targets.length }
+	);
+}
+
 export function isEffectAtDefaults(effect: ItemEffect): boolean {
 	if (effect.type !== 'gpu') {
 		return (

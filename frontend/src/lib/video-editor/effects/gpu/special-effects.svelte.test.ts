@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGpuCompositor } from './compositor';
+import { serializeCurveChannelPoints } from './curves';
 import { getGpuEffectDefaultParams } from './registry';
 
 function sourceFrame(width: number, height: number): HTMLCanvasElement {
@@ -82,6 +83,48 @@ describe('special GPU effects in Chromium', () => {
 		expect(secondRendered, compositor.failureReason() ?? undefined).toBe(true);
 		const second = pixels(output);
 		expect(second).not.toEqual(first);
+		compositor.dispose();
+	});
+
+	it('renders stored multi-point curves through the production data texture', () => {
+		const width = 96;
+		const height = 64;
+		const source = sourceFrame(width, height);
+		const output = document.createElement('canvas');
+		const compositor = createGpuCompositor(output);
+		expect(compositor).not.toBeNull();
+		if (!compositor) return;
+		const defaults = getGpuEffectDefaultParams('gpu-curves');
+
+		expect(
+			compositor.render(source, width, height, [{ effectId: 'gpu-curves', params: defaults }]),
+			compositor.failureReason() ?? undefined
+		).toBe(true);
+		const identity = pixels(output);
+		expect(
+			compositor.render(source, width, height, [
+				{
+					effectId: 'gpu-curves',
+					params: {
+						...defaults,
+						masterPoints: serializeCurveChannelPoints([
+							{ x: 0, y: 0 },
+							{ x: 0.35, y: 0.12 },
+							{ x: 0.65, y: 0.88 },
+							{ x: 1, y: 1 }
+						])
+					}
+				}
+			]),
+			compositor.failureReason() ?? undefined
+		).toBe(true);
+		const graded = pixels(output);
+		expect(graded).not.toEqual(identity);
+		expect(
+			Array.from({ length: width * height }, (_, index) => graded[index * 4 + 3]).every(
+				(alpha) => alpha === 255
+			)
+		).toBe(true);
 		compositor.dispose();
 	});
 

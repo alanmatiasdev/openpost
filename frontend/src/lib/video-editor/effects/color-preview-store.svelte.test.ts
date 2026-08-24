@@ -29,4 +29,39 @@ describe('color preview store', () => {
 		expect(await capture).toBe(image);
 		expect(colorPreviewStore.frameCaptureItemId).toBeNull();
 	});
+
+	it('overrides one GPU effect for preview without mutating the stored stack', () => {
+		colorPreviewStore.__resetForTesting();
+		const effect = {
+			id: 'curves',
+			type: 'gpu' as const,
+			effectId: 'gpu-curves',
+			params: { masterShadowY: 0.25 },
+			enabled: true
+		};
+		colorPreviewStore.setEffectDraft('video', effect, { masterPoints: '[[0,0],[1,0.8]]' }, [
+			'peer-curves'
+		]);
+
+		const preview = colorPreviewStore.applyEffectDraft('video', [effect]);
+		expect(preview[0]).toMatchObject({
+			params: { masterShadowY: 0.25, masterPoints: '[[0,0],[1,0.8]]' }
+		});
+		expect(effect.params).toEqual({ masterShadowY: 0.25 });
+		const peerEffect = { ...effect, id: 'peer-curves' };
+		expect(colorPreviewStore.applyEffectDraft('other', [peerEffect])[0]).toMatchObject({
+			params: { masterPoints: '[[0,0],[1,0.8]]' }
+		});
+		expect(
+			colorPreviewStore.applyEffectDraft('other', [{ ...effect, id: 'unselected' }])[0]
+		).toEqual({
+			...effect,
+			id: 'unselected'
+		});
+
+		colorPreviewStore.clearEffectDraft('other', 'curves');
+		expect(colorPreviewStore.effectDraft).not.toBeNull();
+		colorPreviewStore.clearEffectDraft('video', 'curves');
+		expect(colorPreviewStore.effectDraft).toBeNull();
+	});
 });

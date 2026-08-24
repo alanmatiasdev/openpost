@@ -335,7 +335,10 @@
 		orders = trackOrderById,
 		frame = timelineStore.currentFrame
 	) {
-		return effectsForItemAtFrame(item, orders.get(item.trackId) ?? 0, layers, frame);
+		return colorPreviewStore.applyEffectDraft(
+			item.id,
+			effectsForItemAtFrame(item, orders.get(item.trackId) ?? 0, layers, frame)
+		);
 	}
 
 	const registerPreviewSource: RegisterPreviewSource = (itemId, provider) => {
@@ -752,6 +755,7 @@
 		void draftCrop;
 		void draftText;
 		void draftCornerPin;
+		void colorPreviewStore.effectDraft;
 		if (needsStackedComposition) scheduleStackFrame();
 	});
 </script>

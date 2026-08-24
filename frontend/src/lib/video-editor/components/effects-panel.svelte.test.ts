@@ -6,6 +6,8 @@ import { clearEffectDragData, getEffectDragData } from '$lib/video-editor/timeli
 import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
 import { ensureEffectPreviewPipeline } from '$lib/video-editor/effects/preview/effect-preview-engine';
 import { EFFECT_PRESETS_STORAGE_KEY } from '$lib/video-editor/effects/effect-presets';
+import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 import EffectsPanel from './effects-panel.svelte';
 
 const videoTrack: TimelineTrack = {
@@ -31,6 +33,7 @@ const videoItem: TimelineItem = {
 
 beforeEach(() => {
 	clearEffectDragData();
+	colorPreviewStore.__resetForTesting();
 	localStorage.removeItem(EFFECT_PRESETS_STORAGE_KEY);
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({
@@ -270,6 +273,78 @@ describe('EffectsPanel stack controls', () => {
 });
 
 describe('EffectsPanel typed GPU controls', () => {
+	it('coalesces a direct curve keyboard gesture into one undoable edit', async () => {
+		const curveParams = getGpuEffectDefaultParams('gpu-curves');
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [
+				{
+					...videoItem,
+					effects: [
+						{
+							id: 'curves-effect',
+							type: 'gpu',
+							effectId: 'gpu-curves',
+							enabled: true,
+							params: { ...curveParams }
+						}
+					]
+				},
+				{
+					...videoItem,
+					id: 'video-2',
+					from: 90,
+					label: 'Video 2',
+					effects: [
+						{
+							id: 'curves-effect-2',
+							type: 'gpu',
+							effectId: 'gpu-curves',
+							enabled: true,
+							params: { ...curveParams }
+						}
+					]
+				}
+			],
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(EffectsPanel, {
+			itemId: 'video',
+			itemIds: ['video', 'video-2'],
+			onedit
+		});
+		const point = screen.getByRole('slider', { name: 'Master curve point 2' }).element();
+		const undoCount = commandHistory.undoStack.length;
+		point.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+		point.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+		expect(colorPreviewStore.effectDraft?.effectIds.toSorted()).toEqual([
+			'curves-effect',
+			'curves-effect-2'
+		]);
+
+		await vi.waitFor(
+			() => {
+				for (const id of ['video', 'video-2']) {
+					const effect = timelineStore.itemById.get(id)?.effects?.[0];
+					expect(effect?.type === 'gpu' ? effect.params.masterPoints : undefined).toContain('0.27');
+				}
+			},
+			{ timeout: 1_000 }
+		);
+		expect(onedit).toHaveBeenCalledTimes(1);
+		expect(commandHistory.undoStack).toHaveLength(undoCount + 1);
+		expect(commandHistory.getLastCommandType()).toBe('SET_GPU_EFFECT_DATA_ON_ITEMS');
+
+		commandHistory.undo();
+		await vi.waitFor(() => {
+			for (const id of ['video', 'video-2']) {
+				const effect = timelineStore.itemById.get(id)?.effects?.[0];
+				expect(effect?.type === 'gpu' ? effect.params.masterPoints : undefined).toBe('');
+			}
+		});
+	});
+
 	it('keeps base parameter editing available when the playhead is outside the clip', async () => {
 		timelineStore.setAll({
 			tracks: [videoTrack],

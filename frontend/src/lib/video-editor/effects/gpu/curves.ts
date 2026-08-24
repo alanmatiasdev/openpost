@@ -1,14 +1,17 @@
 /** CPU-baked RGB curves LUT. Ported from FreeCut (MIT). */
 import type { GpuParamSchema, GpuParamValue, GpuParamValues, GpuShaderDefinition } from './types';
 
-interface Point {
+export interface CurvePoint {
 	x: number;
 	y: number;
 }
-const CHANNELS = ['master', 'red', 'green', 'blue'] as const;
+export const CURVE_CHANNELS = ['master', 'red', 'green', 'blue'] as const;
+export type CurveChannel = (typeof CURVE_CHANNELS)[number];
+export const CURVE_MAX_POINTS = 16;
+export const CURVE_POINT_MIN_GAP = 0.04;
 const defaults = { shadowX: 0.25, shadowY: 0.25, highlightX: 0.75, highlightY: 0.75 };
 
-const schema: GpuParamSchema[] = CHANNELS.flatMap((channel) => {
+const schema: GpuParamSchema[] = CURVE_CHANNELS.flatMap((channel) => {
 	const label = `${channel.slice(0, 1).toUpperCase()}${channel.slice(1)}`;
 	return [
 		{
@@ -42,6 +45,14 @@ const schema: GpuParamSchema[] = CHANNELS.flatMap((channel) => {
 			max: 1,
 			step: 0.01,
 			default: defaults.highlightY
+		},
+		{
+			name: curvePointsParamKey(channel),
+			label: `${label} points`,
+			type: 'text' as const,
+			default: '',
+			maxLength: 1024,
+			visibleWhen: () => false
 		}
 	];
 });
@@ -64,13 +75,15 @@ vec4 curvesFragment(vec2 vUv) {
 	schema,
 	uniformValues: () => ({}),
 	dataTexture: {
-		key: (params) => schema.map((entry) => params[entry.name] ?? entry.default).join('|'),
+		key: curvesLutKey,
 		build: (params) => ({ width: 256, height: 1, data: buildCurvesLut(params) })
 	}
 };
 
 export function buildCurvesLut(params: GpuParamValues): Uint8Array {
-	const channelPoints = new Map(CHANNELS.map((channel) => [channel, pointsFor(params, channel)]));
+	const channelPoints = new Map(
+		CURVE_CHANNELS.map((channel) => [channel, readCurveChannelPoints(params, channel)])
+	);
 	const data = new Uint8Array(256 * 4);
 	for (let index = 0; index < 256; index++) {
 		const input = index / 255;
@@ -87,7 +100,7 @@ export function buildCurvesLut(params: GpuParamValues): Uint8Array {
 	return data;
 }
 
-function pointsFor(params: GpuParamValues, channel: (typeof CHANNELS)[number]): Point[] {
+function legacyPointsFor(params: GpuParamValues, channel: CurveChannel): CurvePoint[] {
 	return [
 		{ x: 0, y: 0 },
 		{
@@ -102,12 +115,96 @@ function pointsFor(params: GpuParamValues, channel: (typeof CHANNELS)[number]): 
 	].toSorted((left, right) => left.x - right.x);
 }
 
+export function curvePointsParamKey(channel: CurveChannel): string {
+	return `${channel}Points`;
+}
+
+export function resetCurveChannelParams(channel: CurveChannel): GpuParamValues {
+	return {
+		[curvePointsParamKey(channel)]: '',
+		[`${channel}ShadowX`]: defaults.shadowX,
+		[`${channel}ShadowY`]: defaults.shadowY,
+		[`${channel}HighlightX`]: defaults.highlightX,
+		[`${channel}HighlightY`]: defaults.highlightY
+	};
+}
+
+export function serializeCurveChannelPoints(points: readonly CurvePoint[]): string {
+	return JSON.stringify(sanitizeCurveChannelPoints(points).map((point) => [point.x, point.y]));
+}
+
+export function sanitizeCurveChannelPoints(points: readonly CurvePoint[]): CurvePoint[] {
+	const cleaned = points
+		.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+		.map((point) => ({ x: clamp(point.x), y: clamp(point.y) }))
+		.toSorted((left, right) => left.x - right.x);
+	const endpointEpsilon = 0.000001;
+	const explicitStart = cleaned.find((point) => point.x <= endpointEpsilon);
+	const explicitEnd = cleaned.findLast((point) => point.x >= 1 - endpointEpsilon);
+	const start: CurvePoint = { x: 0, y: explicitStart?.y ?? 0 };
+	const end: CurvePoint = { x: 1, y: explicitEnd?.y ?? 1 };
+	const candidates = cleaned
+		.filter((point) => point.x > endpointEpsilon && point.x < 1 - endpointEpsilon)
+		.slice(0, CURVE_MAX_POINTS - 2);
+	let previousX = 0;
+	const interior = candidates.map((point, index) => {
+		const minimum = previousX + CURVE_POINT_MIN_GAP;
+		const maximum = 1 - (candidates.length - index) * CURVE_POINT_MIN_GAP;
+		const x = Number(Math.max(minimum, Math.min(maximum, point.x)).toFixed(6));
+		previousX = x;
+		return { x, y: point.y };
+	});
+	return [start, ...interior, end];
+}
+
+export function readCurveChannelPoints(
+	params: GpuParamValues,
+	channel: CurveChannel
+): CurvePoint[] {
+	const raw = params[curvePointsParamKey(channel)];
+	if (typeof raw === 'string' && raw.length > 0) {
+		try {
+			const parsed: unknown = JSON.parse(raw);
+			if (Array.isArray(parsed)) {
+				const points = parsed.flatMap((entry): CurvePoint[] => {
+					if (
+						!Array.isArray(entry) ||
+						entry.length < 2 ||
+						typeof entry[0] !== 'number' ||
+						typeof entry[1] !== 'number'
+					) {
+						return [];
+					}
+					return [{ x: entry[0], y: entry[1] }];
+				});
+				if (points.length === parsed.length && points.length >= 2) {
+					return sanitizeCurveChannelPoints(points);
+				}
+			}
+		} catch {
+			// Corrupt point JSON falls back to the stable numeric controls below.
+		}
+	}
+	return legacyPointsFor(params, channel);
+}
+
+export function isIdentityCurve(points: readonly CurvePoint[]): boolean {
+	return points.every((point) => Math.abs(point.x - point.y) < 0.0005);
+}
+
+function curvesLutKey(params: GpuParamValues): string {
+	return schema.map((entry) => params[entry.name] ?? entry.default).join('|');
+}
+
 function finite(value: GpuParamValue | undefined, fallback: number): number {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : fallback;
 }
 
-export function evaluateMonotoneCurve(points: Point[] | undefined, inputValue: number): number {
+export function evaluateMonotoneCurve(
+	points: readonly CurvePoint[] | undefined,
+	inputValue: number
+): number {
 	const source = points?.length
 		? points
 		: [

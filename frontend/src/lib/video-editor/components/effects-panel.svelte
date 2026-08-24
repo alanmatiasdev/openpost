@@ -27,6 +27,7 @@
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import {
 		addEffectTemplates,
+		getCompatibleGpuEffectIds,
 		isEffectAtDefaults,
 		moveEffectOnItems,
 		removeEffectOnItems,
@@ -34,6 +35,7 @@
 		setEffectEnabledOnItems,
 		setGpuEffectParam,
 		setGpuEffectData,
+		setGpuEffectDataOnItems,
 		setItemBlendMode,
 		updateEffect
 	} from '$lib/video-editor/timeline/actions/effects';
@@ -48,6 +50,7 @@
 	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import ColorScopes from './color-scopes.svelte';
 	import ColorWorkspace from './color-workspace.svelte';
+	import GpuCurvesEditor from './gpu-curves-editor.svelte';
 	import GpuParamControl from './gpu-param-control.svelte';
 	import EffectPicker, { type EffectPickerOption } from './effect-picker.svelte';
 	import type { GpuParamValue } from '$lib/video-editor/effects/gpu/types';
@@ -76,6 +79,7 @@
 		getGpuEffectKeyframeProperty,
 		resolveAnimatedEffectsAt
 	} from '$lib/video-editor/effects/effect-keyframes';
+	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 
 	let {
 		itemId,
@@ -314,6 +318,7 @@
 
 	onDestroy(() => {
 		clearEffectDragData();
+		if (itemId) colorPreviewStore.clearEffectDraft(itemId);
 		if (dragResetTimer) clearTimeout(dragResetTimer);
 	});
 
@@ -354,6 +359,24 @@
 					)
 				: setGpuEffectParam(itemId, effect.id, paramName, value);
 		if (updated) onedit();
+	}
+
+	function draftCurveParams(effect: GpuEffect, params: Record<string, GpuParamValue> | null): void {
+		if (!itemId) return;
+		if (params) {
+			colorPreviewStore.setEffectDraft(
+				itemId,
+				effect,
+				params,
+				getCompatibleGpuEffectIds(itemId, selectedEffectItemIds, effect.id)
+			);
+		} else colorPreviewStore.clearEffectDraft(itemId, effect.id);
+	}
+
+	function commitCurveParams(effect: GpuEffect, params: Record<string, GpuParamValue>): void {
+		if (!itemId) return;
+		colorPreviewStore.clearEffectDraft(itemId, effect.id);
+		if (setGpuEffectDataOnItems(itemId, selectedEffectItemIds, effect.id, params)) onedit();
 	}
 
 	function toggleEffectKeyframe(effect: GpuEffect, paramName: string): void {
@@ -610,6 +633,7 @@
 							/>
 						{/if}
 						{#if gpuDefinition && effect.type === 'gpu'}
+							{@const resolvedEffect = resolvedGpuEffect(effect)}
 							{#if effect.effectId === 'gpu-lut'}
 								<button
 									type="button"
@@ -620,20 +644,27 @@
 										: 'Choose .cube LUT'}</button
 								>
 							{/if}
-							<div class="mt-1 flex flex-col gap-1">
-								{#each gpuDefinition.schema as param (param.name)}
-									{#if !param.visibleWhen || param.visibleWhen(effect.params)}
-										{@const resolvedEffect = resolvedGpuEffect(effect)}
-										<GpuParamControl
-											{param}
-											value={resolvedEffect.params[param.name]}
-											effectLabel={effectLabel(effect)}
-											oncommit={(value) => commitGpuParam(effect, param.name, value)}
-											keyframe={effectKeyframeControl(effect, param.name)}
-										/>
-									{/if}
-								{/each}
-							</div>
+							{#if effect.effectId === 'gpu-curves'}
+								<GpuCurvesEditor
+									gpuEffect={resolvedEffect}
+									ondraft={(params) => draftCurveParams(resolvedEffect, params)}
+									oncommit={(params) => commitCurveParams(effect, params)}
+								/>
+							{:else}
+								<div class="mt-1 flex flex-col gap-1">
+									{#each gpuDefinition.schema as param (param.name)}
+										{#if !param.visibleWhen || param.visibleWhen(effect.params)}
+											<GpuParamControl
+												{param}
+												value={resolvedEffect.params[param.name]}
+												effectLabel={effectLabel(effect)}
+												oncommit={(value) => commitGpuParam(effect, param.name, value)}
+												keyframe={effectKeyframeControl(effect, param.name)}
+											/>
+										{/if}
+									{/each}
+								</div>
+							{/if}
 						{/if}
 					</div>
 				</li>

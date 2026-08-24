@@ -1,4 +1,6 @@
 import type { GradeEffectSnapshot, PickedColor } from './color-grade';
+import type { GpuEffect, ItemEffect } from './types';
+import type { GpuParamValues } from './gpu/types';
 
 export type ColorComparisonMode = 'after' | 'before' | 'split';
 export type ColorPickerKind = 'white-balance' | 'black-point' | 'white-point';
@@ -6,6 +8,12 @@ export type ColorPickerKind = 'white-balance' | 'black-point' | 'white-point';
 export interface ActiveColorPicker {
 	itemId: string;
 	kind: ColorPickerKind;
+}
+
+export interface ColorEffectDraft {
+	itemId: string;
+	effectIds: string[];
+	params: GpuParamValues;
 }
 
 let comparisonMode = $state<ColorComparisonMode>('after');
@@ -16,6 +24,7 @@ let gradeClipboard = $state<GradeEffectSnapshot[] | null>(null);
 let frameCaptureItemId = $state<string | null>(null);
 let frameCaptureResolver: ((image: ImageData | null) => void) | null = null;
 let frameCaptureTimeout: ReturnType<typeof setTimeout> | null = null;
+let effectDraft = $state<ColorEffectDraft | null>(null);
 
 function cloneGrade(grade: readonly GradeEffectSnapshot[]): GradeEffectSnapshot[] {
 	return grade.map((entry) => ({
@@ -39,6 +48,9 @@ export const colorPreviewStore = {
 	},
 	get frameCaptureItemId() {
 		return frameCaptureItemId;
+	},
+	get effectDraft() {
+		return effectDraft;
 	},
 	setComparisonMode(mode: ColorComparisonMode): void {
 		comparisonMode = mode;
@@ -96,11 +108,42 @@ export const colorPreviewStore = {
 	clearGradeClipboard(): void {
 		gradeClipboard = null;
 	},
+	setEffectDraft(
+		itemId: string,
+		effect: GpuEffect,
+		params: GpuParamValues,
+		effectIds: readonly string[] = [effect.id]
+	): void {
+		effectDraft = {
+			itemId,
+			effectIds: [...new Set([effect.id, ...effectIds])],
+			params: { ...effect.params, ...params }
+		};
+	},
+	clearEffectDraft(itemId?: string, effectId?: string): void {
+		if (
+			effectDraft &&
+			(itemId === undefined || effectDraft.itemId === itemId) &&
+			(effectId === undefined || effectDraft.effectIds.includes(effectId))
+		) {
+			effectDraft = null;
+		}
+	},
+	applyEffectDraft(_itemId: string, effects: readonly ItemEffect[]): ItemEffect[] {
+		const draft = effectDraft;
+		if (!draft) return [...effects];
+		return effects.map((effect) =>
+			draft.effectIds.includes(effect.id) && effect.type === 'gpu'
+				? { ...effect, params: { ...draft.params } }
+				: effect
+		);
+	},
 	__resetForTesting(): void {
 		this.cancelPick();
 		this.cancelFrameCapture();
 		comparisonMode = 'after';
 		splitPosition = 0.5;
 		gradeClipboard = null;
+		effectDraft = null;
 	}
 };
