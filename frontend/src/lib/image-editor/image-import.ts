@@ -1,4 +1,5 @@
 import { rasterizeSVGToPNG, isSVGFile } from '$lib/media/svg-rasterize';
+import { assertSafeSvg } from '$lib/media/safe-svg';
 import { IMAGE_EDITOR_LIMITS } from './types';
 
 export const IMAGE_EDITOR_IMPORT_LIMITS = {
@@ -122,67 +123,11 @@ export function assertImageEditorBatchMemory(currentBytes: number, nextBytes: nu
 }
 
 export async function assertSafeImageEditorSVG(file: Blob): Promise<void> {
-	let source = '';
 	try {
-		source = await file.text();
+		await assertSafeSvg(file);
 	} catch {
 		throw new ImageEditorImportError('unsafe_svg');
 	}
-	if (/<!DOCTYPE|<!ENTITY|<\?xml-stylesheet/i.test(source)) {
-		throw new ImageEditorImportError('unsafe_svg');
-	}
-	if (
-		!/<svg\b/i.test(source) ||
-		/<(?:script|foreignObject|iframe|object|embed|audio|video)\b/i.test(source) ||
-		/\son[a-z]+\s*=/i.test(source)
-	) {
-		throw new ImageEditorImportError('unsafe_svg');
-	}
-	for (const match of source.matchAll(/(?:href|xlink:href)\s*=\s*(['"])(.*?)\1/gi)) {
-		if (!safeSVGReference(match[2]?.trim() ?? '')) {
-			throw new ImageEditorImportError('unsafe_svg');
-		}
-	}
-	if (unsafeSVGStyle(source)) throw new ImageEditorImportError('unsafe_svg');
-	if (typeof DOMParser === 'undefined') return;
-	const parser = new DOMParser();
-	const document = parser.parseFromString(source, 'image/svg+xml');
-	if (
-		document.querySelector('parsererror') ||
-		document.documentElement.localName.toLowerCase() !== 'svg' ||
-		document.querySelector('script, foreignObject, iframe, object, embed, audio, video')
-	) {
-		throw new ImageEditorImportError('unsafe_svg');
-	}
-	for (const element of document.querySelectorAll('*')) {
-		for (const attribute of [...element.attributes]) {
-			const name = attribute.name.toLowerCase();
-			const value = attribute.value.trim();
-			if (name.startsWith('on')) throw new ImageEditorImportError('unsafe_svg');
-			if ((name === 'href' || name.endsWith(':href')) && !safeSVGReference(value)) {
-				throw new ImageEditorImportError('unsafe_svg');
-			}
-			if (name === 'style' && unsafeSVGStyle(value)) {
-				throw new ImageEditorImportError('unsafe_svg');
-			}
-		}
-	}
-	for (const style of document.querySelectorAll('style')) {
-		if (unsafeSVGStyle(style.textContent ?? '')) throw new ImageEditorImportError('unsafe_svg');
-	}
-}
-
-function safeSVGReference(value: string): boolean {
-	if (!value || value.startsWith('#')) return true;
-	return /^data:image\/(?:png|jpeg|webp);base64,/i.test(value);
-}
-
-function unsafeSVGStyle(value: string): boolean {
-	if (/@import/i.test(value)) return true;
-	return [...value.matchAll(/url\(([^)]+)\)/gi)].some((match) => {
-		const reference = match[1]?.trim().replace(/^['"]|['"]$/g, '') ?? '';
-		return !reference.startsWith('#');
-	});
 }
 
 async function decodeImageEditorImportDimensions(

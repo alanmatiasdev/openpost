@@ -101,15 +101,17 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 
 		if (kind === 'image') {
 			const bitmap = await createImageBitmap(file);
-			const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+			const width = bitmap.width;
+			const height = bitmap.height;
+			const canvas = new OffscreenCanvas(width, height);
 			canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
 			bitmap.close();
 			const thumbnailBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
 			const result: MediaProbeResult = {
 				kind,
 				durationSeconds: 0,
-				width: bitmap.width,
-				height: bitmap.height,
+				width,
+				height,
 				fps: 0,
 				thumbnailBlob,
 				hasAudio: false

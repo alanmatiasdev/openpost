@@ -24,6 +24,7 @@ import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
+import { prepareMediaImportFile } from './media-file-types';
 
 const logger = createLogger('MediaImport');
 
@@ -58,16 +59,6 @@ export interface GeneratedAudioImportOptions {
 	tags?: string[];
 }
 
-const AUDIO_EXTENSIONS = /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i;
-
-function guessKind(file: File): 'video' | 'audio' | 'image' {
-	if (file.type.startsWith('video/')) return 'video';
-	if (file.type.startsWith('audio/')) return 'audio';
-	if (file.type.startsWith('image/')) return 'image';
-	if (AUDIO_EXTENSIONS.test(file.name)) return 'audio';
-	return 'video';
-}
-
 async function writeFileForHandle(
 	handle: FileSystemFileHandle
 ): Promise<{ file: File; lastModified: number }> {
@@ -86,7 +77,6 @@ export async function importFile(
 	const root = requireWorkspaceRoot();
 	const id = crypto.randomUUID();
 	const { storageMode, projectId } = options;
-	const kind = 'kind' in handle && handle.kind === 'file' ? undefined : undefined;
 
 	mediaPool.upsert(
 		{
@@ -108,21 +98,10 @@ export async function importFile(
 	);
 
 	try {
-		let file: File;
-		let fileLastModified: number | undefined;
-		let storedHandle: FileSystemFileHandle | undefined;
-
-		if ('getFile' in handle) {
-			// SAFETY: getFile in handle implies FileSystemFileHandle.
-			const fileHandle = handle as FileSystemFileHandle;
-			const resolved = await writeFileForHandle(fileHandle);
-			file = resolved.file;
-			fileLastModified = resolved.lastModified;
-			storedHandle = storageMode === 'link' ? fileHandle : undefined;
-		} else {
-			throw new Error('Unsupported handle');
-		}
-		void kind;
+		const resolved = await writeFileForHandle(handle);
+		const file = await prepareMediaImportFile(resolved.file);
+		const fileLastModified = resolved.lastModified;
+		const storedHandle = storageMode === 'link' ? handle : undefined;
 
 		let thumbnailBlob: Blob | undefined;
 		let metadata: MediaMetadata;
@@ -330,7 +309,7 @@ export async function importFromPicker(options: ImportOptions): Promise<string[]
 				accept: {
 					'video/*': ['.mp4', '.webm', '.mov', '.mkv', '.m4v'],
 					'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg'],
-					'image/*': ['.png', '.jpg', '.jpeg', '.webp'],
+					'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'],
 					'application/json': ['.json'],
 					'application/zip': ['.lottie']
 				}

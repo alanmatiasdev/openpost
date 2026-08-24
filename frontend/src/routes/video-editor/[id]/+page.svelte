@@ -721,6 +721,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					</div>
 					{#if assetPanel === 'media'}
 						<MediaPoolList
+							{projectId}
 							onsequenceopen={resetTimelineSelection}
 							onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
 						/>
