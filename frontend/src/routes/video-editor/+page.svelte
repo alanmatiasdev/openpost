@@ -5,43 +5,35 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { m } from '$lib/paraglide/messages';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
+	import Logo from '$lib/components/Logo.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
-	import Logo from '$lib/components/Logo.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
+	import ProjectBrowser from '$lib/video-editor/components/project-browser.svelte';
 	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
+	import { duplicateProjectWithMedia } from '$lib/video-editor/project/project-operations';
+	import type { Project } from '$lib/video-editor/project/types';
+	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
 	import {
 		createProject,
-		deleteProject,
 		getAllProjects,
 		updateProject
 	} from '$lib/video-editor/workspace-fs/projects';
 	import { softDeleteProject } from '$lib/video-editor/workspace-fs/trash';
-	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
-	import type { Project } from '$lib/video-editor/project/types';
 	import FolderIcon from '@lucide/svelte/icons/folder-open';
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
-	import PencilIcon from '@lucide/svelte/icons/pencil';
-	import PlusIcon from '@lucide/svelte/icons/plus';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
-	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import { onMount } from 'svelte';
 
 	const gate = createWorkspaceGate();
-
 	let projects = $state.raw<Project[]>([]);
 	let loadingProjects = $state(false);
 	let projectsError = $state('');
 	let creating = $state(false);
-	let newProjectName = $state('');
-	let showNewProject = $state(false);
-	let pendingDelete = $state<Project | null>(null);
-	let deleteDialogOpen = $state(false);
+	let duplicatingId = $state<string | null>(null);
 
 	async function loadProjects(): Promise<void> {
 		if (gate.state !== 'ready') return;
@@ -49,8 +41,8 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		projectsError = '';
 		try {
 			projects = await getAllProjects();
-		} catch (err) {
-			projectsError = err instanceof Error ? err.message : String(err);
+		} catch (error) {
+			projectsError = error instanceof Error ? error.message : String(error);
 		} finally {
 			loadingProjects = false;
 		}
@@ -70,19 +62,19 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		void goto(`/video-editor/${project.id}`);
 	}
 
-	async function handleCreateProject(): Promise<void> {
-		if (creating) return;
+	async function handleCreateProject(name: string): Promise<boolean> {
+		if (creating) return false;
 		creating = true;
 		try {
 			const { createBlankProject } = await import('$lib/video-editor/project/defaults');
-			const project = createBlankProject(newProjectName.trim() || 'Untitled project');
+			const project = createBlankProject(name || 'Untitled project');
 			await createProject(project);
-			newProjectName = '';
-			showNewProject = false;
 			await loadProjects();
 			openProject(project);
-		} catch (err) {
-			showToast(err instanceof Error ? err.message : String(err), 'error');
+			return true;
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+			return false;
 		} finally {
 			creating = false;
 		}
@@ -96,35 +88,40 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		try {
 			await updateProject(project.id, { name: trimmed });
 			await loadProjects();
-		} catch (err) {
-			showToast(err instanceof Error ? err.message : String(err), 'error');
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
 		}
 	}
 
-	function confirmDelete(project: Project): void {
-		pendingDelete = project;
-		deleteDialogOpen = true;
+	async function handleDuplicate(project: Project): Promise<void> {
+		if (duplicatingId) return;
+		duplicatingId = project.id;
+		try {
+			const duplicate = await duplicateProjectWithMedia(
+				project.id,
+				m.video_editor_project_copy_name({ name: project.name })
+			);
+			await loadProjects();
+			showToast(m.video_editor_project_duplicated({ name: duplicate.name }), 'success');
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+		} finally {
+			duplicatingId = null;
+		}
 	}
 
-	async function handleDelete(): Promise<void> {
-		if (!pendingDelete) return;
+	async function handleDelete(project: Project): Promise<void> {
 		try {
-			await softDeleteProject(pendingDelete.id);
-			await deleteProject(pendingDelete.id).catch(() => undefined);
+			await softDeleteProject(project.id);
 			await loadProjects();
-			showToast(m.video_editor_project_deleted(), 'success');
-		} catch (err) {
-			showToast(err instanceof Error ? err.message : String(err), 'error');
-		} finally {
-			pendingDelete = null;
-			deleteDialogOpen = false;
+			showToast(m.video_editor_project_moved_to_trash(), 'success');
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
 		}
 	}
 </script>
 
-<svelte:head>
-	<title>{m.video_editor_title()}</title>
-</svelte:head>
+<svelte:head><title>{m.video_editor_title()}</title></svelte:head>
 
 <div
 	class="video-editor-theme flex min-h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
@@ -202,103 +199,18 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 				</div>
 			</div>
 		{:else if gate.state === 'ready'}
-			<div class="w-full max-w-5xl">
-				<div class="flex items-center justify-between">
-					<h1 class="text-base font-semibold">{m.video_editor_projects_title()}</h1>
-					<Button size="sm" onclick={() => (showNewProject = !showNewProject)}>
-						<PlusIcon class="size-4" aria-hidden="true" />
-						{m.video_editor_project_new()}
-					</Button>
-				</div>
-
-				{#if showNewProject}
-					<form
-						class="mt-4 flex gap-2"
-						onsubmit={(event) => {
-							event.preventDefault();
-							void handleCreateProject();
-						}}
-					>
-						<Input
-							type="text"
-							bind:value={newProjectName}
-							placeholder={m.editors_project_name()}
-							aria-label={m.editors_project_name()}
-							class="bg-[oklch(0.16_0.008_55)]"
-						/>
-						<Button type="submit" disabled={creating}>
-							{#if creating}
-								<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
-							{/if}
-							{m.video_editor_project_create()}
-						</Button>
-					</form>
-				{/if}
-
-				{#if projectsError}
-					<InlineNotice tone="error" class="mt-4">{projectsError}</InlineNotice>
-				{/if}
-
-				{#if loadingProjects}
-					<PageLoading label={m.editors_loading()} />
-				{:else if projects.length === 0}
-					<p class="mt-10 text-center text-sm text-[oklch(0.65_0.015_55)]">
-						{m.video_editor_projects_empty()}
-					</p>
-				{:else}
-					<ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" role="list">
-						{#each projects as project (project.id)}
-							<li>
-								<div
-									class="group relative rounded-xl border border-[oklch(0.25_0.015_55)] bg-[oklch(0.2_0.01_50)] p-4 transition-colors hover:border-[oklch(0.35_0.02_55)]"
-								>
-									<button
-										type="button"
-										class="block w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-										onclick={() => openProject(project)}
-									>
-										<span class="block truncate font-medium">{project.name}</span>
-										<span class="mt-1 block text-xs text-[oklch(0.65_0.015_55)]">
-											{new Date(project.updatedAt).toLocaleDateString()}
-										</span>
-									</button>
-									<div
-										class="absolute top-3 right-3 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-									>
-										<Button
-											variant="ghost"
-											size="icon-xs"
-											aria-label={m.video_editor_project_rename()}
-											onclick={() => handleRename(project)}
-										>
-											<PencilIcon class="size-4" aria-hidden="true" />
-										</Button>
-										<Button
-											variant="ghost"
-											size="icon-xs"
-											aria-label={m.video_editor_project_delete()}
-											onclick={() => confirmDelete(project)}
-										>
-											<TrashIcon class="size-4" aria-hidden="true" />
-										</Button>
-									</div>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
+			<ProjectBrowser
+				{projects}
+				loading={loadingProjects}
+				error={projectsError}
+				{creating}
+				{duplicatingId}
+				oncreate={handleCreateProject}
+				onopen={openProject}
+				onrename={handleRename}
+				onduplicate={handleDuplicate}
+				ondelete={handleDelete}
+			/>
 		{/if}
 	</main>
 </div>
-
-<DestructiveConfirmDialog
-	bind:open={deleteDialogOpen}
-	title={m.video_editor_project_delete()}
-	description={m.video_editor_project_delete_body({ name: pendingDelete?.name ?? '' })}
-	confirmLabel={m.video_editor_project_delete()}
-	onConfirm={async () => {
-		await handleDelete();
-		return { ok: true };
-	}}
-/>
