@@ -64,6 +64,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
 	import EditorSettingsDialog from '$lib/video-editor/components/editor-settings-dialog.svelte';
+	import MediaRecoveryDialog from '$lib/video-editor/components/media-recovery-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -1007,3 +1008,5 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 />
 
 <EditorSettingsDialog bind:open={settingsOpen} />
+
+<MediaRecoveryDialog onedit={() => editorSession.scheduleAutosave()} />

@@ -19,6 +19,7 @@ import { mediaPool } from './media/pool.svelte';
 import { sceneBrowser } from './media/scene-search/scene-browser.svelte';
 import { sequenceStore } from './sequences/sequence-store.svelte';
 import { editorSettings } from './settings/editor-settings.svelte';
+import { mediaRecovery } from './media/media-recovery.svelte';
 
 const logger = createLogger('EditorSession');
 
@@ -48,6 +49,7 @@ class EditorSession {
 		try {
 			sceneBrowser.reset();
 			mediaPool.clear();
+			mediaRecovery.reset();
 			const project = await getProject(projectId);
 			if (!project) {
 				this.loadError = 'Project not found';
@@ -65,6 +67,7 @@ class EditorSession {
 			this.syncTimelineClock();
 			const media = await getMediaForProject(projectId);
 			mediaPool.loadAll(media);
+			await mediaRecovery.scan(media, timelineStore.items);
 		} catch (error) {
 			this.loadError = error instanceof Error ? error.message : String(error);
 		} finally {

@@ -3,6 +3,7 @@ import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { editorSession } from '../editor.svelte';
 import { mediaPool } from '../media/pool.svelte';
+import { mediaRecovery } from '../media/media-recovery.svelte';
 import type { MediaMetadata } from '../media/types';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import MediaPoolList from './media-pool-list.svelte';
@@ -33,6 +34,7 @@ function media(
 
 beforeEach(() => {
 	mediaPool.clear();
+	mediaRecovery.reset();
 	sequenceStore.reset();
 	editorSession.project = null;
 });

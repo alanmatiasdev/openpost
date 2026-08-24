@@ -20,6 +20,7 @@
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
+	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import EmbeddedSubtitlePicker from './embedded-subtitle-picker.svelte';
@@ -42,6 +43,7 @@
 	import { importMediaFromUrl } from '$lib/video-editor/media/import-url';
 	import MediaInfoPopover from './media-info-popover.svelte';
 	import MediaUrlImportDialog from './media-url-import-dialog.svelte';
+	import { mediaRecovery } from '$lib/video-editor/media/media-recovery.svelte';
 
 	let {
 		projectId,
@@ -337,6 +339,25 @@
 			</div>
 		</div>
 	</div>
+	{#if mediaRecovery.issueCount > 0}
+		<div
+			class="my-2 flex items-center gap-2 rounded-md border border-amber-400/25 bg-amber-400/10 px-2 py-1.5 text-amber-100"
+			role="status"
+		>
+			<AlertTriangleIcon class="size-3.5 shrink-0 text-amber-300" aria-hidden="true" />
+			<p class="min-w-0 flex-1 text-[10px]">
+				{m.video_editor_media_recovery_warning({ count: mediaRecovery.issueCount })}
+			</p>
+			<Button
+				size="sm"
+				variant="ghost"
+				class="h-7! shrink-0 px-2! text-[10px]!"
+				onclick={() => mediaRecovery.show()}
+			>
+				{m.video_editor_media_recovery_review()}
+			</Button>
+		</div>
+	{/if}
 
 	{#if sequenceStore.compositions.length > 0}
 		<section class="mb-2" aria-labelledby="video-editor-sequences-heading">

@@ -24,7 +24,7 @@ import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
-import { prepareMediaImportFile } from './media-file-types';
+import { effectiveMediaStorageMode, prepareMediaImportFile } from './media-file-types';
 
 const logger = createLogger('MediaImport');
 
@@ -101,7 +101,8 @@ export async function importFile(
 		const resolved = await writeFileForHandle(handle);
 		const file = await prepareMediaImportFile(resolved.file);
 		const fileLastModified = resolved.lastModified;
-		const storedHandle = storageMode === 'link' ? handle : undefined;
+		const effectiveStorageMode = effectiveMediaStorageMode(storageMode, resolved.file, file);
+		const storedHandle = effectiveStorageMode === 'link' ? handle : undefined;
 
 		let thumbnailBlob: Blob | undefined;
 		let metadata: MediaMetadata;
@@ -110,7 +111,7 @@ export async function importFile(
 			if (!lottie) throw new Error('This file is not a valid Lottie animation.');
 			metadata = {
 				id,
-				storageType: storageMode === 'copy' ? 'workspace' : 'handle',
+				storageType: effectiveStorageMode === 'copy' ? 'workspace' : 'handle',
 				fileHandle: storedHandle,
 				fileLastModified,
 				fileName: file.name,
@@ -136,7 +137,7 @@ export async function importFile(
 			const probe = await probeMediaFile(file);
 			metadata = {
 				id,
-				storageType: storageMode === 'copy' ? 'workspace' : 'handle',
+				storageType: effectiveStorageMode === 'copy' ? 'workspace' : 'handle',
 				fileHandle: storedHandle,
 				fileLastModified,
 				fileName: file.name,
@@ -157,7 +158,7 @@ export async function importFile(
 			thumbnailBlob = probe.thumbnailBlob;
 		}
 
-		if (storageMode === 'copy') {
+		if (effectiveStorageMode === 'copy') {
 			await writeBlob(root, mediaSourceByFileName(id, file.name), file);
 		}
 

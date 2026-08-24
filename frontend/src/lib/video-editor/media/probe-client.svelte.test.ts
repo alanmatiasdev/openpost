@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { fileWithInferredMediaType, prepareMediaImportFile } from './media-file-types';
+import {
+	effectiveMediaStorageMode,
+	fileWithInferredMediaType,
+	prepareMediaImportFile
+} from './media-file-types';
 import { probeMediaFile } from './probe-client';
 
 function transparentGif(): File {
@@ -28,6 +32,8 @@ describe('image media probe worker', () => {
 				{ type: 'text/xml' }
 			)
 		);
+		expect(svgFile.name).toBe('graphic.png');
+		expect(effectiveMediaStorageMode('link', { name: 'graphic.svg' }, svgFile)).toBe('copy');
 		const svg = await probeMediaFile(svgFile);
 		expect(svg.kind).toBe('image');
 		expect([svg.width, svg.height]).toEqual([40, 24]);

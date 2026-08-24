@@ -47,3 +47,11 @@ export async function prepareMediaImportFile(file: File): Promise<File> {
 	await assertSafeSvg(typed);
 	return rasterizeSVGToPNG(typed);
 }
+
+export function effectiveMediaStorageMode(
+	requested: 'copy' | 'link',
+	original: Pick<File, 'name'>,
+	prepared: Pick<File, 'name'>
+): 'copy' | 'link' {
+	return requested === 'link' && prepared.name !== original.name ? 'copy' : requested;
+}
