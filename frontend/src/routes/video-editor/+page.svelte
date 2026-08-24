@@ -13,6 +13,9 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	import { showToast } from '$lib/toast';
 	import ProjectBrowser from '$lib/video-editor/components/project-browser.svelte';
 	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
+	import { saveProjectBundle } from '$lib/video-editor/project-bundle/bundle-export';
+	import { importProjectBundle } from '$lib/video-editor/project-bundle/bundle-import';
+	import type { BundleProgress } from '$lib/video-editor/project-bundle/bundle-types';
 	import {
 		downloadProjectSnapshot,
 		importProjectSnapshotFile
@@ -40,6 +43,11 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	let importing = $state(false);
 	let duplicatingId = $state<string | null>(null);
 	let exportingId = $state<string | null>(null);
+	let exportingKind = $state<'json' | 'bundle' | null>(null);
+	let bundleProgress = $state<BundleProgress | null>(null);
+	let bundleOperation = $state<'import' | 'export' | null>(null);
+	let bundleController = $state<AbortController | null>(null);
+	let bundleCanceling = $state(false);
 
 	async function loadProjects(): Promise<void> {
 		if (gate.state !== 'ready') return;
@@ -69,7 +77,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	}
 
 	async function handleCreateProject(name: string): Promise<boolean> {
-		if (creating) return false;
+		if (creating || importing || exportingId || bundleOperation) return false;
 		creating = true;
 		try {
 			const { createBlankProject } = await import('$lib/video-editor/project/defaults');
@@ -87,6 +95,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	}
 
 	async function handleRename(project: Project): Promise<void> {
+		if (importing || duplicatingId || exportingId || bundleOperation) return;
 		const name = window.prompt(m.video_editor_project_rename_prompt(), project.name);
 		if (name === null) return;
 		const trimmed = name.trim();
@@ -100,7 +109,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	}
 
 	async function handleDuplicate(project: Project): Promise<void> {
-		if (duplicatingId) return;
+		if (duplicatingId || importing || exportingId || bundleOperation) return;
 		duplicatingId = project.id;
 		try {
 			const duplicate = await duplicateProjectWithMedia(
@@ -117,6 +126,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	}
 
 	async function handleDelete(project: Project): Promise<void> {
+		if (importing || duplicatingId || exportingId || bundleOperation) return;
 		try {
 			await softDeleteProject(project.id);
 			await loadProjects();
@@ -126,8 +136,8 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		}
 	}
 
-	async function handleImport(file: File): Promise<void> {
-		if (importing) return;
+	async function handleImportJson(file: File): Promise<void> {
+		if (importing || exportingId || bundleOperation) return;
 		importing = true;
 		try {
 			const result = await importProjectSnapshotFile(file);
@@ -150,16 +160,107 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		}
 	}
 
-	async function handleExport(project: Project): Promise<void> {
-		if (exportingId) return;
+	async function handleImportBundle(file: File): Promise<void> {
+		if (importing || exportingId || bundleOperation) return;
+		const controller = new AbortController();
+		importing = true;
+		bundleOperation = 'import';
+		bundleController = controller;
+		bundleCanceling = false;
+		bundleProgress = { stage: 'validating', percent: 0 };
+		try {
+			const result = await importProjectBundle(
+				file,
+				{ signal: controller.signal },
+				(progress) => (bundleProgress = progress)
+			);
+			await loadProjects();
+			showToast(
+				m.video_editor_project_bundle_imported({
+					name: result.projectName,
+					imported: result.mediaImported,
+					reused: result.mediaReused
+				}),
+				'success'
+			);
+		} catch (error) {
+			if (
+				error instanceof DOMException &&
+				error.name === 'AbortError' &&
+				controller.signal.aborted
+			) {
+				showToast(m.video_editor_project_bundle_canceled());
+			} else if (!(error instanceof DOMException && error.name === 'AbortError')) {
+				showToast(error instanceof Error ? error.message : String(error), 'error');
+			}
+		} finally {
+			importing = false;
+			if (bundleController === controller) {
+				bundleController = null;
+				bundleCanceling = false;
+				bundleOperation = null;
+				bundleProgress = null;
+			}
+		}
+	}
+
+	async function handleExportJson(project: Project): Promise<void> {
+		if (exportingId || importing || bundleOperation) return;
 		exportingId = project.id;
+		exportingKind = 'json';
 		try {
 			await downloadProjectSnapshot(project.id);
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : String(error), 'error');
 		} finally {
 			exportingId = null;
+			exportingKind = null;
 		}
+	}
+
+	async function handleExportBundle(project: Project): Promise<void> {
+		if (exportingId || importing || bundleOperation) return;
+		const controller = new AbortController();
+		exportingId = project.id;
+		exportingKind = 'bundle';
+		bundleOperation = 'export';
+		bundleController = controller;
+		bundleCanceling = false;
+		bundleProgress = { stage: 'collecting', percent: 0 };
+		try {
+			await saveProjectBundle(
+				project.id,
+				project.name,
+				(progress) => (bundleProgress = progress),
+				controller.signal
+			);
+			showToast(m.video_editor_project_bundle_exported({ name: project.name }), 'success');
+		} catch (error) {
+			if (
+				error instanceof DOMException &&
+				error.name === 'AbortError' &&
+				controller.signal.aborted
+			) {
+				showToast(m.video_editor_project_bundle_canceled());
+			} else if (!(error instanceof DOMException && error.name === 'AbortError')) {
+				showToast(error instanceof Error ? error.message : String(error), 'error');
+			}
+		} finally {
+			exportingId = null;
+			exportingKind = null;
+			if (bundleController === controller) {
+				bundleController = null;
+				bundleCanceling = false;
+				bundleOperation = null;
+				bundleProgress = null;
+			}
+		}
+	}
+
+	function handleCancelBundle(): void {
+		if (!bundleController || bundleController.signal.aborted) return;
+		bundleCanceling = true;
+		bundleController.abort();
 	}
 </script>
 
@@ -249,12 +350,19 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 				{importing}
 				{duplicatingId}
 				{exportingId}
+				{exportingKind}
+				{bundleProgress}
+				{bundleOperation}
+				{bundleCanceling}
 				oncreate={handleCreateProject}
-				onimport={handleImport}
+				onimportjson={handleImportJson}
+				onimportbundle={handleImportBundle}
 				onopen={openProject}
 				onrename={handleRename}
 				onduplicate={handleDuplicate}
-				onexport={handleExport}
+				onexportjson={handleExportJson}
+				onexportbundle={handleExportBundle}
+				oncancelbundle={handleCancelBundle}
 				ondelete={handleDelete}
 			/>
 		{/if}

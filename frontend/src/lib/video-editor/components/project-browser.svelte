@@ -7,7 +7,9 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { m } from '$lib/paraglide/messages';
+	import type { BundleProgress } from '$lib/video-editor/project-bundle/bundle-types';
 	import type { Project } from '$lib/video-editor/project/types';
+	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import MoreIcon from '@lucide/svelte/icons/ellipsis';
@@ -17,6 +19,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	let {
 		projects,
@@ -26,12 +29,19 @@
 		importing,
 		duplicatingId,
 		exportingId,
+		exportingKind,
+		bundleProgress,
+		bundleOperation,
+		bundleCanceling,
 		oncreate,
-		onimport,
+		onimportjson,
+		onimportbundle,
 		onopen,
 		onrename,
 		onduplicate,
-		onexport,
+		onexportjson,
+		onexportbundle,
+		oncancelbundle,
 		ondelete
 	}: {
 		projects: Project[];
@@ -41,12 +51,19 @@
 		importing: boolean;
 		duplicatingId: string | null;
 		exportingId: string | null;
+		exportingKind: 'json' | 'bundle' | null;
+		bundleProgress: BundleProgress | null;
+		bundleOperation: 'import' | 'export' | null;
+		bundleCanceling: boolean;
 		oncreate: (name: string) => Promise<boolean>;
-		onimport: (file: File) => Promise<void>;
+		onimportjson: (file: File) => Promise<void>;
+		onimportbundle: (file: File) => Promise<void>;
 		onopen: (project: Project) => void;
 		onrename: (project: Project) => Promise<void>;
 		onduplicate: (project: Project) => Promise<void>;
-		onexport: (project: Project) => Promise<void>;
+		onexportjson: (project: Project) => Promise<void>;
+		onexportbundle: (project: Project) => Promise<void>;
+		oncancelbundle: () => void;
 		ondelete: (project: Project) => Promise<void>;
 	} = $props();
 
@@ -56,7 +73,8 @@
 	let projectSort = $state<'updated' | 'created' | 'name'>('updated');
 	let pendingDelete = $state<Project | null>(null);
 	let deleteDialogOpen = $state(false);
-	let importInput = $state<HTMLInputElement>();
+	let jsonImportInput = $state<HTMLInputElement>();
+	let bundleImportInput = $state<HTMLInputElement>();
 
 	const visibleProjects = $derived.by(() => {
 		const query = searchQuery.trim().toLocaleLowerCase();
@@ -87,12 +105,12 @@
 		deleteDialogOpen = true;
 	}
 
-	async function importFile(event: Event): Promise<void> {
+	async function importFile(event: Event, kind: 'json' | 'bundle'): Promise<void> {
 		const input = event.currentTarget;
 		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
 		input.value = '';
-		if (file) await onimport(file);
+		if (file) await (kind === 'json' ? onimportjson(file) : onimportbundle(file));
 	}
 </script>
 
@@ -101,35 +119,115 @@
 		<h1 class="text-base font-semibold">{m.video_editor_projects_title()}</h1>
 		<div class="flex items-center gap-2">
 			<input
-				bind:this={importInput}
+				bind:this={jsonImportInput}
 				type="file"
 				accept="application/json,.json,.openpost.json"
 				class="sr-only"
 				aria-label={m.video_editor_project_import_json_label()}
-				onchange={(event) => void importFile(event)}
+				onchange={(event) => void importFile(event, 'json')}
 			/>
+			<input
+				bind:this={bundleImportInput}
+				type="file"
+				accept="application/zip,.zip,.openpost.zip"
+				class="sr-only"
+				aria-label={m.video_editor_project_import_bundle_label()}
+				onchange={(event) => void importFile(event, 'bundle')}
+			/>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							size="sm"
+							disabled={importing || bundleOperation !== null}
+							aria-label={m.video_editor_project_import()}
+							title={m.video_editor_project_import()}
+							aria-busy={importing}
+						>
+							{#if importing}
+								<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+							{:else}
+								<UploadIcon class="size-4" aria-hidden="true" />
+							{/if}
+							<span class="hidden sm:inline">{m.video_editor_project_import()}</span>
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content class="video-editor-theme" align="end">
+					<DropdownMenu.Item onclick={() => bundleImportInput?.click()}>
+						<ArchiveIcon class="size-4" aria-hidden="true" />
+						{m.video_editor_project_import_bundle()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={() => jsonImportInput?.click()}>
+						<UploadIcon class="size-4" aria-hidden="true" />
+						{m.video_editor_project_import_json()}
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 			<Button
-				variant="outline"
 				size="sm"
-				disabled={importing}
-				aria-label={m.video_editor_project_import_json()}
-				title={m.video_editor_project_import_json()}
-				aria-busy={importing}
-				onclick={() => importInput?.click()}
+				disabled={creating || importing || exportingId !== null || bundleOperation !== null}
+				onclick={() => (showNewProject = !showNewProject)}
 			>
-				{#if importing}
-					<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
-				{:else}
-					<UploadIcon class="size-4" aria-hidden="true" />
-				{/if}
-				<span class="hidden sm:inline">{m.video_editor_project_import_json()}</span>
-			</Button>
-			<Button size="sm" onclick={() => (showNewProject = !showNewProject)}>
 				<PlusIcon class="size-4" aria-hidden="true" />
 				{m.video_editor_project_new()}
 			</Button>
 		</div>
 	</div>
+
+	{#if bundleProgress && bundleOperation}
+		<div
+			class="mt-4 rounded-lg border border-[oklch(0.3_0.025_55)] bg-[oklch(0.16_0.008_55)] px-3 py-2"
+			role="status"
+			aria-live="polite"
+		>
+			<div class="flex items-center justify-between gap-3 text-xs">
+				<span class="font-medium">
+					{bundleOperation === 'import'
+						? m.video_editor_project_bundle_importing()
+						: m.video_editor_project_bundle_exporting()}
+				</span>
+				<div class="flex items-center gap-2">
+					<span>{Math.round(bundleProgress.percent)}%</span>
+					<Button variant="ghost" size="xs" disabled={bundleCanceling} onclick={oncancelbundle}>
+						{#if bundleCanceling}
+							<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+						{:else}
+							<XIcon class="size-3.5" aria-hidden="true" />
+						{/if}
+						{bundleCanceling
+							? m.video_editor_project_bundle_canceling()
+							: m.video_editor_project_bundle_cancel()}
+					</Button>
+				</div>
+			</div>
+			<div
+				class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[oklch(0.25_0.015_55)]"
+				role="progressbar"
+				aria-valuemin="0"
+				aria-valuemax="100"
+				aria-valuenow={Math.round(bundleProgress.percent)}
+				aria-label={bundleOperation === 'import'
+					? m.video_editor_project_bundle_importing()
+					: m.video_editor_project_bundle_exporting()}
+			>
+				<div
+					class="h-full rounded-full bg-[oklch(0.66_0.14_45)] transition-[width] motion-reduce:transition-none"
+					style:width={`${Math.max(0, Math.min(100, bundleProgress.percent))}%`}
+				></div>
+			</div>
+			{#if bundleProgress.currentFile}
+				<p
+					class="mt-1 truncate text-xs text-[oklch(0.65_0.015_55)]"
+					title={bundleProgress.currentFile}
+				>
+					{bundleProgress.currentFile}
+				</p>
+			{/if}
+		</div>
+	{/if}
 
 	{#if showNewProject}
 		<form
@@ -223,10 +321,14 @@
 											{...props}
 											variant="ghost"
 											size="icon-xs"
-											aria-busy={duplicatingId === project.id}
+											disabled={importing ||
+												duplicatingId !== null ||
+												exportingId !== null ||
+												bundleOperation !== null}
+											aria-busy={duplicatingId === project.id || exportingId === project.id}
 											aria-label={m.video_editor_project_actions({ name: project.name })}
 										>
-											{#if duplicatingId === project.id}
+											{#if duplicatingId === project.id || exportingId === project.id}
 												<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
 											{:else}
 												<MoreIcon class="size-4" aria-hidden="true" />
@@ -240,17 +342,28 @@
 										{m.video_editor_project_rename()}
 									</DropdownMenu.Item>
 									<DropdownMenu.Item
-										disabled={duplicatingId !== null}
+										disabled={duplicatingId !== null || importing || bundleOperation !== null}
 										onclick={() => void onduplicate(project)}
 									>
 										<CopyIcon class="size-4" aria-hidden="true" />
 										{m.video_editor_project_duplicate()}
 									</DropdownMenu.Item>
 									<DropdownMenu.Item
-										disabled={exportingId !== null}
-										onclick={() => void onexport(project)}
+										disabled={exportingId !== null || bundleOperation !== null}
+										onclick={() => void onexportbundle(project)}
 									>
-										{#if exportingId === project.id}
+										{#if exportingId === project.id && exportingKind === 'bundle'}
+											<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+										{:else}
+											<DownloadIcon class="size-4" aria-hidden="true" />
+										{/if}
+										{m.video_editor_project_export_bundle()}
+									</DropdownMenu.Item>
+									<DropdownMenu.Item
+										disabled={exportingId !== null || bundleOperation !== null}
+										onclick={() => void onexportjson(project)}
+									>
+										{#if exportingId === project.id && exportingKind === 'json'}
 											<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
 										{:else}
 											<DownloadIcon class="size-4" aria-hidden="true" />

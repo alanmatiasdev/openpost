@@ -105,6 +105,20 @@ describe('project snapshot service', () => {
 		expect(testRuntime.associations).toEqual(['current-media']);
 	});
 
+	it('uses an explicit bundle media map without guessing from workspace metadata', async () => {
+		const bundledMedia = media('bundled-media', 'different-hash');
+		const testRuntime = runtime({ available: [bundledMedia] });
+		const snapshot = await testRuntime.service.exportProjectSnapshot(testRuntime.source.id);
+
+		const result = await testRuntime.service.importProjectSnapshot(snapshot, {
+			mediaIdMap: new Map([['source-media', 'bundled-media']])
+		});
+
+		expect(result.project.timeline?.items[0]?.mediaId).toBe('bundled-media');
+		expect(result.unmatchedMedia).toEqual([]);
+		expect(testRuntime.associations).toEqual(['bundled-media']);
+	});
+
 	it('matches one hashless media record by exact file metadata', async () => {
 		const currentMedia = media('current-media', '');
 		const testRuntime = runtime({ available: [currentMedia] });

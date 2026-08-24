@@ -11,6 +11,24 @@
 
 const chains = new Map<string, Promise<unknown>>();
 
+/** Hold a key until the returned idempotent release function runs. */
+export async function acquireKeyLock(key: string): Promise<() => void> {
+	const previous = chains.get(key) ?? Promise.resolve();
+	let resolveCurrent = (): void => undefined;
+	const current = new Promise<void>((resolve) => {
+		resolveCurrent = resolve;
+	});
+	chains.set(key, current);
+	await previous.catch(() => undefined);
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		resolveCurrent();
+		if (chains.get(key) === current) chains.delete(key);
+	};
+}
+
 export async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 	const prev = chains.get(key) ?? Promise.resolve();
 	// Silence prev's rejection for chaining purposes — we still want our own

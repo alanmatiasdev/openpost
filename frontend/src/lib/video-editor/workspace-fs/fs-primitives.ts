@@ -15,7 +15,7 @@
 
 import { createLogger } from './logger';
 import { notifyPermissionLost } from './root';
-import { withKeyLock } from './with-key-lock';
+import { acquireKeyLock, withKeyLock } from './with-key-lock';
 
 const logger = createLogger('WorkspaceFS');
 
@@ -251,6 +251,41 @@ export async function writeBlob(
 			await writable.close();
 		})
 	);
+}
+
+export interface WorkspaceBlobWriter {
+	write(chunk: Uint8Array): Promise<void>;
+	close(): Promise<void>;
+	abort(reason?: Error): Promise<void>;
+}
+
+/** Open one workspace file for ordered chunked writes without buffering the whole blob. */
+export async function openBlobWriter(
+	root: FileSystemDirectoryHandle,
+	segments: string[]
+): Promise<WorkspaceBlobWriter> {
+	const release = await acquireKeyLock(`writeBlob:${segments.join('/')}`);
+	try {
+		return await wrap('openBlobWriter', async () => {
+			const { parent, fileName } = await resolveFileParent(root, segments, true);
+			const file = await parent.getFileHandle(fileName, { create: true });
+			const writable = await file.createWritable();
+			return {
+				write: (chunk) => {
+					// SAFETY: FileSystemWritableFileStream accepts Uint8Array bytes as a write chunk.
+					return wrap('openBlobWriter.write', () =>
+						writable.write(chunk as Uint8Array<ArrayBuffer>)
+					);
+				},
+				close: () => wrap('openBlobWriter.close', () => writable.close()).finally(release),
+				abort: (reason) =>
+					wrap('openBlobWriter.abort', () => writable.abort(reason)).finally(release)
+			};
+		});
+	} catch (error) {
+		release();
+		throw error;
+	}
 }
 
 /* ────────────────────────────── Delete helpers ───────────────────────── */

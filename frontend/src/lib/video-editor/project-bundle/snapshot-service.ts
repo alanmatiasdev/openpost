@@ -42,6 +42,7 @@ export interface SnapshotImportOptions {
 	name?: string;
 	matchMediaByHash?: boolean;
 	matchMediaByName?: boolean;
+	mediaIdMap?: ReadonlyMap<string, string>;
 }
 
 function mediaReference(media: MediaMetadata): SnapshotMediaReference {
@@ -146,9 +147,10 @@ export function createSnapshotService(runtime: SnapshotServiceRuntime) {
 		}
 		warnings.push(...migrated.warnings.map((warning) => warning.message));
 		const available = await runtime.getAllMedia();
-		const mediaIdMap = new Map<string, string>();
+		const mediaIdMap = new Map(options.mediaIdMap);
 		const unmatchedMedia: SnapshotMediaReference[] = [];
 		for (const reference of validated.mediaReferences) {
+			if (mediaIdMap.has(reference.id)) continue;
 			const media = matchMedia(reference, available, options);
 			if (media) mediaIdMap.set(reference.id, media.id);
 			else unmatchedMedia.push(reference);
