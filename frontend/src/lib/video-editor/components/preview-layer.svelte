@@ -1,6 +1,6 @@
 <!-- One frame-synced visual layer in the composited editor preview. -->
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import type { CropSettings, ItemTransform, TimelineItem } from '$lib/video-editor/project/types';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -50,6 +50,12 @@
 		type LottieRenderSpec
 	} from '$lib/video-editor/lottie/render-spec';
 	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
+	import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
+	import {
+		cloneFilmstripFallback,
+		nearestFilmstripFallback,
+		PROXY_SEEK_STALL_MS
+	} from '$lib/video-editor/preview/scrub-proxy-fallback';
 
 	let {
 		item,
@@ -88,6 +94,11 @@
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
 	let proxyAudioElement = $state<HTMLAudioElement | null>(null);
+	let proxyFallbackCanvas = $state<HTMLCanvasElement | null>(null);
+	let proxyFallbackVisible = $state(false);
+	let proxyFallbackRevision = $state(0);
+	let proxyFallbackGeneration = 0;
+	let proxyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 	let reverseConform = $state<ReverseConformResult | null>(null);
 	let reverseConformUrl = $state<string | null>(null);
 	let imageElement = $state<HTMLImageElement | null>(null);
@@ -231,6 +242,58 @@
 		};
 	});
 
+	function clearProxySeekFallback(): void {
+		proxyFallbackGeneration += 1;
+		if (proxyFallbackTimer !== null) clearTimeout(proxyFallbackTimer);
+		proxyFallbackTimer = null;
+		if (!proxyFallbackVisible) return;
+		proxyFallbackVisible = false;
+		proxyFallbackRevision += 1;
+		onsourcechange?.();
+	}
+
+	function scheduleProxySeekFallback(timestampSeconds: number): void {
+		if (!usesSeparateProxyAudio || editorSession.clock.isPlaying || !item.mediaId) return;
+		const generation = ++proxyFallbackGeneration;
+		if (proxyFallbackTimer !== null) clearTimeout(proxyFallbackTimer);
+		proxyFallbackTimer = setTimeout(() => {
+			proxyFallbackTimer = null;
+			if (generation !== proxyFallbackGeneration || !mediaElement?.seeking) return;
+			const filmstrip = filmstripCache.cachedFilmstrip(item.mediaId ?? '');
+			const frame = filmstrip ? nearestFilmstripFallback(filmstrip.frames, timestampSeconds) : null;
+			if (!frame) return;
+			void cloneFilmstripFallback(frame)
+				.then((bitmap) => {
+					if (generation !== proxyFallbackGeneration || !mediaElement?.seeking) {
+						bitmap.close();
+						return;
+					}
+					const canvas = proxyFallbackCanvas;
+					if (!canvas) {
+						bitmap.close();
+						return;
+					}
+					canvas.width = bitmap.width;
+					canvas.height = bitmap.height;
+					const context = canvas.getContext('2d');
+					context?.drawImage(bitmap, 0, 0);
+					bitmap.close();
+					if (!context) return;
+					proxyFallbackVisible = true;
+					proxyFallbackRevision += 1;
+					onsourcechange?.();
+				})
+				.catch(() => undefined);
+		}, PROXY_SEEK_STALL_MS);
+	}
+
+	function handleVideoSettled(): void {
+		clearProxySeekFallback();
+		onsourcechange?.();
+	}
+
+	onDestroy(clearProxySeekFallback);
+
 	function paintRaster(canvas: HTMLCanvasElement): void {
 		if (!['text', 'subtitle', 'shape'].includes(resolved.type)) return;
 		const width = Math.max(1, Math.round(transform.width ?? canvasWidth));
@@ -343,8 +406,10 @@
 				item.isReversed && conform
 					? sourceSecondsToReverseConformSeconds(conform, originalSourceTime)
 					: originalSourceTime;
-			if (seekDriftExceeded(video.currentTime, sourceTime, 0.08 / Math.max(0.1, speed)))
+			if (seekDriftExceeded(video.currentTime, sourceTime, 0.08 / Math.max(0.1, speed))) {
 				videoScheduler.request(sourceTime);
+				scheduleProxySeekFallback(sourceTime);
+			}
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
 			if (audio) {
 				if (seekDriftExceeded(audio.currentTime, sourceTime, 0.08 / Math.max(0.1, speed)))
@@ -353,6 +418,7 @@
 			}
 			if (editorSession.clock.isPlaying && video.paused && (!item.isReversed || conform !== null))
 				void video.play().catch(() => undefined);
+			if (editorSession.clock.isPlaying) clearProxySeekFallback();
 			if (editorSession.clock.isPlaying && audio?.paused) void audio.play().catch(() => undefined);
 			if (item.isReversed && !conform && !video.paused) video.pause();
 			if (!editorSession.clock.isPlaying && !video.paused) video.pause();
@@ -558,6 +624,18 @@
 	});
 
 	function rawSource() {
+		if (
+			resolved.type === 'video' &&
+			proxyFallbackVisible &&
+			proxyFallbackCanvas?.width &&
+			proxyFallbackCanvas.height
+		) {
+			return {
+				source: proxyFallbackCanvas,
+				width: proxyFallbackCanvas.width,
+				height: proxyFallbackCanvas.height
+			};
+		}
 		if (resolved.type === 'video' && mediaElement?.videoWidth && mediaElement.videoHeight) {
 			return {
 				source: mediaElement,
@@ -619,6 +697,7 @@
 
 	$effect(() => {
 		const video = mediaElement;
+		const fallback = proxyFallbackCanvas;
 		const image = imageElement;
 		const decodedImage = decodedImageElement;
 		const raster = rasterCanvas;
@@ -628,6 +707,7 @@
 		const instance = compositor;
 		const revision = rasterRevision;
 		const animationRevision = lottieRevision;
+		const fallbackRevision = proxyFallbackRevision;
 		const effects = gpuEffects;
 		const itemType = item.type;
 		const blendMode = item.blendMode ?? 'normal';
@@ -638,7 +718,9 @@
 		const draw = () => {
 			const source =
 				itemType === 'video'
-					? video
+					? proxyFallbackVisible && fallbackRevision > 0
+						? fallback
+						: video
 					: itemType === 'image'
 						? decodedImage
 						: itemType === 'lottie'
@@ -678,6 +760,7 @@
 			offPlay();
 			canvas.hidden = true;
 			if (video) video.style.visibility = '';
+			if (fallback) fallback.style.visibility = '';
 			if (image) image.style.visibility = '';
 			if (raster) raster.style.visibility = '';
 			if (lottie) lottie.style.visibility = '';
@@ -732,8 +815,8 @@
 			playsinline
 			volume={usesSeparateProxyAudio ? 0 : previewVolume}
 			data-proxy-preview={usesSeparateProxyAudio ? 'true' : undefined}
-			onloadeddata={onsourcechange}
-			onseeked={onsourcechange}
+			onloadeddata={handleVideoSettled}
+			onseeked={handleVideoSettled}
 		></video>
 		{#if usesSeparateProxyAudio && audioUrl}
 			<!-- svelte-ignore a11y_media_has_caption -- proxy visuals keep source audio hidden -->
@@ -773,6 +856,16 @@
 			style={['video', 'image', 'lottie'].includes(resolved.type) ? mediaCropStyle : ''}
 			aria-hidden="true"
 			hidden
+		></canvas>
+	{/if}
+	{#if resolved.type === 'video'}
+		<canvas
+			bind:this={proxyFallbackCanvas}
+			class="absolute object-fill"
+			style={mediaCropStyle}
+			hidden={!proxyFallbackVisible || needsGpu || deferEffects}
+			aria-hidden="true"
+			data-proxy-seek-fallback
 		></canvas>
 	{/if}
 </div>

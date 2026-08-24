@@ -7,6 +7,7 @@ import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 import { editorSession } from '$lib/video-editor/editor.svelte';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import PreviewLayer from './preview-layer.svelte';
+import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
 
 const WIDTH = 96;
 const HEIGHT = 64;
@@ -362,6 +363,76 @@ describe('PreviewLayer GPU rendering', () => {
 			expect(visual?.volume).toBe(0);
 			expect(audio?.volume).toBe(1);
 		});
+	});
+
+	it('shows a nearest filmstrip frame only while a proxy seek remains stalled', async () => {
+		const source = new OffscreenCanvas(16, 16);
+		const context = source.getContext('2d');
+		if (!context) throw new Error('2D canvas unavailable.');
+		context.fillStyle = '#ef4444';
+		context.fillRect(0, 0, source.width, source.height);
+		const cachedBitmap = await createImageBitmap(source);
+		const cache = vi.spyOn(filmstripCache, 'cachedFilmstrip').mockReturnValue({
+			frames: [{ index: 1, url: null, bitmap: cachedBitmap }],
+			isComplete: true,
+			isExtracting: false,
+			progress: 100
+		});
+		const video: TimelineItem = {
+			...textItem({
+				id: 'stalled-proxy',
+				type: 'video',
+				text: undefined,
+				effects: [],
+				mediaId: 'heavy-media',
+				sourceStart: 0,
+				sourceFps: 30
+			}),
+			trackId: 'visuals'
+		};
+		timelineStore.setAll({
+			items: [video],
+			tracks: project(video).timeline?.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewLayer, {
+			item: video,
+			url: 'blob:preview-proxy',
+			audioUrl: 'blob:original-source',
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const media = screen.container.querySelector<HTMLVideoElement>('video');
+		const fallback = screen.container.querySelector<HTMLCanvasElement>(
+			'canvas[data-proxy-seek-fallback]'
+		);
+		expect(media).not.toBeNull();
+		expect(fallback).not.toBeNull();
+		if (!media || !fallback) return;
+		let currentTime = 0;
+		let seeking = true;
+		Object.defineProperties(media, {
+			currentTime: {
+				configurable: true,
+				get: () => currentTime,
+				set: (value: number) => (currentTime = value)
+			},
+			seeking: { configurable: true, get: () => seeking }
+		});
+
+		editorSession.clock.seek(30);
+		await vi.waitFor(() => expect(fallback.hidden).toBe(false), { timeout: 1_000 });
+		expect(Array.from(fallback.getContext('2d')?.getImageData(8, 8, 1, 1).data ?? [])).toEqual([
+			239, 68, 68, 255
+		]);
+
+		seeking = false;
+		media.dispatchEvent(new Event('seeked'));
+		await vi.waitFor(() => expect(fallback.hidden).toBe(true));
+		cache.mockRestore();
+		cachedBitmap.close();
 	});
 
 	it('rasterizes text before applying its GPU effect in the live preview', async () => {

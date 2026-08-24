@@ -31,6 +31,9 @@ function linkedFileHandle(name: string, getFile: () => Promise<File>): FileSyste
 		async createWritable() {
 			throw new Error('This read-only test handle cannot write.');
 		},
+		async createSyncAccessHandle() {
+			throw new Error('This read-only test handle cannot open synchronous access.');
+		},
 		async isSameEntry(other) {
 			return other === handle;
 		}
