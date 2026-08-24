@@ -31,6 +31,7 @@ import {
 	pathVertexKeyframeProperties,
 	setPathVertexPropertyValue
 } from './path-vertex-keyframes';
+import { resolveTransformHierarchy, type ResolvedTransform } from './transform-parenting';
 
 export interface AnimatedItemMotionContext {
 	fps: number;
@@ -96,6 +97,7 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			break;
 		case 'subtitle':
 		case 'composition':
+		case 'controller':
 			builtIn = [...VISUAL_PROPERTIES];
 			break;
 		case 'shape':
@@ -112,6 +114,40 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 }
 
 export function resolveAnimatedItemAt(
+	item: TimelineItem,
+	absoluteFrame: number,
+	motionContext?: AnimatedItemMotionContext
+): TimelineItem {
+	const resolved = resolveAnimatedItemLocalAt(item, absoluteFrame, motionContext);
+	if (!motionContext?.items || !item.transformParent) return resolved;
+	const itemsById = new Map(motionContext.items.map((candidate) => [candidate.id, candidate]));
+	const world = resolveTransformHierarchy(item, {
+		getItem: (itemId) => itemsById.get(itemId),
+		resolveLocal: (candidate) =>
+			resolvedTransformForItem(
+				resolveAnimatedItemLocalAt(candidate, absoluteFrame, motionContext),
+				motionContext.frameWidth,
+				motionContext.frameHeight
+			)
+	});
+	return {
+		...resolved,
+		transform: {
+			...resolved.transform,
+			x: world.x,
+			y: world.y,
+			width: world.width,
+			height: world.height,
+			anchorX: world.anchorX,
+			anchorY: world.anchorY,
+			rotation: world.rotation,
+			opacity: world.opacity,
+			cornerRadius: world.cornerRadius
+		}
+	};
+}
+
+export function resolveAnimatedItemLocalAt(
 	item: TimelineItem,
 	absoluteFrame: number,
 	motionContext?: AnimatedItemMotionContext
@@ -147,6 +183,27 @@ export function resolveAnimatedItemAt(
 		resolved = { ...resolved, transform: { ...transform, ...animated } };
 	}
 	return resolved;
+}
+
+export function resolvedTransformForItem(
+	item: TimelineItem,
+	frameWidth: number,
+	frameHeight: number
+): ResolvedTransform {
+	const transform = item.transform ?? {};
+	const width = Math.max(1, transform.width ?? item.sourceWidth ?? frameWidth);
+	const height = Math.max(1, transform.height ?? item.sourceHeight ?? frameHeight);
+	return {
+		x: transform.x ?? 0,
+		y: transform.y ?? 0,
+		width,
+		height,
+		anchorX: transform.anchorX ?? width / 2,
+		anchorY: transform.anchorY ?? height / 2,
+		rotation: transform.rotation ?? 0,
+		opacity: transform.opacity ?? 1,
+		cornerRadius: transform.cornerRadius ?? 0
+	};
 }
 
 export function resolvePreExpressionItemAt(

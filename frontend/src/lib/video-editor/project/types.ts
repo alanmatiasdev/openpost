@@ -28,6 +28,7 @@ export type TimelineItemKind =
 	| 'subtitle'
 	| 'shape'
 	| 'adjustment'
+	| 'controller'
 	| 'composition';
 
 export type ShapeType =
@@ -61,6 +62,23 @@ export interface ItemTransform {
 	opacity?: number;
 	cornerRadius?: number;
 	aspectRatioLocked?: boolean;
+}
+
+/** Concrete pose snapshot used to keep transform parenting visually stable. */
+export interface TransformReference {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	rotation: number;
+}
+
+/** Bind-space relationship between one visual layer and its transform parent. */
+export interface TransformParentBinding {
+	parentItemId?: string;
+	parentReference?: TransformReference;
+	childLocalReference: TransformReference;
+	childWorldReference: TransformReference;
 }
 
 export type MotionModifierType = 'float-drift' | 'breath-pulse' | 'micro-shake' | 'sway' | 'spin';
@@ -555,6 +573,8 @@ export interface TimelineItem extends TextStyleFields {
 	sourceHeight?: number;
 
 	transform?: ItemTransform;
+	/** Optional Motion hierarchy. Controllers participate but never render. */
+	transformParent?: TransformParentBinding;
 	crop?: CropSettings;
 	cornerPin?: TimelineItemCornerPin;
 
@@ -664,7 +684,7 @@ export interface ProjectTimeline {
 export interface SubComposition {
 	id: string;
 	name: string;
-	editorKind?: 'sequence';
+	editorKind?: 'sequence' | 'composite-2d';
 	items: TimelineItem[];
 	tracks: TimelineTrack[];
 	transitions: TimelineTransition[];

@@ -94,6 +94,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedTransitionId = $state<string | null>(null);
 	let sourceMediaId = $state<string | null>(null);
 	let freezingItemId = $state<string | null>(null);
+	let motionReturnStack = $state<Array<string | null>>([]);
 	let settingsOpen = $state(false);
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 	const activeWorkspace = $derived(editorWorkspace.current);
@@ -219,11 +220,52 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	function handleOpenSequence(compositionId: string): void {
-		sequenceStore.promoteToTab(compositionId);
+		const composition = sequenceStore.compositionById.get(compositionId);
+		if (composition?.editorKind === 'composite-2d') {
+			motionReturnStack = [...motionReturnStack, sequenceStore.activeSequenceId];
+		} else {
+			sequenceStore.promoteToTab(compositionId);
+			motionReturnStack = [];
+		}
 		editorSession.pausePlayback();
 		if (!switchSequence(compositionId)) return;
 		editorSession.syncTimelineClock();
 		resetTimelineSelection();
+	}
+
+	function handleCreateMotionComposition(): void {
+		const ids =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		const parentSequenceId = sequenceStore.activeSequenceId;
+		const compositionId = createCompoundClip(
+			ids,
+			m.video_editor_motion_composition_title(),
+			'composite-2d'
+		);
+		if (!compositionId) return;
+		motionReturnStack = [...motionReturnStack, parentSequenceId];
+		editorSession.pausePlayback();
+		if (!switchSequence(compositionId)) return;
+		editorSession.syncTimelineClock();
+		resetTimelineSelection();
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_compound_created(), 'success');
+	}
+
+	function handleReturnFromMotionComposition(): void {
+		const parentSequenceId = motionReturnStack.at(-1);
+		if (parentSequenceId === undefined && motionReturnStack.length === 0) return;
+		editorSession.pausePlayback();
+		if (!switchSequence(parentSequenceId ?? null)) return;
+		motionReturnStack = motionReturnStack.slice(0, -1);
+		editorSession.syncTimelineClock();
+		resetTimelineSelection();
+	}
+
+	function handleSelectItem(itemId: string): void {
+		selectedItemId = itemId;
+		selectedItemIds = [itemId];
+		selectedTransitionId = null;
 	}
 
 	function handleCreateCompound(): void {
@@ -1044,6 +1086,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							animationPresets={editorSession.project?.animationPresets ?? []}
 							onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
 							ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
+							oncreatecomposition={handleCreateMotionComposition}
+							onreturncomposition={handleReturnFromMotionComposition}
+							canreturncomposition={motionReturnStack.length > 0}
+							onselectitem={handleSelectItem}
 							onedit={() => editorSession.scheduleAutosave()}
 						/>
 					{/if}

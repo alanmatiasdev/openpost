@@ -129,6 +129,18 @@ function remapItem(
 		originId: mapped(item.originId, maps.origin),
 		linkedGroupId: mapped(item.linkedGroupId, maps.linkedGroup),
 		compositionId: mapped(item.compositionId, maps.composition),
+		...(item.transformParent && {
+			transformParent: {
+				...item.transformParent,
+				parentItemId:
+					mapped(item.transformParent.parentItemId, maps.item) ?? item.transformParent.parentItemId,
+				parentReference: item.transformParent.parentReference
+					? { ...item.transformParent.parentReference }
+					: undefined,
+				childLocalReference: { ...item.transformParent.childLocalReference },
+				childWorldReference: { ...item.transformParent.childWorldReference }
+			}
+		}),
 		...(item.captionSource && {
 			captionSource: {
 				...item.captionSource,

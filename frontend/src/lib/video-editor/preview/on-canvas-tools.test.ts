@@ -279,4 +279,61 @@ describe('on-canvas motion paths', () => {
 			outHandle: { x: 400, y: 350 }
 		});
 	});
+
+	it('draws parented motion points and handles in world space', () => {
+		const parent: TimelineItem = {
+			id: 'parent',
+			trackId: 'video',
+			from: 0,
+			durationInFrames: 60,
+			label: 'Controller',
+			type: 'controller',
+			transform: { x: 50, y: 0, width: 200, height: 100 }
+		};
+		const child: TimelineItem = {
+			...item,
+			keyframes: undefined,
+			vectorKeyframes: {
+				position: [
+					{
+						id: 'start',
+						frame: 0,
+						value: { x: -100, y: 0 },
+						easing: 'linear',
+						spatial: {
+							inTangent: { x: -40, y: 0 },
+							outTangent: { x: 40, y: 0 },
+							continuous: true
+						}
+					},
+					{ id: 'end', frame: 20, value: { x: 100, y: 0 }, easing: 'linear' }
+				]
+			},
+			transformParent: {
+				parentItemId: parent.id,
+				parentReference: { x: 0, y: 0, width: 100, height: 100, rotation: 0 },
+				childLocalReference: { x: 0, y: 0, width: 100, height: 100, rotation: 0 },
+				childWorldReference: { x: 0, y: 0, width: 100, height: 100, rotation: 0 }
+			}
+		};
+		const points = buildMotionPathPoints({
+			item: child,
+			canvasWidth: 1000,
+			canvasHeight: 500,
+			maxSamples: 5,
+			motionContext: {
+				fps: 30,
+				frameWidth: 1000,
+				frameHeight: 500,
+				items: [parent, child]
+			}
+		});
+
+		expect(points[0]).toMatchObject({
+			x: 350,
+			y: 250,
+			inHandle: { x: 270, y: 250 },
+			outHandle: { x: 430, y: 250 }
+		});
+	});
 });

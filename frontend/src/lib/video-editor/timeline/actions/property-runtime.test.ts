@@ -80,6 +80,33 @@ describe('property runtime actions', () => {
 		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 
+	it('rejects a property link that would close a transform-parent cycle', () => {
+		timelineStore._updateItems([
+			{
+				id: 'two',
+				patch: {
+					transformParent: {
+						parentItemId: 'one',
+						parentReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+						childLocalReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+						childWorldReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 }
+					}
+				}
+			}
+		]);
+
+		expect(
+			setDirectPropertyLink('one', {
+				type: 'link',
+				targetProperty: 'x',
+				sourceItemId: 'two',
+				sourceProperty: 'x',
+				enabled: true,
+				timeOffsetFrames: 0
+			})
+		).toEqual({ ok: false, reason: 'cycle' });
+	});
+
 	it('sets, toggles, removes, and restores expressions', () => {
 		expect(
 			setPropertyExpression('one', {
@@ -111,6 +138,19 @@ describe('property runtime actions', () => {
 			enabled: true,
 			timeOffsetFrames: 0
 		});
+		timelineStore._updateItems([
+			{
+				id: 'one',
+				patch: {
+					transformParent: {
+						parentItemId: 'two',
+						parentReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+						childLocalReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 },
+						childWorldReference: { x: 0, y: 0, width: 1, height: 1, rotation: 0 }
+					}
+				}
+			}
+		]);
 		const [duplicatedFollowerId, duplicatedSourceId] = duplicateItems(['one', 'two']);
 		expect(duplicatedFollowerId).toBeDefined();
 		expect(duplicatedSourceId).toBeDefined();
@@ -119,12 +159,22 @@ describe('property runtime actions', () => {
 				? timelineStore.itemById.get(duplicatedFollowerId)?.propertyLinks?.[0]?.sourceItemId
 				: undefined
 		).toBe(duplicatedSourceId);
+		expect(
+			duplicatedFollowerId
+				? timelineStore.itemById.get(duplicatedFollowerId)?.transformParent?.parentItemId
+				: undefined
+		).toBe(duplicatedSourceId);
 
 		const [singleFollowerId] = duplicateItems(['one']);
 		expect(singleFollowerId).toBeDefined();
 		expect(
 			singleFollowerId
 				? timelineStore.itemById.get(singleFollowerId)?.propertyLinks?.[0]?.sourceItemId
+				: undefined
+		).toBe('two');
+		expect(
+			singleFollowerId
+				? timelineStore.itemById.get(singleFollowerId)?.transformParent?.parentItemId
 				: undefined
 		).toBe('two');
 	});

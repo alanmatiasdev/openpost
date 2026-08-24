@@ -74,6 +74,25 @@ beforeEach(() => {
 });
 
 describe('sequence navigation', () => {
+	it('keeps Motion compositions out of editorial tabs while allowing focused editing', () => {
+		const sequence = composition('sequence');
+		const motion = { ...composition('motion'), editorKind: 'composite-2d' as const };
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track('video', 'video', 0), track('audio', 'audio', 1)],
+				compositions: [sequence, motion],
+				topLevelSequenceIds: [sequence.id, motion.id]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+
+		expect(sequenceStore.topLevelSequenceIds).toEqual([sequence.id]);
+		expect(sequenceStore.promoteToTab(motion.id)).toBe(false);
+		expect(switchSequence(motion.id)).toBe(true);
+		expect(sequenceStore.activeSequence?.editorKind).toBe('composite-2d');
+	});
+
 	it('creates a promoted sequence and restores each tab playhead', () => {
 		const id = createSequence('Alt cut');
 		expect(sequenceStore.topLevelSequenceIds).toEqual([id]);
@@ -124,6 +143,36 @@ describe('compound clips', () => {
 		expect(timelineStore.items.map((entry) => entry.id)).toEqual(['visual', 'audio-item']);
 	});
 
+	it('cuts transform relationships cleanly at a new composition boundary', () => {
+		const parent = item({
+			id: 'parent',
+			transform: { x: 20, y: 0, width: 100, height: 100 }
+		});
+		const child = item({
+			id: 'child',
+			transform: { x: 40, y: 0, width: 100, height: 100 },
+			transformParent: {
+				parentItemId: 'parent',
+				parentReference: { x: 20, y: 0, width: 100, height: 100, rotation: 0 },
+				childLocalReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 },
+				childWorldReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 }
+			}
+		});
+		timelineStore._setItems([parent, child]);
+
+		const parentCompositionId = createCompoundClip(['parent']);
+		expect(timelineStore.itemById.get('child')?.transformParent?.parentItemId).toBeUndefined();
+		expect(sequenceStore.compositionById.get(parentCompositionId!)?.items[0]?.id).toBe('parent');
+
+		commandHistory.undo();
+		const childCompositionId = createCompoundClip(['child']);
+		expect(
+			sequenceStore.compositionById.get(childCompositionId!)?.items[0]?.transformParent
+				?.parentItemId
+		).toBeUndefined();
+		expect(timelineStore.itemById.has('parent')).toBe(true);
+	});
+
 	it('dissolves a wrapper with fresh ids and restores internal transitions', () => {
 		const left = item({ id: 'left', durationInFrames: 15 });
 		const right = item({ id: 'right', from: 15, durationInFrames: 15 });
@@ -145,6 +194,41 @@ describe('compound clips', () => {
 		expect(transitionsStore.list).toHaveLength(1);
 		expect(transitionsStore.list[0]?.fromItemId).toBe(restoredIds[0]);
 		expect(sequenceStore.compositionById.has(compositionId!)).toBe(true);
+	});
+
+	it('remaps internal property links and transform parents when dissolving', () => {
+		const parent = item({ id: 'parent', transform: { x: 20, y: 0, width: 100, height: 100 } });
+		const child = item({
+			id: 'child',
+			from: 15,
+			transform: { x: 40, y: 0, width: 100, height: 100 },
+			propertyLinks: [
+				{
+					type: 'link',
+					sourceItemId: 'parent',
+					sourceProperty: 'opacity',
+					targetProperty: 'opacity',
+					enabled: true,
+					timeOffsetFrames: 0
+				}
+			],
+			transformParent: {
+				parentItemId: 'parent',
+				parentReference: { x: 20, y: 0, width: 100, height: 100, rotation: 0 },
+				childLocalReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 },
+				childWorldReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 }
+			}
+		});
+		timelineStore._setItems([parent, child]);
+		createCompoundClip(['parent', 'child']);
+		const wrapper = timelineStore.items.find((entry) => entry.type === 'composition')!;
+		const restoredIds = dissolveCompoundClip(wrapper.id);
+		const restored = restoredIds.map((id) => timelineStore.itemById.get(id)!);
+		const restoredParent = restored.find((entry) => entry.originId === 'parent')!;
+		const restoredChild = restored.find((entry) => entry.originId === 'child')!;
+
+		expect(restoredChild.propertyLinks?.[0]?.sourceItemId).toBe(restoredParent.id);
+		expect(restoredChild.transformParent?.parentItemId).toBe(restoredParent.id);
 	});
 
 	it('maps a trimmed retimed wrapper window back to child source frames', () => {

@@ -9,6 +9,10 @@ import type {
 } from '$lib/video-editor/project/types';
 import { applyEasing, applyEasingConfig } from '$lib/video-editor/timeline/easing';
 import {
+	resolveAnimatedItemAt,
+	type AnimatedItemMotionContext
+} from '$lib/video-editor/timeline/animated-properties';
+import {
 	activePositionKeyframes,
 	interpolatePosition,
 	upsertPositionKeyframe,
@@ -17,6 +21,24 @@ import {
 
 export type CropEdge = 'left' | 'right' | 'top' | 'bottom';
 export type TransformHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+/** Exact set of numeric properties the direct canvas tools can commit. */
+export interface CanvasAnimatedValues {
+	x?: number;
+	y?: number;
+	width?: number;
+	height?: number;
+	anchorX?: number;
+	anchorY?: number;
+	rotation?: number;
+	opacity?: number;
+	cornerRadius?: number;
+	cropLeft?: number;
+	cropRight?: number;
+	cropTop?: number;
+	cropBottom?: number;
+	cropSoftness?: number;
+}
 
 export const CROP_EDGE_PROPERTY = {
 	left: 'cropLeft',
@@ -515,6 +537,34 @@ function applySpatialPreview(
 	return { ...item, ...vectorKeyframesPatch(item, position) };
 }
 
+function shiftPositionKeyframe(
+	item: TimelineItem,
+	absoluteFrame: number,
+	delta: Point
+): TimelineItem {
+	const position = activePositionKeyframes(item);
+	if (!position) return item;
+	const index = position.findIndex((keyframe) => item.from + keyframe.frame === absoluteFrame);
+	if (index < 0) return item;
+	return {
+		...item,
+		...vectorKeyframesPatch(
+			item,
+			position.map((keyframe, keyframeIndex) =>
+				keyframeIndex === index
+					? {
+							...keyframe,
+							value: {
+								x: keyframe.value.x + delta.x,
+								y: keyframe.value.y + delta.y
+							}
+						}
+					: keyframe
+			)
+		)
+	};
+}
+
 /** Build a bounded sampled position path plus every editable X/Y keyframe. */
 export function buildMotionPathPoints({
 	item,
@@ -522,7 +572,8 @@ export function buildMotionPathPoints({
 	canvasHeight,
 	maxSamples = 96,
 	preview,
-	spatialPreview
+	spatialPreview,
+	motionContext
 }: {
 	item: TimelineItem;
 	canvasWidth: number;
@@ -530,6 +581,7 @@ export function buildMotionPathPoints({
 	maxSamples?: number;
 	preview?: { frame: number; x: number; y: number };
 	spatialPreview?: { frame: number; spatial: SpatialBezierTangents };
+	motionContext?: AnimatedItemMotionContext;
 }): MotionPathPoint[] {
 	const keyframes = positionKeyframeFrames(item);
 	if (keyframes.length === 0) return [];
@@ -545,8 +597,30 @@ export function buildMotionPathPoints({
 			const vector = activePositionKeyframes(previewed)?.find(
 				(keyframe) => previewed.from + keyframe.frame === frame
 			);
-			const x = canvasWidth / 2 + trackValueAt(previewed, 'x', frame);
-			const y = canvasHeight / 2 + trackValueAt(previewed, 'y', frame);
+			const resolved = motionContext
+				? resolveAnimatedItemAt(previewed, frame, motionContext)
+				: undefined;
+			const x = canvasWidth / 2 + (resolved?.transform?.x ?? trackValueAt(previewed, 'x', frame));
+			const y = canvasHeight / 2 + (resolved?.transform?.y ?? trackValueAt(previewed, 'y', frame));
+			const worldTangent = (tangent: Point): Point => {
+				if (!motionContext) return tangent;
+				const shifted = resolveAnimatedItemAt(
+					shiftPositionKeyframe(previewed, frame, tangent),
+					frame,
+					motionContext
+				);
+				return {
+					x: (shifted.transform?.x ?? 0) - (resolved?.transform?.x ?? 0),
+					y: (shifted.transform?.y ?? 0) - (resolved?.transform?.y ?? 0)
+				};
+			};
+			const spatial = vector?.spatial
+				? {
+						...vector.spatial,
+						inTangent: worldTangent(vector.spatial.inTangent),
+						outTangent: worldTangent(vector.spatial.outTangent)
+					}
+				: undefined;
 			return {
 				frame,
 				x,
@@ -554,15 +628,15 @@ export function buildMotionPathPoints({
 				isKeyframe: keyframeSet.has(frame) || preview?.frame === frame,
 				...(vector && {
 					vectorId: vector.id,
-					...(vector.spatial && {
-						spatial: vector.spatial,
+					...(spatial && {
+						spatial,
 						inHandle: {
-							x: x + vector.spatial.inTangent.x,
-							y: y + vector.spatial.inTangent.y
+							x: x + spatial.inTangent.x,
+							y: y + spatial.inTangent.y
 						},
 						outHandle: {
-							x: x + vector.spatial.outTangent.x,
-							y: y + vector.spatial.outTangent.y
+							x: x + spatial.outTangent.x,
+							y: y + spatial.outTangent.y
 						}
 					})
 				})

@@ -6,6 +6,7 @@ import type {
 } from '../../project/types';
 import { areDirectLinkPropertiesCompatible } from '../property-expression';
 import { doDirectLinkTargetsConflict } from '../property-runtime';
+import { wouldCreateTransformParentCycle } from '../transform-parenting';
 import { execute } from '../commands/command-store.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 
@@ -25,6 +26,15 @@ export function setDirectPropertyLink(
 		return { ok: false, reason: 'incompatible' };
 	}
 	if (link.enabled && wouldCreateDirectPropertyLinkCycle(itemId, link)) {
+		return { ok: false, reason: 'cycle' };
+	}
+	if (
+		link.enabled &&
+		itemId !== link.sourceItemId &&
+		wouldCreateTransformParentCycle(itemId, link.sourceItemId, (candidateId) =>
+			timelineStore.itemById.get(candidateId)
+		)
+	) {
 		return { ok: false, reason: 'cycle' };
 	}
 	execute(
@@ -140,8 +150,22 @@ export function wouldCreateDirectPropertyLinkCycle(
 export function clonePropertyRuntime(
 	item: TimelineItem,
 	duplicatedItemIdMap: ReadonlyMap<string, string>
-): Pick<TimelineItem, 'propertyLinks' | 'expressions'> {
+): Pick<TimelineItem, 'propertyLinks' | 'expressions' | 'transformParent'> {
 	return {
+		...(item.transformParent && {
+			transformParent: {
+				...item.transformParent,
+				parentItemId: item.transformParent.parentItemId
+					? (duplicatedItemIdMap.get(item.transformParent.parentItemId) ??
+						item.transformParent.parentItemId)
+					: undefined,
+				parentReference: item.transformParent.parentReference
+					? { ...item.transformParent.parentReference }
+					: undefined,
+				childLocalReference: { ...item.transformParent.childLocalReference },
+				childWorldReference: { ...item.transformParent.childWorldReference }
+			}
+		}),
 		...(item.propertyLinks && {
 			propertyLinks: item.propertyLinks.map((link) => ({
 				...link,

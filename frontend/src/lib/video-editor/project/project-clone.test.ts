@@ -72,6 +72,12 @@ describe('cloneProjectDocument', () => {
 			...source,
 			id: 'follower',
 			from: 60,
+			transformParent: {
+				parentItemId: 'source',
+				parentReference: { x: 0, y: 0, width: 100, height: 100, rotation: 0 },
+				childLocalReference: { x: 10, y: 0, width: 50, height: 50, rotation: 0 },
+				childWorldReference: { x: 10, y: 0, width: 50, height: 50, rotation: 0 }
+			},
 			propertyLinks: [
 				{
 					type: 'link',
@@ -127,6 +133,7 @@ describe('cloneProjectDocument', () => {
 		);
 		expect(clonedSource.vectorKeyframes?.position?.[0]?.id).not.toBe('vector-key');
 		expect(clonedFollower.propertyLinks?.[0]?.sourceItemId).toBe(clonedSource.id);
+		expect(clonedFollower.transformParent?.parentItemId).toBe(clonedSource.id);
 		expect(clonedFollower.expressions?.[0]?.source).toContain(`"${clonedSource.id}"`);
 		expect(clone.timeline!.transitions?.[0]).toMatchObject({
 			fromItemId: clonedSource.id,

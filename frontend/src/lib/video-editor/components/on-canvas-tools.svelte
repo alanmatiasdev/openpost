@@ -5,7 +5,6 @@
 	import type {
 		CropSettings,
 		ItemTransform,
-		KeyframeProperty,
 		SpatialBezierTangents,
 		TimelineItem,
 		TimelineItemCornerPin
@@ -18,6 +17,7 @@
 		calculateTransformResize,
 		calculateTransformRotation,
 		CROP_EDGE_PROPERTY,
+		type CanvasAnimatedValues,
 		MIN_TRANSFORM_SIZE,
 		positionKeyframeFrames,
 		resolveCrop,
@@ -29,16 +29,18 @@
 		type TransformHandle
 	} from '$lib/video-editor/preview/on-canvas-tools';
 	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
+	import type { AnimatedItemMotionContext } from '$lib/video-editor/timeline/animated-properties';
 	import PathEditorOverlay from './path-editor-overlay.svelte';
 	import CornerPinOverlay from './corner-pin-overlay.svelte';
 
 	type CanvasTool = 'transform' | 'crop' | 'anchor' | 'text' | 'motion' | 'path' | 'corner-pin';
 	type TransformOperation = 'move' | 'resize' | 'rotate';
-	type AnimatedValues = Partial<Record<KeyframeProperty, number>>;
 	const TRANSFORM_HANDLES: TransformHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 	let {
 		item,
+		motionSourceItem = item,
+		motionContext,
 		canvasWidth,
 		canvasHeight,
 		currentFrame,
@@ -58,6 +60,8 @@
 		onedit
 	}: {
 		item: TimelineItem;
+		motionSourceItem?: TimelineItem;
+		motionContext?: AnimatedItemMotionContext;
 		canvasWidth: number;
 		canvasHeight: number;
 		currentFrame: number;
@@ -67,7 +71,7 @@
 		ontextdraft: (text: string | null) => void;
 		oncornerpindraft: (pin: TimelineItemCornerPin | null) => void;
 		ontextediting: (editing: boolean) => void;
-		oncommitvalues: (frame: number, values: AnimatedValues) => boolean;
+		oncommitvalues: (frame: number, values: CanvasAnimatedValues) => boolean;
 		oncommitposition: (frame: number, x: number, y: number) => boolean;
 		oncreatespatial: (frame: number) => boolean;
 		oncommitspatial: (frame: number, spatial: SpatialBezierTangents) => boolean;
@@ -104,14 +108,15 @@
 	const canCornerPin = $derived(
 		['video', 'image', 'text', 'shape', 'subtitle', 'composition'].includes(item.type)
 	);
-	const hasMotion = $derived(positionKeyframeFrames(item).length > 0);
+	const hasMotion = $derived(positionKeyframeFrames(motionSourceItem).length > 0);
 	const motionPoints = $derived(
 		buildMotionPathPoints({
-			item,
+			item: motionSourceItem,
 			canvasWidth,
 			canvasHeight,
 			preview: motionDraft ?? undefined,
-			spatialPreview: spatialDraft ?? undefined
+			spatialPreview: spatialDraft ?? undefined,
+			motionContext
 		})
 	);
 	const activeMotionPoint = $derived(
@@ -347,7 +352,7 @@
 			() => {
 				const next = draftTransform;
 				if (next) {
-					const values: AnimatedValues =
+					const values: CanvasAnimatedValues =
 						operation === 'move'
 							? { x: next.x, y: next.y }
 							: operation === 'rotate'
@@ -381,7 +386,7 @@
 		return shiftKey ? !locked : locked;
 	}
 
-	function commitKeyboardTransform(values: AnimatedValues): void {
+	function commitKeyboardTransform(values: CanvasAnimatedValues): void {
 		if (!transformValuesChanged(values, resolvedTransform())) return;
 		const committed =
 			values.x !== undefined &&
@@ -394,7 +399,7 @@
 	}
 
 	function transformValuesChanged(
-		values: AnimatedValues,
+		values: CanvasAnimatedValues,
 		base: Required<Pick<ItemTransform, 'x' | 'y' | 'width' | 'height' | 'rotation'>>
 	): boolean {
 		const epsilon = 0.000001;

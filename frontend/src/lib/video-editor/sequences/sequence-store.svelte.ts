@@ -165,8 +165,15 @@ export const sequenceStore = {
 		return sequenceStore.activeSequence?.height ?? state.rootResolution.height;
 	},
 	load(timeline: ProjectTimeline, rootResolution: ProjectResolution): void {
-		state.compositions = copy(timeline.compositions ?? []);
-		const validIds = new Set(state.compositions.map((composition) => composition.id));
+		state.compositions = copy(timeline.compositions ?? []).map((composition) => ({
+			...composition,
+			editorKind: composition.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence'
+		}));
+		const validIds = new Set(
+			state.compositions
+				.filter((composition) => composition.editorKind !== 'composite-2d')
+				.map((composition) => composition.id)
+		);
 		state.topLevelSequenceIds = [
 			...new Set((timeline.topLevelSequenceIds ?? []).filter((id) => validIds.has(id)))
 		];
@@ -244,7 +251,12 @@ export const sequenceStore = {
 		return true;
 	},
 	promoteToTab(id: string): boolean {
-		if (!state.compositions.some((composition) => composition.id === id)) return false;
+		if (
+			!state.compositions.some(
+				(composition) => composition.id === id && composition.editorKind !== 'composite-2d'
+			)
+		)
+			return false;
 		if (!state.topLevelSequenceIds.includes(id)) {
 			state.topLevelSequenceIds = [...state.topLevelSequenceIds, id];
 		}

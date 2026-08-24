@@ -8,6 +8,11 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import { commandHistory, execute } from '../timeline/commands/command-store.svelte';
+import { clonePropertyRuntime } from '../timeline/actions/property-runtime';
+import {
+	detachedTransformParentBinding,
+	detachTransformChildrenForRemoval
+} from '../timeline/actions/transform-parenting';
 import { transitionsStore } from '../timeline/actions/transitions.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { expandSelectionWithLinkedItems } from '../timeline/utils/linked-items';
@@ -153,7 +158,11 @@ export function nestSequence(compositionId: string, from = timelineStore.current
 	});
 }
 
-export function createCompoundClip(itemIds: string[], name = 'Compound Clip'): string | null {
+export function createCompoundClip(
+	itemIds: string[],
+	name = 'Compound Clip',
+	editorKind: SubComposition['editorKind'] = 'sequence'
+): string | null {
 	return execute('CREATE_COMPOUND_CLIP', () => {
 		const expandedIds = new Set(expandSelectionWithLinkedItems(timelineStore.items, itemIds));
 		const selected = timelineStore.items.filter((item) => expandedIds.has(item.id));
@@ -161,15 +170,31 @@ export function createCompoundClip(itemIds: string[], name = 'Compound Clip'): s
 		const minFrom = Math.min(...selected.map((item) => item.from));
 		const maxEnd = Math.max(...selected.map((item) => item.from + item.durationInFrames));
 		const selectedTrackIds = new Set(selected.map((item) => item.trackId));
+		const selectedItemIds = new Set(selected.map((item) => item.id));
 		const compositionId = crypto.randomUUID();
 		const composition: SubComposition = {
 			id: compositionId,
 			name,
-			editorKind: 'sequence',
-			items: selected.map((item) => ({
-				...snapshotTimelineState(item),
-				from: item.from - minFrom
-			})),
+			editorKind,
+			items: selected.map((item) => {
+				const snapshot = snapshotTimelineState(item);
+				const propertyLinks = snapshot.propertyLinks?.filter((link) =>
+					selectedItemIds.has(link.sourceItemId)
+				);
+				const externalParent =
+					snapshot.transformParent?.parentItemId &&
+					!selectedItemIds.has(snapshot.transformParent.parentItemId);
+				return {
+					...snapshot,
+					from: item.from - minFrom,
+					...(snapshot.propertyLinks && {
+						propertyLinks: propertyLinks?.length ? propertyLinks : undefined
+					}),
+					...(externalParent && {
+						transformParent: detachedTransformParentBinding(item)
+					})
+				};
+			}),
 			tracks: timelineStore.tracks
 				.filter((track) => selectedTrackIds.has(track.id))
 				.map((track) => snapshotTimelineState(track)),
@@ -183,6 +208,7 @@ export function createCompoundClip(itemIds: string[], name = 'Compound Clip'): s
 			durationInFrames: maxEnd - minFrom
 		};
 		sequenceStore.addComposition(composition);
+		detachTransformChildrenForRemoval([...expandedIds]);
 		timelineStore._removeItems([...expandedIds]);
 		transitionsStore.setAll(
 			transitionsStore.list.filter(
@@ -377,7 +403,7 @@ export function dissolveCompoundClip(wrapperId: string): string[] {
 			timelineStore.tracks
 		);
 		const idMap = new Map<string, string>();
-		const restored = composition.items.flatMap((item) => {
+		const mappedItems = composition.items.flatMap((item) => {
 			const mapped = mapItemThroughWrapper(item, windowAnchor, timelineStore.fps, composition.fps);
 			if (!mapped) return [];
 			const id = crypto.randomUUID();
@@ -391,6 +417,10 @@ export function dissolveCompoundClip(wrapperId: string): string[] {
 				}
 			];
 		});
+		const restored = mappedItems.map((item) => ({
+			...item,
+			...clonePropertyRuntime(item, idMap)
+		}));
 		timelineStore._setTracks(tracks);
 		timelineStore._setItems([
 			...timelineStore.items.filter((item) => !wrapperIds.has(item.id)),

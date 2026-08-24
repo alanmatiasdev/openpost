@@ -20,7 +20,12 @@
 		isAutomaticProxyCandidate
 	} from '$lib/video-editor/media/proxy-client';
 	import { paintOrder, planNestedMixdown } from '$lib/video-editor/media/render-plan';
-	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
+	import {
+		resolveAnimatedItemAt,
+		resolveAnimatedItemLocalAt,
+		resolvedTransformForItem
+	} from '$lib/video-editor/timeline/animated-properties';
+	import { worldToLocalTransform } from '$lib/video-editor/timeline/transform-parenting';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import {
 		createPositionSpatialTangents,
@@ -69,6 +74,7 @@
 		warmPreviewDecoder
 	} from '$lib/video-editor/preview/decoder-prewarm-client';
 	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
+	import type { CanvasAnimatedValues } from '$lib/video-editor/preview/on-canvas-tools';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -697,12 +703,17 @@
 			.join('')}`.toUpperCase();
 	}
 
-	function commitCanvasValues(
-		frame: number,
-		values: Partial<Record<KeyframeProperty, number>>
-	): boolean {
+	function commitCanvasValues(frame: number, values: CanvasAnimatedValues): boolean {
 		if (!selectedItemId) return false;
-		const committed = setAnimatedProperties(selectedItemId, frame, values, (property) =>
+		const localValues = localCanvasValues(frame, values);
+		const committedValues: Partial<Record<KeyframeProperty, number>> = {};
+		for (const [rawProperty, value] of Object.entries(localValues)) {
+			if (value === undefined) continue;
+			// SAFETY: CanvasAnimatedValues contains only built-in KeyframeProperty names.
+			const property = rawProperty as KeyframeProperty;
+			committedValues[property] = value;
+		}
+		const committed = setAnimatedProperties(selectedItemId, frame, committedValues, (property) =>
 			autoKeyframeStore.isEnabled(selectedItemId ?? '', property)
 		);
 		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
@@ -710,9 +721,60 @@
 	}
 
 	function commitCanvasPosition(frame: number, x: number, y: number): boolean {
-		const committed = selectedItemId ? setPositionAtFrame(selectedItemId, frame, x, y) : false;
+		const local = localCanvasValues(frame, { x, y });
+		const committed = selectedItemId
+			? setPositionAtFrame(selectedItemId, frame, local.x ?? x, local.y ?? y)
+			: false;
 		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
 		return committed;
+	}
+
+	function localCanvasValues(frame: number, values: CanvasAnimatedValues): CanvasAnimatedValues {
+		if (!selectedItemId) return values;
+		const item = timelineStore.itemById.get(selectedItemId);
+		if (!item?.transformParent) return values;
+		const context = {
+			fps: timelineStore.fps,
+			frameWidth: canvasWidth,
+			frameHeight: canvasHeight,
+			items: timelineStore.items
+		};
+		const world = resolvedTransformForItem(
+			resolveAnimatedItemAt(item, frame, context),
+			canvasWidth,
+			canvasHeight
+		);
+		const transformProperties = [
+			'x',
+			'y',
+			'width',
+			'height',
+			'anchorX',
+			'anchorY',
+			'rotation',
+			'opacity',
+			'cornerRadius'
+		] as const;
+		for (const property of transformProperties) {
+			const value = values[property];
+			if (value !== undefined) world[property] = value;
+		}
+		const parent = item.transformParent.parentItemId
+			? timelineStore.itemById.get(item.transformParent.parentItemId)
+			: undefined;
+		const parentWorld = parent
+			? resolvedTransformForItem(
+					resolveAnimatedItemAt(parent, frame, context),
+					canvasWidth,
+					canvasHeight
+				)
+			: undefined;
+		const local = worldToLocalTransform(world, item.transformParent, parentWorld);
+		const result = { ...values };
+		for (const property of transformProperties) {
+			if (values[property] !== undefined) result[property] = local[property];
+		}
+		return result;
 	}
 
 	function createCanvasSpatialTangents(frame: number): boolean {
@@ -722,11 +784,60 @@
 	}
 
 	function commitCanvasSpatialTangents(frame: number, spatial: SpatialBezierTangents): boolean {
+		const localSpatial = localCanvasSpatialTangents(frame, spatial);
 		const committed = selectedItemId
-			? setPositionSpatialTangents(selectedItemId, frame, spatial)
+			? setPositionSpatialTangents(selectedItemId, frame, localSpatial)
 			: false;
 		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
 		return committed;
+	}
+
+	function localCanvasSpatialTangents(
+		frame: number,
+		spatial: SpatialBezierTangents
+	): SpatialBezierTangents {
+		if (!selectedItemId) return spatial;
+		const item = timelineStore.itemById.get(selectedItemId);
+		if (!item?.transformParent) return spatial;
+		const context = {
+			fps: timelineStore.fps,
+			frameWidth: canvasWidth,
+			frameHeight: canvasHeight,
+			items: timelineStore.items
+		};
+		const local = resolvedTransformForItem(
+			resolveAnimatedItemLocalAt(item, frame, context),
+			canvasWidth,
+			canvasHeight
+		);
+		const world = resolvedTransformForItem(
+			resolveAnimatedItemAt(item, frame, context),
+			canvasWidth,
+			canvasHeight
+		);
+		const parent = item.transformParent.parentItemId
+			? timelineStore.itemById.get(item.transformParent.parentItemId)
+			: undefined;
+		const parentWorld = parent
+			? resolvedTransformForItem(
+					resolveAnimatedItemAt(parent, frame, context),
+					canvasWidth,
+					canvasHeight
+				)
+			: undefined;
+		const toLocalTangent = (tangent: { x: number; y: number }) => {
+			const handle = worldToLocalTransform(
+				{ ...world, x: world.x + tangent.x, y: world.y + tangent.y },
+				item.transformParent,
+				parentWorld
+			);
+			return { x: handle.x - local.x, y: handle.y - local.y };
+		};
+		return {
+			...spatial,
+			inTangent: toLocalTangent(spatial.inTangent),
+			outTangent: toLocalTangent(spatial.outTangent)
+		};
 	}
 
 	function commitCanvasText(text: string): void {
@@ -865,6 +976,13 @@
 			{#if selectedResolved && !selectedTrackLocked}
 				<OnCanvasTools
 					item={selectedResolved}
+					motionSourceItem={selectedItem}
+					motionContext={{
+						fps: timelineStore.fps,
+						frameWidth: canvasWidth,
+						frameHeight: canvasHeight,
+						items: timelineStore.items
+					}}
 					{canvasWidth}
 					{canvasHeight}
 					currentFrame={timelineStore.currentFrame}

@@ -8,6 +8,7 @@
 
 import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
+import { detachTransformChildrenForRemoval } from './transform-parenting';
 import { editorSession } from '../../editor.svelte';
 import { execute } from '../commands/command-store.svelte';
 import {
@@ -25,6 +26,7 @@ import { canJoinMultipleItems, joinedTimelineItem } from '../join-items';
 import { clonePropertyRuntime } from './property-runtime';
 import { hasPathVertexKeyframes } from '../path-vertex-keyframes';
 import { effectiveMediaTracks } from '../utils/track-groups';
+import { sequenceStore } from '../../sequences/sequence-store.svelte';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -48,6 +50,32 @@ export function addTextItem(label: string): string {
 			label,
 			text: label,
 			type: 'text'
+		});
+		return id;
+	});
+}
+
+/** Add a non-rendering transform controller that can parent visual layers. */
+export function addTransformController(label: string): string {
+	return execute('ADD_TRANSFORM_CONTROLLER', () => {
+		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
+			.filter((track) => track.kind !== 'audio' && !track.locked)
+			.toSorted((left, right) => left.order - right.order)[0];
+		if (!topVisualTrack) throw new Error('An unlocked visual track is required.');
+
+		const id = crypto.randomUUID();
+		const size = Math.max(
+			80,
+			Math.round(Math.min(sequenceStore.activeWidth, sequenceStore.activeHeight) * 0.12)
+		);
+		timelineStore._addItem({
+			id,
+			trackId: topVisualTrack.id,
+			from: 0,
+			durationInFrames: Math.max(timelineStore.fps, timelineStore.maxItemEndFrame),
+			label,
+			type: 'controller',
+			transform: { x: 0, y: 0, width: size, height: size, rotation: 0, opacity: 1 }
 		});
 		return id;
 	});
@@ -165,6 +193,7 @@ export function removeItems(
 	const deletableIds = deletableItemIds(ids, expandLinked);
 	if (deletableIds.length === 0) return [];
 	return execute('REMOVE_ITEMS', () => {
+		detachTransformChildrenForRemoval(deletableIds);
 		timelineStore._removeItems(deletableIds);
 		pruneOrphanedTransitions();
 		return deletableIds;

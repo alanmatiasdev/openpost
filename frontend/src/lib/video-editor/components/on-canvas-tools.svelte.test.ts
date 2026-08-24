@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
-import type { Point } from '$lib/video-editor/preview/on-canvas-tools';
+import type { TimelineItem } from '$lib/video-editor/project/types';
+import type { CanvasAnimatedValues, Point } from '$lib/video-editor/preview/on-canvas-tools';
 import OnCanvasTools from './on-canvas-tools.svelte';
 import '../../../routes/layout.css';
 
@@ -29,9 +29,7 @@ async function renderTools(item: TimelineItem) {
 		ontextdraft: vi.fn(),
 		oncornerpindraft: vi.fn(),
 		ontextediting: vi.fn(),
-		oncommitvalues: vi.fn(
-			(_frame: number, _values: Partial<Record<KeyframeProperty, number>>) => true
-		),
+		oncommitvalues: vi.fn((_frame: number, _values: CanvasAnimatedValues) => true),
 		oncommitposition: vi.fn((_frame: number, _x: number, _y: number) => true),
 		oncreatespatial: vi.fn((_frame: number) => true),
 		oncommitspatial: vi.fn(() => true),
