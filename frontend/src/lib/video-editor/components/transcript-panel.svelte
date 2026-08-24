@@ -10,6 +10,7 @@
 	import BoldIcon from '@lucide/svelte/icons/bold';
 	import ItalicIcon from '@lucide/svelte/icons/italic';
 	import UnderlineIcon from '@lucide/svelte/icons/underline';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 	import { execute } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -21,6 +22,9 @@
 		toggleCueFormat,
 		type CueFormatFlags
 	} from '$lib/video-editor/transcript/subtitle-cue-format';
+	import { collectTranscriptSourceWords } from '$lib/video-editor/transcript/speech-cleanup';
+	import { applyTranscriptWordRemoval } from '$lib/video-editor/transcript/speech-cleanup-actions';
+	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
 
 	let { onedit }: { onedit: () => void } = $props();
 
@@ -28,6 +32,20 @@
 
 	/** In-flight inline edits keyed by cue id; committed to the store on blur. */
 	let draftTexts = $state<Record<string, string>>({});
+	let editVideoMode = $state(false);
+	let selectedSourceWordIds = $state<Set<string>>(new Set());
+	const sourceMediaItemIds = $derived(
+		timelineStore.items
+			.filter((item) => item.type === 'video' || item.type === 'audio')
+			.map((item) => item.id)
+	);
+	const sourceWords = $derived(
+		collectTranscriptSourceWords(timelineStore.items, sourceMediaItemIds, timelineStore.fps)
+	);
+	const sourceWordByUiId = $derived(new Map(sourceWords.map((word) => [word.id, word])));
+	const selectedSourceWords = $derived(
+		sourceWords.filter((word) => selectedSourceWordIds.has(word.id))
+	);
 
 	function displayText(cue: SubtitleCue): string {
 		return draftTexts[cue.id] ?? parseSubtitleCueText(cue.text).plainText;
@@ -159,12 +177,78 @@
 			'DELETE_TRANSCRIPT_WORD'
 		);
 	}
+
+	function toggleVideoWord(id: string): void {
+		const next = new Set(selectedSourceWordIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selectedSourceWordIds = next;
+		const word = sourceWordByUiId.get(id);
+		if (!word) return;
+		const source = timelineStore.items.find(
+			(item) => (item.type === 'video' || item.type === 'audio') && item.mediaId === word.mediaId
+		);
+		if (source)
+			setCurrentFrame(sourceSecondsToTimelineFrame(source, word.start, timelineStore.fps));
+	}
+
+	function deleteSelectedVideoWords(): void {
+		if (selectedSourceWords.length === 0) return;
+		const mediaIds = new Set(selectedSourceWords.map((word) => word.mediaId));
+		const itemIds = timelineStore.items
+			.filter(
+				(item) =>
+					(item.type === 'video' || item.type === 'audio') &&
+					item.mediaId !== undefined &&
+					mediaIds.has(item.mediaId)
+			)
+			.map((item) => item.id);
+		const result = applyTranscriptWordRemoval(itemIds, selectedSourceWords);
+		if (result.removedItemCount === 0) return;
+		selectedSourceWordIds = new Set();
+		onedit();
+	}
 </script>
 
 <div class="video-editor-theme flex flex-col gap-1">
-	<h3 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
-		{m.video_editor_transcript()}
-	</h3>
+	<div class="flex items-center justify-between gap-2 px-1">
+		<h3 class="text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
+			{m.video_editor_transcript()}
+		</h3>
+		<Button
+			type="button"
+			variant={editVideoMode ? 'secondary' : 'ghost'}
+			size="sm"
+			class="h-6 px-2 text-[10px]"
+			disabled={sourceWords.length === 0}
+			aria-pressed={editVideoMode}
+			onclick={() => {
+				editVideoMode = !editVideoMode;
+				selectedSourceWordIds = new Set();
+			}}
+		>
+			<ScissorsIcon class="size-3" aria-hidden="true" />
+			{m.video_editor_edit_by_transcript()}
+		</Button>
+	</div>
+	{#if editVideoMode}
+		<div
+			class="mx-1 mb-1 flex items-center justify-between gap-2 rounded-md border border-[oklch(0.31_0.018_55)] bg-[oklch(0.2_0.012_50)] px-2 py-1.5"
+		>
+			<span class="text-[10px] text-[oklch(0.68_0.012_55)]">
+				{m.video_editor_transcript_words_selected({ count: selectedSourceWords.length })}
+			</span>
+			<Button
+				type="button"
+				size="sm"
+				class="h-6 px-2 text-[10px]"
+				disabled={selectedSourceWords.length === 0}
+				onclick={deleteSelectedVideoWords}
+			>
+				{m.video_editor_delete_selected_words()}
+			</Button>
+		</div>
+	{/if}
 	{#if subtitleItems.length === 0}
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">
 			{m.video_editor_transcript_empty()}
@@ -258,54 +342,69 @@
 									<div
 										class="group rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.23_0.01_50)] p-1"
 									>
-										<Input
-											class="w-16 bg-transparent text-[10px] outline-none"
-											value={word.text}
-											aria-label={m.video_editor_transcript_word()}
-											onfocus={() => setCurrentFrame(word.startFrame)}
-											onblur={(event) => {
-												if (event.currentTarget.value !== word.text)
-													updateWord(item, cue, word.id, {
-														text: event.currentTarget.value
-													});
-											}}
-										/>
-										<div class="mt-0.5 flex items-center gap-0.5">
-											<Input
-												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
-												type="number"
-												value={word.startFrame}
-												aria-label={m.video_editor_transcript_word_start()}
-												onblur={(event) =>
-													updateWord(item, cue, word.id, {
-														startFrame: Math.max(0, event.currentTarget.valueAsNumber)
-													})}
-											/><span class="text-[8px]">-</span><Input
-												class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
-												type="number"
-												value={word.endFrame}
-												aria-label={m.video_editor_transcript_word_end()}
-												onblur={(event) =>
-													updateWord(item, cue, word.id, {
-														endFrame: Math.max(
-															word.startFrame + 1,
-															event.currentTarget.valueAsNumber
-														)
-													})}
-											/><Button
+										{#if editVideoMode && sourceWordByUiId.has(`${item.id}:${cue.id}:${word.id}`)}
+											<button
 												type="button"
-												variant="ghost"
-												size="icon-xs"
-												class="ml-auto"
-												aria-label={m.video_editor_transcript_word_delete()}
-												onclick={(event) => {
-													event.stopPropagation();
-													deleteWord(item, cue, word.id);
-												}}
+												class={`min-h-6 w-full rounded px-1 text-left text-[10px] ${
+													selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)
+														? 'bg-[var(--video-editor-focus)] font-medium text-black'
+														: ''
+												}`}
+												data-selected={selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)}
+												aria-pressed={selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)}
+												aria-label={m.video_editor_delete_transcript_word({ word: word.text })}
+												onclick={() => toggleVideoWord(`${item.id}:${cue.id}:${word.id}`)}
 											>
-												<Trash2Icon class="size-3" aria-hidden="true" />
-											</Button>
-										</div>
+												{word.text}
+											</button>
+										{:else}<Input
+												class="w-16 bg-transparent text-[10px] outline-none"
+												value={word.text}
+												aria-label={m.video_editor_transcript_word()}
+												onfocus={() => setCurrentFrame(word.startFrame)}
+												onblur={(event) => {
+													if (event.currentTarget.value !== word.text)
+														updateWord(item, cue, word.id, {
+															text: event.currentTarget.value
+														});
+												}}
+											/>{/if}
+										{#if !editVideoMode}<div class="mt-0.5 flex items-center gap-0.5">
+												<Input
+													class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
+													type="number"
+													value={word.startFrame}
+													aria-label={m.video_editor_transcript_word_start()}
+													onblur={(event) =>
+														updateWord(item, cue, word.id, {
+															startFrame: Math.max(0, event.currentTarget.valueAsNumber)
+														})}
+												/><span class="text-[8px]">-</span><Input
+													class="w-10 bg-transparent text-[8px] text-[oklch(0.62_0.01_55)]"
+													type="number"
+													value={word.endFrame}
+													aria-label={m.video_editor_transcript_word_end()}
+													onblur={(event) =>
+														updateWord(item, cue, word.id, {
+															endFrame: Math.max(
+																word.startFrame + 1,
+																event.currentTarget.valueAsNumber
+															)
+														})}
+												/><Button
+													type="button"
+													variant="ghost"
+													size="icon-xs"
+													class="ml-auto"
+													aria-label={m.video_editor_transcript_word_delete()}
+													onclick={(event) => {
+														event.stopPropagation();
+														deleteWord(item, cue, word.id);
+													}}
+												>
+													<Trash2Icon class="size-3" aria-hidden="true" />
+												</Button>
+											</div>{/if}
 									</div>
 								{/each}
 							</div>

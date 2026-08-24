@@ -17,12 +17,30 @@ import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 export interface RemoveSilenceOptions extends AudioSilenceDetectionOptions {
 	/** 'signal' decodes audio; 'speech' derives gaps from the transcript. */
 	mode?: 'signal' | 'speech';
+	signal?: AbortSignal;
+	onProgress?: (progress: number) => void;
+}
+
+export interface SilenceAnalysisResult {
+	rangesByMediaId: Record<string, SourceRange[]>;
+	analyzedMediaIds: string[];
+	failedMediaIds: string[];
+}
+
+function abortError(): DOMException {
+	return new DOMException('Silence analysis cancelled', 'AbortError');
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) throw abortError();
 }
 
 /** Decode a media item's full audio into mono channel data for detection. */
 async function decodeAudio(
-	mediaId: string
+	mediaId: string,
+	signal?: AbortSignal
 ): Promise<import('../audio/audio-silence').AudioBufferLike> {
+	throwIfAborted(signal);
 	const media = mediaPool.get(mediaId);
 	if (!media) throw new Error(`Unknown media: ${mediaId}`);
 	const blob = await resolveMediaBlob(media);
@@ -34,19 +52,24 @@ async function decodeAudio(
 	let sampleRate = 48000;
 	const chunks: Float32Array[] = [];
 	for await (const sample of sink.samples()) {
-		sampleRate = sample.sampleRate;
-		const buffer = sample.toAudioBuffer();
-		// Downmix every channel into one mono array.
-		const frames = buffer.length;
-		const merged = new Float32Array(frames);
-		for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-			const data = buffer.getChannelData(ch);
-			for (let i = 0; i < frames; i++) merged[i] += (data[i] ?? 0) / buffer.numberOfChannels;
+		try {
+			throwIfAborted(signal);
+			sampleRate = sample.sampleRate;
+			const buffer = sample.toAudioBuffer();
+			// Downmix every channel into one mono array.
+			const frames = buffer.length;
+			const merged = new Float32Array(frames);
+			for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+				const data = buffer.getChannelData(ch);
+				for (let i = 0; i < frames; i++) merged[i] += (data[i] ?? 0) / buffer.numberOfChannels;
+			}
+			chunks.push(merged);
+			totalFrames += frames;
+		} finally {
+			sample.close();
 		}
-		chunks.push(merged);
-		totalFrames += frames;
-		sample.close();
 	}
+	throwIfAborted(signal);
 	const channel = new Float32Array(Math.max(totalFrames, 1));
 	let offset = 0;
 	for (const chunk of chunks) {
@@ -66,6 +89,77 @@ function toSourceRanges(ranges: Array<{ start: number; end: number }>): SourceRa
 	return ranges.map((r) => ({ start: r.start, end: r.end }));
 }
 
+function selectedSpansByMedia(items: readonly TimelineItem[]): Map<string, SourceRange[]> {
+	const spans = new Map<string, SourceRange[]>();
+	for (const item of items) {
+		if (!item.mediaId) continue;
+		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : timelineStore.fps;
+		const start = Math.max(0, (item.sourceStart ?? 0) / sourceFps);
+		const end = Math.max(
+			start,
+			(item.sourceEnd ??
+				(item.sourceStart ?? 0) +
+					(item.durationInFrames * (item.speed ?? 1) * sourceFps) / timelineStore.fps) / sourceFps
+		);
+		const current = spans.get(item.mediaId) ?? [];
+		current.push({ start, end });
+		spans.set(item.mediaId, current);
+	}
+	return spans;
+}
+
+function rangesInsideSpans(
+	ranges: readonly SourceRange[],
+	spans: readonly SourceRange[]
+): SourceRange[] {
+	const intersections = ranges.flatMap((range) =>
+		spans.flatMap((span) => {
+			const start = Math.max(range.start, span.start);
+			const end = Math.min(range.end, span.end);
+			return end > start ? [{ start, end }] : [];
+		})
+	);
+	const merged: SourceRange[] = [];
+	for (const range of intersections.toSorted((left, right) => left.start - right.start)) {
+		const previous = merged.at(-1);
+		if (previous && range.start <= previous.end) previous.end = Math.max(previous.end, range.end);
+		else merged.push({ ...range });
+	}
+	return merged;
+}
+
+/** Analyze selected media without mutating the timeline. */
+export async function analyzeSilenceSignal(
+	itemIds: string[],
+	options: RemoveSilenceOptions = {}
+): Promise<SilenceAnalysisResult> {
+	const { mode: _mode, signal, onProgress, ...detectorOptions } = options;
+	const items = timelineItemsFor(itemIds);
+	const spansByMediaId = selectedSpansByMedia(items);
+	const mediaIds = [...spansByMediaId.keys()];
+	const rangesByMediaId: Record<string, SourceRange[]> = {};
+	const analyzedMediaIds: string[] = [];
+	const failedMediaIds: string[] = [];
+	onProgress?.(mediaIds.length === 0 ? 1 : 0);
+
+	for (let index = 0; index < mediaIds.length; index += 1) {
+		throwIfAborted(signal);
+		const mediaId = mediaIds[index]!;
+		try {
+			const buffer = await decodeAudio(mediaId, signal);
+			const detected = toSourceRanges(detectSilentRanges(buffer, detectorOptions));
+			const visible = rangesInsideSpans(detected, spansByMediaId.get(mediaId) ?? []);
+			if (visible.length > 0) rangesByMediaId[mediaId] = visible;
+			analyzedMediaIds.push(mediaId);
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') throw error;
+			failedMediaIds.push(mediaId);
+		}
+		onProgress?.((index + 1) / Math.max(1, mediaIds.length));
+	}
+	return { rangesByMediaId, analyzedMediaIds, failedMediaIds };
+}
+
 /**
  * Detect + remove silence for the given timeline items ('signal' mode).
  * Speech mode arrives with the transcription feature; callers pass ranges
@@ -75,22 +169,8 @@ export async function removeSilenceSignal(
 	itemIds: string[],
 	options: RemoveSilenceOptions = {}
 ): Promise<number> {
-	const { mode: _mode, ...detectorOptions } = options;
-	const items = timelineItemsFor(itemIds);
-	const byMedia = new Map<string, Array<{ start: number; end: number }>>();
-	for (const item of items) {
-		if (!item.mediaId || byMedia.has(item.mediaId)) continue;
-		try {
-			const buffer = await decodeAudio(item.mediaId);
-			byMedia.set(item.mediaId, detectSilentRanges(buffer, detectorOptions));
-		} catch {
-			// Un-decodable audio (e.g. unsupported codec) — skip this media.
-		}
-	}
-	const rangesByMediaId: Record<string, SourceRange[]> = {};
-	for (const [mediaId, ranges] of byMedia) rangesByMediaId[mediaId] = toSourceRanges(ranges);
-
-	const result = removeSilenceFromItems(itemIds, rangesByMediaId);
+	const analysis = await analyzeSilenceSignal(itemIds, options);
+	const result = removeSilenceFromItems(itemIds, analysis.rangesByMediaId);
 	return result.removedItemCount;
 }
 

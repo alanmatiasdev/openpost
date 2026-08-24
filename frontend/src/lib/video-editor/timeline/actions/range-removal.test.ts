@@ -116,4 +116,86 @@ describe('removeSilenceFromItems', () => {
 	it('threshold constant matches FreeCut semantics', () => {
 		expect(SILENCE_COVERAGE_REMOVAL_THRESHOLD).toBe(0.75);
 	});
+
+	it('cuts the same interval from sync-locked tracks in the same undo step', () => {
+		timelineStore._setTracks([
+			{
+				id: 'track-video-main',
+				name: 'Video',
+				kind: 'video',
+				height: 96,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				syncLock: true,
+				order: 0
+			},
+			{
+				id: 'music',
+				name: 'Music',
+				kind: 'audio',
+				height: 64,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				syncLock: true,
+				order: 1
+			}
+		]);
+		const clip = mediaClip();
+		const music = mediaClip({
+			id: 'music-clip',
+			trackId: 'music',
+			type: 'audio',
+			mediaId: 'music-media'
+		});
+		timelineStore._setItems([clip, music]);
+
+		removeSilenceFromItems([clip.id], silenceRanges([[1, 2]]));
+
+		expect(
+			timelineStore.items
+				.filter((item) => item.trackId === 'music')
+				.toSorted((left, right) => left.from - right.from)
+				.map(({ from, durationInFrames, sourceStart, sourceEnd }) => ({
+					from,
+					durationInFrames,
+					sourceStart,
+					sourceEnd
+				}))
+		).toEqual([
+			{ from: 0, durationInFrames: 30, sourceStart: 0, sourceEnd: 30 },
+			{ from: 30, durationInFrames: 240, sourceStart: 60, sourceEnd: 300 }
+		]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('music-clip')?.durationInFrames).toBe(300);
+	});
+
+	it('leaves selected clips on locked tracks untouched', () => {
+		const clip = mediaClip();
+		timelineStore._setTracks([
+			{
+				id: 'track-video-main',
+				name: 'Video',
+				kind: 'video',
+				height: 96,
+				locked: true,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: 0
+			}
+		]);
+		timelineStore._setItems([clip]);
+
+		expect(removeSilenceFromItems([clip.id], silenceRanges([[1, 2]]))).toMatchObject({
+			analyzedItemCount: 0,
+			removedItemCount: 0
+		});
+		expect(timelineStore.items).toHaveLength(1);
+		expect(commandHistory.canUndo).toBe(false);
+	});
 });

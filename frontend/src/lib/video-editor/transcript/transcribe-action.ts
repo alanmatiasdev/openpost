@@ -14,10 +14,12 @@ import { buildCuesFromWords, type TranscriptWord } from './cues';
 import { BrowserTranscriber } from './engine/transcriber';
 import type { TranscribeOptions } from './engine/types';
 
-export function transcriptionSourceWindow(item: TimelineItem): {
+export interface TranscriptionSourceWindow {
 	sourceStartSeconds: number;
 	sourceEndSeconds?: number;
-} {
+}
+
+export function transcriptionSourceWindow(item: TimelineItem): TranscriptionSourceWindow {
 	const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : 30;
 	const sourceStartSeconds = Math.max(0, (item.sourceStart ?? 0) / sourceFps);
 	const sourceEndSeconds =
@@ -52,6 +54,7 @@ export function addGeneratedSubtitleItem(sourceItemId: string, words: Transcript
 		if (!source) throw new Error('Source clip is gone');
 		const fps = timelineStore.fps;
 		const speed = source.speed && source.speed > 0 ? source.speed : 1;
+		const { sourceStartSeconds } = transcriptionSourceWindow(source);
 		const cues = buildCuesFromWords(words, { fps: fps / speed });
 		if (cues.length === 0) throw new Error('Transcription produced no words');
 		const topTrack =
@@ -69,7 +72,13 @@ export function addGeneratedSubtitleItem(sourceItemId: string, words: Transcript
 				),
 				label: 'Auto captions',
 				type: 'subtitle',
-				captionSource: { type: 'transcript', clipId: source.id, mediaId: source.mediaId ?? '' },
+				captionSource: {
+					type: 'transcript',
+					clipId: source.id,
+					mediaId: source.mediaId ?? '',
+					sourceStartSeconds,
+					playbackSpeed: speed
+				},
 				cues
 			} satisfies TimelineItem
 		]);

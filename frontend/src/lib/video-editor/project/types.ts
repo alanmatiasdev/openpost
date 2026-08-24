@@ -430,6 +430,10 @@ interface CaptionSourceBase {
 
 export interface TranscriptCaptionSource extends CaptionSourceBase {
 	type: 'transcript';
+	/** Source window used for transcription, before timeline speed scaling. */
+	sourceStartSeconds?: number;
+	/** Playback speed used when source-second word timings became cue frames. */
+	playbackSpeed?: number;
 }
 
 export interface SubtitleImportCaptionSource extends CaptionSourceBase {

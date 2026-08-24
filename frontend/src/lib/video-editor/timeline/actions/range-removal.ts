@@ -7,18 +7,17 @@
  * of its source-time span is covered by a range. The threshold guards both
  * un-splittable partial segments and float rounding at range edges.
  *
- * Ported from FreeCut (MIT) — edit/range-removal-actions.ts, without
- * transitions/keyframes/sync-lock cascades.
+ * Ported from FreeCut (MIT) - edit/range-removal-actions.ts, with locked-track,
+ * transition, and sync-lock repair for OpenPost's multi-track timeline.
  */
 
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
-import {
-	expandSelectionWithLinkedItems,
-	getUniqueLinkedItemAnchorIds
-} from '../utils/linked-items';
+import { getUniqueLinkedItemAnchorIds } from '../utils/linked-items';
 import { getItemSourceSpanSeconds, sourceSecondsToTimelineFrame } from '../utils/media-item-frames';
+import { pruneInvalidTransitions } from './transitions.svelte';
+import { propagateRemovedIntervalsToSyncLockedTracks } from './sync-lock-ripple';
 
 export interface SourceRange {
 	start: number;
@@ -110,7 +109,8 @@ function applyRippleRemoval(idsToRemove: Set<string>): RippleRemovalResult {
 export function removeTimelineRangesFromItems(
 	commandType: 'REMOVE_SILENCE' | 'REMOVE_FILLER_WORDS' | 'REMOVE_TRANSCRIPT_SELECTION',
 	itemIds: string[],
-	rangesByMediaId: Record<string, SourceRange[]>
+	rangesByMediaId: Record<string, SourceRange[]>,
+	afterRemove?: () => void
 ): RangeRemovalResult {
 	if (itemIds.length === 0) {
 		return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 };
@@ -119,6 +119,9 @@ export function removeTimelineRangesFromItems(
 	return execute(commandType, () => {
 		const timelineFps = timelineStore.fps;
 		const initialItems = timelineStore.items;
+		const lockedTrackIds = new Set(
+			timelineStore.tracks.filter((track) => track.locked).map((track) => track.id)
+		);
 		const anchorIds = getUniqueLinkedItemAnchorIds(initialItems, itemIds);
 		const anchors = anchorIds
 			.map((id) => initialItems.find((item) => item.id === id))
@@ -126,6 +129,7 @@ export function removeTimelineRangesFromItems(
 				(item): item is TimelineItem =>
 					item !== undefined &&
 					(item.type === 'video' || item.type === 'audio') &&
+					!lockedTrackIds.has(item.trackId) &&
 					!!item.mediaId &&
 					(rangesByMediaId[item.mediaId]?.length ?? 0) > 0
 			);
@@ -170,6 +174,7 @@ export function removeTimelineRangesFromItems(
 				if (!linkedGroupId) continue;
 				for (const companion of timelineStore.items) {
 					if (companion.linkedGroupId !== linkedGroupId || companion.id === anchor.id) continue;
+					if (lockedTrackIds.has(companion.trackId)) continue;
 					if (frame > companion.from && frame < companion.from + companion.durationInFrames) {
 						if (timelineStore._splitItem(companion.id, frame)) splitCount += 1;
 					}
@@ -201,29 +206,70 @@ export function removeTimelineRangesFromItems(
 		// candidates share the media's ranges), so removal is direct — no
 		// linked-group expansion, which would blanket-remove whole groups
 		// since all split pieces keep the group id.
-		const { removedItemCount } = applyRippleRemoval(idsToRemove);
+		const removedSegments = timelineStore.items.filter((item) => idsToRemove.has(item.id));
+		const editedTrackIds = new Set(removedSegments.map((item) => item.trackId));
+		// Transcript items receive source-aware timing repair in the callback. Do
+		// not also cut their whole track through generic sync-lock propagation.
+		for (const item of timelineStore.items) {
+			if (item.type === 'subtitle' && item.captionSource?.type === 'transcript')
+				editedTrackIds.add(item.trackId);
+		}
+		const removedIntervals = removedSegments.map((item) => ({
+			start: item.from,
+			end: item.from + item.durationInFrames
+		}));
+		const direct = applyRippleRemoval(idsToRemove);
+		const propagated = propagateRemovedIntervalsToSyncLockedTracks({
+			editedTrackIds,
+			intervals: removedIntervals
+		});
+		afterRemove?.();
+		pruneInvalidTransitions();
 
-		return { analyzedItemCount: anchors.length, removedRangeCount, removedItemCount, splitCount };
+		return {
+			analyzedItemCount: anchors.length,
+			removedRangeCount,
+			removedItemCount: direct.removedItemCount + propagated.removedIds.length,
+			splitCount
+		};
 	});
 }
 
 export function removeSilenceFromItems(
 	itemIds: string[],
-	silenceRangesByMediaId: Record<string, SourceRange[]>
+	silenceRangesByMediaId: Record<string, SourceRange[]>,
+	afterRemove?: () => void
 ): RangeRemovalResult {
-	return removeTimelineRangesFromItems('REMOVE_SILENCE', itemIds, silenceRangesByMediaId);
+	return removeTimelineRangesFromItems(
+		'REMOVE_SILENCE',
+		itemIds,
+		silenceRangesByMediaId,
+		afterRemove
+	);
 }
 
 export function removeFillerWordsFromItems(
 	itemIds: string[],
-	fillerRangesByMediaId: Record<string, SourceRange[]>
+	fillerRangesByMediaId: Record<string, SourceRange[]>,
+	afterRemove?: () => void
 ): RangeRemovalResult {
-	return removeTimelineRangesFromItems('REMOVE_FILLER_WORDS', itemIds, fillerRangesByMediaId);
+	return removeTimelineRangesFromItems(
+		'REMOVE_FILLER_WORDS',
+		itemIds,
+		fillerRangesByMediaId,
+		afterRemove
+	);
 }
 
 export function removeTranscriptRangesFromItems(
 	itemIds: string[],
-	rangesByMediaId: Record<string, SourceRange[]>
+	rangesByMediaId: Record<string, SourceRange[]>,
+	afterRemove?: () => void
 ): RangeRemovalResult {
-	return removeTimelineRangesFromItems('REMOVE_TRANSCRIPT_SELECTION', itemIds, rangesByMediaId);
+	return removeTimelineRangesFromItems(
+		'REMOVE_TRANSCRIPT_SELECTION',
+		itemIds,
+		rangesByMediaId,
+		afterRemove
+	);
 }

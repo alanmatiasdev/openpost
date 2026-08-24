@@ -80,4 +80,73 @@ describe('TranscriptPanel cue formatting', () => {
 		screen.container.style.width = '320px';
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
 	});
+
+	it('ripple deletes selected timed words from video and captions in one undo step', async () => {
+		const videoTrack: TimelineTrack = { ...track, id: 'video', name: 'Video', order: 1 };
+		const video: TimelineItem = {
+			id: 'video',
+			trackId: videoTrack.id,
+			from: 0,
+			durationInFrames: 90,
+			label: 'Interview',
+			type: 'video',
+			mediaId: 'media',
+			sourceStart: 0,
+			sourceEnd: 90,
+			sourceFps: 30,
+			speed: 1
+		};
+		const timedCaptions: TimelineItem = {
+			...item,
+			captionSource: {
+				type: 'transcript',
+				clipId: video.id,
+				mediaId: 'media',
+				sourceStartSeconds: 0,
+				playbackSpeed: 1
+			},
+			cues: [
+				{
+					id: 'cue',
+					startFrame: 0,
+					endFrame: 90,
+					text: '<b>Please um continue</b>',
+					words: [
+						{ id: 'please', startFrame: 0, endFrame: 25, text: 'Please' },
+						{ id: 'um', startFrame: 30, endFrame: 45, text: 'um' },
+						{ id: 'continue', startFrame: 50, endFrame: 90, text: 'continue' }
+					]
+				}
+			]
+		};
+		timelineStore.setAll({
+			tracks: [track, videoTrack],
+			items: [video, timedCaptions],
+			currentFrame: 0,
+			fps: 30
+		});
+		commandHistory.clearHistory();
+		const onedit = vi.fn();
+		const screen = await render(TranscriptPanel, { onedit });
+
+		await screen.getByRole('button', { name: 'Edit video by transcript' }).click();
+		await screen.getByRole('button', { name: 'Delete "um" from the video' }).click();
+		await expect.element(screen.getByText('Words selected: 1')).toBeVisible();
+		await screen.getByRole('button', { name: 'Delete from video' }).click();
+
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(2);
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe('<b>Please continue</b>');
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.words).toMatchObject([
+			{ id: 'please', startFrame: 0, endFrame: 25 },
+			{ id: 'continue', startFrame: 35, endFrame: 75 }
+		]);
+		expect(timelineStore.itemById.get('subtitle')?.durationInFrames).toBe(75);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		commandHistory.undo();
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(1);
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
+			'<b>Please um continue</b>'
+		);
+	});
 });

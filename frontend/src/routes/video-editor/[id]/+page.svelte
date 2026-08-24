@@ -28,7 +28,6 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
 	import { insertFreezeFrame } from '$lib/video-editor/media/insert-freeze-frame.svelte';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
-	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import {
 		addTransition,
 		removeTransition,
@@ -63,6 +62,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import RenderQueueController from '$lib/video-editor/components/render-queue-controller.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
+	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -450,21 +450,36 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		showToast(m.video_editor_transition_removed(), 'info');
 	}
 
-	let removingSilence = $state(false);
-	async function handleRemoveSilence(): Promise<void> {
-		const ids = selectedItemId ? [selectedItemId] : timelineStore.items.map((i) => i.id);
-		if (ids.length === 0) return;
-		removingSilence = true;
-		try {
-			editorSession.pausePlayback();
-			await removeSilenceSignal(ids, { mode: 'signal', minSilenceMs: 500 });
-			editorSession.scheduleAutosave();
-			showToast(m.video_editor_silence_done(), 'success');
-		} catch (err) {
-			showToast(err instanceof Error ? err.message : String(err), 'error');
-		} finally {
-			removingSilence = false;
-		}
+	let speechCleanupOpen = $state(false);
+	let speechCleanupMode = $state<'fillers' | 'silence'>('fillers');
+	const speechCleanupItemIds = $derived.by(() => {
+		const selected =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		const selectedMedia = selected.filter((id) => {
+			const item = timelineStore.itemById.get(id);
+			return item?.type === 'video' || item?.type === 'audio';
+		});
+		return selectedMedia.length > 0
+			? selectedMedia
+			: timelineStore.items
+					.filter((item) => item.type === 'video' || item.type === 'audio')
+					.map((item) => item.id);
+	});
+
+	function openSpeechCleanup(mode: 'fillers' | 'silence'): void {
+		editorSession.pausePlayback();
+		speechCleanupMode = mode;
+		speechCleanupOpen = true;
+	}
+
+	function handleSpeechCleanupApplied(removedCount: number): void {
+		editorSession.scheduleAutosave();
+		showToast(
+			removedCount === 1
+				? m.video_editor_cleanup_done_one()
+				: m.video_editor_cleanup_done_many({ count: removedCount }),
+			'success'
+		);
 	}
 
 	let scanningScenes = $state(false);
@@ -888,17 +903,31 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						{/if}
 					</div>
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={removingSilence || timelineStore.items.length === 0}
-							onclick={handleRemoveSilence}
+						<p
+							class="mb-1.5 text-[10px] font-medium tracking-wide text-[oklch(0.62_0.01_55)] uppercase"
 						>
-							{#if removingSilence}
-								<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
-							{/if}
-							{m.video_editor_remove_silence()}
-						</Button>
+							{m.video_editor_cleanup_title()}
+						</p>
+						<div class="grid grid-cols-2 gap-1">
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={speechCleanupItemIds.length === 0}
+								aria-label={m.video_editor_filler_review()}
+								onclick={() => openSpeechCleanup('fillers')}
+							>
+								{m.video_editor_cleanup_fillers_short()}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={speechCleanupItemIds.length === 0}
+								aria-label={m.video_editor_silence_review()}
+								onclick={() => openSpeechCleanup('silence')}
+							>
+								{m.video_editor_cleanup_silence_short()}
+							</Button>
+						</div>
 					</div>
 					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 						<Button
@@ -955,3 +984,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		{/key}
 	{/if}
 </div>
+
+<SpeechCleanupDialog
+	bind:open={speechCleanupOpen}
+	itemIds={speechCleanupItemIds}
+	initialMode={speechCleanupMode}
+	onapplied={handleSpeechCleanupApplied}
+/>
