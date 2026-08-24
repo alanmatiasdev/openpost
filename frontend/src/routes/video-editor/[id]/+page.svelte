@@ -60,6 +60,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
+	import RenderQueueController from '$lib/video-editor/components/render-queue-controller.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
@@ -896,6 +897,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{m.video_editor_export()}
 						</Button>
 						<div class="mt-1">
+							{#if renderProject}
+								{#key renderProject.id}
+									<RenderQueueController
+										projectId={renderProject.id}
+										onerror={(error) => showToast(error.message, 'error')}
+									/>
+								{/key}
+							{/if}
 							<ExportDialog
 								project={renderProject}
 								disabled={timelineStore.items.length === 0}

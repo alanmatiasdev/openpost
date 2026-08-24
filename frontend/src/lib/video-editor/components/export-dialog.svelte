@@ -25,6 +25,10 @@
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import XCircleIcon from '@lucide/svelte/icons/circle-x';
+	import { buildRenderQueueJob } from '../export/render-queue-job';
+	import { renderQueueStore } from '../export/render-queue-store';
+	import RenderQueuePanel from './render-queue-panel.svelte';
+	import { captureSnapshot } from '../timeline/commands/snapshot.svelte';
 
 	let {
 		project,
@@ -207,6 +211,30 @@
 		if (next) codec = next;
 	}
 
+	function enqueue(): void {
+		if (!project || !preflight.canExport) return;
+		const snapshot = captureSnapshot();
+		renderQueueStore.enqueue([
+			buildRenderQueueJob({
+				project,
+				settings: {
+					format,
+					codec: videoFormat ? codec : undefined,
+					quality,
+					width: outputDimensions.width,
+					height: outputDimensions.height,
+					subtitleMode
+				},
+				preflight,
+				tracks: snapshot.tracks,
+				items: snapshot.items,
+				transitions: snapshot.transitions,
+				compositions: snapshot.sequenceRegistry.compositions
+			})
+		]);
+		open = false;
+	}
+
 	async function start(): Promise<void> {
 		if (!project || rendering || !preflight.canExport) return;
 		rendering = true;
@@ -251,6 +279,9 @@
 <Button size="sm" variant="secondary" class="w-full" {disabled} onclick={() => (open = true)}>
 	{m.video_editor_export_render()}
 </Button>
+{#if project}
+	<RenderQueuePanel />
+{/if}
 
 {#if open}
 	<div
@@ -396,8 +427,10 @@
 						if (rendering) controller?.abort();
 						else open = false;
 					}}>{m.video_editor_export_cancel()}</Button
+				><Button variant="outline" disabled={rendering || !preflight.canExport} onclick={enqueue}
+					>{m.video_editor_queue_add()}</Button
 				><Button disabled={rendering || !preflight.canExport} onclick={start}
-					>{m.video_editor_export_start()}</Button
+					>{m.video_editor_export_start_now()}</Button
 				>
 			</div>
 		</div>

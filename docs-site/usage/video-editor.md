@@ -56,6 +56,8 @@ Preview and export use the same frame evaluator and bounded WebGL2 compositor. P
 
 Before rendering, the export panel checks the exact frame range, visible or audible content, source availability, selected codec, subtitle format, estimated duration, and estimated file size. Blocking issues disable export and explain what to change. Long renders warn you to keep the tab open. The current full renderer builds its final output in browser memory, so an estimate at or above 2 GB must use a shorter range or lower quality.
 
+Choose **Add to queue** to keep editing while OpenPost renders saved jobs one at a time. Each job freezes its timeline, nested sequences, frame range, format, codec, quality, resolution, and subtitle mode when you add it, so later edits do not change that render. The project queue stays in local workspace storage. You can pause pending jobs, reorder them, cancel the active job, retry failed or cancelled jobs, and clear finished or all jobs. Closing or reloading the editor stops the active render; interrupted and pending jobs return paused when you reopen the project so you can review them before resuming.
+
 Run `devenv shell -- bun run benchmark:video-editor` (or `bun run benchmark:video-editor` after direnv loads) to generate a deterministic one-hour 1920×1080, 60 fps H.264 fixture and measure import readiness, seven random seeks, native decoded-frame throughput and drops, coalesced worker requests, proxy use, and peak decoder count. The command records a JSON attachment in the Playwright result. It is a local hardware benchmark, not a promise that every device or codec will produce the same timing.
 
 ## Use an export in a post
@@ -76,4 +78,4 @@ The included audio pack contains eight checked-in mastered loops and twelve chec
 - Projects are limited to 2 hours, 250 sources, 2,000 non-caption timeline items, 5,000 caption cues, four visual overlay tracks, eight audio tracks, two caption tracks, and a 5 MiB project document. Long, high-frame-rate sources use local preview proxies; exports always read the original source.
 - 4K files can be imported, but preview artifacts and exports are limited to 1080p.
 - OpenPost Video Editor has no server render, transcription, or AI fallback.
-- Native cursor replacement, reverse playback, 4K or HDR export, live background removal, nested compositions, and direct publishing are not included.
+- Native cursor replacement, 4K or HDR export, live background removal, and direct publishing are not included.
