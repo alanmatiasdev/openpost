@@ -110,6 +110,27 @@ beforeEach(() => {
 	});
 });
 
+describe('TimelinePanel Bento layout entry', () => {
+	it('opens layout work only for a multi-visual unlocked selection', async () => {
+		timelineStore._setItems([
+			item({ id: 'video', label: 'Video', sourceWidth: 1920, sourceHeight: 1080 }),
+			item({ id: 'cutaway', label: 'Cutaway', sourceWidth: 1080, sourceHeight: 1920 })
+		]);
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: 'video',
+			selectedItemIds: ['video', 'cutaway'],
+			canvasWidth: 1280,
+			canvasHeight: 720
+		});
+
+		const arrange = screen.getByRole('button', { name: 'Arrange selected clips' });
+		await expect.element(arrange).toBeEnabled();
+		await arrange.click();
+		await expect.element(screen.getByRole('dialog', { name: 'Arrange clips' })).toBeVisible();
+	});
+});
+
 describe('TimelinePanel sync-lock ripple trim', () => {
 	it('offers freeze-frame insertion only at an eligible video frame', async () => {
 		timelineStore._setCurrentFrame(20);

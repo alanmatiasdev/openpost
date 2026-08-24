@@ -1008,6 +1008,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					bind:selectedItemIds
 					bind:selectedTransitionId
 					freezeFramePending={freezingItemId !== null}
+					canvasWidth={renderProject?.metadata.width ?? 1920}
+					canvasHeight={renderProject?.metadata.height ?? 1080}
 					onedit={() => editorSession.scheduleAutosave()}
 					onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
 					onopencomposition={handleOpenSequence}

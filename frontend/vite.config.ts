@@ -109,6 +109,7 @@ export default defineConfig({
 			'@lucide/svelte/icons/check-circle-2',
 			'@lucide/svelte/icons/chevron-down',
 			'@lucide/svelte/icons/chevron-right',
+			'@lucide/svelte/icons/chevron-up',
 			'@lucide/svelte/icons/circle-alert',
 			'@lucide/svelte/icons/circle-off',
 			'@lucide/svelte/icons/clipboard-paste',
@@ -152,6 +153,7 @@ export default defineConfig({
 			'@lucide/svelte/icons/upload',
 			'@lucide/svelte/icons/ungroup',
 			'@lucide/svelte/icons/trash-2',
+			'@lucide/svelte/icons/triangle-alert',
 			'@lucide/svelte/icons/video',
 			'@lucide/svelte/icons/wand-sparkles',
 			'@lucide/svelte/icons/x'

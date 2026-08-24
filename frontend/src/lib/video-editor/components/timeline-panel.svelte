@@ -160,6 +160,8 @@
 	} from '$lib/video-editor/timeline/utils/track-groups';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
+	import BentoLayoutDialog from './bento-layout-dialog.svelte';
+	import { eligibleBentoItemIds } from '$lib/video-editor/timeline/actions/bento-layout';
 	import TimelineVoiceoverOverlay from './timeline-voiceover-overlay.svelte';
 	import {
 		canLinkSelection,
@@ -209,6 +211,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
+	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 
 	let {
 		onedit,
@@ -216,6 +219,8 @@
 		onopencomposition = () => {},
 		onfreezeframe = () => {},
 		freezeFramePending = false,
+		canvasWidth = 1920,
+		canvasHeight = 1080,
 		selectedItemId = $bindable(null),
 		selectedItemIds = $bindable([]),
 		selectedTransitionId = $bindable(null)
@@ -225,6 +230,8 @@
 		onopencomposition?: (compositionId: string) => void;
 		onfreezeframe?: (itemId: string) => void;
 		freezeFramePending?: boolean;
+		canvasWidth?: number;
+		canvasHeight?: number;
 		selectedItemId?: string | null;
 		selectedItemIds?: string[];
 		selectedTransitionId?: string | null;
@@ -233,6 +240,7 @@
 	let selectedTrackIds = $state<string[]>([]);
 	let deleteGroupTarget = $state<{ id: string; name: string; trackCount: number } | null>(null);
 	let deleteGroupDialogOpen = $state(false);
+	let bentoLayoutOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
@@ -2052,7 +2060,10 @@
 		if (event.shiftKey || event.metaKey || event.ctrlKey) {
 			const next = new Set(selectedTrackIds);
 			const removing = ids.every((id) => next.has(id));
-			for (const id of ids) removing ? next.delete(id) : next.add(id);
+			for (const id of ids) {
+				if (removing) next.delete(id);
+				else next.add(id);
+			}
 			selectedTrackIds = [...next];
 			return;
 		}
@@ -2341,6 +2352,7 @@
 			!transitionsStore.at(selectedItem, frame - selectedItem.from)
 		);
 	});
+	const bentoEligibleIds = $derived(eligibleBentoItemIds(selectedItemIds));
 	const pathVertexSelection = $derived(
 		selectedItem ? pathVertexSelectionStore.forItem(selectedItem.id) : null
 	);
@@ -2732,6 +2744,19 @@
 				variant="ghost"
 				size="icon"
 				class="size-7 rounded"
+				disabled={bentoEligibleIds.length < 2}
+				aria-label={m.video_editor_bento_open()}
+				title={bentoEligibleIds.length < 2
+					? m.video_editor_bento_open_hint()
+					: m.video_editor_bento_open_count({ count: bentoEligibleIds.length })}
+				onclick={() => (bentoLayoutOpen = true)}
+			>
+				<LayoutGridIcon class="size-3.5" />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded"
 				disabled={!canFreezeSelectedItem || freezeFramePending}
 				aria-label={m.video_editor_freeze_frame()}
 				title={m.video_editor_freeze_frame_hint()}
@@ -2897,6 +2922,14 @@
 		onedit();
 		return { ok: true };
 	}}
+/>
+
+<BentoLayoutDialog
+	bind:open={bentoLayoutOpen}
+	itemIds={bentoEligibleIds}
+	{canvasWidth}
+	{canvasHeight}
+	onapplied={() => onedit()}
 />
 
 {#if selectedMarker}
