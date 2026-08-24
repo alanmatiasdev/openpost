@@ -54,6 +54,7 @@
 	let {
 		item,
 		url,
+		audioUrl,
 		canvasWidth,
 		canvasHeight,
 		opacityMultiplier = 1,
@@ -70,6 +71,7 @@
 	}: {
 		item: TimelineItem;
 		url?: string | null;
+		audioUrl?: string | null;
 		canvasWidth: number;
 		canvasHeight: number;
 		opacityMultiplier?: number;
@@ -85,6 +87,7 @@
 		onselect: () => void;
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
+	let proxyAudioElement = $state<HTMLAudioElement | null>(null);
 	let reverseConform = $state<ReverseConformResult | null>(null);
 	let reverseConformUrl = $state<string | null>(null);
 	let imageElement = $state<HTMLImageElement | null>(null);
@@ -199,6 +202,11 @@
 	const previewVolume = $derived(previewItemVolumeWithFade(basePreviewVolume, crossfadeGain));
 	const previewMediaUrl = $derived(
 		item.type === 'video' && item.isReversed && reverseConformUrl ? reverseConformUrl : url
+	);
+	const usesSeparateProxyAudio = $derived(
+		item.type === 'video' &&
+			!item.isReversed &&
+			Boolean(previewMediaUrl && audioUrl && previewMediaUrl !== audioUrl)
 	);
 
 	$effect(() => {
@@ -317,9 +325,15 @@
 	$effect(() => {
 		const video = mediaElement;
 		if (!video || item.type !== 'video') return;
-		const scheduler = new SeekScheduler((target) => {
+		const videoScheduler = new SeekScheduler((target) => {
 			video.currentTime = target;
 		});
+		const audio = usesSeparateProxyAudio ? proxyAudioElement : null;
+		const audioScheduler = audio
+			? new SeekScheduler((target) => {
+					audio.currentTime = target;
+				})
+			: null;
 		const sync = () => {
 			const frame = untrack(() => timelineStore.currentFrame);
 			const speed = item.speed ?? 1;
@@ -330,12 +344,19 @@
 					? sourceSecondsToReverseConformSeconds(conform, originalSourceTime)
 					: originalSourceTime;
 			if (seekDriftExceeded(video.currentTime, sourceTime, 0.08 / Math.max(0.1, speed)))
-				scheduler.request(sourceTime);
+				videoScheduler.request(sourceTime);
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
+			if (audio) {
+				if (seekDriftExceeded(audio.currentTime, sourceTime, 0.08 / Math.max(0.1, speed)))
+					audioScheduler?.request(sourceTime);
+				audio.playbackRate = video.playbackRate;
+			}
 			if (editorSession.clock.isPlaying && video.paused && (!item.isReversed || conform !== null))
 				void video.play().catch(() => undefined);
+			if (editorSession.clock.isPlaying && audio?.paused) void audio.play().catch(() => undefined);
 			if (item.isReversed && !conform && !video.paused) video.pause();
 			if (!editorSession.clock.isPlaying && !video.paused) video.pause();
+			if (!editorSession.clock.isPlaying && audio && !audio.paused) audio.pause();
 			if (selected && !needsGpu && !deferEffects)
 				requestAnimationFrame(() => publishScopeSample(video));
 		};
@@ -347,7 +368,8 @@
 			offFrame();
 			offPlay();
 			offPause();
-			scheduler.detach();
+			videoScheduler.detach();
+			audioScheduler?.detach();
 		};
 	});
 
@@ -708,10 +730,15 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 			playsinline
-			volume={previewVolume}
+			volume={usesSeparateProxyAudio ? 0 : previewVolume}
+			data-proxy-preview={usesSeparateProxyAudio ? 'true' : undefined}
 			onloadeddata={onsourcechange}
 			onseeked={onsourcechange}
 		></video>
+		{#if usesSeparateProxyAudio && audioUrl}
+			<!-- svelte-ignore a11y_media_has_caption -- proxy visuals keep source audio hidden -->
+			<audio bind:this={proxyAudioElement} src={audioUrl} volume={previewVolume}></audio>
+		{/if}
 	{:else if resolved.type === 'image' && url}
 		<img
 			bind:this={imageElement}

@@ -8,6 +8,7 @@ interface StoredPlaybackSettings {
 	volume?: number;
 	muted?: boolean;
 	audioSkimmingEnabled?: boolean;
+	previewQuality?: 'auto' | 'full';
 }
 
 function readStored(): StoredPlaybackSettings {
@@ -19,6 +20,11 @@ function readStored(): StoredPlaybackSettings {
 			zoom: 'zoom' in parsed && typeof parsed.zoom === 'number' ? parsed.zoom : undefined,
 			volume: 'volume' in parsed && typeof parsed.volume === 'number' ? parsed.volume : undefined,
 			muted: 'muted' in parsed && typeof parsed.muted === 'boolean' ? parsed.muted : undefined,
+			previewQuality:
+				'previewQuality' in parsed &&
+				(parsed.previewQuality === 'auto' || parsed.previewQuality === 'full')
+					? parsed.previewQuality
+					: undefined,
 			audioSkimmingEnabled:
 				'audioSkimmingEnabled' in parsed && typeof parsed.audioSkimmingEnabled === 'boolean'
 					? parsed.audioSkimmingEnabled
@@ -34,7 +40,8 @@ const state = $state({
 	zoom: normalizePreviewZoom(stored.zoom ?? -1),
 	volume: clampMonitorVolume(stored.volume ?? 1),
 	muted: stored.muted ?? false,
-	audioSkimmingEnabled: stored.audioSkimmingEnabled ?? true
+	audioSkimmingEnabled: stored.audioSkimmingEnabled ?? true,
+	previewQuality: stored.previewQuality ?? 'auto'
 });
 
 function persist(): void {
@@ -45,7 +52,8 @@ function persist(): void {
 			zoom: state.zoom,
 			volume: state.volume,
 			muted: state.muted,
-			audioSkimmingEnabled: state.audioSkimmingEnabled
+			audioSkimmingEnabled: state.audioSkimmingEnabled,
+			previewQuality: state.previewQuality
 		})
 	);
 }
@@ -63,6 +71,9 @@ export const previewPlaybackSettings = {
 	get audioSkimmingEnabled(): boolean {
 		return state.audioSkimmingEnabled;
 	},
+	get previewQuality(): 'auto' | 'full' {
+		return state.previewQuality;
+	},
 	setZoom(value: number): void {
 		state.zoom = normalizePreviewZoom(value);
 		persist();
@@ -78,6 +89,10 @@ export const previewPlaybackSettings = {
 	},
 	toggleAudioSkimming(): void {
 		state.audioSkimmingEnabled = !state.audioSkimmingEnabled;
+		persist();
+	},
+	setPreviewQuality(value: 'auto' | 'full'): void {
+		state.previewQuality = value;
 		persist();
 	}
 };

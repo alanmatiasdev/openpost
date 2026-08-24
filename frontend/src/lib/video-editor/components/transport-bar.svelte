@@ -29,6 +29,8 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CameraIcon from '@lucide/svelte/icons/camera';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import MinimizeIcon from '@lucide/svelte/icons/minimize';
@@ -145,6 +147,7 @@
 <div class="flex min-h-10 items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-3 py-1.5">
 	<div class="flex shrink-0 items-center gap-1">
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_go_to_start()}
@@ -153,6 +156,7 @@
 			<SkipBackIcon />
 		</Button>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_step_back()}
@@ -175,6 +179,7 @@
 			{#if playing}<PauseIcon />{:else}<PlayIcon />{/if}
 		</Button>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_stop()}
@@ -183,6 +188,7 @@
 			<SquareIcon />
 		</Button>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_step_forward()}
@@ -213,7 +219,7 @@
 					</Button>
 				{/snippet}
 			</Popover.Trigger>
-			<Popover.Content side="top" class="w-56 space-y-3 p-3">
+			<Popover.Content side="top" class="video-editor-theme w-56 space-y-3 p-3">
 				<div class="flex items-center justify-between gap-3">
 					<span class="text-xs font-medium">{m.video_editor_monitor_title()}</span>
 					<span class="text-[10px] tracking-wide text-muted-foreground uppercase">
@@ -251,6 +257,7 @@
 			</Popover.Content>
 		</Popover.Root>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			disabled={savingFrame || totalFrames === 0}
@@ -288,7 +295,35 @@
 	</div>
 
 	<div class="ml-auto flex shrink-0 items-center gap-1">
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						size="icon-xs"
+						variant="ghost"
+						aria-label={m.video_editor_preview_quality()}
+						title={`${m.video_editor_preview_quality()}: ${previewPlaybackSettings.previewQuality === 'auto' ? m.video_editor_quality_auto() : m.video_editor_quality_full()}`}
+					>
+						<GaugeIcon />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="end" side="top" class="video-editor-theme min-w-44">
+				<DropdownMenu.Label>{m.video_editor_preview_quality()}</DropdownMenu.Label>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item onclick={() => previewPlaybackSettings.setPreviewQuality('auto')}>
+					<span class="flex-1">{m.video_editor_quality_auto()}</span>
+					{#if previewPlaybackSettings.previewQuality === 'auto'}<CheckIcon />{/if}
+				</DropdownMenu.Item>
+				<DropdownMenu.Item onclick={() => previewPlaybackSettings.setPreviewQuality('full')}>
+					<span class="flex-1">{m.video_editor_quality_full()}</span>
+					{#if previewPlaybackSettings.previewQuality === 'full'}<CheckIcon />{/if}
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_preview_zoom_out()}
@@ -304,14 +339,14 @@
 						{...props}
 						size="xs"
 						variant="ghost"
-						class="min-w-12 px-1.5 tabular-nums"
+						class="min-w-12 px-1.5 tabular-nums max-[359px]:hidden"
 						aria-label={m.video_editor_preview_zoom({ zoom: zoomLabel })}
 					>
 						{zoomLabel}
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content align="end" side="top" class="min-w-28">
+			<DropdownMenu.Content align="end" side="top" class="video-editor-theme min-w-28">
 				{#each PREVIEW_ZOOM_PRESETS as preset (preset)}
 					<DropdownMenu.Item onclick={() => previewPlaybackSettings.setZoom(preset)}>
 						<span class:font-semibold={previewPlaybackSettings.zoom === preset}>
@@ -322,6 +357,7 @@
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 		<Button
+			class="hidden sm:inline-flex"
 			size="icon-xs"
 			variant="ghost"
 			aria-label={m.video_editor_preview_zoom_in()}

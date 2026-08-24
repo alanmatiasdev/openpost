@@ -327,6 +327,43 @@ describe('PreviewLayer GPU rendering', () => {
 		await vi.waitFor(() => expect(element?.volume).toBe(0));
 	});
 
+	it('plays proxy visuals with the original source audio', async () => {
+		const video: TimelineItem = {
+			...textItem({
+				id: 'proxy-video',
+				type: 'video',
+				text: undefined,
+				effects: [],
+				mediaId: 'heavy-media'
+			}),
+			trackId: 'visuals'
+		};
+		timelineStore.setAll({
+			items: [video],
+			tracks: project(video).timeline?.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewLayer, {
+			item: video,
+			url: 'blob:preview-proxy',
+			audioUrl: 'blob:original-source',
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+
+		const visual = screen.container.querySelector<HTMLVideoElement>('video');
+		const audio = screen.container.querySelector<HTMLAudioElement>('audio');
+		expect(visual?.dataset.proxyPreview).toBe('true');
+		expect(visual?.src).toContain('blob:preview-proxy');
+		expect(audio?.src).toContain('blob:original-source');
+		await vi.waitFor(() => {
+			expect(visual?.volume).toBe(0);
+			expect(audio?.volume).toBe(1);
+		});
+	});
+
 	it('rasterizes text before applying its GPU effect in the live preview', async () => {
 		const item = textItem();
 		timelineStore.setAll({ items: [item], currentFrame: 0, fps: 30 });

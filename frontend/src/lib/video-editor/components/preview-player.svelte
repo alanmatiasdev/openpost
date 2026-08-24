@@ -14,6 +14,10 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
+	import {
+		getAutomaticProxy,
+		isAutomaticProxyCandidate
+	} from '$lib/video-editor/media/proxy-client';
 	import { paintOrder, planNestedMixdown } from '$lib/video-editor/media/render-plan';
 	import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
@@ -73,6 +77,11 @@
 	);
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
 	let urls = $state<Record<string, string>>({});
+	let proxyUrls = $state<Record<string, string>>({});
+	let proxyProgress = $state<Record<string, number>>({});
+	const attemptedProxyIds = new Set<string>();
+	const proxyControllers = new Map<string, AbortController>();
+	let destroyed = false;
 	let viewport = $state<HTMLDivElement | null>(null);
 	let draftTransform = $state<ItemTransform | null>(null);
 	let draftCrop = $state<NonNullable<TimelineItem['crop']> | null>(null);
@@ -172,6 +181,13 @@
 			? (timelineStore.tracks.find((track) => track.id === selectedItem.trackId)?.locked ?? false)
 			: false
 	);
+	const timelineMediaIds = $derived(
+		new Set(timelineStore.items.flatMap((item) => (item.mediaId ? [item.mediaId] : [])))
+	);
+	const preparingProxy = $derived.by(() => {
+		const entry = Object.entries(proxyProgress).find(([, progress]) => progress < 1);
+		return entry ? { mediaId: entry[0], progress: entry[1] } : null;
+	});
 
 	$effect(() => {
 		for (const media of mediaPool.mediaList) {
@@ -184,10 +200,63 @@
 		}
 	});
 
+	$effect(() => {
+		const usedMedia = timelineMediaIds;
+		for (const [mediaId, controller] of proxyControllers) {
+			if (previewPlaybackSettings.previewQuality === 'full' || !usedMedia.has(mediaId)) {
+				controller.abort();
+				proxyControllers.delete(mediaId);
+			}
+		}
+		if (previewPlaybackSettings.previewQuality !== 'auto') return;
+		for (const media of mediaPool.mediaList) {
+			if (
+				!usedMedia.has(media.id) ||
+				!isAutomaticProxyCandidate(media) ||
+				attemptedProxyIds.has(media.id)
+			)
+				continue;
+			attemptedProxyIds.add(media.id);
+			const controller = new AbortController();
+			proxyControllers.set(media.id, controller);
+			proxyProgress = { ...proxyProgress, [media.id]: 0 };
+			void getAutomaticProxy(
+				media,
+				(progress) => {
+					if (!destroyed) proxyProgress = { ...proxyProgress, [media.id]: progress };
+				},
+				controller.signal
+			)
+				.then((blob) => {
+					if (destroyed) return;
+					const previous = proxyUrls[media.id];
+					if (previous) URL.revokeObjectURL(previous);
+					proxyUrls = { ...proxyUrls, [media.id]: URL.createObjectURL(blob) };
+					proxyProgress = { ...proxyProgress, [media.id]: 1 };
+				})
+				.catch((error) => {
+					if (destroyed) return;
+					if (error instanceof DOMException && error.name === 'AbortError') {
+						attemptedProxyIds.delete(media.id);
+					}
+					const remaining = { ...proxyProgress };
+					delete remaining[media.id];
+					proxyProgress = remaining;
+				})
+				.finally(() => {
+					if (proxyControllers.get(media.id) === controller) proxyControllers.delete(media.id);
+				});
+		}
+	});
+
 	onDestroy(() => {
+		destroyed = true;
+		for (const controller of proxyControllers.values()) controller.abort();
+		proxyControllers.clear();
 		if (stackFrameRequest !== null) cancelAnimationFrame(stackFrameRequest);
 		stackFrameRequest = null;
 		for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
+		for (const url of Object.values(proxyUrls)) URL.revokeObjectURL(url);
 	});
 
 	$effect(() => {
@@ -639,6 +708,19 @@
 				{m.video_editor_preview_empty()}
 			</div>
 		{:else}
+			{#if preparingProxy}
+				<div
+					class="absolute top-2 right-2 z-40 flex items-center gap-2 rounded-full border border-white/10 bg-black/75 px-2.5 py-1 text-[10px] text-white shadow-lg backdrop-blur"
+					role="status"
+					aria-live="polite"
+					data-proxy-progress
+				>
+					<span class="size-1.5 animate-pulse rounded-full bg-sky-400 motion-reduce:animate-none"
+					></span>
+					{m.video_editor_proxy_preparing()}
+					<span class="tabular-nums">{Math.round(preparingProxy.progress * 100)}%</span>
+				</div>
+			{/if}
 			{#if needsStackedComposition}
 				<div class="absolute inset-0" role="img" aria-label={m.video_editor_preview_suggestion()}>
 					<canvas
@@ -691,7 +773,10 @@
 			{#each activeItems as item (item.id)}
 				<PreviewLayer
 					{item}
-					url={urls[item.mediaId ?? '']}
+					url={previewPlaybackSettings.previewQuality === 'auto' && proxyUrls[item.mediaId ?? '']
+						? proxyUrls[item.mediaId ?? '']
+						: urls[item.mediaId ?? '']}
+					audioUrl={urls[item.mediaId ?? '']}
 					{canvasWidth}
 					{canvasHeight}
 					effectiveEffects={effectiveEffects(item)}
