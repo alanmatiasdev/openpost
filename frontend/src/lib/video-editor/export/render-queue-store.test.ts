@@ -40,6 +40,13 @@ describe('render queue store', () => {
 		expect(queue.next()?.id).toBe('a');
 		expect(queue.markRendering('a')).toBe(true);
 		expect(queue.markRendering('b')).toBe(false);
+		expect(get(queue).jobs[0]).toMatchObject({
+			status: 'rendering',
+			phase: 'preparing',
+			progress: 0,
+			framesDone: 0,
+			totalFrames: 300
+		});
 		queue.updateProgress('a', {
 			phase: 'rendering',
 			progress: 0.5,
@@ -66,7 +73,10 @@ describe('render queue store', () => {
 		expect(get(queue).jobs.find(({ id }) => id === 'failed')).toMatchObject({
 			status: 'queued',
 			progress: 0,
-			error: undefined
+			error: undefined,
+			phase: undefined,
+			framesDone: undefined,
+			totalFrames: undefined
 		});
 	});
 

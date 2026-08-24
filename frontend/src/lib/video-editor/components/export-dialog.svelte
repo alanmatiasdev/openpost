@@ -1,5 +1,6 @@
 <!-- Export controls for container, quality, range, subtitles, progress, and cancel. -->
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { canEncodeVideo, type VideoCodec } from 'mediabunny';
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
@@ -13,6 +14,7 @@
 		defaultVideoCodec,
 		supportedExportVideoCodecs,
 		type RenderExportOptions,
+		type RenderExportProgress,
 		type RenderExportResult
 	} from '$lib/video-editor/media/render-export';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -38,19 +40,24 @@
 	import { captureSnapshot } from '../timeline/commands/snapshot.svelte';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
+	import RenderProgress from './render-progress.svelte';
 
 	let {
 		project,
 		disabled,
 		ondone,
 		onerror,
-		probeCodec = canEncodeVideo
+		probeCodec = canEncodeVideo,
+		renderVideo = renderMultiTrackVideo,
+		renderAudio = renderTimelineAudio
 	}: {
 		project: Project | null;
 		disabled?: boolean;
 		ondone: (result: RenderExportResult) => void;
 		onerror: (error: Error) => void;
 		probeCodec?: typeof canEncodeVideo;
+		renderVideo?: typeof renderMultiTrackVideo;
+		renderAudio?: typeof renderTimelineAudio;
 	} = $props();
 
 	let open = $state(false);
@@ -62,9 +69,11 @@
 	let resolution = $state('source');
 	let useRange = $state(false);
 	let subtitleMode = $state<NonNullable<RenderExportOptions['subtitleMode']>>('burn');
-	let progress = $state<{ done: number; total: number } | null>(null);
-	let controller = $state<AbortController | null>(null);
+	let progress = $state<RenderExportProgress | null>(null);
+	let startedAt = $state<number | undefined>();
+	let controller: AbortController | null = null;
 	let codecProbeVersion = 0;
+	let destroyed = false;
 	const videoFormat = $derived(
 		format === 'mp3' || format === 'aac' || format === 'wav' ? null : format
 	);
@@ -158,7 +167,7 @@
 				async (candidate) => [candidate, await probeCodec(candidate, { width, height })] as const
 			)
 		).then((results) => {
-			if (probeVersion !== codecProbeVersion || videoFormat !== requestFormat) return;
+			if (destroyed || probeVersion !== codecProbeVersion || videoFormat !== requestFormat) return;
 			codecSupport = Object.fromEntries(results);
 			if (codecSupport[codec] === false) {
 				const fallback = results.find(([, supported]) => supported)?.[0];
@@ -325,8 +334,11 @@
 	async function start(): Promise<void> {
 		if (!project || rendering || !preflight.canExport) return;
 		rendering = true;
-		progress = null;
-		controller = new AbortController();
+		const totalFrames = Math.max(0, preflight.range.endFrame - preflight.range.startFrame);
+		progress = { phase: 'preparing', framesDone: 0, totalFrames, progress: 0 };
+		startedAt = Date.now();
+		const abortController = new AbortController();
+		controller = abortController;
 		const { width, height } = outputDimensions;
 		try {
 			const range = {
@@ -335,8 +347,13 @@
 			};
 			const result =
 				format === 'mp3' || format === 'aac' || format === 'wav'
-					? await renderTimelineAudio(project, { format, range, signal: controller.signal })
-					: await renderMultiTrackVideo(project, {
+					? await renderAudio(project, {
+							format,
+							range,
+							signal: abortController.signal,
+							onProgress: (value) => (progress = value)
+						})
+					: await renderVideo(project, {
 							format,
 							codec,
 							quality,
@@ -344,10 +361,8 @@
 							height,
 							subtitleMode,
 							range,
-							signal: controller.signal,
-							onProgress: (value) => {
-								progress = { done: value.framesDone, total: value.totalFrames };
-							}
+							signal: abortController.signal,
+							onProgress: (value) => (progress = value)
 						});
 			ondone(result);
 			open = false;
@@ -358,9 +373,24 @@
 		} finally {
 			rendering = false;
 			progress = null;
+			startedAt = undefined;
 			controller = null;
 		}
 	}
+
+	function cancelOrClose(): void {
+		if (!rendering) {
+			open = false;
+			return;
+		}
+		controller?.abort();
+	}
+
+	onDestroy(() => {
+		destroyed = true;
+		codecProbeVersion += 1;
+		controller?.abort();
+	});
 </script>
 
 <Button size="sm" variant="secondary" class="w-full" {disabled} onclick={() => (open = true)}>
@@ -379,7 +409,7 @@
 		}}
 	>
 		<div
-			class="video-editor-theme w-full max-w-md rounded-xl border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] p-4 text-[var(--video-editor-text)] shadow-2xl"
+			class="video-editor-theme max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] p-4 text-[var(--video-editor-text)] shadow-2xl"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="export-title"
@@ -495,55 +525,46 @@
 					</ul>
 				{/if}
 			</div>
-			{#if progress}<div class="mt-2" role="status">
-					<p class="text-center text-xs text-[oklch(0.7_0.01_55)]">
-						{m.video_editor_render_progress({ done: progress.done, total: progress.total })}
-					</p>
-					<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-[oklch(0.25_0.015_55)]">
-						<div
-							class="h-full bg-[oklch(0.66_0.14_45)]"
-							style="width: {Math.round((progress.done / Math.max(1, progress.total)) * 100)}%"
-						></div>
-					</div>
-				</div>{/if}
+			{#if progress}
+				<RenderProgress {progress} {startedAt} class="mt-3" />
+			{/if}
 			<div class="mt-4 flex justify-end gap-2">
-				<Button
-					variant="ghost"
-					disabled={rendering && !controller}
-					onclick={() => {
-						if (rendering) controller?.abort();
-						else open = false;
-					}}>{m.video_editor_export_cancel()}</Button
-				>
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button {...props} variant="outline" disabled={rendering || !canOpenQueueMenu}>
-								<ListPlusIcon aria-hidden="true" />
-								{m.video_editor_queue_add()}
-								<ChevronDownIcon aria-hidden="true" />
-							</Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="video-editor-theme min-w-52">
-						<DropdownMenu.Item disabled={!preflight.canExport} onclick={enqueueCurrent}>
-							{m.video_editor_queue_add_current()}
-						</DropdownMenu.Item>
-						<DropdownMenu.Separator />
-						<DropdownMenu.Label>{m.video_editor_queue_segments()}</DropdownMenu.Label>
-						<DropdownMenu.Item onclick={enqueueMarkerSegments}>
-							{m.video_editor_queue_per_marker()}
-						</DropdownMenu.Item>
-						{#each [10, 30, 60] as seconds (seconds)}
-							<DropdownMenu.Item onclick={() => enqueueFixedSegments(seconds)}>
-								{m.video_editor_queue_fixed_seconds({ seconds })}
+				{#if rendering}
+					<Button variant="outline" class="w-full sm:w-auto" onclick={cancelOrClose}
+						>{m.video_editor_export_cancel()}</Button
+					>
+				{:else}
+					<Button variant="ghost" onclick={cancelOrClose}>{m.video_editor_export_cancel()}</Button>
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<Button {...props} variant="outline" disabled={!canOpenQueueMenu}>
+									<ListPlusIcon aria-hidden="true" />
+									{m.video_editor_queue_add()}
+									<ChevronDownIcon aria-hidden="true" />
+								</Button>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end" class="video-editor-theme min-w-52">
+							<DropdownMenu.Item disabled={!preflight.canExport} onclick={enqueueCurrent}>
+								{m.video_editor_queue_add_current()}
 							</DropdownMenu.Item>
-						{/each}
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-				<Button disabled={rendering || !preflight.canExport} onclick={start}
-					>{m.video_editor_export_start_now()}</Button
-				>
+							<DropdownMenu.Separator />
+							<DropdownMenu.Label>{m.video_editor_queue_segments()}</DropdownMenu.Label>
+							<DropdownMenu.Item onclick={enqueueMarkerSegments}>
+								{m.video_editor_queue_per_marker()}
+							</DropdownMenu.Item>
+							{#each [10, 30, 60] as seconds (seconds)}
+								<DropdownMenu.Item onclick={() => enqueueFixedSegments(seconds)}>
+									{m.video_editor_queue_fixed_seconds({ seconds })}
+								</DropdownMenu.Item>
+							{/each}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+					<Button disabled={!preflight.canExport} onclick={start}
+						>{m.video_editor_export_start_now()}</Button
+					>
+				{/if}
 			</div>
 		</div>
 	</div>

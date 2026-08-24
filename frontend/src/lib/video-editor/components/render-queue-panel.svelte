@@ -14,6 +14,8 @@
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
 	import SavedExportsPanel from './saved-exports-panel.svelte';
+	import RenderProgress from './render-progress.svelte';
+	import type { RenderExportProgress } from '../media/render-export';
 
 	let { projectId }: { projectId: string } = $props();
 	let open = $state(false);
@@ -60,6 +62,16 @@
 			? format
 			: `${format} · ${job.settings.width}×${job.settings.height}`;
 		return `${output} · ${duration.toFixed(1)}s`;
+	}
+
+	function jobProgress(job: RenderQueueJob): RenderExportProgress {
+		return {
+			phase: job.phase ?? 'preparing',
+			progress: job.progress,
+			framesDone: job.framesDone ?? 0,
+			totalFrames:
+				job.totalFrames ?? Math.max(0, job.settings.range.endFrame - job.settings.range.startFrame)
+		};
 	}
 </script>
 
@@ -141,19 +153,13 @@
 											<p class="text-[11px] text-[var(--video-editor-muted)]">
 												{formatDetails(job)} · {statusLabel(job)}
 											</p>
-											{#if job.status === 'rendering'}<div
-													class="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--video-editor-canvas)]"
-												>
-													<div
-														class="h-full bg-[var(--video-editor-focus)]"
-														style={`width: ${Math.round(job.progress * 100)}%`}
-													></div>
-												</div>
-												<p class="mt-1 text-[10px] text-[var(--video-editor-muted)] tabular-nums">
-													{job.framesDone ?? 0}/{job.totalFrames ?? 0} · {Math.round(
-														job.progress * 100
-													)}%
-												</p>{/if}
+											{#if job.status === 'rendering'}
+												<RenderProgress
+													progress={jobProgress(job)}
+													startedAt={job.startedAt}
+													class="mt-2"
+												/>
+											{/if}
 											{#if job.error}<p class="mt-1 text-xs text-red-200">{job.error}</p>{/if}
 											{#if job.savedPath}<p class="mt-1 truncate text-xs text-emerald-200">
 													{job.savedPath}

@@ -75,7 +75,7 @@ import {
 } from '../lottie/render-spec';
 
 export interface RenderExportProgress {
-	phase: 'preparing' | 'mixing' | 'rendering' | 'finalizing';
+	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
 	framesDone: number;
 	totalFrames: number;
 	progress: number;
@@ -110,6 +110,7 @@ export interface AudioExportOptions {
 	format: 'mp3' | 'aac' | 'wav';
 	range?: { startFrame: number; endFrame: number };
 	signal?: AbortSignal;
+	onProgress?: (progress: RenderExportProgress) => void;
 }
 
 const MIX_SAMPLE_RATE = 48_000;
@@ -127,7 +128,7 @@ interface VideoDecoder {
 }
 
 function report(
-	options: RenderExportOptions,
+	options: Pick<RenderExportOptions, 'onProgress'>,
 	phase: RenderExportProgress['phase'],
 	framesDone: number,
 	totalFrames: number
@@ -258,7 +259,7 @@ async function renderMixdown(
 async function feedEncodedAudio(
 	audioSource: AudioSampleSource,
 	buffer: AudioBuffer,
-	onChunk?: () => void
+	onChunk?: (framesDone: number, totalFrames: number) => void
 ): Promise<void> {
 	const channelCount = buffer.numberOfChannels;
 	const channelData: Float32Array[] = [];
@@ -279,7 +280,7 @@ async function feedEncodedAudio(
 		});
 		try {
 			await audioSource.add(sample);
-			onChunk?.();
+			onChunk?.(Math.min(buffer.length, offset + frameCount), buffer.length);
 		} finally {
 			sample.close();
 		}
@@ -719,6 +720,7 @@ async function renderMultiTrackVideoInMemory(
 		mixEntries.length > 0
 			? await renderMixdown(mixEntries, decodedAudio, mixDurationSeconds(mixEntries))
 			: null;
+	report(options, 'rendering', 0, totalFrames);
 
 	const format = options.format ?? 'webm';
 	const outputFormat = outputFormatFor(format);
@@ -809,6 +811,7 @@ async function renderMultiTrackVideoInMemory(
 		}
 
 		videoSource.close();
+		report(options, 'encoding', totalFrames, totalFrames);
 		await feedTask;
 		report(options, 'finalizing', totalFrames, totalFrames);
 		await output.finalize();
@@ -872,6 +875,7 @@ export async function renderTimelineAudio(
 	const fullDuration = outputDurationFrames(items);
 	const startFrame = Math.max(0, Math.floor(options.range?.startFrame ?? 0));
 	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
+	const totalFrames = Math.max(0, endFrame - startFrame);
 	const transitions = project.timeline?.transitions ?? [];
 	const entries = sliceMixEntries(
 		planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
@@ -879,12 +883,14 @@ export async function renderTimelineAudio(
 		endFrame / fps
 	);
 	if (entries.length === 0) throw new Error('The selected range has no audible clips.');
+	report(options, 'preparing', 0, totalFrames);
 	const decoded = new Map<string, AudioBuffer>();
 	for (const mediaId of new Set(entries.map((entry) => entry.mediaId))) {
 		throwIfAborted(options.signal);
 		const media = mediaPool.get(mediaId);
 		if (media) decoded.set(mediaId, await decodeAudioBuffer(await resolveMediaBlob(media)));
 	}
+	report(options, 'mixing', 0, totalFrames);
 	const mixed = await renderMixdown(entries, decoded, mixDurationSeconds(entries));
 	if (!mixed) throw new Error('The audio mix is empty.');
 	const format = audioOutputFormatFor(options.format);
@@ -899,8 +905,14 @@ export async function renderTimelineAudio(
 	await output.start();
 	try {
 		throwIfAborted(options.signal);
-		await feedEncodedAudio(source, mixed, () => throwIfAborted(options.signal));
+		report(options, 'encoding', 0, totalFrames);
+		await feedEncodedAudio(source, mixed, (encodedFrames, encodedTotal) => {
+			throwIfAborted(options.signal);
+			const ratio = encodedTotal > 0 ? encodedFrames / encodedTotal : 1;
+			report(options, 'encoding', Math.round(totalFrames * ratio), totalFrames);
+		});
 		source.close();
+		report(options, 'finalizing', totalFrames, totalFrames);
 		await output.finalize();
 	} catch (error) {
 		try {

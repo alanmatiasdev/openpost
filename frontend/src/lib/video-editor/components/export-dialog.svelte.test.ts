@@ -7,6 +7,11 @@ import { mediaPool } from '../media/pool.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import ExportDialog from './export-dialog.svelte';
 import { renderQueueStore } from '../export/render-queue-store';
+import type {
+	AudioExportOptions,
+	RenderExportOptions,
+	RenderExportResult
+} from '../media/render-export';
 import '../../../routes/layout.css';
 
 const track: TimelineTrack = {
@@ -67,6 +72,95 @@ beforeEach(() => {
 });
 
 describe('ExportDialog', () => {
+	it('shows the live render phase and cancels the immediate export', async () => {
+		await page.viewport(320, 720);
+		let renderSignal: AbortSignal | undefined;
+		const renderVideo = vi.fn(
+			async (_project: Project, options: RenderExportOptions = {}): Promise<RenderExportResult> => {
+				renderSignal = options.signal;
+				options.onProgress?.({
+					phase: 'rendering',
+					framesDone: 45,
+					totalFrames: 300,
+					progress: 0.15
+				});
+				return await new Promise((_resolve, reject) => {
+					options.signal?.addEventListener(
+						'abort',
+						() => reject(new DOMException('Export cancelled', 'AbortError')),
+						{ once: true }
+					);
+				});
+			}
+		);
+		const screen = await render(ExportDialog, {
+			project,
+			ondone: vi.fn(),
+			onerror: vi.fn(),
+			probeCodec: vi.fn(async () => true),
+			renderVideo
+		});
+
+		await screen.getByRole('button', { name: 'Render full video' }).click();
+		await expect.element(screen.getByText('Ready to render')).toBeVisible();
+		await screen.getByRole('button', { name: 'Render now' }).click();
+		await expect.element(screen.getByText('Rendering frames')).toBeVisible();
+		await expect.element(screen.getByText('Frame 45 / 300')).toBeVisible();
+		await expect.element(screen.getByText('15%')).toBeVisible();
+		expect(screen.getByRole('dialog').element().scrollWidth).toBeLessThanOrEqual(
+			screen.getByRole('dialog').element().clientWidth
+		);
+		await page.viewport(390, 720);
+		expect(screen.getByRole('dialog').element().scrollWidth).toBeLessThanOrEqual(
+			screen.getByRole('dialog').element().clientWidth
+		);
+
+		await userEvent.click(screen.getByRole('button', { name: 'Cancel export' }).element());
+		expect(renderSignal?.aborted).toBe(true);
+		await expect.element(screen.getByRole('button', { name: 'Render now' })).toBeEnabled();
+		expect(renderVideo).toHaveBeenCalledOnce();
+	});
+
+	it('forwards audio encoding progress to the immediate export view', async () => {
+		let renderSignal: AbortSignal | undefined;
+		const renderAudio = vi.fn(
+			async (_project: Project, options: AudioExportOptions): Promise<RenderExportResult> => {
+				renderSignal = options.signal;
+				options.onProgress?.({
+					phase: 'encoding',
+					framesDone: 180,
+					totalFrames: 300,
+					progress: 0.6
+				});
+				return await new Promise((_resolve, reject) => {
+					options.signal?.addEventListener(
+						'abort',
+						() => reject(new DOMException('Export cancelled', 'AbortError')),
+						{ once: true }
+					);
+				});
+			}
+		);
+		const screen = await render(ExportDialog, {
+			project,
+			ondone: vi.fn(),
+			onerror: vi.fn(),
+			probeCodec: vi.fn(async () => true),
+			renderAudio
+		});
+
+		await screen.getByRole('button', { name: 'Render full video' }).click();
+		await screen.getByText('WebM', { exact: true }).click();
+		await screen.getByRole('option', { name: 'Audio only: MP3' }).click();
+		await expect.element(screen.getByText('Ready to render')).toBeVisible();
+		await screen.getByRole('button', { name: 'Render now' }).click();
+		await expect.element(screen.getByText('Encoding output')).toBeVisible();
+		await expect.element(screen.getByText('60%')).toBeVisible();
+		await screen.getByRole('button', { name: 'Cancel export' }).click();
+		expect(renderSignal?.aborted).toBe(true);
+		expect(renderAudio).toHaveBeenCalledOnce();
+	});
+
 	it('shows live readiness, blocks missing sources, and fits a phone-width viewport', async () => {
 		await page.viewport(320, 720);
 		const screen = await render(ExportDialog, {
@@ -84,12 +178,23 @@ describe('ExportDialog', () => {
 		await screen.getByRole('button', { name: 'Add to queue' }).click();
 		await screen.getByRole('menuitem', { name: 'Add current range' }).click();
 		expect(get(renderQueueStore).jobs).toHaveLength(1);
+		const queuedJob = get(renderQueueStore).jobs[0];
+		if (!queuedJob) throw new Error('Expected one queued render');
+		expect(renderQueueStore.markRendering(queuedJob.id)).toBe(true);
+		renderQueueStore.updateProgress(queuedJob.id, {
+			phase: 'encoding',
+			framesDone: 225,
+			totalFrames: 300,
+			progress: 0.75
+		});
 		const liveItem = timelineStore.itemById.get('video');
 		if (!liveItem) throw new Error('Expected the live video item');
 		liveItem.label = 'Changed later';
 		expect(get(renderQueueStore).jobs[0]?.snapshot.items[0]?.label).toBe('Interview');
 		await screen.getByRole('button', { name: 'Exports (1)' }).click();
 		await expect.element(screen.getByText('Interview')).toBeVisible();
+		await expect.element(screen.getByText('Encoding output')).toBeVisible();
+		await expect.element(screen.getByText('75%')).toBeVisible();
 		const queueDialog = screen.getByRole('dialog').element();
 		expect(queueDialog.scrollWidth).toBeLessThanOrEqual(queueDialog.clientWidth);
 		await page.viewport(1280, 720);

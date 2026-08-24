@@ -136,6 +136,8 @@ export function createRenderQueueStore(): RenderQueueStore {
 								status: 'queued',
 								progress: 0,
 								phase: undefined,
+								framesDone: undefined,
+								totalFrames: undefined,
 								error: undefined,
 								savedPath: undefined,
 								fileSize: undefined,
@@ -169,6 +171,8 @@ export function createRenderQueueStore(): RenderQueueStore {
 							status: 'queued' as const,
 							progress: 0,
 							phase: undefined,
+							framesDone: undefined,
+							totalFrames: undefined,
 							startedAt: undefined
 						}
 					: job
@@ -191,7 +195,20 @@ export function createRenderQueueStore(): RenderQueueStore {
 				...state,
 				activeJobId: id,
 				jobs: state.jobs.map((job) =>
-					job.id === id ? { ...job, status: 'rendering', startedAt: Date.now() } : job
+					job.id === id
+						? {
+								...job,
+								status: 'rendering',
+								progress: 0,
+								phase: 'preparing',
+								framesDone: 0,
+								totalFrames: Math.max(
+									0,
+									job.settings.range.endFrame - job.settings.range.startFrame
+								),
+								startedAt: Date.now()
+							}
+						: job
 				)
 			});
 			return true;

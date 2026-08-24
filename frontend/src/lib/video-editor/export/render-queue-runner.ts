@@ -46,7 +46,8 @@ async function executeRenderJob(
 		return renderTimelineAudio(project, {
 			format: job.settings.format,
 			range,
-			signal: options.signal
+			signal: options.signal,
+			onProgress: options.onProgress
 		});
 	}
 	return renderMultiTrackVideo(project, {
