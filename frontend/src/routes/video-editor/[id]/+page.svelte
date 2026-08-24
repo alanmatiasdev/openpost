@@ -46,7 +46,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/transcript/engine/types';
 	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
-	import { exportProject } from '$lib/video-editor/media/export';
+	import { renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
@@ -252,7 +252,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			await editorSession.saveNow();
 			const project = activeRenderProject();
 			if (!project) return;
-			const result = await exportProject(project, { format: 'mp4' });
+			const result = await renderVideoExport(project, {
+				format: 'mp4',
+				codec: 'avc',
+				width: project.metadata.width,
+				height: project.metadata.height,
+				subtitleMode: 'burn'
+			});
 			showToast(m.video_editor_export_done({ name: result.fileName }), 'success');
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -272,7 +278,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			await editorSession.saveNow();
 			const project = activeRenderProject();
 			if (!project) return;
-			const result = await exportProject(project, { format: 'mp4' });
+			const result = await renderVideoExport(project, {
+				format: 'mp4',
+				codec: 'avc',
+				width: project.metadata.width,
+				height: project.metadata.height,
+				subtitleMode: 'burn'
+			});
 			await sendToOpenPost({
 				workspaceId,
 				blob: result.blob,

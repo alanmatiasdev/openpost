@@ -17,6 +17,7 @@
 	} from '$lib/video-editor/media/render-export';
 	import { renderAudioExport, renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import {
 		assessExportPreflight,
@@ -131,10 +132,15 @@
 				range: selectedRange
 			},
 			fps: timelineStore.fps,
+			projectWidth: project?.metadata.width,
+			projectHeight: project?.metadata.height,
 			items: timelineStore.items,
 			tracks: timelineStore.tracks,
+			transitions: transitionsStore.list,
 			codecSupported: videoFormat ? codecSupport[codec] : true,
-			mediaStatuses
+			mediaStatuses,
+			media: mediaPool.mediaList,
+			workerAvailable: typeof Worker !== 'undefined'
 		})
 	);
 	const canOpenQueueMenu = $derived(
@@ -197,6 +203,8 @@
 				return m.video_editor_preflight_codec_unavailable({ codec: codec.toUpperCase() });
 			case 'subtitle-burn-fallback':
 				return m.video_editor_preflight_subtitle_fallback({ format: format.toUpperCase() });
+			case 'smart-copy':
+				return m.video_editor_preflight_smart_copy();
 			case 'long-render':
 				return m.video_editor_preflight_long_render({ minutes: check.minutes ?? 0 });
 			case 'output-too-large':
@@ -274,10 +282,15 @@
 			assessExportPreflight({
 				settings: { ...settings, range },
 				fps: timelineStore.fps,
+				projectWidth: project?.metadata.width,
+				projectHeight: project?.metadata.height,
 				items: snapshot.items,
 				tracks: snapshot.tracks,
+				transitions: snapshot.transitions,
 				codecSupported: videoFormat ? codecSupport[codec] : true,
-				mediaStatuses
+				mediaStatuses,
+				media: mediaPool.mediaList,
+				workerAvailable: typeof Worker !== 'undefined'
 			})
 		);
 		const blocked = segmentPreflights.find((result) => !result.canExport);
@@ -517,7 +530,13 @@
 						<p class="mt-0.5 text-[11px] text-[var(--video-editor-muted)] tabular-nums">
 							{m.video_editor_preflight_estimate({
 								duration: preflight.estimatedDurationSeconds.toFixed(1),
-								size: formatBytes(preflight.estimatedFileSizeBytes)
+								size: formatBytes(preflight.estimatedFileSizeBytes),
+								path:
+									preflight.predictedRenderPath === 'smart-copy'
+										? m.video_editor_preflight_path_smart_copy()
+										: preflight.predictedRenderPath === 'worker'
+											? m.video_editor_preflight_path_worker()
+											: m.video_editor_preflight_path_main_thread()
 							})}
 						</p>
 					</div>

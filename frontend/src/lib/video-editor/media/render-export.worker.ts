@@ -51,16 +51,21 @@ self.onmessage = async (event: MessageEvent<RenderExportWorkerRequest>) => {
 		mediaPool.loadAll(message.media);
 
 		const { planNestedMixdown } = await import('./render-plan');
+		const { assessSmartCopy } = await import('./smart-copy-plan');
 		const timeline = message.project.timeline;
+		const smartCopyEligible =
+			message.mode === 'video' &&
+			assessSmartCopy(message.project, message.options, message.media).eligible;
 		const hasAudio =
-			message.mode === 'audio' ||
-			planNestedMixdown(
-				timeline?.items ?? [],
-				timeline?.tracks ?? [],
-				message.project.metadata.fps,
-				timeline?.transitions ?? [],
-				timeline?.compositions ?? []
-			).length > 0;
+			!smartCopyEligible &&
+			(message.mode === 'audio' ||
+				planNestedMixdown(
+					timeline?.items ?? [],
+					timeline?.tracks ?? [],
+					message.project.metadata.fps,
+					timeline?.transitions ?? [],
+					timeline?.compositions ?? []
+				).length > 0);
 		if (hasAudio && !('OfflineAudioContext' in globalThis)) {
 			throw new Error('WORKER_REQUIRES_MAIN_THREAD:audio-context');
 		}

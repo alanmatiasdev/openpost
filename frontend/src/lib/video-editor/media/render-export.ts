@@ -73,6 +73,8 @@ import {
 	type LottieRenderSpec
 } from '../lottie/render-spec';
 import { saveRenderedExportArtifact } from './persist-rendered-export';
+import { assessSmartCopy } from './smart-copy-plan';
+import { smartCopy } from './smart-copy';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -104,6 +106,7 @@ export interface RenderedExportArtifact {
 	fileName: string;
 	blob: Blob;
 	sidecar?: { fileName: string; blob: Blob };
+	renderMethod?: 'smart-copy' | 'rendered';
 }
 
 export interface AudioExportOptions {
@@ -698,6 +701,30 @@ export async function renderMultiTrackVideoArtifact(
 	if (totalFrames === 0) throw new Error('The selected export range is empty.');
 
 	report(options, 'preparing', 0, totalFrames);
+	const smartCopyAssessment = assessSmartCopy(project, options, mediaPool.mediaList);
+	if (smartCopyAssessment.eligible) {
+		try {
+			const copied = await smartCopy(smartCopyAssessment.plan, project.name, {
+				signal: options.signal,
+				onProgress: ({ phase, progress }) =>
+					report(options, phase, Math.round(progress * totalFrames), totalFrames)
+			});
+			let sidecar: RenderedExportArtifact['sidecar'];
+			if (smartCopyAssessment.plan.subtitleMode === 'sidecar') {
+				const srt = subtitleSidecarSrt(items, fps, startFrame, endFrame);
+				if (srt) {
+					sidecar = {
+						fileName: `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.srt`,
+						blob: new Blob([srt], { type: 'application/x-subrip' })
+					};
+				}
+			}
+			return { ...copied, sidecar, renderMethod: 'smart-copy' };
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') throw error;
+			// Source metadata can change after import. A normal render remains safe.
+		}
+	}
 
 	const transitions = timeline?.transitions ?? [];
 	const mixEntries = sliceMixEntries(
@@ -840,7 +867,7 @@ export async function renderMultiTrackVideoArtifact(
 			};
 		}
 	}
-	return { fileName: baseName, blob, sidecar };
+	return { fileName: baseName, blob, sidecar, renderMethod: 'rendered' };
 }
 
 /** Render a timeline to bytes for internal caches without creating a user export. */

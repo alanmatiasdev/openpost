@@ -1,8 +1,10 @@
 /** Pure export readiness checks shared by the dialog and render queue. */
 
 import type { VideoCodec } from 'mediabunny';
-import type { TimelineItem, TimelineTrack } from '../project/types';
+import type { Project, TimelineItem, TimelineTrack, TimelineTransition } from '../project/types';
 import type { MediaPreparationStatus } from './pool.svelte';
+import { assessSmartCopy, type SmartCopyFormat } from './smart-copy-plan';
+import type { MediaMetadata } from './types';
 
 export type ExportPreflightSeverity = 'ok' | 'info' | 'warning' | 'error';
 export type ExportPreflightCheckId =
@@ -16,6 +18,8 @@ export type ExportPreflightCheckId =
 	| 'video-codec-supported'
 	| 'video-codec-unavailable'
 	| 'subtitle-burn-fallback'
+	| 'smart-copy'
+	| 'worker-render'
 	| 'main-thread-render'
 	| 'long-render'
 	| 'output-too-large';
@@ -43,10 +47,15 @@ export interface ExportPreflightSettings {
 export interface ExportPreflightInput {
 	settings: ExportPreflightSettings;
 	fps: number;
+	projectWidth?: number;
+	projectHeight?: number;
 	items: readonly TimelineItem[];
 	tracks: readonly TimelineTrack[];
+	transitions?: readonly TimelineTransition[];
 	codecSupported: boolean | undefined;
 	mediaStatuses: Readonly<Record<string, MediaPreparationStatus | undefined>>;
+	media?: readonly MediaMetadata[];
+	workerAvailable?: boolean;
 }
 
 export interface ExportPreflightRange {
@@ -60,7 +69,7 @@ export interface ExportPreflightResult {
 	pending: boolean;
 	checks: ExportPreflightCheck[];
 	range: ExportPreflightRange;
-	predictedRenderPath: 'main-thread';
+	predictedRenderPath: 'smart-copy' | 'worker' | 'main-thread';
 	estimatedDurationSeconds: number;
 	estimatedFileSizeBytes: number;
 }
@@ -77,6 +86,10 @@ const LONG_RENDER_SECONDS = 30 * 60;
 
 function isAudioFormat(format: ExportPreflightSettings['format']): boolean {
 	return format === 'mp3' || format === 'aac' || format === 'wav';
+}
+
+function isVideoFormat(format: ExportPreflightSettings['format']): format is SmartCopyFormat {
+	return format === 'webm' || format === 'mp4' || format === 'mov' || format === 'mkv';
 }
 
 function projectEnd(items: readonly TimelineItem[]): number {
@@ -166,6 +179,31 @@ export function assessExportPreflight(input: ExportPreflightInput): ExportPrefli
 	const activeItems = visibleItems(input.items, input.tracks, range);
 	const audioFormat = isAudioFormat(input.settings.format);
 	const audible = hasAudibleContent(activeItems, input.tracks);
+	const smartCopyAssessment = isVideoFormat(input.settings.format)
+		? assessSmartCopy(
+				{
+					id: 'export-preflight',
+					name: 'Export',
+					description: '',
+					createdAt: 0,
+					updatedAt: 0,
+					duration: projectEnd(input.items),
+					metadata: {
+						fps: input.fps,
+						width: input.projectWidth ?? input.settings.width,
+						height: input.projectHeight ?? input.settings.height
+					},
+					timeline: {
+						items: [...input.items],
+						tracks: [...input.tracks],
+						transitions: [...(input.transitions ?? [])]
+					}
+				} satisfies Project,
+				{ ...input.settings, format: input.settings.format },
+				input.media ?? []
+			)
+		: null;
+	const smartCopyEligible = smartCopyAssessment?.eligible === true;
 
 	if (range.frameCount === 0) {
 		checks.push({ id: 'empty-range', severity: 'error' });
@@ -194,7 +232,7 @@ export function assessExportPreflight(input: ExportPreflightInput): ExportPrefli
 	}
 
 	let pending = false;
-	if (!audioFormat) {
+	if (!audioFormat && !smartCopyEligible) {
 		if (input.codecSupported === undefined) {
 			pending = true;
 			checks.push({ id: 'video-codec-checking', severity: 'info' });
@@ -212,12 +250,27 @@ export function assessExportPreflight(input: ExportPreflightInput): ExportPrefli
 		}
 	}
 
-	checks.push({ id: 'main-thread-render', severity: 'ok' });
-	const estimatedFileSizeBytes = estimateFileSize(
-		input.settings,
-		estimatedDurationSeconds,
-		audible
-	);
+	const predictedRenderPath = smartCopyEligible
+		? 'smart-copy'
+		: input.workerAvailable === false
+			? 'main-thread'
+			: 'worker';
+	checks.push({
+		id:
+			predictedRenderPath === 'smart-copy'
+				? 'smart-copy'
+				: predictedRenderPath === 'worker'
+					? 'worker-render'
+					: 'main-thread-render',
+		severity: predictedRenderPath === 'smart-copy' ? 'info' : 'ok'
+	});
+	const estimatedFileSizeBytes = smartCopyEligible
+		? Math.ceil(
+				((smartCopyAssessment.plan.media.bitrate || VIDEO_BITRATES.standard) *
+					estimatedDurationSeconds) /
+					8
+			)
+		: estimateFileSize(input.settings, estimatedDurationSeconds, audible);
 	if (estimatedDurationSeconds >= LONG_RENDER_SECONDS) {
 		checks.push({
 			id: 'long-render',
@@ -238,7 +291,7 @@ export function assessExportPreflight(input: ExportPreflightInput): ExportPrefli
 		pending,
 		checks,
 		range,
-		predictedRenderPath: 'main-thread',
+		predictedRenderPath,
 		estimatedDurationSeconds,
 		estimatedFileSizeBytes
 	};

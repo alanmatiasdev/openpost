@@ -19,7 +19,7 @@ import type { MediaMetadata } from './types';
 
 export interface RenderExecutionOutcome {
 	artifact: RenderedExportArtifact;
-	renderPath: 'worker' | 'main-thread';
+	renderPath: 'smart-copy' | 'worker' | 'main-thread';
 	fallbackReason?: string;
 }
 
@@ -195,7 +195,11 @@ export async function renderExportArtifact(
 	dependencies: RenderExecutionDependencies = defaultDependencies
 ): Promise<RenderExecutionOutcome> {
 	try {
-		return { artifact: await renderInWorker(job, dependencies), renderPath: 'worker' };
+		const artifact = await renderInWorker(job, dependencies);
+		return {
+			artifact,
+			renderPath: artifact.renderMethod === 'smart-copy' ? 'smart-copy' : 'worker'
+		};
 	} catch (cause) {
 		const error = cause instanceof Error ? cause : String(cause);
 		if (isAbort(error)) throw error;
@@ -214,7 +218,11 @@ export async function renderExportArtifact(
 						signal: job.signal,
 						onProgress: job.onProgress
 					});
-		return { artifact, renderPath: 'main-thread', fallbackReason: reason };
+		return {
+			artifact,
+			renderPath: artifact.renderMethod === 'smart-copy' ? 'smart-copy' : 'main-thread',
+			fallbackReason: reason
+		};
 	}
 }
 

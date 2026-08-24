@@ -34,7 +34,7 @@ const baseSettings: ExportPreflightSettings = {
 };
 
 describe('assessExportPreflight', () => {
-	it('reports a ready main-thread render with exact range and size estimates', () => {
+	it('reports a ready worker render with exact range and size estimates', () => {
 		const result = assessExportPreflight({
 			settings: baseSettings,
 			fps: 30,
@@ -45,7 +45,7 @@ describe('assessExportPreflight', () => {
 		});
 
 		expect(result.canExport).toBe(true);
-		expect(result.predictedRenderPath).toBe('main-thread');
+		expect(result.predictedRenderPath).toBe('worker');
 		expect(result.range).toEqual({ startFrame: 0, endFrame: 330, frameCount: 330 });
 		expect(result.estimatedDurationSeconds).toBe(11);
 		expect(result.estimatedFileSizeBytes).toBeGreaterThan(11_000_000);
@@ -53,8 +53,43 @@ describe('assessExportPreflight', () => {
 			'export-range-ready',
 			'media-ready',
 			'video-codec-supported',
-			'main-thread-render'
+			'worker-render'
 		]);
+	});
+
+	it('recognizes an untouched keyframe-aligned source without requiring an encoder', () => {
+		const untouched = { ...video, from: 0, transform: { width: 1920, height: 1080 } };
+		const result = assessExportPreflight({
+			settings: { ...baseSettings, format: 'mp4', subtitleMode: 'none' },
+			fps: 30,
+			items: [untouched],
+			tracks: [videoTrack],
+			codecSupported: false,
+			mediaStatuses: { 'media-video': 'ready' },
+			media: [
+				{
+					id: 'media-video',
+					storageType: 'workspace',
+					fileName: 'video.mp4',
+					fileSize: 1_000_000,
+					mimeType: 'video/mp4',
+					duration: 10,
+					width: 1920,
+					height: 1080,
+					fps: 30,
+					codec: 'avc',
+					bitrate: 4_000_000,
+					keyframeTimestamps: [0, 2, 4, 6, 8],
+					tags: ['video']
+				}
+			]
+		});
+
+		expect(result.canExport).toBe(true);
+		expect(result.pending).toBe(false);
+		expect(result.predictedRenderPath).toBe('smart-copy');
+		expect(result.checks).toContainEqual({ id: 'smart-copy', severity: 'info' });
+		expect(result.checks.some((check) => check.id === 'video-codec-unavailable')).toBe(false);
 	});
 
 	it('blocks invalid ranges, missing media, and unavailable codecs together', () => {
