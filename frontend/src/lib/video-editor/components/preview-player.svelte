@@ -61,6 +61,13 @@
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { shapeMasksForTrack } from '$lib/video-editor/shapes/masks';
 	import { hasCornerPin } from '$lib/video-editor/preview/corner-pin';
+	import { adaptivePreviewQuality } from '$lib/video-editor/preview/adaptive-preview-quality.svelte';
+	import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
+	import {
+		prewarmPreviewFrame,
+		warmPreviewDecoder
+	} from '$lib/video-editor/preview/decoder-prewarm-client';
+	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -76,8 +83,12 @@
 		sequenceStore.activeSequence?.height ?? project?.metadata.height ?? sequenceStore.activeHeight
 	);
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
+	const previewRenderScale = $derived(
+		previewPlaybackSettings.previewQuality === 'auto' ? adaptivePreviewQuality.scale : 1
+	);
 	let urls = $state<Record<string, string>>({});
 	let proxyUrls = $state<Record<string, string>>({});
+	let proxyBlobs = $state<Record<string, Blob>>({});
 	let proxyProgress = $state<Record<string, number>>({});
 	const attemptedProxyIds = new Set<string>();
 	const proxyControllers = new Map<string, AbortController>();
@@ -190,6 +201,11 @@
 	});
 
 	$effect(() => {
+		filmstripCache.prewarm();
+		warmPreviewDecoder();
+	});
+
+	$effect(() => {
 		for (const media of mediaPool.mediaList) {
 			if (urls[media.id]) continue;
 			void getMediaObjectUrl(media)
@@ -232,6 +248,7 @@
 					const previous = proxyUrls[media.id];
 					if (previous) URL.revokeObjectURL(previous);
 					proxyUrls = { ...proxyUrls, [media.id]: URL.createObjectURL(blob) };
+					proxyBlobs = { ...proxyBlobs, [media.id]: blob };
 					proxyProgress = { ...proxyProgress, [media.id]: 1 };
 				})
 				.catch((error) => {
@@ -249,6 +266,21 @@
 		}
 	});
 
+	$effect(() => {
+		if (previewPlaybackSettings.previewQuality !== 'auto') return;
+		const targets = collectPreviewPrewarmTargets({
+			items: timelineStore.items,
+			tracks: timelineStore.tracks,
+			currentFrame: timelineStore.currentFrame,
+			fps: editorSession.fps
+		});
+		for (const target of targets) {
+			const media = mediaPool.get(target.mediaId);
+			if (!media || mediaPool.entry(target.mediaId)?.status !== 'ready') continue;
+			void prewarmPreviewFrame(media, target.timestampSeconds, proxyBlobs[target.mediaId]);
+		}
+	});
+
 	onDestroy(() => {
 		destroyed = true;
 		for (const controller of proxyControllers.values()) controller.abort();
@@ -260,13 +292,34 @@
 	});
 
 	$effect(() => {
-		const sync = () => (isPlaying = editorSession.clock.isPlaying);
-		const offPlay = editorSession.clock.on('play', sync);
-		const offPause = editorSession.clock.on('pause', sync);
+		const syncPlay = () => (isPlaying = true);
+		const syncPause = () => {
+			isPlaying = false;
+			adaptivePreviewQuality.reset();
+			scheduleStackFrame();
+		};
+		const sampleFrame = (frame: number) => {
+			if (previewPlaybackSettings.previewQuality !== 'auto' || !editorSession.clock.isPlaying)
+				return;
+			adaptivePreviewQuality.recordFrame(
+				frame,
+				performance.now(),
+				editorSession.fps,
+				editorSession.clock.playbackRate
+			);
+		};
+		const offPlay = editorSession.clock.on('play', syncPlay);
+		const offPause = editorSession.clock.on('pause', syncPause);
+		const offFrame = editorSession.clock.on('framechange', sampleFrame);
 		return () => {
 			offPlay();
 			offPause();
+			offFrame();
 		};
+	});
+
+	$effect(() => {
+		if (previewPlaybackSettings.previewQuality === 'full') adaptivePreviewQuality.reset();
 	});
 
 	function transitionOpacity(item: TimelineItem): number {
@@ -459,17 +512,19 @@
 
 	$effect(() => {
 		const node = viewport;
+		const renderScale = previewRenderScale;
 		if (!node) return;
+		let resizeFrame: number | null = null;
 		const updateSize = () => {
 			const rect = node.getBoundingClientRect();
 			const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
-			const scale = Math.min(
+			const viewportScale = Math.min(
 				1,
 				Math.max(1, rect.width * pixelRatio) / canvasWidth,
 				Math.max(1, rect.height * pixelRatio) / canvasHeight
 			);
-			let nextWidth = Math.max(1, Math.round(canvasWidth * scale));
-			let nextHeight = Math.max(1, Math.round(canvasHeight * scale));
+			let nextWidth = Math.max(1, Math.round(canvasWidth * viewportScale * renderScale));
+			let nextHeight = Math.max(1, Math.round(canvasHeight * viewportScale * renderScale));
 			const pixelCount = nextWidth * nextHeight;
 			if (pixelCount > MAX_STACK_PREVIEW_PIXELS) {
 				const reduction = Math.sqrt(MAX_STACK_PREVIEW_PIXELS / pixelCount);
@@ -480,10 +535,20 @@
 			stackHeight = nextHeight;
 			scheduleStackFrame();
 		};
-		const observer = new ResizeObserver(updateSize);
+		const scheduleSize = () => {
+			if (resizeFrame !== null) return;
+			resizeFrame = requestAnimationFrame(() => {
+				resizeFrame = null;
+				updateSize();
+			});
+		};
+		const observer = new ResizeObserver(scheduleSize);
 		observer.observe(node);
-		updateSize();
-		return () => observer.disconnect();
+		scheduleSize();
+		return () => {
+			observer.disconnect();
+			if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+		};
 	});
 
 	$effect(() => {
@@ -781,6 +846,8 @@
 					{canvasHeight}
 					effectiveEffects={effectiveEffects(item)}
 					deferEffects={needsStackedComposition}
+					previewScale={previewRenderScale}
+					allowPrewarmFallback={previewPlaybackSettings.previewQuality === 'auto'}
 					registersource={registerPreviewSource}
 					onsourcechange={scheduleStackFrame}
 					selected={item.id === selectedItemId}

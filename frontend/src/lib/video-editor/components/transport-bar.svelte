@@ -18,6 +18,7 @@
 		zoomPreview
 	} from '$lib/video-editor/preview/playback-settings';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
+	import { adaptivePreviewQuality } from '$lib/video-editor/preview/adaptive-preview-quality.svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		setCurrentFrame,
@@ -50,6 +51,12 @@
 		previewPlaybackSettings.zoom === -1
 			? m.video_editor_preview_zoom_fit()
 			: `${Math.round(previewPlaybackSettings.zoom * 100)}%`
+	);
+	const adaptiveQualityPercent = $derived(Math.round(adaptivePreviewQuality.scale * 100));
+	const qualityLabel = $derived(
+		previewPlaybackSettings.previewQuality === 'auto'
+			? `${m.video_editor_quality_auto()}${adaptiveQualityPercent < 100 ? ` ${adaptiveQualityPercent}%` : ''}`
+			: m.video_editor_quality_full()
 	);
 	let fullscreen = $state(false);
 	let savingFrame = $state(false);
@@ -303,7 +310,10 @@
 						size="icon-xs"
 						variant="ghost"
 						aria-label={m.video_editor_preview_quality()}
-						title={`${m.video_editor_preview_quality()}: ${previewPlaybackSettings.previewQuality === 'auto' ? m.video_editor_quality_auto() : m.video_editor_quality_full()}`}
+						title={`${m.video_editor_preview_quality()}: ${qualityLabel}`}
+						data-preview-quality-scale={previewPlaybackSettings.previewQuality === 'auto'
+							? adaptivePreviewQuality.scale
+							: 1}
 					>
 						<GaugeIcon />
 					</Button>
@@ -314,6 +324,11 @@
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item onclick={() => previewPlaybackSettings.setPreviewQuality('auto')}>
 					<span class="flex-1">{m.video_editor_quality_auto()}</span>
+					{#if previewPlaybackSettings.previewQuality === 'auto' && adaptiveQualityPercent < 100}
+						<span class="text-[10px] text-muted-foreground tabular-nums"
+							>{adaptiveQualityPercent}%</span
+						>
+					{/if}
 					{#if previewPlaybackSettings.previewQuality === 'auto'}<CheckIcon />{/if}
 				</DropdownMenu.Item>
 				<DropdownMenu.Item onclick={() => previewPlaybackSettings.setPreviewQuality('full')}>

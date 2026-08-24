@@ -7,6 +7,8 @@ import { TimelineFrameRenderer } from '../media/render-export';
 import PreviewPlayer from './preview-player.svelte';
 import { colorPreviewStore } from '../effects/color-preview-store.svelte';
 import { scopeSamples } from '../effects/scope-samples.svelte';
+import { adaptivePreviewQuality } from '../preview/adaptive-preview-quality.svelte';
+import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -121,6 +123,8 @@ function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 
 afterEach(() => {
 	colorPreviewStore.__resetForTesting();
+	adaptivePreviewQuality.reset();
+	previewPlaybackSettings.setPreviewQuality('auto');
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -151,6 +155,32 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('reduces real stacked preview pixels when Auto quality adapts down', async () => {
+		const project = maskedProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		previewPlaybackSettings.setPreviewQuality('auto');
+		adaptivePreviewQuality.__setScaleForTesting(0.5);
+		const screen = await render(PreviewPlayer, { selectedItemId: 'mask', onedit: vi.fn() });
+		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
+		expect(preview).not.toBeNull();
+		if (!preview) return;
+		await vi.waitFor(() => {
+			expect(preview.width).toBe(4);
+			expect(preview.height).toBe(4);
+		});
+		previewPlaybackSettings.setPreviewQuality('full');
+		await vi.waitFor(() => {
+			expect(preview.width).toBe(8);
+			expect(preview.height).toBe(8);
+		});
+	});
+
 	it('matches export pixels for a projective corner pin', async () => {
 		const project = cornerPinnedProject();
 		editorSession.project = project;

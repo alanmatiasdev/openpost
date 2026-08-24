@@ -56,6 +56,7 @@
 		nearestFilmstripFallback,
 		PROXY_SEEK_STALL_MS
 	} from '$lib/video-editor/preview/scrub-proxy-fallback';
+	import { clonePrewarmedPreviewFrame } from '$lib/video-editor/preview/decoder-prewarm-client';
 
 	let {
 		item,
@@ -63,6 +64,8 @@
 		audioUrl,
 		canvasWidth,
 		canvasHeight,
+		previewScale = 1,
+		allowPrewarmFallback = true,
 		opacityMultiplier = 1,
 		effectiveEffects,
 		deferEffects = false,
@@ -80,6 +83,8 @@
 		audioUrl?: string | null;
 		canvasWidth: number;
 		canvasHeight: number;
+		previewScale?: number;
+		allowPrewarmFallback?: boolean;
 		opacityMultiplier?: number;
 		effectiveEffects?: ItemEffect[];
 		deferEffects?: boolean;
@@ -96,6 +101,7 @@
 	let proxyAudioElement = $state<HTMLAudioElement | null>(null);
 	let proxyFallbackCanvas = $state<HTMLCanvasElement | null>(null);
 	let proxyFallbackVisible = $state(false);
+	let proxyFallbackKind = $state<'initial' | 'seek' | null>(null);
 	let proxyFallbackRevision = $state(0);
 	let proxyFallbackGeneration = 0;
 	let proxyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -248,44 +254,112 @@
 		proxyFallbackTimer = null;
 		if (!proxyFallbackVisible) return;
 		proxyFallbackVisible = false;
+		proxyFallbackKind = null;
 		proxyFallbackRevision += 1;
 		onsourcechange?.();
 	}
 
-	function scheduleProxySeekFallback(timestampSeconds: number): void {
-		if (!usesSeparateProxyAudio || editorSession.clock.isPlaying || !item.mediaId) return;
+	async function cachedSeekFallback(timestampSeconds: number): Promise<ImageBitmap | null> {
+		if (!item.mediaId) return null;
+		const prewarmed = allowPrewarmFallback
+			? await clonePrewarmedPreviewFrame(
+					item.mediaId,
+					timestampSeconds,
+					Math.max(1 / Math.max(1, item.sourceFps ?? editorSession.fps), 1 / 120)
+				)
+			: null;
+		if (prewarmed) return prewarmed;
+		if (!usesSeparateProxyAudio) return null;
+		const filmstrip = filmstripCache.cachedFilmstrip(item.mediaId);
+		const frame = filmstrip ? nearestFilmstripFallback(filmstrip.frames, timestampSeconds) : null;
+		return frame ? cloneFilmstripFallback(frame) : null;
+	}
+
+	function presentSeekFallback(
+		bitmap: ImageBitmap,
+		generation: number,
+		isStillPending: () => boolean,
+		kind: 'initial' | 'seek'
+	): void {
+		if (generation !== proxyFallbackGeneration || !isStillPending()) {
+			bitmap.close();
+			return;
+		}
+		const canvas = proxyFallbackCanvas;
+		if (!canvas) {
+			bitmap.close();
+			return;
+		}
+		canvas.width = bitmap.width;
+		canvas.height = bitmap.height;
+		const context = canvas.getContext('2d');
+		context?.drawImage(bitmap, 0, 0);
+		bitmap.close();
+		if (!context) return;
+		proxyFallbackVisible = true;
+		proxyFallbackKind = kind;
+		proxyFallbackRevision += 1;
+		onsourcechange?.();
+	}
+
+	function scheduleSeekFallback(timestampSeconds: number): void {
+		if (editorSession.clock.isPlaying || !item.mediaId) return;
 		const generation = ++proxyFallbackGeneration;
 		if (proxyFallbackTimer !== null) clearTimeout(proxyFallbackTimer);
 		proxyFallbackTimer = setTimeout(() => {
 			proxyFallbackTimer = null;
 			if (generation !== proxyFallbackGeneration || !mediaElement?.seeking) return;
-			const filmstrip = filmstripCache.cachedFilmstrip(item.mediaId ?? '');
-			const frame = filmstrip ? nearestFilmstripFallback(filmstrip.frames, timestampSeconds) : null;
-			if (!frame) return;
-			void cloneFilmstripFallback(frame)
+			void cachedSeekFallback(timestampSeconds)
 				.then((bitmap) => {
-					if (generation !== proxyFallbackGeneration || !mediaElement?.seeking) {
-						bitmap.close();
-						return;
-					}
-					const canvas = proxyFallbackCanvas;
-					if (!canvas) {
-						bitmap.close();
-						return;
-					}
-					canvas.width = bitmap.width;
-					canvas.height = bitmap.height;
-					const context = canvas.getContext('2d');
-					context?.drawImage(bitmap, 0, 0);
-					bitmap.close();
-					if (!context) return;
-					proxyFallbackVisible = true;
-					proxyFallbackRevision += 1;
-					onsourcechange?.();
+					if (bitmap)
+						presentSeekFallback(bitmap, generation, () => mediaElement?.seeking === true, 'seek');
 				})
 				.catch(() => undefined);
 		}, PROXY_SEEK_STALL_MS);
 	}
+
+	$effect(() => {
+		const video = mediaElement;
+		const frame = timelineStore.currentFrame;
+		const boundaryFallbackEnd = item.from + Math.ceil(editorSession.fps / 4);
+		if (
+			video &&
+			frame > boundaryFallbackEnd &&
+			video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA &&
+			proxyFallbackVisible &&
+			proxyFallbackKind === 'initial'
+		) {
+			clearProxySeekFallback();
+			return;
+		}
+		if (
+			resolved.type !== 'video' ||
+			!video ||
+			!item.mediaId ||
+			!allowPrewarmFallback ||
+			video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA ||
+			frame < item.from ||
+			frame > boundaryFallbackEnd
+		)
+			return;
+		const generation = ++proxyFallbackGeneration;
+		const timestampSeconds = frameToSourceSeconds(item, frame, editorSession.fps);
+		void clonePrewarmedPreviewFrame(
+			item.mediaId,
+			timestampSeconds,
+			Math.max(1 / Math.max(1, item.sourceFps ?? editorSession.fps), 1 / 120)
+		)
+			.then((bitmap) => {
+				if (bitmap)
+					presentSeekFallback(
+						bitmap,
+						generation,
+						() => video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA,
+						'initial'
+					);
+			})
+			.catch(() => undefined);
+	});
 
 	function handleVideoSettled(): void {
 		clearProxySeekFallback();
@@ -408,7 +482,7 @@
 					: originalSourceTime;
 			if (seekDriftExceeded(video.currentTime, sourceTime, 0.08 / Math.max(0.1, speed))) {
 				videoScheduler.request(sourceTime);
-				scheduleProxySeekFallback(sourceTime);
+				scheduleSeekFallback(originalSourceTime);
 			}
 			video.playbackRate = Math.min(16, Math.max(0.0625, speed));
 			if (audio) {
@@ -742,7 +816,9 @@
 						? source.naturalHeight
 						: source.height;
 			if (!width || !height) return;
-			const rendered = instance.render(source, width, height, effects, {
+			const renderWidth = Math.max(1, Math.round(width * previewScale));
+			const renderHeight = Math.max(1, Math.round(height * previewScale));
+			const rendered = instance.render(source, renderWidth, renderHeight, effects, {
 				time: untrack(() => timelineStore.currentFrame) / editorSession.fps,
 				blendMode
 			});
@@ -866,6 +942,7 @@
 			hidden={!proxyFallbackVisible || needsGpu || deferEffects}
 			aria-hidden="true"
 			data-proxy-seek-fallback
+			data-seek-fallback
 		></canvas>
 	{/if}
 </div>
