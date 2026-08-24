@@ -4,6 +4,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
@@ -25,10 +26,18 @@
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import XCircleIcon from '@lucide/svelte/icons/circle-x';
-	import { buildRenderQueueJob } from '../export/render-queue-job';
+	import {
+		buildRenderQueueJob,
+		buildSegmentRenderQueueJobs,
+		rangesFromFixedDuration,
+		rangesFromMarkers,
+		type RenderQueueRange
+	} from '../export/render-queue-job';
 	import { renderQueueStore } from '../export/render-queue-store';
 	import RenderQueuePanel from './render-queue-panel.svelte';
 	import { captureSnapshot } from '../timeline/commands/snapshot.svelte';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 
 	let {
 		project,
@@ -99,6 +108,9 @@
 			? { startFrame: timelineStore.inPoint, endFrame: timelineStore.outPoint }
 			: undefined
 	);
+	const mediaStatuses = $derived.by(() =>
+		Object.fromEntries(mediaPool.order.map((id) => [id, mediaPool.entry(id)?.status]))
+	);
 	const preflight = $derived.by(() =>
 		assessExportPreflight({
 			settings: {
@@ -114,10 +126,15 @@
 			items: timelineStore.items,
 			tracks: timelineStore.tracks,
 			codecSupported: videoFormat ? codecSupport[codec] : true,
-			mediaStatuses: Object.fromEntries(
-				mediaPool.order.map((id) => [id, mediaPool.entry(id)?.status])
-			)
+			mediaStatuses
 		})
+	);
+	const canOpenQueueMenu = $derived(
+		!preflight.pending &&
+			(preflight.canExport ||
+				preflight.checks
+					.filter((check) => check.severity === 'error')
+					.every((check) => check.id === 'output-too-large'))
 	);
 	const visiblePreflightChecks = $derived(
 		preflight.checks.filter((check) => check.severity !== 'ok').slice(0, 4)
@@ -211,20 +228,24 @@
 		if (next) codec = next;
 	}
 
-	function enqueue(): void {
+	function queueSettings() {
+		return {
+			format,
+			codec: videoFormat ? codec : undefined,
+			quality,
+			width: outputDimensions.width,
+			height: outputDimensions.height,
+			subtitleMode
+		};
+	}
+
+	function enqueueCurrent(): void {
 		if (!project || !preflight.canExport) return;
 		const snapshot = captureSnapshot();
 		renderQueueStore.enqueue([
 			buildRenderQueueJob({
 				project,
-				settings: {
-					format,
-					codec: videoFormat ? codec : undefined,
-					quality,
-					width: outputDimensions.width,
-					height: outputDimensions.height,
-					subtitleMode
-				},
+				settings: queueSettings(),
 				preflight,
 				tracks: snapshot.tracks,
 				items: snapshot.items,
@@ -233,6 +254,72 @@
 			})
 		]);
 		open = false;
+	}
+
+	function enqueueSegments(
+		ranges: readonly RenderQueueRange[],
+		snapshot: ReturnType<typeof captureSnapshot>
+	): void {
+		if (!project || ranges.length === 0) return;
+		const settings = queueSettings();
+		const segmentPreflights = ranges.map((range) =>
+			assessExportPreflight({
+				settings: { ...settings, range },
+				fps: timelineStore.fps,
+				items: snapshot.items,
+				tracks: snapshot.tracks,
+				codecSupported: videoFormat ? codecSupport[codec] : true,
+				mediaStatuses
+			})
+		);
+		const blocked = segmentPreflights.find((result) => !result.canExport);
+		if (blocked) {
+			const check = blocked.checks.find((candidate) => candidate.severity === 'error');
+			onerror(
+				new Error((check && preflightMessage(check)) || m.video_editor_queue_segment_blocked())
+			);
+			return;
+		}
+		renderQueueStore.enqueue(
+			buildSegmentRenderQueueJobs({
+				project,
+				settings,
+				preflight: segmentPreflights[0]!,
+				tracks: snapshot.tracks,
+				items: snapshot.items,
+				transitions: snapshot.transitions,
+				compositions: snapshot.sequenceRegistry.compositions,
+				ranges,
+				name: (index) => `${project.name} - ${m.video_editor_queue_part({ number: index + 1 })}`
+			})
+		);
+		open = false;
+	}
+
+	function enqueueMarkerSegments(): void {
+		const snapshot = captureSnapshot();
+		const ranges = rangesFromMarkers(
+			snapshot.markers,
+			preflight.range.startFrame,
+			preflight.range.endFrame
+		);
+		if (ranges.length <= 1) {
+			onerror(new Error(m.video_editor_queue_no_markers()));
+			return;
+		}
+		enqueueSegments(ranges, snapshot);
+	}
+
+	function enqueueFixedSegments(seconds: number): void {
+		const snapshot = captureSnapshot();
+		enqueueSegments(
+			rangesFromFixedDuration(
+				preflight.range.startFrame,
+				preflight.range.endFrame,
+				Math.max(1, Math.round(seconds * timelineStore.fps))
+			),
+			snapshot
+		);
 	}
 
 	async function start(): Promise<void> {
@@ -427,9 +514,34 @@
 						if (rendering) controller?.abort();
 						else open = false;
 					}}>{m.video_editor_export_cancel()}</Button
-				><Button variant="outline" disabled={rendering || !preflight.canExport} onclick={enqueue}
-					>{m.video_editor_queue_add()}</Button
-				><Button disabled={rendering || !preflight.canExport} onclick={start}
+				>
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="outline" disabled={rendering || !canOpenQueueMenu}>
+								<ListPlusIcon aria-hidden="true" />
+								{m.video_editor_queue_add()}
+								<ChevronDownIcon aria-hidden="true" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end" class="video-editor-theme min-w-52">
+						<DropdownMenu.Item disabled={!preflight.canExport} onclick={enqueueCurrent}>
+							{m.video_editor_queue_add_current()}
+						</DropdownMenu.Item>
+						<DropdownMenu.Separator />
+						<DropdownMenu.Label>{m.video_editor_queue_segments()}</DropdownMenu.Label>
+						<DropdownMenu.Item onclick={enqueueMarkerSegments}>
+							{m.video_editor_queue_per_marker()}
+						</DropdownMenu.Item>
+						{#each [10, 30, 60] as seconds (seconds)}
+							<DropdownMenu.Item onclick={() => enqueueFixedSegments(seconds)}>
+								{m.video_editor_queue_fixed_seconds({ seconds })}
+							</DropdownMenu.Item>
+						{/each}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+				<Button disabled={rendering || !preflight.canExport} onclick={start}
 					>{m.video_editor_export_start_now()}</Button
 				>
 			</div>

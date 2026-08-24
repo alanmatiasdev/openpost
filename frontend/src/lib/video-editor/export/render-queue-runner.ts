@@ -11,7 +11,7 @@ function projectForJob(job: RenderQueueJob): Project {
 	const { snapshot } = job;
 	return {
 		id: snapshot.projectId,
-		name: snapshot.projectName,
+		name: job.name,
 		description: '',
 		createdAt: job.createdAt,
 		updatedAt: job.createdAt,

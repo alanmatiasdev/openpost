@@ -103,7 +103,7 @@
 						>
 							<div class="flex items-start gap-2">
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm font-medium">{job.name}</p>
+									<p class="text-sm leading-tight font-medium break-words">{job.name}</p>
 									<p class="text-[11px] text-[var(--video-editor-muted)]">
 										{formatDetails(job)} · {statusLabel(job)}
 									</p>

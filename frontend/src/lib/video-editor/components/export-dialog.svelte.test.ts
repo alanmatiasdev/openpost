@@ -82,6 +82,7 @@ describe('ExportDialog', () => {
 		const dialog = screen.getByRole('dialog').element();
 		expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
 		await screen.getByRole('button', { name: 'Add to queue' }).click();
+		await screen.getByRole('menuitem', { name: 'Add current range' }).click();
 		expect(get(renderQueueStore).jobs).toHaveLength(1);
 		const liveItem = timelineStore.itemById.get('video');
 		if (!liveItem) throw new Error('Expected the live video item');
@@ -101,5 +102,73 @@ describe('ExportDialog', () => {
 		await expect.element(screen.getByText('Fix these issues before exporting')).toBeVisible();
 		await expect.element(screen.getByText('Relink 1 missing or unreadable sources.')).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Render now' })).toBeDisabled();
+	});
+
+	it('queues one shared frozen render snapshot per marker span', async () => {
+		await page.viewport(320, 720);
+		timelineStore.setAll({
+			tracks: [track],
+			items: [item],
+			markers: [{ id: 'middle', frame: 150, label: 'Middle', color: '#d97746' }],
+			fps: 30,
+			currentFrame: 0
+		});
+		const screen = await render(ExportDialog, {
+			project,
+			ondone: vi.fn(),
+			onerror: vi.fn(),
+			probeCodec: vi.fn(async () => true)
+		});
+
+		await screen.getByRole('button', { name: 'Render full video' }).click();
+		await expect.element(screen.getByText('Ready to render')).toBeVisible();
+		await screen.getByRole('button', { name: 'Add to queue' }).click();
+		await screen.getByRole('menuitem', { name: 'One segment per marker' }).click();
+
+		const jobs = get(renderQueueStore).jobs;
+		expect(jobs.map((job) => job.settings.range)).toEqual([
+			{ startFrame: 0, endFrame: 150 },
+			{ startFrame: 150, endFrame: 300 }
+		]);
+		expect(jobs[0]?.snapshot).toBe(jobs[1]?.snapshot);
+		await screen.getByRole('button', { name: 'Render queue (2)' }).click();
+		await expect.element(screen.getByText('Interview - Part 1')).toBeVisible();
+		await expect.element(screen.getByText('Interview - Part 2')).toBeVisible();
+		const queueDialog = screen.getByRole('dialog').element();
+		expect(queueDialog.scrollWidth).toBeLessThanOrEqual(queueDialog.clientWidth);
+	});
+
+	it('allows fixed segments when the unsplit render exceeds the memory limit', async () => {
+		await page.viewport(320, 720);
+		const longItem = { ...item, durationInFrames: 72_000 };
+		const longProject = {
+			...project,
+			duration: 2_400,
+			timeline: { tracks: [track], items: [longItem] }
+		};
+		timelineStore.setAll({
+			tracks: [track],
+			items: [longItem],
+			fps: 30,
+			currentFrame: 0
+		});
+		const screen = await render(ExportDialog, {
+			project: longProject,
+			ondone: vi.fn(),
+			onerror: vi.fn(),
+			probeCodec: vi.fn(async () => true)
+		});
+
+		await screen.getByRole('button', { name: 'Render full video' }).click();
+		await expect.element(screen.getByRole('button', { name: 'Add to queue' })).toBeEnabled();
+		await expect.element(screen.getByRole('button', { name: 'Render now' })).toBeDisabled();
+		await screen.getByRole('button', { name: 'Add to queue' }).click();
+		await screen.getByRole('menuitem', { name: 'Every 60 seconds' }).click();
+
+		const jobs = get(renderQueueStore).jobs;
+		expect(jobs).toHaveLength(40);
+		expect(jobs[0]?.settings.range).toEqual({ startFrame: 0, endFrame: 1_800 });
+		expect(jobs[39]?.settings.range).toEqual({ startFrame: 70_200, endFrame: 72_000 });
+		expect(new Set(jobs.map((job) => job.snapshot))).toHaveLength(1);
 	});
 });
