@@ -95,7 +95,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	$effect(() => {
 		if (projectId) void editorSession.load(projectId);
-		return () => editorSession.pausePlayback();
+		return () => {
+			editorSession.pausePlayback();
+			editorSession.stopAutosaveTimers();
+			void editorSession.flushAutosave().catch(() => undefined);
+		};
 	});
 
 	async function handleImport(): Promise<void> {
@@ -538,7 +542,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			togglePlay();
 		} else if (event.key === 's' && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
-			void editorSession.saveNow();
+			void editorSession.saveNow().catch(() => showToast(m.video_editor_save_failed(), 'error'));
 		} else if (
 			(event.key === 'l' || event.key === 'L') &&
 			event.shiftKey &&
@@ -627,6 +631,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		<div class="flex min-w-24 items-center justify-end gap-2 text-xs text-[oklch(0.65_0.015_55)]">
 			{#if editorSession.saving}
 				<span>{m.video_editor_saving()}</span>
+			{:else if editorSession.saveError}
+				<span class="text-red-300" title={editorSession.saveError}>
+					{m.video_editor_save_failed()}
+				</span>
 			{:else if !timelineStore.isDirty}
 				<span>{m.video_editor_saved()}</span>
 			{/if}

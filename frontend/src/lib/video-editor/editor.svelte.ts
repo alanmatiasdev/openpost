@@ -20,6 +20,7 @@ import { sceneBrowser } from './media/scene-search/scene-browser.svelte';
 import { sequenceStore } from './sequences/sequence-store.svelte';
 import { editorSettings } from './settings/editor-settings.svelte';
 import { mediaRecovery } from './media/media-recovery.svelte';
+import { PeriodicAutosaveController } from './settings/periodic-autosave';
 
 const logger = createLogger('EditorSession');
 
@@ -28,11 +29,22 @@ class EditorSession {
 	loading = $state(true);
 	loadError = $state('');
 	saving = $state(false);
+	saveError = $state('');
 
 	clock = new Clock({ fps: 30 });
 
 	private projectId: string | null = null;
 	private saveTimer: ReturnType<typeof setTimeout> | null = null;
+	private saveRequested = false;
+	private saveLoop: Promise<void> | null = null;
+	private readonly periodicAutosave = new PeriodicAutosaveController(
+		() => timelineStore.isDirty,
+		() => this.saveNow(),
+		(error) => {
+			this.saveError = error instanceof Error ? error.message : String(error);
+			logger.error('periodic save failed', error);
+		}
+	);
 
 	constructor() {
 		this.clock.on('framechange', (frame) => timelineStore._setCurrentFrame(frame));
@@ -43,9 +55,20 @@ class EditorSession {
 	}
 
 	async load(projectId: string): Promise<void> {
+		if (this.projectId && this.projectId !== projectId) {
+			try {
+				await this.flushAutosave();
+			} catch (error) {
+				this.loadError = error instanceof Error ? error.message : String(error);
+				return;
+			}
+		}
+		this.stopAutosaveTimers();
 		this.projectId = projectId;
 		this.loading = true;
 		this.loadError = '';
+		this.saveError = '';
+		this.saveRequested = false;
 		try {
 			sceneBrowser.reset();
 			mediaPool.clear();
@@ -68,6 +91,7 @@ class EditorSession {
 			const media = await getMediaForProject(projectId);
 			mediaPool.loadAll(media);
 			await mediaRecovery.scan(media, timelineStore.items);
+			this.configurePeriodicAutosave();
 		} catch (error) {
 			this.loadError = error instanceof Error ? error.message : String(error);
 		} finally {
@@ -97,8 +121,28 @@ class EditorSession {
 
 	scheduleAutosave(): void {
 		if (!this.projectId) return;
+		this.saveRequested = true;
 		if (this.saveTimer) clearTimeout(this.saveTimer);
-		this.saveTimer = setTimeout(() => void this.saveNow(), 800);
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = null;
+			void this.saveNow().catch(() => undefined);
+		}, 800);
+	}
+
+	configurePeriodicAutosave(): void {
+		if (!this.projectId) return;
+		this.periodicAutosave.configure(editorSettings.autoSaveIntervalMinutes);
+	}
+
+	async flushAutosave(): Promise<void> {
+		if (!this.saveRequested && !timelineStore.isDirty) return;
+		await this.saveNow();
+	}
+
+	stopAutosaveTimers(): void {
+		if (this.saveTimer) clearTimeout(this.saveTimer);
+		this.saveTimer = null;
+		this.periodicAutosave.stop();
 	}
 
 	saveAnimationPreset(preset: AnimationPreset): void {
@@ -121,23 +165,51 @@ class EditorSession {
 
 	async saveNow(): Promise<void> {
 		if (!this.projectId || !this.project) return;
-		this.saving = true;
-		try {
-			const timeline = sequenceStore.projectTimeline();
-			await updateProject(this.projectId, {
-				duration:
-					timeline.items.reduce(
-						(max, item) => Math.max(max, item.from + item.durationInFrames),
-						0
-					) / this.project.metadata.fps,
-				timeline,
-				animationPresets: this.project.animationPresets
-			});
-			timelineStore._clearDirty();
-		} catch (error) {
-			logger.error('save failed', error);
-		} finally {
-			this.saving = false;
+		this.saveRequested = true;
+		if (this.saveTimer) clearTimeout(this.saveTimer);
+		this.saveTimer = null;
+		if (!this.saveLoop) {
+			const loop = this.drainSaves();
+			this.saveLoop = loop;
+			void loop.then(
+				() => {
+					if (this.saveLoop === loop) this.saveLoop = null;
+				},
+				() => {
+					if (this.saveLoop === loop) this.saveLoop = null;
+				}
+			);
+		}
+		return this.saveLoop;
+	}
+
+	private async drainSaves(): Promise<void> {
+		while (this.saveRequested) {
+			this.saveRequested = false;
+			this.saving = true;
+			try {
+				const projectId = this.projectId;
+				const project = this.project;
+				if (!projectId || !project) return;
+				const timeline = sequenceStore.projectTimeline();
+				await updateProject(projectId, {
+					duration:
+						timeline.items.reduce(
+							(max, item) => Math.max(max, item.from + item.durationInFrames),
+							0
+						) / project.metadata.fps,
+					timeline,
+					animationPresets: project.animationPresets
+				});
+				this.saveError = '';
+				if (!this.saveRequested) timelineStore._clearDirty();
+			} catch (error) {
+				this.saveError = error instanceof Error ? error.message : String(error);
+				logger.error('save failed', error);
+				throw error;
+			} finally {
+				this.saving = false;
+			}
 		}
 	}
 }

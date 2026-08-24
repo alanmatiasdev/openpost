@@ -2,6 +2,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import { Slider } from '$lib/components/ui/slider';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
@@ -11,7 +12,11 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
-	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import {
+		AUTO_SAVE_INTERVAL_MINUTES,
+		editorSettings
+	} from '$lib/video-editor/settings/editor-settings.svelte';
 	import {
 		clearProjectDerivedCaches,
 		deleteProjectProxies,
@@ -67,8 +72,19 @@
 		timelineStore._setMaxUndoHistory(editorSettings.maxUndoHistory);
 	}
 
+	function setPeriodicAutosave(enabled: boolean): void {
+		editorSettings.set('autoSaveIntervalMinutes', enabled ? 5 : 0);
+		editorSession.configurePeriodicAutosave();
+	}
+
+	function setPeriodicAutosaveInterval(value: number): void {
+		editorSettings.set('autoSaveIntervalMinutes', value);
+		editorSession.configurePeriodicAutosave();
+	}
+
 	function resetSettings(): void {
 		editorSettings.reset();
+		editorSession.configurePeriodicAutosave();
 		timelineStore._setSnapEnabled(editorSettings.snapByDefault);
 		timelineStore._setMaxUndoHistory(editorSettings.maxUndoHistory);
 		feedback = { tone: 'success', text: m.video_editor_settings_reset_done() };
@@ -174,6 +190,55 @@
 							<p class="mt-1 text-xs text-[var(--video-editor-muted)]">
 								{m.video_editor_settings_autosave_description()}
 							</p>
+						</div>
+						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
+							<div class="flex items-center justify-between gap-4">
+								<div>
+									<p class="text-sm font-medium">
+										{m.video_editor_settings_periodic_autosave()}
+									</p>
+									<p class="mt-0.5 text-xs text-[var(--video-editor-muted)]">
+										{m.video_editor_settings_periodic_autosave_description()}
+									</p>
+								</div>
+								<button
+									type="button"
+									role="switch"
+									aria-checked={editorSettings.autoSaveIntervalMinutes > 0}
+									aria-label={m.video_editor_settings_periodic_autosave()}
+									class="relative h-5 w-9 shrink-0 rounded-full bg-[oklch(0.28_0.012_55)] transition-colors data-[checked=true]:bg-[var(--video-editor-focus)]"
+									data-checked={editorSettings.autoSaveIntervalMinutes > 0}
+									onclick={() => setPeriodicAutosave(editorSettings.autoSaveIntervalMinutes === 0)}
+								>
+									<span
+										class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform data-[checked=true]:translate-x-4"
+										data-checked={editorSettings.autoSaveIntervalMinutes > 0}
+									></span>
+								</button>
+							</div>
+							{#if editorSettings.autoSaveIntervalMinutes > 0}
+								<div class="mt-4 border-t border-[oklch(0.27_0.014_55)] pt-4">
+									<div class="flex items-center justify-between gap-3 text-xs">
+										<span>
+											{m.video_editor_settings_autosave_interval()}
+										</span>
+										<span class="text-[var(--video-editor-muted)] tabular-nums">
+											{m.video_editor_settings_autosave_interval_minutes({
+												count: editorSettings.autoSaveIntervalMinutes
+											})}
+										</span>
+									</div>
+									<Slider
+										class="mt-3"
+										min={AUTO_SAVE_INTERVAL_MINUTES[0]}
+										max={AUTO_SAVE_INTERVAL_MINUTES.at(-1)}
+										step={5}
+										value={editorSettings.autoSaveIntervalMinutes}
+										ariaLabel={m.video_editor_settings_autosave_interval()}
+										onValueChange={setPeriodicAutosaveInterval}
+									/>
+								</div>
+							{/if}
 						</div>
 						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
 							<div class="flex items-center justify-between gap-4">

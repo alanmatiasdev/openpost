@@ -16,6 +16,7 @@ interface JsonRecord {
 
 export interface EditorSettingsValue {
 	maxUndoHistory: number;
+	autoSaveIntervalMinutes: number;
 	snapByDefault: boolean;
 	showWaveforms: boolean;
 	showFilmstrips: boolean;
@@ -27,6 +28,7 @@ export interface EditorSettingsValue {
 
 export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
 	maxUndoHistory: 100,
+	autoSaveIntervalMinutes: 5,
 	snapByDefault: true,
 	showWaveforms: true,
 	showFilmstrips: true,
@@ -45,6 +47,18 @@ interface SettingsStorage {
 function clampUndoHistory(value: JsonValue | undefined): number {
 	const number = typeof value === 'number' && Number.isFinite(value) ? value : 100;
 	return Math.round(Math.min(200, Math.max(10, number)) / 10) * 10;
+}
+
+export const AUTO_SAVE_INTERVAL_MINUTES = [5, 10, 15, 20, 25, 30] as const;
+
+function clampAutoSaveInterval(value: JsonValue | undefined): number {
+	if (value === 0) return 0;
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return DEFAULT_EDITOR_SETTINGS.autoSaveIntervalMinutes;
+	}
+	return AUTO_SAVE_INTERVAL_MINUTES.reduce((closest, candidate) =>
+		Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest
+	);
 }
 
 function isTranscriptionModel(value: JsonValue | undefined): value is TranscriptionModel {
@@ -77,6 +91,7 @@ export function normalizeEditorSettings(value: JsonValue): EditorSettingsValue {
 	const record = isJsonRecord(value) ? value : {};
 	return {
 		maxUndoHistory: clampUndoHistory(record.maxUndoHistory),
+		autoSaveIntervalMinutes: clampAutoSaveInterval(record.autoSaveIntervalMinutes),
 		snapByDefault:
 			typeof record.snapByDefault === 'boolean'
 				? record.snapByDefault
@@ -145,6 +160,9 @@ export function createEditorSettingsStore(storage: SettingsStorage | null = brow
 		},
 		get maxUndoHistory(): number {
 			return state.maxUndoHistory;
+		},
+		get autoSaveIntervalMinutes(): number {
+			return state.autoSaveIntervalMinutes;
 		},
 		get snapByDefault(): boolean {
 			return state.snapByDefault;

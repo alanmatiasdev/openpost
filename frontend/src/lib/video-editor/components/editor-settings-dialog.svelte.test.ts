@@ -21,6 +21,16 @@ describe('EditorSettingsDialog', () => {
 
 		await expect.element(dialog).toBeVisible();
 		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
+		const periodicSave = screen.getByRole('switch', { name: 'Periodic safety save' });
+		await expect.element(periodicSave).toHaveAttribute('aria-checked', 'true');
+		await expect.element(screen.getByRole('slider', { name: 'Safety interval' })).toBeVisible();
+		await periodicSave.click();
+		expect(editorSettings.autoSaveIntervalMinutes).toBe(0);
+		await expect
+			.element(screen.getByRole('slider', { name: 'Safety interval' }))
+			.not.toBeInTheDocument();
+		await periodicSave.click();
+		expect(editorSettings.autoSaveIntervalMinutes).toBe(5);
 
 		const undoDepth = screen.getByLabelText('Undo history depth');
 		await undoDepth.fill('30');

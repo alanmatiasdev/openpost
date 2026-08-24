@@ -19,6 +19,7 @@ describe('editor settings', () => {
 		expect(
 			normalizeEditorSettings({
 				maxUndoHistory: 999,
+				autoSaveIntervalMinutes: 'later',
 				snapByDefault: false,
 				showWaveforms: 'yes',
 				defaultTranscriptionModel: 'not-a-model',
@@ -32,15 +33,28 @@ describe('editor settings', () => {
 		});
 	});
 
+	it('keeps disabled periodic saves and snaps intervals to safe choices', () => {
+		expect(normalizeEditorSettings({ autoSaveIntervalMinutes: 0 }).autoSaveIntervalMinutes).toBe(0);
+		expect(normalizeEditorSettings({ autoSaveIntervalMinutes: 3 }).autoSaveIntervalMinutes).toBe(5);
+		expect(normalizeEditorSettings({ autoSaveIntervalMinutes: 13 }).autoSaveIntervalMinutes).toBe(
+			15
+		);
+		expect(normalizeEditorSettings({ autoSaveIntervalMinutes: 999 }).autoSaveIntervalMinutes).toBe(
+			30
+		);
+	});
+
 	it('persists changes and resets the complete settings document', () => {
 		const storage = memoryStorage();
 		const first = createEditorSettingsStore(storage);
 		first.set('maxUndoHistory', 30);
+		first.set('autoSaveIntervalMinutes', 10);
 		first.set('showFilmstrips', false);
 		first.set('defaultTranscriptionModel', 'whisper-small');
 
 		const restored = createEditorSettingsStore(storage);
 		expect(restored.maxUndoHistory).toBe(30);
+		expect(restored.autoSaveIntervalMinutes).toBe(10);
 		expect(restored.showFilmstrips).toBe(false);
 		expect(restored.defaultTranscriptionModel).toBe('whisper-small');
 
