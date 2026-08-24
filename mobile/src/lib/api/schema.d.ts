@@ -2264,6 +2264,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/jobs/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a background job */
+    get: operations["get-job"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/mcp/activity": {
     parameters: {
       query?: never;
@@ -5635,11 +5652,11 @@ export interface components {
       /** @description Workspace ID */
       workspace_id: string;
     };
-    CreateMediaUploadSessionOutputBody: {
+    CreateMediaUploadSessionResponse: {
       /**
        * Format: uri
        * @description A URL to the JSON Schema for this object.
-       * @example https://example.com/schemas/CreateMediaUploadSessionOutputBody.json
+       * @example https://example.com/schemas/CreateMediaUploadSessionResponse.json
        */
       readonly $schema?: string;
       /** @description API path to call after the upload succeeds */
@@ -7399,6 +7416,12 @@ export interface components {
       source?: string;
     };
     JobResponse: {
+      /**
+       * Format: uri
+       * @description A URL to the JSON Schema for this object.
+       * @example https://example.com/schemas/JobResponse.json
+       */
+      readonly $schema?: string;
       /**
        * Format: int64
        * @description Number of attempts
@@ -19697,6 +19720,65 @@ export interface operations {
       };
     };
   };
+  "get-job": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Job ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["ErrorModel"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["ErrorModel"];
+        };
+      };
+      /** @description Unprocessable Entity */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["ErrorModel"];
+        };
+      };
+      /** @description Internal Server Error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["ErrorModel"];
+        };
+      };
+    };
+  };
   "list-mcp-activity": {
     parameters: {
       query?: {
@@ -20207,7 +20289,10 @@ export interface operations {
   "create-media-upload-session": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -20223,7 +20308,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["CreateMediaUploadSessionOutputBody"];
+          "application/json": components["schemas"]["CreateMediaUploadSessionResponse"];
         };
       };
       /** @description Bad Request */
@@ -24430,7 +24515,10 @@ export interface operations {
   "create-publication": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -24540,7 +24628,10 @@ export interface operations {
   "update-publication": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
@@ -24658,7 +24749,10 @@ export interface operations {
   "cancel-publication": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
@@ -24796,7 +24890,10 @@ export interface operations {
   "publish-publication-now": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
@@ -24832,7 +24929,10 @@ export interface operations {
   "upsert-publication-renditions": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
@@ -25036,7 +25136,10 @@ export interface operations {
   "retry-failed-publication-renditions": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
@@ -25113,7 +25216,10 @@ export interface operations {
   "schedule-publication": {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Replay key scoped to the caller, Workspace, and operation */
+        "Idempotency-Key"?: string;
+      };
       path: {
         /** @description Publication ID */
         id: string;
