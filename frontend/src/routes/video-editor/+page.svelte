@@ -21,24 +21,40 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		importProjectSnapshotFile
 	} from '$lib/video-editor/project-bundle/snapshot-service';
 	import { duplicateProjectWithMedia } from '$lib/video-editor/project/project-operations';
+	import { permanentlyDeleteProject } from '$lib/video-editor/project/project-trash';
 	import type { Project } from '$lib/video-editor/project/types';
 	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
 	import {
 		createProject,
 		getAllProjects,
+		getProjectThumbnail,
 		updateProject
 	} from '$lib/video-editor/workspace-fs/projects';
-	import { softDeleteProject } from '$lib/video-editor/workspace-fs/trash';
+	import {
+		DEFAULT_TRASH_TTL_MS,
+		listTrashedProjects,
+		restoreProject,
+		softDeleteProject,
+		sweepTrashOlderThan,
+		type TrashedProjectEntry
+	} from '$lib/video-editor/workspace-fs/trash';
 	import FolderIcon from '@lucide/svelte/icons/folder-open';
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { onMount } from 'svelte';
 
+	const PROJECT_THUMBNAIL_READ_CONCURRENCY = 8;
+
 	const gate = createWorkspaceGate();
 	let projects = $state.raw<Project[]>([]);
+	let thumbnailUrls = $state.raw<Record<string, string>>({});
+	let trashedProjects = $state.raw<TrashedProjectEntry[]>([]);
 	let loadingProjects = $state(false);
 	let projectsError = $state('');
+	let trashError = $state('');
+	let trashBusyId = $state<string | null>(null);
+	let emptyingTrash = $state(false);
 	let creating = $state(false);
 	let importing = $state(false);
 	let duplicatingId = $state<string | null>(null);
@@ -48,22 +64,75 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	let bundleOperation = $state<'import' | 'export' | null>(null);
 	let bundleController = $state<AbortController | null>(null);
 	let bundleCanceling = $state(false);
+	let projectLoadGeneration = 0;
 
-	async function loadProjects(): Promise<void> {
+	function replaceThumbnailUrls(next: Record<string, string>): void {
+		for (const url of Object.values(thumbnailUrls)) URL.revokeObjectURL(url);
+		thumbnailUrls = next;
+	}
+
+	async function loadProjectThumbnailUrls(
+		projectsToLoad: Project[]
+	): Promise<Record<string, string>> {
+		const next: Record<string, string> = {};
+		let nextIndex = 0;
+		async function worker(): Promise<void> {
+			while (nextIndex < projectsToLoad.length) {
+				const project = projectsToLoad[nextIndex++];
+				if (!project) continue;
+				const thumbnail = await getProjectThumbnail(project.id);
+				if (thumbnail) next[project.id] = URL.createObjectURL(thumbnail);
+			}
+		}
+		await Promise.all(
+			Array.from(
+				{ length: Math.min(PROJECT_THUMBNAIL_READ_CONCURRENCY, projectsToLoad.length) },
+				() => worker()
+			)
+		);
+		return next;
+	}
+
+	async function loadProjects(sweepExpired = false): Promise<void> {
 		if (gate.state !== 'ready') return;
+		const generation = ++projectLoadGeneration;
 		loadingProjects = true;
 		projectsError = '';
+		trashError = '';
 		try {
-			projects = await getAllProjects();
+			if (sweepExpired) {
+				await sweepTrashOlderThan(DEFAULT_TRASH_TTL_MS, async (id) => {
+					await permanentlyDeleteProject(id);
+				});
+			}
+			const nextProjects = await getAllProjects();
+			const nextThumbnailUrls = await loadProjectThumbnailUrls(nextProjects);
+			let nextTrashedProjects = trashedProjects;
+			let nextTrashError = '';
+			try {
+				nextTrashedProjects = await listTrashedProjects();
+			} catch (error) {
+				nextTrashError = error instanceof Error ? error.message : String(error);
+			}
+			if (generation !== projectLoadGeneration) {
+				for (const url of Object.values(nextThumbnailUrls)) URL.revokeObjectURL(url);
+				return;
+			}
+			projects = nextProjects;
+			trashedProjects = nextTrashedProjects;
+			trashError = nextTrashError;
+			replaceThumbnailUrls(nextThumbnailUrls);
 		} catch (error) {
-			projectsError = error instanceof Error ? error.message : String(error);
+			if (generation === projectLoadGeneration) {
+				projectsError = error instanceof Error ? error.message : String(error);
+			}
 		} finally {
-			loadingProjects = false;
+			if (generation === projectLoadGeneration) loadingProjects = false;
 		}
 	}
 
 	$effect(() => {
-		if (gate.state === 'ready') void loadProjects();
+		if (gate.state === 'ready') void loadProjects(true);
 	});
 
 	onMount(() =>
@@ -71,6 +140,11 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 			showToast(m.video_editor_gate_permission_lost());
 		})
 	);
+
+	onMount(() => () => {
+		projectLoadGeneration += 1;
+		replaceThumbnailUrls({});
+	});
 
 	function openProject(project: Project): void {
 		void goto(`/video-editor/${project.id}`);
@@ -130,9 +204,159 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		try {
 			await softDeleteProject(project.id);
 			await loadProjects();
-			showToast(m.video_editor_project_moved_to_trash(), 'success');
+			showToast(m.video_editor_project_moved_to_trash(), 'success', {
+				actionLabel: m.video_editor_project_restore(),
+				onAction: () => void handleRestore(project.id, project.name)
+			});
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : String(error), 'error');
+		}
+	}
+
+	async function handleDeleteBatch(targets: Project[]): Promise<string[]> {
+		if (
+			targets.length === 0 ||
+			creating ||
+			importing ||
+			duplicatingId ||
+			exportingId ||
+			bundleOperation
+		) {
+			return targets.map((project) => project.id);
+		}
+		const moved: Project[] = [];
+		const failed: Project[] = [];
+		for (const project of targets) {
+			try {
+				await softDeleteProject(project.id);
+				moved.push(project);
+			} catch {
+				failed.push(project);
+			}
+		}
+		await loadProjects();
+		const undoMoved = (): void => {
+			void (async () => {
+				const restoreFailures: Project[] = [];
+				let restored = 0;
+				for (const project of moved) {
+					try {
+						await restoreProject(project.id);
+						restored += 1;
+					} catch {
+						restoreFailures.push(project);
+					}
+				}
+				await loadProjects();
+				if (restoreFailures.length > 0) {
+					showToast(
+						m.video_editor_project_bulk_restore_partial({
+							restored,
+							names: restoreFailures.map((project) => project.name).join(', ')
+						}),
+						'warning'
+					);
+				} else {
+					showToast(m.video_editor_project_bulk_restored({ count: restored }), 'success');
+				}
+			})().catch((error) =>
+				showToast(error instanceof Error ? error.message : String(error), 'error')
+			);
+		};
+		if (failed.length > 0) {
+			showToast(
+				m.video_editor_project_bulk_trash_partial({
+					moved: moved.length,
+					names: failed.map((project) => project.name).join(', ')
+				}),
+				'warning',
+				moved.length > 0
+					? { actionLabel: m.video_editor_project_restore(), onAction: undoMoved }
+					: undefined
+			);
+			return failed.map((project) => project.id);
+		}
+		showToast(m.video_editor_project_bulk_moved_to_trash({ count: moved.length }), 'success', {
+			actionLabel: m.video_editor_project_restore(),
+			onAction: undoMoved
+		});
+		return [];
+	}
+
+	async function handleRestore(projectId: string, projectName: string): Promise<void> {
+		if (trashBusyId || emptyingTrash) return;
+		trashBusyId = projectId;
+		try {
+			await restoreProject(projectId);
+			await loadProjects();
+			showToast(m.video_editor_project_restored({ name: projectName }), 'success');
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+		} finally {
+			trashBusyId = null;
+		}
+	}
+
+	async function handlePurge(entry: TrashedProjectEntry): Promise<void> {
+		if (trashBusyId || emptyingTrash) return;
+		trashBusyId = entry.id;
+		try {
+			const result = await permanentlyDeleteProject(entry.id);
+			await loadProjects();
+			if (result.failedMediaIds.length > 0) {
+				showToast(
+					m.video_editor_project_media_cleanup_partial({
+						count: result.failedMediaIds.length
+					}),
+					'warning'
+				);
+			} else {
+				showToast(
+					m.video_editor_project_deleted_forever({ name: entry.marker.originalName }),
+					'success'
+				);
+			}
+		} finally {
+			trashBusyId = null;
+		}
+	}
+
+	async function handleEmptyTrash(): Promise<void> {
+		if (trashBusyId || emptyingTrash) return;
+		emptyingTrash = true;
+		const snapshot = [...trashedProjects];
+		let deleted = 0;
+		const failed: TrashedProjectEntry[] = [];
+		let mediaCleanupFailures = 0;
+		try {
+			for (const entry of snapshot) {
+				try {
+					const result = await permanentlyDeleteProject(entry.id);
+					deleted += 1;
+					mediaCleanupFailures += result.failedMediaIds.length;
+				} catch {
+					failed.push(entry);
+				}
+			}
+			await loadProjects();
+			if (failed.length > 0) {
+				showToast(
+					m.video_editor_project_trash_partial({
+						deleted,
+						names: failed.map((entry) => entry.marker.originalName).join(', ')
+					}),
+					'warning'
+				);
+			} else if (mediaCleanupFailures > 0) {
+				showToast(
+					m.video_editor_project_media_cleanup_partial({ count: mediaCleanupFailures }),
+					'warning'
+				);
+			} else {
+				showToast(m.video_editor_project_trash_emptied({ count: deleted }), 'success');
+			}
+		} finally {
+			emptyingTrash = false;
 		}
 	}
 
@@ -344,8 +568,13 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		{:else if gate.state === 'ready'}
 			<ProjectBrowser
 				{projects}
+				{thumbnailUrls}
+				{trashedProjects}
 				loading={loadingProjects}
 				error={projectsError}
+				{trashError}
+				{trashBusyId}
+				{emptyingTrash}
 				{creating}
 				{importing}
 				{duplicatingId}
@@ -364,6 +593,10 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 				onexportbundle={handleExportBundle}
 				oncancelbundle={handleCancelBundle}
 				ondelete={handleDelete}
+				ondeletebatch={handleDeleteBatch}
+				onrestore={handleRestore}
+				onpurge={handlePurge}
+				onemptytrash={handleEmptyTrash}
 			/>
 		{/if}
 	</main>

@@ -5,7 +5,18 @@ import type { Project } from '../project/types';
 import ProjectBrowser from './project-browser.svelte';
 import '../../../routes/layout.css';
 
-function project(id: string, name: string, updatedAt: number): Project {
+async function settleUnmount(unmount: () => PromiseLike<void>): Promise<void> {
+	await new Promise<void>((resolve) => setTimeout(resolve, 200));
+	await unmount();
+	await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function project(
+	id: string,
+	name: string,
+	updatedAt: number,
+	metadata = { width: 1920, height: 1080, fps: 30 }
+): Project {
 	return {
 		id,
 		name,
@@ -13,20 +24,21 @@ function project(id: string, name: string, updatedAt: number): Project {
 		createdAt: updatedAt - 100,
 		updatedAt,
 		duration: 0,
-		metadata: { width: 1920, height: 1080, fps: 30 },
+		metadata,
 		timeline: { tracks: [], items: [] }
 	};
 }
 
-it('keeps project search and compact actions usable at 320 pixels', async () => {
-	await page.viewport(320, 720);
-	const onduplicate = vi.fn(async () => undefined);
-	const onexportjson = vi.fn(async () => undefined);
-	const onexportbundle = vi.fn(async () => undefined);
-	const screen = await render(ProjectBrowser, {
-		projects: [project('alpha', 'Alpha launch', 100), project('beta', 'Beta update', 200)],
+function browserProps(projects: Project[]) {
+	return {
+		projects,
+		thumbnailUrls: {},
+		trashedProjects: [],
 		loading: false,
 		error: '',
+		trashError: '',
+		trashBusyId: null,
+		emptyingTrash: false,
 		creating: false,
 		importing: false,
 		duplicatingId: null,
@@ -40,18 +52,42 @@ it('keeps project search and compact actions usable at 320 pixels', async () => 
 		onimportbundle: vi.fn(async () => undefined),
 		onopen: vi.fn(),
 		onrename: vi.fn(async () => undefined),
+		onduplicate: vi.fn(async () => undefined),
+		onexportjson: vi.fn(async () => undefined),
+		onexportbundle: vi.fn(async () => undefined),
+		oncancelbundle: vi.fn(),
+		ondelete: vi.fn(async () => undefined),
+		ondeletebatch: vi.fn(async () => []),
+		onrestore: vi.fn(async () => undefined),
+		onpurge: vi.fn(async () => undefined),
+		onemptytrash: vi.fn(async () => undefined)
+	};
+}
+
+it('keeps project search and compact actions usable at 320 pixels', async () => {
+	await page.viewport(320, 720);
+	const onduplicate = vi.fn(async () => undefined);
+	const onexportjson = vi.fn(async () => undefined);
+	const onexportbundle = vi.fn(async () => undefined);
+	const screen = await render(ProjectBrowser, {
+		...browserProps([project('alpha', 'Alpha launch', 100), project('beta', 'Beta update', 200)]),
 		onduplicate,
 		onexportjson,
-		onexportbundle,
-		oncancelbundle: vi.fn(),
-		ondelete: vi.fn(async () => undefined)
+		onexportbundle
 	});
+	screen.container.style.width = '320px';
+	screen.container.style.background = 'oklch(0.145 0.008 55)';
+	screen.container.style.padding = '16px';
 
 	const search = screen.getByRole('textbox', { name: 'Search projects' });
 	await search.fill('alpha');
 	await expect.element(screen.getByText('Alpha launch')).toBeVisible();
 	await expect.element(screen.getByText('Beta update')).not.toBeInTheDocument();
 	await search.fill('');
+	await page.screenshot({
+		element: screen.container,
+		path: '../../../../.svelte-kit/openpost-project-browser-phone.png'
+	});
 
 	await screen.getByRole('button', { name: 'Actions for Beta update' }).click();
 	await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
@@ -65,41 +101,114 @@ it('keeps project search and compact actions usable at 320 pixels', async () => 
 	await screen.getByRole('button', { name: 'Import project' }).click();
 	await expect.element(screen.getByRole('menuitem', { name: 'Import bundle' })).toBeVisible();
 	expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	await settleUnmount(screen.unmount);
 });
 
 it('reports bundle progress and lets the user cancel at 320 pixels', async () => {
 	await page.viewport(320, 720);
 	const oncancelbundle = vi.fn();
 	const screen = await render(ProjectBrowser, {
-		projects: [project('alpha', 'Alpha launch', 100)],
-		loading: false,
-		error: '',
-		creating: false,
-		importing: false,
-		duplicatingId: null,
+		...browserProps([project('alpha', 'Alpha launch', 100)]),
 		exportingId: 'alpha',
 		exportingKind: 'bundle',
-		bundleProgress: { stage: 'packaging', percent: 42, currentFile: 'launch.mp4' },
+		bundleProgress: {
+			stage: 'packaging',
+			percent: 42,
+			currentFile: 'launch.mp4'
+		},
 		bundleOperation: 'export',
-		bundleCanceling: false,
-		oncreate: vi.fn(async () => true),
-		onimportjson: vi.fn(async () => undefined),
-		onimportbundle: vi.fn(async () => undefined),
-		onopen: vi.fn(),
-		onrename: vi.fn(async () => undefined),
-		onduplicate: vi.fn(async () => undefined),
-		onexportjson: vi.fn(async () => undefined),
-		onexportbundle: vi.fn(async () => undefined),
-		oncancelbundle,
-		ondelete: vi.fn(async () => undefined)
+		oncancelbundle
 	});
 
 	await expect.element(screen.getByText('42%')).toBeVisible();
 	await expect.element(screen.getByText('launch.mp4')).toHaveAttribute('title', 'launch.mp4');
-	const progress = screen.getByRole('progressbar', { name: 'Exporting bundle' });
+	const progress = screen.getByRole('progressbar', {
+		name: 'Exporting bundle'
+	});
 	await expect.element(progress).toHaveAttribute('aria-valuenow', '42');
 	await screen.getByRole('button', { name: 'Cancel' }).click();
 	expect(oncancelbundle).toHaveBeenCalledOnce();
 	await expect.element(screen.getByRole('button', { name: 'Import project' })).toBeDisabled();
 	expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	await settleUnmount(screen.unmount);
+});
+
+it('filters project metadata and completes restore and permanent-delete flows', async () => {
+	await page.viewport(1280, 900);
+	const alpha = project('alpha', 'Alpha launch', 100);
+	alpha.duration = 65;
+	const beta = project('beta', 'Beta update', 200, {
+		width: 1280,
+		height: 720,
+		fps: 24
+	});
+	const onrestore = vi.fn(async () => undefined);
+	const onpurge = vi.fn(async () => undefined);
+	const trashed = {
+		id: 'old',
+		marker: { deletedAt: 1_700_000_000_000, originalName: 'Old campaign' }
+	};
+	const screen = await render(ProjectBrowser, {
+		...browserProps([alpha, beta]),
+		thumbnailUrls: {
+			alpha: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+		},
+		trashedProjects: [trashed],
+		onrestore,
+		onpurge
+	});
+	screen.container.style.width = '1000px';
+	screen.container.style.background = 'oklch(0.145 0.008 55)';
+	screen.container.style.padding = '24px';
+
+	await expect.element(screen.getByRole('img', { name: 'Preview for Alpha launch' })).toBeVisible();
+	await expect.element(screen.getByText('1:05 long')).toBeVisible();
+	await screen.getByText('All resolutions').click();
+	await screen.getByRole('option', { name: '1280×720' }).click();
+	await expect.element(screen.getByText('Beta update')).toBeVisible();
+	await expect.element(screen.getByText('Alpha launch')).not.toBeInTheDocument();
+
+	await screen.getByRole('button', { name: /Trash/ }).click();
+	await page.screenshot({
+		element: screen.container,
+		path: '../../../../.svelte-kit/openpost-project-browser-desktop.png'
+	});
+	await screen.getByRole('button', { name: 'Restore' }).click();
+	expect(onrestore).toHaveBeenCalledWith('old', 'Old campaign');
+	await screen.getByRole('button', { name: 'Delete forever' }).click();
+	const dialog = screen.getByRole('dialog');
+	await expect.element(dialog).toBeVisible();
+	await dialog.getByRole('button', { name: 'Delete forever', exact: true }).click();
+	expect(onpurge).toHaveBeenCalledWith(trashed);
+	await settleUnmount(screen.unmount);
+});
+
+it('selects a range and keeps failed projects selected after a bulk trash action', async () => {
+	await page.viewport(1280, 900);
+	const projects = [
+		project('alpha', 'Alpha launch', 300),
+		project('beta', 'Beta update', 200),
+		project('gamma', 'Gamma lesson', 100)
+	];
+	const ondeletebatch = vi.fn(async () => ['beta']);
+	const screen = await render(ProjectBrowser, {
+		...browserProps(projects),
+		ondeletebatch
+	});
+
+	await screen.getByRole('checkbox', { name: 'Select Alpha launch' }).click();
+	await screen
+		.getByRole('checkbox', { name: 'Select Gamma lesson' })
+		.click({ modifiers: ['Shift'] });
+	await expect.element(screen.getByText('3 selected')).toBeVisible();
+	await screen.getByRole('button', { name: 'Move selected to trash' }).click();
+	const dialog = screen.getByRole('dialog');
+	await expect.element(dialog.getByText(/Move all 3 selected projects/)).toBeVisible();
+	await dialog.getByRole('button', { name: 'Move selected to trash' }).click();
+	expect(ondeletebatch).toHaveBeenCalledWith(projects);
+	await expect.element(screen.getByText('1 selected')).toBeVisible();
+	await expect
+		.element(screen.getByRole('checkbox', { name: 'Deselect Beta update' }))
+		.toHaveAttribute('aria-checked', 'true');
+	await settleUnmount(screen.unmount);
 });

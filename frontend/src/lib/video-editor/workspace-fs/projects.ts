@@ -254,6 +254,16 @@ export async function getProject(id: string): Promise<Project | undefined> {
 	}
 }
 
+export async function getProjectThumbnail(id: string): Promise<Blob | null> {
+	const root = requireWorkspaceRoot();
+	try {
+		return await readBlob(root, projectThumbnailPath(id));
+	} catch (error) {
+		logger.warn(`getProjectThumbnail(${id}) failed`, error);
+		return null;
+	}
+}
+
 export async function createProject(project: Project): Promise<Project> {
 	const root = requireWorkspaceRoot();
 	try {

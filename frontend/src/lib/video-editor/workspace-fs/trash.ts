@@ -36,6 +36,14 @@ export const DEFAULT_TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Lock key shared with projects.refreshIndex so trash ops don't race with it. */
 const INDEX_LOCK_KEY = 'projects:index';
 
+function projectTrashLockKey(id: string): string {
+	return `project-trash:${id}`;
+}
+
+export function withProjectTrashLock<T>(id: string, operation: () => Promise<T>): Promise<T> {
+	return withKeyLock(projectTrashLockKey(id), operation);
+}
+
 export type TrashMarker = {
 	/** ms since epoch when the project was soft-deleted. */
 	deletedAt: number;
@@ -89,24 +97,26 @@ async function rebuildAndWriteIndex(root: FileSystemDirectoryHandle): Promise<vo
  * Soft-delete a project. Idempotent — re-trashing returns the original marker.
  */
 export async function softDeleteProject(id: string): Promise<TrashMarker> {
-	const root = requireWorkspaceRoot();
-	const project = await readJson<{ name?: string }>(root, projectJsonPath(id));
-	if (!project) {
-		throw new Error(`Project not found: ${id}`);
-	}
+	return withProjectTrashLock(id, async () => {
+		const root = requireWorkspaceRoot();
+		const project = await readJson<{ name?: string }>(root, projectJsonPath(id));
+		if (!project) {
+			throw new Error(`Project not found: ${id}`);
+		}
 
-	const existingMarker = await readMarker(root, id);
-	if (existingMarker) return existingMarker;
+		const existingMarker = await readMarker(root, id);
+		if (existingMarker) return existingMarker;
 
-	const marker: TrashMarker = {
-		deletedAt: Date.now(),
-		originalName: project.name ?? id
-	};
+		const marker: TrashMarker = {
+			deletedAt: Date.now(),
+			originalName: project.name ?? id
+		};
 
-	await writeJsonAtomic(root, projectTrashedMarkerPath(id), marker);
-	await withKeyLock(INDEX_LOCK_KEY, () => rebuildAndWriteIndex(root));
-	logger.info(`Soft-deleted project ${id} ("${marker.originalName}")`);
-	return marker;
+		await writeJsonAtomic(root, projectTrashedMarkerPath(id), marker);
+		await withKeyLock(INDEX_LOCK_KEY, () => rebuildAndWriteIndex(root));
+		logger.info(`Soft-deleted project ${id} ("${marker.originalName}")`);
+		return marker;
+	});
 }
 
 /**
@@ -114,17 +124,19 @@ export async function softDeleteProject(id: string): Promise<TrashMarker> {
  * Throws if the project directory no longer exists.
  */
 export async function restoreProject(id: string): Promise<void> {
-	const root = requireWorkspaceRoot();
-	const project = await readJson<{ id: string }>(root, projectJsonPath(id));
-	if (!project) {
-		throw new Error(`Project not found (may have been purged): ${id}`);
-	}
+	await withProjectTrashLock(id, async () => {
+		const root = requireWorkspaceRoot();
+		const project = await readJson<{ id: string }>(root, projectJsonPath(id));
+		if (!project) {
+			throw new Error(`Project not found (may have been purged): ${id}`);
+		}
 
-	if (!(await markerExists(root, id))) return;
+		if (!(await markerExists(root, id))) return;
 
-	await removeEntry(root, projectTrashedMarkerPath(id));
-	await withKeyLock(INDEX_LOCK_KEY, () => rebuildAndWriteIndex(root));
-	logger.info(`Restored project ${id}`);
+		await removeEntry(root, projectTrashedMarkerPath(id));
+		await withKeyLock(INDEX_LOCK_KEY, () => rebuildAndWriteIndex(root));
+		logger.info(`Restored project ${id}`);
+	});
 }
 
 export async function isProjectTrashed(id: string): Promise<boolean> {
