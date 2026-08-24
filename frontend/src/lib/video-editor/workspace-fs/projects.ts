@@ -10,18 +10,28 @@
 
 import type { Project } from '../project/types';
 import { migrateProjectDocument } from '../project/defaults';
+import { ensureProjectUpgradeBackup as ensureProjectUpgradeBackupTransaction } from '../project/project-upgrade';
 import { createLogger } from './logger';
 import { deleteHandle, getHandle, saveHandle } from './handles-db';
 import { requireWorkspaceRoot } from './root';
 import {
 	exists,
 	listDirectory,
+	readBlob,
 	readJson,
 	removeEntry,
+	writeBlob,
 	writeJsonAtomic,
 	WorkspaceFileCorruptError
 } from './fs-primitives';
-import { PROJECTS_DIR, projectDir, projectJsonPath, projectTrashedMarkerPath } from './paths';
+import {
+	PROJECTS_DIR,
+	projectDir,
+	projectJsonPath,
+	projectMediaLinksPath,
+	projectThumbnailPath,
+	projectTrashedMarkerPath
+} from './paths';
 import {
 	readWorkspaceIndex,
 	sortIndexEntries,
@@ -75,6 +85,48 @@ async function restoreRootFolderHandle(serialized: SerializedProject): Promise<P
 
 async function isTrashed(root: FileSystemDirectoryHandle, id: string): Promise<boolean> {
 	return exists(root, projectTrashedMarkerPath(id));
+}
+
+function upgradeBackupId(projectId: string, fromVersion: number, toVersion: number): string {
+	return `${projectId}-backup-v${fromVersion}-v${toVersion}`;
+}
+
+async function ensureProjectUpgradeBackup(
+	root: FileSystemDirectoryHandle,
+	project: Project,
+	fromVersion: number,
+	toVersion: number
+): Promise<void> {
+	const backupId = upgradeBackupId(project.id, fromVersion, toVersion);
+	await ensureProjectUpgradeBackupTransaction(
+		project,
+		{ fromVersion, toVersion, createId: () => backupId },
+		{
+			backupExists: async (id) =>
+				(await readJson<SerializedProject>(root, projectJsonPath(id))) !== null,
+			copyMediaLinks: async (sourceId, targetId) => {
+				const mediaLinks = await readJson<unknown>(root, projectMediaLinksPath(sourceId));
+				if (mediaLinks) await writeJsonAtomic(root, projectMediaLinksPath(targetId), mediaLinks);
+			},
+			copyThumbnail: async (sourceId, targetId) => {
+				const thumbnail = await readBlob(root, projectThumbnailPath(sourceId));
+				if (thumbnail) await writeBlob(root, projectThumbnailPath(targetId), thumbnail);
+			},
+			saveBackup: async (backup) => {
+				const serialized = await stashRootFolderHandle(backup);
+				await writeJsonAtomic(root, projectJsonPath(backup.id), serialized);
+				await upsertIndexEntry(root, {
+					id: backup.id,
+					name: backup.name,
+					updatedAt: backup.updatedAt
+				});
+			},
+			removeBackup: async (id) => {
+				await removeEntry(root, projectDir(id), { recursive: true }).catch(() => undefined);
+				await deleteHandle('project-folder', id).catch(() => undefined);
+			}
+		}
+	);
 }
 
 async function rebuildIndex(root: FileSystemDirectoryHandle): Promise<WorkspaceIndexEntry[]> {
@@ -141,6 +193,32 @@ async function upsertIndexEntry(
 	});
 }
 
+async function loadProjectDocument(
+	root: FileSystemDirectoryHandle,
+	id: string
+): Promise<Project | undefined> {
+	return withKeyLock(`project-upgrade:${id}`, async () => {
+		if (await isTrashed(root, id)) return undefined;
+		const serialized = await readJson<SerializedProject>(root, projectJsonPath(id));
+		if (!serialized) return undefined;
+		if (serialized.id !== id) {
+			throw new Error(`Project id mismatch: expected ${id}, found ${serialized.id}`);
+		}
+		const restored = await restoreRootFolderHandle(serialized);
+		const migration = migrateProjectDocument(restored);
+		const { project, warnings } = migration;
+		for (const warning of warnings) {
+			logger.warn(`loadProjectDocument(${id}): ${warning.code} - ${warning.message}`);
+		}
+		if (migration.appliedMigrations.length > 0) {
+			await ensureProjectUpgradeBackup(root, restored, migration.fromVersion, migration.toVersion);
+			const upgraded = await stashRootFolderHandle(project);
+			await writeJsonAtomic(root, projectJsonPath(id), upgraded);
+		}
+		return project;
+	});
+}
+
 /* ────────────────────────────── Public API ───────────────────────────── */
 
 export async function getAllProjects(): Promise<Project[]> {
@@ -152,17 +230,13 @@ export async function getAllProjects(): Promise<Project[]> {
 		}
 		const projects: Project[] = [];
 		for (const entry of entries) {
-			if (await isTrashed(root, entry.id)) continue;
-			let serialized: SerializedProject | null = null;
 			try {
-				serialized = await readJson<SerializedProject>(root, projectJsonPath(entry.id));
+				const project = await loadProjectDocument(root, entry.id);
+				if (project) projects.push(project);
 			} catch (error) {
 				if (!(error instanceof WorkspaceFileCorruptError)) throw error;
 				logger.warn(`getAllProjects: skipping corrupt project.json for ${entry.id}`, error);
-				continue;
 			}
-			if (!serialized) continue;
-			projects.push(await restoreRootFolderHandle(serialized));
 		}
 		return projects;
 	} catch (error) {
@@ -173,15 +247,7 @@ export async function getAllProjects(): Promise<Project[]> {
 export async function getProject(id: string): Promise<Project | undefined> {
 	const root = requireWorkspaceRoot();
 	try {
-		if (await isTrashed(root, id)) return undefined;
-		const serialized = await readJson<SerializedProject>(root, projectJsonPath(id));
-		if (!serialized) return undefined;
-		const restored = await restoreRootFolderHandle(serialized);
-		const { project, warnings } = migrateProjectDocument(restored);
-		for (const warning of warnings) {
-			logger.warn(`getProject(${id}): ${warning.code} — ${warning.message}`);
-		}
-		return project;
+		return await loadProjectDocument(root, id);
 	} catch (error) {
 		logger.error(`getProject(${id}) failed`, error);
 		throw new Error(`Failed to load project: ${id}`, { cause: error });

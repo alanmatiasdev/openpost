@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migrateProjectDocument } from './defaults';
+import { CURRENT_SCHEMA_VERSION, migrateProjectDocument } from './defaults';
 import type { Project } from './types';
 
 describe('sequence project migration', () => {
@@ -16,7 +16,7 @@ describe('sequence project migration', () => {
 			timeline: { tracks: [], items: [] }
 		};
 		const result = migrateProjectDocument(project);
-		expect(result.project.schemaVersion).toBe(2);
+		expect(result.project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 		expect(result.project.timeline?.compositions).toEqual([]);
 		expect(result.project.timeline?.topLevelSequenceIds).toEqual([]);
 	});

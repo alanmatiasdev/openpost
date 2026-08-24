@@ -1,12 +1,14 @@
 /**
  * Project document defaults and normalization.
  *
- * Ported from FreeCut (MIT) — shared/projects/defaults.ts, trimmed to v1.
+ * Ported from FreeCut (MIT) - shared/projects/defaults.ts, adapted to
+ * OpenPost's append-only project schema history.
  */
 
 import type { Project, ProjectTimeline, SubComposition, TimelineTrack } from './types';
+import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export { CURRENT_SCHEMA_VERSION } from './migrations';
 
 export const DEFAULT_PROJECT_WIDTH = 1920;
 export const DEFAULT_PROJECT_HEIGHT = 1080;
@@ -176,26 +178,59 @@ function normalizeSubComposition(composition: SubComposition): SubComposition {
 export interface MigratedProject {
 	project: Project;
 	migrated: boolean;
+	appliedMigrations: number[];
+	fromVersion: number;
+	toVersion: number;
 	warnings: ProjectWarning[];
 }
 
 export function migrateProjectDocument(stored: Project): MigratedProject {
 	// SAFETY: documents without schemaVersion are v1 by contract.
 	const version = Number.isFinite(stored.schemaVersion) ? (stored.schemaVersion ?? 1) : 1;
-	const normalized = normalizeProject(stored);
 	if (version > CURRENT_SCHEMA_VERSION) {
-		normalized.warnings.push({
-			code: 'FUTURE_SCHEMA',
-			message: `Project was written by a newer editor (schema ${version}); loading as-is.`
+		return {
+			project: stored,
+			migrated: false,
+			appliedMigrations: [],
+			fromVersion: version,
+			toVersion: version,
+			warnings: [
+				{
+					code: 'FUTURE_SCHEMA',
+					message: `Project was written by a newer editor (schema ${version}); loading as-is.`
+				}
+			]
+		};
+	}
+
+	let migratedProject = stored;
+	const migrations = getMigrationsToApply(version, CURRENT_SCHEMA_VERSION);
+	for (const migration of migrations) {
+		try {
+			migratedProject = migration.migrate(migratedProject);
+		} catch (error) {
+			throw new Error(`Project migration ${migration.version} failed: ${migration.description}`, {
+				cause: error
+			});
+		}
+	}
+	const normalized = normalizeProject({
+		...migratedProject,
+		schemaVersion: CURRENT_SCHEMA_VERSION
+	});
+	if (migrations.length > 0) {
+		normalized.warnings.unshift({
+			code: 'SCHEMA_UPGRADED',
+			message: `Upgraded project schema from ${version} to ${CURRENT_SCHEMA_VERSION}.`
 		});
 	}
 	// SAFETY: normalizeProject returned a complete document.
 	return {
-		project: {
-			...normalized.project,
-			schemaVersion: version > CURRENT_SCHEMA_VERSION ? version : CURRENT_SCHEMA_VERSION
-		},
-		migrated: version < CURRENT_SCHEMA_VERSION || normalized.warnings.length > 0,
+		project: normalized.project,
+		migrated: migrations.length > 0 || normalized.warnings.length > 0,
+		appliedMigrations: migrations.map((migration) => migration.version),
+		fromVersion: version,
+		toVersion: CURRENT_SCHEMA_VERSION,
 		warnings: normalized.warnings
 	};
 }
