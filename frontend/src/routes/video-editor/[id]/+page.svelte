@@ -64,6 +64,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
 	import EditorSettingsDialog from '$lib/video-editor/components/editor-settings-dialog.svelte';
+	import EditorWorkspaceSwitcher from '$lib/video-editor/components/editor-workspace-switcher.svelte';
+	import ColorGradingDock from '$lib/video-editor/components/color-grading-dock.svelte';
+	import MotionWorkspacePanel from '$lib/video-editor/components/motion-workspace-panel.svelte';
 	import MediaRecoveryDialog from '$lib/video-editor/components/media-recovery-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
@@ -80,6 +83,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
+	import {
+		editorWorkspace,
+		type EditorWorkspaceId
+	} from '$lib/video-editor/workspaces/editor-workspace.svelte';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -89,6 +96,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let freezingItemId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
+	const activeWorkspace = $derived(editorWorkspace.current);
+	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -201,6 +210,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedItemId = null;
 		selectedItemIds = [];
 		selectedTransitionId = null;
+	}
+
+	function changeEditorWorkspace(workspace: EditorWorkspaceId): void {
+		if (workspace === editorWorkspace.current) return;
+		editorSession.pausePlayback();
+		editorWorkspace.set(workspace);
 	}
 
 	function handleOpenSequence(compositionId: string): void {
@@ -628,25 +643,30 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	class="video-editor-theme flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
 >
 	<header
-		class="flex items-center justify-between border-b border-[oklch(0.25_0.015_55)] px-3 py-2"
+		class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-[oklch(0.25_0.015_55)] px-2 py-2 sm:px-3"
 	>
-		<a
-			href="/video-editor"
-			class="flex items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-		>
-			<Logo class="h-5 w-auto" />
-			<span class="text-sm font-semibold">{m.video_editor_title()}</span>
-		</a>
-		<span class="truncate px-2 text-sm font-medium">{editorSession.project?.name}</span>
+		<div class="flex min-w-0 items-center gap-2">
+			<a
+				href="/video-editor"
+				class="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			>
+				<Logo class="h-5 w-auto" />
+				<span class="hidden text-sm font-semibold lg:inline">{m.video_editor_title()}</span>
+			</a>
+			<span class="hidden min-w-0 truncate text-sm font-medium md:block">
+				{editorSession.project?.name}
+			</span>
+		</div>
+		<EditorWorkspaceSwitcher value={activeWorkspace} onchange={changeEditorWorkspace} />
 		<div class="flex min-w-24 items-center justify-end gap-2 text-xs text-[oklch(0.65_0.015_55)]">
 			{#if editorSession.saving}
-				<span>{m.video_editor_saving()}</span>
+				<span class="hidden sm:inline">{m.video_editor_saving()}</span>
 			{:else if editorSession.saveError}
-				<span class="text-red-300" title={editorSession.saveError}>
+				<span class="hidden text-red-300 sm:inline" title={editorSession.saveError}>
 					{m.video_editor_save_failed()}
 				</span>
 			{:else if !timelineStore.isDirty}
-				<span>{m.video_editor_saved()}</span>
+				<span class="hidden sm:inline">{m.video_editor_saved()}</span>
 			{/if}
 			<Button
 				type="button"
@@ -679,327 +699,363 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				onswitch={resetTimelineSelection}
 				onedit={() => editorSession.scheduleAutosave()}
 			/>
-			<div class="flex min-h-0 flex-1">
-				<aside
-					class="flex w-72 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
-					aria-label={m.video_editor_media_pool()}
-				>
-					<div class="flex items-center gap-1 p-2">
-						<div class="grid min-w-0 flex-1 grid-cols-5 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5">
-							<button
-								type="button"
-								class:active={assetPanel === 'shapes'}
-								class="rounded px-1 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-								onclick={() => (assetPanel = 'shapes')}
-							>
-								{m.video_editor_shapes()}
-							</button>
-							<button
-								type="button"
-								class:active={assetPanel === 'media'}
-								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-								onclick={() => (assetPanel = 'media')}
-							>
-								{m.video_editor_media_pool()}
-							</button>
-							<button
-								type="button"
-								class:active={assetPanel === 'lottie'}
-								class="rounded px-0.5 py-1 text-[10px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-								onclick={() => (assetPanel = 'lottie')}
-							>
-								{m.video_editor_lottie()}
-							</button>
-							<button
-								type="button"
-								class:active={assetPanel === 'scenes'}
-								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-								onclick={() => (assetPanel = 'scenes')}
-							>
-								{m.video_editor_scenes()}
-							</button>
-							<button
-								type="button"
-								class:active={assetPanel === 'ai'}
-								class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-								onclick={() => (assetPanel = 'ai')}
-							>
-								{m.video_editor_local_ai()}
-							</button>
-						</div>
-						{#if assetPanel === 'media'}
-							<Button
-								size="icon-xs"
-								variant="ghost"
-								aria-label={m.video_editor_import_media()}
-								onclick={handleImport}
-							>
-								<PlusIcon />
-							</Button>
-						{/if}
-					</div>
-					{#if assetPanel === 'media'}
-						<MediaPoolList
-							{projectId}
-							onsequenceopen={resetTimelineSelection}
-							onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
-						/>
-					{:else if assetPanel === 'scenes'}
-						<SceneBrowserPanel />
-					{:else if assetPanel === 'shapes'}
-						<VectorAssetPanel oninserted={handleVectorAssetInserted} />
-					{:else if assetPanel === 'lottie'}
-						<LottieBrowserPanel {projectId} />
-					{:else}
-						<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
-					{/if}
-				</aside>
-
+			<div class="flex min-h-0 flex-1 flex-col">
 				<div
-					class:grid={sourceMediaId}
-					class:grid-cols-2={sourceMediaId}
-					class:flex={!sourceMediaId}
-					class="min-w-0 flex-1 bg-[oklch(0.12_0.008_55)]"
+					class="flex min-h-0 flex-1 {activeWorkspace === 'motion'
+						? 'flex-col lg:flex-row'
+						: 'flex-row'}"
 				>
-					{#if sourceMediaId}
-						{#key sourceMediaId}
-							<SourceMonitor
-								mediaId={sourceMediaId}
-								preferredTrackId={selectedItemId
-									? timelineStore.itemById.get(selectedItemId)?.trackId
-									: undefined}
-								onclose={() => (sourceMediaId = null)}
-								onedit={() => editorSession.scheduleAutosave()}
-								oninserted={handleSourceInserted}
-							/>
-						{/key}
-					{/if}
-					<section
-						data-video-preview
-						class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
-					>
-						{#if sourceMediaId}
-							<div
-								class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
-							>
-								{m.video_editor_program_monitor()}
+					{#if activeWorkspace === 'edit'}
+						<aside
+							class="flex w-72 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
+							aria-label={m.video_editor_media_pool()}
+						>
+							<div class="flex items-center gap-1 p-2">
+								<div
+									class="grid min-w-0 flex-1 grid-cols-5 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5"
+								>
+									<button
+										type="button"
+										class:active={assetPanel === 'shapes'}
+										class="rounded px-1 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										onclick={() => (assetPanel = 'shapes')}
+									>
+										{m.video_editor_shapes()}
+									</button>
+									<button
+										type="button"
+										class:active={assetPanel === 'media'}
+										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										onclick={() => (assetPanel = 'media')}
+									>
+										{m.video_editor_media_pool()}
+									</button>
+									<button
+										type="button"
+										class:active={assetPanel === 'lottie'}
+										class="rounded px-0.5 py-1 text-[10px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										onclick={() => (assetPanel = 'lottie')}
+									>
+										{m.video_editor_lottie()}
+									</button>
+									<button
+										type="button"
+										class:active={assetPanel === 'scenes'}
+										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										onclick={() => (assetPanel = 'scenes')}
+									>
+										{m.video_editor_scenes()}
+									</button>
+									<button
+										type="button"
+										class:active={assetPanel === 'ai'}
+										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										onclick={() => (assetPanel = 'ai')}
+									>
+										{m.video_editor_local_ai()}
+									</button>
+								</div>
+								{#if assetPanel === 'media'}
+									<Button
+										size="icon-xs"
+										variant="ghost"
+										aria-label={m.video_editor_import_media()}
+										onclick={handleImport}
+									>
+										<PlusIcon />
+									</Button>
+								{/if}
 							</div>
-						{/if}
-						<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
-						<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
-					</section>
-				</div>
-
-				<!-- Tools -->
-				<aside
-					class="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-l border-[oklch(0.25_0.015_55)] p-2"
-				>
-					<h2 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
-						{m.video_editor_tools()}
-					</h2>
-					<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleSplit}>
-						{m.video_editor_split()}
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!selectedItemId}
-						title={m.video_editor_delete_leave_gap_hint()}
-						onclick={() => handleDelete(false)}
-					>
-						{m.video_editor_delete_leave_gap()}
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!selectedItemId}
-						title={m.video_editor_ripple_delete_hint()}
-						onclick={() => handleDelete(true)}
-					>
-						{m.video_editor_ripple_delete()}
-					</Button>
-					{#if selectedIsCompound}
-						<Button size="sm" variant="outline" onclick={handleDissolveCompound}>
-							{m.video_editor_dissolve_compound()}
-						</Button>
-					{:else}
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={selectedItemIds.length === 0 && !selectedItemId}
-							onclick={handleCreateCompound}
-						>
-							{m.video_editor_create_compound()}
-						</Button>
-					{/if}
-					{#if selectedTransition}
-						<Button size="sm" variant="outline" onclick={handleRemoveTransition}>
-							{m.video_editor_break_transition()}
-						</Button>
-					{:else}
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={!selectedItemId}
-							onclick={handleAddCrossfade}
-						>
-							{m.video_editor_crossfade()}
-						</Button>
-					{/if}
-					<Button size="sm" variant="outline" onclick={handleAddText}>
-						{m.video_editor_add_text()}
-					</Button>
-					<Button size="sm" variant="outline" onclick={handleAddAdjustmentLayer}>
-						{m.video_editor_add_adjustment_layer()}
-					</Button>
-					{#if selectedTransition}
-						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-							<TransitionPropertiesPanel
-								transitionId={selectedTransition.id}
-								onedit={() => editorSession.scheduleAutosave()}
-								onremove={() => (selectedTransitionId = null)}
-							/>
-						</div>
-					{:else if selectedItemId}
-						<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-							<ClipPropertiesPanel
-								itemId={selectedItemId}
-								onedit={() => editorSession.scheduleAutosave()}
-							/>
-						</div>
-					{/if}
-					{#if selectedIsVideo}
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={scanningScenes}
-							onclick={handleAutoSplitScenes}
-						>
-							{#if scanningScenes}
-								<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+							{#if assetPanel === 'media'}
+								<MediaPoolList
+									{projectId}
+									onsequenceopen={resetTimelineSelection}
+									onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
+								/>
+							{:else if assetPanel === 'scenes'}
+								<SceneBrowserPanel />
+							{:else if assetPanel === 'shapes'}
+								<VectorAssetPanel oninserted={handleVectorAssetInserted} />
+							{:else if assetPanel === 'lottie'}
+								<LottieBrowserPanel {projectId} />
+							{:else}
+								<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 							{/if}
-							{m.video_editor_scene_split()}
-						</Button>
+						</aside>
 					{/if}
-					{#if selectedSupportsEffects}
-						{#if selectedSupportsMotion}
-							<MotionPresetsPanel
-								itemId={selectedItemId}
-								itemIds={selectedItemIds}
-								frameWidth={sequenceStore.activeWidth}
-								frameHeight={sequenceStore.activeHeight}
-								fps={timelineStore.fps}
-								animationPresets={editorSession.project?.animationPresets ?? []}
-								onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
-								ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
-								onedit={() => editorSession.scheduleAutosave()}
-							/>
-							{#if selectedIsText}
-								<TextMotionPanel
+
+					<div
+						class:grid={showSourceMonitor}
+						class:grid-cols-2={showSourceMonitor}
+						class:flex={!showSourceMonitor}
+						class="min-w-0 flex-1 bg-[oklch(0.12_0.008_55)]"
+					>
+						{#if showSourceMonitor && sourceMediaId}
+							{#key sourceMediaId}
+								<SourceMonitor
+									mediaId={sourceMediaId}
+									preferredTrackId={selectedItemId
+										? timelineStore.itemById.get(selectedItemId)?.trackId
+										: undefined}
+									onclose={() => (sourceMediaId = null)}
+									onedit={() => editorSession.scheduleAutosave()}
+									oninserted={handleSourceInserted}
+								/>
+							{/key}
+						{/if}
+						<section
+							data-video-preview
+							class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+						>
+							{#if showSourceMonitor}
+								<div
+									class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+								>
+									{m.video_editor_program_monitor()}
+								</div>
+							{/if}
+							<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
+							<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
+						</section>
+					</div>
+
+					<!-- Tools -->
+					{#if activeWorkspace === 'edit'}
+						<aside
+							class="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-l border-[oklch(0.25_0.015_55)] p-2"
+						>
+							<h2
+								class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase"
+							>
+								{m.video_editor_tools()}
+							</h2>
+							<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleSplit}>
+								{m.video_editor_split()}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={!selectedItemId}
+								title={m.video_editor_delete_leave_gap_hint()}
+								onclick={() => handleDelete(false)}
+							>
+								{m.video_editor_delete_leave_gap()}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={!selectedItemId}
+								title={m.video_editor_ripple_delete_hint()}
+								onclick={() => handleDelete(true)}
+							>
+								{m.video_editor_ripple_delete()}
+							</Button>
+							{#if selectedIsCompound}
+								<Button size="sm" variant="outline" onclick={handleDissolveCompound}>
+									{m.video_editor_dissolve_compound()}
+								</Button>
+							{:else}
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={selectedItemIds.length === 0 && !selectedItemId}
+									onclick={handleCreateCompound}
+								>
+									{m.video_editor_create_compound()}
+								</Button>
+							{/if}
+							{#if selectedTransition}
+								<Button size="sm" variant="outline" onclick={handleRemoveTransition}>
+									{m.video_editor_break_transition()}
+								</Button>
+							{:else}
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!selectedItemId}
+									onclick={handleAddCrossfade}
+								>
+									{m.video_editor_crossfade()}
+								</Button>
+							{/if}
+							<Button size="sm" variant="outline" onclick={handleAddText}>
+								{m.video_editor_add_text()}
+							</Button>
+							<Button size="sm" variant="outline" onclick={handleAddAdjustmentLayer}>
+								{m.video_editor_add_adjustment_layer()}
+							</Button>
+							{#if selectedTransition}
+								<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+									<TransitionPropertiesPanel
+										transitionId={selectedTransition.id}
+										onedit={() => editorSession.scheduleAutosave()}
+										onremove={() => (selectedTransitionId = null)}
+									/>
+								</div>
+							{:else if selectedItemId}
+								<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+									<ClipPropertiesPanel
+										itemId={selectedItemId}
+										onedit={() => editorSession.scheduleAutosave()}
+									/>
+								</div>
+							{/if}
+							{#if selectedIsVideo}
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={scanningScenes}
+									onclick={handleAutoSplitScenes}
+								>
+									{#if scanningScenes}
+										<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+									{/if}
+									{m.video_editor_scene_split()}
+								</Button>
+							{/if}
+							{#if selectedSupportsEffects}
+								{#if selectedSupportsMotion}
+									<MotionPresetsPanel
+										itemId={selectedItemId}
+										itemIds={selectedItemIds}
+										frameWidth={sequenceStore.activeWidth}
+										frameHeight={sequenceStore.activeHeight}
+										fps={timelineStore.fps}
+										animationPresets={editorSession.project?.animationPresets ?? []}
+										onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
+										ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
+										onedit={() => editorSession.scheduleAutosave()}
+									/>
+									{#if selectedIsText}
+										<TextMotionPanel
+											itemId={selectedItemId}
+											itemIds={selectedItemIds}
+											onedit={() => editorSession.scheduleAutosave()}
+										/>
+									{/if}
+								{/if}
+								<EffectsPanel
 									itemId={selectedItemId}
 									itemIds={selectedItemIds}
 									onedit={() => editorSession.scheduleAutosave()}
 								/>
 							{/if}
-						{/if}
-						<EffectsPanel
+							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+								<Button
+									size="sm"
+									variant="outline"
+									class="w-full"
+									aria-expanded={showTranscript}
+									onclick={() => (showTranscript = !showTranscript)}
+								>
+									{showTranscript
+										? m.video_editor_transcript_hide()
+										: m.video_editor_transcript_show()}
+								</Button>
+								{#if showTranscript}
+									<TranscriptionControls
+										canTranscribe={selectedIsMedia}
+										busy={transcribing}
+										progress={transcriptionProgress}
+										backend={transcriptionBackend}
+										fallback={transcriptionFallback}
+										onstart={(selection) => void handleTranscribe(selection)}
+										oncancel={cancelTranscription}
+									/>
+									<div
+										class="mt-1 max-h-64 overflow-y-auto rounded-md border border-[oklch(0.25_0.015_55)] p-1"
+									>
+										<TranscriptPanel onedit={() => editorSession.scheduleAutosave()} />
+									</div>
+								{/if}
+							</div>
+							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+								<p
+									class="mb-1.5 text-[10px] font-medium tracking-wide text-[oklch(0.62_0.01_55)] uppercase"
+								>
+									{m.video_editor_cleanup_title()}
+								</p>
+								<div class="grid grid-cols-2 gap-1">
+									<Button
+										size="sm"
+										variant="outline"
+										disabled={speechCleanupItemIds.length === 0}
+										aria-label={m.video_editor_filler_review()}
+										onclick={() => openSpeechCleanup('fillers')}
+									>
+										{m.video_editor_cleanup_fillers_short()}
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										disabled={speechCleanupItemIds.length === 0}
+										aria-label={m.video_editor_silence_review()}
+										onclick={() => openSpeechCleanup('silence')}
+									>
+										{m.video_editor_cleanup_silence_short()}
+									</Button>
+								</div>
+							</div>
+							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+								<Button
+									size="sm"
+									disabled={exporting || timelineStore.items.length === 0}
+									onclick={handleExport}
+								>
+									{m.video_editor_export()}
+								</Button>
+								<div class="mt-1">
+									{#if renderProject}
+										{#key renderProject.id}
+											<RenderQueueController
+												projectId={renderProject.id}
+												onerror={(error) => showToast(error.message, 'error')}
+											/>
+										{/key}
+									{/if}
+									<ExportDialog
+										project={renderProject}
+										disabled={timelineStore.items.length === 0}
+										ondone={(result) =>
+											showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
+										onerror={(error) => showToast(error.message, 'error')}
+									/>
+								</div>
+								<Button
+									size="sm"
+									variant="secondary"
+									class="mt-1 w-full"
+									disabled={sending ||
+										timelineStore.items.length === 0 ||
+										!workspaceCtx.currentWorkspace}
+									onclick={handleSendToOpenPost}
+								>
+									{m.video_editor_send_to_openpost()}
+								</Button>
+							</div>
+						</aside>
+					{:else if activeWorkspace === 'motion'}
+						<MotionWorkspacePanel
 							itemId={selectedItemId}
 							itemIds={selectedItemIds}
+							frameWidth={sequenceStore.activeWidth}
+							frameHeight={sequenceStore.activeHeight}
+							fps={timelineStore.fps}
+							animationPresets={editorSession.project?.animationPresets ?? []}
+							onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
+							ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
 							onedit={() => editorSession.scheduleAutosave()}
 						/>
 					{/if}
-					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-						<Button
-							size="sm"
-							variant="outline"
-							class="w-full"
-							aria-expanded={showTranscript}
-							onclick={() => (showTranscript = !showTranscript)}
-						>
-							{showTranscript ? m.video_editor_transcript_hide() : m.video_editor_transcript_show()}
-						</Button>
-						{#if showTranscript}
-							<TranscriptionControls
-								canTranscribe={selectedIsMedia}
-								busy={transcribing}
-								progress={transcriptionProgress}
-								backend={transcriptionBackend}
-								fallback={transcriptionFallback}
-								onstart={(selection) => void handleTranscribe(selection)}
-								oncancel={cancelTranscription}
-							/>
-							<div
-								class="mt-1 max-h-64 overflow-y-auto rounded-md border border-[oklch(0.25_0.015_55)] p-1"
-							>
-								<TranscriptPanel onedit={() => editorSession.scheduleAutosave()} />
-							</div>
-						{/if}
-					</div>
-					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-						<p
-							class="mb-1.5 text-[10px] font-medium tracking-wide text-[oklch(0.62_0.01_55)] uppercase"
-						>
-							{m.video_editor_cleanup_title()}
-						</p>
-						<div class="grid grid-cols-2 gap-1">
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={speechCleanupItemIds.length === 0}
-								aria-label={m.video_editor_filler_review()}
-								onclick={() => openSpeechCleanup('fillers')}
-							>
-								{m.video_editor_cleanup_fillers_short()}
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={speechCleanupItemIds.length === 0}
-								aria-label={m.video_editor_silence_review()}
-								onclick={() => openSpeechCleanup('silence')}
-							>
-								{m.video_editor_cleanup_silence_short()}
-							</Button>
-						</div>
-					</div>
-					<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-						<Button
-							size="sm"
-							disabled={exporting || timelineStore.items.length === 0}
-							onclick={handleExport}
-						>
-							{m.video_editor_export()}
-						</Button>
-						<div class="mt-1">
-							{#if renderProject}
-								{#key renderProject.id}
-									<RenderQueueController
-										projectId={renderProject.id}
-										onerror={(error) => showToast(error.message, 'error')}
-									/>
-								{/key}
-							{/if}
-							<ExportDialog
-								project={renderProject}
-								disabled={timelineStore.items.length === 0}
-								ondone={(result) =>
-									showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
-								onerror={(error) => showToast(error.message, 'error')}
-							/>
-						</div>
-						<Button
-							size="sm"
-							variant="secondary"
-							class="mt-1 w-full"
-							disabled={sending ||
-								timelineStore.items.length === 0 ||
-								!workspaceCtx.currentWorkspace}
-							onclick={handleSendToOpenPost}
-						>
-							{m.video_editor_send_to_openpost()}
-						</Button>
-					</div>
-				</aside>
+				</div>
+
+				{#if activeWorkspace === 'color'}
+					<ColorGradingDock
+						itemId={selectedSupportsEffects ? selectedItemId : null}
+						itemIds={selectedItemIds}
+						onedit={() => editorSession.scheduleAutosave()}
+					/>
+				{/if}
 			</div>
 
 			<footer class="border-t border-[oklch(0.25_0.015_55)]">

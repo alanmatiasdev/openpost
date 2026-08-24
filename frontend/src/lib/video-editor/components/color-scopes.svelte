@@ -141,7 +141,7 @@
 <section class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
 	<div class="mb-1 flex items-center justify-between">
 		<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
-			Scopes
+			{m.video_editor_scopes()}
 		</h3>
 		<AppSelect
 			bind:value={mode}
@@ -157,6 +157,7 @@
 	</div>
 	<canvas
 		bind:this={canvas}
+		data-color-scope-canvas
 		width="224"
 		height="112"
 		class="w-full rounded bg-black"

@@ -146,7 +146,6 @@
 	});
 
 	$effect(() => {
-		currentFrame;
 		lottieRenderer?.renderFrame(currentFrame);
 	});
 

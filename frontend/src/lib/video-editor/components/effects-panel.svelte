@@ -84,8 +84,16 @@
 	let {
 		itemId,
 		itemIds = [],
-		onedit
-	}: { itemId: string | null; itemIds?: string[]; onedit: () => void } = $props();
+		onedit,
+		showColorTools = true,
+		showScopes = true
+	}: {
+		itemId: string | null;
+		itemIds?: string[];
+		onedit: () => void;
+		showColorTools?: boolean;
+		showScopes?: boolean;
+	} = $props();
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const effects = $derived(item?.effects ?? []);
@@ -468,7 +476,7 @@
 </script>
 
 <div class="flex flex-col gap-1">
-	<ColorWorkspace {itemId} {itemIds} {onedit} />
+	{#if showColorTools}<ColorWorkspace {itemId} {itemIds} {onedit} />{/if}
 	<h3 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 		{m.video_editor_effects()}
 	</h3>
@@ -683,4 +691,4 @@
 		</label>
 	{/if}
 </div>
-{#if itemId}<ColorScopes {itemId} />{/if}
+{#if itemId && showScopes}<ColorScopes {itemId} />{/if}
