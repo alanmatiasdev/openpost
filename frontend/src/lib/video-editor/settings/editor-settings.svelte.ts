@@ -1,0 +1,182 @@
+/* oxlint-disable anti-slop/no-runtime-typeof -- This module parses localStorage JSON at its I/O boundary and validates primitive JSON fields before domain use. */
+import type { TranscriptionModel, TranscriptionQuantization } from '../transcript/engine/types';
+import {
+	DEFAULT_TRANSCRIPTION_MODEL,
+	TRANSCRIPTION_LANGUAGE_OPTIONS,
+	TRANSCRIPTION_MODEL_OPTIONS,
+	TRANSCRIPTION_QUANTIZATION_OPTIONS
+} from '../transcript/engine/models';
+
+const STORAGE_KEY = 'openpost-video-editor-settings-v1';
+
+type JsonValue = null | boolean | number | string | JsonValue[] | JsonRecord;
+interface JsonRecord {
+	[key: string]: JsonValue;
+}
+
+export interface EditorSettingsValue {
+	maxUndoHistory: number;
+	snapByDefault: boolean;
+	showWaveforms: boolean;
+	showFilmstrips: boolean;
+	extractFilmstrips: boolean;
+	defaultTranscriptionModel: TranscriptionModel;
+	defaultTranscriptionLanguage: string;
+	defaultTranscriptionQuantization: TranscriptionQuantization;
+}
+
+export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
+	maxUndoHistory: 100,
+	snapByDefault: true,
+	showWaveforms: true,
+	showFilmstrips: true,
+	extractFilmstrips: true,
+	defaultTranscriptionModel: DEFAULT_TRANSCRIPTION_MODEL,
+	defaultTranscriptionLanguage: '',
+	defaultTranscriptionQuantization: 'hybrid'
+};
+
+interface SettingsStorage {
+	getItem(key: string): string | null;
+	setItem(key: string, value: string): void;
+	removeItem(key: string): void;
+}
+
+function clampUndoHistory(value: JsonValue | undefined): number {
+	const number = typeof value === 'number' && Number.isFinite(value) ? value : 100;
+	return Math.round(Math.min(200, Math.max(10, number)) / 10) * 10;
+}
+
+function isTranscriptionModel(value: JsonValue | undefined): value is TranscriptionModel {
+	return TRANSCRIPTION_MODEL_OPTIONS.some((option) => option.value === value);
+}
+
+function isTranscriptionQuantization(
+	value: JsonValue | undefined
+): value is TranscriptionQuantization {
+	return TRANSCRIPTION_QUANTIZATION_OPTIONS.some((option) => option.value === value);
+}
+
+function isTranscriptionLanguage(value: JsonValue | undefined): value is string {
+	return (
+		typeof value === 'string' &&
+		TRANSCRIPTION_LANGUAGE_OPTIONS.some((option) => option.value === value)
+	);
+}
+
+function isJsonRecord(value: JsonValue): value is JsonRecord {
+	return value !== null && !Array.isArray(value) && typeof value === 'object';
+}
+
+function parseSettingsJson(value: string): JsonValue {
+	// SAFETY: JSON.parse returns only the recursive JSON value types represented above.
+	return JSON.parse(value) as JsonValue;
+}
+
+export function normalizeEditorSettings(value: JsonValue): EditorSettingsValue {
+	const record = isJsonRecord(value) ? value : {};
+	return {
+		maxUndoHistory: clampUndoHistory(record.maxUndoHistory),
+		snapByDefault:
+			typeof record.snapByDefault === 'boolean'
+				? record.snapByDefault
+				: DEFAULT_EDITOR_SETTINGS.snapByDefault,
+		showWaveforms:
+			typeof record.showWaveforms === 'boolean'
+				? record.showWaveforms
+				: DEFAULT_EDITOR_SETTINGS.showWaveforms,
+		showFilmstrips:
+			typeof record.showFilmstrips === 'boolean'
+				? record.showFilmstrips
+				: DEFAULT_EDITOR_SETTINGS.showFilmstrips,
+		extractFilmstrips:
+			typeof record.extractFilmstrips === 'boolean'
+				? record.extractFilmstrips
+				: DEFAULT_EDITOR_SETTINGS.extractFilmstrips,
+		defaultTranscriptionModel: isTranscriptionModel(record.defaultTranscriptionModel)
+			? record.defaultTranscriptionModel
+			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionModel,
+		defaultTranscriptionLanguage: isTranscriptionLanguage(record.defaultTranscriptionLanguage)
+			? record.defaultTranscriptionLanguage
+			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionLanguage,
+		defaultTranscriptionQuantization: isTranscriptionQuantization(
+			record.defaultTranscriptionQuantization
+		)
+			? record.defaultTranscriptionQuantization
+			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionQuantization
+	};
+}
+
+function browserStorage(): SettingsStorage | null {
+	try {
+		return 'localStorage' in globalThis ? globalThis.localStorage : null;
+	} catch {
+		return null;
+	}
+}
+
+export function createEditorSettingsStore(storage: SettingsStorage | null = browserStorage()) {
+	let initial = DEFAULT_EDITOR_SETTINGS;
+	try {
+		const saved = storage?.getItem(STORAGE_KEY);
+		if (saved) initial = normalizeEditorSettings(parseSettingsJson(saved));
+	} catch {
+		initial = DEFAULT_EDITOR_SETTINGS;
+	}
+	const state = $state<EditorSettingsValue>({ ...initial });
+
+	function persist(): void {
+		try {
+			storage?.setItem(STORAGE_KEY, JSON.stringify(state));
+		} catch {
+			// Private browsing and full storage must not break the editor.
+		}
+	}
+
+	function set<K extends keyof EditorSettingsValue>(key: K, value: EditorSettingsValue[K]): void {
+		const normalized = normalizeEditorSettings({ ...state, [key]: value });
+		Object.assign(state, normalized);
+		persist();
+	}
+
+	return {
+		get value(): EditorSettingsValue {
+			return state;
+		},
+		get maxUndoHistory(): number {
+			return state.maxUndoHistory;
+		},
+		get snapByDefault(): boolean {
+			return state.snapByDefault;
+		},
+		get showWaveforms(): boolean {
+			return state.showWaveforms;
+		},
+		get showFilmstrips(): boolean {
+			return state.showFilmstrips;
+		},
+		get extractFilmstrips(): boolean {
+			return state.extractFilmstrips;
+		},
+		get defaultTranscriptionModel(): TranscriptionModel {
+			return state.defaultTranscriptionModel;
+		},
+		get defaultTranscriptionLanguage(): string {
+			return state.defaultTranscriptionLanguage;
+		},
+		get defaultTranscriptionQuantization(): TranscriptionQuantization {
+			return state.defaultTranscriptionQuantization;
+		},
+		set,
+		reset(): void {
+			Object.assign(state, DEFAULT_EDITOR_SETTINGS);
+			try {
+				storage?.removeItem(STORAGE_KEY);
+			} catch {
+				persist();
+			}
+		}
+	};
+}
+
+export const editorSettings = createEditorSettingsStore();

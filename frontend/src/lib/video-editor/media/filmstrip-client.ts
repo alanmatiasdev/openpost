@@ -7,9 +7,9 @@
  * - Idle eviction of entries with no subscribers (kept).
  * - Concurrency limits by core count + queue scored by remaining frames (kept).
  * - Throttled progressive notify (kept).
- * - Skipped: OPFS persistence tier, ImageBitmap fast path, priority-window
- *   refinement phases, and exact-target merge/restart machinery. Frames live
- *   for the session only; a follow-up can add an OPFS tier behind this API.
+ * - OPFS frame and index persistence with ImageBitmap hydration (adapted).
+ * - Skipped: priority-window refinement phases and exact-target merge/restart
+ *   machinery.
  */
 
 import type { MediaMetadata } from './types';
@@ -27,6 +27,7 @@ import type {
 	FilmstripWorkerResponse
 } from './filmstrip-extraction.worker';
 import { loadFilmstrip, saveFilmstripFrame, saveFilmstripIndex } from './filmstrip-persistence';
+import { removeOpfsEntry } from './opfs-cache';
 
 export interface FilmstripFrame {
 	index: number;
@@ -90,6 +91,8 @@ class FilmstripCacheService {
 	private prewarmStarted = false;
 	private idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private lastNotifyAt = new Map<string, number>();
+	private cacheVersions = new Map<string, number>();
+	private pendingPersistence = new Map<string, Promise<void>>();
 
 	private readonly workerPool = createManagedWorkerPool({
 		createWorker: () =>
@@ -154,7 +157,8 @@ class FilmstripCacheService {
 	async getFilmstrip(
 		media: MediaMetadata,
 		priorityRange?: FrameRange,
-		onProgress?: (progress: number) => void
+		onProgress?: (progress: number) => void,
+		allowExtraction = true
 	): Promise<Filmstrip> {
 		this.clearIdleTimer(media.id);
 
@@ -169,7 +173,14 @@ class FilmstripCacheService {
 			return cached;
 		}
 
-		const promise = this.loadPersistedOrExtract(media, targetIndices, onProgress);
+		const version = this.cacheVersions.get(media.id) ?? 0;
+		const promise = this.loadPersistedOrExtract(
+			media,
+			targetIndices,
+			onProgress,
+			allowExtraction,
+			version
+		);
 		this.loadingPromises.set(media.id, promise);
 		try {
 			return await promise;
@@ -182,9 +193,12 @@ class FilmstripCacheService {
 	private async loadPersistedOrExtract(
 		media: MediaMetadata,
 		targetIndices: number[],
-		onProgress?: (progress: number) => void
+		onProgress: ((progress: number) => void) | undefined,
+		allowExtraction: boolean,
+		version: number
 	): Promise<Filmstrip> {
 		const persisted = await loadFilmstrip(media.id);
+		if (!this.cacheIsCurrent(media.id, version)) return emptyFilmstrip();
 		if (persisted.length > 0) {
 			const filmstrip: Filmstrip = {
 				frames: persisted,
@@ -194,8 +208,19 @@ class FilmstripCacheService {
 			};
 			this.storeAndNotify(media.id, filmstrip, true);
 			if (!this.missingTargets(filmstrip, targetIndices)) return filmstrip;
+			if (!allowExtraction) return filmstrip;
 		}
-		return this.loadAndExtract(media, targetIndices, onProgress);
+		if (!allowExtraction) return emptyFilmstrip();
+		return this.loadAndExtract(media, targetIndices, onProgress, version);
+	}
+
+	/** Clear one media item's derived filmstrip without deleting source media. */
+	async clearMedia(mediaId: string): Promise<void> {
+		this.cacheVersions.set(mediaId, (this.cacheVersions.get(mediaId) ?? 0) + 1);
+		this.dropEntry(mediaId);
+		this.notifyThrottled(mediaId, emptyFilmstrip(), true);
+		await this.pendingPersistence.get(mediaId)?.catch(() => undefined);
+		await removeOpfsEntry('filmstrips', mediaId);
 	}
 
 	clearAll(): void {
@@ -229,7 +254,8 @@ class FilmstripCacheService {
 	private async loadAndExtract(
 		media: MediaMetadata,
 		targetIndices: number[],
-		onProgress?: (progress: number) => void
+		onProgress: ((progress: number) => void) | undefined,
+		version: number
 	): Promise<Filmstrip> {
 		const cached = this.cachedFilmstrip(media.id);
 		const frames = new Map<number, string | null>();
@@ -261,6 +287,7 @@ class FilmstripCacheService {
 					frames,
 					bitmaps,
 					onProgress,
+					version,
 					resolve,
 					reject
 				);
@@ -312,6 +339,7 @@ class FilmstripCacheService {
 		frames: Map<number, string | null>,
 		bitmaps: Map<number, ImageBitmap>,
 		onProgress: ((progress: number) => void) | undefined,
+		version: number,
 		resolve: (filmstrip: Filmstrip) => void,
 		reject: (error: Error) => void
 	): Promise<void> {
@@ -330,14 +358,22 @@ class FilmstripCacheService {
 		const onMessage = (event: MessageEvent<FilmstripWorkerResponse>) => {
 			const message = event.data;
 			if (message.requestId !== requestId) return;
+			const current = this.cacheIsCurrent(media.id, version);
 
 			if (message.type === 'progress') {
+				if (!current) return;
 				for (const saved of message.savedFrames) {
 					pendingFrameUrlRevoker(this.cache.get(media.id)?.filmstrip, saved.index);
 					frames.set(saved.index, URL.createObjectURL(saved.blob));
-					void saveFilmstripFrame(media.id, saved.index, saved.blob);
+					void this.queuePersistence(media.id, () =>
+						saveFilmstripFrame(media.id, saved.index, saved.blob)
+					);
 					void createImageBitmap(saved.blob)
 						.then((bitmap) => {
+							if (!this.cacheIsCurrent(media.id, version)) {
+								bitmap.close();
+								return;
+							}
 							bitmaps.get(saved.index)?.close();
 							bitmaps.set(saved.index, bitmap);
 							const current = this.cachedFilmstrip(media.id);
@@ -362,6 +398,10 @@ class FilmstripCacheService {
 
 			if (message.type === 'complete') {
 				cleanup();
+				if (!current) {
+					resolve(emptyFilmstrip());
+					return;
+				}
 				for (const index of message.unavailableIndices ?? []) {
 					frames.delete(index);
 				}
@@ -372,9 +412,11 @@ class FilmstripCacheService {
 					progress: 100
 				};
 				this.storeEntry(media.id, filmstrip);
-				void saveFilmstripIndex(
-					media.id,
-					filmstrip.frames.map((frame) => frame.index)
+				void this.queuePersistence(media.id, () =>
+					saveFilmstripIndex(
+						media.id,
+						filmstrip.frames.map((frame) => frame.index)
+					)
 				);
 				this.notifyThrottled(media.id, filmstrip, true);
 				this.enforceMemoryBudget();
@@ -410,6 +452,23 @@ class FilmstripCacheService {
 		this.storeEntry(mediaId, filmstrip);
 		this.notifyThrottled(mediaId, filmstrip, force);
 		this.enforceMemoryBudget();
+	}
+
+	private cacheIsCurrent(mediaId: string, version: number): boolean {
+		return (this.cacheVersions.get(mediaId) ?? 0) === version;
+	}
+
+	private queuePersistence(mediaId: string, write: () => Promise<void>): Promise<void> {
+		const pending = this.pendingPersistence.get(mediaId) ?? Promise.resolve();
+		const next = pending
+			.catch(() => undefined)
+			.then(write)
+			.catch(() => undefined);
+		this.pendingPersistence.set(mediaId, next);
+		void next.then(() => {
+			if (this.pendingPersistence.get(mediaId) === next) this.pendingPersistence.delete(mediaId);
+		});
+		return next;
 	}
 
 	private storeEntry(mediaId: string, filmstrip: Filmstrip): void {
@@ -498,6 +557,10 @@ class FilmstripCacheService {
 			this.idleTimers.delete(mediaId);
 		}
 	}
+}
+
+function emptyFilmstrip(): Filmstrip {
+	return { frames: [], isComplete: false, isExtracting: false, progress: 0 };
 }
 
 async function resolveMediaBlobForFilmstrip(media: MediaMetadata): Promise<Blob> {

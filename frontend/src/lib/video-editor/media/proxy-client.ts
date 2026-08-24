@@ -24,6 +24,7 @@ interface ProxyCacheEntry {
 const cache = new SizedAccessedMemoryCache<ProxyCacheEntry>(128 * 1024 * 1024);
 const inflight = new Map<string, Promise<Blob>>();
 const automaticInflight = new Map<string, Promise<Blob>>();
+const cacheVersions = new Map<string, number>();
 let automaticQueue: Promise<void> = Promise.resolve();
 
 export interface ProxyDimensions {
@@ -114,6 +115,7 @@ async function encodeProxy(
 	onProgress?: (progress: number) => void,
 	signal?: AbortSignal
 ): Promise<Blob> {
+	const cacheVersion = cacheVersions.get(media.id) ?? 0;
 	const worker = new Worker(new URL('./proxy-worker.ts', import.meta.url), { type: 'module' });
 	try {
 		const { resolveMediaBlob } = await import('./resolve-media-blob');
@@ -133,11 +135,13 @@ async function encodeProxy(
 			worker.onmessage = (event: MessageEvent<ProxyWorkerResponse>) => {
 				const message = event.data;
 				if (message.type === 'complete') {
-					cache.add(media.id, {
-						blob: message.blob,
-						sizeBytes: message.blob.size,
-						lastAccessed: Date.now()
-					});
+					if ((cacheVersions.get(media.id) ?? 0) === cacheVersion) {
+						cache.add(media.id, {
+							blob: message.blob,
+							sizeBytes: message.blob.size,
+							lastAccessed: Date.now()
+						});
+					}
 					finish(() => resolve(message.blob));
 					return;
 				}
@@ -160,4 +164,12 @@ async function encodeProxy(
 	} finally {
 		worker.terminate();
 	}
+}
+
+/** Drop one session proxy and prevent an older in-flight encode from restoring it. */
+export function clearProxyCache(mediaId: string): boolean {
+	const existed = cachedProxy(mediaId) !== null;
+	cacheVersions.set(mediaId, (cacheVersions.get(mediaId) ?? 0) + 1);
+	cache.delete(mediaId);
+	return existed;
 }

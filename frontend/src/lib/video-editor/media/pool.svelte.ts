@@ -19,11 +19,13 @@ export interface MediaPoolEntry {
 interface MediaPoolState {
 	order: string[];
 	entries: Record<string, MediaPoolEntry>;
+	thumbnailRevision: number;
 }
 
 const state = $state<MediaPoolState>({
 	order: [],
-	entries: {}
+	entries: {},
+	thumbnailRevision: 0
 });
 
 export const mediaPool = {
@@ -34,6 +36,9 @@ export const mediaPool = {
 		return state.order
 			.map((id) => state.entries[id]?.media)
 			.filter((m): m is MediaMetadata => m !== undefined);
+	},
+	get thumbnailRevision(): number {
+		return state.thumbnailRevision;
 	},
 	get(id: string): MediaMetadata | undefined {
 		return state.entries[id]?.media;
@@ -70,5 +75,9 @@ export const mediaPool = {
 	clear(): void {
 		state.order = [];
 		state.entries = {};
+	},
+
+	notifyThumbnailsChanged(): void {
+		state.thumbnailRevision += 1;
 	}
 };

@@ -36,6 +36,7 @@
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
+	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import PropertyRuntimePanel from './property-runtime-panel.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
@@ -286,6 +287,7 @@
 	});
 
 	$effect(() => {
+		if (!editorSettings.showWaveforms) return;
 		for (const item of timelineStore.items) {
 			const mediaId = item.mediaId;
 			if (item.type !== 'video' || !mediaId || waveforms[mediaId]) continue;
@@ -409,27 +411,37 @@
 	const filmstripUnsubscribers = new Map<string, () => void>();
 
 	$effect(() => {
+		if (!editorSettings.showFilmstrips) {
+			for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
+			filmstripUnsubscribers.clear();
+			for (const mediaId of Object.keys(filmstrips)) delete filmstrips[mediaId];
+			return;
+		}
 		for (const item of timelineStore.items) {
-			if (item.type !== 'video' || !item.mediaId || filmstrips[item.mediaId]) continue;
+			if (item.type !== 'video' || !item.mediaId) continue;
 			const mediaId = item.mediaId;
 			const media = mediaPool.get(mediaId);
 			if (!media?.tags.includes('video')) continue;
-			filmstrips[mediaId] = { frames: [], failed: false };
-			filmstripUnsubscribers.set(
-				mediaId,
-				filmstripCache.subscribe(mediaId, (filmstrip) => {
+			if (!filmstripUnsubscribers.has(mediaId)) {
+				filmstrips[mediaId] = { frames: [], failed: false };
+				filmstripUnsubscribers.set(
+					mediaId,
+					filmstripCache.subscribe(mediaId, (filmstrip) => {
+						filmstrips[mediaId] = {
+							frames: filmstrip.frames.map((frame) => ({ ...frame })),
+							failed: false
+						};
+					})
+				);
+			}
+			filmstripCache
+				.getFilmstrip(media, undefined, undefined, editorSettings.extractFilmstrips)
+				.catch(() => {
 					filmstrips[mediaId] = {
-						frames: filmstrip.frames.map((frame) => ({ ...frame })),
-						failed: false
+						frames: filmstrips[mediaId]?.frames ?? [],
+						failed: true
 					};
-				})
-			);
-			filmstripCache.getFilmstrip(media).catch(() => {
-				filmstrips[mediaId] = {
-					frames: filmstrips[mediaId]?.frames ?? [],
-					failed: true
-				};
-			});
+				});
 		}
 	});
 
@@ -3012,7 +3024,7 @@
 								onkeydown={(event) => applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
 								onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}
 							>
-								{#if item.type === 'video' && filmstripTilesFor(displayItem)}
+								{#if editorSettings.showFilmstrips && item.type === 'video' && filmstripTilesFor(displayItem)}
 									<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
 										{#each filmstripTilesFor(displayItem) as tile (tile.index)}
 											<FilmstripTile
@@ -3023,7 +3035,7 @@
 										{/each}
 									</div>
 								{/if}
-								{#if waveformSvgPoints(displayItem)}
+								{#if editorSettings.showWaveforms && waveformSvgPoints(displayItem)}
 									<svg
 										class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
 										viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"

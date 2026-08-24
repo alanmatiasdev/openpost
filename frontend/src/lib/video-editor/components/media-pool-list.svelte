@@ -38,6 +38,7 @@
 	let subtitlePickerOpen = $state(false);
 	let subtitleMedia = $state<MediaMetadata | null>(null);
 	const ownedThumbnailUrls = new Set<string>();
+	let loadedThumbnailRevision = -1;
 	const canvasWidth = $derived(
 		sequenceStore.activeSequence?.width ?? editorSession.project?.metadata.width ?? 1920
 	);
@@ -62,8 +63,17 @@
 		}
 	}
 
-	$effect(() => {
+	function reloadThumbnails(revision: number): void {
+		if (revision === loadedThumbnailRevision) return;
+		loadedThumbnailRevision = revision;
+		for (const url of ownedThumbnailUrls) URL.revokeObjectURL(url);
+		ownedThumbnailUrls.clear();
+		objectUrls = {};
 		for (const id of mediaPool.order) void previewUrl(id);
+	}
+
+	$effect(() => {
+		reloadThumbnails(mediaPool.thumbnailRevision);
 	});
 
 	onDestroy(() => {

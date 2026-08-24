@@ -3,7 +3,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import LocalModelCacheControl from './local-model-cache-control.svelte';
 	import {
-		DEFAULT_TRANSCRIPTION_MODEL,
 		TRANSCRIPTION_LANGUAGE_OPTIONS,
 		TRANSCRIPTION_MODEL_OPTIONS,
 		TRANSCRIPTION_QUANTIZATION_OPTIONS,
@@ -16,6 +15,7 @@
 		TranscriptionQuantization,
 		TranscriptionSelection
 	} from '$lib/video-editor/transcript/engine/types';
+	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 
 	let {
 		canTranscribe,
@@ -35,9 +35,11 @@
 		oncancel: () => void;
 	} = $props();
 
-	let model = $state<TranscriptionModel>(DEFAULT_TRANSCRIPTION_MODEL);
-	let language = $state('');
-	let quantization = $state<TranscriptionQuantization>('hybrid');
+	let model = $state<TranscriptionModel>(editorSettings.defaultTranscriptionModel);
+	let language = $state(editorSettings.defaultTranscriptionLanguage);
+	let quantization = $state<TranscriptionQuantization>(
+		editorSettings.defaultTranscriptionQuantization
+	);
 
 	function formatBytes(bytes: number): string {
 		if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -52,6 +54,9 @@
 	}
 
 	function start(): void {
+		editorSettings.set('defaultTranscriptionModel', model);
+		editorSettings.set('defaultTranscriptionLanguage', language);
+		editorSettings.set('defaultTranscriptionQuantization', quantization);
 		onstart({ model, language: language || undefined, quantization });
 	}
 </script>

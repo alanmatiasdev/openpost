@@ -18,6 +18,7 @@ import { Clock } from './preview/clock';
 import { mediaPool } from './media/pool.svelte';
 import { sceneBrowser } from './media/scene-search/scene-browser.svelte';
 import { sequenceStore } from './sequences/sequence-store.svelte';
+import { editorSettings } from './settings/editor-settings.svelte';
 
 const logger = createLogger('EditorSession');
 
@@ -58,6 +59,8 @@ class EditorSession {
 			};
 			commandHistory.clearHistory();
 			sequenceStore.load(project.timeline ?? { tracks: [], items: [] }, project.metadata);
+			timelineStore._setSnapEnabled(editorSettings.snapByDefault);
+			timelineStore._setMaxUndoHistory(editorSettings.maxUndoHistory);
 			this.clock.setFps(project.metadata.fps);
 			this.syncTimelineClock();
 			const media = await getMediaForProject(projectId);

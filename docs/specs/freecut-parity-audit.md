@@ -239,13 +239,13 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 ## 13. Settings & misc
 
-| Capability                                                                  | FreeCut evidence                                  | Status                                                                                             | Effort |
-| --------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
-| Settings dialog: general/timeline/AI/storage tabs                           | `editor/components/settings-dialog.tsx`, docs p21 | MISSING                                                                                            | M      |
-| Undo depth config, snap-by-default, waveform/filmstrip toggles              | docs p21                                          | PARTIAL — snapshot-based undo exists; no settings surface                                          | S      |
-| Storage tools: clear cache, regen thumbnails, delete proxies, manage models | docs p21                                          | MISSING                                                                                            | M      |
-| Workspace gate splash + indicator (gated workspaces)                        | `workspace-gate/feature dir`                      | PARTIAL — `gate/workspace-gate.svelte.ts` exists; scope differs (ours gates entry, not workspaces) | S      |
-| Screen/camera recorder feeding editor                                       | FreeCut: none (out of scope)                      | PRESENT (ours only) — `recorder/recorder.svelte.ts`                                                | —      |
+| Capability                                                                  | FreeCut evidence                                  | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Effort |
+| --------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| Settings dialog: general/timeline/AI/storage tabs                           | `editor/components/settings-dialog.tsx`, docs p21 | PRESENT - one responsive editor dialog persists General, Timeline, Local AI, and Storage defaults, applies live timeline changes, resets safely, traps keyboard focus through the shared dialog primitive, and fits desktop, 390 px, and 320 px without horizontal overflow (`components/editor-settings-dialog.svelte`, `settings/editor-settings.svelte.ts`)                                                                                                                                               | -      |
+| Undo depth config, snap-by-default, waveform/filmstrip toggles              | docs p21                                          | PRESENT - undo history supports 10 to 200 entries, snapping updates the open project and future projects, and independent waveform, stored-filmstrip, and background-filmstrip controls persist locally and change real timeline decode/render behavior (`settings/editor-settings.svelte.ts`, `timeline/stores/timeline-store.svelte.ts`, `components/timeline-panel.svelte`)                                                                                                                               | -      |
+| Storage tools: clear cache, regen thumbnails, delete proxies, manage models | docs p21                                          | PRESENT - storage maintenance prepares recommended proxies, clears versioned waveform/filmstrip/preview caches from memory and OPFS, regenerates visible thumbnails from originals, removes session proxies, reports partial progress, and manages all registered local model families without deleting source media, edits, or exports (`settings/storage-maintenance.ts`, `media/filmstrip-client.ts`, `media/waveform-client.ts`, `media/proxy-client.ts`, `components/local-model-cache-control.svelte`) | -      |
+| Workspace gate splash + indicator (gated workspaces)                        | `workspace-gate/feature dir`                      | PARTIAL — `gate/workspace-gate.svelte.ts` exists; scope differs (ours gates entry, not workspaces)                                                                                                                                                                                                                                                                                                                                                                                                           | S      |
+| Screen/camera recorder feeding editor                                       | FreeCut: none (out of scope)                      | PRESENT (ours only) — `recorder/recorder.svelte.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                          | —      |
 
 ---
 
@@ -253,15 +253,15 @@ Legend: **PRESENT** (shipped, wired UI) · **PARTIAL** (engine or reduced versio
 
 **Total capabilities audited: 173** (170 parity capabilities plus 3 N/A-parity rows: GIF export, alpha export, speed ramps).
 
-- **PRESENT: 132**
-- **PARTIAL: 16**
-- **MISSING: 22**
+- **PRESENT: 135**
+- **PARTIAL: 15**
+- **MISSING: 20**
 - (N/A parity: 3)
 
 ## Prioritized gap list (user-visible value first; GPU effects & keyframe breadth near top)
 
-1. **L - Local AI**: music generation and the remaining image-generation tools.
-2. **M - Media library upgrades**: compound thumbnail management, SVG import, and richer filter, sort, and relink controls.
-3. **M - Export upgrades**: saved-output management, phase labels, and worker rendering with main-thread fallback.
-4. **M - Preview performance**: proxy playback during scrubbing, adaptive preview quality, and decoder prewarming.
-5. **M - Settings and storage tools**: undo depth, default snapping, waveform and filmstrip controls, cache cleanup, proxy regeneration, and model management.
+1. **L - Local AI generation**: commercially usable music generation plus image generation, upscaling, and frame interpolation.
+2. **L - Media library and recovery**: URL, GIF, SVG, and exotic-codec imports; info, sort, and filter controls; missing-media relinking; orphan handling; and compound thumbnails.
+3. **L - Dedicated Color and Motion workspaces**: a fitted color dock plus layered motion compositions, groups, null parents, and published controls.
+4. **M - Project portability**: schema upgrades, duplicate and reorganize controls, portable project bundles, and JSON import or export.
+5. **M - Timeline organization and narration**: track groups, bento arrangement, and playhead-locked voiceover recording.

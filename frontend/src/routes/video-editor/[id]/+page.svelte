@@ -63,6 +63,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
+	import EditorSettingsDialog from '$lib/video-editor/components/editor-settings-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -76,6 +77,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/sequences/sequence-actions';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import SettingsIcon from '@lucide/svelte/icons/settings-2';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -83,6 +85,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let selectedTransitionId = $state<string | null>(null);
 	let sourceMediaId = $state<string | null>(null);
 	let freezingItemId = $state<string | null>(null);
+	let settingsOpen = $state(false);
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 
 	$effect(() => {
@@ -626,6 +629,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			{:else if !timelineStore.isDirty}
 				<span>{m.video_editor_saved()}</span>
 			{/if}
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon-xs"
+				aria-label={m.video_editor_settings_title()}
+				title={m.video_editor_settings_title()}
+				onclick={() => (settingsOpen = true)}
+			>
+				<SettingsIcon class="size-3.5" aria-hidden="true" />
+			</Button>
 		</div>
 	</header>
 
@@ -991,3 +1004,5 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	initialMode={speechCleanupMode}
 	onapplied={handleSpeechCleanupApplied}
 />
+
+<EditorSettingsDialog bind:open={settingsOpen} />

@@ -10,7 +10,13 @@ import {
 	VideoSampleSource,
 	WebMOutputFormat
 } from 'mediabunny';
-import { getAutomaticProxy, getProxy, PROXY_MAX_HEIGHT } from './proxy-client';
+import {
+	cachedProxy,
+	clearProxyCache,
+	getAutomaticProxy,
+	getProxy,
+	PROXY_MAX_HEIGHT
+} from './proxy-client';
 import type { MediaMetadata } from './types';
 import type { Project, TimelineItem } from '../project/types';
 import { mediaPool } from './pool.svelte';
@@ -129,6 +135,9 @@ describe('proxy generation worker', () => {
 		expect(proxy.type).toBe('video/webm');
 		expect(proxy.size).toBeGreaterThan(0);
 		expect(progress).toHaveBeenCalled();
+		expect(cachedProxy(media.id)).toBe(proxy);
+		expect(clearProxyCache(media.id)).toBe(true);
+		expect(cachedProxy(media.id)).toBeNull();
 
 		const input = new Input({ source: new BlobSource(proxy), formats: ALL_FORMATS });
 		const track = await input.getPrimaryVideoTrack();

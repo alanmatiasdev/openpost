@@ -299,6 +299,11 @@ export const timelineStore = {
 		state.settings.snapEnabled = enabled;
 	},
 
+	_setMaxUndoHistory(depth: number): void {
+		if (!Number.isFinite(depth)) return;
+		state.settings.maxUndoHistory = Math.round(Math.min(200, Math.max(10, depth)) / 10) * 10;
+	},
+
 	_setLinkedSelectionEnabled(enabled: boolean): void {
 		state.settings.linkedSelectionEnabled = enabled;
 	},
