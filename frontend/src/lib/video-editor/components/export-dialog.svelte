@@ -367,7 +367,7 @@
 	{m.video_editor_export_render()}
 </Button>
 {#if project}
-	<RenderQueuePanel />
+	<RenderQueuePanel projectId={project.id} />
 {/if}
 
 {#if open}

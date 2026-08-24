@@ -88,7 +88,7 @@ describe('ExportDialog', () => {
 		if (!liveItem) throw new Error('Expected the live video item');
 		liveItem.label = 'Changed later';
 		expect(get(renderQueueStore).jobs[0]?.snapshot.items[0]?.label).toBe('Interview');
-		await screen.getByRole('button', { name: 'Render queue (1)' }).click();
+		await screen.getByRole('button', { name: 'Exports (1)' }).click();
 		await expect.element(screen.getByText('Interview')).toBeVisible();
 		const queueDialog = screen.getByRole('dialog').element();
 		expect(queueDialog.scrollWidth).toBeLessThanOrEqual(queueDialog.clientWidth);
@@ -131,7 +131,7 @@ describe('ExportDialog', () => {
 			{ startFrame: 150, endFrame: 300 }
 		]);
 		expect(jobs[0]?.snapshot).toBe(jobs[1]?.snapshot);
-		await screen.getByRole('button', { name: 'Render queue (2)' }).click();
+		await screen.getByRole('button', { name: 'Exports (2)' }).click();
 		await expect.element(screen.getByText('Interview - Part 1')).toBeVisible();
 		await expect.element(screen.getByText('Interview - Part 2')).toBeVisible();
 		const queueDialog = screen.getByRole('dialog').element();
