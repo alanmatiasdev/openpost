@@ -13,6 +13,10 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	import { showToast } from '$lib/toast';
 	import ProjectBrowser from '$lib/video-editor/components/project-browser.svelte';
 	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
+	import {
+		downloadProjectSnapshot,
+		importProjectSnapshotFile
+	} from '$lib/video-editor/project-bundle/snapshot-service';
 	import { duplicateProjectWithMedia } from '$lib/video-editor/project/project-operations';
 	import type { Project } from '$lib/video-editor/project/types';
 	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
@@ -33,7 +37,9 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	let loadingProjects = $state(false);
 	let projectsError = $state('');
 	let creating = $state(false);
+	let importing = $state(false);
 	let duplicatingId = $state<string | null>(null);
+	let exportingId = $state<string | null>(null);
 
 	async function loadProjects(): Promise<void> {
 		if (gate.state !== 'ready') return;
@@ -117,6 +123,42 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 			showToast(m.video_editor_project_moved_to_trash(), 'success');
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : String(error), 'error');
+		}
+	}
+
+	async function handleImport(file: File): Promise<void> {
+		if (importing) return;
+		importing = true;
+		try {
+			const result = await importProjectSnapshotFile(file);
+			await loadProjects();
+			if (result.unmatchedMedia.length > 0) {
+				showToast(
+					m.video_editor_project_imported_missing_media({
+						name: result.project.name,
+						count: result.unmatchedMedia.length
+					}),
+					'warning'
+				);
+			} else {
+				showToast(m.video_editor_project_imported({ name: result.project.name }), 'success');
+			}
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+		} finally {
+			importing = false;
+		}
+	}
+
+	async function handleExport(project: Project): Promise<void> {
+		if (exportingId) return;
+		exportingId = project.id;
+		try {
+			await downloadProjectSnapshot(project.id);
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+		} finally {
+			exportingId = null;
 		}
 	}
 </script>
@@ -204,11 +246,15 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 				loading={loadingProjects}
 				error={projectsError}
 				{creating}
+				{importing}
 				{duplicatingId}
+				{exportingId}
 				oncreate={handleCreateProject}
+				onimport={handleImport}
 				onopen={openProject}
 				onrename={handleRename}
 				onduplicate={handleDuplicate}
+				onexport={handleExport}
 				ondelete={handleDelete}
 			/>
 		{/if}

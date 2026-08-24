@@ -9,34 +9,44 @@
 	import { m } from '$lib/paraglide/messages';
 	import type { Project } from '$lib/video-editor/project/types';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import MoreIcon from '@lucide/svelte/icons/ellipsis';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
 
 	let {
 		projects,
 		loading,
 		error,
 		creating,
+		importing,
 		duplicatingId,
+		exportingId,
 		oncreate,
+		onimport,
 		onopen,
 		onrename,
 		onduplicate,
+		onexport,
 		ondelete
 	}: {
 		projects: Project[];
 		loading: boolean;
 		error: string;
 		creating: boolean;
+		importing: boolean;
 		duplicatingId: string | null;
+		exportingId: string | null;
 		oncreate: (name: string) => Promise<boolean>;
+		onimport: (file: File) => Promise<void>;
 		onopen: (project: Project) => void;
 		onrename: (project: Project) => Promise<void>;
 		onduplicate: (project: Project) => Promise<void>;
+		onexport: (project: Project) => Promise<void>;
 		ondelete: (project: Project) => Promise<void>;
 	} = $props();
 
@@ -46,6 +56,7 @@
 	let projectSort = $state<'updated' | 'created' | 'name'>('updated');
 	let pendingDelete = $state<Project | null>(null);
 	let deleteDialogOpen = $state(false);
+	let importInput = $state<HTMLInputElement>();
 
 	const visibleProjects = $derived.by(() => {
 		const query = searchQuery.trim().toLocaleLowerCase();
@@ -75,15 +86,49 @@
 		pendingDelete = project;
 		deleteDialogOpen = true;
 	}
+
+	async function importFile(event: Event): Promise<void> {
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
+		const file = input.files?.[0];
+		input.value = '';
+		if (file) await onimport(file);
+	}
 </script>
 
 <div class="w-full max-w-5xl">
-	<div class="flex items-center justify-between">
+	<div class="flex items-center justify-between gap-3">
 		<h1 class="text-base font-semibold">{m.video_editor_projects_title()}</h1>
-		<Button size="sm" onclick={() => (showNewProject = !showNewProject)}>
-			<PlusIcon class="size-4" aria-hidden="true" />
-			{m.video_editor_project_new()}
-		</Button>
+		<div class="flex items-center gap-2">
+			<input
+				bind:this={importInput}
+				type="file"
+				accept="application/json,.json,.openpost.json"
+				class="sr-only"
+				aria-label={m.video_editor_project_import_json_label()}
+				onchange={(event) => void importFile(event)}
+			/>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={importing}
+				aria-label={m.video_editor_project_import_json()}
+				title={m.video_editor_project_import_json()}
+				aria-busy={importing}
+				onclick={() => importInput?.click()}
+			>
+				{#if importing}
+					<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+				{:else}
+					<UploadIcon class="size-4" aria-hidden="true" />
+				{/if}
+				<span class="hidden sm:inline">{m.video_editor_project_import_json()}</span>
+			</Button>
+			<Button size="sm" onclick={() => (showNewProject = !showNewProject)}>
+				<PlusIcon class="size-4" aria-hidden="true" />
+				{m.video_editor_project_new()}
+			</Button>
+		</div>
 	</div>
 
 	{#if showNewProject}
@@ -200,6 +245,17 @@
 									>
 										<CopyIcon class="size-4" aria-hidden="true" />
 										{m.video_editor_project_duplicate()}
+									</DropdownMenu.Item>
+									<DropdownMenu.Item
+										disabled={exportingId !== null}
+										onclick={() => void onexport(project)}
+									>
+										{#if exportingId === project.id}
+											<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+										{:else}
+											<DownloadIcon class="size-4" aria-hidden="true" />
+										{/if}
+										{m.video_editor_project_export_json()}
 									</DropdownMenu.Item>
 									<DropdownMenu.Separator />
 									<DropdownMenu.Item
