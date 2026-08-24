@@ -7389,7 +7389,7 @@ export interface components {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example /api/v1/schemas/JobResponse.json
+             * @example https://example.com/schemas/JobResponse.json
              */
             readonly $schema?: string;
             /**
