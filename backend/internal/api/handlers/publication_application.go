@@ -42,6 +42,17 @@ func publicationApplicationError(err error) error {
 	if _, ok := publicationservice.CategoryOf(err); ok {
 		return err
 	}
+	if known := knownPublicationApplicationError(err); known != nil {
+		return known
+	}
+	if status := publicationStatusError(err); status != nil {
+		return status
+	}
+	log.Printf("publicationApplicationError: unrecognized error (category=ErrorTemporaryUnavailable): %v", err)
+	return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, err)
+}
+
+func knownPublicationApplicationError(err error) error {
 	var notReady *providerreadiness.NotReadyError
 	if errors.As(err, &notReady) {
 		return publicationservice.NewError(publicationservice.ErrorProviderReadiness, err)
@@ -65,6 +76,10 @@ func publicationApplicationError(err error) error {
 		errors.Is(err, errPublicationValidationBlocked), errors.Is(err, errPublicationScheduleRequired):
 		return publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
 	}
+	return nil
+}
+
+func publicationStatusError(err error) error {
 	var statusErr interface {
 		error
 		GetStatus() int
@@ -81,8 +96,7 @@ func publicationApplicationError(err error) error {
 			return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, err)
 		}
 	}
-	log.Printf("publicationApplicationError: unrecognized error (category=ErrorTemporaryUnavailable): %v", err)
-	return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, err)
+	return nil
 }
 
 func categorizePublicationError(err *error) {
@@ -607,20 +621,9 @@ func (commands publicationApplication) ScheduleIdempotent(
 	request idempotency.Request,
 ) (enqueueResult publicationEnqueueResult, replayed bool, err error) {
 	defer categorizePublicationError(&err)
-	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
-	if err != nil {
-		return publicationEnqueueResult{}, false, err
-	}
-	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
-		return publicationEnqueueResult{}, false, err
-	}
-	request.WorkspaceID = publication.WorkspaceID
-	request.ResourceID = publication.ID
-	request.RequestHash, err = idempotency.Hash(struct {
-		PublicationID    string                            `json:"publication_id"`
-		ExpectedRevision int                               `json:"expected_revision"`
-		Intent           providerreadiness.ExecutionIntent `json:"execution_intent"`
-	}{publication.ID, expectedRevision, intent})
+	publication, request, err := commands.prepareEnqueueIdempotency(
+		ctx, userID, publicationID, expectedRevision, intent, request,
+	)
 	if err != nil {
 		return publicationEnqueueResult{}, false, err
 	}
@@ -634,10 +637,8 @@ func (commands publicationApplication) ScheduleIdempotent(
 	if err != nil {
 		return publicationEnqueueResult{}, false, err
 	}
-	if commands.handler.beforeQueueTransaction != nil {
-		if err := commands.handler.beforeQueueTransaction(ctx); err != nil {
-			return publicationEnqueueResult{}, false, err
-		}
+	if err := commands.beforeQueueTransaction(ctx); err != nil {
+		return publicationEnqueueResult{}, false, err
 	}
 	result, err := idempotency.ExecuteWithIdentity(
 		ctx,
@@ -709,20 +710,9 @@ func (commands publicationApplication) PublishNowIdempotent(
 	request idempotency.Request,
 ) (enqueueResult publicationEnqueueResult, replayed bool, err error) {
 	defer categorizePublicationError(&err)
-	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
-	if err != nil {
-		return publicationEnqueueResult{}, false, err
-	}
-	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
-		return publicationEnqueueResult{}, false, err
-	}
-	request.WorkspaceID = publication.WorkspaceID
-	request.ResourceID = publication.ID
-	request.RequestHash, err = idempotency.Hash(struct {
-		PublicationID    string                            `json:"publication_id"`
-		ExpectedRevision int                               `json:"expected_revision"`
-		Intent           providerreadiness.ExecutionIntent `json:"execution_intent"`
-	}{publication.ID, expectedRevision, intent})
+	publication, request, err := commands.prepareEnqueueIdempotency(
+		ctx, userID, publicationID, expectedRevision, intent, request,
+	)
 	if err != nil {
 		return publicationEnqueueResult{}, false, err
 	}
@@ -732,10 +722,8 @@ func (commands publicationApplication) PublishNowIdempotent(
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
 		return publicationEnqueueResult{}, false, err
 	}
-	if commands.handler.beforeQueueTransaction != nil {
-		if err := commands.handler.beforeQueueTransaction(ctx); err != nil {
-			return publicationEnqueueResult{}, false, err
-		}
+	if err := commands.beforeQueueTransaction(ctx); err != nil {
+		return publicationEnqueueResult{}, false, err
 	}
 	result, err := idempotency.ExecuteWithIdentity(
 		ctx,
@@ -761,6 +749,38 @@ func (commands publicationApplication) PublishNowIdempotent(
 		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result.Value)
 	}
 	return result.Value, result.Replayed, nil
+}
+
+func (commands publicationApplication) beforeQueueTransaction(ctx context.Context) error {
+	if commands.handler.beforeQueueTransaction == nil {
+		return nil
+	}
+	return commands.handler.beforeQueueTransaction(ctx)
+}
+
+func (commands publicationApplication) prepareEnqueueIdempotency(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+	expectedRevision int,
+	intent providerreadiness.ExecutionIntent,
+	request idempotency.Request,
+) (*models.Publication, idempotency.Request, error) {
+	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
+	if err != nil {
+		return nil, request, err
+	}
+	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
+		return nil, request, err
+	}
+	request.WorkspaceID = publication.WorkspaceID
+	request.ResourceID = publication.ID
+	request.RequestHash, err = idempotency.Hash(struct {
+		PublicationID    string                            `json:"publication_id"`
+		ExpectedRevision int                               `json:"expected_revision"`
+		Intent           providerreadiness.ExecutionIntent `json:"execution_intent"`
+	}{publication.ID, expectedRevision, intent})
+	return publication, request, err
 }
 
 func (commands publicationApplication) validateForEnqueue(ctx context.Context, userID, publicationID string) error {

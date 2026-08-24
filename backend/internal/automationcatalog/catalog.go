@@ -153,23 +153,23 @@ var operations = []Operation{
 	readDisabled("get-media-storage"),
 	readDisabled("get-media-usage"),
 	withSelectors(readPaged("list-publications", ExposureAlpha), workspaceSelector()),
-	withSelectors(read("get-publication", ExposureAlpha), workspaceSelector(), publicationSelector("id")),
-	withSelectors(readPaged("list-publication-events", ExposureAlpha), workspaceSelector(), publicationSelector("id")),
-	withSelectors(read("validate-publication", ExposureAlpha), workspaceSelector(), publicationSelector("id")),
+	withSelectors(read("get-publication", ExposureAlpha), workspaceSelector(), publicationSelector()),
+	withSelectors(readPaged("list-publication-events", ExposureAlpha), workspaceSelector(), publicationSelector()),
+	withSelectors(read("validate-publication", ExposureAlpha), workspaceSelector(), publicationSelector()),
 	readDisabled("list-posting-schedules"),
 	withSelectors(read("get-next-available-slot", ExposureAlpha), workspaceSelector()),
 	readResult("get-job", ExposureAlpha, ResultExtraction{IDPath: "$.id"}),
 	readDisabled("get-notification-preferences"),
 
-	withSelectors(write("create-publication", ExposureAlpha, EffectLocalMutation), workspaceSelector()),
-	withSelectors(write("update-publication", ExposureAlpha, EffectLocalMutation), workspaceSelector(), publicationSelector("id")),
-	withSelectors(write("upsert-publication-renditions", ExposureAlpha, EffectLocalMutation), workspaceSelector(), publicationSelector("id")),
-	withSelectors(write("schedule-publication", ExposureAlpha, EffectLocalMutation), workspaceSelector(), publicationSelector("id")),
-	withSelectors(write("cancel-publication", ExposureAlpha, EffectLocalMutation), workspaceSelector(), publicationSelector("id")),
-	withSelectors(write("publish-publication-now", ExposureAlpha, EffectExternalAction), workspaceSelector(), publicationSelector("id")),
+	withSelectors(write("create-publication", EffectLocalMutation), workspaceSelector()),
+	withSelectors(write("update-publication", EffectLocalMutation), workspaceSelector(), publicationSelector()),
+	withSelectors(write("upsert-publication-renditions", EffectLocalMutation), workspaceSelector(), publicationSelector()),
+	withSelectors(write("schedule-publication", EffectLocalMutation), workspaceSelector(), publicationSelector()),
+	withSelectors(write("cancel-publication", EffectLocalMutation), workspaceSelector(), publicationSelector()),
+	withSelectors(write("publish-publication-now", EffectExternalAction), workspaceSelector(), publicationSelector()),
 	writeDisabled("retry-publication-rendition", EffectExternalAction),
-	withSelectors(write("retry-failed-publication-renditions", ExposureAlpha, EffectExternalAction), workspaceSelector(), publicationSelector("id")),
-	withSelectors(write("create-media-upload-session", ExposureAlpha, EffectLocalMutation), workspaceSelector()),
+	withSelectors(write("retry-failed-publication-renditions", EffectExternalAction), workspaceSelector(), publicationSelector()),
+	withSelectors(write("create-media-upload-session", EffectLocalMutation), workspaceSelector()),
 	writeNaturallyIdempotent("complete-media-upload-session", ExposureAlpha, EffectLocalMutation),
 	writeDisabled("update-media", EffectLocalMutation),
 	writeDisabled("delete-media", EffectDestructive),
@@ -214,10 +214,10 @@ func readDisabled(operationID string) Operation {
 	return read(operationID, ExposureDisabled)
 }
 
-func write(operationID string, exposure Exposure, effect Effect) Operation {
+func write(operationID string, effect Effect) Operation {
 	return Operation{
 		OperationID: operationID,
-		Access:      AccessWrite, Exposure: exposure, Effect: effect,
+		Access:      AccessWrite, Exposure: ExposureAlpha, Effect: effect,
 		Retry: RetryIdempotentTransient, Idempotency: IdempotencyRequired,
 	}
 }
@@ -261,8 +261,8 @@ func accountSelector(parameter string) SelectorHint {
 	return SelectorHint{Parameter: parameter, OperationID: "list-accounts", ValuePath: "id", LabelPath: "account_username"}
 }
 
-func publicationSelector(parameter string) SelectorHint {
-	return SelectorHint{Parameter: parameter, OperationID: "list-publications", ValuePath: "id", LabelPath: "title"}
+func publicationSelector() SelectorHint {
+	return SelectorHint{Parameter: "id", OperationID: "list-publications", ValuePath: "id", LabelPath: "title"}
 }
 
 func socialSetSelector(parameter string) SelectorHint {

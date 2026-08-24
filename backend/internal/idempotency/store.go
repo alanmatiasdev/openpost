@@ -138,76 +138,112 @@ func ExecuteWithIdentity[T any](
 
 	var result Result[T]
 	err := db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		now := time.Now().UTC()
-		claimed, existing, err := claim(txCtx, tx, request, now)
-		if err != nil {
-			return err
-		}
-		if !claimed {
-			if existing.RequestHash != request.RequestHash {
-				return ErrConflict
-			}
-			if existing.State != stateCompleted {
-				return ErrInProgress
-			}
-			var value T
-			if err := json.Unmarshal([]byte(existing.ResponseJSON), &value); err != nil {
-				return fmt.Errorf("decode stored idempotent response: %w", err)
-			}
-			result = Result[T]{Value: value, HTTPStatus: existing.HTTPStatus, Replayed: true}
-			return nil
-		}
-
-		value, err := mutation(txCtx, tx)
-		if err != nil {
-			return err
-		}
-		responseJSON, err := json.Marshal(value)
-		if err != nil {
-			return fmt.Errorf("encode idempotent response: %w", err)
-		}
-		resourceID, jobID := request.ResourceID, request.JobID
-		if identity != nil {
-			identifiedResourceID, identifiedJobID := identity(value)
-			if strings.TrimSpace(identifiedResourceID) != "" {
-				resourceID = strings.TrimSpace(identifiedResourceID)
-			}
-			if strings.TrimSpace(identifiedJobID) != "" {
-				jobID = strings.TrimSpace(identifiedJobID)
-			}
-		}
-		completedAt := time.Now().UTC()
-		update, err := tx.NewUpdate().
-			Model((*record)(nil)).
-			Set("state = ?", stateCompleted).
-			Set("http_status = ?", request.HTTPStatus).
-			Set("response_json = ?", string(responseJSON)).
-			Set("resource_id = ?", resourceID).
-			Set("job_id = ?", jobID).
-			Set("completed_at = ?", completedAt).
-			Where("principal_id = ?", request.PrincipalID).
-			Where("workspace_id = ?", request.WorkspaceID).
-			Where("operation_id = ?", request.OperationID).
-			Where("idempotency_key = ?", request.Key).
-			Where("state = ?", stateProcessing).
-			Exec(txCtx)
-		if err != nil {
-			return fmt.Errorf("finish idempotency record: %w", err)
-		}
-		rows, err := update.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("check idempotency record completion: %w", err)
-		}
-		if rows != 1 {
-			return errors.New("idempotency record was not completed")
-		}
-		result = Result[T]{Value: value, HTTPStatus: request.HTTPStatus}
-		return nil
+		transactionResult, err := executeTransaction(txCtx, tx, request, mutation, identity)
+		result = transactionResult
+		return err
 	})
 	if err != nil {
 		return zero, err
 	}
 	return result, nil
+}
+
+func executeTransaction[T any](
+	ctx context.Context,
+	tx bun.Tx,
+	request Request,
+	mutation func(context.Context, bun.Tx) (T, error),
+	identity func(T) (resourceID string, jobID string),
+) (Result[T], error) {
+	claimed, existing, err := claim(ctx, tx, request, time.Now().UTC())
+	if err != nil {
+		return Result[T]{}, err
+	}
+	if !claimed {
+		return replayClaim[T](existing, request)
+	}
+
+	value, err := mutation(ctx, tx)
+	if err != nil {
+		return Result[T]{}, err
+	}
+	responseJSON, err := json.Marshal(value)
+	if err != nil {
+		return Result[T]{}, fmt.Errorf("encode idempotent response: %w", err)
+	}
+	resourceID, jobID := resultIdentity(request, value, identity)
+	if err := completeRecord(ctx, tx, request, string(responseJSON), resourceID, jobID); err != nil {
+		return Result[T]{}, err
+	}
+	return Result[T]{Value: value, HTTPStatus: request.HTTPStatus}, nil
+}
+
+func replayClaim[T any](existing record, request Request) (Result[T], error) {
+	if existing.RequestHash != request.RequestHash {
+		return Result[T]{}, ErrConflict
+	}
+	if existing.State != stateCompleted {
+		return Result[T]{}, ErrInProgress
+	}
+	var value T
+	if err := json.Unmarshal([]byte(existing.ResponseJSON), &value); err != nil {
+		return Result[T]{}, fmt.Errorf("decode stored idempotent response: %w", err)
+	}
+	return Result[T]{Value: value, HTTPStatus: existing.HTTPStatus, Replayed: true}, nil
+}
+
+func resultIdentity[T any](
+	request Request,
+	value T,
+	identity func(T) (resourceID string, jobID string),
+) (string, string) {
+	resourceID, jobID := request.ResourceID, request.JobID
+	if identity == nil {
+		return resourceID, jobID
+	}
+	identifiedResourceID, identifiedJobID := identity(value)
+	if identifiedResourceID = strings.TrimSpace(identifiedResourceID); identifiedResourceID != "" {
+		resourceID = identifiedResourceID
+	}
+	if identifiedJobID = strings.TrimSpace(identifiedJobID); identifiedJobID != "" {
+		jobID = identifiedJobID
+	}
+	return resourceID, jobID
+}
+
+func completeRecord(
+	ctx context.Context,
+	tx bun.Tx,
+	request Request,
+	responseJSON string,
+	resourceID string,
+	jobID string,
+) error {
+	update, err := tx.NewUpdate().
+		Model((*record)(nil)).
+		Set("state = ?", stateCompleted).
+		Set("http_status = ?", request.HTTPStatus).
+		Set("response_json = ?", responseJSON).
+		Set("resource_id = ?", resourceID).
+		Set("job_id = ?", jobID).
+		Set("completed_at = ?", time.Now().UTC()).
+		Where("principal_id = ?", request.PrincipalID).
+		Where("workspace_id = ?", request.WorkspaceID).
+		Where("operation_id = ?", request.OperationID).
+		Where("idempotency_key = ?", request.Key).
+		Where("state = ?", stateProcessing).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("finish idempotency record: %w", err)
+	}
+	rows, err := update.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check idempotency record completion: %w", err)
+	}
+	if rows != 1 {
+		return errors.New("idempotency record was not completed")
+	}
+	return nil
 }
 
 func claim(ctx context.Context, tx bun.Tx, request Request, now time.Time) (bool, record, error) {

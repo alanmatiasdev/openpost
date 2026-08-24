@@ -274,12 +274,12 @@ func (h *JobHandler) getWorkspaceScopedJob(ctx context.Context, jobID string) (m
 
 	var workspaceID string
 	publicationScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
-		safeAliasedJobPayloadTextExpr(h.db, "job", "publication_id") + ")"
+		safeJobPayloadTextExpr(h.db, "publication_id") + ")"
 	err := h.db.NewSelect().
 		TableExpr("jobs AS job").
 		ColumnExpr("COALESCE(publication.workspace_id, sa.workspace_id, '')").
 		Join("LEFT JOIN publications AS publication ON job.type IN (?, ?) AND publication.id = "+publicationScopeExpr, jobTypePublishPublication, jobTypePublishPost).
-		Join("LEFT JOIN social_accounts AS sa ON sa.id = "+safeAliasedJobPayloadTextExpr(h.db, "job", "account_id")).
+		Join("LEFT JOIN social_accounts AS sa ON sa.id = "+safeJobPayloadTextExpr(h.db, "account_id")).
 		Where("job.id = ?", jobID).
 		Scan(ctx, &workspaceID)
 	if err != nil {
@@ -297,12 +297,12 @@ func (h *JobHandler) listJobsQuery(
 	runBefore time.Time,
 ) *bun.SelectQuery {
 	publicationScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
-		safeAliasedJobPayloadTextExpr(h.db, "job", "publication_id") + ")"
+		safeJobPayloadTextExpr(h.db, "publication_id") + ")"
 	query := h.db.NewSelect().
 		Model(model).
 		ModelTableExpr("jobs AS job").
 		Join("LEFT JOIN publications AS publication ON job.type IN (?, ?) AND publication.id = "+publicationScopeExpr, jobTypePublishPublication, jobTypePublishPost).
-		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + safeAliasedJobPayloadTextExpr(h.db, "job", "account_id"))
+		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + safeJobPayloadTextExpr(h.db, "account_id"))
 
 	if input.Status != "" {
 		query = query.Where("job.status = ?", input.Status)
