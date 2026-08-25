@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AceStepGenerationResult, AceStepUpdateListener, AceStepWebGpu } from 'ai-music-js';
 import {
+	ACE_STEP_HIGH_DOWNLOAD_BYTES,
 	ACE_STEP_STANDARD_DOWNLOAD_BYTES,
 	AceStepMusicService,
 	musicGenerationTags,
@@ -147,6 +148,18 @@ describe('AceStepMusicService', () => {
 		await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
 		expect(createRuntime).not.toHaveBeenCalled();
 		release();
+	});
+
+	it('counts only assets used by the turbo generation path', async () => {
+		const module = await import('ai-music-js');
+		const usedBytes = (audioQuality: 'standard' | 'high') =>
+			module
+				.getRequiredAssets({ audioQuality })
+				.filter((asset) => asset.group !== 'audio-code-detokenizer')
+				.reduce((total, asset) => total + asset.bytes, 0);
+
+		expect(usedBytes('standard')).toBe(ACE_STEP_STANDARD_DOWNLOAD_BYTES);
+		expect(usedBytes('high')).toBe(ACE_STEP_HIGH_DOWNLOAD_BYTES);
 	});
 
 	it('preflights the exact audio profile against origin quota and write headroom', async () => {

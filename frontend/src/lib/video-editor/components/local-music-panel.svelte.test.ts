@@ -7,6 +7,7 @@ import type {
 	GenerateLocalMusicOptions,
 	MusicGenerationStorageStatus
 } from '$lib/video-editor/local-ai/music/ace-step-service';
+import { ACE_STEP_STANDARD_DOWNLOAD_BYTES } from '$lib/video-editor/local-ai/music/ace-step-service';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 import LocalMusicPanel from './local-music-panel.svelte';
@@ -68,7 +69,7 @@ describe('LocalMusicPanel', () => {
 				progress: 0.25,
 				backend: 'webgpu',
 				receivedBytes: 1_406_623_557,
-				totalBytes: 5_626_494_229
+				totalBytes: ACE_STEP_STANDARD_DOWNLOAD_BYTES
 			});
 			await generationGate;
 			return result;
@@ -89,12 +90,12 @@ describe('LocalMusicPanel', () => {
 		screen.container.style.width = '260px';
 		screen.container.style.height = '720px';
 
-		await expect.element(screen.getByText(/First use downloads up to 5.63 GB/)).toBeVisible();
+		await expect.element(screen.getByText(/First use downloads up to 5.42 GB/)).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Generate music' })).toBeEnabled();
 		await screen.getByRole('button', { name: 'Generate music' }).click();
 		await expect.element(screen.getByText('Downloading ACE-Step DiT')).toBeVisible();
 		expect(mediaTasks.get(mediaTaskId('music-generation', 'project-1'))).toEqual(
-			expect.objectContaining({ progress: 0.25, totalBytes: 5_626_494_229 })
+			expect.objectContaining({ progress: 0.25, totalBytes: ACE_STEP_STANDARD_DOWNLOAD_BYTES })
 		);
 		finishGeneration();
 		await expect.element(screen.getByRole('article').getByText('Cinematic pulse')).toBeVisible();
@@ -131,7 +132,7 @@ describe('LocalMusicPanel', () => {
 		});
 
 		await screen.getByRole('combobox', { name: 'Model' }).selectOptions('high');
-		await expect.element(screen.getByText(/First use downloads up to 8.00 GB/)).toBeVisible();
+		await expect.element(screen.getByText(/First use downloads up to 7.79 GB/)).toBeVisible();
 		await screen.getByRole('button', { name: 'Generate music' }).click();
 		expect(generateMusic).toHaveBeenCalledWith(
 			expect.objectContaining({ audioQuality: 'high', durationSeconds: 10 })

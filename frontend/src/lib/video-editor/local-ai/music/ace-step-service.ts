@@ -11,10 +11,11 @@ import { sanitizeAiOutputFileNameSegment } from '../output-file-name';
 import type { GeneratedAudio, LocalGenerationProgress } from '../types';
 import { localAiRuntimeRegistry } from '../runtime-registry';
 
-export const ACE_STEP_STANDARD_DOWNLOAD_BYTES = 5_626_494_229;
-export const ACE_STEP_HIGH_DOWNLOAD_BYTES = 8_004_092_572;
+export const ACE_STEP_STANDARD_DOWNLOAD_BYTES = 5_415_546_914;
+export const ACE_STEP_HIGH_DOWNLOAD_BYTES = 7_793_145_257;
 export const ACE_STEP_MIN_DURATION_SECONDS = 10;
 export const ACE_STEP_MAX_DURATION_SECONDS = 120;
+const TURBO_UNUSED_ASSET_GROUP = 'audio-code-detokenizer';
 
 export interface MusicGenerationSupport {
 	supported: boolean;
@@ -265,7 +266,9 @@ export class AceStepMusicService {
 			import('ai-music-js'),
 			this.inspectCache(signal)
 		]);
-		const required = module.getRequiredAssets({ audioQuality });
+		const required = module
+			.getRequiredAssets({ audioQuality })
+			.filter((asset) => asset.group !== TURBO_UNUSED_ASSET_GROUP);
 		const cachedAssets = new Map(
 			inventory.models.flatMap((model) => model.assets).map((asset) => [asset.id, asset])
 		);
