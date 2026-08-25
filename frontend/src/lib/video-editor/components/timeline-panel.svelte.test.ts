@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import '../../../routes/layout.css';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
@@ -6,6 +7,7 @@ import { commandHistory } from '$lib/video-editor/timeline/commands/command-stor
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
+import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
@@ -20,6 +22,9 @@ import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
 import { animatedImageCache } from '$lib/video-editor/media/animated-image-client';
 import { animatedFrameIndexAtTime } from '$lib/video-editor/media/animated-image-plan';
 import animatedGifUrl from '$lib/video-editor/media/fixtures/animated-rgb.gif?url';
+import { get } from 'svelte/store';
+import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
+import { editorSession } from '$lib/video-editor/editor.svelte';
 
 const FILMSTRIP_TILE_WIDTH = 96;
 import TimelinePanel from './timeline-panel.svelte';
@@ -97,6 +102,7 @@ async function nextAnimationFrame(): Promise<void> {
 }
 
 beforeEach(() => {
+	timelinePreviewScrub.__resetForTesting();
 	clearSceneDragData();
 	mediaPool.loadAll([sceneMedia]);
 	keyboardShortcuts.resetAll();
@@ -453,6 +459,116 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.currentFrame).toBe(11);
 		ruler.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 		expect(timelineStore.currentFrame).toBe(120);
+	});
+
+	it('previews the latest hovered frame without moving the committed playhead', async () => {
+		await page.viewport(1200, 700);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		screen.container.style.width = '900px';
+		const region = screen.getByRole('region', { name: 'Timeline' }).element();
+		region.style.width = '900px';
+		vi.spyOn(region, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 300));
+		await page.screenshot({
+			element: region,
+			path: '../../../../.svelte-kit/openpost-timeline-hover-preview-before.png'
+		});
+
+		region.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 0,
+				clientX: 220,
+				clientY: 40,
+				pointerType: 'mouse'
+			})
+		);
+		region.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 0,
+				clientX: 260,
+				clientY: 40,
+				pointerType: 'mouse'
+			})
+		);
+		await nextAnimationFrame();
+
+		expect(get(timelinePreviewScrub).frame).toBe(20);
+		expect(timelineStore.currentFrame).toBe(0);
+		await expect.element(screen.getByText('00:00:00:20')).toBeVisible();
+		await page.screenshot({
+			element: region,
+			path: '../../../../.svelte-kit/openpost-timeline-hover-preview.png'
+		});
+		await page.viewport(320, 720);
+		screen.container.style.width = '100vw';
+		region.style.width = '100vw';
+		await nextAnimationFrame();
+		const timecode = screen.container.querySelector<HTMLElement>(
+			'[data-timeline-preview-timecode]'
+		);
+		expect(timecode).not.toBeNull();
+		const timecodeRect = timecode!.getBoundingClientRect();
+		expect(timecodeRect.left).toBeGreaterThanOrEqual(0);
+		expect(timecodeRect.right).toBeLessThanOrEqual(320);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth
+		);
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-timeline-hover-preview-320.png'
+		});
+
+		region.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+		expect(get(timelinePreviewScrub).frame).toBeNull();
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-timeline-preview-scrubber]')).toBeNull();
+		});
+
+		region.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 0,
+				clientX: 260,
+				clientY: 40,
+				pointerType: 'mouse'
+			})
+		);
+		await nextAnimationFrame();
+		expect(get(timelinePreviewScrub).frame).toBe(20);
+		setCurrentFrame(5);
+		expect(get(timelinePreviewScrub).frame).toBeNull();
+		expect(timelineStore.currentFrame).toBe(5);
+		setCurrentFrame(0);
+
+		region.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 0,
+				clientX: 260,
+				clientY: 40,
+				pointerType: 'mouse'
+			})
+		);
+		await nextAnimationFrame();
+		expect(get(timelinePreviewScrub).frame).toBe(20);
+		try {
+			editorSession.startPlayback();
+			expect(get(timelinePreviewScrub).frame).toBeNull();
+		} finally {
+			editorSession.pausePlayback();
+		}
+
+		region.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 0,
+				clientX: 260,
+				clientY: 40,
+				pointerType: 'touch'
+			})
+		);
+		await nextAnimationFrame();
+		expect(get(timelinePreviewScrub).frame).toBeNull();
 	});
 
 	it('resizes one track as one undoable pointer gesture', async () => {

@@ -10,6 +10,7 @@ import { scopeSamples } from '../effects/scope-samples.svelte';
 import { adaptivePreviewQuality } from '../preview/adaptive-preview-quality.svelte';
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 import { previewDiagnostics } from '../preview/diagnostics.svelte';
+import { timelinePreviewScrub } from '../preview/timeline-preview-scrub';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -156,6 +157,7 @@ afterEach(() => {
 	previewDiagnostics.setClipTimingOverlay(false);
 	previewDiagnostics.resetCounters();
 	previewDiagnostics.setPlaying(false);
+	timelinePreviewScrub.__resetForTesting();
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -186,6 +188,44 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('renders the hover-preview frame while leaving the committed frame unchanged', async () => {
+		const layer = {
+			...colorLayer('hover-only', 'video-track', '#ff0000'),
+			from: 30,
+			durationInFrames: 30
+		};
+		const project: Project = {
+			id: 'hover-preview-project',
+			name: 'Hover preview project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 2,
+			metadata: { width: 4, height: 4, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [track('video-track', 0)], items: [layer] }
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [layer],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewPlayer, { onedit: vi.fn() });
+		expect(screen.container.querySelector('[data-preview-item="hover-only"]')).toBeNull();
+
+		timelinePreviewScrub.setFrame(30);
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-preview-item="hover-only"]')).not.toBeNull();
+		});
+		expect(timelineStore.currentFrame).toBe(0);
+
+		timelinePreviewScrub.clear();
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-preview-item="hover-only"]')).toBeNull();
+		});
+	});
+
 	it('shows opt-in live and clip timing overlays without project or media names', async () => {
 		const project = diagnosticVideoProject();
 		editorSession.project = project;

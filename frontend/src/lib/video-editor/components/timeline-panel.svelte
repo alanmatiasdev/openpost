@@ -67,6 +67,10 @@
 	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
+		formatTimelinePreviewTimecode,
+		timelinePreviewScrub
+	} from '$lib/video-editor/preview/timeline-preview-scrub';
+	import {
 		MAX_TRACK_HEIGHT,
 		MIN_TRACK_HEIGHT,
 		clampTrackHeight,
@@ -266,13 +270,19 @@
 	let visibleTimelineItemIds = $state<Set<string>>(new Set());
 	let timelineItemObserver: IntersectionObserver | null = null;
 	let selectedTrackIds = $state<string[]>([]);
-	let deleteGroupTarget = $state<{ id: string; name: string; trackCount: number } | null>(null);
+	let deleteGroupTarget = $state<{
+		id: string;
+		name: string;
+		trackCount: number;
+	} | null>(null);
 	let deleteGroupDialogOpen = $state(false);
 	let bentoLayoutOpen = $state(false);
 	let clearKeyframesDialogOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
+	let hoverPreviewAnimationFrame: number | null = null;
+	let pendingHoverPreviewClientX: number | null = null;
 	const audioSkimController = createTimelineAudioSkimController();
 	let audioSkimStopTimer: ReturnType<typeof setTimeout> | null = null;
 	let rulerScrub: {
@@ -317,6 +327,15 @@
 		if (marker.id === markerLabelDraftId) return;
 		markerLabelDraftId = marker.id;
 		markerLabelDraft = marker.label ?? '';
+	});
+
+	$effect(() => {
+		const offPlay = editorSession.clock.on('play', clearHoverPreview);
+		const offFrameChange = editorSession.clock.on('framechange', clearHoverPreview);
+		return () => {
+			offPlay();
+			offFrameChange();
+		};
 	});
 
 	$effect(() => {
@@ -520,7 +539,10 @@
 						}
 						visibleTimelineItemIds = next;
 					},
-					{ root: scrollContainer, rootMargin: `0px ${FILMSTRIP_OVERSCAN_PX}px` }
+					{
+						root: scrollContainer,
+						rootMargin: `0px ${FILMSTRIP_OVERSCAN_PX}px`
+					}
 				);
 			}
 			timelineItemObserver.observe(node);
@@ -921,6 +943,7 @@
 		handle: 'left' | 'right'
 	): void {
 		if (event.button !== 0) return;
+		clearHoverPreview();
 		const outgoing = timelineStore.itemById.get(transition.fromItemId);
 		const incoming = timelineStore.itemById.get(transition.toItemId);
 		if (!outgoing || !incoming) return;
@@ -1042,6 +1065,7 @@
 
 	function startRulerScrub(event: PointerEvent): void {
 		if (event.button !== 0 || rulerScrub || timelineStore.seekLocked) return;
+		clearHoverPreview();
 		event.preventDefault();
 		event.stopPropagation();
 		editorSession.pausePlayback();
@@ -1136,6 +1160,7 @@
 
 	function startTrackHeightResize(event: PointerEvent, trackId: string): void {
 		if (event.button !== 0 || trackHeightResize) return;
+		clearHoverPreview();
 		const track = timelineStore.tracks.find((candidate) => candidate.id === trackId);
 		if (!track) return;
 		event.preventDefault();
@@ -1312,6 +1337,7 @@
 
 	function startMarkerDrag(event: PointerEvent, marker: TimelineMarker): void {
 		if (event.button !== 0 || markerDrag) return;
+		clearHoverPreview();
 		event.preventDefault();
 		event.stopPropagation();
 		editorSession.pausePlayback();
@@ -1562,6 +1588,7 @@
 		const target = event.target;
 		if (!(target instanceof HTMLElement) || !target.closest('[data-track]')) return;
 		if (target.closest('button, input, select, textarea, [data-marquee-ignore]')) return;
+		clearHoverPreview();
 		event.preventDefault();
 		const additive = event.metaKey || event.ctrlKey || event.shiftKey;
 		marquee = {
@@ -1756,6 +1783,7 @@
 
 	function startDrag(event: PointerEvent, id: string, requestedKind: TimelineDragKind): void {
 		if (event.button !== 0) return;
+		clearHoverPreview();
 		clearSyncLockPreview();
 		breakingTransitionPreviewIds = [];
 		event.stopPropagation();
@@ -2367,6 +2395,7 @@
 	}
 
 	onDestroy(() => {
+		clearHoverPreview();
 		if (drag) finishDrag(true);
 		if (transitionResize) finishTransitionResize(true);
 		if (marquee) finishMarquee();
@@ -2478,10 +2507,71 @@
 	function rememberTimelinePointer(event: PointerEvent): void {
 		if (!scrollContainer) return;
 		lastTimelinePointerScreenX = event.clientX - scrollContainer.getBoundingClientRect().left;
+		scheduleHoverPreview(event);
 	}
 
 	function forgetTimelinePointer(): void {
 		lastTimelinePointerScreenX = null;
+		clearHoverPreview();
+	}
+
+	function hoverPreviewSuppressed(event?: PointerEvent): boolean {
+		return (
+			editorSession.clock.isPlaying ||
+			timelineStore.seekLocked ||
+			Boolean(event && (event.buttons !== 0 || event.pointerType === 'touch')) ||
+			Boolean(
+				drag ||
+				rulerScrub ||
+				transitionResize ||
+				marquee ||
+				trackHeightResize ||
+				markerDrag ||
+				effectDropTargetIds.length > 0 ||
+				sceneDropPreview ||
+				deleteGroupDialogOpen ||
+				bentoLayoutOpen ||
+				clearKeyframesDialogOpen
+			)
+		);
+	}
+
+	function clearHoverPreview(): void {
+		pendingHoverPreviewClientX = null;
+		if (hoverPreviewAnimationFrame !== null) {
+			cancelAnimationFrame(hoverPreviewAnimationFrame);
+			hoverPreviewAnimationFrame = null;
+		}
+		timelinePreviewScrub.clear();
+	}
+
+	function flushHoverPreview(): void {
+		hoverPreviewAnimationFrame = null;
+		const clientX = pendingHoverPreviewClientX;
+		pendingHoverPreviewClientX = null;
+		if (clientX === null || hoverPreviewSuppressed() || !scrollContainer) {
+			timelinePreviewScrub.clear();
+			return;
+		}
+		const rect = scrollContainer.getBoundingClientRect();
+		if (clientX < rect.left + TRACK_HEADER_WIDTH || clientX > rect.right) {
+			timelinePreviewScrub.clear();
+			return;
+		}
+		const frame = frameFromClientX(clientX);
+		if (frame === undefined) return;
+		timelinePreviewScrub.setFrame(Math.min(frame, Math.max(0, timelineStore.maxItemEndFrame)));
+	}
+
+	function scheduleHoverPreview(event: PointerEvent): void {
+		if (hoverPreviewSuppressed(event)) {
+			clearHoverPreview();
+			return;
+		}
+		pendingHoverPreviewClientX = event.clientX;
+		if (hoverPreviewAnimationFrame === null) {
+			hoverPreviewAnimationFrame = requestAnimationFrame(flushHoverPreview);
+		}
 	}
 
 	function flushQueuedTimelineZoom(): void {
@@ -2498,6 +2588,7 @@
 	function onTimelineWheel(event: WheelEvent): void {
 		if (!(event.ctrlKey || event.metaKey) || event.deltaY === 0 || !scrollContainer) return;
 		event.preventDefault();
+		clearHoverPreview();
 		const pointerScreenX = event.clientX - scrollContainer.getBoundingClientRect().left;
 		lastTimelinePointerScreenX = pointerScreenX;
 		const baseLevel = queuedTimelineZoom?.level ?? zoom;
@@ -2967,7 +3058,9 @@
 			aria-label={m.video_editor_track_group_selected()}
 			title={selectedTrackIds.length === 0
 				? m.video_editor_track_group_select_hint()
-				: m.video_editor_track_group_selected_count({ count: selectedTrackIds.length })}
+				: m.video_editor_track_group_selected_count({
+						count: selectedTrackIds.length
+					})}
 			onclick={createGroupFromSelection}
 		>
 			<FolderPlusIcon class="size-3.5" />
@@ -3334,7 +3427,9 @@
 				onchange={(event) => {
 					const frame = Number(event.currentTarget.value);
 					if (Number.isFinite(frame)) {
-						commitMarkerPatch(selectedMarker, { frame: Math.max(0, Math.round(frame)) });
+						commitMarkerPatch(selectedMarker, {
+							frame: Math.max(0, Math.round(frame))
+						});
 					}
 				}}
 			/>
@@ -3346,7 +3441,9 @@
 				type="color"
 				value={markerColorForInput(selectedMarker.color)}
 				onchange={(event) =>
-					commitMarkerPatch(selectedMarker, { color: event.currentTarget.value })}
+					commitMarkerPatch(selectedMarker, {
+						color: event.currentTarget.value
+					})}
 			/>
 		</label>
 		<Button
@@ -3365,7 +3462,10 @@
 <div
 	bind:this={scrollContainer}
 	onscroll={updateTimelineViewport}
-	onpointerdown={startMarquee}
+	onpointerdown={(event) => {
+		clearHoverPreview();
+		startMarquee(event);
+	}}
 	onpointermove={rememberTimelinePointer}
 	onpointerleave={forgetTimelinePointer}
 	onwheel={onTimelineWheel}
@@ -3446,7 +3546,10 @@
 			{@const parentTrack = track.parentTrackId
 				? timelineStore.tracks.find((candidate) => candidate.id === track.parentTrackId)
 				: undefined}
-			{@const resolvedTrack = { ...track, ...effectiveTrackState(track, timelineStore.tracks) }}
+			{@const resolvedTrack = {
+				...track,
+				...effectiveTrackState(track, timelineStore.tracks)
+			}}
 			<div
 				class="relative border-b border-[oklch(0.22_0.01_50)] {resolvedTrack.visible === false ||
 				(track.kind === 'audio' && resolvedTrack.muted)
@@ -3895,6 +3998,25 @@
 					{m.video_editor_snapped_to({
 						time: tickLabel(activeSnapTarget.frame)
 					})}
+				</span>
+			</div>
+		{/if}
+
+		{#if $timelinePreviewScrub.frame !== null}
+			<div
+				class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-white/65"
+				style="left:{timelineX($timelinePreviewScrub.frame)}px"
+				data-timeline-preview-scrubber
+				aria-hidden="true"
+			>
+				<span
+					class="absolute top-1 left-1/2 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-black/70 bg-white"
+				></span>
+				<span
+					class="absolute top-6 left-1/2 -translate-x-1/2 rounded border border-white/20 bg-black/85 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-white shadow-sm"
+					data-timeline-preview-timecode
+				>
+					{formatTimelinePreviewTimecode($timelinePreviewScrub.frame, fps)}
 				</span>
 			</div>
 		{/if}

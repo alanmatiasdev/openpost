@@ -64,7 +64,18 @@ the audit evidence, while the resolution log records later product changes.
   hysteresis, rotation, item alignment, aspect-locked and free resize; a real
   Chromium pointer test covers the visible guide, snapped commit, cleanup, and
   Alt bypass.
-  Current unresolved count: 8.
+- 2026-08-25: gap 11 resolved. Mouse hover publishes a volatile preview frame
+  through one animation-frame-coalesced store without changing the committed
+  playhead. The timeline draws a separate ghost line, handle, and full timecode,
+  while the program monitor resolves transitions, keyframes, effects, stacked
+  blends, subtitles, text motion, video, nested compositions, Lottie, and
+  animated GIF/WebP at that frame. Audio stays on the committed playhead. Hover
+  preview clears on leave, playback, zoom, dialogs, and every edit gesture, and
+  stays disabled for touch and button-down input. Focused store tests and real
+  Chromium component tests cover latest-pointer coalescing, desktop and 320 px
+  layout, playback and touch suppression, monitor rendering, cleanup, and the
+  unchanged committed frame.
+  Current unresolved count: 7.
 
 ## Rows checked with no gap found
 

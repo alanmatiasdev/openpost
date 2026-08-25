@@ -77,6 +77,10 @@
 	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
 	import type { CanvasAnimatedValues } from '$lib/video-editor/preview/on-canvas-tools';
 	import { previewDiagnostics } from '$lib/video-editor/preview/diagnostics.svelte';
+	import {
+		resolveTimelinePreviewFrame,
+		timelinePreviewScrub
+	} from '$lib/video-editor/preview/timeline-preview-scrub';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -92,6 +96,9 @@
 		sequenceStore.activeSequence?.height ?? project?.metadata.height ?? sequenceStore.activeHeight
 	);
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
+	const displayFrame = $derived(
+		resolveTimelinePreviewFrame($timelinePreviewScrub, timelineStore.currentFrame)
+	);
 	const previewRenderScale = $derived(
 		previewPlaybackSettings.previewQuality === 'auto' ? adaptivePreviewQuality.scale : 1
 	);
@@ -132,7 +139,7 @@
 	const sourceProviders = new Map<string, PreviewSourceProvider>();
 	const activeTransition = $derived.by(() => {
 		for (const transition of transitionsStore.list) {
-			const state = transitionAtFrame(transition, timelineStore.currentFrame, editorSession.fps);
+			const state = transitionAtFrame(transition, displayFrame, editorSession.fps);
 			if (state) return state;
 		}
 		return null;
@@ -143,8 +150,7 @@
 				['video', 'image', 'lottie', 'text', 'subtitle', 'shape', 'composition'].includes(
 					item.type
 				) &&
-				((timelineStore.currentFrame >= item.from &&
-					timelineStore.currentFrame < item.from + item.durationInFrames) ||
+				((displayFrame >= item.from && displayFrame < item.from + item.durationInFrames) ||
 					item.id === activeTransition?.outgoing ||
 					item.id === activeTransition?.incoming)
 		)
@@ -178,7 +184,7 @@
 			activeItems.some(
 				(item) =>
 					isNonNormalBlend(item.blendMode) &&
-					(resolveAnimatedItemAt(item, timelineStore.currentFrame, {
+					(resolveAnimatedItemAt(item, displayFrame, {
 						fps: timelineStore.fps,
 						frameWidth: canvasWidth,
 						frameHeight: canvasHeight,
@@ -191,7 +197,7 @@
 	);
 	const selectedResolved = $derived(
 		selectedItem
-			? resolveAnimatedItemAt(selectedItem, timelineStore.currentFrame, {
+			? resolveAnimatedItemAt(selectedItem, displayFrame, {
 					fps: timelineStore.fps,
 					frameWidth: canvasWidth,
 					frameHeight: canvasHeight,
@@ -287,7 +293,7 @@
 		const targets = collectPreviewPrewarmTargets({
 			items: timelineStore.items,
 			tracks: timelineStore.tracks,
-			currentFrame: timelineStore.currentFrame,
+			currentFrame: displayFrame,
 			fps: editorSession.fps
 		});
 		for (const target of targets) {
@@ -362,7 +368,7 @@
 		item: TimelineItem,
 		layers = adjustmentLayers,
 		orders = trackOrderById,
-		frame = timelineStore.currentFrame
+		frame = displayFrame
 	) {
 		return colorPreviewStore.applyEffectDraft(
 			item.id,
@@ -392,6 +398,11 @@
 		});
 	}
 
+	$effect(() => {
+		void displayFrame;
+		scheduleStackFrame();
+	});
+
 	function renderStackFrame(): void {
 		const stack = stackCompositor;
 		const compare = compareCompositor;
@@ -412,7 +423,7 @@
 				projectState.metadata.backgroundColor ?? '#000000'
 			);
 		}
-		const frame = timelineStore.currentFrame;
+		const frame = displayFrame;
 		const resolveVisualItem = (item: TimelineItem, beforeColor: boolean) => {
 			const baseResolved = resolveAnimatedItemAt(item, frame, {
 				fps: timelineStore.fps,
@@ -534,7 +545,9 @@
 		if (!captureRequested && now - lastStackScopeAt < (isPlaying ? 66 : 200)) return;
 		lastStackScopeAt = now;
 		const sample = new OffscreenCanvas(256, 144);
-		const context = sample.getContext('2d', { willReadFrequently: captureRequested });
+		const context = sample.getContext('2d', {
+			willReadFrequently: captureRequested
+		});
 		if (!context) return;
 		try {
 			context.drawImage(canvas, 0, 0, 256, 144);
@@ -1004,6 +1017,7 @@
 				{@const itemMedia = mediaPool.get(item.mediaId ?? '')}
 				<PreviewLayer
 					{item}
+					{displayFrame}
 					url={itemMedia &&
 					shouldUseAutomaticProxy(itemMedia, previewPlaybackSettings.previewQuality) &&
 					proxyUrls[item.mediaId ?? '']

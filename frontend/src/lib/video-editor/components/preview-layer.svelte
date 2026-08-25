@@ -74,6 +74,7 @@
 
 	let {
 		item,
+		displayFrame,
 		url,
 		audioUrl,
 		canvasWidth,
@@ -93,6 +94,7 @@
 		onselect
 	}: {
 		item: TimelineItem;
+		displayFrame?: number;
 		url?: string | null;
 		audioUrl?: string | null;
 		canvasWidth: number;
@@ -113,6 +115,8 @@
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
 	let proxyAudioElement = $state<HTMLAudioElement | null>(null);
+	let syncVideoFrame = $state<(() => void) | null>(null);
+	let videoRevision = $state(0);
 	let proxyFallbackCanvas = $state<HTMLCanvasElement | null>(null);
 	let proxyFallbackVisible = $state(false);
 	let proxyFallbackKind = $state<'initial' | 'seek' | null>(null);
@@ -145,8 +149,9 @@
 	let lastRasterCanvas: HTMLCanvasElement | null = null;
 	let lastRasterKey = '';
 	let lastScopeAt = 0;
+	const visualFrame = $derived(displayFrame ?? timelineStore.currentFrame);
 	const baseResolved = $derived(
-		resolveAnimatedItemAt(item, timelineStore.currentFrame, {
+		resolveAnimatedItemAt(item, visualFrame, {
 			fps: timelineStore.fps,
 			frameWidth: canvasWidth,
 			frameHeight: canvasHeight,
@@ -204,11 +209,7 @@
 								1,
 								(transform.opacity ?? 1) *
 									opacityMultiplier *
-									visualClipFadeOpacityAtFrame(
-										resolved,
-										timelineStore.currentFrame,
-										timelineStore.fps
-									)
+									visualClipFadeOpacityAtFrame(resolved, visualFrame, timelineStore.fps)
 							)
 						)
 			}`,
@@ -233,7 +234,7 @@
 	});
 	const activeSubtitle = $derived(
 		resolved.type === 'subtitle'
-			? selectCuesAtFrame(resolved.cues ?? [], timelineStore.currentFrame)[0]
+			? selectCuesAtFrame(resolved.cues ?? [], visualFrame)[0]
 			: undefined
 	);
 	const basePreviewVolume = $derived(
@@ -362,7 +363,7 @@
 
 	$effect(() => {
 		const video = mediaElement;
-		const frame = timelineStore.currentFrame;
+		const frame = visualFrame;
 		const boundaryFallbackEnd = item.from + Math.ceil(editorSession.fps / 4);
 		if (
 			video &&
@@ -405,6 +406,7 @@
 
 	function handleVideoSettled(): void {
 		clearProxySeekFallback();
+		videoRevision += 1;
 		onsourcechange?.();
 	}
 
@@ -447,10 +449,10 @@
 			resolved.textMotion &&
 			isTextMotionActive(
 				resolved.textMotion,
-				timelineStore.currentFrame - resolved.from,
+				visualFrame - resolved.from,
 				resolved.durationInFrames
 			)
-				? timelineStore.currentFrame
+				? visualFrame
 				: null,
 			resolved.subtitleStyleScale,
 			resolved.shapeType,
@@ -483,7 +485,7 @@
 			renderShapeItemRaster(context, resolved, width, height);
 		} else if (resolved.type === 'text') {
 			renderTextItemRaster(context, resolved, width, height, {
-				absoluteFrame: timelineStore.currentFrame
+				absoluteFrame: visualFrame
 			});
 		} else if (activeSubtitle) {
 			renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
@@ -516,7 +518,7 @@
 				})
 			: null;
 		const sync = () => {
-			const frame = untrack(() => timelineStore.currentFrame);
+			const frame = untrack(() => visualFrame);
 			const speed = item.speed ?? 1;
 			const originalSourceTime = frameToSourceSeconds(item, frame, editorSession.fps);
 			const conform = reverseConform;
@@ -544,17 +546,22 @@
 			if (selected && !needsGpu && !deferEffects)
 				requestAnimationFrame(() => publishScopeSample(video));
 		};
+		syncVideoFrame = sync;
 		sync();
-		const offFrame = editorSession.clock.on('framechange', sync);
 		const offPlay = editorSession.clock.on('play', sync);
 		const offPause = editorSession.clock.on('pause', sync);
 		return () => {
-			offFrame();
 			offPlay();
 			offPause();
+			if (syncVideoFrame === sync) syncVideoFrame = null;
 			videoScheduler.detach();
 			audioScheduler?.detach();
 		};
+	});
+
+	$effect(() => {
+		void visualFrame;
+		syncVideoFrame?.();
 	});
 
 	$effect(() => {
@@ -592,7 +599,7 @@
 		let request = 0;
 		const draw = async () => {
 			const revision = ++request;
-			const frame = untrack(() => timelineStore.currentFrame);
+			const frame = untrack(() => visualFrame);
 			const sourceFps = item.sourceFps ?? composition.fps;
 			const nestedFrame = Math.max(
 				0,
@@ -620,7 +627,7 @@
 	});
 
 	$effect(() => {
-		const frame = timelineStore.currentFrame;
+		const frame = visualFrame;
 		const render = renderCompositionFrame;
 		if (frame >= 0) render?.();
 	});
@@ -697,7 +704,7 @@
 		const renderer = lottieRenderer;
 		const canvas = lottieCanvas;
 		const ready = lottieReadyRevision;
-		const frame = timelineStore.currentFrame;
+		const frame = visualFrame;
 		if (!renderer || !canvas || !ready || item.type !== 'lottie' || !renderer.isLoaded) return;
 		const width = Math.max(1, Math.round(transform.width ?? item.sourceWidth ?? canvasWidth));
 		const height = Math.max(1, Math.round(transform.height ?? item.sourceHeight ?? canvasHeight));
@@ -776,14 +783,13 @@
 		const canvas = animatedCanvas;
 		const frames = animatedFrames;
 		const revision = animatedRevision;
+		const frame = visualFrame;
 		if (!canvas || !frames || revision === 0) return;
 		if (canvas.width !== frames.width) canvas.width = frames.width;
 		if (canvas.height !== frames.height) canvas.height = frames.height;
 		const context = canvas.getContext('2d');
 		if (!context) return;
-		let pendingRaf: number | null = null;
-		const draw = () => {
-			const frame = untrack(() => timelineStore.currentFrame);
+		const pendingRaf = requestAnimationFrame(() => {
 			const bitmap =
 				frames.frames[
 					animatedFrameIndexForItem({
@@ -801,24 +807,9 @@
 			context.drawImage(bitmap, 0, 0);
 			onsourcechange?.();
 			if (selected && !needsGpu && !deferEffects) publishScopeSample(canvas);
-		};
-		draw();
-		const scheduleDraw = () => {
-			if (pendingRaf !== null) return;
-			pendingRaf = requestAnimationFrame(() => {
-				pendingRaf = null;
-				draw();
-			});
-		};
-		const offFrame = editorSession.clock.on('framechange', scheduleDraw);
-		const offPlay = editorSession.clock.on('play', draw);
+		});
 		return () => {
-			offFrame();
-			offPlay();
-			if (pendingRaf !== null) {
-				cancelAnimationFrame(pendingRaf);
-				pendingRaf = null;
-			}
+			cancelAnimationFrame(pendingRaf);
 		};
 	});
 
@@ -914,9 +905,11 @@
 		const revision = rasterRevision;
 		const animationRevision = lottieRevision;
 		const fallbackRevision = proxyFallbackRevision;
+		const settledVideoRevision = videoRevision;
 		const effects = gpuEffects;
 		const itemType = item.type;
 		const blendMode = item.blendMode ?? 'normal';
+		void settledVideoRevision;
 		if (!canvas || !instance || !needsGpu) return;
 		if (['text', 'subtitle', 'shape'].includes(itemType) && revision === 0) return;
 		if (itemType === 'lottie' && animationRevision === 0) return;
@@ -953,7 +946,7 @@
 			const renderWidth = Math.max(1, Math.round(width * previewScale));
 			const renderHeight = Math.max(1, Math.round(height * previewScale));
 			const rendered = instance.render(source, renderWidth, renderHeight, effects, {
-				time: untrack(() => timelineStore.currentFrame) / editorSession.fps,
+				time: untrack(() => visualFrame) / editorSession.fps,
 				blendMode
 			});
 			canvas.hidden = !rendered;
