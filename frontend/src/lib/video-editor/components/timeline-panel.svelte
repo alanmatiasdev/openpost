@@ -3312,19 +3312,22 @@
 										{/each}
 									</div>
 								{/if}
-								{#if editorSettings.showWaveforms && waveformSvgPoints(displayItem)}
-									<svg
-										class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
-										viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"
-										preserveAspectRatio="none"
-									>
-										<polyline
-											points={waveformSvgPoints(displayItem)}
-											fill="none"
-											stroke="oklch(0.85 0.03 120)"
-											stroke-width="0.6"
-										/>
-									</svg>
+								{#if editorSettings.showWaveforms}
+									{@const waveformPoints = waveformSvgPoints(displayItem)}
+									{#if waveformPoints}
+										<svg
+											class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
+											viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"
+											preserveAspectRatio="none"
+										>
+											<polyline
+												points={waveformPoints}
+												fill="none"
+												stroke="oklch(0.85 0.03 120)"
+												stroke-width="0.6"
+											/>
+										</svg>
+									{/if}
 								{/if}
 								<span class="relative z-10 truncate px-2 text-[11px] text-white/90"
 									>{item.label}</span

@@ -35,4 +35,24 @@ describe('peaksForWindow', () => {
 		const peaks = waveform([0.3]);
 		expect(peaksForWindow(peaks, 0, 30, 30, 0).length).toBe(2);
 	});
+
+	it('indexes long ranges and extends the index as progressive chunks arrive', () => {
+		const peaks = new Float32Array(4_096);
+		peaks[1_777] = 0.75;
+		const progressive: WaveformData = {
+			peaks,
+			durationSeconds: peaks.length / 500,
+			samplesPerSecond: 500,
+			loadedSamples: 2_000,
+			isComplete: false
+		};
+		const first = peaksForWindow(progressive, 0, 300, 30, 1);
+		expect(first[1]).toBeCloseTo(0.75);
+
+		peaks[3_333] = 0.95;
+		progressive.loadedSamples = peaks.length;
+		progressive.isComplete = true;
+		const completed = peaksForWindow(progressive, 0, 300, 30, 1);
+		expect(completed[1]).toBeCloseTo(0.95);
+	});
 });
