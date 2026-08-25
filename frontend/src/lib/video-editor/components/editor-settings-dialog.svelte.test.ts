@@ -6,10 +6,12 @@ import { editorSettings } from '../settings/editor-settings.svelte';
 import { keyboardShortcuts } from '../settings/keyboard-shortcuts.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
+import { setLocale } from '$lib/paraglide/runtime';
 import EditorSettingsDialog from './editor-settings-dialog.svelte';
 import '../../../routes/layout.css';
 
 beforeEach(() => {
+	setLocale('en', { reload: false });
 	editorSettings.reset();
 	keyboardShortcuts.resetAll();
 	soundPreferences.reset();
@@ -69,16 +71,46 @@ describe('EditorSettingsDialog shortcuts', () => {
 });
 
 describe('EditorSettingsDialog', () => {
-	it('offers the supported app languages from the editor settings', async () => {
+	it('offers the supported languages and renders the active locale', async () => {
+		setLocale('pt', { reload: false });
 		const screen = await render(EditorSettingsDialog, { open: true });
-		const language = screen.getByRole('combobox', { name: 'Language' });
-		await expect.element(language).toHaveValue('en');
+		const language = screen.getByRole('combobox', { name: 'Idioma' });
+		await expect.element(language).toHaveValue('pt');
 		await expect.element(language.getByRole('option', { name: 'English' })).toBeInTheDocument();
 		await expect.element(language.getByRole('option', { name: 'Español' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: 'Français' })).toBeInTheDocument();
 		await expect.element(language.getByRole('option', { name: 'Deutsch' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: 'Português' })).toBeInTheDocument();
+		await expect
+			.element(language.getByRole('option', { name: 'Português', exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(language.getByRole('option', { name: 'Português do Brasil', exact: true }))
+			.toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: 'Türkçe' })).toBeInTheDocument();
 		await expect.element(language.getByRole('option', { name: '日本語' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: '한국어' })).toBeInTheDocument();
 		await expect.element(language.getByRole('option', { name: '简体中文' })).toBeInTheDocument();
+		await expect
+			.element(screen.getByRole('heading', { name: 'Definições do editor' }))
+			.toBeVisible();
+	});
+
+	it('fits the complete Japanese settings chrome at 320 px', async () => {
+		await page.viewport(320, 720);
+		setLocale('ja', { reload: false });
+		const screen = await render(EditorSettingsDialog, { open: true });
+		const dialog = screen.getByRole('dialog');
+
+		await expect.element(screen.getByRole('heading', { name: 'エディタ設定' })).toBeVisible();
+		await expect.element(screen.getByRole('combobox', { name: '言語' })).toHaveValue('ja');
+		await expect.element(screen.getByRole('button', { name: '一般' })).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'タイムライン' })).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'ローカル AI' })).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'ストレージ' })).toBeVisible();
+		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth
+		);
 	});
 
 	it('fits a phone and applies persistent general, timeline, and AI defaults', async () => {

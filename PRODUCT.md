@@ -33,7 +33,7 @@ The SvelteKit interface is embedded in the Go binary. A standalone Expo mobile a
 - OpenPost Image Editor creates editable, multi-page social images from workspace media, original templates, brand assets, text, and shapes. It exports ordered derivatives back to Media or the active composer without replacing source assets.
 - The web app, typed HTTP API, CLI, and MCP server share authorization and workspace boundaries.
 - Provider capabilities, media limits, review requirements, quotas, and live-account readiness vary. Product copy and UI must preserve those distinctions.
-- The web app supports light and dark themes, English and Portuguese, and responsive browser use. The native mobile app supports light and dark themes and the focused Android workflow described above.
+- The web app supports light and dark themes, ten translated locales, and responsive browser use. The native mobile app supports light and dark themes and the focused Android workflow described above.
 - Self-hosted deployments must remain portable: embedded static assets, configurable storage, SQLite by default, PostgreSQL support, and no hard dependency on an external queue service.
 - OpenPost Image Editor remains a focused still-image editor. Video editing, animation, print color workflows, arbitrary remote assets, and low-level image-editor MCP operations are outside its product scope.
 

@@ -75,7 +75,7 @@ Docs/marketing/legal: docs-site `usage/video-editor.md` rewritten for the new mo
 3. Quick Cut: open file → mark in/out → lossless export verified stream-copied (no re-encode when eligible) → merge segments → send to OpenPost.
 4. Recorder: screen, webcam, audio, combined recordings land in workspace and import into the editor.
 5. Chromium-only gate shows the existing unsupported page elsewhere.
-6. i18n complete in en + pt; ux-consistency bar passes; cuelume sounds on key interactions.
+6. i18n complete in en, es, fr, de, pt, pt-BR, tr, ja, ko, and zh; ux-consistency bar passes; cuelume sounds on key interactions.
 7. Changelog entries under `changes/`.
 
 ## Out of scope (v1)
