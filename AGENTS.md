@@ -48,6 +48,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Video Editor Motion parenting stores bind-space references, resolves parent chains after local animation, links, expressions, and modifiers, and converts direct world-space canvas edits back to child-local values. Controller items participate in transforms but never render. Published composition controls store their schema on the source composition and per-instance overrides on the wrapper; preview and export apply overrides to cloned source items.
 - Video Editor color comparison and pickers use `colorPreviewStore` as preview-only state; export always reads the persisted full effect stack, and grade presets clone color-category GPU effects instead of sharing mutable params.
 - Video Editor keyboard commands use the closed catalog in `settings/keyboard-shortcuts.ts`; page and timeline handlers resolve saved bindings by command ID and must not add hardcoded key comparisons.
+- Video Editor interface sounds use `soundPreferences` as the only Cuelume owner and semantic tokens through `sounds/editor-sounds.ts`; suppress normal cues during preview playback and remove generic control cues when an outcome cue owns the same gesture.
 
 ## Reference repositories
 

@@ -37,6 +37,7 @@
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import {
 		editorShortcutTargetIsDisabled,
@@ -1421,6 +1422,7 @@
 	}
 
 	function selectItem(event: MouseEvent, id: string): void {
+		const previousPrimaryId = selectedItemId;
 		selectedTransitionId = null;
 		const selection = updateTimelineItemSelection(
 			timelineStore.items,
@@ -1431,6 +1433,9 @@
 		);
 		selectedItemIds = selection.ids;
 		selectedItemId = selection.primaryId;
+		if (selectedItemId !== previousPrimaryId) {
+			emitEditorSound('select', editorSession.clock.isPlaying);
+		}
 	}
 
 	function linkSelection(): void {
@@ -2084,8 +2089,31 @@
 		activeEditTool = activeEditTool === tool ? null : tool;
 	}
 
-	function editTrack(action: () => boolean): void {
-		if (action()) onedit();
+	function toggleSnap(): void {
+		const enabled = !timelineStore.snapEnabled;
+		timelineStore._setSnapEnabled(enabled);
+		emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
+	}
+
+	function toggleAudioSkimming(): void {
+		previewPlaybackSettings.toggleAudioSkimming();
+		if (!previewPlaybackSettings.audioSkimmingEnabled) audioSkimController.stop();
+		emitEditorSound(
+			previewPlaybackSettings.audioSkimmingEnabled ? 'toggleOn' : 'toggleOff',
+			editorSession.clock.isPlaying
+		);
+	}
+
+	function toggleLinkedSelection(): void {
+		const enabled = !timelineStore.linkedSelectionEnabled;
+		timelineStore._setLinkedSelectionEnabled(enabled);
+		emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
+	}
+
+	function editTrack(action: () => boolean, sound?: 'toggleOn' | 'toggleOff'): void {
+		if (!action()) return;
+		onedit();
+		if (sound) emitEditorSound(sound, editorSession.clock.isPlaying);
 	}
 
 	function deleteTrack(trackId: string): void {
@@ -2653,7 +2681,7 @@
 			title={timelineStore.snapEnabled
 				? m.video_editor_snap_disable()
 				: m.video_editor_snap_enable()}
-			onclick={() => timelineStore._setSnapEnabled(!timelineStore.snapEnabled)}
+			onclick={toggleSnap}
 		>
 			<MagnetIcon class="size-3.5" />
 		</Button>
@@ -2667,10 +2695,7 @@
 				? m.video_editor_audio_skimming_disable()
 				: m.video_editor_audio_skimming_enable()}
 			title={m.video_editor_audio_skimming_hint()}
-			onclick={() => {
-				previewPlaybackSettings.toggleAudioSkimming();
-				if (!previewPlaybackSettings.audioSkimmingEnabled) audioSkimController.stop();
-			}}
+			onclick={toggleAudioSkimming}
 		>
 			<AudioLinesIcon class="size-3.5" />
 		</Button>
@@ -2684,8 +2709,7 @@
 				? m.video_editor_linked_selection_disable()
 				: m.video_editor_linked_selection_enable()}
 			title={m.video_editor_linked_selection_hint()}
-			onclick={() =>
-				timelineStore._setLinkedSelectionEnabled(!timelineStore.linkedSelectionEnabled)}
+			onclick={toggleLinkedSelection}
 		>
 			<Link2Icon class="size-3.5" />
 		</Button>
@@ -3119,11 +3143,22 @@
 						onmoveup={() => editTrack(() => moveTrack(track.id, -1))}
 						onmovedown={() => editTrack(() => moveTrack(track.id, 1))}
 						onrename={(name) => editTrack(() => renameTrack(track.id, name))}
-						onvisibility={() => editTrack(() => toggleTrackVisibility(track.id))}
-						onmute={() => editTrack(() => toggleTrackMute(track.id))}
-						onsolo={() => editTrack(() => toggleTrackSolo(track.id))}
-						onlock={() => editTrack(() => toggleTrackLock(track.id))}
-						onsynclock={() => editTrack(() => toggleTrackSyncLock(track.id))}
+						onvisibility={() =>
+							editTrack(
+								() => toggleTrackVisibility(track.id),
+								track.visible === false ? 'toggleOn' : 'toggleOff'
+							)}
+						onmute={() =>
+							editTrack(() => toggleTrackMute(track.id), track.muted ? 'toggleOff' : 'toggleOn')}
+						onsolo={() =>
+							editTrack(() => toggleTrackSolo(track.id), track.solo ? 'toggleOff' : 'toggleOn')}
+						onlock={() =>
+							editTrack(() => toggleTrackLock(track.id), track.locked ? 'toggleOff' : 'toggleOn')}
+						onsynclock={() =>
+							editTrack(
+								() => toggleTrackSyncLock(track.id),
+								track.syncLock ? 'toggleOff' : 'toggleOn'
+							)}
 						ondelete={() => deleteTrack(track.id)}
 					/>
 				</div>

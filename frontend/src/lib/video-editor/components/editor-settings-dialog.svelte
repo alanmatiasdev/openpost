@@ -4,6 +4,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import {
+		INTERFACE_SOUND_THEMES,
+		soundPreferences,
+		type InterfaceSoundTheme
+	} from '$lib/stores/sound-preferences.svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
 	import KeyboardIcon from '@lucide/svelte/icons/keyboard';
@@ -40,6 +45,7 @@
 	} from '$lib/video-editor/transcript/engine/types';
 	import LocalModelCacheControl from './local-model-cache-control.svelte';
 	import KeyboardShortcutEditor from './keyboard-shortcut-editor.svelte';
+	import { previewEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 
 	type Section = 'general' | 'timeline' | 'shortcuts' | 'ai' | 'storage';
 	type StorageAction = 'cache' | 'thumbnails' | 'generate-proxies' | 'delete-proxies';
@@ -87,10 +93,22 @@
 
 	function resetSettings(): void {
 		editorSettings.reset();
+		soundPreferences.reset();
 		editorSession.configurePeriodicAutosave();
 		timelineStore._setSnapEnabled(editorSettings.snapByDefault);
 		timelineStore._setMaxUndoHistory(editorSettings.maxUndoHistory);
 		feedback = { tone: 'success', text: m.video_editor_settings_reset_done() };
+	}
+
+	function soundThemeLabel(theme: InterfaceSoundTheme): string {
+		if (theme === 'velvet') return m.video_editor_settings_sound_theme_velvet();
+		if (theme === 'crisp') return m.video_editor_settings_sound_theme_crisp();
+		return m.video_editor_settings_sound_theme_signature();
+	}
+
+	function setSoundTheme(theme: InterfaceSoundTheme): void {
+		soundPreferences.setTheme(theme);
+		previewEditorSound(theme);
 	}
 
 	function progressLabel(value: MaintenanceProgress): string {
@@ -177,6 +195,7 @@
 						class="flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-left text-xs text-[var(--video-editor-muted)] hover:bg-[oklch(0.21_0.012_50)] hover:text-[var(--video-editor-text)] focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)] data-[active=true]:bg-[oklch(0.26_0.025_50)] data-[active=true]:text-[var(--video-editor-focus)]"
 						data-active={section === item.id}
 						aria-current={section === item.id ? 'page' : undefined}
+						data-cuelume-toggle="tick"
 						onclick={() => (section = item.id)}
 					>
 						<Icon class="size-3.5" aria-hidden="true" />
@@ -213,6 +232,7 @@
 									aria-label={m.video_editor_settings_periodic_autosave()}
 									class="relative h-5 w-9 shrink-0 rounded-full bg-[oklch(0.28_0.012_55)] transition-colors data-[checked=true]:bg-[var(--video-editor-focus)]"
 									data-checked={editorSettings.autoSaveIntervalMinutes > 0}
+									data-cuelume-toggle="toggle"
 									onclick={() => setPeriodicAutosave(editorSettings.autoSaveIntervalMinutes === 0)}
 								>
 									<span
@@ -242,6 +262,78 @@
 										ariaLabel={m.video_editor_settings_autosave_interval()}
 										onValueChange={setPeriodicAutosaveInterval}
 									/>
+								</div>
+							{/if}
+						</div>
+						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
+							<div class="flex items-center justify-between gap-4">
+								<div>
+									<p class="text-sm font-medium">
+										{m.video_editor_settings_interface_sounds()}
+									</p>
+									<p class="mt-0.5 text-xs text-[var(--video-editor-muted)]">
+										{m.video_editor_settings_interface_sounds_description()}
+									</p>
+								</div>
+								<button
+									type="button"
+									role="switch"
+									aria-checked={soundPreferences.enabled}
+									aria-label={m.video_editor_settings_interface_sounds()}
+									class="relative h-6 w-11 shrink-0 rounded-full bg-[oklch(0.3_0.014_55)] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)] data-[checked=true]:bg-[var(--video-editor-focus)]"
+									data-checked={soundPreferences.enabled}
+									onclick={() => soundPreferences.setEnabled(!soundPreferences.enabled)}
+								>
+									<span
+										class="absolute top-1 left-1 size-4 rounded-full bg-white transition-transform data-[checked=true]:translate-x-5"
+										data-checked={soundPreferences.enabled}
+									></span>
+								</button>
+							</div>
+							{#if soundPreferences.enabled}
+								<div class="mt-4 space-y-4 border-t border-[oklch(0.27_0.014_55)] pt-4">
+									<div>
+										<div class="flex items-center justify-between gap-3 text-xs">
+											<span>{m.video_editor_settings_sound_volume()}</span>
+											<span class="text-[var(--video-editor-muted)] tabular-nums">
+												{Math.round(soundPreferences.volume * 100)}%
+											</span>
+										</div>
+										<Slider
+											class="mt-3"
+											min={0}
+											max={1}
+											step={0.05}
+											value={soundPreferences.volume}
+											ariaLabel={m.video_editor_settings_sound_volume()}
+											onValueChange={(value) => soundPreferences.setVolume(value)}
+											onValueCommit={() => previewEditorSound(soundPreferences.theme)}
+										/>
+									</div>
+									<div class="flex flex-wrap items-end justify-between gap-3">
+										<label class="min-w-40 flex-1 text-xs text-[var(--video-editor-muted)]">
+											{m.video_editor_settings_sound_theme()}
+											<select
+												class="mt-1 h-9 w-full rounded-md border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_55)] px-2 text-xs text-white focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)]"
+												value={soundPreferences.theme}
+												onchange={(event) =>
+													setSoundTheme(event.currentTarget.value as InterfaceSoundTheme)}
+											>
+												{#each INTERFACE_SOUND_THEMES as theme (theme)}
+													<option value={theme}>{soundThemeLabel(theme)}</option>
+												{/each}
+											</select>
+										</label>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											data-cuelume-toggle={undefined}
+											onclick={() => previewEditorSound(soundPreferences.theme)}
+										>
+											{m.video_editor_settings_sound_preview()}
+										</Button>
+									</div>
 								</div>
 							{/if}
 						</div>
@@ -290,6 +382,7 @@
 									aria-label={setting.label}
 									class="relative h-6 w-11 shrink-0 rounded-full bg-[oklch(0.3_0.014_55)] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)] data-[checked=true]:bg-[var(--video-editor-focus)]"
 									data-checked={setting.value}
+									data-cuelume-toggle="toggle"
 									onclick={() => setBoolean(setting.key, !setting.value)}
 								>
 									<span

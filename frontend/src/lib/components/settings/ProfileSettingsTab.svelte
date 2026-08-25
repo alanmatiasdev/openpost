@@ -430,6 +430,7 @@
 		>
 			<Checkbox
 				id="personal-interface-sounds"
+				data-cuelume-toggle={undefined}
 				checked={soundPreferences.enabled}
 				onCheckedChange={(checked) => soundPreferences.setEnabled(checked)}
 			/>

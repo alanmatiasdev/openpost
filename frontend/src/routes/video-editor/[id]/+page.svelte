@@ -94,6 +94,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		type EditorShortcutId
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -160,7 +161,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	function handleSplit(): void {
-		splitAtFrame(timelineStore.currentFrame, undefined);
+		const result = splitAtFrame(timelineStore.currentFrame, undefined);
+		emitEditorSound(result.right.length > 0 ? 'confirm' : 'error', editorSession.clock.isPlaying);
+		if (result.right.length === 0) return;
 		editorSession.scheduleAutosave();
 	}
 
@@ -209,6 +212,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			? rippleDeleteItems(ids, timelineStore.linkedSelectionEnabled)
 			: removeItems(ids, timelineStore.linkedSelectionEnabled);
 		if (removedIds.length === 0) return;
+		emitEditorSound('delete', editorSession.clock.isPlaying);
 		selectedItemId = null;
 		selectedItemIds = [];
 		editorSession.scheduleAutosave();
@@ -224,6 +228,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		if (workspace === editorWorkspace.current) return;
 		editorSession.pausePlayback();
 		editorWorkspace.set(workspace);
+		emitEditorSound('select', false);
 	}
 
 	function handleOpenSequence(compositionId: string): void {
@@ -651,10 +656,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			setCurrentFrame(frame);
 		} else if (matches('TOGGLE_LINKED_SELECTION')) {
 			event.preventDefault();
-			timelineStore._setLinkedSelectionEnabled(!timelineStore.linkedSelectionEnabled);
+			const enabled = !timelineStore.linkedSelectionEnabled;
+			timelineStore._setLinkedSelectionEnabled(enabled);
+			emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
 		} else if (matches('TOGGLE_SNAP')) {
 			event.preventDefault();
-			timelineStore._setSnapEnabled(!timelineStore.snapEnabled);
+			const enabled = !timelineStore.snapEnabled;
+			timelineStore._setSnapEnabled(enabled);
+			emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
 		} else if (
 			matches('DELETE_SELECTED', 'DELETE_SELECTED_ALT', 'RIPPLE_DELETE', 'RIPPLE_DELETE_ALT')
 		) {
@@ -900,7 +909,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							>
 								{m.video_editor_tools()}
 							</h2>
-							<Button size="sm" variant="outline" disabled={!selectedItemId} onclick={handleSplit}>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={!selectedItemId}
+								data-cuelume-toggle={undefined}
+								onclick={handleSplit}
+							>
 								{m.video_editor_split()}
 							</Button>
 							<Button
@@ -908,6 +923,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								variant="outline"
 								disabled={!selectedItemId}
 								title={m.video_editor_delete_leave_gap_hint()}
+								data-cuelume-toggle={undefined}
 								onclick={() => handleDelete(false)}
 							>
 								{m.video_editor_delete_leave_gap()}
@@ -917,6 +933,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								variant="outline"
 								disabled={!selectedItemId}
 								title={m.video_editor_ripple_delete_hint()}
+								data-cuelume-toggle={undefined}
 								onclick={() => handleDelete(true)}
 							>
 								{m.video_editor_ripple_delete()}

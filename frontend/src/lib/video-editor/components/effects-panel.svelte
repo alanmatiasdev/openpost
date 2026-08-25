@@ -80,6 +80,8 @@
 		resolveAnimatedEffectsAt
 	} from '$lib/video-editor/effects/effect-keyframes';
 	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
+	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 
 	let {
 		itemId,
@@ -460,8 +462,10 @@
 
 	function toggleStackEffect(effect: ItemEffect): void {
 		if (!itemId) return;
-		if (setEffectEnabledOnItems(itemId, selectedEffectItemIds, effect.id, !effect.enabled))
+		if (setEffectEnabledOnItems(itemId, selectedEffectItemIds, effect.id, !effect.enabled)) {
 			onedit();
+			emitEditorSound(effect.enabled ? 'toggleOff' : 'toggleOn', editorSession.clock.isPlaying);
+		}
 	}
 
 	function resetStackEffect(effectId: string): void {
@@ -471,7 +475,10 @@
 
 	function removeStackEffect(effectId: string): void {
 		if (!itemId) return;
-		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId)) onedit();
+		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId)) {
+			onedit();
+			emitEditorSound('delete', editorSession.clock.isPlaying);
+		}
 	}
 </script>
 

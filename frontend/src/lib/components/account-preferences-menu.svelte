@@ -241,6 +241,7 @@
 </DropdownMenu.Sub>
 <DropdownMenu.CheckboxItem
 	class={menuItemClass}
+	data-cuelume-toggle={undefined}
 	checked={soundPreferences.enabled}
 	onCheckedChange={(checked) => soundPreferences.setEnabled(checked)}
 >

@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { mediaPool } from '../media/pool.svelte';
 import { editorSettings } from '../settings/editor-settings.svelte';
 import { keyboardShortcuts } from '../settings/keyboard-shortcuts.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 import EditorSettingsDialog from './editor-settings-dialog.svelte';
 import '../../../routes/layout.css';
 
 beforeEach(() => {
 	editorSettings.reset();
 	keyboardShortcuts.resetAll();
+	soundPreferences.reset();
 	mediaPool.clear();
 	timelineStore.__resetForTesting();
 });
@@ -74,8 +76,27 @@ describe('EditorSettingsDialog', () => {
 
 		await expect.element(dialog).toBeVisible();
 		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
+		await expect
+			.element(screen.getByRole('button', { name: 'General' }))
+			.toHaveAttribute('data-cuelume-toggle', 'tick');
+		const interfaceSounds = screen.getByRole('switch', { name: 'Interface sounds' });
+		await expect.element(interfaceSounds).toHaveAttribute('aria-checked', 'false');
+		await expect.element(interfaceSounds).not.toHaveAttribute('data-cuelume-toggle');
+		await userEvent.click(interfaceSounds.element());
+		expect(soundPreferences.enabled).toBe(true);
+		await expect.element(screen.getByRole('slider', { name: 'Sound volume' })).toBeVisible();
+		await screen.getByRole('combobox', { name: 'Sound theme' }).selectOptions('crisp');
+		expect(soundPreferences.theme).toBe('crisp');
+		await expect
+			.element(screen.getByRole('button', { name: 'Preview sound' }))
+			.not.toHaveAttribute('data-cuelume-toggle');
+		interfaceSounds.element().focus();
+		await userEvent.keyboard('{Enter}');
+		expect(soundPreferences.enabled).toBe(false);
+
 		const periodicSave = screen.getByRole('switch', { name: 'Periodic safety save' });
 		await expect.element(periodicSave).toHaveAttribute('aria-checked', 'true');
+		await expect.element(periodicSave).toHaveAttribute('data-cuelume-toggle', 'toggle');
 		await expect.element(screen.getByRole('slider', { name: 'Safety interval' })).toBeVisible();
 		await periodicSave.click();
 		expect(editorSettings.autoSaveIntervalMinutes).toBe(0);
