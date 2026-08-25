@@ -210,7 +210,7 @@ describe('MotionPresetsPanel', () => {
 		expect(
 			screen.getByText('Keep authored diamonds and add only frames that are still free.')
 		).toBeVisible();
-		await screen.getByRole('button', { name: 'Add Fade in' }).click();
+		await screen.getByRole('button', { name: 'Add Fade in', exact: true }).click();
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get('one')?.keyframes?.opacity).toMatchObject({
 				frames: [0, 15],
