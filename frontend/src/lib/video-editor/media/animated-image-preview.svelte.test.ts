@@ -106,8 +106,12 @@ async function mount(item: TimelineItem): Promise<HTMLCanvasElement> {
 function centerColor(canvas: HTMLCanvasElement): string {
 	const context = canvas.getContext('2d');
 	if (!context || canvas.width === 0) return 'empty';
-	const data = context.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1)
-		.data;
+	const data = context.getImageData(
+		Math.floor(canvas.width / 2),
+		Math.floor(canvas.height / 2),
+		1,
+		1
+	).data;
 	const [r, g, b] = [data[0]!, data[1]!, data[2]!];
 	if (r > 150 && g < 120) return 'red';
 	if (g > 100 && r < 120) return 'green';
@@ -142,13 +146,15 @@ describe('PreviewLayer animated image frames', () => {
 		const { item } = await animatedImageItem({ isReversed: true });
 		const canvas = await mount(item);
 
-		await vi.waitFor(() => expect(centerColor(canvas)).toBe('red'));
-		// Reversed reads the animation clock backward: frame 7 maps forward to
-		// ~233ms so it plays at 67ms (red), frame 15 at 100ms (green).
+		// Reverse starts at the exclusive end of the loop, so the first visible
+		// frame is the final blue bucket rather than the first red bucket.
+		await vi.waitFor(() => expect(centerColor(canvas)).toBe('blue'));
+		// Frame 7 advances about 233ms backward and lands in the red bucket.
 		editorSession.clock.seek(7);
 		await vi.waitFor(() => expect(centerColor(canvas)).toBe('red'));
+		// Frame 15 advances 500ms, which loops to the red bucket at 200ms.
 		editorSession.clock.seek(15);
-		await vi.waitFor(() => expect(centerColor(canvas)).toBe('green'));
+		await vi.waitFor(() => expect(centerColor(canvas)).toBe('red'));
 	});
 
 	it('honors item speed while looping', async () => {

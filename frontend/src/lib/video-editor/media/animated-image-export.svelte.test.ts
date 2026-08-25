@@ -94,7 +94,6 @@ async function pngCenterColor(frameBlob: Blob): Promise<string> {
 	return `unknown(${r},${g},${b})`;
 }
 
-
 describe('animated image export and still capture', () => {
 	it('captures the correct animation frame for stills at any playhead position', async () => {
 		const { project } = await buildProject();
@@ -109,9 +108,10 @@ describe('animated image export and still capture', () => {
 		const fast = await buildProject({ speed: 2 });
 		expect(await pngCenterColor(await renderTimelineFrame(fast.project, 15))).toBe('green');
 
-		// Reversed at frame 15 reads the clock backward: 300 - 200 = 100ms green.
+		// Reversed at frame 15 has advanced 500ms. The 300ms loop leaves 200ms
+		// elapsed backward from the exclusive end, which is the red bucket.
 		const reversed = await buildProject({ isReversed: true });
-		expect(await pngCenterColor(await renderTimelineFrame(reversed.project, 15))).toBe('green');
+		expect(await pngCenterColor(await renderTimelineFrame(reversed.project, 15))).toBe('red');
 	});
 
 	it('renders a composed video where animation timing survives end to end', async () => {

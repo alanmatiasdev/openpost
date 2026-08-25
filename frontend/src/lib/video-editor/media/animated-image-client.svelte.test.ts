@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { animatedImageCache } from './animated-image-client';
 import type { AnimatedImageFrames } from './animated-image-client';
 import { animatedFrameIndexAtTime } from './animated-image-plan';
-import {
-	loadAnimatedImage,
-	removeAnimatedImage
-} from './animated-image-persistence';
+import { loadAnimatedImage, removeAnimatedImage } from './animated-image-persistence';
 import animatedGifUrl from './fixtures/animated-rgb.gif?url';
 import animatedWebpUrl from './fixtures/animated-rgb.webp?url';
 import type { MediaMetadata } from './types';
@@ -74,9 +71,9 @@ describe('animated image frame cache', () => {
 			expect(animatedFrameIndexAtTime(frames.cumulativeDelaysMs, frames.totalDurationMs, 50)).toBe(
 				0
 			);
-			expect(
-				animatedFrameIndexAtTime(frames.cumulativeDelaysMs, frames.totalDurationMs, 250)
-			).toBe(2);
+			expect(animatedFrameIndexAtTime(frames.cumulativeDelaysMs, frames.totalDurationMs, 250)).toBe(
+				2
+			);
 
 			// A second request resolves from the memory cache without re-extracting.
 			const again = await animatedImageCache.getAnimatedImage(media);
