@@ -10,8 +10,10 @@ import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelt
 import { transitionsStore } from './transitions-store.svelte';
 import { editorKeyframes } from '../keyframe-editor';
 import { buildEffectKeyframeProperty } from '../../effects/effect-keyframes';
+import { createDefaultTracks } from '../../project/defaults';
 import {
 	activeValueAt,
+	clearKeyframesForItems,
 	createPositionSpatialTangents,
 	duplicateKeyframes,
 	insertKeyframes,
@@ -242,6 +244,97 @@ describe('removeKeyframe', () => {
 		setKeyframe('a', 'volume', 5, 1);
 		expect(removeKeyframe('a', 'volume', 6)).toBe(false);
 		expect(commandHistory.undoStack.length).toBe(1);
+	});
+});
+
+describe('clearKeyframesForItems', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		commandHistory.clearHistory();
+		keyframeSelectionStore.clear();
+		const tracks = createDefaultTracks();
+		timelineStore._setTracks(
+			tracks.map((track) =>
+				track.id === 'track-video-overlay' ? { ...track, locked: true } : track
+			)
+		);
+		timelineStore._setItems([
+			{
+				id: 'first',
+				trackId: 'track-video-main',
+				from: 0,
+				durationInFrames: 60,
+				label: 'First',
+				type: 'video',
+				keyframes: {
+					opacity: { frames: [0, 30], values: [0, 1] },
+					rotation: { frames: [10], values: [15] }
+				},
+				vectorKeyframes: {
+					position: [
+						{ id: 'p0', frame: 0, value: { x: 0, y: 0 }, easing: 'linear' },
+						{ id: 'p1', frame: 30, value: { x: 100, y: 50 }, easing: 'linear' }
+					]
+				}
+			},
+			{
+				id: 'second',
+				trackId: 'track-video-main',
+				from: 60,
+				durationInFrames: 60,
+				label: 'Second',
+				type: 'video',
+				keyframes: { opacity: { frames: [0, 20, 40], values: [1, 0.5, 1] } }
+			},
+			{
+				id: 'locked',
+				trackId: 'track-video-overlay',
+				from: 0,
+				durationInFrames: 60,
+				label: 'Locked',
+				type: 'video',
+				keyframes: { opacity: { frames: [0], values: [1] } }
+			}
+		]);
+	});
+
+	it('clears one scalar lane across the selection in one undo step and skips locks', () => {
+		keyframeSelectionStore.replace('first', ['legacy:opacity:0:0']);
+		const result = clearKeyframesForItems(['first', 'second', 'locked'], 'opacity');
+
+		expect(result).toEqual({
+			changedItemIds: ['first', 'second'],
+			lockedItemIds: ['locked'],
+			keyframesRemoved: 5
+		});
+		expect(getItem('first').keyframes?.opacity).toBeUndefined();
+		expect(getItem('first').keyframes?.rotation?.frames).toEqual([10]);
+		expect(getItem('first').vectorKeyframes?.position).toHaveLength(2);
+		expect(getItem('second').keyframes).toBeUndefined();
+		expect(getItem('locked').keyframes?.opacity?.frames).toEqual([0]);
+		expect(keyframeSelectionStore.ids.size).toBe(0);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		commandHistory.undo();
+		expect(getItem('first').keyframes?.opacity?.frames).toEqual([0, 30]);
+		expect(getItem('second').keyframes?.opacity?.frames).toEqual([0, 20, 40]);
+	});
+
+	it('clears a coupled vector lane without deleting scalar animation', () => {
+		const result = clearKeyframesForItems(['first'], 'position');
+		expect(result.keyframesRemoved).toBe(2);
+		expect(getItem('first').vectorKeyframes).toBeUndefined();
+		expect(getItem('first').keyframes?.opacity?.frames).toEqual([0, 30]);
+		expect(commandHistory.getLastCommandType()).toBe('CLEAR_KEYFRAMES_FOR_ITEMS');
+	});
+
+	it('clears every scalar and vector lane while counting vector points once', () => {
+		const result = clearKeyframesForItems(['first', 'second']);
+		expect(result.keyframesRemoved).toBe(8);
+		expect(getItem('first').keyframes).toBeUndefined();
+		expect(getItem('first').vectorKeyframes).toBeUndefined();
+		expect(getItem('second').keyframes).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });
 

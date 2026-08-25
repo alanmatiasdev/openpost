@@ -46,6 +46,7 @@ import {
 	vectorPropertyKeyframesPatch,
 	vectorKeyframesPatch
 } from '../vector-keyframes';
+import { isTrackEffectivelyLocked } from '../utils/track-groups';
 import {
 	effectPropertyPatch,
 	isEffectKeyframeProperty
@@ -71,6 +72,19 @@ export interface KeyframeInsert {
 	easingConfig?: EasingConfig;
 	vectorGroupId?: string;
 	spatial?: SpatialBezierTangents;
+}
+
+export type KeyframeClearProperty = KeyframeProperty | VectorKeyframeProperty;
+
+export interface KeyframeClearOption {
+	property: KeyframeClearProperty;
+	keyframeCount: number;
+}
+
+export interface ClearKeyframesResult {
+	changedItemIds: string[];
+	lockedItemIds: string[];
+	keyframesRemoved: number;
 }
 
 function canWriteKeyframe(item: TimelineItem, relativeFrame: number): boolean {
@@ -735,6 +749,83 @@ function cloneEasingConfig(config: EasingConfig | null): EasingConfig | null {
 		...(config.bezier && { bezier: { ...config.bezier } }),
 		...(config.spring && { spring: { ...config.spring } })
 	};
+}
+
+/** List every stored animation lane that can be cleared from an item. */
+export function keyframeClearOptions(item: TimelineItem): KeyframeClearOption[] {
+	const options: KeyframeClearOption[] = [];
+	for (const [rawProperty, track] of Object.entries(item.keyframes ?? {})) {
+		if (!track || track.frames.length === 0) continue;
+		// SAFETY: ItemKeyframes only permits KeyframeProperty keys.
+		const property = rawProperty as KeyframeProperty;
+		options.push({ property, keyframeCount: track.frames.length });
+	}
+	for (const property of ['position', 'scale', 'anchor'] as const) {
+		const keyframeCount = item.vectorKeyframes?.[property]?.length ?? 0;
+		if (keyframeCount > 0) options.push({ property, keyframeCount });
+	}
+	return options;
+}
+
+/** Count stored keys, counting a coupled vector point once rather than once per axis. */
+export function keyframeCountForClear(
+	item: TimelineItem,
+	property?: KeyframeClearProperty
+): number {
+	const options = keyframeClearOptions(item);
+	return options
+		.filter((option) => property === undefined || option.property === property)
+		.reduce((total, option) => total + option.keyframeCount, 0);
+}
+
+/** Clear all animation or one lane across a selection as one undoable command. */
+export function clearKeyframesForItems(
+	itemIds: readonly string[],
+	property?: KeyframeClearProperty
+): ClearKeyframesResult {
+	return execute('CLEAR_KEYFRAMES_FOR_ITEMS', () => {
+		const changedItemIds: string[] = [];
+		const lockedItemIds: string[] = [];
+		let keyframesRemoved = 0;
+		const updates: Array<{ id: string; patch: Partial<TimelineItem> }> = [];
+		for (const itemId of new Set(itemIds)) {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item) continue;
+			if (isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) {
+				if (keyframeCountForClear(item, property) > 0) lockedItemIds.push(itemId);
+				continue;
+			}
+			const count = keyframeCountForClear(item, property);
+			if (count === 0) continue;
+			updates.push({ id: itemId, patch: clearKeyframePatch(item, property) });
+			changedItemIds.push(itemId);
+			keyframesRemoved += count;
+		}
+		if (updates.length > 0) {
+			timelineStore._updateItems(updates);
+			keyframeSelectionStore.clear();
+		}
+		return { changedItemIds, lockedItemIds, keyframesRemoved };
+	});
+}
+
+function clearKeyframePatch(
+	item: TimelineItem,
+	property?: KeyframeClearProperty
+): Partial<TimelineItem> {
+	if (property === undefined) {
+		return { keyframes: undefined, vectorKeyframes: undefined };
+	}
+	if (property === 'position' || property === 'scale' || property === 'anchor') {
+		const vectorKeyframes = { ...item.vectorKeyframes };
+		delete vectorKeyframes[property];
+		return {
+			vectorKeyframes: Object.keys(vectorKeyframes).length > 0 ? vectorKeyframes : undefined
+		};
+	}
+	const keyframes: ItemKeyframes = { ...item.keyframes };
+	delete keyframes[property];
+	return { keyframes: Object.keys(keyframes).length > 0 ? keyframes : undefined };
 }
 
 /** Remove an arbitrary selection as one undo step. */

@@ -71,9 +71,11 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import {
 		activeValueAt,
+		keyframeClearOptions,
 		setKeyframe,
 		setKeyframeEasing
 	} from '$lib/video-editor/timeline/actions/keyframes';
+	import type { KeyframeClearProperty } from '$lib/video-editor/timeline/actions/keyframes';
 	import type {
 		EasingConfig,
 		EasingType,
@@ -175,6 +177,7 @@
 	import TimelineTrackHeader from './timeline-track-header.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import BentoLayoutDialog from './bento-layout-dialog.svelte';
+	import ClearKeyframesDialog from './clear-keyframes-dialog.svelte';
 	import { eligibleBentoItemIds } from '$lib/video-editor/timeline/actions/bento-layout';
 	import TimelineVoiceoverOverlay from './timeline-voiceover-overlay.svelte';
 	import {
@@ -258,6 +261,7 @@
 	let deleteGroupTarget = $state<{ id: string; name: string; trackCount: number } | null>(null);
 	let deleteGroupDialogOpen = $state(false);
 	let bentoLayoutOpen = $state(false);
+	let clearKeyframesDialogOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
@@ -1638,6 +1642,9 @@
 		} else if (matches('JOIN_ITEMS')) {
 			event.preventDefault();
 			joinSelection();
+		} else if (matches('CLEAR_KEYFRAMES')) {
+			event.preventDefault();
+			openClearKeyframesDialog();
 		} else if (matches('RATE_STRETCH_TOOL')) {
 			event.preventDefault();
 			toggleEditTool('rate-stretch');
@@ -2441,6 +2448,42 @@
 	const selectedItem = $derived(
 		selectedItemId ? timelineStore.itemById.get(selectedItemId) : undefined
 	);
+	const clearKeyframeDialogOptions = $derived.by(() => {
+		const grouped = new Map<
+			KeyframeClearProperty,
+			{ value: KeyframeClearProperty; label: string; keyframeCount: number }
+		>();
+		for (const itemId of selectedItemIds) {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item || isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) continue;
+			for (const option of keyframeClearOptions(item)) {
+				const current = grouped.get(option.property);
+				if (current) {
+					current.keyframeCount += option.keyframeCount;
+					continue;
+				}
+				grouped.set(option.property, {
+					value: option.property,
+					label: clearKeyframePropertyLabel(item, option.property),
+					keyframeCount: option.keyframeCount
+				});
+			}
+		}
+		return [...grouped.values()].toSorted((left, right) => left.label.localeCompare(right.label));
+	});
+	const lockedAnimatedSelectionCount = $derived(
+		selectedItemIds.filter((itemId) => {
+			const item = timelineStore.itemById.get(itemId);
+			return (
+				item !== undefined &&
+				isTrackEffectivelyLocked(item.trackId, timelineStore.tracks) &&
+				keyframeClearOptions(item).length > 0
+			);
+		}).length
+	);
+	const clearableKeyframeCount = $derived(
+		clearKeyframeDialogOptions.reduce((total, option) => total + option.keyframeCount, 0)
+	);
 	const canLinkSelectedItems = $derived(canLinkSelection(timelineStore.items, selectedItemIds));
 	const canUnlinkSelectedItems = $derived(
 		selectedItemIds.some((id) => timelineStore.itemById.get(id)?.linkedGroupId !== undefined)
@@ -2635,6 +2678,19 @@
 			(selectedItem && effectPropertyLabel(selectedItem, property)) ??
 			(selectedItem ? editorPropertyLabel(selectedItem, property) : property)
 		);
+	}
+
+	function clearKeyframePropertyLabel(item: TimelineItem, property: KeyframeClearProperty): string {
+		if (property === 'position') return m.video_editor_expression_position();
+		if (property === 'scale') return m.video_editor_expression_scale();
+		if (property === 'anchor') return m.video_editor_expression_anchor();
+		const label = effectPropertyLabel(item, property) ?? editorPropertyLabel(item, property);
+		return `${label.slice(0, 1).toLocaleUpperCase()}${label.slice(1)}`;
+	}
+
+	function openClearKeyframesDialog(): void {
+		if (clearableKeyframeCount === 0) return;
+		clearKeyframesDialogOpen = true;
 	}
 
 	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
@@ -3028,6 +3084,16 @@
 				><DiamondIcon class="size-2.5 fill-current" />
 				{m.video_editor_keyframe_add()}</button
 			>
+			<button
+				type="button"
+				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40"
+				disabled={clearableKeyframeCount === 0}
+				aria-label={m.video_editor_clear_keyframes_toolbar()}
+				title={m.video_editor_clear_keyframes_toolbar_hint()}
+				onclick={openClearKeyframesDialog}
+			>
+				{m.video_editor_clear_keyframes_toolbar()}
+			</button>
 			<Button
 				variant="ghost"
 				size="icon"
@@ -3126,6 +3192,18 @@
 	{canvasWidth}
 	{canvasHeight}
 	onapplied={() => onedit()}
+/>
+
+<ClearKeyframesDialog
+	bind:open={clearKeyframesDialogOpen}
+	itemIds={selectedItemIds}
+	options={clearKeyframeDialogOptions}
+	lockedItemCount={lockedAnimatedSelectionCount}
+	oncleared={(result) => {
+		if (result.keyframesRemoved === 0) return;
+		onedit();
+		emitEditorSound('confirm', editorSession.clock.isPlaying);
+	}}
 />
 
 {#if selectedMarker}

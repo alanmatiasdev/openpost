@@ -42,6 +42,7 @@
 		SPLIT_AT_PLAYHEAD: m.video_editor_shortcuts_command_split,
 		SPLIT_AT_PLAYHEAD_ALT: m.video_editor_shortcuts_command_split_alt,
 		JOIN_ITEMS: m.video_editor_shortcuts_command_join,
+		CLEAR_KEYFRAMES: m.video_editor_shortcuts_command_clear_keyframes,
 		DELETE_SELECTED: m.video_editor_shortcuts_command_delete,
 		DELETE_SELECTED_ALT: m.video_editor_shortcuts_command_delete_alt,
 		RIPPLE_DELETE: m.video_editor_shortcuts_command_ripple_delete,

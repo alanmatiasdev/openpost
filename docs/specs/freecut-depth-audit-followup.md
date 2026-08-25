@@ -38,7 +38,13 @@ the audit evidence, while the resolution log records later product changes.
   Chromium fixtures prove probing, preview PCM, progressive waveform peaks,
   transcription PCM, processed-media preservation, and WAV export. Silence
   analysis and full video export share the same tested `AudioSampleSink` path.
-  Current unresolved count: 11.
+- 2026-08-25: gap 12 resolved. Shift+A and the timeline toolbar open a scoped
+  clear-keyframes confirmation across the multi-selection. Scalar, effect,
+  path-vertex, and coupled vector lanes clear atomically; locked tracks stay
+  unchanged, the dialog reports exact key counts, and one undo restores the
+  full selection edit. A real 320 px Chromium test covers the visible warning,
+  44 px action, mutation, lock behavior, and one-step history.
+  Current unresolved count: 10.
 
 ## Rows checked with no gap found
 
