@@ -44,6 +44,7 @@ describe('preview playback settings', () => {
 		expect(previewItemVolume(item, [track, { ...track, id: 'solo', solo: true }], 1, false)).toBe(
 			0
 		);
+		expect(previewItemVolume({ ...item, volume: 2 }, [{ ...track, volume: 2 }], 1, false)).toBe(4);
 	});
 
 	it('composes clip fades with transition fades', () => {

@@ -121,6 +121,23 @@ describe('sequence navigation', () => {
 		expect(saved.items).toEqual([]);
 		expect(saved.compositions?.find((entry) => entry.id === id)?.items[0]?.id).toBe('inside');
 	});
+
+	it('keeps separate master bus settings for the root and each sequence', () => {
+		timelineStore._setMasterVolumeDb(-3);
+		const id = createSequence('Mix pass');
+		expect(switchSequence(id)).toBe(true);
+		timelineStore._setMasterVolumeDb(4);
+		timelineStore._setMasterMuted(true);
+
+		expect(switchSequence(null)).toBe(true);
+		expect(timelineStore.masterVolumeDb).toBe(-3);
+		expect(timelineStore.masterMuted).toBe(false);
+		const saved = sequenceStore.projectTimeline();
+		const sequence = saved.compositions?.find((entry) => entry.id === id);
+		expect(saved.masterVolumeDb).toBe(-3);
+		expect(sequence?.masterVolumeDb).toBe(4);
+		expect(sequence?.masterMuted).toBe(true);
+	});
 });
 
 describe('compound clips', () => {

@@ -71,6 +71,9 @@
 		PROXY_SEEK_STALL_MS
 	} from '$lib/video-editor/preview/scrub-proxy-fallback';
 	import { clonePrewarmedPreviewFrame } from '$lib/video-editor/preview/decoder-prewarm-client';
+	import { previewAudioContext } from '$lib/video-editor/audio/reverse-preview-audio';
+	import { attachAudioSourceToMixer, setMixerMaster } from '$lib/video-editor/audio/audio-mixer';
+	import { mixerDbToGain } from '$lib/video-editor/audio/mixer-utils';
 
 	let {
 		item,
@@ -115,6 +118,8 @@
 	} = $props();
 	let mediaElement = $state<HTMLVideoElement | null>(null);
 	let proxyAudioElement = $state<HTMLAudioElement | null>(null);
+	let videoMixerGain: GainNode | null = null;
+	let proxyMixerGain: GainNode | null = null;
 	let syncVideoFrame = $state<(() => void) | null>(null);
 	let videoRevision = $state(0);
 	let proxyFallbackCanvas = $state<HTMLCanvasElement | null>(null);
@@ -259,6 +264,9 @@
 	const previewVolume = $derived(
 		previewItemVolumeWithFade(basePreviewVolume, crossfadeGain, clipFadeGain)
 	);
+	const fallbackMasterGain = $derived(
+		timelineStore.masterMuted ? 0 : mixerDbToGain(timelineStore.masterVolumeDb)
+	);
 	const previewMediaUrl = $derived(
 		item.type === 'video' && item.isReversed && reverseConformUrl ? reverseConformUrl : url
 	);
@@ -268,6 +276,83 @@
 			Boolean(previewMediaUrl && audioUrl && previewMediaUrl !== audioUrl)
 	);
 	const usesProcessedAudio = $derived(item.type === 'video' && requiresProcessedPreviewAudio(item));
+
+	$effect(() => {
+		setMixerMaster(timelineStore.masterVolumeDb, timelineStore.masterMuted);
+		const video = mediaElement;
+		if (videoMixerGain) {
+			const gain = usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume;
+			video.volume = gain > 0 ? 1 : 0;
+			videoMixerGain.gain.value = gain;
+		} else if (video) {
+			video.volume = Math.min(
+				1,
+				(usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume) * fallbackMasterGain
+			);
+		}
+		const proxy = proxyAudioElement;
+		if (proxyMixerGain) {
+			const gain = usesProcessedAudio ? 0 : previewVolume;
+			proxy.volume = gain > 0 ? 1 : 0;
+			proxyMixerGain.gain.value = gain;
+		} else if (proxy) {
+			proxy.volume = Math.min(1, (usesProcessedAudio ? 0 : previewVolume) * fallbackMasterGain);
+		}
+	});
+
+	$effect(() => {
+		const video = mediaElement;
+		if (!video) return;
+		let source: MediaElementAudioSourceNode | null = null;
+		let gain: GainNode | null = null;
+		let detach: (() => void) | null = null;
+		try {
+			const context = previewAudioContext();
+			source = context.createMediaElementSource(video);
+			gain = context.createGain();
+			gain.gain.value = untrack(() =>
+				usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume
+			);
+			video.volume = gain.gain.value > 0 ? 1 : 0;
+			source.connect(gain);
+			detach = attachAudioSourceToMixer(gain, `video:${item.id}`);
+			videoMixerGain = gain;
+		} catch {
+			videoMixerGain = null;
+		}
+		return () => {
+			detach?.();
+			source?.disconnect();
+			gain?.disconnect();
+			if (videoMixerGain === gain) videoMixerGain = null;
+		};
+	});
+
+	$effect(() => {
+		const proxy = proxyAudioElement;
+		if (!proxy) return;
+		let source: MediaElementAudioSourceNode | null = null;
+		let gain: GainNode | null = null;
+		let detach: (() => void) | null = null;
+		try {
+			const context = previewAudioContext();
+			source = context.createMediaElementSource(proxy);
+			gain = context.createGain();
+			gain.gain.value = untrack(() => (usesProcessedAudio ? 0 : previewVolume));
+			proxy.volume = gain.gain.value > 0 ? 1 : 0;
+			source.connect(gain);
+			detach = attachAudioSourceToMixer(gain, `proxy:${item.id}`);
+			proxyMixerGain = gain;
+		} catch {
+			proxyMixerGain = null;
+		}
+		return () => {
+			detach?.();
+			source?.disconnect();
+			gain?.disconnect();
+			if (proxyMixerGain === gain) proxyMixerGain = null;
+		};
+	});
 
 	$effect(() => {
 		const mediaId = item.mediaId;
@@ -1022,18 +1107,13 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 			playsinline
-			volume={usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume}
 			data-proxy-preview={usesSeparateProxyAudio ? 'true' : undefined}
 			onloadeddata={handleVideoSettled}
 			onseeked={handleVideoSettled}
 		></video>
 		{#if usesSeparateProxyAudio && audioUrl}
 			<!-- svelte-ignore a11y_media_has_caption -- proxy visuals keep source audio hidden -->
-			<audio
-				bind:this={proxyAudioElement}
-				src={audioUrl}
-				volume={usesProcessedAudio ? 0 : previewVolume}
-			></audio>
+			<audio bind:this={proxyAudioElement} src={audioUrl}></audio>
 		{/if}
 	{:else if resolved.type === 'image' && url}
 		<img

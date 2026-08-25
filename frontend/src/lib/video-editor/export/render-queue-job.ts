@@ -29,6 +29,8 @@ interface RenderQueueJobBuildOptions {
 	items: readonly TimelineItem[];
 	transitions: readonly TimelineTransition[];
 	compositions: readonly SubComposition[];
+	masterVolumeDb?: number;
+	masterMuted?: boolean;
 }
 
 export function captureRenderSnapshot(
@@ -36,7 +38,9 @@ export function captureRenderSnapshot(
 	tracks: readonly TimelineTrack[],
 	items: readonly TimelineItem[],
 	transitions: readonly TimelineTransition[],
-	compositions: readonly SubComposition[]
+	compositions: readonly SubComposition[],
+	masterVolumeDb = project.timeline?.masterVolumeDb ?? 0,
+	masterMuted = project.timeline?.masterMuted ?? false
 ): RenderQueueSnapshot {
 	return {
 		projectId: project.id,
@@ -48,7 +52,9 @@ export function captureRenderSnapshot(
 		tracks: cloneTimeline([...tracks]),
 		items: cloneTimeline([...items]),
 		transitions: cloneTimeline([...transitions]),
-		compositions: cloneTimeline([...compositions])
+		compositions: cloneTimeline([...compositions]),
+		masterVolumeDb,
+		masterMuted
 	};
 }
 
@@ -76,7 +82,9 @@ function captureFromOptions(options: RenderQueueJobBuildOptions): RenderQueueSna
 		options.tracks,
 		options.items,
 		options.transitions,
-		options.compositions
+		options.compositions,
+		options.masterVolumeDb,
+		options.masterMuted
 	);
 }
 

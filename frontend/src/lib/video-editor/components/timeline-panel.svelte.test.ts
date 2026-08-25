@@ -341,6 +341,22 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		await disabled.click();
 	});
 
+	it('opens and closes the integrated audio mixer without replacing the timeline', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const toggle = screen.getByRole('button', { name: 'Audio mixer' });
+		await toggle.click();
+		await expect.element(screen.getByRole('region', { name: 'Audio mixer' })).toBeVisible();
+		await expect.element(screen.getByRole('slider', { name: 'audio-track volume' })).toBeVisible();
+		await expect
+			.element(screen.getByRole('slider', { name: 'Master output volume' }))
+			.toBeVisible();
+		await expect.element(screen.getByRole('region', { name: 'Timeline' })).toBeVisible();
+		await toggle.click();
+		await expect
+			.element(screen.getByRole('region', { name: 'Audio mixer' }))
+			.not.toBeInTheDocument();
+	});
+
 	it('fits, resets, shortcuts, and coalesces pointer-anchored wheel zoom', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');

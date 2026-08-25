@@ -56,7 +56,13 @@ const project: Project = {
 	updatedAt: 0,
 	duration: 1,
 	metadata: { width: 1920, height: 1080, fps: 30 },
-	timeline: { tracks: [track], items: [], compositions: [composition] }
+	timeline: {
+		tracks: [track],
+		items: [],
+		compositions: [composition],
+		masterVolumeDb: -3,
+		masterMuted: true
+	}
 };
 
 const preflight: ExportPreflightResult = {
@@ -76,6 +82,8 @@ describe('captureRenderSnapshot', () => {
 		liveComposition.items[0]!.label = 'Changed later';
 
 		expect(snapshot.compositions[0]?.items[0]?.label).toBe('Original title');
+		expect(snapshot.masterVolumeDb).toBe(-3);
+		expect(snapshot.masterMuted).toBe(true);
 	});
 });
 

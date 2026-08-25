@@ -27,8 +27,31 @@ export function previewItemVolume(
 	monitorVolume: number,
 	monitorMuted: boolean
 ): number {
+	return (
+		previewItemSourceVolume(item, monitorVolume, monitorMuted) *
+		previewTrackGain(item.trackId, tracks)
+	);
+}
+
+export function previewItemSourceVolume(
+	item: Pick<TimelineItem, 'volume'>,
+	monitorVolume: number,
+	monitorMuted: boolean
+): number {
 	if (monitorMuted) return 0;
-	const track = tracks.find((candidate) => candidate.id === item.trackId);
+	return Math.max(0, item.volume ?? 1) * clampMonitorVolume(monitorVolume);
+}
+
+export function previewTrackGain(
+	trackId: string,
+	tracks: Array<
+		Pick<TimelineTrack, 'id' | 'muted' | 'solo' | 'volume' | 'visible'> & {
+			isGroup?: boolean;
+			parentTrackId?: string;
+		}
+	>
+): number {
+	const track = tracks.find((candidate) => candidate.id === trackId);
 	if (!track || track.isGroup) return 0;
 	const parent = track.parentTrackId
 		? tracks.find((candidate) => candidate.id === track.parentTrackId && candidate.isGroup)
@@ -39,7 +62,7 @@ export function previewItemVolume(
 	if (muted || !visible) return 0;
 	const anySolo = tracks.some((candidate) => candidate.solo);
 	if (anySolo && !solo) return 0;
-	return clampMonitorVolume((item.volume ?? 1) * (track.volume ?? 1) * monitorVolume);
+	return Math.max(0, track.volume ?? 1);
 }
 
 export function previewItemVolumeWithFade(
@@ -47,7 +70,7 @@ export function previewItemVolumeWithFade(
 	crossfadeGain: number,
 	clipFadeGain = 1
 ): number {
-	return clampMonitorVolume(baseGain * crossfadeGain * clipFadeGain);
+	return Math.max(0, baseGain * crossfadeGain * clipFadeGain);
 }
 
 export function buildFrameFileName(frame: number, fps: number, totalFrames: number): string {

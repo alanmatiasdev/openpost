@@ -6653,5 +6653,18 @@
 	"video_editor_spatial_edit_center_short": "Modifier le centre",
 	"video_editor_spatial_editing_center": "Modification du centre",
 	"video_editor_spatial_stop_editing": "Arrêter de modifier le centre de {effect}",
-	"video_editor_spatial_center_label": "Centre de {effect}"
+	"video_editor_spatial_center_label": "Centre de {effect}",
+	"video_editor_mixer": "Mixeur audio",
+	"video_editor_mixer_toggle": "Mixeur audio",
+	"video_editor_mixer_toggle_hint": "Afficher ou masquer les faders et vu-mètres des pistes",
+	"video_editor_mixer_track_solo": "Isoler {name}",
+	"video_editor_mixer_track_mute": "Couper {name}",
+	"video_editor_mixer_track_volume": "Volume de {name}",
+	"video_editor_mixer_master": "Master",
+	"video_editor_mixer_master_mute": "Couper la sortie master",
+	"video_editor_mixer_master_volume": "Volume de la sortie master",
+	"video_editor_mixer_clipping": "Écrêtage",
+	"video_editor_mixer_track_unsolo": "Ne plus isoler {name}",
+	"video_editor_mixer_track_unmute": "Rétablir le son de {name}",
+	"video_editor_mixer_master_unmute": "Rétablir la sortie master"
 }

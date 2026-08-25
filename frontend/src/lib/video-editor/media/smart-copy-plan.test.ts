@@ -183,6 +183,16 @@ describe('assessSmartCopy', () => {
 		}
 	});
 
+	it('rejects master bus changes that packet copying cannot apply', () => {
+		const mastered = project();
+		mastered.timeline!.masterVolumeDb = -3;
+		expect(
+			assessSmartCopy(mastered, { format: 'webm', codec: 'vp9', width: 1920, height: 1080 }, [
+				media
+			])
+		).toEqual({ eligible: false, blocker: 'edited-audio' });
+	});
+
 	it('rejects a codec, container, or canvas-size change', () => {
 		expect(
 			assessSmartCopy(project(), { format: 'mp4', codec: 'avc', width: 1920, height: 1080 }, [

@@ -6653,5 +6653,18 @@
 	"video_editor_spatial_edit_center_short": "编辑中心",
 	"video_editor_spatial_editing_center": "正在编辑中心",
 	"video_editor_spatial_stop_editing": "停止编辑 {effect} 中心",
-	"video_editor_spatial_center_label": "{effect} 中心"
+	"video_editor_spatial_center_label": "{effect} 中心",
+	"video_editor_mixer": "音频混音器",
+	"video_editor_mixer_toggle": "音频混音器",
+	"video_editor_mixer_toggle_hint": "显示或隐藏轨道推子和电平表",
+	"video_editor_mixer_track_solo": "独奏 {name}",
+	"video_editor_mixer_track_mute": "静音 {name}",
+	"video_editor_mixer_track_volume": "{name} 音量",
+	"video_editor_mixer_master": "主控",
+	"video_editor_mixer_master_mute": "静音主输出",
+	"video_editor_mixer_master_volume": "主输出音量",
+	"video_editor_mixer_clipping": "削波",
+	"video_editor_mixer_track_unsolo": "取消独奏 {name}",
+	"video_editor_mixer_track_unmute": "取消静音 {name}",
+	"video_editor_mixer_master_unmute": "取消静音主输出"
 }

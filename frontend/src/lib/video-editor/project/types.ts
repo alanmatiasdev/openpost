@@ -726,6 +726,10 @@ export interface ProjectTimeline {
 	topLevelSequenceIds?: string[];
 	/** Reusable nested timelines. The same entry can be a tab and a nested clip. */
 	compositions?: SubComposition[];
+	/** Persisted master-bus level in dB. */
+	masterVolumeDb?: number;
+	/** Persisted master-bus mute. */
+	masterMuted?: boolean;
 }
 
 export interface SubComposition {
@@ -744,6 +748,8 @@ export interface SubComposition {
 	markers?: TimelineMarker[];
 	inPoint?: number | null;
 	outPoint?: number | null;
+	masterVolumeDb?: number;
+	masterMuted?: boolean;
 }
 
 export interface ProjectResolution {

@@ -65,6 +65,22 @@ describe('command history', () => {
 		expect(commandHistory.canRedo).toBe(false);
 	});
 
+	it('undoes and redoes the complete master bus state', () => {
+		execute('UPDATE_MASTER_BUS', () => {
+			timelineStore._setMasterVolumeDb(6);
+			timelineStore._setMasterMuted(true);
+		});
+		expect(timelineStore.masterVolumeDb).toBe(6);
+		expect(timelineStore.masterMuted).toBe(true);
+
+		commandHistory.undo();
+		expect(timelineStore.masterVolumeDb).toBe(0);
+		expect(timelineStore.masterMuted).toBe(false);
+		commandHistory.redo();
+		expect(timelineStore.masterVolumeDb).toBe(6);
+		expect(timelineStore.masterMuted).toBe(true);
+	});
+
 	it('respects maxUndoHistory cap', () => {
 		for (let i = 0; i < 150; i++) {
 			const frame = i;

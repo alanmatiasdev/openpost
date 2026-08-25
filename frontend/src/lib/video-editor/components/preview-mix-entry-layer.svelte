@@ -30,6 +30,12 @@
 	import { prepareAudioBufferForSoundTouchPreview } from '$lib/video-editor/audio/soundtouch-preview-buffer';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
+	import {
+		attachAudioSourceToMixer,
+		setMixerMaster,
+		setMixerTrackPreviewGain
+	} from '$lib/video-editor/audio/audio-mixer';
+	import { mixerDbToGain } from '$lib/video-editor/audio/mixer-utils';
 
 	let { entry, url }: { entry: MixEntry; url?: string | null } = $props();
 	let audio = $state<HTMLAudioElement | null>(null);
@@ -40,6 +46,8 @@
 	let processedStartedAt = 0;
 	let processedStartedFrame = 0;
 	let processedPlaying = false;
+	let detachProcessedFromMixer: (() => void) | null = null;
+	let mediaGain: GainNode | null = null;
 	const audioCodec = $derived(mediaPool.get(entry.mediaId)?.audioCodec);
 	const unsupportedAudio = $derived(mediaPool.get(entry.mediaId)?.audioCodecSupported === false);
 	const needsProcessing = $derived(
@@ -50,8 +58,10 @@
 			isAc3AudioCodec(audioCodec)
 	);
 
-	function gainAt(time: number): number {
-		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
+	function gainAt(time: number, includeMixerBuses = false): number {
+		const points = (includeMixerBuses ? entry.gainPoints : entry.previewGainPoints).toSorted(
+			(left, right) => left.whenSeconds - right.whenSeconds
+		);
 		let base = points[0]?.value ?? 1;
 		for (let index = 1; index < points.length; index++) {
 			const right = points[index]!;
@@ -74,10 +84,24 @@
 				span.dipToSilence
 			);
 		}
-		return clampMonitorVolume(
-			base * transition * previewPlaybackSettings.volume * (previewPlaybackSettings.muted ? 0 : 1)
-		);
+		const monitor = previewPlaybackSettings.muted
+			? 0
+			: clampMonitorVolume(previewPlaybackSettings.volume);
+		const master = includeMixerBuses
+			? timelineStore.masterMuted
+				? 0
+				: mixerDbToGain(timelineStore.masterVolumeDb)
+			: 1;
+		return base * transition * monitor * master;
 	}
+
+	$effect(() => {
+		setMixerMaster(timelineStore.masterVolumeDb, timelineStore.masterMuted);
+	});
+
+	$effect(() => {
+		setMixerTrackPreviewGain(entry.trackId ?? 'nested-audio', entry.mixerTrackGain);
+	});
 
 	function sourceFrameAtTimelineTime(time: number): number {
 		return Math.max(
@@ -107,6 +131,15 @@
 	$effect(() => {
 		if (processedGraph)
 			rampPreviewClipGain(processedGraph, gainAt(timelineStore.currentFrame / editorSession.fps));
+		if (mediaGain) {
+			mediaGain.gain.value = needsProcessing
+				? 0
+				: gainAt(timelineStore.currentFrame / editorSession.fps);
+		} else if (audio)
+			audio.volume = Math.min(
+				1,
+				needsProcessing ? 0 : gainAt(timelineStore.currentFrame / editorSession.fps, true)
+			);
 	});
 
 	$effect(() => {
@@ -115,10 +148,15 @@
 		let stale = false;
 		const context = previewAudioContext();
 		const graph = createPreviewClipAudioGraph({
-			eqStageCount: Math.max(1, entry.audioEqStages.length)
+			eqStageCount: Math.max(1, entry.audioEqStages.length),
+			outputNode: null
 		});
 		if (!graph) return;
 		processedGraph = graph;
+		detachProcessedFromMixer = attachAudioSourceToMixer(
+			graph.outputGainNode,
+			entry.trackId ?? 'nested-audio'
+		);
 		setPreviewClipEq(graph, entry.audioEqStages);
 		void Promise.all([
 			ensureSoundTouchPreviewWorkletLoaded(context),
@@ -159,6 +197,8 @@
 			stale = true;
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
 			processedNode?.disconnect();
+			detachProcessedFromMixer?.();
+			detachProcessedFromMixer = null;
 			graph.dispose();
 			processedNode = null;
 			processedGraph = null;
@@ -169,6 +209,23 @@
 	$effect(() => {
 		const media = audio;
 		if (!media) return;
+		let sourceNode: MediaElementAudioSourceNode | null = null;
+		let gainNode: GainNode | null = null;
+		let detachFromMixer: (() => void) | null = null;
+		try {
+			const context = previewAudioContext();
+			sourceNode = context.createMediaElementSource(media);
+			gainNode = context.createGain();
+			gainNode.gain.value = needsProcessing
+				? 0
+				: gainAt(timelineStore.currentFrame / editorSession.fps);
+			media.volume = 1;
+			sourceNode.connect(gainNode);
+			detachFromMixer = attachAudioSourceToMixer(gainNode, entry.trackId ?? 'nested-audio');
+			mediaGain = gainNode;
+		} catch {
+			media.volume = Math.min(1, needsProcessing ? 0 : gainAt(0, true));
+		}
 		const scheduler = new SeekScheduler((target) => (media.currentTime = target));
 		const sync = () => {
 			const time = untrack(() => timelineStore.currentFrame) / editorSession.fps;
@@ -197,7 +254,7 @@
 				scheduler.request(sourceTime);
 			}
 			media.playbackRate = Math.min(16, Math.max(0.0625, entry.playbackRate));
-			media.volume = gainAt(time);
+			if (!gainNode) media.volume = Math.min(1, gainAt(time, true));
 			if (editorSession.clock.isPlaying && media.paused && !entry.reversed)
 				void media.play().catch(() => undefined);
 			if (entry.reversed && !media.paused) media.pause();
@@ -212,6 +269,10 @@
 			offPause();
 			scheduler.detach();
 			if (syncMedia === sync) syncMedia = null;
+			detachFromMixer?.();
+			sourceNode?.disconnect();
+			gainNode?.disconnect();
+			if (mediaGain === gainNode) mediaGain = null;
 		};
 	});
 
@@ -224,5 +285,5 @@
 
 {#if url && !unsupportedAudio}
 	<!-- svelte-ignore a11y_media_has_caption -- nested sequence audio has no visual caption -->
-	<audio bind:this={audio} src={url} volume={needsProcessing ? 0 : undefined}></audio>
+	<audio bind:this={audio} src={url}></audio>
 {/if}

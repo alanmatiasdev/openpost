@@ -187,6 +187,7 @@
 		visibleTrackRows
 	} from '$lib/video-editor/timeline/utils/track-groups';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import AudioMixerPanel from './audio-mixer-panel.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import BentoLayoutDialog from './bento-layout-dialog.svelte';
 	import ClearKeyframesDialog from './clear-keyframes-dialog.svelte';
@@ -241,6 +242,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
+	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
 
 	let {
 		onedit,
@@ -278,6 +280,7 @@
 	let deleteGroupDialogOpen = $state(false);
 	let bentoLayoutOpen = $state(false);
 	let clearKeyframesDialogOpen = $state(false);
+	let mixerOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
@@ -3296,6 +3299,18 @@
 				<ChartSplineIcon class="size-3.5" />
 			</Button>
 		{/if}
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+			data-active={mixerOpen}
+			aria-pressed={mixerOpen}
+			aria-label={m.video_editor_mixer_toggle()}
+			title={m.video_editor_mixer_toggle_hint()}
+			onclick={() => (mixerOpen = !mixerOpen)}
+		>
+			<SlidersHorizontalIcon class="size-3.5" />
+		</Button>
 		<button
 			type="button"
 			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
@@ -3457,6 +3472,10 @@
 			<Trash2Icon class="size-3.5" />
 		</Button>
 	</div>
+{/if}
+
+{#if mixerOpen}
+	<AudioMixerPanel />
 {/if}
 
 <div

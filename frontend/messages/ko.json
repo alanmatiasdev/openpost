@@ -6653,5 +6653,18 @@
 	"video_editor_spatial_edit_center_short": "중심 편집",
 	"video_editor_spatial_editing_center": "중심 편집 중",
 	"video_editor_spatial_stop_editing": "{effect} 중심 편집 종료",
-	"video_editor_spatial_center_label": "{effect} 중심"
+	"video_editor_spatial_center_label": "{effect} 중심",
+	"video_editor_mixer": "오디오 믹서",
+	"video_editor_mixer_toggle": "오디오 믹서",
+	"video_editor_mixer_toggle_hint": "트랙 페이더와 레벨 미터 표시 또는 숨기기",
+	"video_editor_mixer_track_solo": "{name} 솔로",
+	"video_editor_mixer_track_mute": "{name} 음소거",
+	"video_editor_mixer_track_volume": "{name} 음량",
+	"video_editor_mixer_master": "마스터",
+	"video_editor_mixer_master_mute": "마스터 출력 음소거",
+	"video_editor_mixer_master_volume": "마스터 출력 음량",
+	"video_editor_mixer_clipping": "클리핑",
+	"video_editor_mixer_track_unsolo": "{name} 솔로 해제",
+	"video_editor_mixer_track_unmute": "{name} 음소거 해제",
+	"video_editor_mixer_master_unmute": "마스터 출력 음소거 해제"
 }

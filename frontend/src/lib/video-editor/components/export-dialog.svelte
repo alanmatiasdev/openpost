@@ -266,7 +266,9 @@
 				tracks: snapshot.tracks,
 				items: snapshot.items,
 				transitions: snapshot.transitions,
-				compositions: snapshot.sequenceRegistry.compositions
+				compositions: snapshot.sequenceRegistry.compositions,
+				masterVolumeDb: snapshot.masterVolumeDb,
+				masterMuted: snapshot.masterMuted
 			})
 		]);
 		open = false;
@@ -310,6 +312,8 @@
 				items: snapshot.items,
 				transitions: snapshot.transitions,
 				compositions: snapshot.sequenceRegistry.compositions,
+				masterVolumeDb: snapshot.masterVolumeDb,
+				masterMuted: snapshot.masterMuted,
 				ranges,
 				name: (index) => `${project.name} - ${m.video_editor_queue_part({ number: index + 1 })}`
 			})
@@ -367,7 +371,9 @@
 					outPoint: snapshot.outPoint ?? undefined,
 					currentFrame: snapshot.currentFrame,
 					scrollPosition: snapshot.scrollPosition,
-					compositions: snapshot.sequenceRegistry.compositions
+					compositions: snapshot.sequenceRegistry.compositions,
+					masterVolumeDb: snapshot.masterVolumeDb,
+					masterMuted: snapshot.masterMuted
 				}
 			};
 			const range = {

@@ -6653,5 +6653,18 @@
 	"video_editor_spatial_edit_center_short": "Merkezi düzenle",
 	"video_editor_spatial_editing_center": "Merkez düzenleniyor",
 	"video_editor_spatial_stop_editing": "{effect} merkezini düzenlemeyi bitir",
-	"video_editor_spatial_center_label": "{effect} merkezi"
+	"video_editor_spatial_center_label": "{effect} merkezi",
+	"video_editor_mixer": "Ses mikseri",
+	"video_editor_mixer_toggle": "Ses mikseri",
+	"video_editor_mixer_toggle_hint": "Kanal sürgülerini ve seviye göstergelerini göster veya gizle",
+	"video_editor_mixer_track_solo": "{name} kanalını solo yap",
+	"video_editor_mixer_track_mute": "{name} kanalını sessize al",
+	"video_editor_mixer_track_volume": "{name} ses düzeyi",
+	"video_editor_mixer_master": "Ana çıkış",
+	"video_editor_mixer_master_mute": "Ana çıkışı sessize al",
+	"video_editor_mixer_master_volume": "Ana çıkış ses düzeyi",
+	"video_editor_mixer_clipping": "Kırpılma",
+	"video_editor_mixer_track_unsolo": "{name} solosunu kapat",
+	"video_editor_mixer_track_unmute": "{name} kanalının sesini aç",
+	"video_editor_mixer_master_unmute": "Ana çıkışın sesini aç"
 }

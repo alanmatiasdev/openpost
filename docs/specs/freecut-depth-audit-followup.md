@@ -89,7 +89,24 @@ the audit evidence, while the resolution log records later product changes.
   Pure homography and source-UV tests plus real Chromium overlay, inspector,
   program-monitor, cancellation, keyboard, 320 px, and lock tests cover the
   integrated path.
-  Current unresolved count: 6.
+- 2026-08-25: gap 9 resolved. Audio tracks now expose compact channel strips
+  with -60 dB to +12 dB faders, mute, solo, true stereo level meters, peak
+  hold, clipping state, and one master strip. Preview uses one shared audible
+  path per source through stable track buses and one master bus; analyser taps
+  terminate through a silent branch, so they cannot sum channels or double
+  gain. Each attachment owns one cleanup handle, meter reads never allocate or
+  retain nodes, and live faders work from silence through boosted levels.
+  Pointer drafts coalesce per animation frame, commit one undo record, and
+  restore exact audio and UI state on Escape, pointer cancellation, lost
+  capture, panel close, or lock. Keyboard and double-click edits stay atomic.
+  Root and nested sequence master settings persist through navigation, undo,
+  direct export, queued export, and project saves. Preview, rendered video,
+  audio-only export, and smart-copy eligibility share the same gain truth.
+  Actual OfflineAudioContext samples prove asymmetric stereo, one-time track
+  and master gain, mute, and attachment ownership; a real AC-3 WAV export
+  proves exact -6.02 dB amplitude and master silence. Chromium component tests
+  cover gestures, cancellation, locks, narrow layout, and the timeline entry.
+  Current unresolved count: 5.
 
 ## Rows checked with no gap found
 

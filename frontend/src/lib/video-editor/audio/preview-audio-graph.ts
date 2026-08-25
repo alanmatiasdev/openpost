@@ -486,6 +486,8 @@ function ensurePreviewClipEqStage(
 
 export function createPreviewClipAudioGraph(options?: {
 	eqStageCount?: number;
+	/** Omit to use the speakers, pass null when another owner routes the output. */
+	outputNode?: AudioNode | null;
 }): PreviewClipAudioGraph | null {
 	const context = getSharedPreviewAudioContext();
 	if (!context) {
@@ -516,7 +518,8 @@ export function createPreviewClipAudioGraph(options?: {
 	};
 
 	reconnectPreviewClipAudioGraph(graph);
-	outputGainNode.connect(context.destination);
+	const outputNode = options && 'outputNode' in options ? options.outputNode : context.destination;
+	if (outputNode) outputGainNode.connect(outputNode);
 	return graph;
 }
 

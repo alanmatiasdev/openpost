@@ -225,6 +225,9 @@ export function assessSmartCopy(
 ): SmartCopyAssessment {
 	const timeline = project.timeline;
 	if (!timeline) return { eligible: false, blocker: 'no-timeline' };
+	if (timeline.masterMuted || !closeTo(timeline.masterVolumeDb ?? 0, 0)) {
+		return { eligible: false, blocker: 'edited-audio' };
+	}
 	const fps = project.metadata.fps;
 	const startFrame = Math.max(0, Math.floor(settings.range?.startFrame ?? 0));
 	const endFrame = Math.min(

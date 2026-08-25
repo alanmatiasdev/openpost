@@ -58,7 +58,9 @@ import {
 import { subtitleSidecarSrt, subtitleWebVtt } from '../transcript/subtitle-export';
 import {
 	frameToSourceSeconds,
+	applyMixEntryGain,
 	isVisibleAtFrame,
+	masterBusGain,
 	outputDurationFrames,
 	paintOrder,
 	planNestedMixdown,
@@ -809,7 +811,10 @@ export async function renderMultiTrackVideoArtifact(
 
 	const transitions = timeline?.transitions ?? [];
 	const mixEntries = sliceMixEntries(
-		planNestedMixdown(items, tracks, fps, transitions, timeline?.compositions ?? []),
+		applyMixEntryGain(
+			planNestedMixdown(items, tracks, fps, transitions, timeline?.compositions ?? []),
+			masterBusGain(timeline)
+		),
 		startFrame / fps,
 		endFrame / fps
 	);
@@ -989,7 +994,10 @@ export async function renderTimelineAudioArtifact(
 	const totalFrames = Math.max(0, endFrame - startFrame);
 	const transitions = project.timeline?.transitions ?? [];
 	const entries = sliceMixEntries(
-		planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
+		applyMixEntryGain(
+			planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
+			masterBusGain(project.timeline)
+		),
 		startFrame / fps,
 		endFrame / fps
 	);

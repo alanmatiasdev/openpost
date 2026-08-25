@@ -62,6 +62,8 @@ interface TimelineState {
 	zoomLevel: number;
 	seekLocked: boolean;
 	isDirty: boolean;
+	masterVolumeDb: number;
+	masterMuted: boolean;
 }
 
 const state = $state<TimelineState>({
@@ -81,7 +83,9 @@ const state = $state<TimelineState>({
 	},
 	zoomLevel: 1,
 	seekLocked: false,
-	isDirty: false
+	isDirty: false,
+	masterVolumeDb: 0,
+	masterMuted: false
 });
 
 let index = $state.raw<ItemsIndex>(buildIndex(state.items));
@@ -137,6 +141,12 @@ export const timelineStore = {
 	get isDirty(): boolean {
 		return state.isDirty;
 	},
+	get masterVolumeDb(): number {
+		return state.masterVolumeDb;
+	},
+	get masterMuted(): boolean {
+		return state.masterMuted;
+	},
 	get itemsByTrackId(): Map<string, TimelineItem[]> {
 		return index.itemsByTrackId;
 	},
@@ -159,6 +169,8 @@ export const timelineStore = {
 		markers?: TimelineMarker[];
 		zoomLevel?: number;
 		scrollPosition?: number;
+		masterVolumeDb?: number;
+		masterMuted?: boolean;
 	}): void {
 		if (next.items) state.items = next.items;
 		if (next.tracks) state.tracks = next.tracks;
@@ -182,6 +194,13 @@ export const timelineStore = {
 		if (next.scrollPosition !== undefined && Number.isFinite(next.scrollPosition)) {
 			state.settings.scrollPosition = next.scrollPosition;
 		}
+		if (next.masterVolumeDb !== undefined) {
+			state.masterVolumeDb = Math.min(
+				12,
+				Math.max(-60, Number.isFinite(next.masterVolumeDb) ? next.masterVolumeDb : 0)
+			);
+		}
+		if (next.masterMuted !== undefined) state.masterMuted = Boolean(next.masterMuted);
 		reindex();
 	},
 
@@ -194,6 +213,8 @@ export const timelineStore = {
 		state.selectedMarkerId = null;
 		state.settings.currentFrame = 0;
 		state.seekLocked = false;
+		state.masterVolumeDb = 0;
+		state.masterMuted = false;
 		state.isDirty = false;
 		reindex();
 	},
@@ -207,6 +228,16 @@ export const timelineStore = {
 
 	_setTracks(tracks: TimelineTrack[]): void {
 		state.tracks = tracks;
+		state.isDirty = true;
+	},
+
+	_setMasterVolumeDb(value: number): void {
+		state.masterVolumeDb = Math.min(12, Math.max(-60, Number.isFinite(value) ? value : 0));
+		state.isDirty = true;
+	},
+
+	_setMasterMuted(value: boolean): void {
+		state.masterMuted = value;
 		state.isDirty = true;
 	},
 
@@ -372,5 +403,7 @@ export const timelineStore = {
 		state.markers = [];
 		state.selectedMarkerId = null;
 		state.seekLocked = false;
+		state.masterVolumeDb = 0;
+		state.masterMuted = false;
 	}
 };

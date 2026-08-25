@@ -9,6 +9,8 @@
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
 		previewItemVolume,
+		previewItemSourceVolume,
+		previewTrackGain,
 		previewItemVolumeWithFade
 	} from '$lib/video-editor/preview/playback-settings';
 	import { audioCrossfadeGainAtFrame } from '$lib/video-editor/audio/transition-crossfade';
@@ -42,12 +44,19 @@
 	import type { ResolvedAudioEqSettings } from '$lib/video-editor/audio/types';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
+	import {
+		attachAudioSourceToMixer,
+		setMixerMaster,
+		setMixerTrackPreviewGain
+	} from '$lib/video-editor/audio/audio-mixer';
+	import { mixerDbToGain } from '$lib/video-editor/audio/mixer-utils';
 
 	let { item, url }: { item: TimelineItem; url?: string | null } = $props();
 	let audio = $state<HTMLAudioElement | null>(null);
 	let reverseBuffer = $state<AudioBuffer | null>(null);
 	let reverseSource: AudioBufferSourceNode | null = null;
 	let reverseGain: GainNode | null = null;
+	let detachReverseFromMixer: (() => void) | null = null;
 	let reverseStartedAt = 0;
 	let reverseStartedOffset = 0;
 	let processedNode: AudioWorkletNode | null = null;
@@ -57,6 +66,8 @@
 	let processedStartedFrame = 0;
 	let processedDirection: -1 | 1 = 1;
 	let processedPlaying = false;
+	let detachProcessedFromMixer: (() => void) | null = null;
+	let mediaGain: GainNode | null = null;
 
 	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
 	const audioCodec = $derived(item.mediaId ? mediaPool.get(item.mediaId)?.audioCodec : undefined);
@@ -74,12 +85,16 @@
 		})
 	);
 	const baseVolume = $derived(
+		previewItemSourceVolume(resolved, previewPlaybackSettings.volume, previewPlaybackSettings.muted)
+	);
+	const trackGain = $derived(previewTrackGain(item.trackId, timelineStore.tracks));
+	const fallbackVolume = $derived(
 		previewItemVolume(
 			resolved,
 			timelineStore.tracks,
 			previewPlaybackSettings.volume,
 			previewPlaybackSettings.muted
-		)
+		) * (timelineStore.masterMuted ? 0 : mixerDbToGain(timelineStore.masterVolumeDb))
 	);
 	const crossfadeGain = $derived(
 		audioCrossfadeGainAtFrame(
@@ -103,7 +118,11 @@
 			// A source can finish between the guard and stop call.
 		}
 		reverseSource.disconnect();
+		detachReverseFromMixer?.();
+		detachReverseFromMixer = null;
+		reverseGain?.disconnect();
 		reverseSource = null;
+		reverseGain = null;
 	}
 
 	function startReverseSource(offsetSeconds: number, speed: number): void {
@@ -119,9 +138,17 @@
 		source.buffer = buffer;
 		source.playbackRate.value = speed;
 		gain.gain.value = volume;
-		source.connect(gain).connect(context.destination);
+		source.connect(gain);
+		const detach = attachAudioSourceToMixer(gain, item.trackId);
+		detachReverseFromMixer = detach;
 		source.onended = () => {
-			if (reverseSource === source) reverseSource = null;
+			if (reverseSource !== source) return;
+			source.disconnect();
+			gain.disconnect();
+			detach();
+			if (detachReverseFromMixer === detach) detachReverseFromMixer = null;
+			reverseSource = null;
+			reverseGain = null;
 		};
 		reverseSource = source;
 		reverseGain = gain;
@@ -134,7 +161,7 @@
 				source.start(0, offsetSeconds);
 			})
 			.catch(() => {
-				if (reverseSource === source) reverseSource = null;
+				if (reverseSource === source) stopReverseSource();
 			});
 	}
 
@@ -158,6 +185,16 @@
 	$effect(() => {
 		if (reverseGain) reverseGain.gain.value = volume;
 		if (processedGraph) rampPreviewClipGain(processedGraph, volume);
+		if (mediaGain) mediaGain.gain.value = needsProcessing ? 0 : volume;
+		else if (audio) audio.volume = Math.min(1, needsProcessing ? 0 : fallbackVolume);
+	});
+
+	$effect(() => {
+		setMixerMaster(timelineStore.masterVolumeDb, timelineStore.masterMuted);
+	});
+
+	$effect(() => {
+		setMixerTrackPreviewGain(item.trackId, trackGain);
 	});
 
 	$effect(() => {
@@ -196,6 +233,8 @@
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
 			processedNode?.disconnect();
 			processedGraph?.dispose();
+			detachProcessedFromMixer?.();
+			detachProcessedFromMixer = null;
 			processedNode = null;
 			processedGraph = null;
 			processedPlaying = false;
@@ -204,10 +243,12 @@
 		let stale = false;
 		const context = previewAudioContext();
 		const graph = createPreviewClipAudioGraph({
-			eqStageCount: Math.max(1, settings.eqStages.length)
+			eqStageCount: Math.max(1, settings.eqStages.length),
+			outputNode: null
 		});
 		if (!graph) return;
 		processedGraph = graph;
+		detachProcessedFromMixer = attachAudioSourceToMixer(graph.outputGainNode, item.trackId);
 		setPreviewClipEq(graph, settings.eqStages);
 		rampPreviewClipGain(graph, volume, context.currentTime, 0);
 		void Promise.all([
@@ -255,6 +296,8 @@
 			stale = true;
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
 			processedNode?.disconnect();
+			detachProcessedFromMixer?.();
+			detachProcessedFromMixer = null;
 			graph.dispose();
 			if (processedGraph === graph) processedGraph = null;
 			processedNode = null;
@@ -265,6 +308,21 @@
 	$effect(() => {
 		const media = audio;
 		if (!media) return;
+		let sourceNode: MediaElementAudioSourceNode | null = null;
+		let gainNode: GainNode | null = null;
+		let detachFromMixer: (() => void) | null = null;
+		try {
+			const context = previewAudioContext();
+			sourceNode = context.createMediaElementSource(media);
+			gainNode = context.createGain();
+			gainNode.gain.value = needsProcessing ? 0 : volume;
+			media.volume = 1;
+			sourceNode.connect(gainNode);
+			detachFromMixer = attachAudioSourceToMixer(gainNode, item.trackId);
+			mediaGain = gainNode;
+		} catch {
+			media.volume = Math.min(1, needsProcessing ? 0 : fallbackVolume);
+		}
 		const scheduler = new SeekScheduler((target) => {
 			media.currentTime = target;
 		});
@@ -327,6 +385,10 @@
 			offPlay();
 			offPause();
 			scheduler.detach();
+			detachFromMixer?.();
+			sourceNode?.disconnect();
+			gainNode?.disconnect();
+			if (mediaGain === gainNode) mediaGain = null;
 			stopReverseSource();
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
 		};
@@ -335,5 +397,5 @@
 
 {#if url && !unsupportedAudio}
 	<!-- svelte-ignore a11y_media_has_caption -- timeline audio has no visual caption -->
-	<audio bind:this={audio} src={url} volume={needsProcessing ? 0 : volume}></audio>
+	<audio bind:this={audio} src={url}></audio>
 {/if}

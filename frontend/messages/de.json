@@ -6653,5 +6653,18 @@
 	"video_editor_spatial_edit_center_short": "Zentrum bearbeiten",
 	"video_editor_spatial_editing_center": "Zentrum wird bearbeitet",
 	"video_editor_spatial_stop_editing": "Bearbeitung des {effect}-Zentrums beenden",
-	"video_editor_spatial_center_label": "{effect}-Zentrum"
+	"video_editor_spatial_center_label": "{effect}-Zentrum",
+	"video_editor_mixer": "Audiomixer",
+	"video_editor_mixer_toggle": "Audiomixer",
+	"video_editor_mixer_toggle_hint": "Spurregler und Pegelanzeigen ein- oder ausblenden",
+	"video_editor_mixer_track_solo": "{name} solo",
+	"video_editor_mixer_track_mute": "{name} stummschalten",
+	"video_editor_mixer_track_volume": "Lautstärke von {name}",
+	"video_editor_mixer_master": "Master",
+	"video_editor_mixer_master_mute": "Masterausgang stummschalten",
+	"video_editor_mixer_master_volume": "Lautstärke des Masterausgangs",
+	"video_editor_mixer_clipping": "Übersteuerung",
+	"video_editor_mixer_track_unsolo": "Solo für {name} aufheben",
+	"video_editor_mixer_track_unmute": "Stummschaltung von {name} aufheben",
+	"video_editor_mixer_master_unmute": "Stummschaltung des Masterausgangs aufheben"
 }

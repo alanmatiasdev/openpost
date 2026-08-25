@@ -7,6 +7,7 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import {
+	applyMixEntryGain,
 	frameToSourceSeconds,
 	isVisibleAtFrame,
 	outputDurationFrames,
@@ -161,6 +162,11 @@ describe('planMixdown', () => {
 		expect(entry.playbackRate).toBe(1);
 		expect(entry.durationSeconds).toBe(3);
 		expect(entry.gainPoints[0]?.value).toBeCloseTo(0.4);
+		expect(entry.previewGainPoints[0]?.value).toBeCloseTo(0.5);
+		expect(entry.mixerTrackGain).toBeCloseTo(0.8);
+		const mastered = applyMixEntryGain(entries, 0.5)[0]!;
+		expect(mastered.gainPoints[0]?.value).toBeCloseTo(0.2);
+		expect(mastered.previewGainPoints[0]?.value).toBeCloseTo(0.25);
 	});
 
 	it('drops muted tracks and items without media', () => {

@@ -21,6 +21,8 @@ export interface RenderQueueSnapshot {
 	items: TimelineItem[];
 	transitions: TimelineTransition[];
 	compositions: SubComposition[];
+	masterVolumeDb?: number;
+	masterMuted?: boolean;
 }
 
 export interface RenderQueueSettings {

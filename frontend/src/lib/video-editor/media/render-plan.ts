@@ -11,6 +11,7 @@
 import type {
 	SubtitleCue,
 	SubComposition,
+	ProjectTimeline,
 	TimelineItem,
 	TimelineTrack,
 	TimelineTransition
@@ -35,11 +36,14 @@ import {
 } from '../audio/audio-eq';
 import { getAudioPitchShiftSemitones } from '../audio/audio-pitch';
 import type { ResolvedAudioEqSettings } from '../audio/types';
+import { mixerDbToGain } from '../audio/mixer-utils';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
 	itemId: string;
 	mediaId: string;
+	/** Root mixer track used by preview channel strips. */
+	trackId?: string;
 	/** Timeline seconds where playback starts in the mixdown. */
 	whenSeconds: number;
 	/** Seconds into the source media where this clip begins. */
@@ -55,7 +59,29 @@ export interface MixEntry {
 	/** Real seconds this clip occupies in the mixdown. */
 	durationSeconds: number;
 	gainPoints: GainPoint[];
+	/** Preview automation before the current root track fader. */
+	previewGainPoints: GainPoint[];
+	/** Current root track fader baked into gainPoints for export. */
+	mixerTrackGain: number;
 	transitionGainSpans: TransitionGainSpan[];
+}
+
+export function masterBusGain(
+	timeline: Pick<ProjectTimeline, 'masterVolumeDb' | 'masterMuted'> | undefined
+): number {
+	return timeline?.masterMuted ? 0 : mixerDbToGain(timeline?.masterVolumeDb ?? 0);
+}
+
+export function applyMixEntryGain(entries: MixEntry[], gain: number): MixEntry[] {
+	if (gain === 1) return entries;
+	return entries.map((entry) => ({
+		...entry,
+		gainPoints: entry.gainPoints.map((point) => ({ ...point, value: point.value * gain })),
+		previewGainPoints: entry.previewGainPoints.map((point) => ({
+			...point,
+			value: point.value * gain
+		}))
+	}));
 }
 
 export interface GainPoint {
@@ -133,9 +159,12 @@ export function planMixdown(
 		);
 		const startFrame = item.from - beforeFrames;
 		const endFrame = item.from + item.durationInFrames + afterFrames;
+		const previewGainPoints = volumeGainPoints(item, 1, fps, startFrame, endFrame);
+		const mixerTrackGain = track.volume ?? 1;
 		entries.push({
 			itemId: item.id,
 			mediaId: item.mediaId,
+			trackId: track.id,
 			whenSeconds: startFrame / fps,
 			sourceOffsetSeconds: item.isReversed
 				? Math.max(
@@ -151,7 +180,12 @@ export function planMixdown(
 			audioEqStages: appendResolvedAudioEqSources(undefined, getAudioEqSettings(item)),
 			reversed: item.isReversed === true,
 			durationSeconds: (endFrame - startFrame) / fps,
-			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps, startFrame, endFrame),
+			gainPoints: previewGainPoints.map((point) => ({
+				...point,
+				value: point.value * mixerTrackGain
+			})),
+			previewGainPoints,
+			mixerTrackGain,
 			transitionGainSpans: transitionGainSpansForItem(item, transitions, itemsById, fps)
 		});
 	}
@@ -197,13 +231,16 @@ export function planNestedMixdown(
 		if (!composition) continue;
 		const track = trackById.get(wrapper.trackId);
 		if (!track || !isAudible(track, anySolo)) continue;
-		const childEntries = planNestedMixdown(
-			composition.items,
-			composition.tracks,
-			composition.fps,
-			composition.transitions,
-			compositions,
-			new Set([...ancestry, wrapper.compositionId])
+		const childEntries = applyMixEntryGain(
+			planNestedMixdown(
+				composition.items,
+				composition.tracks,
+				composition.fps,
+				composition.transitions,
+				compositions,
+				new Set([...ancestry, wrapper.compositionId])
+			),
+			composition.masterMuted ? 0 : mixerDbToGain(composition.masterVolumeDb ?? 0)
 		);
 		const sourceFps = wrapper.sourceFps ?? composition.fps;
 		const wrapperSpeed = wrapper.speed && wrapper.speed > 0 ? wrapper.speed : 1;
@@ -215,12 +252,18 @@ export function planNestedMixdown(
 		);
 		const sliced = sliceMixEntries(childEntries, sourceStart, sourceEnd);
 		const wrapperStart = wrapper.from / fps;
-		const wrapperGain = (wrapper.volume ?? 1) * (track.volume ?? 1);
+		const wrapperGain = wrapper.volume ?? 1;
+		const mixerTrackGain = track.volume ?? 1;
 		const wrapperPitch = getAudioPitchShiftSemitones(wrapper);
 		const outerSpans = transitionGainSpansForItem(wrapper, transitions, itemsById, fps);
 		for (const entry of sliced) {
+			const previewGainPoints = entry.gainPoints.map((point) => ({
+				whenSeconds: wrapperStart + point.whenSeconds / wrapperSpeed,
+				value: point.value * wrapperGain
+			}));
 			entries.push({
 				...entry,
+				trackId: wrapper.trackId,
 				itemId: `${wrapper.id}/${entry.itemId}`,
 				whenSeconds: wrapperStart + entry.whenSeconds / wrapperSpeed,
 				playbackRate: entry.playbackRate * wrapperSpeed,
@@ -230,10 +273,12 @@ export function planNestedMixdown(
 					getAudioEqSettings(wrapper)
 				),
 				durationSeconds: entry.durationSeconds / wrapperSpeed,
-				gainPoints: entry.gainPoints.map((point) => ({
-					whenSeconds: wrapperStart + point.whenSeconds / wrapperSpeed,
-					value: point.value * wrapperGain
+				gainPoints: previewGainPoints.map((point) => ({
+					...point,
+					value: point.value * mixerTrackGain
 				})),
+				previewGainPoints,
+				mixerTrackGain,
 				transitionGainSpans: [
 					...entry.transitionGainSpans.map((span) => ({
 						...span,
@@ -277,6 +322,7 @@ export function sliceMixEntries(
 		if (overlapEnd <= overlapStart) return [];
 		const skipped = overlapStart - entry.whenSeconds;
 		const startGain = gainValueAtTime(entry.gainPoints, overlapStart);
+		const previewStartGain = gainValueAtTime(entry.previewGainPoints, overlapStart);
 		const gainPoints = [
 			{ whenSeconds: 0, value: startGain },
 			...entry.gainPoints
@@ -286,6 +332,12 @@ export function sliceMixEntries(
 					whenSeconds: point.whenSeconds - startSeconds
 				}))
 		];
+		const previewGainPoints = [
+			{ whenSeconds: 0, value: previewStartGain },
+			...entry.previewGainPoints
+				.filter((point) => point.whenSeconds > overlapStart && point.whenSeconds <= overlapEnd)
+				.map((point) => ({ ...point, whenSeconds: point.whenSeconds - startSeconds }))
+		];
 		return [
 			{
 				...entry,
@@ -294,6 +346,7 @@ export function sliceMixEntries(
 					entry.sourceOffsetSeconds + (entry.reversed ? -1 : 1) * skipped * entry.playbackRate,
 				durationSeconds: overlapEnd - overlapStart,
 				gainPoints,
+				previewGainPoints,
 				transitionGainSpans: entry.transitionGainSpans.map((span) => ({
 					...span,
 					startSeconds: span.startSeconds - startSeconds

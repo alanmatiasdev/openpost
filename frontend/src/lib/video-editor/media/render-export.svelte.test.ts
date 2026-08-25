@@ -81,5 +81,22 @@ describe('render export audio decoding', () => {
 		expect(artifact.fileName).toBe('AC3 export.wav');
 		expect(artifact.blob.type).toBe('audio/wav');
 		expect(artifact.blob.size).toBeGreaterThan(20_000);
+
+		const context = new AudioContext();
+		const unity = await context.decodeAudioData(await artifact.blob.arrayBuffer());
+		project.timeline!.masterVolumeDb = -6.020599913279624;
+		const attenuatedArtifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
+		const attenuated = await context.decodeAudioData(await attenuatedArtifact.blob.arrayBuffer());
+		const unityPeak = Math.max(...unity.getChannelData(0).map((sample) => Math.abs(sample)));
+		const attenuatedPeak = Math.max(
+			...attenuated.getChannelData(0).map((sample) => Math.abs(sample))
+		);
+		expect(attenuatedPeak / unityPeak).toBeCloseTo(0.5, 2);
+
+		project.timeline!.masterMuted = true;
+		const mutedArtifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
+		const muted = await context.decodeAudioData(await mutedArtifact.blob.arrayBuffer());
+		expect(Math.max(...muted.getChannelData(0).map((sample) => Math.abs(sample)))).toBe(0);
+		await context.close();
 	});
 });

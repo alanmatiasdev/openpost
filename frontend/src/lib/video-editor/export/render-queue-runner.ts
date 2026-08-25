@@ -26,7 +26,9 @@ function projectForJob(job: RenderQueueJob): Project {
 			tracks: snapshot.tracks,
 			items: snapshot.items,
 			transitions: snapshot.transitions,
-			compositions: snapshot.compositions
+			compositions: snapshot.compositions,
+			masterVolumeDb: snapshot.masterVolumeDb ?? 0,
+			masterMuted: snapshot.masterMuted ?? false
 		}
 	};
 }
