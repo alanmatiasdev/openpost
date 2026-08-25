@@ -138,6 +138,12 @@
 		type SnapTarget
 	} from '$lib/video-editor/timeline/snapping';
 	import {
+		createTrackPushGesturePlan,
+		resolveTrackPush,
+		trackPushGapBefore,
+		type TrackPushGesturePlan
+	} from '$lib/video-editor/timeline/track-push';
+	import {
 		captureSnapshot,
 		restoreSnapshot,
 		snapshotsEqual
@@ -247,6 +253,7 @@
 	import SnowflakeIcon from '@lucide/svelte/icons/snowflake';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
 	import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal';
+	import MoveRightIcon from '@lucide/svelte/icons/move-right';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
@@ -456,6 +463,7 @@
 	}
 	type TimelineDragKind =
 		| 'move'
+		| 'track-push'
 		| 'trim-start'
 		| 'trim-end'
 		| 'slip'
@@ -463,7 +471,7 @@
 		| 'rate-stretch'
 		| 'rate-stretch-start'
 		| 'rate-stretch-end';
-	type AdvancedEditTool = 'slip' | 'slide' | 'rate-stretch';
+	type AdvancedEditTool = 'slip' | 'slide' | 'rate-stretch' | 'track-push';
 	let activeEditTool = $state<AdvancedEditTool | null>(null);
 	let drag: null | {
 		kind: TimelineDragKind;
@@ -482,11 +490,22 @@
 		stretchHandle: 'start' | 'end';
 		slideLeft: TimelineItem | null;
 		slideRight: TimelineItem | null;
+		trackPushPlan: TrackPushGesturePlan | null;
+		trackPushDelta: number;
 		activated: boolean;
 		latestClientX: number;
 		rafId: number | null;
 	} = null;
 	let activeSnapTarget = $state<SnapTarget | null>(null);
+	let latestLockedItemFrame = $derived.by(() => {
+		let latest = Number.NEGATIVE_INFINITY;
+		for (const item of timelineStore.items) {
+			if (isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) {
+				latest = Math.max(latest, item.from);
+			}
+		}
+		return latest;
+	});
 	let syncLockPreviewById = $state<Record<string, SyncLockPreviewUpdate>>({});
 	let breakingTransitionPreviewIds = $state<string[]>([]);
 	let transitionResize = $state<{
@@ -1995,6 +2014,19 @@
 		return effectiveMediaTracks(timelineStore.tracks).find((track) => track.id === item.trackId);
 	}
 
+	function trackPushAvailability(item: TimelineItem): 'ready' | 'no-gap' | 'locked' {
+		if (trackPushGapBefore(item, timelineStore.items) <= 0) return 'no-gap';
+		if (latestLockedItemFrame >= item.from) return 'locked';
+		return 'ready';
+	}
+
+	function trackPushTitle(item: TimelineItem): string {
+		const availability = trackPushAvailability(item);
+		if (availability === 'no-gap') return m.video_editor_track_push_no_gap();
+		if (availability === 'locked') return m.video_editor_track_push_locked();
+		return `${m.video_editor_track_push_handle()}. ${m.video_editor_track_push_hint()}`;
+	}
+
 	function snapTargetsFor(ids: string[]): SnapTarget[] {
 		return buildSnapTargets({
 			items: timelineStore.items,
@@ -2177,8 +2209,9 @@
 		if (event.metaKey || event.ctrlKey || !selectedItemIds.includes(id)) selectItem(event, id);
 		else selectedItemId = id;
 		const item = timelineStore.itemById.get(id);
-		if (!item || trackForItem(item)?.locked) return;
+		if (!item || isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) return;
 		const kind = requestedKind === 'move' && event.altKey ? 'slip' : requestedKind;
+		if (kind === 'track-push' && trackPushGapBefore(item, timelineStore.items) <= 0) return;
 		if (
 			(kind === 'slip' || kind === 'slide' || isRateStretchKind(kind)) &&
 			item.type !== 'video' &&
@@ -2191,7 +2224,7 @@
 				: null;
 		if ((kind === 'trim-start' || kind === 'trim-end') && event.altKey && !rollingNeighbor) return;
 		const ripple = (kind === 'trim-start' || kind === 'trim-end') && event.shiftKey;
-		const breakingTransitionIds =
+		let breakingTransitionIds =
 			(kind === 'trim-start' || kind === 'trim-end') && !event.shiftKey && !event.altKey
 				? transitionsStore.list
 						.filter((transition) =>
@@ -2201,9 +2234,20 @@
 						)
 						.map((transition) => transition.id)
 				: [];
+		const beforeSnapshot = captureSnapshot();
+		const trackPushPlan =
+			kind === 'track-push'
+				? createTrackPushGesturePlan({
+						anchorId: item.id,
+						items: beforeSnapshot.items,
+						tracks: beforeSnapshot.tracks,
+						transitions: beforeSnapshot.transitions
+					})
+				: null;
+		if (trackPushPlan?.blockedBy) return;
+		if (trackPushPlan) breakingTransitionIds = trackPushPlan.breakingTransitionIds;
 		const slideNeighbors = kind === 'slide' ? findSlideNeighbors(item) : null;
 		breakingTransitionPreviewIds = breakingTransitionIds;
-		const beforeSnapshot = captureSnapshot();
 		const editItems = unlockedEditItems(beforeSnapshot);
 		const moveSelectionIds = selectedItemIds.includes(id) ? selectedItemIds : [id];
 		const synchronizedIds = Array.from(
@@ -2223,7 +2267,9 @@
 					.map((candidate) => candidate.id)
 			: [];
 		const excludedIds = [
-			...synchronizedIds,
+			...(trackPushPlan
+				? trackPushPlan.shiftedItems.map((candidate) => candidate.id)
+				: synchronizedIds),
 			...rippleDownstreamIds,
 			...(rollingNeighbor ? [rollingNeighbor.id] : []),
 			...(slideNeighbors?.left ? [slideNeighbors.left.id] : []),
@@ -2247,7 +2293,13 @@
 			stretchHandle: rateStretchHandle(kind),
 			slideLeft: slideNeighbors?.left ? $state.snapshot(slideNeighbors.left) : null,
 			slideRight: slideNeighbors?.right ? $state.snapshot(slideNeighbors.right) : null,
-			activated: kind === 'trim-start' || kind === 'trim-end' || isRateStretchKind(kind),
+			trackPushPlan,
+			trackPushDelta: 0,
+			activated:
+				kind === 'track-push' ||
+				kind === 'trim-start' ||
+				kind === 'trim-end' ||
+				isRateStretchKind(kind),
 			latestClientX: event.clientX,
 			rafId: null
 		};
@@ -2279,6 +2331,19 @@
 		if (!drag.activated && Math.abs(pixelDelta) < DRAG_THRESHOLD_PIXELS) return;
 		drag.activated = true;
 		const deltaFrames = pxDeltaToFrames(pixelDelta);
+		if (drag.kind === 'track-push' && drag.trackPushPlan) {
+			const plan = resolveTrackPush(
+				drag.trackPushPlan,
+				deltaFrames,
+				timelineStore.snapEnabled ? drag.snapTargets : [],
+				snapThreshold()
+			);
+			activeSnapTarget = plan.snapTarget;
+			if (plan.delta === drag.trackPushDelta) return;
+			drag.trackPushDelta = plan.delta;
+			timelineStore._moveItems(plan.moves);
+			return;
+		}
 		if (drag.kind === 'move') {
 			const proposed = Math.max(0, drag.original.from + deltaFrames);
 			const snap = timelineStore.snapEnabled
@@ -2450,6 +2515,7 @@
 	function commandTypeFor(kind: TimelineDragKind, rolling = false, ripple = false): string {
 		if (ripple) return 'RIPPLE_EDIT';
 		if (rolling) return 'ROLLING_EDIT';
+		if (kind === 'track-push') return 'TRACK_PUSH';
 		if (kind === 'trim-start') return 'TRIM_ITEM_START';
 		if (kind === 'trim-end') return 'TRIM_ITEM_END';
 		if (kind === 'slip') return 'SLIP_ITEM';
@@ -2490,11 +2556,11 @@
 			}
 		}
 		const completedItem = timelineStore.itemById.get(completed.id);
-		const didTrim =
+		const didBoundaryEdit =
 			completedItem !== undefined &&
 			(completedItem.from !== completed.original.from ||
 				completedItem.durationInFrames !== completed.original.durationInFrames);
-		if (!cancelled && didTrim && completed.breakingTransitionIds.length > 0) {
+		if (!cancelled && didBoundaryEdit && completed.breakingTransitionIds.length > 0) {
 			const breakingIds = new Set(completed.breakingTransitionIds);
 			const previousCount = transitionsStore.list.length;
 			transitionsStore.setAll(
@@ -2582,14 +2648,35 @@
 		kind: TimelineDragKind
 	): void {
 		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-		if (trackForItem(item)?.locked) return;
+		if (isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) return;
+		if (kind === 'track-push' && trackPushGapBefore(item, timelineStore.items) <= 0) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const direction = event.key === 'ArrowLeft' ? -1 : 1;
 		const delta = direction * (event.shiftKey ? 10 : 1);
 		const before = captureSnapshot();
 		const editItems = unlockedEditItems(before);
-		if (kind === 'move') {
+		if (kind === 'track-push') {
+			const gesture = createTrackPushGesturePlan({
+				anchorId: item.id,
+				items: before.items,
+				tracks: before.tracks,
+				transitions: before.transitions
+			});
+			const plan = resolveTrackPush(gesture, delta);
+			if (plan.delta !== 0) {
+				timelineStore._moveItems(plan.moves);
+				if (gesture.breakingTransitionIds.length > 0) {
+					const breakingIds = new Set(gesture.breakingTransitionIds);
+					const previousCount = transitionsStore.list.length;
+					transitionsStore.setAll(
+						transitionsStore.list.filter((transition) => !breakingIds.has(transition.id))
+					);
+					const removedCount = previousCount - transitionsStore.list.length;
+					if (removedCount > 0) ontransitionbreak(removedCount);
+				}
+			}
+		} else if (kind === 'move') {
 			timelineStore._moveItems(
 				planLinkedMoveGesture(
 					item,
@@ -3567,6 +3654,18 @@
 		>
 			<GaugeIcon class="size-3.5" />
 		</Button>
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)] [@media(pointer:coarse)]:size-11"
+			data-active={activeEditTool === 'track-push'}
+			aria-pressed={activeEditTool === 'track-push'}
+			aria-label={m.video_editor_track_push()}
+			title={`${m.video_editor_track_push()}: ${m.video_editor_track_push_hint()}`}
+			onclick={() => toggleEditTool('track-push')}
+		>
+			<MoveRightIcon class="size-3.5" />
+		</Button>
 	</div>
 	<div class="ml-auto flex items-center gap-1">
 		{#if selectedItem}
@@ -4108,6 +4207,7 @@
 				{/if}
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
 					{@const displayItem = previewedItem(item)}
+					{@const pushAvailability = trackPushAvailability(item)}
 					{#if !syncLockPreviewById[item.id]?.hidden}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -4149,8 +4249,17 @@
 							{/if}
 							<button
 								type="button"
-								class="absolute inset-0 flex min-w-0 cursor-grab items-center overflow-hidden text-left active:cursor-grabbing disabled:cursor-default"
-								aria-label={`${item.label}${item.isReversed ? `, ${m.video_editor_clip_reverse()}` : ''}. ${m.video_editor_timing_keyboard()}`}
+								class="absolute inset-0 flex min-w-0 items-center overflow-hidden text-left {activeEditTool ===
+								'track-push'
+									? pushAvailability === 'ready'
+										? 'cursor-col-resize'
+										: 'cursor-not-allowed'
+									: 'cursor-grab active:cursor-grabbing'}"
+								aria-label={activeEditTool === 'track-push'
+									? `${item.label}. ${m.video_editor_track_push_handle()}`
+									: `${item.label}${item.isReversed ? `, ${m.video_editor_clip_reverse()}` : ''}. ${m.video_editor_timing_keyboard()}`}
+								aria-disabled={activeEditTool === 'track-push' && pushAvailability !== 'ready'}
+								title={activeEditTool === 'track-push' ? trackPushTitle(item) : undefined}
 								onclick={(event) => {
 									event.stopPropagation();
 									if (event.detail === 0) selectItem(event, item.id);
@@ -4228,20 +4337,38 @@
 							</button>
 							<button
 								type="button"
-								class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white"
-								aria-label={m.video_editor_trim_start()}
-								title={m.video_editor_trim_keyboard()}
+								class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white {activeEditTool ===
+								'track-push'
+									? pushAvailability === 'ready'
+										? 'bg-cyan-400/45 hover:bg-cyan-300/70'
+										: 'cursor-not-allowed bg-white/10'
+									: 'bg-white/15 hover:bg-white/40'}"
+								aria-label={activeEditTool === 'track-push'
+									? m.video_editor_track_push_handle()
+									: m.video_editor_trim_start()}
+								aria-disabled={activeEditTool === 'track-push' && pushAvailability !== 'ready'}
+								title={activeEditTool === 'track-push'
+									? trackPushTitle(item)
+									: m.video_editor_trim_keyboard()}
 								onkeydown={(event) =>
 									applyKeyboardEdit(
 										event,
 										item,
-										activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
+										activeEditTool === 'rate-stretch'
+											? 'rate-stretch-start'
+											: activeEditTool === 'track-push'
+												? 'track-push'
+												: 'trim-start'
 									)}
 								onpointerdown={(event) =>
 									startDrag(
 										event,
 										item.id,
-										activeEditTool === 'rate-stretch' ? 'rate-stretch-start' : 'trim-start'
+										activeEditTool === 'rate-stretch'
+											? 'rate-stretch-start'
+											: activeEditTool === 'track-push'
+												? 'track-push'
+												: 'trim-start'
 									)}
 							></button>
 							<button

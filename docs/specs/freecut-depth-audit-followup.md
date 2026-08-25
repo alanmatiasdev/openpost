@@ -139,7 +139,23 @@ the audit evidence, while the resolution log records later product changes.
   alignment, distribution, and changed-property tests combine with real
   Chromium pointer, keyboard, cancellation, selection, accessibility, and 320
   px visual checks.
-  Current unresolved count: 2.
+- 2026-08-25: gap 7 resolved. A dedicated track push/pull tool now moves every
+  clip at or after the chosen cut across all tracks from one stable baseline.
+  Left movement stops at the tightest gap on any affected track, while the
+  anchor edge shares timeline snapping and its visible guide. Hidden unlocked
+  clips participate. An affected direct or group-inherited lock blocks the
+  whole operation so track timing cannot split around locked content. Pointer
+  previews coalesce to one animation frame, Escape and pointer cancellation
+  restore items and transitions, and commit records one undo step. Keyboard
+  arrows move one or ten frames, touch uses the same Pointer Events path, and
+  short localized copy explains missing gaps and downstream locks. Transition
+  pairs entirely before or after the cut stay intact; a pair that straddles the
+  cut hides during preview and is removed only on commit. Pure planning tests
+  cover global participants, the tightest clamp, snapping, hidden tracks,
+  inherited locks, and transition partitions. Real Chromium covers live
+  preview, cancellation, transition cleanup, undo, exact keyboard steps,
+  locked feedback, and the 320 px layout.
+  Current unresolved count: 1.
 
 ## Rows checked with no gap found
 

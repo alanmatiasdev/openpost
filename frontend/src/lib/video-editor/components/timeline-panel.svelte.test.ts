@@ -1586,6 +1586,132 @@ describe('TimelinePanel track groups', () => {
 	});
 });
 
+describe('TimelinePanel track push', () => {
+	function configureTrackPushTimeline(audioLocked = false): void {
+		const videoTrack = track('video-track', 'video', 0);
+		const audioTrack = track('audio-track', 'audio', 1);
+		audioTrack.locked = audioLocked;
+		timelineStore.setAll({
+			tracks: [videoTrack, audioTrack],
+			items: [
+				item({ id: 'video-before', label: 'Before', from: 0, durationInFrames: 80 }),
+				item({ id: 'anchor', label: 'Anchor', from: 100, durationInFrames: 20 }),
+				item({ id: 'video-later', label: 'Video later', from: 140, durationInFrames: 20 }),
+				item({
+					id: 'audio-before',
+					trackId: 'audio-track',
+					label: 'Audio before',
+					type: 'audio',
+					from: 0,
+					durationInFrames: 110
+				}),
+				item({
+					id: 'audio-later',
+					trackId: 'audio-track',
+					label: 'Audio later',
+					type: 'audio',
+					from: 110,
+					durationInFrames: 30
+				})
+			],
+			fps: 30
+		});
+		transitionsStore.setAll([
+			{
+				id: 'straddled-transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'audio-before',
+				toItemId: 'audio-later'
+			}
+		]);
+	}
+
+	it('previews all later tracks, cancels cleanly, then commits and undoes once', async () => {
+		configureTrackPushTimeline();
+		const onedit = vi.fn();
+		const ontransitionbreak = vi.fn();
+		const screen = await render(TimelinePanel, { onedit, ontransitionbreak });
+		await screen.getByRole('button', { name: 'Push or pull tracks' }).click();
+		const anchor = document.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="anchor"] > button'
+		);
+		expect(anchor).not.toBeNull();
+		expect(anchor?.getAttribute('aria-label')).toContain('Move this cut and every later clip');
+
+		dispatchPointer(anchor!, 'pointerdown', 400);
+		dispatchPointer(window, 'pointermove', 440);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(110);
+		expect(timelineStore.itemById.get('video-later')?.from).toBe(150);
+		expect(timelineStore.itemById.get('audio-later')?.from).toBe(120);
+		expect(document.querySelector('[data-transition-id="straddled-transition"]')).toBeNull();
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(100);
+		expect(timelineStore.itemById.get('audio-later')?.from).toBe(110);
+		expect(transitionsStore.list.map((candidate) => candidate.id)).toEqual([
+			'straddled-transition'
+		]);
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		dispatchPointer(anchor!, 'pointerdown', 400);
+		dispatchPointer(window, 'pointermove', 440);
+		dispatchPointer(window, 'pointerup', 440);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(110);
+		expect(timelineStore.itemById.get('audio-later')?.from).toBe(120);
+		expect(transitionsStore.list).toEqual([]);
+		expect(ontransitionbreak).toHaveBeenCalledWith(1);
+		expect(commandHistory.getLastCommandType()).toBe('TRACK_PUSH');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(100);
+		expect(timelineStore.itemById.get('audio-later')?.from).toBe(110);
+		expect(transitionsStore.list.map((candidate) => candidate.id)).toEqual([
+			'straddled-transition'
+		]);
+	});
+
+	it('uses exact keyboard steps and explains a downstream lock at phone width', async () => {
+		await page.viewport(320, 720);
+		configureTrackPushTimeline();
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		await screen.getByRole('button', { name: 'Push or pull tracks' }).click();
+		const anchor = document.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="anchor"] > button'
+		)!;
+		await page.screenshot({ path: '../../../../.svelte-kit/openpost-track-push-320.png' });
+		anchor.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(110);
+		expect(timelineStore.itemById.get('audio-later')?.from).toBe(120);
+		expect(commandHistory.getLastCommandType()).toBe('TRACK_PUSH');
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth
+		);
+
+		commandHistory.undo();
+		configureTrackPushTimeline(true);
+		await vi.waitFor(() => {
+			expect(anchor.getAttribute('aria-disabled')).toBe('true');
+		});
+		expect(anchor.title).toBe('Unlock affected later tracks to move this cut.');
+		dispatchPointer(anchor, 'pointerdown', 400);
+		dispatchPointer(window, 'pointermove', 440);
+		dispatchPointer(window, 'pointerup', 440);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('anchor')?.from).toBe(100);
+		expect(commandHistory.undoStack).toHaveLength(0);
+	});
+});
+
 const FRAME_COLORS = [
 	[220, 38, 38],
 	[22, 163, 74],
