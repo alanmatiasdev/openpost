@@ -9,6 +9,7 @@ import '../media/scene-search/ai/caption-provider';
 import '../media/scene-search/ai/clip-provider';
 import '../media/scene-search/ai/embeddings-provider';
 import '../transcript/engine/lib/transcription-worker-pool';
+import '../transcript/filler-audio-confidence';
 import { inspectLocalAiRuntimes } from './runtime-registry';
 
 describe('local AI runtime registrations', () => {
@@ -20,6 +21,7 @@ describe('local AI runtime registrations', () => {
 		).toEqual([
 			'ace-step-music',
 			'anime4k-upscale',
+			'filler-audio-confidence',
 			'kokoro-tts',
 			'moss-tts',
 			'parakeet',

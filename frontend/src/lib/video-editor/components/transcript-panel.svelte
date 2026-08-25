@@ -24,6 +24,7 @@
 	} from '$lib/video-editor/transcript/subtitle-cue-format';
 	import { collectTranscriptSourceWords } from '$lib/video-editor/transcript/speech-cleanup';
 	import { applyTranscriptWordRemoval } from '$lib/video-editor/transcript/speech-cleanup-actions';
+	import { transcriptIgnoreStore } from '$lib/video-editor/transcript/transcript-ignore-store.svelte';
 	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
 
 	let { onedit }: { onedit: () => void } = $props();
@@ -45,6 +46,13 @@
 	const sourceWordByUiId = $derived(new Map(sourceWords.map((word) => [word.id, word])));
 	const selectedSourceWords = $derived(
 		sourceWords.filter((word) => selectedSourceWordIds.has(word.id))
+	);
+	const ignoredSourceWords = $derived(
+		sourceWords.filter((word) => transcriptIgnoreStore.isIgnored(word))
+	);
+	const selectedWordsAreIgnored = $derived(
+		selectedSourceWords.length > 0 &&
+			selectedSourceWords.every((word) => transcriptIgnoreStore.isIgnored(word))
 	);
 
 	function displayText(cue: SubtitleCue): string {
@@ -192,9 +200,16 @@
 			setCurrentFrame(sourceSecondsToTimelineFrame(source, word.start, timelineStore.fps));
 	}
 
-	function deleteSelectedVideoWords(): void {
+	function updateSelectedVideoWords(): void {
 		if (selectedSourceWords.length === 0) return;
-		const mediaIds = new Set(selectedSourceWords.map((word) => word.mediaId));
+		if (selectedWordsAreIgnored) transcriptIgnoreStore.restore(selectedSourceWords);
+		else transcriptIgnoreStore.ignore(selectedSourceWords);
+		selectedSourceWordIds = new Set();
+	}
+
+	function commitIgnoredVideoWords(): void {
+		if (ignoredSourceWords.length === 0) return;
+		const mediaIds = new Set(ignoredSourceWords.map((word) => word.mediaId));
 		const itemIds = timelineStore.items
 			.filter(
 				(item) =>
@@ -203,10 +218,15 @@
 					mediaIds.has(item.mediaId)
 			)
 			.map((item) => item.id);
-		const result = applyTranscriptWordRemoval(itemIds, selectedSourceWords);
+		const result = applyTranscriptWordRemoval(itemIds, ignoredSourceWords);
 		if (result.removedItemCount === 0) return;
+		transcriptIgnoreStore.clear();
 		selectedSourceWordIds = new Set();
 		onedit();
+	}
+
+	function ignoredDurationLabel(): string {
+		return `${transcriptIgnoreStore.durationSeconds.toFixed(1)}s`;
 	}
 </script>
 
@@ -233,20 +253,58 @@
 	</div>
 	{#if editVideoMode}
 		<div
-			class="mx-1 mb-1 flex items-center justify-between gap-2 rounded-md border border-[oklch(0.31_0.018_55)] bg-[oklch(0.2_0.012_50)] px-2 py-1.5"
+			class="mx-1 mb-1 flex flex-col gap-2 rounded-md border border-[oklch(0.31_0.018_55)] bg-[oklch(0.2_0.012_50)] px-2 py-2"
 		>
-			<span class="text-[10px] text-[oklch(0.68_0.012_55)]">
-				{m.video_editor_transcript_words_selected({ count: selectedSourceWords.length })}
-			</span>
-			<Button
-				type="button"
-				size="sm"
-				class="h-6 px-2 text-[10px]"
-				disabled={selectedSourceWords.length === 0}
-				onclick={deleteSelectedVideoWords}
-			>
-				{m.video_editor_delete_selected_words()}
-			</Button>
+			<p class="text-[10px] leading-4 text-[oklch(0.68_0.012_55)]">
+				{m.video_editor_transcript_staging_help()}
+			</p>
+			<div class="flex items-center justify-between gap-2">
+				<span class="text-[10px] text-[oklch(0.68_0.012_55)]">
+					{m.video_editor_transcript_words_selected({ count: selectedSourceWords.length })}
+				</span>
+				<Button
+					type="button"
+					size="sm"
+					class="min-h-7 px-2 text-[10px]"
+					disabled={selectedSourceWords.length === 0}
+					onclick={updateSelectedVideoWords}
+				>
+					{selectedWordsAreIgnored
+						? m.video_editor_restore_selected_words()
+						: m.video_editor_stage_selected_words()}
+				</Button>
+			</div>
+			{#if ignoredSourceWords.length > 0}
+				<div
+					class="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-2"
+				>
+					<span class="text-[10px] font-medium text-[var(--video-editor-focus)]">
+						{m.video_editor_staged_transcript_words({
+							count: ignoredSourceWords.length,
+							duration: ignoredDurationLabel()
+						})}
+					</span>
+					<div class="flex gap-1">
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							class="min-h-7 px-2 text-[10px]"
+							onclick={() => transcriptIgnoreStore.clear()}
+						>
+							{m.video_editor_clear_staged_words()}
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							class="min-h-7 px-2 text-[10px]"
+							onclick={commitIgnoredVideoWords}
+						>
+							{m.video_editor_commit_staged_words()}
+						</Button>
+					</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 	{#if subtitleItems.length === 0}
@@ -339,8 +397,13 @@
 						{#if cue.words?.length}
 							<div class="mt-1 flex flex-wrap gap-1">
 								{#each cue.words as word (word.id)}
+									{@const sourceWord = sourceWordByUiId.get(`${item.id}:${cue.id}:${word.id}`)}
+									{@const wordIgnored = sourceWord
+										? transcriptIgnoreStore.isIgnored(sourceWord)
+										: false}
 									<div
 										class="group rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.23_0.01_50)] p-1"
+										data-ignored={wordIgnored}
 									>
 										{#if editVideoMode && sourceWordByUiId.has(`${item.id}:${cue.id}:${word.id}`)}
 											<button
@@ -348,11 +411,15 @@
 												class={`min-h-6 w-full rounded px-1 text-left text-[10px] ${
 													selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)
 														? 'bg-[var(--video-editor-focus)] font-medium text-black'
-														: ''
+														: wordIgnored
+															? 'text-[oklch(0.58_0.012_55)] line-through decoration-[var(--video-editor-focus)] decoration-2'
+															: ''
 												}`}
 												data-selected={selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)}
 												aria-pressed={selectedSourceWordIds.has(`${item.id}:${cue.id}:${word.id}`)}
-												aria-label={m.video_editor_delete_transcript_word({ word: word.text })}
+												aria-label={wordIgnored
+													? m.video_editor_staged_transcript_word({ word: word.text })
+													: m.video_editor_select_transcript_word({ word: word.text })}
 												onclick={() => toggleVideoWord(`${item.id}:${cue.id}:${word.id}`)}
 											>
 												{word.text}

@@ -5,6 +5,7 @@ import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import SpeechCleanupDialog from './speech-cleanup-dialog.svelte';
+import type { FillerRangesByMediaId } from '../transcript/speech-cleanup';
 import '../../../routes/layout.css';
 
 const videoTrack: TimelineTrack = {
@@ -66,6 +67,23 @@ const captions: TimelineItem = {
 	]
 };
 
+async function scoreFillers(ranges: FillerRangesByMediaId): Promise<FillerRangesByMediaId> {
+	return Object.fromEntries(
+		Object.entries(ranges).map(([mediaId, candidates]) => [
+			mediaId,
+			candidates.map((candidate) => ({
+				...candidate,
+				audioConfidence: {
+					level: 'high' as const,
+					fillerScore: 0.8,
+					nonFillerScore: 0.1,
+					label: 'person saying um'
+				}
+			}))
+		])
+	);
+}
+
 beforeEach(() => {
 	commandHistory.clearHistory();
 	timelineStore.__resetForTesting();
@@ -80,12 +98,14 @@ describe('SpeechCleanupDialog', () => {
 			open: true,
 			itemIds: [video.id],
 			initialMode: 'fillers',
-			onapplied
+			onapplied,
+			scoreFillerRanges: scoreFillers
 		});
 
 		await expect.element(screen.getByRole('dialog')).toBeVisible();
 		await expect.element(screen.getByText('1 cut selected')).toBeVisible();
 		await expect.element(screen.getByText('um')).toBeVisible();
+		await expect.element(screen.getByText('High confidence')).toBeVisible();
 		expect(screen.getByRole('dialog').element().scrollWidth).toBeLessThanOrEqual(
 			screen.getByRole('dialog').element().clientWidth
 		);

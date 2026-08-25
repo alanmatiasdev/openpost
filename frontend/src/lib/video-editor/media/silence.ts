@@ -37,7 +37,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /** Decode a media item's full audio into mono channel data for detection. */
-async function decodeAudio(
+export async function decodeAudioForAnalysis(
 	mediaId: string,
 	signal?: AbortSignal
 ): Promise<import('../audio/audio-silence').AudioBufferLike> {
@@ -148,7 +148,7 @@ export async function analyzeSilenceSignal(
 		throwIfAborted(signal);
 		const mediaId = mediaIds[index]!;
 		try {
-			const buffer = await decodeAudio(mediaId, signal);
+			const buffer = await decodeAudioForAnalysis(mediaId, signal);
 			const detected = toSourceRanges(detectSilentRanges(buffer, detectorOptions));
 			const visible = rangesInsideSpans(detected, spansByMediaId.get(mediaId) ?? []);
 			if (visible.length > 0) rangesByMediaId[mediaId] = visible;

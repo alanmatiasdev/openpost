@@ -96,6 +96,14 @@ export interface FillerRange extends SourceRange {
 	mediaId: string;
 	text: string;
 	words: TranscriptSourceWord[];
+	audioConfidence?: FillerAudioConfidence;
+}
+
+export interface FillerAudioConfidence {
+	level: 'high' | 'medium' | 'low' | 'unknown';
+	fillerScore: number;
+	nonFillerScore: number;
+	label: string;
 }
 
 export type FillerRangesByMediaId = Record<string, FillerRange[]>;

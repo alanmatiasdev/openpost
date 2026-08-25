@@ -27,6 +27,10 @@
 		applyFillerRangeRemoval,
 		applySilenceRangeRemoval
 	} from '$lib/video-editor/transcript/speech-cleanup-actions';
+	import {
+		scoreFillerRangesWithAudioConfidence,
+		type FillerAudioConfidenceOptions
+	} from '$lib/video-editor/transcript/filler-audio-confidence';
 
 	type CleanupMode = 'fillers' | 'silence';
 	type SilenceMode = 'signal' | 'transcript';
@@ -43,12 +47,17 @@
 		open = $bindable(false),
 		itemIds,
 		initialMode = 'fillers',
-		onapplied
+		onapplied,
+		scoreFillerRanges = scoreFillerRangesWithAudioConfidence
 	}: {
 		open?: boolean;
 		itemIds: string[];
 		initialMode?: CleanupMode;
 		onapplied: (removedCount: number) => void;
+		scoreFillerRanges?: (
+			ranges: ReturnType<typeof detectFillerRanges>,
+			options?: FillerAudioConfidenceOptions
+		) => ReturnType<typeof scoreFillerRangesWithAudioConfidence>;
 	} = $props();
 
 	let mode = $state<CleanupMode>('fillers');
@@ -178,27 +187,83 @@
 	}
 
 	async function analyzeFillers(): Promise<void> {
+		abortController?.abort();
+		const controller = new AbortController();
+		abortController = controller;
+		analyzing = true;
+		progress = 0;
 		analysisError = '';
 		const words = collectTranscriptSourceWords(timelineStore.items, itemIds, timelineStore.fps);
 		if (words.length === 0) {
 			selectAll([]);
 			reviewSignature = cleanupSettingsSignature();
+			abortController = null;
+			analyzing = false;
 			return;
 		}
 		const settings = currentFillerSettings();
 		fillerSettings = settings;
-		const ranges = Object.values(detectFillerRanges(words, settings))
-			.flat()
-			.map((range) => ({
+		const detected = detectFillerRanges(words, settings);
+		const detectedRanges = Object.values(detected).flat();
+		selectAll(
+			detectedRanges.map((range) => ({
 				id: `filler:${range.id}`,
 				mediaId: range.mediaId,
 				start: range.start,
 				end: range.end,
 				label: range.text,
 				filler: range
-			}));
-		selectAll(ranges);
-		reviewSignature = cleanupSettingsSignature();
+			}))
+		);
+		try {
+			const scored = await scoreFillerRanges(detected, {
+				signal: controller.signal,
+				onProgress: (event) => (progress = event.progress)
+			});
+			if (controller.signal.aborted) return;
+			const confidenceOrder = { high: 0, medium: 1, unknown: 2, low: 3 } as const;
+			const ranges = Object.values(scored)
+				.flat()
+				.toSorted(
+					(left, right) =>
+						confidenceOrder[left.audioConfidence?.level ?? 'unknown'] -
+						confidenceOrder[right.audioConfidence?.level ?? 'unknown']
+				)
+				.map((range) => ({
+					id: `filler:${range.id}`,
+					mediaId: range.mediaId,
+					start: range.start,
+					end: range.end,
+					label: range.text,
+					filler: range
+				}));
+			reviewRanges = ranges;
+			selectedIds = new Set(
+				ranges
+					.filter((range) => range.filler?.audioConfidence?.level !== 'low')
+					.map((range) => range.id)
+			);
+			reviewSignature = cleanupSettingsSignature();
+		} catch (error) {
+			if (!(error instanceof DOMException && error.name === 'AbortError')) {
+				analysisError = m.video_editor_cleanup_confidence_unavailable();
+				reviewSignature = cleanupSettingsSignature();
+			}
+		} finally {
+			if (abortController === controller) {
+				abortController = null;
+				analyzing = false;
+			}
+		}
+	}
+
+	function confidenceLabel(range: ReviewRange): string | null {
+		const level = range.filler?.audioConfidence?.level;
+		if (!level) return null;
+		if (level === 'high') return m.video_editor_cleanup_confidence_high();
+		if (level === 'medium') return m.video_editor_cleanup_confidence_medium();
+		if (level === 'low') return m.video_editor_cleanup_confidence_low();
+		return m.video_editor_cleanup_confidence_unknown();
 	}
 
 	async function analyzeSilence(): Promise<void> {
@@ -384,6 +449,9 @@
 
 			{#if mode === 'fillers'}
 				<section class="mt-4 space-y-4" aria-label={m.video_editor_filler_review()}>
+					<p class="text-[11px] leading-4 text-[var(--video-editor-muted)]">
+						{m.video_editor_cleanup_confidence_help()}
+					</p>
 					<div class="grid grid-cols-3 gap-1 rounded-lg border border-[oklch(0.28_0.014_55)] p-1">
 						{#each FILLER_REMOVAL_PRESETS as preset (preset.id)}
 							<Button
@@ -606,7 +674,17 @@
 									/>{/if}
 							</button>
 							<div class="min-w-0 flex-1">
-								<p class="truncate text-xs font-medium">{range.label}</p>
+								<div class="flex min-w-0 items-center gap-2">
+									<p class="truncate text-xs font-medium">{range.label}</p>
+									{#if confidenceLabel(range)}
+										<span
+											class="shrink-0 rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] text-[var(--video-editor-muted)]"
+											data-confidence={range.filler?.audioConfidence?.level}
+										>
+											{confidenceLabel(range)}
+										</span>
+									{/if}
+								</div>
 								<p class="truncate text-[10px] text-[var(--video-editor-muted)]">
 									{mediaLabel(range.mediaId)} · {formatTimestamp(range.start)} · {formatDuration(
 										range.end - range.start

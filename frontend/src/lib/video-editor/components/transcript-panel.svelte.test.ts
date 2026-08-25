@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { transcriptIgnoreStore } from '../transcript/transcript-ignore-store.svelte';
 import TranscriptPanel from './transcript-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -38,6 +40,7 @@ const item: TimelineItem = {
 
 beforeEach(() => {
 	commandHistory.clearHistory();
+	transcriptIgnoreStore.__resetForTesting();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({
 		tracks: [track],
@@ -81,7 +84,8 @@ describe('TranscriptPanel cue formatting', () => {
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
 	});
 
-	it('ripple deletes selected timed words from video and captions in one undo step', async () => {
+	it('stages transcript words for review, then ripple deletes them in one undo step', async () => {
+		await page.viewport(320, 720);
 		const videoTrack: TimelineTrack = { ...track, id: 'video', name: 'Video', order: 1 };
 		const video: TimelineItem = {
 			id: 'video',
@@ -130,9 +134,16 @@ describe('TranscriptPanel cue formatting', () => {
 		const screen = await render(TranscriptPanel, { onedit });
 
 		await screen.getByRole('button', { name: 'Edit video by transcript' }).click();
-		await screen.getByRole('button', { name: 'Delete "um" from the video' }).click();
+		await screen.getByRole('button', { name: 'Select "um"' }).click();
 		await expect.element(screen.getByText('Words selected: 1')).toBeVisible();
-		await screen.getByRole('button', { name: 'Delete from video' }).click();
+		await screen.getByRole('button', { name: 'Stage words' }).click();
+		await expect.element(screen.getByText('1 staged · 0.5s')).toBeVisible();
+		expect(screen.container.querySelector('[data-ignored="true"]')).not.toBeNull();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(1);
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		await screen.getByRole('button', { name: 'Cut staged words' }).click();
 
 		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(2);
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe('<b>Please continue</b>');
@@ -143,6 +154,7 @@ describe('TranscriptPanel cue formatting', () => {
 		expect(timelineStore.itemById.get('subtitle')?.durationInFrames).toBe(75);
 		expect(commandHistory.undoStack).toHaveLength(1);
 		expect(onedit).toHaveBeenCalledOnce();
+		expect(transcriptIgnoreStore.spanCount).toBe(0);
 		commandHistory.undo();
 		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(1);
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
