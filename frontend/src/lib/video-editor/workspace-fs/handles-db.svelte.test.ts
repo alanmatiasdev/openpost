@@ -46,5 +46,8 @@ test('activates a known workspace without duplicating it', async () => {
 	const activated = await activateWorkspaceHandle(launchId ?? '');
 	expect(activated?.name).toBe('Launch edits');
 	expect((await getWorkspaceHandleRecord())?.activeWorkspaceId).toBe(launchId);
-	expect(await listKnownWorkspaces()).toHaveLength(2);
+	expect((await listKnownWorkspaces()).map((record) => record.name)).toEqual([
+		'Launch edits',
+		'Archive'
+	]);
 });

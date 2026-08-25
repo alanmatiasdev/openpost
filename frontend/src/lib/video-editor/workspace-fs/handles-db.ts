@@ -137,6 +137,12 @@ export async function listKnownWorkspaces(): Promise<HandleRecord[]> {
 	return all.filter((r) => r.id !== WORKSPACE_ID).sort((a, b) => b.pickedAt - a.pickedAt);
 }
 
+async function nextWorkspacePickedAt(): Promise<number> {
+	const records = await listHandlesByKind('workspace');
+	const latest = records.reduce((value, record) => Math.max(value, record.pickedAt), 0);
+	return Math.max(Date.now(), latest + 1);
+}
+
 async function findKnownWorkspaceByHandle(
 	handle: FileSystemDirectoryHandle
 ): Promise<HandleRecord | null> {
@@ -161,7 +167,7 @@ async function findKnownWorkspaceByHandle(
 export async function saveWorkspaceHandleRecord(handle: FileSystemDirectoryHandle): Promise<void> {
 	const existing = await findKnownWorkspaceByHandle(handle);
 	const workspaceId = existing?.id ?? crypto.randomUUID();
-	const pickedAt = Date.now();
+	const pickedAt = await nextWorkspacePickedAt();
 
 	await saveHandle({
 		kind: 'workspace',
@@ -188,16 +194,25 @@ export async function saveWorkspaceHandleRecord(handle: FileSystemDirectoryHandl
 export async function activateWorkspaceHandle(workspaceId: string): Promise<HandleRecord | null> {
 	const record = await getHandle('workspace', workspaceId);
 	if (!record) return null;
+	const pickedAt = await nextWorkspacePickedAt();
+
+	await saveHandle({
+		kind: 'workspace',
+		id: record.id,
+		handle: record.handle,
+		name: record.name,
+		pickedAt
+	});
 
 	await saveHandle({
 		kind: 'workspace',
 		id: WORKSPACE_ID,
 		handle: record.handle,
 		name: record.name,
-		pickedAt: Date.now(),
+		pickedAt,
 		activeWorkspaceId: workspaceId
 	});
-	return record;
+	return { ...record, pickedAt };
 }
 
 /**
