@@ -623,6 +623,10 @@ export interface TimelineItem extends TextStyleFields {
 	volume?: number;
 	audioFadeIn?: number;
 	audioFadeOut?: number;
+	audioFadeInCurve?: number;
+	audioFadeOutCurve?: number;
+	audioFadeInCurveX?: number;
+	audioFadeOutCurveX?: number;
 
 	// Video properties
 	fadeIn?: number;

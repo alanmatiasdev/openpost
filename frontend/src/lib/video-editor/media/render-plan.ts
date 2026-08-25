@@ -27,6 +27,7 @@ import {
 	transitionGainSpansForItem,
 	type TransitionGainSpan
 } from '../audio/transition-crossfade';
+import { audioClipFadeGainAtFrame } from './clip-fades';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
@@ -292,18 +293,25 @@ function volumeGainPoints(
 ): GainPoint[] {
 	const baseGain = (item.volume ?? 1) * trackVolume;
 	const track = item.keyframes?.volume;
-	if (!track || track.frames.length === 0) {
+	const hasClipFade = (item.audioFadeIn ?? 0) > 0 || (item.audioFadeOut ?? 0) > 0;
+	if ((!track || track.frames.length === 0) && !hasClipFade) {
 		return [{ whenSeconds: startFrame / fps, value: baseGain }];
 	}
 	const points: GainPoint[] = [];
 	const seen = new Set<number>();
 	for (let frame = startFrame; frame <= endFrame; frame++) {
-		const animated = activeValueAt(item, 'volume', frame);
-		if (animated === null) continue;
+		const animated = track && track.frames.length > 0 ? activeValueAt(item, 'volume', frame) : null;
+		const clipFade =
+			frame === item.from + item.durationInFrames && (item.audioFadeOut ?? 0) > 0
+				? 0
+				: audioClipFadeGainAtFrame(item, frame, fps);
 		const whenSeconds = frame / fps;
 		if (seen.has(whenSeconds)) continue;
 		seen.add(whenSeconds);
-		points.push({ whenSeconds, value: animated * trackVolume });
+		points.push({
+			whenSeconds,
+			value: (animated ?? item.volume ?? 1) * trackVolume * clipFade
+		});
 	}
 	return points.length > 0 ? points : [{ whenSeconds: startFrame / fps, value: baseGain }];
 }

@@ -107,6 +107,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let motionReturnStack = $state<Array<string | null>>([]);
 	let settingsOpen = $state(false);
 	let assetPanel = $state<'media' | 'assets' | 'scenes' | 'ai'>('media');
+	let mobileEditPane = $state<'assets' | 'program' | 'tools'>('program');
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
 
@@ -116,7 +117,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	});
 
 	$effect(() => {
-		if (selectedItemId) selectedTransitionId = null;
+		if (selectedItemId) {
+			selectedTransitionId = null;
+			mobileEditPane = 'tools';
+		}
 	});
 
 	$effect(() => {
@@ -810,15 +814,52 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				onswitch={resetTimelineSelection}
 				onedit={() => editorSession.scheduleAutosave()}
 			/>
+			{#if activeWorkspace === 'edit'}
+				<nav
+					class="grid shrink-0 grid-cols-3 border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_50)] p-1 lg:hidden"
+					aria-label={m.video_editor_mobile_panels()}
+				>
+					<button
+						type="button"
+						class:active={mobileEditPane === 'assets'}
+						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-pressed={mobileEditPane === 'assets'}
+						onclick={() => (mobileEditPane = 'assets')}
+					>
+						{m.video_editor_assets()}
+					</button>
+					<button
+						type="button"
+						class:active={mobileEditPane === 'program'}
+						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-pressed={mobileEditPane === 'program'}
+						onclick={() => (mobileEditPane = 'program')}
+					>
+						{m.video_editor_program_monitor()}
+					</button>
+					<button
+						type="button"
+						class:active={mobileEditPane === 'tools'}
+						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-pressed={mobileEditPane === 'tools'}
+						onclick={() => (mobileEditPane = 'tools')}
+					>
+						{m.video_editor_tools()}
+					</button>
+				</nav>
+			{/if}
 			<div class="flex min-h-0 flex-1 flex-col">
 				<div
-					class="flex min-h-0 flex-1 {activeWorkspace === 'motion'
+					class="flex min-h-0 flex-1 {activeWorkspace === 'motion' || activeWorkspace === 'edit'
 						? 'flex-col lg:flex-row'
 						: 'flex-row'}"
 				>
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="flex w-72 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)]"
+							class="min-h-0 w-full flex-1 flex-col border-b border-[oklch(0.25_0.015_55)] lg:flex lg:w-72 lg:flex-none lg:border-r lg:border-b-0 {mobileEditPane ===
+							'assets'
+								? 'flex'
+								: 'hidden'}"
 							aria-label={m.video_editor_media_pool()}
 						>
 							<div class="flex items-center gap-1 p-2">
@@ -887,44 +928,58 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					{/if}
 
 					<div
-						class:grid={showSourceMonitor}
-						class:grid-cols-2={showSourceMonitor}
-						class:flex={!showSourceMonitor}
-						class="min-w-0 flex-1 bg-[oklch(0.12_0.008_55)]"
+						class="min-h-0 w-full min-w-0 flex-1 bg-[oklch(0.12_0.008_55)] lg:flex {activeWorkspace !==
+							'edit' || mobileEditPane === 'program'
+							? 'flex'
+							: 'hidden'}"
 					>
-						{#if showSourceMonitor && sourceMediaId}
-							{#key sourceMediaId}
-								<SourceMonitor
-									mediaId={sourceMediaId}
-									preferredTrackId={selectedItemId
-										? timelineStore.itemById.get(selectedItemId)?.trackId
-										: undefined}
-									onclose={() => (sourceMediaId = null)}
-									onedit={() => editorSession.scheduleAutosave()}
-									oninserted={handleSourceInserted}
-								/>
-							{/key}
-						{/if}
-						<section
-							data-video-preview
-							class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+						<div
+							class:grid={showSourceMonitor}
+							class:flex={!showSourceMonitor}
+							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.12_0.008_55)] {showSourceMonitor
+								? 'grid-cols-1 md:grid-cols-2'
+								: ''}"
 						>
-							{#if showSourceMonitor}
-								<div
-									class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
-								>
-									{m.video_editor_program_monitor()}
-								</div>
+							{#if showSourceMonitor && sourceMediaId}
+								{#key sourceMediaId}
+									<SourceMonitor
+										mediaId={sourceMediaId}
+										preferredTrackId={selectedItemId
+											? timelineStore.itemById.get(selectedItemId)?.trackId
+											: undefined}
+										onclose={() => (sourceMediaId = null)}
+										onedit={() => editorSession.scheduleAutosave()}
+										oninserted={handleSourceInserted}
+									/>
+								{/key}
 							{/if}
-							<PreviewPlayer bind:selectedItemId onedit={() => editorSession.scheduleAutosave()} />
-							<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
-						</section>
+							<section
+								data-video-preview
+								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+							>
+								{#if showSourceMonitor}
+									<div
+										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+									>
+										{m.video_editor_program_monitor()}
+									</div>
+								{/if}
+								<PreviewPlayer
+									bind:selectedItemId
+									onedit={() => editorSession.scheduleAutosave()}
+								/>
+								<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
+							</section>
+						</div>
 					</div>
 
 					<!-- Tools -->
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-l border-[oklch(0.25_0.015_55)] p-2"
+							class="min-h-0 w-full flex-1 flex-col gap-1 overflow-y-auto border-t border-[oklch(0.25_0.015_55)] p-2 lg:flex lg:w-64 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
+							'tools'
+								? 'flex'
+								: 'hidden'}"
 						>
 							<h2
 								class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase"

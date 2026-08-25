@@ -15,6 +15,7 @@ import {
 	canLinkSelection,
 	expandSelectionWithLinkedItems,
 	getLinkedItemIds,
+	getSynchronizedLinkedItems,
 	getSynchronizedLinkedCounterpartPair
 } from '../utils/linked-items';
 import { pruneInvalidTransitions, pruneOrphanedTransitions } from './transitions.svelte';
@@ -27,6 +28,13 @@ import { clonePropertyRuntime } from './property-runtime';
 import { hasPathVertexKeyframes } from '../path-vertex-keyframes';
 import { effectiveMediaTracks } from '../utils/track-groups';
 import { sequenceStore } from '../../sequences/sequence-store.svelte';
+import { scaleItemKeyframes } from '../edit-constraints';
+import { scaleItemVectorKeyframes } from '../vector-keyframes';
+import {
+	clampSpeed,
+	sourceToTimelineFrames,
+	timelineToSourceFrames
+} from '../utils/source-calculations';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -75,7 +83,14 @@ export function addTransformController(label: string): string {
 			durationInFrames: Math.max(timelineStore.fps, timelineStore.maxItemEndFrame),
 			label,
 			type: 'controller',
-			transform: { x: 0, y: 0, width: size, height: size, rotation: 0, opacity: 1 }
+			transform: {
+				x: 0,
+				y: 0,
+				width: size,
+				height: size,
+				rotation: 0,
+				opacity: 1
+			}
 		});
 		return id;
 	});
@@ -627,17 +642,70 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 	});
 }
 
-/** Rate-stretch: change playback speed while keeping the item's start fixed. */
-export function setItemSpeed(id: string, speed: number): void {
+/** Rate-stretch synchronized A/V while keeping the source window and start fixed. */
+export function setItemSpeed(id: string, speed: number): boolean {
+	const item = timelineStore.itemById.get(id);
+	if (!item || (item.type !== 'video' && item.type !== 'audio') || !Number.isFinite(speed)) {
+		return false;
+	}
+	const targets = getSynchronizedLinkedItems(timelineStore.items, id).filter(
+		(candidate) => candidate.type === 'video' || candidate.type === 'audio'
+	);
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
+	if (
+		targets.length === 0 ||
+		targets.some((candidate) => trackById.get(candidate.trackId)?.locked)
+	) {
+		return false;
+	}
+
+	const clamped = clampSpeed(speed);
+	if (targets.every((candidate) => Math.abs((candidate.speed ?? 1) - clamped) < 1e-9)) {
+		return false;
+	}
 	execute('SET_ITEM_SPEED', () => {
-		const item = timelineStore.itemById.get(id);
-		if (!item || (item.type !== 'video' && item.type !== 'audio')) return;
-		const clamped = Math.min(Math.max(speed, 0.1), 8);
-		const previous = item.speed ?? 1;
-		if (clamped === previous) return;
-		const duration = Math.max(1, Math.round((item.durationInFrames * previous) / clamped));
-		timelineStore._updateItems([{ id, patch: { speed: clamped, durationInFrames: duration } }]);
+		const updates = targets.map((candidate) => {
+			const sourceFps = candidate.sourceFps ?? timelineStore.fps;
+			const currentSpeed = candidate.speed ?? 1;
+			const sourceFrames =
+				candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
+					? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
+					: timelineToSourceFrames(
+							candidate.durationInFrames,
+							currentSpeed,
+							timelineStore.fps,
+							sourceFps
+						);
+			const durationInFrames = Math.max(
+				1,
+				sourceToTimelineFrames(sourceFrames, clamped, sourceFps, timelineStore.fps)
+			);
+			return {
+				id: candidate.id,
+				patch: {
+					speed: clamped,
+					durationInFrames,
+					keyframes: scaleItemKeyframes(
+						candidate.keyframes,
+						candidate.durationInFrames,
+						durationInFrames
+					),
+					...(candidate.vectorKeyframes && {
+						vectorKeyframes: scaleItemVectorKeyframes(
+							candidate.vectorKeyframes,
+							candidate.durationInFrames,
+							durationInFrames
+						)
+					})
+				} satisfies Partial<TimelineItem>
+			};
+		});
+		timelineStore._updateItems(updates);
+		pruneInvalidTransitions();
 	});
+	return true;
 }
 
 export function setCurrentFrame(frame: number): void {

@@ -98,6 +98,35 @@ describe('ClipPropertiesPanel reverse playback', () => {
 			undefined
 		]);
 	});
+
+	it('retimes linked media and edits the audible companion from the video inspector', async () => {
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, { itemId: 'video-item', onedit });
+
+		const speed = screen.getByRole('spinbutton', { name: 'Speed' }).query();
+		if (!(speed instanceof HTMLInputElement)) throw new Error('Speed control did not render.');
+		speed.value = '2';
+		speed.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('video-item')).toMatchObject({
+			speed: 2,
+			durationInFrames: 45
+		});
+		expect(timelineStore.itemById.get('audio-item')).toMatchObject({
+			speed: 2,
+			durationInFrames: 45
+		});
+		const gain = screen.container.querySelector('input[min="-60"]');
+		if (!(gain instanceof HTMLInputElement)) throw new Error('Gain control did not render.');
+		gain.value = '-6';
+		gain.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(timelineStore.itemById.get('audio-item')?.volume).toBeCloseTo(0.501187, 5);
+		expect(timelineStore.itemById.get('video-item')?.volume).toBeUndefined();
+
+		await screen.getByRole('button', { name: 'Flip X' }).click();
+		expect(timelineStore.itemById.get('video-item')?.transform?.flipHorizontal).toBe(true);
+		expect(onedit).toHaveBeenCalledTimes(3);
+	});
 });
 
 describe('ClipPropertiesPanel text styling', () => {

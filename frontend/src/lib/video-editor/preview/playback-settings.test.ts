@@ -4,6 +4,7 @@ import {
 	clampMonitorVolume,
 	normalizePreviewZoom,
 	previewItemVolume,
+	previewItemVolumeWithFade,
 	zoomPreview
 } from './playback-settings';
 const item = { trackId: 'main', volume: 0.5 };
@@ -43,6 +44,10 @@ describe('preview playback settings', () => {
 		expect(previewItemVolume(item, [track, { ...track, id: 'solo', solo: true }], 1, false)).toBe(
 			0
 		);
+	});
+
+	it('composes clip fades with transition fades', () => {
+		expect(previewItemVolumeWithFade(0.8, 0.5, 0.25)).toBeCloseTo(0.1);
 	});
 
 	it('applies group visibility, mute, and solo to preview gain', () => {

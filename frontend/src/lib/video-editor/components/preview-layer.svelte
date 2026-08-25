@@ -8,6 +8,10 @@
 	import { effectsToCssFilter } from '$lib/video-editor/effects/filter';
 	import { SeekScheduler, seekDriftExceeded } from '$lib/video-editor/preview/seek-throttle';
 	import { frameToSourceSeconds } from '$lib/video-editor/media/render-plan';
+	import {
+		audioClipFadeGainAtFrame,
+		visualClipFadeOpacityAtFrame
+	} from '$lib/video-editor/media/clip-fades';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import {
 		conformReversePreview,
@@ -176,7 +180,23 @@
 			`width:${(width / canvasWidth) * 100}%`,
 			`height:${(height / canvasHeight) * 100}%`,
 			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${transform.rotation ?? 0}deg) scaleX(${transform.flipHorizontal ? -1 : 1}) scaleY(${transform.flipVertical ? -1 : 1})`,
-			`opacity:${deferEffects ? 0 : Math.max(0, Math.min(1, (transform.opacity ?? 1) * opacityMultiplier))}`,
+			`opacity:${
+				deferEffects
+					? 0
+					: Math.max(
+							0,
+							Math.min(
+								1,
+								(transform.opacity ?? 1) *
+									opacityMultiplier *
+									visualClipFadeOpacityAtFrame(
+										resolved,
+										timelineStore.currentFrame,
+										timelineStore.fps
+									)
+							)
+						)
+			}`,
 			`border-radius:${(Math.max(0, transform.cornerRadius ?? 0) / canvasWidth) * 100}cqw`,
 			`filter:${deferEffects ? 'none' : effectsToCssFilter(renderEffects)}`
 		].join(';');
@@ -217,7 +237,12 @@
 			timelineStore.itemById
 		)
 	);
-	const previewVolume = $derived(previewItemVolumeWithFade(basePreviewVolume, crossfadeGain));
+	const clipFadeGain = $derived(
+		audioClipFadeGainAtFrame(resolved, timelineStore.currentFrame, timelineStore.fps)
+	);
+	const previewVolume = $derived(
+		previewItemVolumeWithFade(basePreviewVolume, crossfadeGain, clipFadeGain)
+	);
 	const previewMediaUrl = $derived(
 		item.type === 'video' && item.isReversed && reverseConformUrl ? reverseConformUrl : url
 	);

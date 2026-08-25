@@ -46,6 +46,7 @@ import {
 	type StackLayerSource,
 	type StackTransitionParticipant
 } from './canvas-stack-compositor';
+import { visualClipFadeOpacityAtFrame } from './clip-fades';
 import {
 	collectAdjustmentLayers,
 	effectsForItemAtFrame,
@@ -358,7 +359,9 @@ export class TimelineFrameRenderer {
 		this.textCanvas.height = height;
 		const context = this.textCanvas.getContext('2d');
 		if (!context) throw new Error('Failed to create the text raster context.');
-		renderTextItemRaster(context, item, width, height, { absoluteFrame: frame });
+		renderTextItemRaster(context, item, width, height, {
+			absoluteFrame: frame
+		});
 		return {
 			source: this.textCanvas,
 			width,
@@ -612,7 +615,9 @@ export class TimelineFrameRenderer {
 				? {
 						source,
 						item: resolvedItem,
-						alpha: itemOpacity(resolvedItem),
+						alpha:
+							itemOpacity(resolvedItem) *
+							visualClipFadeOpacityAtFrame(resolvedItem, frame, this.fps),
 						masks: shapeMasksForTrack(
 							activeMasks,
 							this.trackOrderById.get(item.trackId) ?? 0,

@@ -42,8 +42,12 @@ export function previewItemVolume(
 	return clampMonitorVolume((item.volume ?? 1) * (track.volume ?? 1) * monitorVolume);
 }
 
-export function previewItemVolumeWithFade(baseGain: number, crossfadeGain: number): number {
-	return clampMonitorVolume(baseGain * crossfadeGain);
+export function previewItemVolumeWithFade(
+	baseGain: number,
+	crossfadeGain: number,
+	clipFadeGain = 1
+): number {
+	return clampMonitorVolume(baseGain * crossfadeGain * clipFadeGain);
 }
 
 export function buildFrameFileName(frame: number, fps: number, totalFrames: number): string {

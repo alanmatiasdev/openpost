@@ -14,6 +14,7 @@
 	import { audioCrossfadeGainAtFrame } from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { frameToSourceSeconds } from '$lib/video-editor/media/render-plan';
+	import { audioClipFadeGainAtFrame } from '$lib/video-editor/media/clip-fades';
 	import {
 		previewAudioContext,
 		reversedPreviewAudio
@@ -43,7 +44,10 @@
 			timelineStore.itemById
 		)
 	);
-	const volume = $derived(previewItemVolumeWithFade(baseVolume, crossfadeGain));
+	const clipFadeGain = $derived(
+		audioClipFadeGainAtFrame(resolved, timelineStore.currentFrame, timelineStore.fps)
+	);
+	const volume = $derived(previewItemVolumeWithFade(baseVolume, crossfadeGain, clipFadeGain));
 
 	function stopReverseSource(): void {
 		if (!reverseSource) return;

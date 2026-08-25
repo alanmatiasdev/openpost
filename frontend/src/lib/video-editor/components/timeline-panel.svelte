@@ -2599,7 +2599,7 @@
 
 <svelte:window onkeydown={onPanelKeydown} />
 
-<div class="flex items-center gap-2 px-3 py-1">
+<div class="flex max-w-full min-w-0 items-center gap-2 overflow-x-auto px-3 py-1">
 	<span class="text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_timeline()}</span>
 	<div class="flex items-center gap-0.5 border-l border-[oklch(0.25_0.015_55)] pl-2">
 		<Button
@@ -2946,7 +2946,7 @@
 
 {#if selectedMarker}
 	<div
-		class="flex min-h-9 items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-[11px]"
+		class="flex min-h-9 max-w-full items-center gap-2 overflow-x-auto border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-[11px]"
 	>
 		<FlagIcon class="size-3.5 shrink-0" style={`color:${selectedMarker.color}`} />
 		<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>

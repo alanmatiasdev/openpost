@@ -16,6 +16,7 @@ import {
 	removeMarker,
 	rippleDeleteItems,
 	setCurrentFrame,
+	setItemSpeed,
 	setItemsReversed,
 	updateItemProperties,
 	updateMarker,
@@ -465,6 +466,52 @@ describe('linked item actions', () => {
 		expect(setItemsReversed(['video'], true)).toEqual([]);
 		expect(timelineStore.itemById.get('video')?.isReversed).toBeUndefined();
 		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('retimes linked A/V from the exact source span and scales animation in one undo step', () => {
+		timelineStore._setItems([
+			clip({
+				id: 'video',
+				linkedGroupId: 'group',
+				durationInFrames: 30,
+				sourceStart: 60,
+				sourceEnd: 180,
+				sourceFps: 60,
+				speed: 2,
+				keyframes: { opacity: { frames: [0, 29], values: [0, 1] } }
+			}),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				linkedGroupId: 'group',
+				durationInFrames: 30,
+				sourceStart: 60,
+				sourceEnd: 180,
+				sourceFps: 60,
+				speed: 2,
+				keyframes: { volume: { frames: [0, 29], values: [0, 1] } }
+			})
+		]);
+
+		expect(setItemSpeed('video', 1)).toBe(true);
+		expect(
+			timelineStore.items.map((item) => ({
+				id: item.id,
+				speed: item.speed,
+				duration: item.durationInFrames
+			}))
+		).toEqual([
+			{ id: 'video', speed: 1, duration: 60 },
+			{ id: 'audio', speed: 1, duration: 60 }
+		]);
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).toEqual([0, 58]);
+		expect(timelineStore.itemById.get('audio')?.keyframes?.volume?.frames).toEqual([0, 58]);
+		expect(commandHistory.getLastCommandType()).toBe('SET_ITEM_SPEED');
+
+		commandHistory.undo();
+		expect(timelineStore.items.map((item) => item.durationInFrames)).toEqual([30, 30]);
+		expect(timelineStore.items.map((item) => item.speed)).toEqual([2, 2]);
 	});
 
 	it('joins linked split siblings and repairs transition endpoints as one undo step', () => {

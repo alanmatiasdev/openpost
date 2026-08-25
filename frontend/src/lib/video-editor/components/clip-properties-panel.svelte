@@ -7,7 +7,11 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
-	import { setItemsReversed, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
+	import {
+		setItemSpeed,
+		setItemsReversed,
+		updateItemProperties
+	} from '$lib/video-editor/timeline/actions/items';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import {
 		cancelReverseConform,
@@ -24,9 +28,21 @@
 	import SubtitlePropertiesPanel from './subtitle-properties-panel.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import CompositionControlOverrides from './composition-control-overrides.svelte';
+	import { resolveAnimatedItemLocalAt } from '$lib/video-editor/timeline/animated-properties';
+	import { getSynchronizedLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
+	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
+	const audioItem = $derived.by(() => {
+		if (!item || (item.type !== 'video' && item.type !== 'audio')) return undefined;
+		if (item.type === 'audio') return item;
+		return (
+			getSynchronizedLinkedItems(timelineStore.items, item.id).find(
+				(candidate) => candidate.type === 'audio'
+			) ?? item
+		);
+	});
 	let conformStatus = $state<ReverseConformStatus>({
 		state: 'idle',
 		progress: 0
@@ -64,6 +80,20 @@
 			property: 'height',
 			label: m.video_editor_property_height(),
 			min: 1,
+			max: 4320,
+			step: 1
+		},
+		{
+			property: 'anchorX',
+			label: m.video_editor_property_anchor_x(),
+			min: -7680,
+			max: 7680,
+			step: 1
+		},
+		{
+			property: 'anchorY',
+			label: m.video_editor_property_anchor_y(),
+			min: -4320,
 			max: 4320,
 			step: 1
 		},
@@ -219,41 +249,51 @@
 	];
 
 	function valueFor(source: TimelineItem, property: KeyframeProperty): number {
-		const track = source.keyframes?.[property];
-		const relativeFrame = timelineStore.currentFrame - source.from;
-		const exact = track?.frames.indexOf(relativeFrame) ?? -1;
-		if (track && exact >= 0) return track.values[exact] ?? 0;
+		const frameWidth = editorSession.project?.metadata.width ?? 1920;
+		const frameHeight = editorSession.project?.metadata.height ?? 1080;
+		const resolved = resolveAnimatedItemLocalAt(source, timelineStore.currentFrame, {
+			fps: timelineStore.fps,
+			frameWidth,
+			frameHeight,
+			items: timelineStore.items
+		});
 		switch (property) {
 			case 'x':
-				return source.transform?.x ?? defaultValue(property);
+				return resolved.transform?.x ?? defaultValue(property);
 			case 'y':
-				return source.transform?.y ?? defaultValue(property);
+				return resolved.transform?.y ?? defaultValue(property);
 			case 'width':
-				return source.transform?.width ?? defaultValue(property);
+				return resolved.transform?.width ?? source.sourceWidth ?? frameWidth;
 			case 'height':
-				return source.transform?.height ?? defaultValue(property);
+				return resolved.transform?.height ?? source.sourceHeight ?? frameHeight;
 			case 'anchorX':
-				return source.transform?.anchorX ?? defaultValue(property);
+				return (
+					resolved.transform?.anchorX ??
+					(resolved.transform?.width ?? source.sourceWidth ?? frameWidth) / 2
+				);
 			case 'anchorY':
-				return source.transform?.anchorY ?? defaultValue(property);
+				return (
+					resolved.transform?.anchorY ??
+					(resolved.transform?.height ?? source.sourceHeight ?? frameHeight) / 2
+				);
 			case 'rotation':
-				return source.transform?.rotation ?? defaultValue(property);
+				return resolved.transform?.rotation ?? defaultValue(property);
 			case 'opacity':
-				return source.transform?.opacity ?? defaultValue(property);
+				return resolved.transform?.opacity ?? defaultValue(property);
 			case 'cornerRadius':
-				return source.transform?.cornerRadius ?? defaultValue(property);
+				return resolved.transform?.cornerRadius ?? defaultValue(property);
 			case 'cropLeft':
-				return source.crop?.left ?? 0;
+				return resolved.crop?.left ?? 0;
 			case 'cropRight':
-				return source.crop?.right ?? 0;
+				return resolved.crop?.right ?? 0;
 			case 'cropTop':
-				return source.crop?.top ?? 0;
+				return resolved.crop?.top ?? 0;
 			case 'cropBottom':
-				return source.crop?.bottom ?? 0;
+				return resolved.crop?.bottom ?? 0;
 			case 'cropSoftness':
-				return source.crop?.softness ?? 0;
+				return resolved.crop?.softness ?? 0;
 			case 'volume':
-				return source.volume ?? 1;
+				return resolved.volume ?? 1;
 			case 'fontSize':
 				return source.fontSize ?? defaultValue(property);
 			case 'fontWeight':
@@ -308,6 +348,58 @@
 		onedit();
 	}
 
+	function commitTransformPatch(patch: NonNullable<TimelineItem['transform']>): void {
+		if (!item) return;
+		updateItemProperties(
+			item.id,
+			{ transform: { ...item.transform, ...patch } },
+			'UPDATE_CLIP_TRANSFORM'
+		);
+		onedit();
+	}
+
+	function commitSpeed(value: number): void {
+		if (!item || !Number.isFinite(value)) return;
+		if (setItemSpeed(item.id, Math.min(10, Math.max(0.1, Math.round(value * 100) / 100)))) {
+			onedit();
+		}
+	}
+
+	function commitAudioPatch(patch: Partial<TimelineItem>): void {
+		if (!audioItem) return;
+		updateItemProperties(audioItem.id, patch, 'UPDATE_CLIP_AUDIO');
+		onedit();
+	}
+
+	function commitVisualFade(field: 'fadeIn' | 'fadeOut', value: number): void {
+		if (!item || !Number.isFinite(value)) return;
+		commitText({
+			[field]: Math.min(item.durationInFrames / timelineStore.fps, Math.max(0, value))
+		});
+	}
+
+	function commitAudioFade(field: 'audioFadeIn' | 'audioFadeOut', value: number): void {
+		if (!audioItem || !Number.isFinite(value)) return;
+		commitAudioPatch({
+			[field]: Math.min(audioItem.durationInFrames / timelineStore.fps, Math.max(0, value))
+		});
+	}
+
+	function commitGainDb(db: number): void {
+		if (!audioItem || !Number.isFinite(db)) return;
+		if (
+			setAnimatedProperty(
+				audioItem.id,
+				'volume',
+				timelineStore.currentFrame,
+				dbToLinearGain(db),
+				autoKeyframeStore.isEnabled(audioItem.id, 'volume')
+			)
+		) {
+			onedit();
+		}
+	}
+
 	function commitTextShadowColor(color: string): void {
 		const current = itemId ? timelineStore.itemById.get(itemId) : undefined;
 		commitText({
@@ -337,7 +429,7 @@
 			<p class="text-xs leading-relaxed text-[oklch(0.7_0.01_55)]">
 				{m.video_editor_adjustment_layer_hint()}
 			</p>
-		{:else}
+		{:else if item.type !== 'audio'}
 			{#if item.type === 'composition'}
 				<CompositionControlOverrides {item} {onedit} />
 			{/if}
@@ -349,9 +441,9 @@
 				</h3>
 				<div class="grid grid-cols-2 gap-1">
 					{#each transformFields as field (field.property)}
-						<label class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
+						<div class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
 							<span class="flex items-center justify-between gap-1">
-								{field.label}
+								<label for={`clip-property-${item.id}-${field.property}`}>{field.label}</label>
 								<button
 									type="button"
 									class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
@@ -363,6 +455,7 @@
 								>
 							</span>
 							<Input
+								id={`clip-property-${item.id}-${field.property}`}
 								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 								type="number"
 								min={field.min}
@@ -372,8 +465,31 @@
 								onchange={(event) =>
 									commitNumeric(field.property, event.currentTarget.valueAsNumber)}
 							/>
-						</label>
+						</div>
 					{/each}
+				</div>
+				<div class="mt-1 grid grid-cols-2 gap-1">
+					<Button
+						type="button"
+						size="sm"
+						variant={item.transform?.flipHorizontal ? 'secondary' : 'outline'}
+						class="h-8 justify-between px-2 text-xs"
+						aria-pressed={item.transform?.flipHorizontal === true}
+						onclick={() =>
+							commitTransformPatch({ flipHorizontal: !item.transform?.flipHorizontal })}
+					>
+						<span>{m.video_editor_property_flip_x()}</span>
+					</Button>
+					<Button
+						type="button"
+						size="sm"
+						variant={item.transform?.flipVertical ? 'secondary' : 'outline'}
+						class="h-8 justify-between px-2 text-xs"
+						aria-pressed={item.transform?.flipVertical === true}
+						onclick={() => commitTransformPatch({ flipVertical: !item.transform?.flipVertical })}
+					>
+						<span>{m.video_editor_property_flip_y()}</span>
+					</Button>
 				</div>
 			</section>
 		{/if}
@@ -421,6 +537,25 @@
 				<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
 					{m.video_editor_clip_playback()}
 				</h3>
+				<div class="block text-[10px] text-[oklch(0.7_0.01_55)]">
+					<label for={`clip-speed-${item.id}`}>{m.video_editor_clip_speed()}</label>
+					<div class="relative mt-0.5">
+						<Input
+							id={`clip-speed-${item.id}`}
+							class="w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 pr-6 text-xs"
+							type="number"
+							min="0.1"
+							max="10"
+							step="0.05"
+							value={item.speed ?? 1}
+							onchange={(event) => commitSpeed(event.currentTarget.valueAsNumber)}
+						/>
+						<span
+							class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-white/45"
+							>×</span
+						>
+					</div>
+				</div>
 				<Button
 					type="button"
 					size="sm"
@@ -435,9 +570,6 @@
 						{item.isReversed ? m.video_editor_clip_reverse_on() : m.video_editor_clip_reverse_off()}
 					</span>
 				</Button>
-				<p class="text-[10px] leading-relaxed text-[oklch(0.62_0.01_55)]">
-					{m.video_editor_clip_reverse_hint()}
-				</p>
 				{#if item.isReversed && (conformStatus.state === 'preparing' || conformStatus.state === 'rendering')}
 					<div class="rounded border border-white/10 bg-black/20 p-2">
 						<div class="flex items-center justify-between gap-2 text-[10px] text-white/75">
@@ -469,18 +601,105 @@
 						{m.video_editor_clip_reverse_fallback()}
 					</p>
 				{/if}
-				<label class="block text-[10px] text-[oklch(0.7_0.01_55)]"
-					>{m.video_editor_clip_volume()}<Input
-						class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-						type="number"
-						min="0"
-						max="4"
-						step="0.01"
-						value={valueFor(item, 'volume')}
-						onchange={(event) => commitNumeric('volume', event.currentTarget.valueAsNumber)}
-					/></label
-				>
 			</section>
+
+			{#if item.type === 'video'}
+				<section>
+					<h3
+						class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+					>
+						{m.video_editor_property_video()}
+					</h3>
+					<div class="grid grid-cols-2 gap-1">
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							{m.video_editor_clip_fade_in_seconds()}
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="0"
+								max={item.durationInFrames / timelineStore.fps}
+								step="0.05"
+								value={item.fadeIn ?? 0}
+								onchange={(event) => commitVisualFade('fadeIn', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							{m.video_editor_clip_fade_out_seconds()}
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="0"
+								max={item.durationInFrames / timelineStore.fps}
+								step="0.05"
+								value={item.fadeOut ?? 0}
+								onchange={(event) => commitVisualFade('fadeOut', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+					</div>
+				</section>
+			{/if}
+
+			{#if audioItem}
+				<section>
+					<h3
+						class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+					>
+						{m.video_editor_property_audio()}
+					</h3>
+					<div class="grid grid-cols-2 gap-1">
+						<div class="col-span-2 text-[10px] text-[oklch(0.7_0.01_55)]">
+							<span class="flex items-center justify-between gap-1">
+								<label for={`clip-gain-${audioItem.id}`}>{m.video_editor_clip_gain_db()}</label>
+								<button
+									type="button"
+									class:active={autoKeyframeStore.isEnabled(audioItem.id, 'volume')}
+									class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
+									aria-label={m.video_editor_property_auto_key({
+										property: m.video_editor_clip_gain_db()
+									})}
+									onclick={() => autoKeyframeStore.toggle(audioItem.id, 'volume')}>A</button
+								>
+							</span>
+							<Input
+								id={`clip-gain-${audioItem.id}`}
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="-60"
+								max="12"
+								step="0.1"
+								value={Number(linearGainToDb(valueFor(audioItem, 'volume')).toFixed(1))}
+								onchange={(event) => commitGainDb(event.currentTarget.valueAsNumber)}
+							/>
+						</div>
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							{m.video_editor_clip_fade_in_seconds()}
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="0"
+								max={audioItem.durationInFrames / timelineStore.fps}
+								step="0.05"
+								value={audioItem.audioFadeIn ?? 0}
+								onchange={(event) =>
+									commitAudioFade('audioFadeIn', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							{m.video_editor_clip_fade_out_seconds()}
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="0"
+								max={audioItem.durationInFrames / timelineStore.fps}
+								step="0.05"
+								value={audioItem.audioFadeOut ?? 0}
+								onchange={(event) =>
+									commitAudioFade('audioFadeOut', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+					</div>
+				</section>
+			{/if}
 		{/if}
 
 		{#if item.type === 'text'}

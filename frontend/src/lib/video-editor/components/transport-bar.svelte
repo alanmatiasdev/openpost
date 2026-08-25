@@ -157,7 +157,9 @@
 	});
 </script>
 
-<div class="flex min-h-10 items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-3 py-1.5">
+<div
+	class="flex min-h-10 items-center gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-1.5 sm:gap-2 sm:px-3"
+>
 	<div class="flex shrink-0 items-center gap-1">
 		<Button
 			class="hidden sm:inline-flex"
@@ -288,7 +290,7 @@
 	</div>
 
 	<span class="rounded bg-[oklch(0.18_0.008_55)] px-2 py-0.5 font-mono text-xs tabular-nums">
-		{timecode} <span class="text-muted-foreground">/ {totalFrames}</span>
+		{timecode} <span class="text-muted-foreground max-[359px]:hidden">/ {totalFrames}</span>
 	</span>
 
 	<div class="mx-auto hidden items-center gap-1 @min-[620px]:flex">
@@ -320,6 +322,7 @@
 						{...props}
 						size="icon-xs"
 						variant="ghost"
+						class="max-[359px]:hidden"
 						aria-label={m.video_editor_preview_quality()}
 						title={`${m.video_editor_preview_quality()}: ${qualityLabel}`}
 						data-preview-quality-scale={previewPlaybackSettings.previewQuality === 'auto'
@@ -365,7 +368,7 @@
 						{...props}
 						size="xs"
 						variant="ghost"
-						class="min-w-12 px-1.5 tabular-nums max-[359px]:hidden"
+						class="min-w-12 px-1.5 tabular-nums max-[479px]:hidden"
 						aria-label={m.video_editor_preview_zoom({ zoom: zoomLabel })}
 					>
 						{zoomLabel}

@@ -113,6 +113,20 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel Bento layout entry', () => {
+	it('rerenders indexed track rows when clips are added and removed', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		await expect.element(screen.getByText('Video', { exact: true })).toBeVisible();
+
+		timelineStore._setItems([
+			...timelineStore.items,
+			item({ id: 'cutaway', from: 60, label: 'Cutaway' })
+		]);
+		await expect.element(screen.getByText('Cutaway', { exact: true })).toBeVisible();
+
+		timelineStore._setItems(timelineStore.items.filter((candidate) => candidate.id !== 'cutaway'));
+		await expect.element(screen.getByText('Cutaway', { exact: true })).not.toBeInTheDocument();
+	});
+
 	it('opens layout work only for a multi-visual unlocked selection', async () => {
 		timelineStore._setItems([
 			item({ id: 'video', label: 'Video', sourceWidth: 1920, sourceHeight: 1080 }),

@@ -44,6 +44,24 @@ beforeEach(() => {
 });
 
 describe('MediaPoolList', () => {
+	it('adds ready media to the matching unlocked timeline track', async () => {
+		const timeline = createEmptyTimeline();
+		sequenceStore.load(timeline, { width: 1920, height: 1080, fps: 30 });
+		mediaPool.loadAll([media('video', 'Interview.mp4', ['video'], { duration: 2.7 })]);
+
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		await screen.getByRole('button', { name: 'Add to timeline: Interview.mp4' }).click();
+
+		const inserted = sequenceStore.projectTimeline().items;
+		expect(inserted).toHaveLength(1);
+		expect(inserted[0]).toMatchObject({
+			trackId: 'track-video-main',
+			type: 'video',
+			mediaId: 'video',
+			durationInFrames: 81
+		});
+	});
+
 	it('keeps high-cost video tools in one clear menu with honest size gates', async () => {
 		await page.viewport(320, 720);
 		mediaPool.loadAll([

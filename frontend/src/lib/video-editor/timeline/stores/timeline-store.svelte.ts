@@ -84,7 +84,7 @@ const state = $state<TimelineState>({
 	isDirty: false
 });
 
-let index = buildIndex(state.items);
+let index = $state.raw<ItemsIndex>(buildIndex(state.items));
 
 function reindex(): void {
 	index = buildIndex(state.items);

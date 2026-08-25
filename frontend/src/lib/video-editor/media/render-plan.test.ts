@@ -261,6 +261,30 @@ describe('planMixdown', () => {
 			value: 1
 		});
 	});
+
+	it('composes clip fades with volume automation for rendered audio', () => {
+		const entries = planMixdown(
+			[
+				item({
+					id: 'clip-fade',
+					type: 'audio',
+					trackId: 'track-audio',
+					mediaId: 'voice',
+					from: 30,
+					durationInFrames: 60,
+					volume: 0.5,
+					audioFadeIn: 1,
+					audioFadeOut: 1
+				})
+			],
+			[track('track-audio', 'audio', 2, { volume: 0.8 })],
+			30
+		);
+		const points = entries[0]?.gainPoints ?? [];
+		expect(points.find((point) => point.whenSeconds === 1)?.value).toBe(0);
+		expect(points.find((point) => point.whenSeconds === 2)?.value).toBeCloseTo(0.4);
+		expect(points.find((point) => point.whenSeconds === 3)?.value).toBe(0);
+	});
 });
 
 describe('planNestedMixdown', () => {
