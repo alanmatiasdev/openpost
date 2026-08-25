@@ -6,6 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
+	import KeyboardIcon from '@lucide/svelte/icons/keyboard';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RowsIcon from '@lucide/svelte/icons/rows-3';
@@ -38,8 +39,9 @@
 		TranscriptionQuantization
 	} from '$lib/video-editor/transcript/engine/types';
 	import LocalModelCacheControl from './local-model-cache-control.svelte';
+	import KeyboardShortcutEditor from './keyboard-shortcut-editor.svelte';
 
-	type Section = 'general' | 'timeline' | 'ai' | 'storage';
+	type Section = 'general' | 'timeline' | 'shortcuts' | 'ai' | 'storage';
 	type StorageAction = 'cache' | 'thumbnails' | 'generate-proxies' | 'delete-proxies';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -55,6 +57,7 @@
 	const sections: Array<{ id: Section; label: () => string; icon: typeof SettingsIcon }> = [
 		{ id: 'general', label: m.video_editor_settings_general, icon: SettingsIcon },
 		{ id: 'timeline', label: m.video_editor_settings_timeline, icon: RowsIcon },
+		{ id: 'shortcuts', label: m.video_editor_settings_shortcuts, icon: KeyboardIcon },
 		{ id: 'ai', label: m.video_editor_settings_ai, icon: SparklesIcon },
 		{ id: 'storage', label: m.video_editor_settings_storage, icon: HardDriveIcon }
 	];
@@ -143,7 +146,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="video-editor-theme flex max-h-[min(86vh,760px)] w-[calc(100%-1rem)] max-w-[760px] flex-col overflow-hidden border-[oklch(0.31_0.018_55)] bg-[oklch(0.16_0.012_50)] p-0 text-[var(--video-editor-text)] shadow-2xl sm:max-w-[760px]"
+		class="video-editor-theme flex max-h-[min(90vh,820px)] w-[calc(100%-1rem)] max-w-[920px] flex-col overflow-hidden border-[oklch(0.31_0.018_55)] bg-[oklch(0.16_0.012_50)] p-0 text-[var(--video-editor-text)] shadow-2xl sm:max-w-[920px]"
 	>
 		<Dialog.Header
 			class="flex-row items-center justify-between border-b border-[oklch(0.27_0.014_55)] px-5 py-4 pr-12"
@@ -154,10 +157,12 @@
 					{m.video_editor_settings_description()}
 				</Dialog.Description>
 			</div>
-			<Button type="button" variant="ghost" size="sm" onclick={resetSettings}>
-				<RotateIcon class="size-3.5" aria-hidden="true" />
-				{m.video_editor_settings_reset()}
-			</Button>
+			{#if section !== 'shortcuts'}
+				<Button type="button" variant="ghost" size="sm" onclick={resetSettings}>
+					<RotateIcon class="size-3.5" aria-hidden="true" />
+					{m.video_editor_settings_reset()}
+				</Button>
+			{/if}
 		</Dialog.Header>
 
 		<div class="flex min-h-0 flex-1 flex-col sm:flex-row">
@@ -295,6 +300,8 @@
 							</div>
 						{/each}
 					</section>
+				{:else if section === 'shortcuts'}
+					<KeyboardShortcutEditor />
 				{:else if section === 'ai'}
 					<section class="space-y-4" aria-labelledby="settings-ai-title">
 						<div>

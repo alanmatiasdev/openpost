@@ -37,6 +37,12 @@
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import FilmstripTile from './filmstrip-tile.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import {
+		editorShortcutTargetIsDisabled,
+		eventMatchesShortcut,
+		type EditorShortcutId
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import PropertyRuntimePanel from './property-runtime-panel.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
@@ -1457,59 +1463,41 @@
 	}
 
 	function onPanelKeydown(event: KeyboardEvent): void {
-		const target = event.target;
-		const editingText =
-			target instanceof HTMLElement &&
-			target.matches('input, textarea, select, [contenteditable="true"]');
-		const commandKey = event.ctrlKey || event.metaKey;
-		if (commandKey && !event.altKey && (event.key === '=' || event.key === '+')) {
+		if (editorShortcutTargetIsDisabled(event.target)) return;
+		const bindings = keyboardShortcuts.bindings;
+		const matches = (...ids: EditorShortcutId[]) =>
+			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
+		if (matches('ZOOM_IN')) {
 			event.preventDefault();
 			zoomBy(TIMELINE_ZOOM_STEP);
 			return;
 		}
-		if (commandKey && !event.altKey && event.key === '-') {
+		if (matches('ZOOM_OUT')) {
 			event.preventDefault();
 			zoomBy(1 / TIMELINE_ZOOM_STEP);
 			return;
 		}
-		if (commandKey && !event.altKey && event.key === '0') {
+		if (matches('ZOOM_TO_100_ALT')) {
 			event.preventDefault();
 			zoomTo100();
 			return;
 		}
-		if (editingText) return;
-		const isBackslash = event.code === 'Backslash' || event.key === '\\' || event.key === '|';
-		if (isBackslash && !event.altKey && !commandKey) {
+		if (matches('ZOOM_TO_FIT', 'ZOOM_TO_100')) {
 			event.preventDefault();
-			if (event.shiftKey) zoomTo100();
+			if (matches('ZOOM_TO_100')) zoomTo100();
 			else zoomToFit();
 			return;
 		}
-		if (
-			(event.key === 'l' || event.key === 'L') &&
-			event.altKey &&
-			(event.ctrlKey || event.metaKey)
-		) {
+		if (matches('LINK_AUDIO_VIDEO')) {
 			event.preventDefault();
 			linkSelection();
-		} else if ((event.key === 'l' || event.key === 'L') && event.altKey && event.shiftKey) {
+		} else if (matches('UNLINK_AUDIO_VIDEO')) {
 			event.preventDefault();
 			unlinkSelection();
-		} else if (
-			(event.key === 'j' || event.key === 'J') &&
-			event.shiftKey &&
-			!event.altKey &&
-			!event.ctrlKey &&
-			!event.metaKey
-		) {
+		} else if (matches('JOIN_ITEMS')) {
 			event.preventDefault();
 			joinSelection();
-		} else if (
-			(event.key === 'r' || event.key === 'R') &&
-			!event.altKey &&
-			!event.ctrlKey &&
-			!event.metaKey
-		) {
+		} else if (matches('RATE_STRETCH_TOOL')) {
 			event.preventDefault();
 			toggleEditTool('rate-stretch');
 		}

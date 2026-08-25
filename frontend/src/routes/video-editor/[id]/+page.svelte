@@ -87,6 +87,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorWorkspace,
 		type EditorWorkspaceId
 	} from '$lib/video-editor/workspaces/editor-workspace.svelte';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import {
+		editorShortcutTargetIsDisabled,
+		eventMatchesShortcut,
+		type EditorShortcutId
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -601,29 +608,57 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
-		// SAFETY: event targets in this page are HTML elements.
-		const target = event.target as HTMLElement;
-		if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
-		if (event.code === 'Space') {
+		if (editorShortcutTargetIsDisabled(event.target)) return;
+		const bindings = keyboardShortcuts.bindings;
+		const matches = (...ids: EditorShortcutId[]) =>
+			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
+		if (matches('PLAY_PAUSE')) {
 			event.preventDefault();
 			togglePlay();
-		} else if (event.key === 's' && (event.metaKey || event.ctrlKey)) {
+		} else if (matches('SAVE')) {
 			event.preventDefault();
 			void editorSession.saveNow().catch(() => showToast(m.video_editor_save_failed(), 'error'));
-		} else if (
-			(event.key === 'l' || event.key === 'L') &&
-			event.shiftKey &&
-			!event.altKey &&
-			!event.ctrlKey &&
-			!event.metaKey
-		) {
+		} else if (matches('EXPORT')) {
+			event.preventDefault();
+			if (!exporting && timelineStore.items.length > 0) void handleExport();
+		} else if (matches('OPEN_SETTINGS')) {
+			event.preventDefault();
+			settingsOpen = true;
+		} else if (matches('WORKSPACE_EDIT', 'WORKSPACE_COLOR', 'WORKSPACE_MOTION')) {
+			event.preventDefault();
+			changeEditorWorkspace(
+				matches('WORKSPACE_EDIT') ? 'edit' : matches('WORKSPACE_COLOR') ? 'color' : 'motion'
+			);
+		} else if (matches('UNDO')) {
+			event.preventDefault();
+			if (commandHistory.canUndo) {
+				commandHistory.undo();
+				editorSession.scheduleAutosave();
+			}
+		} else if (matches('REDO')) {
+			event.preventDefault();
+			if (commandHistory.canRedo) {
+				commandHistory.redo();
+				editorSession.scheduleAutosave();
+			}
+		} else if (matches('PREVIOUS_FRAME', 'NEXT_FRAME', 'GO_TO_START', 'GO_TO_END')) {
+			event.preventDefault();
+			const frame = matches('GO_TO_START')
+				? 0
+				: matches('GO_TO_END')
+					? timelineStore.maxItemEndFrame
+					: timelineStore.currentFrame + (matches('PREVIOUS_FRAME') ? -1 : 1);
+			setCurrentFrame(frame);
+		} else if (matches('TOGGLE_LINKED_SELECTION')) {
 			event.preventDefault();
 			timelineStore._setLinkedSelectionEnabled(!timelineStore.linkedSelectionEnabled);
-		} else if ((event.key === 's' || event.key === 'S') && !event.altKey) {
+		} else if (matches('TOGGLE_SNAP')) {
 			event.preventDefault();
 			timelineStore._setSnapEnabled(!timelineStore.snapEnabled);
-		} else if (event.key === 'Delete' || event.key === 'Backspace') {
-			const ripple = event.ctrlKey || event.metaKey;
+		} else if (
+			matches('DELETE_SELECTED', 'DELETE_SELECTED_ALT', 'RIPPLE_DELETE', 'RIPPLE_DELETE_ALT')
+		) {
+			const ripple = matches('RIPPLE_DELETE', 'RIPPLE_DELETE_ALT');
 			if (ripple && selectedItemId) {
 				event.preventDefault();
 				handleDelete(true);
@@ -640,32 +675,26 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				event.preventDefault();
 				handleDelete(false);
 			}
-		} else if (event.key === 'b' || event.key === 'B') {
+		} else if (matches('SPLIT_AT_PLAYHEAD', 'SPLIT_AT_PLAYHEAD_ALT')) {
+			event.preventDefault();
 			handleSplit();
-		} else if (
-			(event.key === 'f' || event.key === 'F') &&
-			event.shiftKey &&
-			!event.altKey &&
-			!event.ctrlKey &&
-			!event.metaKey
-		) {
+		} else if (matches('FREEZE_FRAME')) {
 			event.preventDefault();
 			void handleFreezeFrame();
-		} else if ((event.key === 'm' || event.key === 'M') && event.shiftKey) {
+		} else if (matches('REMOVE_MARKER')) {
 			event.preventDefault();
 			if (timelineStore.selectedMarkerId) {
 				removeMarker(timelineStore.selectedMarkerId);
 				editorSession.scheduleAutosave();
 			}
-		} else if (event.key === 'm' || event.key === 'M') {
+		} else if (matches('ADD_MARKER')) {
 			event.preventDefault();
 			toggleMarkerAtPlayhead();
 			editorSession.scheduleAutosave();
-		} else if (event.key === '[' || event.key === ']') {
-			const marker =
-				event.key === '['
-					? markerBefore(timelineStore.markers, timelineStore.currentFrame)
-					: markerAfter(timelineStore.markers, timelineStore.currentFrame);
+		} else if (matches('PREVIOUS_MARKER', 'NEXT_MARKER')) {
+			const marker = matches('PREVIOUS_MARKER')
+				? markerBefore(timelineStore.markers, timelineStore.currentFrame)
+				: markerAfter(timelineStore.markers, timelineStore.currentFrame);
 			if (marker) {
 				event.preventDefault();
 				timelineStore._setSelectedMarkerId(marker.id);

@@ -8,6 +8,7 @@ import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.
 import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 import {
 	clearSceneDragData,
 	setSceneDragData
@@ -90,6 +91,7 @@ async function nextAnimationFrame(): Promise<void> {
 beforeEach(() => {
 	clearSceneDragData();
 	mediaPool.loadAll([sceneMedia]);
+	keyboardShortcuts.resetAll();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	transitionsStore.setAll([]);
@@ -235,6 +237,24 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		);
 		expect(timelineStore.zoomLevel).toBeCloseTo(770 / (300 * 4));
 		expect(region!.scrollLeft).toBe(0);
+	});
+
+	it('uses a saved custom binding for timeline commands', async () => {
+		await render(TimelinePanel, { onedit: vi.fn() });
+		timelineStore._setZoomLevel(1);
+		keyboardShortcuts.setBinding('ZOOM_IN', 'alt+8');
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '8',
+				code: 'Digit8',
+				altKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(timelineStore.zoomLevel).toBeCloseTo(1.15);
 	});
 
 	it('scrubs the ruler with pointer drag and precise keyboard steps', async () => {

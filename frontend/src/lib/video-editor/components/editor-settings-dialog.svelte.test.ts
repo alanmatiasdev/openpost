@@ -3,14 +3,67 @@ import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { mediaPool } from '../media/pool.svelte';
 import { editorSettings } from '../settings/editor-settings.svelte';
+import { keyboardShortcuts } from '../settings/keyboard-shortcuts.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import EditorSettingsDialog from './editor-settings-dialog.svelte';
 import '../../../routes/layout.css';
 
 beforeEach(() => {
 	editorSettings.reset();
+	keyboardShortcuts.resetAll();
 	mediaPool.clear();
 	timelineStore.__resetForTesting();
+});
+
+describe('EditorSettingsDialog shortcuts', () => {
+	it('rebinding a conflict replaces the old command and fits a 320px phone', async () => {
+		await page.viewport(320, 720);
+		const screen = await render(EditorSettingsDialog, { open: true });
+		const dialog = screen.getByRole('dialog');
+		await screen.getByRole('button', { name: 'Shortcuts' }).click();
+		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
+
+		const search = screen.getByPlaceholder('Search commands or keys');
+		await search.fill('Play or pause');
+		const play = screen.getByRole('group', { name: 'Play or pause' });
+		await play.getByRole('button', { name: 'Change' }).click();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: ' ',
+				code: 'Space',
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		await screen.getByRole('button', { name: 'Use shortcut' }).click();
+		expect(keyboardShortcuts.bindings.PLAY_PAUSE).toBe('shift+space');
+
+		await search.fill('Save project');
+		const save = screen.getByRole('group', { name: 'Save project' });
+		await save.getByRole('button', { name: 'Change' }).click();
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: ' ',
+				code: 'Space',
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		await expect
+			.element(screen.getByRole('alert'))
+			.toHaveTextContent('Already used by Play or pause.');
+		await screen.getByRole('button', { name: 'Replace existing' }).click();
+		expect(keyboardShortcuts.bindings.SAVE).toBe('shift+space');
+		expect(keyboardShortcuts.bindings.PLAY_PAUSE).toBe('');
+
+		await screen.getByRole('button', { name: 'Reset all' }).click();
+		await screen.getByRole('button', { name: 'Reset all' }).click();
+		expect(keyboardShortcuts.bindings.PLAY_PAUSE).toBe('space');
+		expect(keyboardShortcuts.bindings.SAVE).toBe('mod+s');
+		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
+	});
 });
 
 describe('EditorSettingsDialog', () => {
