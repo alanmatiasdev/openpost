@@ -6,6 +6,7 @@ export type MediaTaskKind =
 	| 'scene-analysis'
 	| 'transcription'
 	| 'voice-generation'
+	| 'music-generation'
 	| 'reverse-conform'
 	| 'upscale'
 	| 'frame-interpolation';

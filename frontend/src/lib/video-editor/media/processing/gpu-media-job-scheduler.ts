@@ -6,8 +6,8 @@ interface Waiter {
 }
 
 /**
- * Serialize GPU-heavy media jobs across upscale and interpolation workers.
- * Running both at once adds memory pressure and makes both complete later.
+ * Serialize GPU-heavy media jobs across enhancement and local generation workers.
+ * Running large models together adds memory pressure and makes every job complete later.
  */
 class GpuMediaJobScheduler {
 	private active = false;

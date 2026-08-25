@@ -8,12 +8,15 @@
 		type LocalModelCacheSummary
 	} from '$lib/video-editor/local-ai/model-cache';
 
+	let { disabled = false }: { disabled?: boolean } = $props();
+
 	let open = $state(false);
 	let loading = $state(false);
 	let summaries = $state<LocalModelCacheSummary[]>([]);
 	let clearingId = $state<string | null>(null);
 
 	function formatBytes(bytes: number): string {
+		if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
 		if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 	}
@@ -49,6 +52,7 @@
 		type="button"
 		class="flex w-full items-center justify-between rounded px-1 py-0.5 text-[10px] text-[oklch(0.66_0.015_55)] hover:bg-[oklch(0.23_0.012_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 		aria-expanded={open}
+		{disabled}
 		onclick={toggle}
 	>
 		<span>{m.video_editor_models_manage()}</span>
@@ -82,7 +86,7 @@
 							<Button
 								size="xs"
 								variant="ghost"
-								disabled={clearingId !== null}
+								disabled={disabled || clearingId !== null}
 								onclick={() => void remove(summary)}
 							>
 								{clearingId === summary.id

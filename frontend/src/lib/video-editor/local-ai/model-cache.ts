@@ -4,6 +4,7 @@ import { clearMossModelStorage, inspectMossModelStorage } from './tts/moss-model
 import { mossTtsService } from './tts/moss-service';
 import { supertonicTtsService } from './tts/supertonic-service';
 import { unloadFrameInterpolationRuntime } from '../media/processing/runtime-registry';
+import { aceStepMusicService, inspectMusicGenerationSupport } from './music/ace-step-service';
 
 export const TRANSFORMERS_CACHE_NAME = 'transformers-cache';
 
@@ -13,7 +14,7 @@ export interface LocalModelCacheDefinition {
 	description: string;
 	cacheName: string;
 	matchPathFragments: string[];
-	storage?: 'cache' | 'moss-opfs';
+	storage?: 'cache' | 'moss-opfs' | 'ace-step';
 }
 
 export interface LocalModelCacheSummary extends LocalModelCacheDefinition {
@@ -91,11 +92,12 @@ export const LOCAL_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = [
 		storage: 'moss-opfs'
 	},
 	{
-		id: 'musicgen',
-		label: 'MusicGen',
-		description: 'Local music generation model and tokenizer.',
-		cacheName: TRANSFORMERS_CACHE_NAME,
-		matchPathFragments: ['/musicgen-small/', '/musicgen-medium/']
+		id: 'ace-step-music',
+		label: 'ACE-Step music',
+		description: 'Local music generation graphs, weights, tokenizers and VAE.',
+		cacheName: 'ai-music-js',
+		matchPathFragments: [],
+		storage: 'ace-step'
 	}
 ];
 
@@ -149,6 +151,28 @@ function unavailable(
 export async function inspectLocalModelCache(
 	definition: LocalModelCacheDefinition
 ): Promise<LocalModelCacheSummary> {
+	if (definition.storage === 'ace-step') {
+		try {
+			const [support, inventory] = await Promise.all([
+				inspectMusicGenerationSupport(),
+				aceStepMusicService.inspectCache()
+			]);
+			return {
+				...definition,
+				supported: support.supported,
+				downloaded: inventory.storedBytes > 0,
+				entryCount: inventory.models.reduce(
+					(sum, model) => sum + model.assets.filter((asset) => asset.cached).length,
+					0
+				),
+				totalBytes: inventory.storedBytes,
+				sizeStatus: 'exact',
+				inspectionState: 'ready'
+			};
+		} catch {
+			return unavailable(definition, 'error');
+		}
+	}
 	if (definition.storage === 'moss-opfs') {
 		try {
 			const summary = await inspectMossModelStorage();
@@ -212,6 +236,7 @@ export function inspectAllLocalModelCaches(): Promise<LocalModelCacheSummary[]> 
 export async function clearLocalModelCache(
 	definition: LocalModelCacheDefinition
 ): Promise<boolean> {
+	if (definition.storage === 'ace-step') return aceStepMusicService.clearCache();
 	if (definition.storage === 'moss-opfs') {
 		mossTtsService.unload();
 		return clearMossModelStorage();

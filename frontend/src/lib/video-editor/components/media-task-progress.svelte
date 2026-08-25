@@ -15,6 +15,7 @@
 	});
 
 	function formatBytes(bytes: number): string {
+		if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
 		if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 	}
@@ -35,6 +36,8 @@
 				return m.video_editor_task_transcription();
 			case 'voice-generation':
 				return m.video_editor_task_voice_generation();
+			case 'music-generation':
+				return m.video_editor_local_music();
 			case 'reverse-conform':
 				return m.video_editor_task_reverse_conform();
 			case 'upscale':

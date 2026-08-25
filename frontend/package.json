@@ -86,6 +86,7 @@
 		"@openpost/telemetry": "workspace:*",
 		"@paddle/paddle-js": "^1.6.4",
 		"@tanstack/table-core": "^8.21.3",
+		"ai-music-js": "0.5.0",
 		"bits-ui": "^2.16.3",
 		"canvas-confetti": "^1.9.4",
 		"clsx": "^2.1.1",
