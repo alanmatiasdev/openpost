@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLocale } from '$lib/paraglide/runtime';
 import {
 	createBlankProject,
 	createDefaultTracks,
@@ -7,6 +8,8 @@ import {
 	CURRENT_SCHEMA_VERSION
 } from './defaults';
 import type { Project } from './types';
+
+afterEach(() => setLocale('en', { reload: false }));
 
 describe('createBlankProject', () => {
 	it('creates a normalized 1080p30 project with default tracks', () => {
@@ -29,6 +32,24 @@ describe('createBlankProject', () => {
 
 	it('generates unique ids', () => {
 		expect(createBlankProject().id).not.toBe(createBlankProject().id);
+	});
+
+	it('creates project and repair copy in the active locale', () => {
+		setLocale('pt', { reload: false });
+		const project = createBlankProject();
+		expect(project.name).toBe('Projeto sem título');
+		expect(project.timeline?.tracks.map((track) => track.name)).toEqual([
+			'Sobreposição',
+			'Vídeo',
+			'Áudio'
+		]);
+
+		// SAFETY: This fixture deliberately simulates a stored project that predates the timeline field.
+		delete (project as Partial<Project>).timeline;
+		expect(normalizeProject(project).warnings).toContainEqual({
+			code: 'TIMELINE_MISSING',
+			message: 'Este projeto não tinha uma linha temporal, por isso o OpenPost criou uma vazia.'
+		});
 	});
 });
 

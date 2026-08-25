@@ -6624,5 +6624,11 @@
 	"video_editor_text_sample_shop_drop": "Shop the drop",
 	"video_editor_text_sample_new_drop": "NEW DROP",
 	"video_editor_text_sample_tag": "Tag",
-	"video_editor_gpu_color_hex": "hex"
+	"video_editor_gpu_color_hex": "hex",
+	"video_editor_project_untitled": "Untitled project",
+	"video_editor_project_repair_timeline": "This project had no timeline, so OpenPost created an empty one.",
+	"video_editor_project_repair_track_groups": "OpenPost removed invalid, nested, or empty timeline groups.",
+	"video_editor_project_repair_video_track": "This project had no video track, so OpenPost added one.",
+	"video_editor_project_repair_sequence_tabs": "OpenPost removed duplicate or missing sequence tabs.",
+	"video_editor_project_repair_shape_styles": "OpenPost limited invalid trim-path or stroke-taper values."
 }

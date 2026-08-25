@@ -1,11 +1,12 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
+import { m } from '$lib/paraglide/messages';
 
 export const load: PageLoad = async ({ url }) => {
 	const { createBlankProject } = await import('$lib/video-editor/project/defaults');
 	const { createProject } = await import('$lib/video-editor/workspace-fs/projects');
 
-	const name = url.searchParams.get('name')?.trim() || 'Untitled project';
+	const name = url.searchParams.get('name')?.trim() || m.video_editor_project_untitled();
 	const project = createBlankProject(name);
 	await createProject(project);
 

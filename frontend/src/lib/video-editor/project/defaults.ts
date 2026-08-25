@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
 import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-groups';
+import { m } from '$lib/paraglide/messages';
 
 export { CURRENT_SCHEMA_VERSION } from './migrations';
 
@@ -25,7 +26,7 @@ export function createDefaultTracks(): TimelineTrack[] {
 	return [
 		{
 			id: 'track-video-overlay',
-			name: 'Overlay',
+			name: m.video_editor_overlay_item(),
 			kind: 'video',
 			height: 64,
 			locked: false,
@@ -36,7 +37,7 @@ export function createDefaultTracks(): TimelineTrack[] {
 		},
 		{
 			id: 'track-video-main',
-			name: 'Video',
+			name: m.video_editor_property_video(),
 			kind: 'video',
 			height: 96,
 			locked: false,
@@ -47,7 +48,7 @@ export function createDefaultTracks(): TimelineTrack[] {
 		},
 		{
 			id: 'track-audio',
-			name: 'Audio',
+			name: m.video_editor_property_audio(),
 			kind: 'audio',
 			height: 72,
 			locked: false,
@@ -70,7 +71,7 @@ export function createEmptyTimeline(): ProjectTimeline {
 	};
 }
 
-export function createBlankProject(name = 'Untitled project'): Project {
+export function createBlankProject(name: string = m.video_editor_project_untitled()): Project {
 	const now = Date.now();
 	return {
 		id: crypto.randomUUID(),
@@ -146,7 +147,7 @@ export function normalizeProject(project: Project): NormalizedProject {
 	if (!project.timeline) {
 		warnings.push({
 			code: 'TIMELINE_MISSING',
-			message: 'Project had no timeline; created an empty one.'
+			message: m.video_editor_project_repair_timeline()
 		});
 	}
 	const originalTracks = timeline.tracks;
@@ -159,14 +160,14 @@ export function normalizeProject(project: Project): NormalizedProject {
 	) {
 		warnings.push({
 			code: 'TRACK_GROUPS_REPAIRED',
-			message: 'Removed invalid, nested, or empty timeline groups.'
+			message: m.video_editor_project_repair_track_groups()
 		});
 	}
 	timeline.tracks = repairedTracks;
 	if (!mediaTracks(timeline.tracks).some((track) => track.kind !== 'audio')) {
 		timeline.tracks.push({
 			id: 'track-video-main',
-			name: 'Video',
+			name: m.video_editor_property_video(),
 			kind: 'video',
 			height: 96,
 			locked: false,
@@ -177,7 +178,7 @@ export function normalizeProject(project: Project): NormalizedProject {
 		});
 		warnings.push({
 			code: 'TRACK_ADDED',
-			message: 'Project had no video track; added one.'
+			message: m.video_editor_project_repair_video_track()
 		});
 	}
 	timeline.items = normalizeItems(timeline.items ?? []);
@@ -191,7 +192,7 @@ export function normalizeProject(project: Project): NormalizedProject {
 	if (topLevelSequenceIds.length !== (timeline.topLevelSequenceIds ?? []).length) {
 		warnings.push({
 			code: 'SEQUENCE_TABS_REPAIRED',
-			message: 'Removed duplicate or missing sequence tabs.'
+			message: m.video_editor_project_repair_sequence_tabs()
 		});
 	}
 	timeline.compositions = normalizedCompositions;
@@ -203,7 +204,7 @@ export function normalizeProject(project: Project): NormalizedProject {
 	if (shapeStylesRepaired) {
 		warnings.push({
 			code: 'SHAPE_STYLES_REPAIRED',
-			message: 'Clamped invalid trim-path or stroke-taper values.'
+			message: m.video_editor_project_repair_shape_styles()
 		});
 	}
 

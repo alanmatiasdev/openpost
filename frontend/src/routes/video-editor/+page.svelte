@@ -156,7 +156,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		creating = true;
 		try {
 			const { createBlankProject } = await import('$lib/video-editor/project/defaults');
-			const project = createBlankProject(name || 'Untitled project');
+			const project = createBlankProject(name || m.video_editor_project_untitled());
 			await createProject(project);
 			await loadProjects();
 			openProject(project);

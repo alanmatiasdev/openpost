@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '$lib/paraglide/runtime';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
@@ -108,8 +109,11 @@ beforeEach(() => {
 	timelineStore.setAll({ tracks: [videoTrack, audioTrack], items, fps: 30, currentFrame: 0 });
 });
 
+afterEach(() => setLocale('en', { reload: false }));
+
 describe('insertEmbeddedSubtitleTrack', () => {
 	it('maps one source track onto linked clips once, replaces stale cues, and undoes atomically', () => {
+		setLocale('pt', { reload: false });
 		const result = insertEmbeddedSubtitleTrack(media, subtitleTrack, {
 			canvasWidth: 1920,
 			canvasHeight: 1080
@@ -136,7 +140,7 @@ describe('insertEmbeddedSubtitleTrack', () => {
 			]
 		});
 		expect(timelineStore.tracks.find((track) => track.id === subtitle?.trackId)?.name).toBe(
-			'Captions'
+			'Legendas'
 		);
 		expect(commandHistory.undoStack).toHaveLength(1);
 

@@ -6624,5 +6624,11 @@
 	"video_editor_text_sample_shop_drop": "Ver lançamento",
 	"video_editor_text_sample_new_drop": "NOVIDADE",
 	"video_editor_text_sample_tag": "Etiqueta",
-	"video_editor_gpu_color_hex": "hexadecimal"
+	"video_editor_gpu_color_hex": "hexadecimal",
+	"video_editor_project_untitled": "Projeto sem título",
+	"video_editor_project_repair_timeline": "Este projeto não tinha uma linha temporal, por isso o OpenPost criou uma vazia.",
+	"video_editor_project_repair_track_groups": "O OpenPost removeu grupos de faixas inválidos, aninhados ou vazios.",
+	"video_editor_project_repair_video_track": "Este projeto não tinha uma faixa de vídeo, por isso o OpenPost adicionou uma.",
+	"video_editor_project_repair_sequence_tabs": "O OpenPost removeu separadores de sequência duplicados ou em falta.",
+	"video_editor_project_repair_shape_styles": "O OpenPost limitou valores inválidos do recorte de caminho ou do afunilamento do traço."
 }

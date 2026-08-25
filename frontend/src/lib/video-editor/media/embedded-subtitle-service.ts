@@ -1,6 +1,7 @@
 /** Embedded subtitle scanning, caching, source-time mapping, and insertion. */
 
 import type { TimelineItem, TimelineTrack } from '../project/types';
+import { m } from '$lib/paraglide/messages';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { effectiveMediaTracks } from '../timeline/utils/track-groups';
@@ -235,7 +236,7 @@ function chooseCaptionTrack(
 		created: true,
 		track: {
 			id: crypto.randomUUID(),
-			name: 'Captions',
+			name: m.video_editor_captions_lane(),
 			kind: 'video',
 			height: 64,
 			locked: false,

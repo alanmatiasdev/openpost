@@ -1,14 +1,12 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '$lib/paraglide/runtime';
+import { commandHistory } from '../../timeline/commands/command-store.svelte';
 import { timelineStore } from '../../timeline/stores/timeline-store.svelte';
 import type { MediaMetadata } from '../types';
 import { insertSceneAtPlayhead } from './scene-insert';
 import type { MediaScene } from './types';
-
-vi.mock('../../timeline/commands/command-store.svelte', () => ({
-	execute: (_type: string, action: () => unknown) => action()
-}));
 
 const media: MediaMetadata = {
 	id: 'media-1',
@@ -36,7 +34,10 @@ const scene: MediaScene = {
 };
 
 describe('insertSceneAtPlayhead', () => {
+	afterEach(() => setLocale('en', { reload: false }));
+
 	beforeEach(() => {
+		commandHistory.clearHistory();
 		timelineStore.setAll({
 			fps: 30,
 			currentFrame: 90,
@@ -79,6 +80,7 @@ describe('insertSceneAtPlayhead', () => {
 	});
 
 	it('creates an overlay track when every unlocked visual track collides', () => {
+		setLocale('pt', { reload: false });
 		timelineStore._addItem({
 			id: 'existing',
 			trackId: 'video-main',
@@ -92,6 +94,7 @@ describe('insertSceneAtPlayhead', () => {
 		const item = timelineStore.itemById.get(id)!;
 		expect(item.trackId).not.toBe('video-main');
 		expect(timelineStore.tracks.find((track) => track.id === item.trackId)).toMatchObject({
+			name: 'Cenas',
 			kind: 'video',
 			order: -1
 		});

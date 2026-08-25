@@ -6,6 +6,7 @@ import { timelineStore } from '../../timeline/stores/timeline-store.svelte';
 import { effectiveMediaTracks } from '../../timeline/utils/track-groups';
 import type { MediaMetadata } from '../types';
 import type { MediaScene } from './types';
+import { m } from '$lib/paraglide/messages';
 
 function collides(trackId: string, from: number, end: number): boolean {
 	return (timelineStore.itemsByTrackId.get(trackId) ?? []).some(
@@ -29,7 +30,7 @@ function targetTrack(from: number, end: number, preferredTrackId?: string): Time
 	const order = Math.min(0, ...timelineStore.tracks.map((track) => track.order)) - 1;
 	return {
 		id: crypto.randomUUID(),
-		name: 'Scene',
+		name: m.video_editor_scenes(),
 		kind: 'video',
 		height: 64,
 		locked: false,
