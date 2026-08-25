@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
@@ -391,10 +390,7 @@
 			</div>
 
 			{#if filtersOpen}
-				<div
-					class="grid gap-3 rounded-xl border bg-muted/15 p-3 sm:grid-cols-2 lg:grid-cols-3"
-					transition:slide={{ duration: 180 }}
-				>
+				<div class="grid gap-3 rounded-xl border bg-muted/15 p-3 sm:grid-cols-2 lg:grid-cols-3">
 					{#if availableFilters.has('orientation')}
 						<label class="grid gap-1 text-xs text-muted-foreground">
 							<span>{m.stock_filter_orientation()}</span>
