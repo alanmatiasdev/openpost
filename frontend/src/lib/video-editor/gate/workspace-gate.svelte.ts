@@ -15,10 +15,11 @@ import {
 	listKnownWorkspaces,
 	queryHandlePermission,
 	requestHandlePermission,
+	removeKnownWorkspace,
 	saveWorkspaceHandleRecord,
 	type HandleRecord
 } from '../workspace-fs/handles-db';
-import { setWorkspaceRoot } from '../workspace-fs/root';
+import { onPermissionLost, setWorkspaceRoot } from '../workspace-fs/root';
 import { bootstrapWorkspace } from '../workspace-fs/bootstrap';
 
 export type WorkspaceGateState = 'initializing' | 'unavailable' | 'pick' | 'reconnect' | 'ready';
@@ -26,6 +27,8 @@ export type WorkspaceGateState = 'initializing' | 'unavailable' | 'pick' | 'reco
 export function createWorkspaceGate() {
 	let state = $state<WorkspaceGateState>('initializing');
 	let workspaceName = $state('');
+	let activeWorkspaceId = $state<string | null>(null);
+	let workspaceRevision = $state(0);
 	let knownWorkspaces = $state.raw<HandleRecord[]>([]);
 	let busy = $state(false);
 	let error = $state('');
@@ -38,34 +41,56 @@ export function createWorkspaceGate() {
 		setWorkspaceRoot(handle);
 		await bootstrapWorkspace(handle);
 		workspaceName = record.name;
+		activeWorkspaceId = record.activeWorkspaceId ?? (record.id === 'current' ? null : record.id);
+		knownWorkspaces = await listKnownWorkspaces();
+		workspaceRevision += 1;
 		state = 'ready';
 		return true;
 	}
 
 	onMount(() => {
+		let cancelled = false;
 		void (async () => {
 			if (!isFileSystemAccessSupported()) {
-				state = 'unavailable';
+				if (!cancelled) state = 'unavailable';
 				return;
 			}
 			try {
 				await ensureKnownWorkspaceForCurrent();
 				const current = await getWorkspaceHandleRecord();
 				if (!current) {
-					state = 'pick';
+					if (!cancelled) state = 'pick';
 					return;
 				}
 				const activated = await activate(current);
-				if (!activated) {
+				if (!cancelled && !activated) {
 					knownWorkspaces = await listKnownWorkspaces();
 					workspaceName = current.name;
 					state = 'reconnect';
 				}
 			} catch (err) {
-				error = err instanceof Error ? err.message : String(err);
-				state = 'pick';
+				if (!cancelled) {
+					error = err instanceof Error ? err.message : String(err);
+					state = 'pick';
+				}
 			}
 		})();
+
+		const stopPermissionListener = onPermissionLost(() => {
+			void (async () => {
+				const current = await getWorkspaceHandleRecord();
+				if (cancelled) return;
+				setWorkspaceRoot(null);
+				knownWorkspaces = await listKnownWorkspaces();
+				workspaceName = current?.name ?? workspaceName;
+				state = current ? 'reconnect' : 'pick';
+			})();
+		});
+
+		return () => {
+			cancelled = true;
+			stopPermissionListener();
+		};
 	});
 
 	async function pickFolder(): Promise<void> {
@@ -89,10 +114,10 @@ export function createWorkspaceGate() {
 				}
 			}
 			await saveWorkspaceHandleRecord(handle);
-			setWorkspaceRoot(handle);
-			await bootstrapWorkspace(handle);
-			workspaceName = handle.name;
-			state = 'ready';
+			const current = await getWorkspaceHandleRecord();
+			if (!current || !(await activate(current))) {
+				throw new Error('The selected workspace could not be activated.');
+			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			error = err instanceof Error ? err.message : String(err);
@@ -127,12 +152,56 @@ export function createWorkspaceGate() {
 		await pickFolder();
 	}
 
-	function forgetWorkspace(workspaceId?: string): void {
-		// Removing the active pointer is enough; known-workspace management UI
-		// arrives with a later release.
-		void workspaceId;
-		state = 'pick';
-		workspaceName = '';
+	async function switchWorkspace(workspaceId: string): Promise<void> {
+		if (busy) return;
+		busy = true;
+		error = '';
+		try {
+			const record = await activateWorkspaceHandle(workspaceId);
+			if (!record) {
+				knownWorkspaces = await listKnownWorkspaces();
+				return;
+			}
+			// SAFETY: known workspace records always store directory handles.
+			const handle = record.handle as FileSystemDirectoryHandle;
+			const existing = await queryHandlePermission(handle);
+			const granted = existing === 'granted' ? existing : await requestHandlePermission(handle);
+			if (granted !== 'granted') {
+				setWorkspaceRoot(null);
+				workspaceName = record.name;
+				activeWorkspaceId = workspaceId;
+				knownWorkspaces = await listKnownWorkspaces();
+				state = 'reconnect';
+				return;
+			}
+			await activate(record);
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function forgetWorkspace(workspaceId: string): Promise<void> {
+		if (busy) return;
+		busy = true;
+		error = '';
+		try {
+			const current = await getWorkspaceHandleRecord();
+			const wasActive = current?.activeWorkspaceId === workspaceId;
+			await removeKnownWorkspace(workspaceId);
+			knownWorkspaces = await listKnownWorkspaces();
+			if (wasActive) {
+				setWorkspaceRoot(null);
+				workspaceName = '';
+				activeWorkspaceId = null;
+				state = 'pick';
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			busy = false;
+		}
 	}
 
 	return {
@@ -141,6 +210,12 @@ export function createWorkspaceGate() {
 		},
 		get workspaceName() {
 			return workspaceName;
+		},
+		get activeWorkspaceId() {
+			return activeWorkspaceId;
+		},
+		get workspaceRevision() {
+			return workspaceRevision;
 		},
 		get knownWorkspaces() {
 			return knownWorkspaces;
@@ -154,6 +229,9 @@ export function createWorkspaceGate() {
 		pickFolder,
 		reconnect,
 		chooseDifferentFolder,
+		switchWorkspace,
 		forgetWorkspace
 	};
 }
+
+export type WorkspaceGate = ReturnType<typeof createWorkspaceGate>;

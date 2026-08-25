@@ -12,6 +12,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import ProjectBrowser from '$lib/video-editor/components/project-browser.svelte';
+	import WorkspaceIndicator from '$lib/video-editor/components/workspace-indicator.svelte';
 	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
 	import { saveProjectBundle } from '$lib/video-editor/project-bundle/bundle-export';
 	import { importProjectBundle } from '$lib/video-editor/project-bundle/bundle-import';
@@ -38,7 +39,6 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		sweepTrashOlderThan,
 		type TrashedProjectEntry
 	} from '$lib/video-editor/workspace-fs/trash';
-	import FolderIcon from '@lucide/svelte/icons/folder-open';
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
@@ -132,6 +132,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	}
 
 	$effect(() => {
+		void gate.workspaceRevision;
 		if (gate.state === 'ready') void loadProjects(true);
 	});
 
@@ -504,10 +505,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 			<span class="text-sm font-semibold">{m.video_editor_title()}</span>
 		</a>
 		{#if gate.state === 'ready'}
-			<span class="hidden items-center gap-1.5 text-xs text-[oklch(0.65_0.015_55)] sm:flex">
-				<FolderIcon class="size-3.5" aria-hidden="true" />
-				{gate.workspaceName}
-			</span>
+			<WorkspaceIndicator {gate} />
 		{/if}
 	</header>
 
