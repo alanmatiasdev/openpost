@@ -63,6 +63,10 @@ function transitionValuesEqual(left: TimelineTransition, right: TimelineTransiti
 	);
 }
 
+function isNumberValue(value: unknown): value is number {
+	return typeof value === 'number';
+}
+
 function findEdgePair(
 	fromItemId: string,
 	toItemId: string
@@ -90,10 +94,9 @@ export function addTransition(
 			(transition) => transition.fromItemId === fromItemId && transition.toItemId === toItemId
 		);
 		if (existing) throw new Error('Clips already have a transition here');
-		const options =
-			typeof alignmentOrOptions === 'number'
-				? { alignment: alignmentOrOptions }
-				: (alignmentOrOptions ?? {});
+		const options = isNumberValue(alignmentOrOptions)
+			? { alignment: alignmentOrOptions }
+			: (alignmentOrOptions ?? {});
 		const presentation =
 			options.presentation ?? (type === 'fade-black' ? 'dipToColorDissolve' : 'fade');
 		const definition = transitionRegistry.getDefinition(presentation);

@@ -15,10 +15,11 @@ function resolveAnimatedBitmapOrThrow(
 
 describe('export must fail clearly for known animation decode errors', () => {
 	it('throws when frame is missing instead of falling back', () => {
-		const fakeA = { close: () => {} } as unknown as ImageBitmap;
-		expect(() =>
-			resolveAnimatedBitmapOrThrow([fakeA, undefined as unknown as ImageBitmap], 1, 'anim.gif')
-		).toThrow(/frame 1 missing/);
+		// SAFETY: test double implements only the close method of ImageBitmap used in this seam.
+		const fakeA = { close: () => {} } as ImageBitmap;
+		expect(() => resolveAnimatedBitmapOrThrow([fakeA, undefined], 1, 'anim.gif')).toThrow(
+			/frame 1 missing/
+		);
 	});
 
 	it('throws for decode rejection, not swallowed', async () => {
@@ -31,6 +32,7 @@ describe('export must fail clearly for known animation decode errors', () => {
 			await failingCache.getAnimatedImage();
 			throw new Error('should have thrown');
 		} catch (e) {
+			// SAFETY: catch clause covers the expected rejected Error from failingCache.
 			expect((e as Error).message).toMatch(/decode boom/);
 		}
 	});
