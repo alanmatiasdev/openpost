@@ -2397,11 +2397,51 @@
 		{ value: 'cubic-bezier', label: m.video_editor_keyframe_easing_bezier() },
 		{ value: 'spring', label: m.video_editor_keyframe_easing_spring() }
 	]);
+	function bezierPresetLabel(value: string): string {
+		switch (value) {
+			case 'soft':
+				return m.video_editor_keyframe_bezier_soft();
+			case 'ease-out':
+				return m.video_editor_keyframe_easing_out();
+			case 'ease-in':
+				return m.video_editor_keyframe_easing_in();
+			case 'ease-in-out':
+				return m.video_editor_keyframe_easing_in_out();
+			case 'overshoot':
+				return m.video_editor_keyframe_bezier_overshoot();
+			case 'snap':
+				return m.video_editor_keyframe_bezier_snap();
+			case 'out-cubic':
+				return m.video_editor_keyframe_bezier_out_cubic();
+			case 'out-quart':
+				return m.video_editor_keyframe_bezier_out_quart();
+			case 'out-quint':
+				return m.video_editor_keyframe_bezier_out_quint();
+			case 'out-expo':
+				return m.video_editor_keyframe_bezier_out_expo();
+			case 'out-circ':
+				return m.video_editor_keyframe_bezier_out_circ();
+			case 'in-out-cubic':
+				return m.video_editor_keyframe_bezier_in_out_cubic();
+			case 'in-out-quart':
+				return m.video_editor_keyframe_bezier_in_out_quart();
+			case 'in-out-expo':
+				return m.video_editor_keyframe_bezier_in_out_expo();
+			case 'in-cubic':
+				return m.video_editor_keyframe_bezier_in_cubic();
+			case 'in-quart':
+				return m.video_editor_keyframe_bezier_in_quart();
+			case 'in-expo':
+				return m.video_editor_keyframe_bezier_in_expo();
+			default:
+				return value;
+		}
+	}
 	const bezierOptions = $derived([
-		{ value: '', label: 'Custom' },
+		{ value: '', label: m.video_editor_keyframe_bezier_custom() },
 		...BEZIER_PRESETS.map((preset) => ({
 			value: preset.value,
-			label: preset.label
+			label: bezierPresetLabel(preset.value)
 		}))
 	]);
 	const selectedEditorKeyframes = $derived(

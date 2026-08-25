@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { setLocale } from '$lib/paraglide/runtime';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { clearEffectDragData, getEffectDragData } from '$lib/video-editor/timeline/effect-drop';
@@ -32,6 +33,7 @@ const videoItem: TimelineItem = {
 };
 
 beforeEach(() => {
+	setLocale('en', { reload: false });
 	clearEffectDragData();
 	colorPreviewStore.__resetForTesting();
 	localStorage.removeItem(EFFECT_PRESETS_STORAGE_KEY);
@@ -43,7 +45,26 @@ beforeEach(() => {
 	});
 });
 
+afterEach(() => setLocale('en', { reload: false }));
+
 describe('EffectsPanel effect drag source', () => {
+	it('localizes GPU effect choices in the rendered picker', async () => {
+		setLocale('pt', { reload: false });
+		await render(EffectsPanel, { itemId: 'video', onedit: vi.fn() });
+		const addEffect = document.querySelector<HTMLButtonElement>(
+			'button[aria-expanded][aria-label="Adicionar efeito"]'
+		)!;
+		addEffect.click();
+
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-effect-option="gpu:gpu-brightness"]')).not.toBeNull();
+		});
+		expect(
+			document.querySelector('[data-effect-option="gpu:gpu-brightness"]')?.textContent
+		).toContain('Luminosidade');
+		addEffect.click();
+	});
+
 	it('shows real lazily-rendered previews in the searchable effect picker', async () => {
 		await render(EffectsPanel, { itemId: 'video', onedit: vi.fn() });
 		const picker = document.querySelector<HTMLButtonElement>(
@@ -81,6 +102,7 @@ describe('EffectsPanel effect drag source', () => {
 		});
 		const pixels = gpuCanvas?.getContext('2d')?.getImageData(0, 0, 4, 4).data;
 		expect(pixels && [...pixels].some((channel) => channel !== 0)).toBe(true);
+		picker!.click();
 	});
 
 	it('only offers dragging when a clip is selected', async () => {

@@ -9,6 +9,7 @@ import type {
 import type { GpuEffect } from './types';
 import type { GpuParamSchema, GpuParamValue } from './gpu/types';
 import { getGpuEffect } from './gpu/registry';
+import { gpuEffectLabel, gpuParamLabel } from './gpu/i18n';
 import { activeValueAt } from '../timeline/keyframe-interpolation';
 import {
 	colorStringToKeyframeValue,
@@ -132,7 +133,7 @@ export function effectPropertyLabel(item: TimelineItem, property: KeyframeProper
 	if (!effect || effect.type !== 'gpu') return parsed.paramName;
 	const definition = getGpuEffect(effect.effectId);
 	const param = definition?.schema.find((entry) => entry.name === parsed.paramName);
-	return `${definition?.label ?? effect.effectId}: ${param?.label ?? parsed.paramName}`;
+	return `${definition ? gpuEffectLabel(definition) : effect.effectId}: ${param ? gpuParamLabel(param) : parsed.paramName}`;
 }
 
 export function isColorEffectKeyframeProperty(property: KeyframeProperty): boolean {

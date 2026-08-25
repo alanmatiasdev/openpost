@@ -8,6 +8,7 @@
  */
 
 import type { TimelineItem } from '../project/types';
+import { m } from '$lib/paraglide/messages';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { buildCuesFromWords, type TranscriptWord } from './cues';
@@ -70,7 +71,7 @@ export function addGeneratedSubtitleItem(sourceItemId: string, words: Transcript
 					source.durationInFrames,
 					cues.reduce((max, cue) => Math.max(max, cue.endFrame), 0)
 				),
-				label: 'Auto captions',
+				label: m.video_editor_transcribe(),
 				type: 'subtitle',
 				captionSource: {
 					type: 'transcript',

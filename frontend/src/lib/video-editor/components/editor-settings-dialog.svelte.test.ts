@@ -69,6 +69,14 @@ describe('EditorSettingsDialog shortcuts', () => {
 });
 
 describe('EditorSettingsDialog', () => {
+	it('offers the supported app languages from the editor settings', async () => {
+		const screen = await render(EditorSettingsDialog, { open: true });
+		const language = screen.getByRole('combobox', { name: 'Language' });
+		await expect.element(language).toHaveValue('en');
+		await expect.element(language.getByRole('option', { name: 'English' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: 'Português' })).toBeInTheDocument();
+	});
+
 	it('fits a phone and applies persistent general, timeline, and AI defaults', async () => {
 		await page.viewport(320, 720);
 		const screen = await render(EditorSettingsDialog, { open: true });

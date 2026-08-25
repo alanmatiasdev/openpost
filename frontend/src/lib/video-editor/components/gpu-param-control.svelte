@@ -4,6 +4,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
 	import type { GpuParamSchema, GpuParamValue } from '$lib/video-editor/effects/gpu/types';
+	import { gpuOptionLabel, gpuParamLabel } from '$lib/video-editor/effects/gpu/i18n';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
 	import { m } from '$lib/paraglide/messages';
 
@@ -42,7 +43,13 @@
 	);
 	const stringValue = $derived(String(value ?? param.default));
 	const booleanValue = $derived((value ?? param.default) === true);
-	const keyframeLabel = $derived(`${effectLabel}: ${param.label}`);
+	const localizedParamLabel = $derived(gpuParamLabel(param));
+	const localizedOptions = $derived(
+		param.type === 'select'
+			? param.options.map((option) => ({ ...option, label: gpuOptionLabel(option) }))
+			: []
+	);
+	const keyframeLabel = $derived(`${effectLabel}: ${localizedParamLabel}`);
 
 	$effect(() => {
 		if (!editingNumber) draftNumber = numericValue;
@@ -100,8 +107,8 @@
 
 {#if !param.type || param.type === 'number'}
 	<label class="flex items-center gap-2 text-xs">
-		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={param.label}>
-			{param.label}
+		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={localizedParamLabel}>
+			{localizedParamLabel}
 		</span>
 		<Slider
 			class="min-w-0 flex-1"
@@ -109,7 +116,7 @@
 			max={param.max}
 			step={param.step}
 			value={draftNumber}
-			ariaLabel={`${effectLabel}: ${param.label}`}
+			ariaLabel={`${effectLabel}: ${localizedParamLabel}`}
 			onValueChange={(next) => {
 				editingNumber = true;
 				draftNumber = next;
@@ -127,36 +134,36 @@
 	</label>
 {:else if param.type === 'boolean'}
 	<label class="flex min-h-8 items-center justify-between gap-2 text-xs">
-		<span class="text-[oklch(0.65_0.015_55)]">{param.label}</span>
+		<span class="text-[oklch(0.65_0.015_55)]">{localizedParamLabel}</span>
 		<Checkbox
 			checked={booleanValue}
-			aria-label={`${effectLabel}: ${param.label}`}
+			aria-label={`${effectLabel}: ${localizedParamLabel}`}
 			onCheckedChange={(checked) => oncommit(checked === true)}
 		/>
 	</label>
 {:else if param.type === 'select'}
 	<label class="flex items-center gap-2 text-xs">
-		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={param.label}>
-			{param.label}
+		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={localizedParamLabel}>
+			{localizedParamLabel}
 		</span>
 		<AppSelect
 			class="h-8 min-w-0 flex-1 text-xs"
 			value={stringValue}
-			options={[...param.options]}
-			ariaLabel={`${effectLabel}: ${param.label}`}
+			options={localizedOptions}
+			ariaLabel={`${effectLabel}: ${localizedParamLabel}`}
 			onValueChange={oncommit}
 		/>
 	</label>
 {:else if param.type === 'color'}
 	<div class="flex min-h-8 items-center gap-2 text-xs">
-		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={param.label}>
-			{param.label}
+		<span class="w-20 shrink-0 truncate text-[oklch(0.65_0.015_55)]" title={localizedParamLabel}>
+			{localizedParamLabel}
 		</span>
 		<input
 			type="color"
 			class="h-7 w-10 cursor-pointer rounded border border-[oklch(0.32_0.015_55)] bg-transparent p-0.5"
 			value={stringValue.slice(0, 7)}
-			aria-label={`${effectLabel}: ${param.label}`}
+			aria-label={`${effectLabel}: ${localizedParamLabel}`}
 			onchange={(event) => {
 				const alpha = stringValue.length === 9 ? stringValue.slice(7) : '';
 				oncommit(`${event.currentTarget.value}${alpha}`);
@@ -167,7 +174,7 @@
 			value={draftColor}
 			maxlength={9}
 			spellcheck={false}
-			aria-label={`${effectLabel}: ${param.label} hex`}
+			aria-label={`${effectLabel}: ${localizedParamLabel} ${m.video_editor_gpu_color_hex()}`}
 			onfocus={() => (editingColor = true)}
 			oninput={(event) => (draftColor = event.currentTarget.value)}
 			onblur={commitColor}
@@ -179,12 +186,12 @@
 	</div>
 {:else if param.type === 'text'}
 	<label class="flex flex-col gap-1 text-xs">
-		<span class="text-[oklch(0.65_0.015_55)]">{param.label}</span>
+		<span class="text-[oklch(0.65_0.015_55)]">{localizedParamLabel}</span>
 		<Input
 			class="h-8 text-xs"
 			value={draftText}
 			maxlength={param.maxLength}
-			aria-label={`${effectLabel}: ${param.label}`}
+			aria-label={`${effectLabel}: ${localizedParamLabel}`}
 			onfocus={() => (editingText = true)}
 			oninput={(event) => (draftText = event.currentTarget.value)}
 			onblur={commitText}

@@ -2,6 +2,7 @@
 	/* oxlint-disable anti-slop/no-known-value-widening, anti-slop/no-unknown-parameters, anti-slop/require-safety-comment-for-type-assertion -- The six typed band definitions map resolved EQ keys to flat persisted timeline keys. */
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
+	import { m } from '$lib/paraglide/messages';
 	import AppSelect, { type AppSelectOption } from '$lib/components/app-select.svelte';
 	import type { TimelineItem } from '$lib/video-editor/project/types';
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
@@ -30,7 +31,7 @@
 
 	interface BandDefinition {
 		key: 'band1' | 'low' | 'lowMid' | 'highMid' | 'high' | 'band6';
-		label: string;
+		label: () => string;
 		enabledField: keyof TimelineItem;
 		typeField: keyof TimelineItem;
 		frequencyField: keyof TimelineItem;
@@ -49,7 +50,7 @@
 	const bands: BandDefinition[] = [
 		{
 			key: 'band1',
-			label: 'Band 1',
+			label: m.video_editor_audio_eq_band_1,
 			enabledField: 'audioEqBand1Enabled',
 			typeField: 'audioEqBand1Type',
 			frequencyField: 'audioEqBand1FrequencyHz',
@@ -66,7 +67,7 @@
 		},
 		{
 			key: 'low',
-			label: 'Low',
+			label: m.video_editor_audio_eq_low,
 			enabledField: 'audioEqLowEnabled',
 			typeField: 'audioEqLowType',
 			frequencyField: 'audioEqLowFrequencyHz',
@@ -81,7 +82,7 @@
 		},
 		{
 			key: 'lowMid',
-			label: 'Low mid',
+			label: m.video_editor_audio_eq_low_mid,
 			enabledField: 'audioEqLowMidEnabled',
 			typeField: 'audioEqLowMidType',
 			frequencyField: 'audioEqLowMidFrequencyHz',
@@ -96,7 +97,7 @@
 		},
 		{
 			key: 'highMid',
-			label: 'High mid',
+			label: m.video_editor_audio_eq_high_mid,
 			enabledField: 'audioEqHighMidEnabled',
 			typeField: 'audioEqHighMidType',
 			frequencyField: 'audioEqHighMidFrequencyHz',
@@ -111,7 +112,7 @@
 		},
 		{
 			key: 'high',
-			label: 'High',
+			label: m.video_editor_audio_eq_high,
 			enabledField: 'audioEqHighEnabled',
 			typeField: 'audioEqHighType',
 			frequencyField: 'audioEqHighFrequencyHz',
@@ -126,7 +127,7 @@
 		},
 		{
 			key: 'band6',
-			label: 'Band 6',
+			label: m.video_editor_audio_eq_band_6,
 			enabledField: 'audioEqBand6Enabled',
 			typeField: 'audioEqBand6Type',
 			frequencyField: 'audioEqBand6FrequencyHz',
@@ -143,19 +144,57 @@
 		}
 	];
 
-	const typeLabels: Record<string, string> = {
-		'high-pass': 'High pass',
-		'low-pass': 'Low pass',
-		'low-shelf': 'Low shelf',
-		'high-shelf': 'High shelf',
-		peaking: 'Peaking',
-		notch: 'Notch'
-	};
+	function typeLabel(type: string): string {
+		if (type === 'high-pass') return m.video_editor_audio_eq_high_pass();
+		if (type === 'low-pass') return m.video_editor_audio_eq_low_pass();
+		if (type === 'low-shelf') return m.video_editor_audio_eq_low_shelf();
+		if (type === 'high-shelf') return m.video_editor_audio_eq_high_shelf();
+		if (type === 'peaking') return m.video_editor_audio_eq_peaking();
+		if (type === 'notch') return m.video_editor_audio_eq_notch();
+		return type;
+	}
+
+	function presetLabel(id: AudioEqPresetId | 'custom'): string {
+		switch (id) {
+			case 'flat':
+				return m.video_editor_audio_eq_preset_flat();
+			case 'voice-clarity':
+				return m.video_editor_audio_eq_preset_voice_clarity();
+			case 'podcast':
+				return m.video_editor_audio_eq_preset_podcast();
+			case 'warmth':
+				return m.video_editor_audio_eq_preset_warmth();
+			case 'bass-boost':
+				return m.video_editor_audio_eq_preset_bass_boost();
+			case 'de-mud':
+				return m.video_editor_audio_eq_preset_de_mud();
+			case 'smile':
+				return m.video_editor_audio_eq_preset_smile();
+			case 'sparkle':
+				return m.video_editor_audio_eq_preset_sparkle();
+			case 'air':
+				return m.video_editor_audio_eq_preset_air();
+			case 'soften':
+				return m.video_editor_audio_eq_preset_soften();
+			case 'radio':
+				return m.video_editor_audio_eq_preset_radio();
+			case 'telephone':
+				return m.video_editor_audio_eq_preset_telephone();
+			case 'dialog-lift':
+				return m.video_editor_audio_eq_preset_dialog_lift();
+			case 'rumble-cut':
+				return m.video_editor_audio_eq_preset_rumble_cut();
+			case 'brighten':
+				return m.video_editor_audio_eq_preset_brighten();
+			case 'custom':
+				return m.video_editor_audio_eq_custom();
+		}
+	}
 	const presetOptions: AppSelectOption[] = [
-		{ value: 'custom', label: 'Custom' },
+		{ value: 'custom', label: presetLabel('custom') },
 		...AUDIO_EQ_PRESETS.map((preset) => ({
 			value: preset.id,
-			label: preset.label
+			label: presetLabel(preset.id)
 		}))
 	];
 	const slopeOptions: AppSelectOption[] = AUDIO_EQ_SLOPE_OPTIONS.map((slope) => ({
@@ -216,23 +255,23 @@
 	<summary
 		class="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-2 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 	>
-		<span class="font-medium text-white/85">Parametric EQ</span>
+		<span class="font-medium text-white/85">{m.video_editor_audio_eq_title()}</span>
 		<span class="text-[10px] text-white/45"
 			>{item.audioEqEnabled === false
-				? 'Bypassed'
+				? m.video_editor_audio_eq_bypassed()
 				: selectedPreset === 'custom'
-					? 'Custom'
+					? m.video_editor_audio_eq_custom()
 					: presetOptions.find((option) => option.value === selectedPreset)?.label}</span
 		>
 	</summary>
 	<div class="space-y-2 border-t border-white/10 p-2">
 		<div class="flex items-end gap-1">
 			<label class="min-w-0 flex-1 text-[10px] text-white/60">
-				Preset
+				{m.video_editor_audio_eq_preset()}
 				<AppSelect
 					value={selectedPreset}
 					options={presetOptions}
-					ariaLabel="EQ preset"
+					ariaLabel={m.video_editor_audio_eq_preset_aria()}
 					class="mt-0.5 h-8 w-full text-xs"
 					onValueChange={applyPreset}
 				/>
@@ -245,7 +284,9 @@
 				aria-pressed={item.audioEqEnabled !== false}
 				onclick={() => commit({ audioEqEnabled: item.audioEqEnabled === false })}
 			>
-				{item.audioEqEnabled === false ? 'Enable' : 'Bypass'}
+				{item.audioEqEnabled === false
+					? m.video_editor_audio_eq_enable()
+					: m.video_editor_audio_eq_bypass()}
 			</Button>
 		</div>
 
@@ -253,7 +294,7 @@
 			viewBox="0 0 280 96"
 			class="h-20 w-full rounded bg-[oklch(0.18_0.01_50)]"
 			role="img"
-			aria-label="EQ frequency response"
+			aria-label={m.video_editor_audio_eq_response()}
 		>
 			<path
 				d="M0 48 H280"
@@ -271,7 +312,7 @@
 		</svg>
 
 		<label class="block text-[10px] text-white/60">
-			Output gain (dB)
+			{m.video_editor_audio_eq_output_gain()}
 			<Input
 				class="mt-0.5 h-8 w-full bg-[oklch(0.22_0.01_50)] text-xs"
 				type="number"
@@ -290,9 +331,9 @@
 					<summary
 						class="flex min-h-8 cursor-pointer list-none items-center gap-2 px-2 text-[10px]"
 					>
-						<span class="w-14 font-medium text-white/75">{band.label}</span>
+						<span class="w-14 font-medium text-white/75">{band.label()}</span>
 						<span class="min-w-0 flex-1 truncate text-white/45"
-							>{typeLabels[String(bandType)]} · {Math.round(Number(value(band, 'frequencyKey')))} Hz</span
+							>{typeLabel(String(bandType))} · {Math.round(Number(value(band, 'frequencyKey')))} Hz</span
 						>
 						<button
 							type="button"
@@ -301,25 +342,28 @@
 							onclick={(event) => {
 								event.preventDefault();
 								setField(band.enabledField, !enabled(band));
-							}}>{enabled(band) ? 'On' : 'Off'}</button
+							}}
+							>{enabled(band)
+								? m.video_editor_audio_eq_on()
+								: m.video_editor_audio_eq_off()}</button
 						>
 					</summary>
 					<div class="grid grid-cols-2 gap-1 border-t border-white/8 p-2">
 						<label class="text-[10px] text-white/60">
-							Filter
+							{m.video_editor_audio_eq_filter()}
 							<AppSelect
 								value={String(bandType)}
 								options={band.types.map((type) => ({
 									value: type,
-									label: typeLabels[type] ?? type
+									label: typeLabel(type)
 								}))}
-								ariaLabel={`${band.label} filter type`}
+								ariaLabel={m.video_editor_audio_eq_filter_aria({ band: band.label() })}
 								class="mt-0.5 h-8 w-full text-xs"
 								onValueChange={(next) => setField(band.typeField, next)}
 							/>
 						</label>
 						<label class="text-[10px] text-white/60">
-							Frequency (Hz)
+							{m.video_editor_audio_eq_frequency()}
 							<Input
 								class="mt-0.5 h-8 w-full bg-[oklch(0.22_0.01_50)] text-xs"
 								type="number"
@@ -333,18 +377,18 @@
 						</label>
 						{#if isPass(bandType) && band.slopeField}
 							<label class="col-span-2 text-[10px] text-white/60">
-								Slope
+								{m.video_editor_audio_eq_slope()}
 								<AppSelect
 									value={String(value(band, 'slopeKey'))}
 									options={slopeOptions}
-									ariaLabel={`${band.label} slope`}
+									ariaLabel={m.video_editor_audio_eq_slope_aria({ band: band.label() })}
 									class="mt-0.5 h-8 w-full text-xs"
 									onValueChange={(next) => setField(band.slopeField!, Number(next))}
 								/>
 							</label>
 						{:else}
 							<label class="text-[10px] text-white/60">
-								Gain (dB)
+								{m.video_editor_audio_eq_gain()}
 								<Input
 									class="mt-0.5 h-8 w-full bg-[oklch(0.22_0.01_50)] text-xs"
 									type="number"

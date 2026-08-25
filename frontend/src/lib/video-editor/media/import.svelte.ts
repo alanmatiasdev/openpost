@@ -30,6 +30,7 @@ import {
 	prepareMediaImportFile
 } from './media-file-types';
 import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
+import { m } from '$lib/paraglide/messages';
 
 const logger = createLogger('MediaImport');
 
@@ -452,7 +453,7 @@ export async function importFromPicker(options: ImportOptions): Promise<string[]
 		multiple: true,
 		types: [
 			{
-				description: 'Media',
+				description: m.video_editor_media_tab(),
 				accept: {
 					'video/*': ['.mp4', '.webm', '.mov', '.mkv', '.m4v'],
 					'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg'],

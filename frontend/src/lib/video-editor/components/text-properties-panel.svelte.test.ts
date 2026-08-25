@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { m } from '$lib/paraglide/messages';
+import { setLocale } from '$lib/paraglide/runtime';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
@@ -31,10 +33,13 @@ const item: TimelineItem = {
 };
 
 beforeEach(() => {
+	setLocale('en', { reload: false });
 	commandHistory.clearHistory();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [item], currentFrame: 0, fps: 30 });
 });
+
+afterEach(() => setLocale('en', { reload: false }));
 
 describe('TextPropertiesPanel', () => {
 	it('shows every template and round-trips structured layouts without crowding the inspector', async () => {
@@ -90,5 +95,27 @@ describe('TextPropertiesPanel', () => {
 			textSpans: [{ text: 'Launch' }, { text: 'Role or subtitle' }]
 		});
 		await expect.element(screen.getByLabelText('Subtitle', { exact: true })).toBeVisible();
+	});
+
+	it('localizes template previews and generated fallback copy', async () => {
+		setLocale('pt', { reload: false });
+		const screen = await render(TextPropertiesPanel, {
+			item: timelineStore.itemById.get('text')!,
+			onedit: vi.fn()
+		});
+
+		await expect.element(screen.getByText('Hoje à noite')).toBeVisible();
+		await screen
+			.getByRole('button', {
+				name: m.video_editor_text_apply_template({
+					name: m.video_editor_text_preset_lower_third()
+				})
+			})
+			.click();
+
+		expect(timelineStore.itemById.get('text')).toMatchObject({
+			text: 'Launch\nFunção ou subtítulo',
+			textSpans: [{ text: 'Launch' }, { text: 'Função ou subtítulo' }]
+		});
 	});
 });

@@ -4,6 +4,7 @@
  */
 
 import type { TimelineItem, SubtitleCue } from '../project/types';
+import { m } from '$lib/paraglide/messages';
 import { parseSrt } from './srt';
 import type { SrtCue } from './srt';
 import { execute } from '../timeline/commands/command-store.svelte';
@@ -38,7 +39,7 @@ export function addSubtitleItemFromSrt(content: string): string {
 					trackId: topTrack.id,
 					from: 0,
 					durationInFrames: end,
-					label: 'Subtitles',
+					label: m.video_editor_export_subtitles(),
 					type: 'subtitle',
 					captionSource: { type: 'subtitle-import', clipId: id, mediaId: 'captions' },
 					cues

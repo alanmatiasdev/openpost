@@ -28,6 +28,11 @@ export interface TextStylePreset {
 	sample: { eyebrow?: string; title: string; subtitle?: string };
 }
 
+export interface TextStylePresetCopy {
+	label: string;
+	sample: TextStylePreset['sample'];
+}
+
 export interface TextCanvasSize {
 	width: number;
 	height: number;
@@ -520,38 +525,40 @@ function withSpans(
 export function buildTextStylePresetTemplate(
 	presetId: TextStylePresetId,
 	canvas: TextCanvasSize,
-	styleScale = 1
+	styleScale = 1,
+	copyOverride?: TextStylePresetCopy
 ): Partial<TimelineItem> {
 	const preset = TEXT_STYLE_RECIPES[presetId];
+	const copy = copyOverride ?? { label: preset.label, sample: preset.sample };
 	const styles = resolvedPresetStyle(presetId, canvas, styleScale);
 	const baseFontSize = styles.fontSize ?? 60;
 
 	switch (presetId) {
 		case 'speaker-card':
-			return withSpans(styles, preset.label, [
-				{ text: preset.sample.title, fontWeight: 700 },
+			return withSpans(styles, copy.label, [
+				{ text: copy.sample.title, fontWeight: 700 },
 				{
-					text: preset.sample.subtitle ?? 'Product Designer',
+					text: copy.sample.subtitle ?? 'Product Designer',
 					fontSize: Math.max(20, Math.round(baseFontSize * 0.44)),
 					fontWeight: 500,
 					color: '#cbd5e1'
 				}
 			]);
 		case 'lower-third':
-			return withSpans(styles, preset.label, [
-				{ text: preset.sample.title, fontWeight: 700 },
+			return withSpans(styles, copy.label, [
+				{ text: copy.sample.title, fontWeight: 700 },
 				{
-					text: preset.sample.subtitle ?? 'Role or subtitle',
+					text: copy.sample.subtitle ?? 'Role or subtitle',
 					fontSize: Math.max(22, Math.round(baseFontSize * 0.54)),
 					fontWeight: 500,
 					color: '#cbd5e1'
 				}
 			]);
 		case 'quote':
-			return withSpans(styles, preset.label, [
-				{ text: preset.sample.title, fontStyle: 'italic' },
+			return withSpans(styles, copy.label, [
+				{ text: copy.sample.title, fontStyle: 'italic' },
 				{
-					text: preset.sample.subtitle ?? 'Attribution',
+					text: copy.sample.subtitle ?? 'Attribution',
 					fontSize: Math.max(18, Math.round(baseFontSize * 0.4)),
 					fontStyle: 'normal',
 					fontWeight: 500,
@@ -560,68 +567,68 @@ export function buildTextStylePresetTemplate(
 				}
 			]);
 		case 'breaking-update':
-			return withSpans(styles, preset.label, [
+			return withSpans(styles, copy.label, [
 				{
-					text: preset.sample.eyebrow ?? 'BREAKING',
+					text: copy.sample.eyebrow ?? 'BREAKING',
 					fontSize: Math.max(16, Math.round(baseFontSize * 0.28)),
 					fontWeight: 700,
 					color: '#fca5a5',
 					letterSpacing: 2
 				},
-				{ text: preset.sample.title },
+				{ text: copy.sample.title },
 				{
-					text: preset.sample.subtitle ?? 'Developing now',
+					text: copy.sample.subtitle ?? 'Developing now',
 					fontSize: Math.max(20, Math.round(baseFontSize * 0.38)),
 					fontWeight: 600,
 					color: '#fde68a'
 				}
 			]);
 		case 'headline-stack':
-			return withSpans(styles, preset.label, [
+			return withSpans(styles, copy.label, [
 				{
-					text: preset.sample.eyebrow ?? 'TOP STORY',
+					text: copy.sample.eyebrow ?? 'TOP STORY',
 					fontSize: Math.max(16, Math.round(baseFontSize * 0.3)),
 					fontWeight: 600,
 					color: '#fbbf24',
 					letterSpacing: 2
 				},
-				{ text: preset.sample.title },
+				{ text: copy.sample.title },
 				{
-					text: preset.sample.subtitle ?? 'Subhead',
+					text: copy.sample.subtitle ?? 'Subhead',
 					fontSize: Math.max(20, Math.round(baseFontSize * 0.42)),
 					fontWeight: 500,
 					color: '#cbd5e1'
 				}
 			]);
 		case 'launch-stack':
-			return withSpans(styles, preset.label, [
+			return withSpans(styles, copy.label, [
 				{
-					text: preset.sample.eyebrow ?? 'NOW LIVE',
+					text: copy.sample.eyebrow ?? 'NOW LIVE',
 					fontSize: Math.max(16, Math.round(baseFontSize * 0.26)),
 					fontWeight: 700,
 					color: '#67e8f9',
 					letterSpacing: 2
 				},
-				{ text: preset.sample.title },
+				{ text: copy.sample.title },
 				{
-					text: preset.sample.subtitle ?? 'Shop the drop',
+					text: copy.sample.subtitle ?? 'Shop the drop',
 					fontSize: Math.max(20, Math.round(baseFontSize * 0.4)),
 					fontWeight: 500,
 					color: '#bfdbfe'
 				}
 			]);
 		case 'event-card':
-			return withSpans(styles, preset.label, [
+			return withSpans(styles, copy.label, [
 				{
-					text: preset.sample.eyebrow ?? 'LIVE',
+					text: copy.sample.eyebrow ?? 'LIVE',
 					fontSize: Math.max(18, Math.round(baseFontSize * 0.28)),
 					fontWeight: 700,
 					color: '#fca5a5',
 					letterSpacing: 2
 				},
-				{ text: preset.sample.title },
+				{ text: copy.sample.title },
 				{
-					text: preset.sample.subtitle ?? 'Friday 8 PM',
+					text: copy.sample.subtitle ?? 'Friday 8 PM',
 					fontSize: Math.max(22, Math.round(baseFontSize * 0.38)),
 					fontWeight: 600,
 					color: '#bfdbfe',
@@ -629,12 +636,12 @@ export function buildTextStylePresetTemplate(
 				}
 			]);
 		case 'badge':
-			return withSpans(styles, preset.label, [{ text: preset.sample.title, letterSpacing: 2 }]);
+			return withSpans(styles, copy.label, [{ text: copy.sample.title, letterSpacing: 2 }]);
 		default:
 			return {
 				...styles,
-				label: preset.label,
-				text: preset.sample.title,
+				label: copy.label,
+				text: copy.sample.title,
 				textSpans: undefined
 			};
 	}
@@ -651,9 +658,10 @@ export function applyTextStylePresetToItem(
 	item: TimelineItem,
 	presetId: TextStylePresetId,
 	canvas: TextCanvasSize,
-	styleScale = 1
+	styleScale = 1,
+	copyOverride?: TextStylePresetCopy
 ): Partial<TimelineItem> {
-	const template = buildTextStylePresetTemplate(presetId, canvas, styleScale);
+	const template = buildTextStylePresetTemplate(presetId, canvas, styleScale, copyOverride);
 	const currentSpans = item.textSpans?.length ? item.textSpans : undefined;
 	const templateSpans = template.textSpans?.length ? template.textSpans : undefined;
 	const nextSpans = currentSpans?.map((span, index) => {

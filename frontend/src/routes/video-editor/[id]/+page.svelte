@@ -484,7 +484,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		const handles = await window.showOpenFilePicker?.({
 			types: [
 				{
-					description: 'Subtitles',
+					description: m.video_editor_export_subtitles(),
 					accept: { 'text/plain': ['.srt', '.vtt'] }
 				}
 			],

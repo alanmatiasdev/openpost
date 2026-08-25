@@ -748,10 +748,12 @@
 						<summary
 							class="flex min-h-8 cursor-pointer list-none items-center justify-between px-2 text-[10px] text-white/70 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 						>
-							<span>Fade shape</span><span class="text-white/40">Curve and timing bias</span>
+							<span>{m.video_editor_audio_fade_shape()}</span><span class="text-white/40"
+								>{m.video_editor_audio_fade_shape_description()}</span
+							>
 						</summary>
 						<div class="grid grid-cols-2 gap-1 border-t border-white/10 p-2">
-							{#each [{ label: 'In curve', field: 'audioFadeInCurve', value: audioItem.audioFadeInCurve ?? 0, min: -1, max: 1 }, { label: 'Out curve', field: 'audioFadeOutCurve', value: audioItem.audioFadeOutCurve ?? 0, min: -1, max: 1 }, { label: 'In bias', field: 'audioFadeInCurveX', value: audioItem.audioFadeInCurveX ?? 0.52, min: 0.04, max: 0.96 }, { label: 'Out bias', field: 'audioFadeOutCurveX', value: audioItem.audioFadeOutCurveX ?? 0.52, min: 0.04, max: 0.96 }] as control (control.field)}
+							{#each [{ label: m.video_editor_audio_fade_in_curve(), field: 'audioFadeInCurve', value: audioItem.audioFadeInCurve ?? 0, min: -1, max: 1 }, { label: m.video_editor_audio_fade_out_curve(), field: 'audioFadeOutCurve', value: audioItem.audioFadeOutCurve ?? 0, min: -1, max: 1 }, { label: m.video_editor_audio_fade_in_bias(), field: 'audioFadeInCurveX', value: audioItem.audioFadeInCurveX ?? 0.52, min: 0.04, max: 0.96 }, { label: m.video_editor_audio_fade_out_bias(), field: 'audioFadeOutCurveX', value: audioItem.audioFadeOutCurveX ?? 0.52, min: 0.04, max: 0.96 }] as control (control.field)}
 								<label class="text-[10px] text-white/60">
 									{control.label}
 									<Input

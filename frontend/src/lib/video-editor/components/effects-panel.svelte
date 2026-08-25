@@ -43,6 +43,7 @@
 		getGpuCategoriesWithEffects,
 		getGpuEffect
 	} from '$lib/video-editor/effects/gpu/registry';
+	import { gpuEffectLabel } from '$lib/video-editor/effects/gpu/i18n';
 	import {
 		BLEND_MODE_GROUPS,
 		ALL_BLEND_MODES,
@@ -194,7 +195,7 @@
 		...gpuCategories.flatMap((group) =>
 			group.effects.map((definition) => ({
 				value: `gpu:${definition.id}`,
-				label: definition.label,
+				label: gpuEffectLabel(definition),
 				group: gpuCategoryLabels[group.category],
 				gpuEffectId: definition.id
 			}))
@@ -452,7 +453,8 @@
 
 	function effectLabel(effect: ItemEffect): string {
 		if (effect.type !== 'gpu') return typeLabels[effect.type];
-		return getGpuEffect(effect.effectId)?.label ?? effect.effectId;
+		const definition = getGpuEffect(effect.effectId);
+		return definition ? gpuEffectLabel(definition) : effect.effectId;
 	}
 
 	function moveStackEffect(effectId: string, direction: -1 | 1): void {
@@ -656,7 +658,7 @@
 									onclick={() => importLut(effect)}
 									>{typeof effect.params.lutName === 'string'
 										? effect.params.lutName
-										: 'Choose .cube LUT'}</button
+										: m.video_editor_effects_choose_lut()}</button
 								>
 							{/if}
 							{#if effect.effectId === 'gpu-curves'}

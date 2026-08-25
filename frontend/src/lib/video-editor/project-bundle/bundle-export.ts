@@ -27,6 +27,7 @@ import {
 	throwIfBundleAborted
 } from './bundle-utils';
 import { exportProjectSnapshot } from './snapshot-service';
+import { m } from '$lib/paraglide/messages';
 
 const MAX_IN_MEMORY_BUNDLE_BYTES = 1024 * 1024 * 1024;
 
@@ -312,7 +313,12 @@ export async function saveProjectBundle(
 	if (window.showSaveFilePicker) {
 		const handle = await window.showSaveFilePicker({
 			suggestedName: fileName,
-			types: [{ description: 'OpenPost project bundle', accept: { 'application/zip': ['.zip'] } }]
+			types: [
+				{
+					description: m.video_editor_project_bundle_file_type(),
+					accept: { 'application/zip': ['.zip'] }
+				}
+			]
 		});
 		const writable = await handle.createWritable();
 		const output: BundleOutput = {

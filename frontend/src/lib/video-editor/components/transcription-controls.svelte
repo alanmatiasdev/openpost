@@ -5,9 +5,14 @@
 	import {
 		TRANSCRIPTION_LANGUAGE_OPTIONS,
 		TRANSCRIPTION_MODEL_OPTIONS,
-		TRANSCRIPTION_QUANTIZATION_OPTIONS,
-		transcriptionModelLabel
+		TRANSCRIPTION_QUANTIZATION_OPTIONS
 	} from '$lib/video-editor/transcript/engine/models';
+	import {
+		transcriptionLanguageUiLabel,
+		transcriptionModelUiDescription,
+		transcriptionModelUiLabel,
+		transcriptionQuantizationUiLabel
+	} from '$lib/video-editor/transcript/engine/model-i18n';
 	import type {
 		ResolvedTranscriptionEngine,
 		TranscribeProgress,
@@ -72,7 +77,7 @@
 			disabled={busy}
 		>
 			{#each TRANSCRIPTION_MODEL_OPTIONS as option}
-				<option value={option.value}>{option.label}</option>
+				<option value={option.value}>{transcriptionModelUiLabel(option.value)}</option>
 			{/each}
 		</select>
 	</label>
@@ -84,7 +89,7 @@
 			disabled={busy}
 		>
 			{#each TRANSCRIPTION_LANGUAGE_OPTIONS as option}
-				<option value={option.value}>{option.label}</option>
+				<option value={option.value}>{transcriptionLanguageUiLabel(option.value)}</option>
 			{/each}
 		</select>
 	</label>
@@ -96,19 +101,19 @@
 			disabled={busy || model === 'parakeet-tdt-v3'}
 		>
 			{#each TRANSCRIPTION_QUANTIZATION_OPTIONS as option}
-				<option value={option.value}>{option.label}</option>
+				<option value={option.value}>{transcriptionQuantizationUiLabel(option.value)}</option>
 			{/each}
 		</select>
 	</label>
 	<p class="col-span-2 text-[9px] leading-tight text-[oklch(0.58_0.012_55)]">
-		{TRANSCRIPTION_MODEL_OPTIONS.find((option) => option.value === model)?.description}
+		{transcriptionModelUiDescription(model)}
 	</p>
 	{#if fallback}
 		<p
 			class="col-span-2 rounded bg-[oklch(0.24_0.045_65)] px-1.5 py-1 text-[10px] text-[oklch(0.84_0.08_70)]"
 			role="status"
 		>
-			{m.video_editor_transcribe_fallback({ model: transcriptionModelLabel(fallback.model) })}
+			{m.video_editor_transcribe_fallback({ model: transcriptionModelUiLabel(fallback.model) })}
 		</p>
 	{/if}
 	{#if busy && progress}

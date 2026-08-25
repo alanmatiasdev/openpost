@@ -23,6 +23,33 @@
 	let runtimeMessage = $state('');
 	let cacheMessage = $state('');
 
+	function modelLabel(summary: LocalModelCacheSummary): string {
+		switch (summary.id) {
+			case 'whisper':
+				return 'Whisper';
+			case 'parakeet':
+				return 'Parakeet';
+			case 'rife-interpolation':
+				return m.video_editor_local_model_frame_interpolation();
+			case 'scene-captions':
+				return m.video_editor_local_model_scene_captions();
+			case 'semantic-search':
+				return m.video_editor_local_model_semantic_search();
+			case 'visual-search':
+				return m.video_editor_local_model_visual_search();
+			case 'kokoro-tts':
+				return m.video_editor_local_model_kokoro_voices();
+			case 'supertonic-tts':
+				return m.video_editor_local_model_supertonic_voices();
+			case 'moss-tts':
+				return m.video_editor_local_model_moss_voices();
+			case 'ace-step-music':
+				return m.video_editor_local_model_ace_step_music();
+			default:
+				return summary.label;
+		}
+	}
+
 	function refreshRuntimeCount(): void {
 		loadedRuntimeCount = inspectLocalAiRuntimes().filter((runtime) => runtime.loaded).length;
 	}
@@ -132,7 +159,9 @@
 				{#each summaries as summary (summary.id)}
 					<div class="flex items-center gap-1 rounded bg-[oklch(0.2_0.01_55)] px-1.5 py-1">
 						<div class="min-w-0 flex-1">
-							<div class="truncate text-[10px] text-[oklch(0.82_0.008_70)]">{summary.label}</div>
+							<div class="truncate text-[10px] text-[oklch(0.82_0.008_70)]">
+								{modelLabel(summary)}
+							</div>
 							<div class="text-[9px] text-[oklch(0.55_0.01_55)]">
 								{#if summary.inspectionState !== 'ready'}
 									{m.video_editor_models_load_failed()}

@@ -18,7 +18,8 @@ import {
 	applyTextStylePresetToItem,
 	buildTextStylePresetTemplate,
 	TEXT_STYLE_PRESETS,
-	type TextCanvasSize
+	type TextCanvasSize,
+	type TextStylePresetCopy
 } from '../../typography/text-style-presets';
 import { buildTextItemLabelFromText } from '../../typography/text-item-spans';
 import { execute } from '../commands/command-store.svelte';
@@ -136,7 +137,8 @@ export function applyTextStylePreset(
 	itemId: string,
 	presetId: TextStylePresetId,
 	canvas: TextCanvasSize,
-	styleScale = 1
+	styleScale = 1,
+	copyOverride?: TextStylePresetCopy
 ): boolean {
 	const item = currentTextItem(itemId);
 	if (!item) return false;
@@ -144,14 +146,14 @@ export function applyTextStylePreset(
 		commitTextPatch(
 			itemId,
 			'APPLY_TEXT_STYLE_PRESET',
-			applyTextStylePresetToItem(item, presetId, canvas, styleScale)
+			applyTextStylePresetToItem(item, presetId, canvas, styleScale, copyOverride)
 		);
 		return true;
 	}
 
 	const preset = TEXT_STYLE_PRESETS.find((candidate) => candidate.id === presetId);
 	if (!preset) return false;
-	const template = buildTextStylePresetTemplate(presetId, canvas, styleScale);
+	const template = buildTextStylePresetTemplate(presetId, canvas, styleScale, copyOverride);
 	const drafts = saveCurrentLayout(item);
 	if (preset.layout === 'single') {
 		const single = buildTextSingleLayoutDraft(item);

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { getCurrentLocale, localeLabels, switchLocale } from '$lib/i18n';
+	import { locales, type Locale } from '$lib/paraglide/runtime';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
@@ -43,6 +45,11 @@
 		TranscriptionModel,
 		TranscriptionQuantization
 	} from '$lib/video-editor/transcript/engine/types';
+	import {
+		transcriptionLanguageUiLabel,
+		transcriptionModelUiLabel,
+		transcriptionQuantizationUiLabel
+	} from '$lib/video-editor/transcript/engine/model-i18n';
 	import LocalModelCacheControl from './local-model-cache-control.svelte';
 	import KeyboardShortcutEditor from './keyboard-shortcut-editor.svelte';
 	import { previewEditorSound } from '$lib/video-editor/sounds/editor-sounds';
@@ -56,6 +63,7 @@
 	let progress = $state<MaintenanceProgress | null>(null);
 	let feedback = $state<{ tone: 'success' | 'error'; text: string } | null>(null);
 	let confirmCacheClear = $state(false);
+	const currentLocale = getCurrentLocale();
 
 	const media = $derived(mediaPool.mediaList);
 	const missingProxyCount = $derived(recommendedProxyMedia(media).length);
@@ -214,6 +222,28 @@
 							<p class="mt-1 text-xs text-[var(--video-editor-muted)]">
 								{m.video_editor_settings_autosave_description()}
 							</p>
+						</div>
+						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
+							<div class="flex flex-wrap items-center justify-between gap-4">
+								<div class="min-w-0 flex-1">
+									<label for="editor-language" class="text-sm font-medium">
+										{m.language_label()}
+									</label>
+									<p class="mt-0.5 text-xs text-[var(--video-editor-muted)]">
+										{m.video_editor_settings_language_description()}
+									</p>
+								</div>
+								<select
+									id="editor-language"
+									class="h-10 min-w-48 rounded-md border border-[oklch(0.3_0.015_55)] bg-[oklch(0.2_0.01_55)] px-3 text-xs text-white focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)] max-[640px]:h-11 max-[640px]:w-full"
+									value={currentLocale}
+									onchange={(event) => switchLocale(event.currentTarget.value as Locale)}
+								>
+									{#each locales as locale (locale)}
+										<option value={locale}>{localeLabels[locale]}</option>
+									{/each}
+								</select>
+							</div>
 						</div>
 						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
 							<div class="flex items-center justify-between gap-4">
@@ -418,7 +448,7 @@
 										)}
 								>
 									{#each TRANSCRIPTION_MODEL_OPTIONS as option}
-										<option value={option.value}>{option.label}</option>
+										<option value={option.value}>{transcriptionModelUiLabel(option.value)}</option>
 									{/each}
 								</select>
 							</label>
@@ -431,7 +461,9 @@
 										editorSettings.set('defaultTranscriptionLanguage', event.currentTarget.value)}
 								>
 									{#each TRANSCRIPTION_LANGUAGE_OPTIONS as option}
-										<option value={option.value}>{option.label}</option>
+										<option value={option.value}
+											>{transcriptionLanguageUiLabel(option.value)}</option
+										>
 									{/each}
 								</select>
 							</label>
@@ -448,7 +480,9 @@
 										)}
 								>
 									{#each TRANSCRIPTION_QUANTIZATION_OPTIONS as option}
-										<option value={option.value}>{option.label}</option>
+										<option value={option.value}
+											>{transcriptionQuantizationUiLabel(option.value)}</option
+										>
 									{/each}
 								</select>
 							</label>

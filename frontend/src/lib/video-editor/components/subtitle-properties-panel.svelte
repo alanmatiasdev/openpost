@@ -97,7 +97,7 @@
 					onclick={() => applyPreset(preset.id)}
 				>
 					<span class="preset-preview" data-preset={preset.id} aria-hidden="true">
-						<span>Caption</span>
+						<span>{m.video_editor_caption_preview()}</span>
 					</span>
 					<span class="preset-name">{presetLabel(preset.id)}</span>
 				</button>
