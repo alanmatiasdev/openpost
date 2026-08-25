@@ -1,11 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { SocialAccount } from '$lib/api/client';
 import type { components } from '$lib/api/types';
+import {
+	registerLocalImageEditorMedia,
+	releaseLocalImageEditorMedia
+} from '$lib/image-editor/local-media-url';
 import DestinationSettingsDialog from './destination-settings-dialog.svelte';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
+const QA_VIDEO_ID = 'local_media_destination-video';
 
 const xAccount: SocialAccount = {
 	id: 'x-main',
@@ -56,6 +61,16 @@ function setting(
 }
 
 describe('DestinationSettingsDialog', () => {
+	afterEach(async () => {
+		const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+		const doneButton = Array.from(dialog?.querySelectorAll('button') ?? []).find(
+			(button) => button.textContent?.trim() === 'Done'
+		);
+		doneButton?.click();
+		await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+		releaseLocalImageEditorMedia(QA_VIDEO_ID);
+	});
+
 	it('shows unavailable X capabilities without fake editable controls', async () => {
 		await page.viewport(390, 844);
 		const quoteReason = 'Quote publishing requires X Enterprise API access.';
@@ -218,6 +233,7 @@ describe('DestinationSettingsDialog', () => {
 
 	it('shows a video frame picker for destination cover timestamps', async () => {
 		await page.viewport(390, 844);
+		registerLocalImageEditorMedia(QA_VIDEO_ID, new Blob([], { type: 'video/mp4' }));
 		const screen = await render(DestinationSettingsDialog, {
 			props: {
 				open: true,
@@ -230,7 +246,7 @@ describe('DestinationSettingsDialog', () => {
 					})
 				],
 				values: {},
-				mediaItems: [{ id: 'video-1', label: 'Video 1', mimeType: 'video/mp4' }],
+				mediaItems: [{ id: QA_VIDEO_ID, label: 'Video 1', mimeType: 'video/mp4' }],
 				onChange: vi.fn()
 			}
 		});

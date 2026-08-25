@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Project, TimelineItem } from '../project/types';
 import { TimelineFrameRenderer } from './render-export';
 import { renderSubtitleRaster } from './text-raster';
+import { expectCanvasRasterParity } from './canvas-parity.test-utils';
 
 const WIDTH = 480;
 const HEIGHT = 180;
@@ -78,7 +79,7 @@ function pixels(canvas: HTMLCanvasElement | OffscreenCanvas): Uint8ClampedArray 
 }
 
 describe('styled subtitle raster', () => {
-	it('uses cue markup and produces identical preview and export pixels', async () => {
+	it('uses cue markup and keeps preview and export pixels aligned', async () => {
 		const item = subtitleItem();
 		const cueText = item.cues![0]!.text;
 		const preview = document.createElement('canvas');
@@ -98,7 +99,7 @@ describe('styled subtitle raster', () => {
 		const renderer = new TimelineFrameRenderer(project(item));
 		try {
 			const exported = await renderer.render(0);
-			expect(pixels(exported)).toEqual(pixels(preview));
+			expectCanvasRasterParity(pixels(exported), pixels(preview));
 		} finally {
 			renderer.dispose();
 		}

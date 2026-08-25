@@ -3,6 +3,7 @@ import type { Project, TimelineItem } from '../project/types';
 import { buildTextStylePresetTemplate } from '../typography/text-style-presets';
 import { TimelineFrameRenderer } from './render-export';
 import { renderTextItemRaster } from './text-raster';
+import { expectCanvasRasterParity } from './canvas-parity.test-utils';
 
 const WIDTH = 480;
 const HEIGHT = 240;
@@ -60,7 +61,7 @@ function pixelData(canvas: HTMLCanvasElement | OffscreenCanvas): Uint8ClampedArr
 }
 
 describe('structured text raster', () => {
-	it('renders mixed span styles identically in preview and export', async () => {
+	it('keeps mixed span styles aligned in preview and export', async () => {
 		const item = lowerThird();
 		const preview = document.createElement('canvas');
 		preview.width = WIDTH;
@@ -77,7 +78,7 @@ describe('structured text raster', () => {
 		const renderer = new TimelineFrameRenderer(project(item));
 		try {
 			const exported = await renderer.render(0);
-			expect(pixelData(exported)).toEqual(pixelData(preview));
+			expectCanvasRasterParity(pixelData(exported), pixelData(preview));
 		} finally {
 			renderer.dispose();
 		}

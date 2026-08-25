@@ -44,7 +44,7 @@
 					variant="outline"
 					size="sm"
 					class="min-h-9 max-w-[min(15rem,48vw)] gap-2 border-[oklch(0.3_0.015_55)] bg-[oklch(0.18_0.01_55)] px-3 text-xs text-[var(--video-editor-text)] hover:bg-[oklch(0.23_0.012_55)] max-[640px]:min-h-11"
-					aria-haspopup="menu"
+					aria-haspopup="dialog"
 					aria-expanded={open}
 					title={m.video_editor_workspace_folder()}
 				>
@@ -61,6 +61,8 @@
 		<Popover.Content
 			align="end"
 			sideOffset={8}
+			role="dialog"
+			aria-label={m.video_editor_workspaces()}
 			class="video-editor-theme w-[min(22rem,calc(100vw-1rem))] border-[oklch(0.3_0.015_55)] bg-[oklch(0.18_0.01_55)] p-2 text-[var(--video-editor-text)]"
 		>
 			<p
@@ -69,7 +71,7 @@
 				{m.video_editor_workspaces()}
 			</p>
 
-			<div class="flex flex-col" role="menu" aria-label={m.video_editor_workspaces()}>
+			<div class="flex flex-col">
 				{#each gate.knownWorkspaces as workspace (workspace.id)}
 					{@const isActive = workspace.id === gate.activeWorkspaceId}
 					{@const isConfirming = workspace.id === confirmRemoveId}

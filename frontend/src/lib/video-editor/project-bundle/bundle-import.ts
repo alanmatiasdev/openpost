@@ -123,6 +123,17 @@ export function createBundleImportService(runtime: BundleImportRuntime) {
 			entryFailure ??= error;
 		}
 
+		function enqueueWrite(task: () => Promise<void>): void {
+			writeQueue = writeQueue
+				.then(async () => {
+					if (entryFailure) return;
+					await task();
+				})
+				.catch((error) => {
+					fail(error instanceof Error ? error : new Error(String(error)));
+				});
+		}
+
 		function stopActiveEntries(): void {
 			for (const entry of activeEntries) entry.terminate();
 			activeEntries.clear();
@@ -245,7 +256,7 @@ export function createBundleImportService(runtime: BundleImportRuntime) {
 					return;
 				}
 				hash.update(chunk);
-				if (writer) writeQueue = writeQueue.then(() => writer.write(chunk));
+				if (writer) enqueueWrite(() => writer.write(chunk));
 				onProgress?.({
 					stage: 'extracting',
 					percent:
@@ -256,7 +267,7 @@ export function createBundleImportService(runtime: BundleImportRuntime) {
 				});
 				if (!final) return;
 				activeEntries.delete(zipFile);
-				writeQueue = writeQueue.then(async () => {
+				enqueueWrite(async () => {
 					if (size !== entry.fileSize || bytesToHex(hash.digest()) !== entry.sha256) {
 						if (writer) {
 							await writer.abort(new Error('Bundle media integrity check failed.'));

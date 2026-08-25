@@ -59,15 +59,16 @@ test('lists, switches, adds, and confirms removal of known workspaces', async ()
 	expect(gate.pickFolder).toHaveBeenCalledOnce();
 });
 
-test('keeps the workspace control and menu within a 320px viewport', async () => {
+test('keeps the workspace control and dialog within a 320px viewport', async () => {
 	await page.viewport(320, 720);
 	const screen = await render(WorkspaceIndicator, { gate: gateFixture() });
 	const trigger = screen.getByRole('button', { name: 'Launch edits', exact: true });
 	await expect.element(trigger).toHaveStyle({ minHeight: '44px' });
+	await expect.element(trigger).toHaveAttribute('aria-haspopup', 'dialog');
 	await trigger.click();
 
-	const menu = screen.getByRole('menu', { name: 'Editing workspaces' }).element();
-	expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(320);
+	const dialog = screen.getByRole('dialog', { name: 'Editor workspaces' }).element();
+	expect(dialog.getBoundingClientRect().right).toBeLessThanOrEqual(320);
 	expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 	await trigger.click();
 });

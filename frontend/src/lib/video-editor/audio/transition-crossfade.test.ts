@@ -344,6 +344,11 @@ describe('transition mix planning', () => {
 				{ whenSeconds: 0, value: 0 },
 				{ whenSeconds: 4, value: 1 }
 			],
+			previewGainPoints: [
+				{ whenSeconds: 0, value: 0 },
+				{ whenSeconds: 4, value: 1 }
+			],
+			mixerTrackGain: 1,
 			transitionGainSpans: [
 				{
 					startSeconds: 1,
@@ -358,6 +363,7 @@ describe('transition mix planning', () => {
 		expect(sliced.sourceOffsetSeconds).toBe(5);
 		expect(sliced.durationSeconds).toBe(1);
 		expect(sliced.gainPoints[0]).toEqual({ whenSeconds: 0, value: 0.5 });
+		expect(sliced.previewGainPoints[0]).toEqual({ whenSeconds: 0, value: 0.5 });
 		expect(sliced.transitionGainSpans[0]?.startSeconds).toBe(-1);
 		const curve = buildTransitionGainCurve(sliced.transitionGainSpans[0]!, 0, 1, 4);
 		expect(curve[0]).toBeCloseTo(Math.SQRT1_2, 6);

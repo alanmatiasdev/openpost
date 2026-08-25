@@ -2,7 +2,7 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { defineConfig, type PluginOption } from 'vite';
+import { defineConfig, type Plugin, type PluginOption } from 'vite';
 import { postHogSourceMaps } from '../scripts/posthog-source-maps.ts';
 
 const rawParaglidePlugin = paraglideVitePlugin({
@@ -12,15 +12,33 @@ const rawParaglidePlugin = paraglideVitePlugin({
 // SAFETY: paraglideVitePlugin returns a Vite-compatible plugin, but its package type is not assignable to this Vite version.
 const paraglidePlugin = rawParaglidePlugin as PluginOption;
 const usesPrecompiledParaglide = process.env.OPENPOST_PARAGLIDE_PRECOMPILED === '1';
+const isVitest = process.env.VITEST === 'true';
 const sourceMaps = postHogSourceMaps('app');
+const svelteKitPlugins = await sveltekit();
+const appFrameworkPlugins = isVitest
+	? svelteKitPlugins.filter((plugin) => plugin.name !== 'vite-plugin-sveltekit-compile')
+	: svelteKitPlugins;
+const testMediaStubPlugin: Plugin = {
+	name: 'openpost-vitest-media-stub',
+	configureServer(server) {
+		// Browser component tests use deliberate fake media IDs. Settle them here
+		// so they cannot fall through the production proxy into SvelteKit SSR.
+		server.middlewares.use((request, response, next) => {
+			if (!request.url?.startsWith('/media/')) return next();
+			response.statusCode = 404;
+			response.end();
+		});
+	}
+};
 
 export default defineConfig({
 	define: {
 		'import.meta.env.VITE_APP_MODE': JSON.stringify(process.env.VITE_APP_MODE || 'web')
 	},
 	plugins: [
+		...(isVitest ? [testMediaStubPlugin] : []),
 		tailwindcss(),
-		sveltekit(),
+		...appFrameworkPlugins,
 		...(!usesPrecompiledParaglide ? [paraglidePlugin] : []),
 		VitePWA({
 			registerType: 'autoUpdate',

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { mediaPool } from '../media/pool.svelte';
@@ -17,6 +17,12 @@ beforeEach(() => {
 	soundPreferences.reset();
 	mediaPool.clear();
 	timelineStore.__resetForTesting();
+});
+
+afterEach(async () => {
+	const closeButton = document.querySelector<HTMLElement>('[data-slot="dialog-close"]');
+	closeButton?.click();
+	await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
 });
 
 describe('EditorSettingsDialog shortcuts', () => {

@@ -253,6 +253,29 @@ describe('project bundle import', () => {
 		expect(testRuntime.created).toEqual([]);
 	});
 
+	it('stops queued writes and removes partial media after a workspace write fails', async () => {
+		const testRuntime = importRuntime();
+		const writes = vi.fn(async () => {
+			throw new Error('Workspace storage is full.');
+		});
+		testRuntime.runtime.openMediaWriter = vi.fn(async (mediaId) => ({
+			write: writes,
+			close: async () => undefined,
+			abort: async () => {
+				testRuntime.aborted.push(mediaId);
+			}
+		}));
+
+		await expect(
+			createBundleImportService(testRuntime.runtime).importProjectBundle(
+				new File([ownedBytes(await bundleBytes())], 'write-failure.openpost.zip')
+			)
+		).rejects.toThrow('Workspace storage is full.');
+		expect(writes).toHaveBeenCalledOnce();
+		expect(testRuntime.aborted).toHaveLength(1);
+		expect(testRuntime.created).toEqual([]);
+	});
+
 	it('rejects compressed media and bundles that omit declared media', async () => {
 		const files = unzipSync(await bundleBytes());
 		// SAFETY: this manifest came from the typed bundle exporter above.
@@ -302,6 +325,7 @@ describe('project bundle import', () => {
 
 	it('counts every logical media link when bundled bytes are deduplicated', async () => {
 		const files = unzipSync(await bundleBytes());
+		// SAFETY: this manifest came from the typed bundle exporter above.
 		const manifest = JSON.parse(
 			new TextDecoder().decode(files[PROJECT_BUNDLE_MANIFEST_PATH])
 		) as ProjectBundleManifest;

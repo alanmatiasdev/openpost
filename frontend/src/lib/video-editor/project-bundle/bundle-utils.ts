@@ -13,6 +13,7 @@ import {
 import type { JsonValue } from './snapshot-types';
 
 const MAX_BUNDLE_MEDIA = 100_000;
+const HASH_CHUNK_BYTES = 256 * 1024;
 const maxFileSize = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const relativePathSchema = z
@@ -76,20 +77,16 @@ export async function hashBlob(
 	signal?: AbortSignal
 ): Promise<string> {
 	const hash = createSha256();
-	const reader = blob.stream().getReader();
-	try {
-		while (true) {
-			throwIfBundleAborted(signal);
-			const { done, value } = await reader.read();
-			if (done) break;
-			hash.update(value);
-			onChunk?.(value.byteLength);
-		}
+	for (let offset = 0; offset < blob.size; offset += HASH_CHUNK_BYTES) {
 		throwIfBundleAborted(signal);
-		return bytesToHex(hash.digest());
-	} finally {
-		reader.releaseLock();
+		const end = Math.min(blob.size, offset + HASH_CHUNK_BYTES);
+		const bytes = new Uint8Array(await blob.slice(offset, end).arrayBuffer());
+		throwIfBundleAborted(signal);
+		hash.update(bytes);
+		onChunk?.(bytes.byteLength);
 	}
+	throwIfBundleAborted(signal);
+	return bytesToHex(hash.digest());
 }
 
 export function computeBundleManifestChecksum(manifest: ProjectBundleManifest): string {

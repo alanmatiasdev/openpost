@@ -282,7 +282,7 @@
 		const video = mediaElement;
 		if (videoMixerGain) {
 			const gain = usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume;
-			video.volume = gain > 0 ? 1 : 0;
+			if (video) video.volume = gain > 0 ? 1 : 0;
 			videoMixerGain.gain.value = gain;
 		} else if (video) {
 			video.volume = Math.min(
@@ -293,7 +293,7 @@
 		const proxy = proxyAudioElement;
 		if (proxyMixerGain) {
 			const gain = usesProcessedAudio ? 0 : previewVolume;
-			proxy.volume = gain > 0 ? 1 : 0;
+			if (proxy) proxy.volume = gain > 0 ? 1 : 0;
 			proxyMixerGain.gain.value = gain;
 		} else if (proxy) {
 			proxy.volume = Math.min(1, (usesProcessedAudio ? 0 : previewVolume) * fallbackMasterGain);

@@ -11,6 +11,10 @@ export default defineConfig({
 				extends: './vite.config.ts',
 				test: {
 					name: 'client',
+					// SvelteKit, media workers, codecs, and GPU suites share one Vite module
+					// runner and Chromium process. Serial files so teardown cannot invalidate
+					// the runner while a worker-backed media request is still settling.
+					maxWorkers: 1,
 					browser: {
 						enabled: true,
 						provider: playwright({
