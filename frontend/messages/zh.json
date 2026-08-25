@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost 已移除无效、嵌套或空的时间轴分组。",
 	"video_editor_project_repair_video_track": "此项目缺少视频轨道，OpenPost 已添加一条。",
 	"video_editor_project_repair_sequence_tabs": "OpenPost 已移除重复或缺失的序列标签页。",
-	"video_editor_project_repair_shape_styles": "OpenPost 已限制无效的修剪路径或描边渐变数值。"
+	"video_editor_project_repair_shape_styles": "OpenPost 已限制无效的修剪路径或描边渐变数值。",
+	"video_editor_spatial_edit_center": "在画布上编辑 {effect} 中心",
+	"video_editor_spatial_edit_center_short": "编辑中心",
+	"video_editor_spatial_editing_center": "正在编辑中心",
+	"video_editor_spatial_stop_editing": "停止编辑 {effect} 中心",
+	"video_editor_spatial_center_label": "{effect} 中心"
 }

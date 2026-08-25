@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost が不正・入れ子・空のトラックグループを削除しました。",
 	"video_editor_project_repair_video_track": "このプロジェクトには映像トラックがなかったため、OpenPost が追加しました。",
 	"video_editor_project_repair_sequence_tabs": "OpenPost が重複または欠落したシーケンスタブを整理しました。",
-	"video_editor_project_repair_shape_styles": "OpenPost が不正なトリムパス・ストローク先細りの値を制限内に収めました。"
+	"video_editor_project_repair_shape_styles": "OpenPost が不正なトリムパス・ストローク先細りの値を制限内に収めました。",
+	"video_editor_spatial_edit_center": "キャンバス上で {effect} の中心を編集",
+	"video_editor_spatial_edit_center_short": "中心を編集",
+	"video_editor_spatial_editing_center": "中心を編集中",
+	"video_editor_spatial_stop_editing": "{effect} の中心の編集を終了",
+	"video_editor_spatial_center_label": "{effect} の中心"
 }

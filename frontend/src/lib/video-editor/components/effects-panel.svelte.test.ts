@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { setLocale } from '$lib/paraglide/runtime';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
@@ -9,6 +10,7 @@ import { ensureEffectPreviewPipeline } from '$lib/video-editor/effects/preview/e
 import { EFFECT_PRESETS_STORAGE_KEY } from '$lib/video-editor/effects/effect-presets';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
+import { spatialEffectEditorStore } from '$lib/video-editor/preview/spatial-effect-editor.svelte';
 import EffectsPanel from './effects-panel.svelte';
 
 const videoTrack: TimelineTrack = {
@@ -36,6 +38,7 @@ beforeEach(() => {
 	setLocale('en', { reload: false });
 	clearEffectDragData();
 	colorPreviewStore.__resetForTesting();
+	spatialEffectEditorStore.__resetForTesting();
 	localStorage.removeItem(EFFECT_PRESETS_STORAGE_KEY);
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({
@@ -45,7 +48,62 @@ beforeEach(() => {
 	});
 });
 
-afterEach(() => setLocale('en', { reload: false }));
+afterEach(async () => {
+	await page.viewport(1280, 900);
+	setLocale('en', { reload: false });
+	spatialEffectEditorStore.__resetForTesting();
+});
+
+describe('EffectsPanel spatial point editor', () => {
+	it('uses one clear toggle and exits when the selection becomes incompatible', async () => {
+		await page.viewport(390, 844);
+		const twirl: TimelineItem = {
+			...videoItem,
+			effects: [
+				{
+					id: 'twirl',
+					type: 'gpu',
+					effectId: 'gpu-twirl',
+					enabled: true,
+					params: { amount: 1, radius: 0.5, centerX: 0.5, centerY: 0.5 }
+				}
+			]
+		};
+		const second = { ...twirl, id: 'video-2', label: 'Video 2' };
+		timelineStore.setAll({ tracks: [videoTrack], items: [twirl, second], fps: 30 });
+		const onedit = vi.fn();
+		const screen = await render(EffectsPanel, {
+			itemId: twirl.id,
+			itemIds: [twirl.id],
+			onedit
+		});
+		screen.container.style.width = '320px';
+		const edit = screen.getByRole('button', { name: 'Edit Twirl center on canvas' });
+		await expect.element(edit).toBeEnabled();
+		await edit.click();
+		expect(spatialEffectEditorStore.editingItemId).toBe(twirl.id);
+		expect(spatialEffectEditorStore.editingEffectId).toBe('twirl');
+		const stop = screen.getByRole('button', { name: 'Stop editing Twirl center' });
+		expect(stop.element().getAttribute('aria-pressed')).toBe('true');
+		await expect.element(screen.getByText('Editing center')).toBeVisible();
+		expect(onedit).not.toHaveBeenCalled();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		await page.screenshot({
+			element: screen.container,
+			path: '../../../../.svelte-kit/openpost-spatial-effect-toggle.png'
+		});
+
+		await screen.rerender({
+			itemId: twirl.id,
+			itemIds: [twirl.id, second.id],
+			onedit
+		});
+		await vi.waitFor(() => expect(spatialEffectEditorStore.isEditing).toBe(false));
+		await expect
+			.element(screen.getByRole('button', { name: 'Edit Twirl center on canvas' }))
+			.toBeDisabled();
+	});
+});
 
 describe('EffectsPanel effect drag source', () => {
 	it('localizes GPU effect choices in the rendered picker', async () => {

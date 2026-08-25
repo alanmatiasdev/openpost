@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "O OpenPost removeu grupos de faixas inválidos, aninhados ou vazios.",
 	"video_editor_project_repair_video_track": "Este projeto não tinha uma faixa de vídeo, por isso o OpenPost adicionou uma.",
 	"video_editor_project_repair_sequence_tabs": "O OpenPost removeu separadores de sequência duplicados ou em falta.",
-	"video_editor_project_repair_shape_styles": "O OpenPost limitou valores inválidos do recorte de caminho ou do afunilamento do traço."
+	"video_editor_project_repair_shape_styles": "O OpenPost limitou valores inválidos do recorte de caminho ou do afunilamento do traço.",
+	"video_editor_spatial_edit_center": "Editar o centro de {effect} na área de desenho",
+	"video_editor_spatial_edit_center_short": "Editar centro",
+	"video_editor_spatial_editing_center": "A editar o centro",
+	"video_editor_spatial_stop_editing": "Parar de editar o centro de {effect}",
+	"video_editor_spatial_center_label": "Centro de {effect}"
 }

@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost a retiré les groupes du montage invalides, imbriqués ou vides.",
 	"video_editor_project_repair_video_track": "Ce projet n'avait aucune piste vidéo ; OpenPost en a ajouté une.",
 	"video_editor_project_repair_sequence_tabs": "OpenPost a retiré les onglets de séquence dupliqués ou manquants.",
-	"video_editor_project_repair_shape_styles": "OpenPost a borné les valeurs invalides de rognage de tracé ou d'effilement de contour."
+	"video_editor_project_repair_shape_styles": "OpenPost a borné les valeurs invalides de rognage de tracé ou d'effilement de contour.",
+	"video_editor_spatial_edit_center": "Modifier le centre de {effect} sur le canevas",
+	"video_editor_spatial_edit_center_short": "Modifier le centre",
+	"video_editor_spatial_editing_center": "Modification du centre",
+	"video_editor_spatial_stop_editing": "Arrêter de modifier le centre de {effect}",
+	"video_editor_spatial_center_label": "Centre de {effect}"
 }

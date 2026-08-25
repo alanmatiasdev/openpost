@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost eliminó los grupos de pistas no válidos, anidados o vacíos.",
 	"video_editor_project_repair_video_track": "Este proyecto no tenía una pista de vídeo, así que OpenPost añadió una.",
 	"video_editor_project_repair_sequence_tabs": "OpenPost eliminó las pestañas de secuencia duplicadas o ausentes.",
-	"video_editor_project_repair_shape_styles": "OpenPost limitó los valores no válidos de trazado de recorte o estrechamiento de trazo."
+	"video_editor_project_repair_shape_styles": "OpenPost limitó los valores no válidos de trazado de recorte o estrechamiento de trazo.",
+	"video_editor_spatial_edit_center": "Editar el centro de {effect} en el lienzo",
+	"video_editor_spatial_edit_center_short": "Editar centro",
+	"video_editor_spatial_editing_center": "Editando centro",
+	"video_editor_spatial_stop_editing": "Dejar de editar el centro de {effect}",
+	"video_editor_spatial_center_label": "Centro de {effect}"
 }

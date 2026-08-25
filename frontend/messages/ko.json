@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "잘못되었거나 중첩되거나 비어 있는 타임라인 그룹을 정리했습니다.",
 	"video_editor_project_repair_video_track": "이 프로젝트에는 동영상 트랙이 없어 추가했습니다.",
 	"video_editor_project_repair_sequence_tabs": "중복되거나 없는 시퀀스 탭을 정리했습니다.",
-	"video_editor_project_repair_shape_styles": "잘못된 트림 패스 또는 윤곽선 테이퍼 값을 제한했습니다."
+	"video_editor_project_repair_shape_styles": "잘못된 트림 패스 또는 윤곽선 테이퍼 값을 제한했습니다.",
+	"video_editor_spatial_edit_center": "캔버스에서 {effect} 중심 편집",
+	"video_editor_spatial_edit_center_short": "중심 편집",
+	"video_editor_spatial_editing_center": "중심 편집 중",
+	"video_editor_spatial_stop_editing": "{effect} 중심 편집 종료",
+	"video_editor_spatial_center_label": "{effect} 중심"
 }

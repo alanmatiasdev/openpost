@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost removed invalid, nested, or empty timeline groups.",
 	"video_editor_project_repair_video_track": "This project had no video track, so OpenPost added one.",
 	"video_editor_project_repair_sequence_tabs": "OpenPost removed duplicate or missing sequence tabs.",
-	"video_editor_project_repair_shape_styles": "OpenPost limited invalid trim-path or stroke-taper values."
+	"video_editor_project_repair_shape_styles": "OpenPost limited invalid trim-path or stroke-taper values.",
+	"video_editor_spatial_edit_center": "Edit {effect} center on canvas",
+	"video_editor_spatial_edit_center_short": "Edit center",
+	"video_editor_spatial_editing_center": "Editing center",
+	"video_editor_spatial_stop_editing": "Stop editing {effect} center",
+	"video_editor_spatial_center_label": "{effect} center"
 }

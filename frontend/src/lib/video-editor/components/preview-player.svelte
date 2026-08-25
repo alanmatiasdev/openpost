@@ -41,6 +41,7 @@
 	import PreviewAudioLayer from './preview-audio-layer.svelte';
 	import PreviewMixEntryLayer from './preview-mix-entry-layer.svelte';
 	import OnCanvasTools from './on-canvas-tools.svelte';
+	import SpatialEffectPointOverlay from './spatial-effect-point-overlay.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
 		collectAdjustmentLayers,
@@ -77,6 +78,8 @@
 	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
 	import type { CanvasAnimatedValues } from '$lib/video-editor/preview/on-canvas-tools';
 	import { previewDiagnostics } from '$lib/video-editor/preview/diagnostics.svelte';
+	import { spatialEffectEditorStore } from '$lib/video-editor/preview/spatial-effect-editor.svelte';
+	import { getSpatialPointEffectConfig } from '$lib/video-editor/effects/spatial-point-editor';
 	import {
 		resolveTimelinePreviewFrame,
 		timelinePreviewScrub
@@ -208,6 +211,10 @@
 	const selectedTrackLocked = $derived(
 		selectedItem ? isTrackEffectivelyLocked(selectedItem.trackId, timelineStore.tracks) : false
 	);
+	const spatialEditingSelected = $derived(
+		spatialEffectEditorStore.isEditing &&
+			spatialEffectEditorStore.editingItemId === selectedItem?.id
+	);
 	const timelineMediaIds = $derived(
 		new Set(timelineStore.items.flatMap((item) => (item.mediaId ? [item.mediaId] : [])))
 	);
@@ -311,6 +318,31 @@
 		stackFrameRequest = null;
 		for (const id of Object.keys(urls)) revokeMediaObjectUrl(id);
 		for (const url of Object.values(proxyUrls)) URL.revokeObjectURL(url);
+		const editingItemId = spatialEffectEditorStore.editingItemId;
+		const editingEffectId = spatialEffectEditorStore.editingEffectId;
+		if (editingItemId && editingEffectId) {
+			colorPreviewStore.clearEffectDraft(editingItemId, editingEffectId);
+		}
+		spatialEffectEditorStore.stopEditing();
+	});
+
+	$effect(() => {
+		if (!spatialEffectEditorStore.isEditing) return;
+		const editingItemId = spatialEffectEditorStore.editingItemId;
+		const editingEffectId = spatialEffectEditorStore.editingEffectId;
+		const effect = selectedItem?.effects?.find((candidate) => candidate.id === editingEffectId);
+		if (
+			editingItemId === selectedItem?.id &&
+			effect?.type === 'gpu' &&
+			effect.enabled &&
+			getSpatialPointEffectConfig(effect.effectId) &&
+			!selectedTrackLocked
+		)
+			return;
+		if (editingItemId && editingEffectId) {
+			colorPreviewStore.clearEffectDraft(editingItemId, editingEffectId);
+		}
+		spatialEffectEditorStore.stopEditing();
 	});
 
 	$effect(() => {
@@ -940,6 +972,7 @@
 	<div
 		bind:this={viewport}
 		class="[container-type:size] relative m-auto shrink-0 overflow-hidden rounded-md bg-black"
+		data-program-monitor
 		style={previewPlaybackSettings.zoom === -1
 			? `aspect-ratio:${aspect}; width:min(100cqw, calc(100cqh * ${canvasWidth / canvasHeight})); max-width:100%; max-height:100%;`
 			: `aspect-ratio:${aspect}; width:${canvasWidth * previewPlaybackSettings.zoom}px;`}
@@ -1042,35 +1075,46 @@
 				/>
 			{/each}
 			{#if selectedResolved && !selectedTrackLocked}
-				<OnCanvasTools
-					item={selectedResolved}
-					motionSourceItem={selectedItem}
-					motionContext={{
-						fps: timelineStore.fps,
-						frameWidth: canvasWidth,
-						frameHeight: canvasHeight,
-						items: timelineStore.items
-					}}
-					{canvasWidth}
-					{canvasHeight}
-					snapItems={activeItems}
-					snappingEnabled={timelineStore.snapEnabled}
-					currentFrame={timelineStore.currentFrame}
-					{isPlaying}
-					ontransformdraft={(value) => (draftTransform = value)}
-					oncropdraft={(value) => (draftCrop = value)}
-					ontextdraft={(value) => (draftText = value)}
-					oncornerpindraft={(value) => (draftCornerPin = value)}
-					ontextediting={(value) => (editingText = value)}
-					oncommitvalues={commitCanvasValues}
-					oncommitposition={commitCanvasPosition}
-					oncreatespatial={createCanvasSpatialTangents}
-					oncommitspatial={commitCanvasSpatialTangents}
-					oncommittext={commitCanvasText}
-					oncommitcornerpin={commitCanvasCornerPin}
-					onseek={setCurrentFrame}
-					{onedit}
-				/>
+				{#if spatialEditingSelected && selectedItem}
+					<SpatialEffectPointOverlay
+						item={selectedResolved}
+						sourceItem={selectedItem}
+						{canvasWidth}
+						{canvasHeight}
+						currentFrame={timelineStore.currentFrame}
+						{onedit}
+					/>
+				{:else}
+					<OnCanvasTools
+						item={selectedResolved}
+						motionSourceItem={selectedItem}
+						motionContext={{
+							fps: timelineStore.fps,
+							frameWidth: canvasWidth,
+							frameHeight: canvasHeight,
+							items: timelineStore.items
+						}}
+						{canvasWidth}
+						{canvasHeight}
+						snapItems={activeItems}
+						snappingEnabled={timelineStore.snapEnabled}
+						currentFrame={timelineStore.currentFrame}
+						{isPlaying}
+						ontransformdraft={(value) => (draftTransform = value)}
+						oncropdraft={(value) => (draftCrop = value)}
+						ontextdraft={(value) => (draftText = value)}
+						oncornerpindraft={(value) => (draftCornerPin = value)}
+						ontextediting={(value) => (editingText = value)}
+						oncommitvalues={commitCanvasValues}
+						oncommitposition={commitCanvasPosition}
+						oncreatespatial={createCanvasSpatialTangents}
+						oncommitspatial={commitCanvasSpatialTangents}
+						oncommittext={commitCanvasText}
+						oncommitcornerpin={commitCanvasCornerPin}
+						onseek={setCurrentFrame}
+						{onedit}
+					/>
+				{/if}
 			{/if}
 			{#if colorPreviewStore.activePicker}
 				<button

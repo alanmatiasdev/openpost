@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { Project, TimelineItem, TimelineTrack } from '../project/types';
 import { editorSession } from '../editor.svelte';
@@ -11,6 +12,7 @@ import { adaptivePreviewQuality } from '../preview/adaptive-preview-quality.svel
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 import { previewDiagnostics } from '../preview/diagnostics.svelte';
 import { timelinePreviewScrub } from '../preview/timeline-preview-scrub';
+import { spatialEffectEditorStore } from '../preview/spatial-effect-editor.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -149,7 +151,8 @@ function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 	);
 }
 
-afterEach(() => {
+afterEach(async () => {
+	await page.viewport(1280, 900);
 	colorPreviewStore.__resetForTesting();
 	adaptivePreviewQuality.reset();
 	previewPlaybackSettings.setPreviewQuality('auto');
@@ -158,6 +161,7 @@ afterEach(() => {
 	previewDiagnostics.resetCounters();
 	previewDiagnostics.setPlaying(false);
 	timelinePreviewScrub.__resetForTesting();
+	spatialEffectEditorStore.__resetForTesting();
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -188,6 +192,75 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('runs the spatial point editor as the program monitor exclusive tool', async () => {
+		await page.viewport(1000, 700);
+		const layer: TimelineItem = {
+			...colorLayer('spatial', 'video-track', '#808080'),
+			effects: [
+				{
+					id: 'twirl',
+					type: 'gpu',
+					effectId: 'gpu-twirl',
+					enabled: true,
+					params: { amount: 1, radius: 0.5, centerX: 0.25, centerY: 0.75 }
+				}
+			]
+		};
+		const project: Project = {
+			id: 'spatial-project',
+			name: 'Spatial project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 4, height: 4, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [track('video-track', 0)], items: [layer] }
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [layer],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		spatialEffectEditorStore.startEditing(layer.id, 'twirl');
+		const onedit = vi.fn();
+		const screen = await render(PreviewPlayer, { selectedItemId: layer.id, onedit });
+		screen.container.style.width = '800px';
+		screen.container.style.height = '500px';
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-spatial-effect-overlay]')).not.toBeNull();
+		});
+		const handle = screen.container.querySelector<HTMLButtonElement>(
+			'[data-spatial-effect-handle="twirl"]'
+		);
+		expect(handle?.style.left).toBe('25%');
+		expect(handle?.style.top).toBe('75%');
+		expect(screen.container.querySelector('[data-on-canvas-tools]')).toBeNull();
+		expect(onedit).not.toHaveBeenCalled();
+		const monitor = screen.container.querySelector<HTMLElement>('[data-program-monitor]');
+		expect(monitor).not.toBeNull();
+		await page.viewport(320, 720);
+		screen.container.style.width = '320px';
+		screen.container.style.height = '320px';
+		await vi.waitFor(() => {
+			expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+				document.documentElement.clientWidth
+			);
+		});
+
+		spatialEffectEditorStore.stopEditing();
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-spatial-effect-overlay]')).toBeNull();
+			expect(screen.container.querySelector('[data-on-canvas-tools]')).not.toBeNull();
+		});
+
+		spatialEffectEditorStore.startEditing(layer.id, 'twirl');
+		timelineStore._setTracks([{ ...track('video-track', 0), locked: true }]);
+		await vi.waitFor(() => expect(spatialEffectEditorStore.isEditing).toBe(false));
+		expect(screen.container.querySelector('[data-spatial-effect-overlay]')).toBeNull();
+	});
+
 	it('renders the hover-preview frame while leaving the committed frame unchanged', async () => {
 		const layer = {
 			...colorLayer('hover-only', 'video-track', '#ff0000'),

@@ -17,6 +17,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import SaveIcon from '@lucide/svelte/icons/save';
 	import XIcon from '@lucide/svelte/icons/x';
+	import CrosshairIcon from '@lucide/svelte/icons/crosshair';
 	import {
 		EFFECT_DEFINITIONS,
 		type GpuEffect,
@@ -83,6 +84,8 @@
 	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
+	import { getSpatialPointEffectConfig } from '$lib/video-editor/effects/spatial-point-editor';
+	import { spatialEffectEditorStore } from '$lib/video-editor/preview/spatial-effect-editor.svelte';
 
 	let {
 		itemId,
@@ -330,6 +333,7 @@
 	onDestroy(() => {
 		clearEffectDragData();
 		if (itemId) colorPreviewStore.clearEffectDraft(itemId);
+		if (spatialEffectEditorStore.editingItemId === itemId) stopSpatialEditing();
 		if (dragResetTimer) clearTimeout(dragResetTimer);
 	});
 
@@ -464,6 +468,13 @@
 
 	function toggleStackEffect(effect: ItemEffect): void {
 		if (!itemId) return;
+		if (
+			effect.enabled &&
+			spatialEffectEditorStore.editingItemId === itemId &&
+			spatialEffectEditorStore.editingEffectId === effect.id
+		) {
+			stopSpatialEditing();
+		}
 		if (setEffectEnabledOnItems(itemId, selectedEffectItemIds, effect.id, !effect.enabled)) {
 			onedit();
 			emitEditorSound(effect.enabled ? 'toggleOff' : 'toggleOn', editorSession.clock.isPlaying);
@@ -477,11 +488,52 @@
 
 	function removeStackEffect(effectId: string): void {
 		if (!itemId) return;
+		if (
+			spatialEffectEditorStore.editingItemId === itemId &&
+			spatialEffectEditorStore.editingEffectId === effectId
+		) {
+			stopSpatialEditing();
+		}
 		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId)) {
 			onedit();
 			emitEditorSound('delete', editorSession.clock.isPlaying);
 		}
 	}
+
+	function stopSpatialEditing(): void {
+		const editingItemId = spatialEffectEditorStore.editingItemId;
+		const editingEffectId = spatialEffectEditorStore.editingEffectId;
+		if (editingItemId && editingEffectId) {
+			colorPreviewStore.clearEffectDraft(editingItemId, editingEffectId);
+		}
+		spatialEffectEditorStore.stopEditing();
+	}
+
+	function isSpatialEditing(effectId: string): boolean {
+		return (
+			spatialEffectEditorStore.isEditing &&
+			spatialEffectEditorStore.editingItemId === itemId &&
+			spatialEffectEditorStore.editingEffectId === effectId
+		);
+	}
+
+	function toggleSpatialEditing(effect: GpuEffect): void {
+		if (!itemId || !effect.enabled || selectedEffectItemIds.length !== 1) return;
+		if (isSpatialEditing(effect.id)) {
+			stopSpatialEditing();
+			return;
+		}
+		stopSpatialEditing();
+		colorPreviewStore.cancelPick();
+		spatialEffectEditorStore.startEditing(itemId, effect.id);
+	}
+
+	$effect(() => {
+		if (!spatialEffectEditorStore.isEditing) return;
+		if (spatialEffectEditorStore.editingItemId !== itemId || selectedEffectItemIds.length !== 1) {
+			stopSpatialEditing();
+		}
+	});
 </script>
 
 <div class="flex flex-col gap-1">
@@ -651,6 +703,27 @@
 						{/if}
 						{#if gpuDefinition && effect.type === 'gpu'}
 							{@const resolvedEffect = resolvedGpuEffect(effect)}
+							{#if getSpatialPointEffectConfig(effect.effectId)}
+								<button
+									type="button"
+									class="mt-1 flex h-7 w-full items-center justify-center gap-1.5 rounded border border-[oklch(0.32_0.015_55)] px-2 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:h-11 {isSpatialEditing(
+										effect.id
+									)
+										? 'border-[oklch(0.66_0.14_45)] bg-[oklch(0.66_0.14_45)] text-black hover:bg-[oklch(0.72_0.14_45)]'
+										: ''}"
+									disabled={!effect.enabled || selectedEffectItemIds.length !== 1}
+									aria-pressed={isSpatialEditing(effect.id)}
+									aria-label={isSpatialEditing(effect.id)
+										? m.video_editor_spatial_stop_editing({ effect: effectLabel(effect) })
+										: m.video_editor_spatial_edit_center({ effect: effectLabel(effect) })}
+									onclick={() => toggleSpatialEditing(effect)}
+								>
+									<CrosshairIcon class="size-3.5" />
+									{isSpatialEditing(effect.id)
+										? m.video_editor_spatial_editing_center()
+										: m.video_editor_spatial_edit_center_short()}
+								</button>
+							{/if}
 							{#if effect.effectId === 'gpu-lut'}
 								<button
 									type="button"

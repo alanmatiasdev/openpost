@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost geçersiz, iç içe veya boş zaman çizelgesi gruplarını kaldırdı.",
 	"video_editor_project_repair_video_track": "Bu projenin video parçası yoktu; OpenPost bir tane ekledi.",
 	"video_editor_project_repair_sequence_tabs": "OpenPost yinelenen veya eksik sekans sekmelerini kaldırdı.",
-	"video_editor_project_repair_shape_styles": "OpenPost geçersiz yol kırpma veya kontur incelmesi değerlerini sınırladı."
+	"video_editor_project_repair_shape_styles": "OpenPost geçersiz yol kırpma veya kontur incelmesi değerlerini sınırladı.",
+	"video_editor_spatial_edit_center": "{effect} merkezini tuval üzerinde düzenle",
+	"video_editor_spatial_edit_center_short": "Merkezi düzenle",
+	"video_editor_spatial_editing_center": "Merkez düzenleniyor",
+	"video_editor_spatial_stop_editing": "{effect} merkezini düzenlemeyi bitir",
+	"video_editor_spatial_center_label": "{effect} merkezi"
 }

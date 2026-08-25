@@ -6648,5 +6648,10 @@
 	"video_editor_project_repair_track_groups": "OpenPost hat ungültige, verschachtelte oder leere Timeline-Gruppen entfernt.",
 	"video_editor_project_repair_video_track": "Dieses Projekt hatte keine Videospur, daher hat OpenPost eine hinzugefügt.",
 	"video_editor_project_repair_sequence_tabs": "OpenPost hat doppelte oder fehlende Sequenz-Tabs entfernt.",
-	"video_editor_project_repair_shape_styles": "OpenPost hat ungültige Trim-Pfad- oder Strichverjüngungswerte begrenzt."
+	"video_editor_project_repair_shape_styles": "OpenPost hat ungültige Trim-Pfad- oder Strichverjüngungswerte begrenzt.",
+	"video_editor_spatial_edit_center": "{effect}-Zentrum auf der Arbeitsfläche bearbeiten",
+	"video_editor_spatial_edit_center_short": "Zentrum bearbeiten",
+	"video_editor_spatial_editing_center": "Zentrum wird bearbeitet",
+	"video_editor_spatial_stop_editing": "Bearbeitung des {effect}-Zentrums beenden",
+	"video_editor_spatial_center_label": "{effect}-Zentrum"
 }

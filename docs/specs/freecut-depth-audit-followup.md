@@ -75,7 +75,21 @@ the audit evidence, while the resolution log records later product changes.
   Chromium component tests cover latest-pointer coalescing, desktop and 320 px
   layout, playback and touch suppression, monitor rendering, cleanup, and the
   unchanged committed frame.
-  Current unresolved count: 7.
+- 2026-08-25: gap 6 resolved. Twirl, bulge, trigger wave, radial blur,
+  zoom blur, ripple glass, and Droste now expose a single explicit canvas
+  center editor. OpenPost maps the shader's source-texture UV through crop,
+  transform, custom anchor, rotation, flips, parent motion, and projective
+  corner pin so the handle stays on the exact preview and export point. Drag
+  previews coalesce to one update per animation frame and commit both parameter
+  lanes in one undo step, including existing and automatic keyframes. Escape,
+  pointer cancellation, lost capture, item or effect changes, multi-selection,
+  and effective track locks clear drafts without a late write. The spatial
+  editor owns the program monitor while active, supports precise keyboard
+  nudges and a 44 px handle, and uses localized copy in all ten editor locales.
+  Pure homography and source-UV tests plus real Chromium overlay, inspector,
+  program-monitor, cancellation, keyboard, 320 px, and lock tests cover the
+  integrated path.
+  Current unresolved count: 6.
 
 ## Rows checked with no gap found
 
