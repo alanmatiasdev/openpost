@@ -36,55 +36,114 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 	if (signal?.aborted) throw abortError();
 }
 
-/** Decode a media item's full audio into mono channel data for detection. */
-export async function decodeAudioForAnalysis(
+/** Decode only one source-time range into mono channel data for analysis. */
+export async function decodeAudioBlobRangeForAnalysis(
+	blob: Blob,
+	startSeconds = 0,
+	endSeconds = Number.POSITIVE_INFINITY,
+	signal?: AbortSignal
+): Promise<import('../audio/audio-silence').AudioBufferLike> {
+	throwIfAborted(signal);
+	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+	try {
+		const track = await input.getPrimaryAudioTrack();
+		if (!track) throw new Error('No audio track');
+		await ensureAc3DecoderForCodec(track.codec);
+		const duration = await track.computeDuration();
+		const start = Math.min(duration, Math.max(0, Number.isFinite(startSeconds) ? startSeconds : 0));
+		const requestedEnd = Number.isFinite(endSeconds) ? endSeconds : duration;
+		const end = Math.min(duration, Math.max(start, requestedEnd));
+		const sink = new AudioSampleSink(track);
+		let totalFrames = 0;
+		let sampleRate = track.sampleRate || 48_000;
+		const chunks: Float32Array[] = [];
+		for await (const sample of sink.samples(start, end)) {
+			try {
+				throwIfAborted(signal);
+				if (chunks.length > 0 && sample.sampleRate !== sampleRate) {
+					throw new Error('Audio sample rate changed during range decoding');
+				}
+				sampleRate = sample.sampleRate;
+				const sampleEnd = sample.timestamp + sample.duration;
+				const overlapStart = Math.max(start, sample.timestamp);
+				const overlapEnd = Math.min(end, sampleEnd);
+				const frameOffset = Math.max(
+					0,
+					Math.min(
+						sample.numberOfFrames,
+						Math.ceil((overlapStart - sample.timestamp) * sampleRate - 1e-7)
+					)
+				);
+				const frameEnd = Math.max(
+					frameOffset,
+					Math.min(
+						sample.numberOfFrames,
+						Math.ceil((overlapEnd - sample.timestamp) * sampleRate - 1e-7)
+					)
+				);
+				const frames = frameEnd - frameOffset;
+				if (frames === 0) continue;
+				const merged = new Float32Array(frames);
+				for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
+					const plane = new Float32Array(frames);
+					sample.copyTo(plane, {
+						format: 'f32-planar',
+						planeIndex: channel,
+						frameOffset,
+						frameCount: frames
+					});
+					for (let frame = 0; frame < frames; frame += 1) {
+						merged[frame] += (plane[frame] ?? 0) / sample.numberOfChannels;
+					}
+				}
+				chunks.push(merged);
+				totalFrames += frames;
+			} finally {
+				sample.close();
+			}
+		}
+		throwIfAborted(signal);
+		const channel = new Float32Array(Math.max(totalFrames, 1));
+		let offset = 0;
+		for (const chunk of chunks) {
+			channel.set(chunk, offset);
+			offset += chunk.length;
+		}
+		return {
+			duration: totalFrames / sampleRate,
+			length: channel.length,
+			numberOfChannels: 1,
+			sampleRate,
+			getChannelData: () => channel
+		};
+	} finally {
+		input.dispose?.();
+	}
+}
+
+export async function decodeAudioRangeForAnalysis(
 	mediaId: string,
+	startSeconds: number,
+	endSeconds: number,
 	signal?: AbortSignal
 ): Promise<import('../audio/audio-silence').AudioBufferLike> {
 	throwIfAborted(signal);
 	const media = mediaPool.get(mediaId);
 	if (!media) throw new Error(`Unknown media: ${mediaId}`);
-	const blob = await resolveMediaBlob(media);
-	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
-	const track = await input.getPrimaryAudioTrack();
-	if (!track) throw new Error('No audio track');
-	await ensureAc3DecoderForCodec(track.codec);
-	const sink = new AudioSampleSink(track);
-	let totalFrames = 0;
-	let sampleRate = 48000;
-	const chunks: Float32Array[] = [];
-	for await (const sample of sink.samples()) {
-		try {
-			throwIfAborted(signal);
-			sampleRate = sample.sampleRate;
-			const buffer = sample.toAudioBuffer();
-			// Downmix every channel into one mono array.
-			const frames = buffer.length;
-			const merged = new Float32Array(frames);
-			for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-				const data = buffer.getChannelData(ch);
-				for (let i = 0; i < frames; i++) merged[i] += (data[i] ?? 0) / buffer.numberOfChannels;
-			}
-			chunks.push(merged);
-			totalFrames += frames;
-		} finally {
-			sample.close();
-		}
-	}
-	throwIfAborted(signal);
-	const channel = new Float32Array(Math.max(totalFrames, 1));
-	let offset = 0;
-	for (const chunk of chunks) {
-		channel.set(chunk, offset);
-		offset += chunk.length;
-	}
-	return {
-		duration: channel.length / sampleRate,
-		length: channel.length,
-		numberOfChannels: 1,
-		sampleRate,
-		getChannelData: () => channel
-	};
+	return decodeAudioBlobRangeForAnalysis(
+		await resolveMediaBlob(media),
+		startSeconds,
+		endSeconds,
+		signal
+	);
+}
+
+/** Decode a media item's full audio into mono channel data for detection. */
+export async function decodeAudioForAnalysis(
+	mediaId: string,
+	signal?: AbortSignal
+): Promise<import('../audio/audio-silence').AudioBufferLike> {
+	return decodeAudioRangeForAnalysis(mediaId, 0, Number.POSITIVE_INFINITY, signal);
 }
 
 function toSourceRanges(ranges: Array<{ start: number; end: number }>): SourceRange[] {

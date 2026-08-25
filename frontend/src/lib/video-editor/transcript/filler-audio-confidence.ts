@@ -1,6 +1,6 @@
 import type { AudioBufferLike } from '../audio/audio-silence';
 import { localAiRuntimeRegistry } from '../local-ai/runtime-registry';
-import { decodeAudioForAnalysis } from '../media/silence';
+import { decodeAudioRangeForAnalysis } from '../media/silence';
 import type { FillerAudioConfidence, FillerRange, FillerRangesByMediaId } from './speech-cleanup';
 
 const CLAP_MODEL_ID = 'Xenova/clap-htsat-unfused';
@@ -141,21 +141,17 @@ async function loadClassifier(
 	}
 }
 
-function monoWindow(buffer: AudioBufferLike, range: FillerRange): Float32Array {
+function audioWindowBounds(range: FillerRange) {
 	const midpoint = (range.start + range.end) / 2;
 	const halfWindow = Math.max(MIN_AUDIO_WINDOW_SECONDS, range.end - range.start) / 2;
-	const startSeconds = Math.max(0, midpoint - halfWindow - WINDOW_CONTEXT_SECONDS);
-	const endSeconds = Math.min(buffer.duration, midpoint + halfWindow + WINDOW_CONTEXT_SECONDS);
-	const start = Math.max(0, Math.floor(startSeconds * buffer.sampleRate));
-	const end = Math.min(buffer.length, Math.ceil(endSeconds * buffer.sampleRate));
-	const sourceLength = Math.max(1, end - start);
-	const source = new Float32Array(sourceLength);
-	for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-		const samples = buffer.getChannelData(channel);
-		for (let index = 0; index < sourceLength; index++) {
-			source[index] += (samples[start + index] ?? 0) / Math.max(1, buffer.numberOfChannels);
-		}
-	}
+	return {
+		start: Math.max(0, midpoint - halfWindow - WINDOW_CONTEXT_SECONDS),
+		end: midpoint + halfWindow + WINDOW_CONTEXT_SECONDS
+	};
+}
+
+function resampleMonoWindow(buffer: AudioBufferLike): Float32Array {
+	const source = buffer.getChannelData(0);
 	if (buffer.sampleRate === CLAP_SAMPLE_RATE) return source;
 	const length = Math.max(1, Math.round((source.length * CLAP_SAMPLE_RATE) / buffer.sampleRate));
 	const output = new Float32Array(length);
@@ -198,14 +194,15 @@ export function classifyFillerAudioConfidence(
 
 async function scoreRange(
 	model: ZeroShotAudioClassifier,
-	buffer: AudioBufferLike,
-	mediaId: string,
+	loadBuffer: () => Promise<AudioBufferLike>,
 	range: FillerRange
 ): Promise<FillerRange> {
+	const mediaId = range.mediaId;
 	const key = cacheKey(mediaId, range);
 	const cached = cachedScore(key);
 	if (cached) return { ...range, audioConfidence: cached };
-	const scores = await model(monoWindow(buffer, range), CANDIDATE_LABELS, {
+	const buffer = await loadBuffer();
+	const scores = await model(resampleMonoWindow(buffer), CANDIDATE_LABELS, {
 		hypothesis_template: 'This audio contains {}.'
 	});
 	const confidence = classifyFillerAudioConfidence(scores);
@@ -245,10 +242,14 @@ export async function scoreFillerRangesWithAudioConfidence(
 	for (const [mediaId, ranges] of entries) {
 		throwIfAborted(options.signal);
 		try {
-			const buffer = await decodeAudioForAnalysis(mediaId, options.signal);
 			output[mediaId] = await scoreWithLimit(ranges, async (range) => {
 				throwIfAborted(options.signal);
-				const scored = await scoreRange(model, buffer, mediaId, range);
+				const window = audioWindowBounds(range);
+				const scored = await scoreRange(
+					model,
+					() => decodeAudioRangeForAnalysis(mediaId, window.start, window.end, options.signal),
+					range
+				);
 				completed += 1;
 				options.onProgress?.({ stage: 'scoring', progress: completed / total });
 				return scored;
