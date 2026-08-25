@@ -998,6 +998,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								{/if}
 								<PreviewPlayer
 									bind:selectedItemId
+									bind:selectedItemIds
 									onedit={() => editorSession.scheduleAutosave()}
 								/>
 								<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />

@@ -115,47 +115,42 @@ export function computeCanvasItemBounds(
 	canvasHeight: number,
 	strokeExpansion = 0
 ): CanvasBounds {
-	const centerX = canvasWidth / 2 + transform.x;
-	const centerY = canvasHeight / 2 + transform.y;
+	const anchorWorldX = canvasWidth / 2 + transform.x;
+	const anchorWorldY = canvasHeight / 2 + transform.y;
 	const halfWidth = transform.width / 2 + strokeExpansion / 2;
 	const halfHeight = transform.height / 2 + strokeExpansion / 2;
-	if (!transform.rotation) {
-		return bounds(
-			centerX - halfWidth,
-			centerY - halfHeight,
-			centerX + halfWidth,
-			centerY + halfHeight
-		);
-	}
-
-	const anchorOffsetX = (transform.anchorX ?? transform.width / 2) - transform.width / 2;
-	const anchorOffsetY = (transform.anchorY ?? transform.height / 2) - transform.height / 2;
-	const anchorX = centerX + anchorOffsetX;
-	const anchorY = centerY + anchorOffsetY;
+	const anchorX = transform.anchorX ?? transform.width / 2;
+	const anchorY = transform.anchorY ?? transform.height / 2;
 	const radians = (transform.rotation * Math.PI) / 180;
 	const cosine = Math.cos(radians);
 	const sine = Math.sin(radians);
-	if (anchorOffsetX === 0 && anchorOffsetY === 0) {
+	if (anchorX === transform.width / 2 && anchorY === transform.height / 2) {
 		const extentX = Math.abs(halfWidth * cosine) + Math.abs(halfHeight * sine);
 		const extentY = Math.abs(halfWidth * sine) + Math.abs(halfHeight * cosine);
-		return bounds(centerX - extentX, centerY - extentY, centerX + extentX, centerY + extentY);
+		return bounds(
+			anchorWorldX - extentX,
+			anchorWorldY - extentY,
+			anchorWorldX + extentX,
+			anchorWorldY + extentY
+		);
 	}
 
 	const corners: Array<readonly [number, number]> = [
-		[centerX - halfWidth, centerY - halfHeight],
-		[centerX + halfWidth, centerY - halfHeight],
-		[centerX + halfWidth, centerY + halfHeight],
-		[centerX - halfWidth, centerY + halfHeight]
+		[-anchorX - strokeExpansion / 2, -anchorY - strokeExpansion / 2],
+		[transform.width - anchorX + strokeExpansion / 2, -anchorY - strokeExpansion / 2],
+		[
+			transform.width - anchorX + strokeExpansion / 2,
+			transform.height - anchorY + strokeExpansion / 2
+		],
+		[-anchorX - strokeExpansion / 2, transform.height - anchorY + strokeExpansion / 2]
 	];
 	let left = Number.POSITIVE_INFINITY;
 	let right = Number.NEGATIVE_INFINITY;
 	let top = Number.POSITIVE_INFINITY;
 	let bottom = Number.NEGATIVE_INFINITY;
 	for (const [cornerX, cornerY] of corners) {
-		const deltaX = cornerX - anchorX;
-		const deltaY = cornerY - anchorY;
-		const rotatedX = anchorX + deltaX * cosine - deltaY * sine;
-		const rotatedY = anchorY + deltaX * sine + deltaY * cosine;
+		const rotatedX = anchorWorldX + cornerX * cosine - cornerY * sine;
+		const rotatedY = anchorWorldY + cornerX * sine + cornerY * cosine;
 		left = Math.min(left, rotatedX);
 		right = Math.max(right, rotatedX);
 		top = Math.min(top, rotatedY);

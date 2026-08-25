@@ -69,7 +69,7 @@ describe('canvas move snapping', () => {
 			1000,
 			500
 		);
-		expect(result).toMatchObject({ left: 300, right: 400, top: 200, bottom: 400 });
+		expect(result).toMatchObject({ left: 400, right: 500, top: 250, bottom: 450 });
 	});
 });
 

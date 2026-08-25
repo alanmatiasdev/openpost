@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { commandHistory, execute } from '../commands/command-store.svelte';
+import {
+	commandHistory,
+	execute,
+	executeAtomic,
+	executeAtomicBoolean
+} from '../commands/command-store.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
+import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
 
 function videoItem(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
@@ -63,6 +69,58 @@ describe('command history', () => {
 
 		execute('ADD_ITEMS', () => timelineStore._setItems([videoItem()]));
 		expect(commandHistory.canRedo).toBe(false);
+	});
+
+	it('collapses nested commands into one complete undo and redo transaction', () => {
+		const first = videoItem({ id: 'first', transform: { x: 0, y: 0 } });
+		const second = videoItem({ id: 'second', transform: { x: 20, y: 30 } });
+		timelineStore._setItems([first, second]);
+
+		executeAtomic('GROUP_TRANSFORM', () => {
+			execute('UPDATE_FIRST', () => {
+				timelineStore._updateItems([{ id: first.id, patch: { transform: { x: 100, y: 50 } } }]);
+			});
+			executeAtomic('NESTED_GROUP_TRANSFORM', () => {
+				execute('UPDATE_SECOND', () => {
+					timelineStore._updateItems([{ id: second.id, patch: { transform: { x: -40, y: 75 } } }]);
+				});
+			});
+		});
+
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('GROUP_TRANSFORM');
+		expect(timelineStore.itemById.get(first.id)?.transform).toEqual({ x: 100, y: 50 });
+		expect(timelineStore.itemById.get(second.id)?.transform).toEqual({ x: -40, y: 75 });
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get(first.id)?.transform).toEqual({ x: 0, y: 0 });
+		expect(timelineStore.itemById.get(second.id)?.transform).toEqual({ x: 20, y: 30 });
+
+		commandHistory.redo();
+		expect(timelineStore.itemById.get(first.id)?.transform).toEqual({ x: 100, y: 50 });
+		expect(timelineStore.itemById.get(second.id)?.transform).toEqual({ x: -40, y: 75 });
+	});
+
+	it('rolls back every nested mutation when an atomic action reports failure', () => {
+		const first = videoItem({ id: 'first', transform: { x: 0, y: 0 } });
+		const second = videoItem({ id: 'second', transform: { x: 20, y: 30 } });
+		timelineStore._setItems([first, second]);
+		keyframeSelectionStore.replace(first.id, ['first-key']);
+
+		const committed = executeAtomicBoolean('GROUP_TRANSFORM', () => {
+			execute('UPDATE_FIRST', () => {
+				timelineStore._updateItems([{ id: first.id, patch: { transform: { x: 100, y: 50 } } }]);
+			});
+			keyframeSelectionStore.replace(second.id, ['stale-key']);
+			return false;
+		});
+
+		expect(committed).toBe(false);
+		expect(commandHistory.undoStack).toHaveLength(0);
+		expect(timelineStore.itemById.get(first.id)?.transform).toEqual({ x: 0, y: 0 });
+		expect(timelineStore.itemById.get(second.id)?.transform).toEqual({ x: 20, y: 30 });
+		expect(keyframeSelectionStore.itemId).toBe(first.id);
+		expect([...keyframeSelectionStore.ids]).toEqual(['first-key']);
 	});
 
 	it('undoes and redoes the complete master bus state', () => {

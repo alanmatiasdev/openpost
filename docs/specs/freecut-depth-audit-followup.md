@@ -120,7 +120,26 @@ the audit evidence, while the resolution log records later product changes.
   places at the touched frame. Pure payload, collision, duration, companion-row,
   and edge-scroll tests combine with real Chromium drag, rejection, linked
   composition, repeated keyboard, touch, undo, and 320 px visual checks.
-  Current unresolved count: 4.
+- 2026-08-25: gaps 4 and 8 resolved together. Selecting two or more active
+  visual clips now draws one canvas AABB with pointer, keyboard, and touch-sized
+  move, corner-scale, and rotation controls. The exact geometry accounts for
+  rotated layers and custom transform anchors; uniform scaling preserves every
+  anchor and relative offset around the visual group center, and Shift snaps
+  rotation to 15-degree steps. Move and scale share canvas, neighboring-layer,
+  hysteresis, Alt-bypass, and visible-guide behavior with the single-item
+  tools. A compact localized toolbar aligns every selected visual bound to all
+  six canvas axes, distributes three or more unequal rotated bounds by equal
+  edge gaps, and exposes the shared magnet. Group scaling also scales font,
+  spacing, padding, background, shadow, stroke, and per-span text metrics;
+  frame-scoped scale animation keys those metrics at the same frame. Existing
+  and automatic keyframes, selected parent-child transforms, effective locks,
+  selection changes, Escape, pointer
+  cancellation, and one-step undo stay atomic; a failed item rolls the whole
+  group edit back. Pure custom-anchor, rotation, scaling, hit-test, snapping,
+  alignment, distribution, and changed-property tests combine with real
+  Chromium pointer, keyboard, cancellation, selection, accessibility, and 320
+  px visual checks.
+  Current unresolved count: 2.
 
 ## Rows checked with no gap found
 

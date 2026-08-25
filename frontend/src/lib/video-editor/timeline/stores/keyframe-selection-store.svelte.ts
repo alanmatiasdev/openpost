@@ -32,6 +32,11 @@ export interface KeyframeClipboard {
 	sourceRefs: KeyframeRef[];
 }
 
+export interface KeyframeSelectionSnapshot {
+	itemId: string | null;
+	ids: string[];
+}
+
 class KeyframeSelectionStore {
 	#itemId = $state<string | null>(null);
 	#ids = $state<Set<string>>(new Set());
@@ -66,6 +71,15 @@ class KeyframeSelectionStore {
 	clear(): void {
 		this.#itemId = null;
 		this.#ids = new Set();
+	}
+
+	snapshotSelection(): KeyframeSelectionSnapshot {
+		return { itemId: this.#itemId, ids: [...this.#ids] };
+	}
+
+	restoreSelection(snapshot: KeyframeSelectionSnapshot): void {
+		this.#itemId = snapshot.itemId;
+		this.#ids = new Set(snapshot.ids);
 	}
 
 	prune(itemId: string, validIds: ReadonlySet<string>): void {

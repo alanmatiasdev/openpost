@@ -41,6 +41,7 @@
 	import PreviewAudioLayer from './preview-audio-layer.svelte';
 	import PreviewMixEntryLayer from './preview-mix-entry-layer.svelte';
 	import OnCanvasTools from './on-canvas-tools.svelte';
+	import GroupOnCanvasTools from './group-on-canvas-tools.svelte';
 	import SpatialEffectPointOverlay from './spatial-effect-point-overlay.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
@@ -84,13 +85,25 @@
 		resolveTimelinePreviewFrame,
 		timelinePreviewScrub
 	} from '$lib/video-editor/preview/timeline-preview-scrub';
+	import { executeAtomicBoolean } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import {
+		changedGroupTransformValues,
+		GROUP_TRANSFORM_PROPERTIES,
+		type GroupTransform
+	} from '$lib/video-editor/preview/group-transform';
+	import {
+		GROUP_TEXT_ANIMATED_PROPERTY_SET,
+		planGroupTextScale
+	} from '$lib/video-editor/preview/group-text-scale';
+	import { activeVectorKeyframes } from '$lib/video-editor/timeline/vector-keyframes';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
 	let {
 		selectedItemId = $bindable(null),
+		selectedItemIds = $bindable([]),
 		onedit
-	}: { selectedItemId?: string | null; onedit: () => void } = $props();
+	}: { selectedItemId?: string | null; selectedItemIds?: string[]; onedit: () => void } = $props();
 	const project = $derived(editorSession.project);
 	const canvasWidth = $derived(
 		sequenceStore.activeSequence?.width ?? project?.metadata.width ?? sequenceStore.activeWidth
@@ -114,6 +127,7 @@
 	let destroyed = false;
 	let viewport = $state<HTMLDivElement | null>(null);
 	let draftTransform = $state<ItemTransform | null>(null);
+	let groupDraftTransforms = $state<Record<string, GroupTransform> | null>(null);
 	let draftCrop = $state<NonNullable<TimelineItem['crop']> | null>(null);
 	let draftText = $state<string | null>(null);
 	let draftCornerPin = $state<TimelineItemCornerPin | null>(null);
@@ -207,6 +221,20 @@
 					items: timelineStore.items
 				})
 			: undefined
+	);
+	const selectedItems = $derived(activeItems.filter((item) => selectedItemIds.includes(item.id)));
+	const selectedResolvedItems = $derived(
+		selectedItems.map((item) =>
+			resolveAnimatedItemAt(item, displayFrame, {
+				fps: timelineStore.fps,
+				frameWidth: canvasWidth,
+				frameHeight: canvasHeight,
+				items: timelineStore.items
+			})
+		)
+	);
+	const groupSelectionLocked = $derived(
+		selectedItems.some((item) => isTrackEffectivelyLocked(item.trackId, timelineStore.tracks))
 	);
 	const selectedTrackLocked = $derived(
 		selectedItem ? isTrackEffectivelyLocked(selectedItem.trackId, timelineStore.tracks) : false
@@ -801,7 +829,7 @@
 
 	function commitCanvasValues(frame: number, values: CanvasAnimatedValues): boolean {
 		if (!selectedItemId) return false;
-		const localValues = localCanvasValues(frame, values);
+		const localValues = localCanvasValuesForItem(selectedItemId, frame, values);
 		const committedValues: Partial<Record<KeyframeProperty, number>> = {};
 		for (const [rawProperty, value] of Object.entries(localValues)) {
 			if (value === undefined) continue;
@@ -817,7 +845,9 @@
 	}
 
 	function commitCanvasPosition(frame: number, x: number, y: number): boolean {
-		const local = localCanvasValues(frame, { x, y });
+		const local = selectedItemId
+			? localCanvasValuesForItem(selectedItemId, frame, { x, y })
+			: { x, y };
 		const committed = selectedItemId
 			? setPositionAtFrame(selectedItemId, frame, local.x ?? x, local.y ?? y)
 			: false;
@@ -825,9 +855,13 @@
 		return committed;
 	}
 
-	function localCanvasValues(frame: number, values: CanvasAnimatedValues): CanvasAnimatedValues {
-		if (!selectedItemId) return values;
-		const item = timelineStore.itemById.get(selectedItemId);
+	function localCanvasValuesForItem(
+		itemId: string,
+		frame: number,
+		values: CanvasAnimatedValues,
+		parentWorldOverrides?: ReadonlyMap<string, GroupTransform>
+	): CanvasAnimatedValues {
+		const item = timelineStore.itemById.get(itemId);
 		if (!item?.transformParent) return values;
 		const context = {
 			fps: timelineStore.fps,
@@ -858,12 +892,15 @@
 		const parent = item.transformParent.parentItemId
 			? timelineStore.itemById.get(item.transformParent.parentItemId)
 			: undefined;
-		const parentWorld = parent
-			? resolvedTransformForItem(
-					resolveAnimatedItemAt(parent, frame, context),
-					canvasWidth,
-					canvasHeight
-				)
+		const parentWorld = item.transformParent.parentItemId
+			? (parentWorldOverrides?.get(item.transformParent.parentItemId) ??
+				(parent
+					? resolvedTransformForItem(
+							resolveAnimatedItemAt(parent, frame, context),
+							canvasWidth,
+							canvasHeight
+						)
+					: undefined))
 			: undefined;
 		const local = worldToLocalTransform(world, item.transformParent, parentWorld);
 		const result = { ...values };
@@ -871,6 +908,78 @@
 			if (values[property] !== undefined) result[property] = local[property];
 		}
 		return result;
+	}
+
+	function commitGroupTransforms(
+		frame: number,
+		transforms: ReadonlyMap<string, GroupTransform>
+	): boolean {
+		if (transforms.size < 2 || groupSelectionLocked) return false;
+		const planned: Array<{
+			itemId: string;
+			values: Partial<Record<KeyframeProperty, number>>;
+			forceTextFrameScope: boolean;
+			textSpans?: TimelineItem['textSpans'];
+		}> = [];
+		for (const [itemId, transform] of transforms) {
+			if (!selectedItemIds.includes(itemId)) return false;
+			const item = timelineStore.itemById.get(itemId);
+			if (!item) return false;
+			const resolved = resolvedTransformForItem(
+				resolveAnimatedItemAt(item, frame, {
+					fps: timelineStore.fps,
+					frameWidth: canvasWidth,
+					frameHeight: canvasHeight,
+					items: timelineStore.items
+				}),
+				canvasWidth,
+				canvasHeight
+			);
+			const worldValues = changedGroupTransformValues(resolved, transform);
+			if (Object.keys(worldValues).length === 0) continue;
+			const local = localCanvasValuesForItem(itemId, frame, worldValues, transforms);
+			const values: Partial<Record<KeyframeProperty, number>> = {};
+			for (const property of GROUP_TRANSFORM_PROPERTIES) {
+				const value = local[property];
+				if (worldValues[property] !== undefined && value !== undefined) values[property] = value;
+			}
+			const scale = resolved.width > 0 ? transform.width / resolved.width : 1;
+			const textScale = planGroupTextScale(item, scale);
+			if (textScale) Object.assign(values, textScale.animated);
+			const scaleWritesKey = Boolean(
+				worldValues.width !== undefined &&
+				(activeVectorKeyframes(item, 'scale') ||
+					item.keyframes?.width ||
+					item.keyframes?.height ||
+					autoKeyframeStore.isEnabled(itemId, 'width') ||
+					autoKeyframeStore.isEnabled(itemId, 'height'))
+			);
+			planned.push({
+				itemId,
+				values,
+				forceTextFrameScope: scaleWritesKey,
+				textSpans: textScale?.itemPatch.textSpans
+			});
+		}
+		const committed = executeAtomicBoolean('GROUP_TRANSFORM', () => {
+			for (const { itemId, values, forceTextFrameScope, textSpans } of planned) {
+				if (
+					!setAnimatedProperties(
+						itemId,
+						frame,
+						values,
+						(property) =>
+							autoKeyframeStore.isEnabled(itemId, property) ||
+							(forceTextFrameScope && GROUP_TEXT_ANIMATED_PROPERTY_SET.has(property))
+					)
+				)
+					return false;
+				if (textSpans) updateItemProperties(itemId, { textSpans }, 'SCALE_GROUP_TEXT_SPANS');
+			}
+			return true;
+		});
+		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
+		return committed;
 	}
 
 	function createCanvasSpatialTangents(frame: number): boolean {
@@ -958,6 +1067,7 @@
 
 	$effect(() => {
 		void draftTransform;
+		void groupDraftTransforms;
 		void draftCrop;
 		void draftText;
 		void draftCornerPin;
@@ -1065,16 +1175,38 @@
 					allowPrewarmFallback={previewPlaybackSettings.previewQuality === 'auto'}
 					registersource={registerPreviewSource}
 					onsourcechange={scheduleStackFrame}
-					selected={item.id === selectedItemId}
+					selected={item.id === selectedItemId || selectedItemIds.includes(item.id)}
 					opacityMultiplier={transitionOpacity(item)}
-					overrideTransform={item.id === selectedItemId ? (draftTransform ?? undefined) : undefined}
+					overrideTransform={groupDraftTransforms?.[item.id] ??
+						(item.id === selectedItemId ? (draftTransform ?? undefined) : undefined)}
 					overrideCrop={item.id === selectedItemId ? (draftCrop ?? undefined) : undefined}
 					overrideText={item.id === selectedItemId ? (draftText ?? undefined) : undefined}
 					hideContent={item.id === selectedItemId && editingText}
-					onselect={() => (selectedItemId = item.id)}
+					onselect={() => {
+						selectedItemId = item.id;
+						selectedItemIds = [item.id];
+					}}
 				/>
 			{/each}
-			{#if selectedResolved && !selectedTrackLocked}
+			{#if selectedResolvedItems.length > 1 && !groupSelectionLocked}
+				<GroupOnCanvasTools
+					items={selectedResolvedItems}
+					{canvasWidth}
+					{canvasHeight}
+					currentFrame={timelineStore.currentFrame}
+					{isPlaying}
+					snappingEnabled={timelineStore.snapEnabled}
+					snapItems={activeItems}
+					ontransformdraft={(value) => (groupDraftTransforms = value)}
+					oncommit={commitGroupTransforms}
+					onselectitem={(itemId) => {
+						selectedItemId = itemId;
+						selectedItemIds = [itemId];
+					}}
+					ontogglesnapping={() => timelineStore._setSnapEnabled(!timelineStore.snapEnabled)}
+					{onedit}
+				/>
+			{:else if selectedResolved && !selectedTrackLocked}
 				{#if spatialEditingSelected && selectedItem}
 					<SpatialEffectPointOverlay
 						item={selectedResolved}

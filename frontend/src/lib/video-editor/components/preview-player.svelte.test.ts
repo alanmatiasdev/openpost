@@ -13,6 +13,9 @@ import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 import { previewDiagnostics } from '../preview/diagnostics.svelte';
 import { timelinePreviewScrub } from '../preview/timeline-preview-scrub';
 import { spatialEffectEditorStore } from '../preview/spatial-effect-editor.svelte';
+import { commandHistory } from '../timeline/commands/command-store.svelte';
+import { createTransformParentBinding } from '../timeline/transform-parenting';
+import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -162,6 +165,7 @@ afterEach(async () => {
 	previewDiagnostics.setPlaying(false);
 	timelinePreviewScrub.__resetForTesting();
 	spatialEffectEditorStore.__resetForTesting();
+	commandHistory.clearHistory();
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -192,6 +196,139 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('wires multi-selection transforms through one atomic timeline command', async () => {
+		await page.viewport(1000, 700);
+		commandHistory.clearHistory();
+		const bottom = colorLayer('bottom', 'bottom-track', '#ff0000');
+		const top = colorLayer('top', 'top-track', '#0000ff');
+		bottom.transform = { x: -100, y: 0, width: 100, height: 100 };
+		top.transform = { x: 100, y: 0, width: 100, height: 100 };
+		const parentPose = {
+			x: -100,
+			y: 0,
+			width: 100,
+			height: 100,
+			anchorX: 50,
+			anchorY: 50,
+			rotation: 0,
+			opacity: 1,
+			cornerRadius: 0
+		};
+		const childPose = { ...parentPose, x: 100 };
+		top.transformParent = createTransformParentBinding({
+			childLocal: childPose,
+			childWorld: childPose,
+			parentItemId: bottom.id,
+			parentWorld: parentPose
+		});
+		const project: Project = {
+			id: 'group-project',
+			name: 'Group project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [track('top-track', 0), track('bottom-track', 1)],
+				items: [bottom, top]
+			}
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [bottom, top],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: top.id,
+			selectedItemIds: [bottom.id, top.id],
+			onedit
+		});
+		screen.container.style.width = '800px';
+		screen.container.style.height = '500px';
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-group-transform-box]')).not.toBeNull();
+		});
+		expect(screen.container.querySelector('[data-on-canvas-tools]')).toBeNull();
+		const move = screen.container.querySelector<HTMLButtonElement>('[data-group-transform-box]');
+		move?.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-90);
+		expect(timelineStore.itemById.get(top.id)?.transform?.x).toBe(100);
+		expect(
+			resolveAnimatedItemAt(timelineStore.itemById.get(top.id)!, 0, {
+				fps: 30,
+				frameWidth: 800,
+				frameHeight: 400,
+				items: timelineStore.items
+			}).transform?.x
+		).toBe(110);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('GROUP_TRANSFORM');
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-100);
+		expect(timelineStore.itemById.get(top.id)?.transform?.x).toBe(100);
+		const scale = screen.container.querySelector<HTMLButtonElement>(
+			'[data-group-scale-handle="0"]'
+		);
+		scale?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		expect(timelineStore.itemById.get(bottom.id)?.fontSize).toBeCloseTo(60.6);
+		expect(timelineStore.itemById.get(top.id)?.fontSize).toBeCloseTo(60.6);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get(bottom.id)?.fontSize).toBeUndefined();
+		expect(timelineStore.itemById.get(top.id)?.fontSize).toBeUndefined();
+		timelineStore._updateItems([
+			{
+				id: bottom.id,
+				patch: { keyframes: { width: { frames: [0], values: [100] } } }
+			},
+			{
+				id: top.id,
+				patch: { keyframes: { width: { frames: [0], values: [100] } } }
+			}
+		]);
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get(top.id)?.keyframes?.width).toBeDefined()
+		);
+		scale?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		expect(timelineStore.itemById.get(bottom.id)?.fontSize).toBeUndefined();
+		expect(timelineStore.itemById.get(top.id)?.fontSize).toBeUndefined();
+		expect(timelineStore.itemById.get(bottom.id)?.keyframes?.fontSize?.values).toEqual([60.6]);
+		expect(timelineStore.itemById.get(top.id)?.keyframes?.fontSize?.values).toEqual([60.6]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get(bottom.id)?.keyframes?.fontSize).toBeUndefined();
+		expect(timelineStore.itemById.get(top.id)?.keyframes?.fontSize).toBeUndefined();
+
+		await page.viewport(320, 720);
+		screen.container.style.width = '320px';
+		screen.container.style.height = '320px';
+		await vi.waitFor(() => {
+			expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+				document.documentElement.clientWidth
+			);
+		});
+		await page.screenshot({
+			element: screen.container,
+			path: '../../../../.svelte-kit/openpost-preview-group-transform-320.png'
+		});
+
+		timelineStore._setTracks([
+			track('top-track', 0),
+			{ ...track('bottom-track', 1), locked: true }
+		]);
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('[data-group-transform-box]')).toBeNull();
+		});
+	});
+
 	it('runs the spatial point editor as the program monitor exclusive tool', async () => {
 		await page.viewport(1000, 700);
 		const layer: TimelineItem = {
