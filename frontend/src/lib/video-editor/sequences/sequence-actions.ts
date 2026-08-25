@@ -1,6 +1,7 @@
 /** Undoable sequence and compound-clip editing actions. */
 
 import { createDefaultTracks } from '../project/defaults';
+import { cloneSubCompositionDocument } from '../project/project-clone';
 import type {
 	SubComposition,
 	TimelineItem,
@@ -99,6 +100,45 @@ export function renameSequence(id: string, name: string): boolean {
 		}
 		return true;
 	});
+}
+
+export function duplicateSequence(id: string, name?: string): string | null {
+	return execute('DUPLICATE_SEQUENCE', () => {
+		const source = sequenceStore.compositionById.get(id);
+		if (!source) return null;
+		const names = new Set(sequenceStore.compositions.map((composition) => composition.name));
+		const baseName = name?.trim() || `${source.name} copy`;
+		let copyName = baseName;
+		for (let suffix = 2; names.has(copyName); suffix += 1) copyName = `${baseName} ${suffix}`;
+		const duplicate = cloneSubCompositionDocument(source, { name: copyName });
+		sequenceStore.addComposition(duplicate, sequenceStore.topLevelSequenceIds.includes(source.id));
+		return duplicate.id;
+	});
+}
+
+export interface SequenceDeletionImpact {
+	rootReferenceCount: number;
+	nestedReferenceCount: number;
+	totalReferenceCount: number;
+}
+
+export function sequenceDeletionImpact(compositionId: string): SequenceDeletionImpact {
+	const timeline = sequenceStore.projectTimeline();
+	const rootReferenceCount = timeline.items.filter(
+		(item) => item.compositionId === compositionId
+	).length;
+	const nestedReferenceCount = (timeline.compositions ?? [])
+		.filter((composition) => composition.id !== compositionId)
+		.reduce(
+			(count, composition) =>
+				count + composition.items.filter((item) => item.compositionId === compositionId).length,
+			0
+		);
+	return {
+		rootReferenceCount,
+		nestedReferenceCount,
+		totalReferenceCount: rootReferenceCount + nestedReferenceCount
+	};
 }
 
 export function nestSequence(compositionId: string, from = timelineStore.currentFrame): string[] {

@@ -1,6 +1,6 @@
 <!-- Media pool list: imported sources with probe status; click adds to timeline -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl } from '$lib/video-editor/media/media-source';
@@ -9,7 +9,17 @@
 	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
-	import { nestSequence, switchSequence } from '$lib/video-editor/sequences/sequence-actions';
+	import {
+		deleteSequence,
+		duplicateSequence,
+		nestSequence,
+		sequenceDeletionImpact,
+		switchSequence
+	} from '$lib/video-editor/sequences/sequence-actions';
+	import {
+		compoundThumbnailService,
+		compoundThumbnailSignature
+	} from '$lib/video-editor/sequences/compound-thumbnail';
 	import { showToast } from '$lib/toast';
 	import FilmIcon from '@lucide/svelte/icons/film';
 	import ImageIcon from '@lucide/svelte/icons/image-plus';
@@ -20,10 +30,15 @@
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import MoreIcon from '@lucide/svelte/icons/ellipsis';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
 	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
 	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Select from '$lib/components/ui/select';
+	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import EmbeddedSubtitlePicker from './embedded-subtitle-picker.svelte';
 	import {
 		canExtractEmbeddedSubtitles,
@@ -45,6 +60,7 @@
 	import MediaInfoPopover from './media-info-popover.svelte';
 	import MediaUrlImportDialog from './media-url-import-dialog.svelte';
 	import { mediaRecovery } from '$lib/video-editor/media/media-recovery.svelte';
+	import type { SubComposition } from '$lib/video-editor/project/types';
 
 	let {
 		projectId,
@@ -63,6 +79,11 @@
 	let query = $state('');
 	let filter = $state<MediaLibraryFilter>('all');
 	let sort = $state<MediaLibrarySort>('added');
+	let sequenceThumbnailUrls = $state<Record<string, string>>({});
+	let sequenceThumbnailGeneration = 0;
+	let deleteTarget = $state<SubComposition | null>(null);
+	let deleteReferenceCount = $state(0);
+	let deleteDialogOpen = $state(false);
 	const ownedThumbnailUrls = new Map<string, string>();
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
@@ -114,7 +135,42 @@
 		syncThumbnails(mediaPool.thumbnailRevision, mediaPool.order);
 	});
 
+	interface SequenceThumbnailRequest {
+		id: string;
+		signature: string;
+	}
+
+	async function syncSequenceThumbnails(
+		requests: readonly SequenceThumbnailRequest[]
+	): Promise<void> {
+		const generation = ++sequenceThumbnailGeneration;
+		const entries = await Promise.all(
+			requests.map(
+				async ({ id, signature }) =>
+					[id, await compoundThumbnailService.getThumbnailUrl(id, signature)] as const
+			)
+		);
+		if (generation !== sequenceThumbnailGeneration) return;
+		sequenceThumbnailUrls = Object.fromEntries(
+			entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+		);
+	}
+
+	$effect(() => {
+		const compositions = sequenceStore.compositions;
+		const compositionsById = new Map(
+			compositions.map((composition) => [composition.id, composition])
+		);
+		const requests = compositions.map((composition) => ({
+			id: composition.id,
+			signature: compoundThumbnailSignature(composition.id, compositionsById)
+		}));
+		untrack(() => void syncSequenceThumbnails(requests));
+	});
+
 	onDestroy(() => {
+		sequenceThumbnailGeneration += 1;
+		compoundThumbnailService.clearAll();
 		for (const url of ownedThumbnailUrls.values()) URL.revokeObjectURL(url);
 		ownedThumbnailUrls.clear();
 	});
@@ -240,6 +296,29 @@
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : m.video_editor_sequence_cycle(), 'error');
 		}
+	}
+
+	function duplicateComposition(sequence: SubComposition): void {
+		const duplicateId = duplicateSequence(
+			sequence.id,
+			m.video_editor_sequence_copy_name({ name: sequence.name })
+		);
+		if (!duplicateId) {
+			showToast(m.video_editor_sequence_duplicate_failed(), 'error');
+			return;
+		}
+		editorSession.scheduleAutosave();
+		const duplicate = sequenceStore.compositionById.get(duplicateId);
+		showToast(
+			m.video_editor_sequence_duplicated({ name: duplicate?.name ?? sequence.name }),
+			'success'
+		);
+	}
+
+	function confirmSequenceDelete(sequence: SubComposition): void {
+		deleteTarget = sequence;
+		deleteReferenceCount = sequenceDeletionImpact(sequence.id).totalReferenceCount;
+		deleteDialogOpen = true;
 	}
 
 	function openSubtitlePicker(media: MediaMetadata): void {
@@ -374,9 +453,17 @@
 						class="group flex items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)]"
 					>
 						<span
-							class="flex size-10 shrink-0 items-center justify-center rounded bg-[oklch(0.26_0.025_250)]"
+							class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
 						>
-							<LayersIcon class="size-4" aria-hidden="true" />
+							{#if sequenceThumbnailUrls[sequence.id]}
+								<img
+									src={sequenceThumbnailUrls[sequence.id]}
+									alt=""
+									class="size-full object-cover"
+								/>
+							{:else}
+								<LayersIcon class="size-4" aria-hidden="true" />
+							{/if}
 						</span>
 						<button
 							type="button"
@@ -389,14 +476,40 @@
 								{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
 							</span>
 						</button>
-						<button
-							type="button"
-							class="rounded p-1.5 text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-							aria-label={`${m.video_editor_sequence_add()}: ${sequence.name}`}
-							onclick={() => addSequence(sequence.id)}
-						>
-							<PlusIcon class="size-3.5" aria-hidden="true" />
-						</button>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon-xs"
+										class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
+										aria-label={`${m.video_editor_sequence_options()}: ${sequence.name}`}
+									>
+										<MoreIcon class="size-3.5" aria-hidden="true" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content class="video-editor-theme" align="end">
+								<DropdownMenu.Item onclick={() => addSequence(sequence.id)}>
+									<PlusIcon class="size-4" aria-hidden="true" />
+									{m.video_editor_sequence_add()}
+								</DropdownMenu.Item>
+								<DropdownMenu.Separator />
+								<DropdownMenu.Item onclick={() => duplicateComposition(sequence)}>
+									<CopyIcon class="size-4" aria-hidden="true" />
+									{m.video_editor_sequence_duplicate()}
+								</DropdownMenu.Item>
+								<DropdownMenu.Separator />
+								<DropdownMenu.Item
+									class="text-red-300 focus:text-red-200"
+									onclick={() => confirmSequenceDelete(sequence)}
+								>
+									<TrashIcon class="size-4" aria-hidden="true" />
+									{m.common_delete()}
+								</DropdownMenu.Item>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
 					</li>
 				{/each}
 			</ul>
@@ -499,3 +612,31 @@
 />
 
 <MediaUrlImportDialog bind:open={urlImportOpen} onimport={importUrl} />
+
+<DestructiveConfirmDialog
+	bind:open={deleteDialogOpen}
+	title={m.video_editor_sequence_delete_title({ name: deleteTarget?.name ?? '' })}
+	description={deleteTarget
+		? deleteReferenceCount > 0
+			? deleteReferenceCount === 1
+				? m.video_editor_sequence_delete_reference()
+				: m.video_editor_sequence_delete_references({ count: deleteReferenceCount })
+			: m.video_editor_sequence_delete_unused()
+		: ''}
+	confirmLabel={m.common_delete()}
+	onConfirm={() => {
+		if (!deleteTarget) return { ok: false, message: m.video_editor_sequence_delete_failed() };
+		const target = deleteTarget;
+		editorSession.pausePlayback();
+		if (!deleteSequence(target.id)) {
+			return { ok: false, message: m.video_editor_sequence_delete_failed() };
+		}
+		compoundThumbnailService.clear(target.id);
+		editorSession.syncTimelineClock();
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_sequence_deleted({ name: target.name }), 'success');
+		deleteTarget = null;
+		deleteReferenceCount = 0;
+		return { ok: true };
+	}}
+/>

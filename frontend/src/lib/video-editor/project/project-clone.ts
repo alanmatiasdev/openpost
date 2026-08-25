@@ -18,6 +18,11 @@ export interface CloneProjectOptions {
 	createId?: () => string;
 }
 
+export interface CloneSubCompositionOptions {
+	name?: string;
+	createId?: () => string;
+}
+
 interface ProjectIdMaps {
 	composition: Map<string, string>;
 	track: Map<string, string>;
@@ -188,7 +193,10 @@ function remapItem(
 			keyframes: Object.fromEntries(
 				Object.entries(item.keyframes).map(([property, track]) => [
 					remapEffectKeyframeProperty(property, effectIds),
-					track && { ...track, ...(track.ids && { ids: track.ids.map(() => createId()) }) }
+					track && {
+						...track,
+						...(track.ids && { ids: track.ids.map(() => createId()) })
+					}
 				])
 			)
 		}),
@@ -233,6 +241,19 @@ function remapComposition(
 	};
 }
 
+/** Clone one reusable timeline while preserving media and nested-composition references. */
+export function cloneSubCompositionDocument(
+	composition: SubComposition,
+	options: CloneSubCompositionOptions = {}
+): SubComposition {
+	const createId = options.createId ?? (() => crypto.randomUUID());
+	const maps = buildIdMaps({ tracks: [], items: [], compositions: [composition] }, createId);
+	return {
+		...remapComposition(composition, maps, new Map(), createId),
+		name: options.name ?? `${composition.name} copy`
+	};
+}
+
 function remapPreset(
 	preset: AnimationPreset,
 	createId: () => string,
@@ -249,11 +270,17 @@ function remapPreset(
 		properties: preset.properties.map((property) => ({
 			...property,
 			property: remapEffectKeyframeProperty(property.property, effectIds),
-			keyframes: property.keyframes.map((keyframe) => ({ ...keyframe, id: createId() }))
+			keyframes: property.keyframes.map((keyframe) => ({
+				...keyframe,
+				id: createId()
+			}))
 		})),
 		vectorProperties: preset.vectorProperties?.map((property) => ({
 			...property,
-			keyframes: property.keyframes.map((keyframe) => ({ ...keyframe, id: createId() }))
+			keyframes: property.keyframes.map((keyframe) => ({
+				...keyframe,
+				id: createId()
+			}))
 		})),
 		effects: preset.effects.map((effect) => ({
 			...effect,

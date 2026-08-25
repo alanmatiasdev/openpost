@@ -4,8 +4,8 @@ import {
 	parseEffectKeyframeProperty
 } from '../effects/effect-keyframes';
 import { createBlankProject } from './defaults';
-import { cloneProjectDocument } from './project-clone';
-import type { TimelineItem } from './types';
+import { cloneProjectDocument, cloneSubCompositionDocument } from './project-clone';
+import type { SubComposition, TimelineItem } from './types';
 
 function ids() {
 	let index = 0;
@@ -41,7 +41,14 @@ describe('cloneProjectDocument', () => {
 				[effectProperty]: { frames: [0], values: [1], ids: ['effect-key'] }
 			},
 			vectorKeyframes: {
-				position: [{ id: 'vector-key', frame: 0, value: { x: 0, y: 0 }, easing: 'linear' }]
+				position: [
+					{
+						id: 'vector-key',
+						frame: 0,
+						value: { x: 0, y: 0 },
+						easing: 'linear'
+					}
+				]
 			}
 		};
 		project.animationPresets = [
@@ -75,8 +82,20 @@ describe('cloneProjectDocument', () => {
 			transformParent: {
 				parentItemId: 'source',
 				parentReference: { x: 0, y: 0, width: 100, height: 100, rotation: 0 },
-				childLocalReference: { x: 10, y: 0, width: 50, height: 50, rotation: 0 },
-				childWorldReference: { x: 10, y: 0, width: 50, height: 50, rotation: 0 }
+				childLocalReference: {
+					x: 10,
+					y: 0,
+					width: 50,
+					height: 50,
+					rotation: 0
+				},
+				childWorldReference: {
+					x: 10,
+					y: 0,
+					width: 50,
+					height: 50,
+					rotation: 0
+				}
 			},
 			propertyLinks: [
 				{
@@ -117,7 +136,11 @@ describe('cloneProjectDocument', () => {
 		const [clonedSource, clonedFollower] = clone.timeline!.items;
 		if (!clonedSource || !clonedFollower) throw new Error('Expected cloned items.');
 
-		expect(clone).toMatchObject({ name: 'Launch backup', createdAt: 500, updatedAt: 500 });
+		expect(clone).toMatchObject({
+			name: 'Launch backup',
+			createdAt: 500,
+			updatedAt: 500
+		});
 		expect(clonedSource.id).not.toBe(source.id);
 		expect(clonedSource.mediaId).toBe('new-media');
 		expect(clonedSource.linkedGroupId).toBe(clonedFollower.linkedGroupId);
@@ -214,7 +237,11 @@ describe('cloneProjectDocument', () => {
 				durationInFrames: 30,
 				label: 'Captions',
 				type: 'subtitle',
-				captionSource: { type: 'transcript', clipId: 'source', mediaId: 'media' },
+				captionSource: {
+					type: 'transcript',
+					clipId: 'source',
+					mediaId: 'media'
+				},
 				cues: [{ id: 'cue', startFrame: 0, endFrame: 30, text: 'Hello' }]
 			},
 			{
@@ -240,9 +267,123 @@ describe('cloneProjectDocument', () => {
 		expect(clonedComposition?.compositionControls?.controls[0]?.targetItemId).toBe(
 			clonedComposition?.items[0]?.id
 		);
-		expect(nested?.compositionControlOverrides).toEqual({ headline: 'Instance title' });
+		expect(nested?.compositionControlOverrides).toEqual({
+			headline: 'Instance title'
+		});
 		expect(nested?.compositionControlOverrides).not.toBe(
 			project.timeline!.items[2]?.compositionControlOverrides
 		);
+	});
+});
+
+describe('cloneSubCompositionDocument', () => {
+	it('remaps owned ids while preserving media and nested composition references', () => {
+		const source: SubComposition = {
+			id: 'source-composition',
+			name: 'Interview',
+			items: [
+				{
+					id: 'parent',
+					trackId: 'visual',
+					from: 0,
+					durationInFrames: 30,
+					label: 'Camera',
+					type: 'video',
+					mediaId: 'shared-media',
+					linkedGroupId: 'pair'
+				},
+				{
+					id: 'child',
+					trackId: 'visual',
+					from: 30,
+					durationInFrames: 30,
+					label: 'Nested title',
+					type: 'composition',
+					compositionId: 'external-composition',
+					linkedGroupId: 'pair',
+					transformParent: {
+						parentItemId: 'parent',
+						parentReference: {
+							x: 0,
+							y: 0,
+							width: 100,
+							height: 100,
+							rotation: 0
+						},
+						childLocalReference: {
+							x: 10,
+							y: 0,
+							width: 50,
+							height: 50,
+							rotation: 0
+						},
+						childWorldReference: {
+							x: 10,
+							y: 0,
+							width: 50,
+							height: 50,
+							rotation: 0
+						}
+					},
+					propertyLinks: [
+						{
+							type: 'link',
+							targetProperty: 'opacity',
+							sourceItemId: 'parent',
+							sourceProperty: 'opacity',
+							enabled: true,
+							timeOffsetFrames: 0
+						}
+					]
+				}
+			],
+			tracks: [
+				{
+					id: 'visual',
+					name: 'Visual',
+					kind: 'video',
+					height: 64,
+					locked: false,
+					visible: true,
+					muted: false,
+					solo: false,
+					order: 0
+				}
+			],
+			transitions: [
+				{
+					id: 'transition',
+					type: 'crossfade',
+					durationInFrames: 5,
+					fromItemId: 'parent',
+					toItemId: 'child'
+				}
+			],
+			markers: [{ id: 'marker', frame: 12, label: 'Beat', color: '#ffffff' }],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 60
+		};
+
+		const clone = cloneSubCompositionDocument(source, { createId: ids() });
+		const [parent, child] = clone.items;
+		if (!parent || !child) throw new Error('Expected cloned composition items.');
+
+		expect(clone.name).toBe('Interview copy');
+		expect(clone.id).not.toBe(source.id);
+		expect(clone.tracks[0]?.id).not.toBe('visual');
+		expect(parent.id).not.toBe('parent');
+		expect(parent.mediaId).toBe('shared-media');
+		expect(child.compositionId).toBe('external-composition');
+		expect(child.transformParent?.parentItemId).toBe(parent.id);
+		expect(child.propertyLinks?.[0]?.sourceItemId).toBe(parent.id);
+		expect(parent.linkedGroupId).toBe(child.linkedGroupId);
+		expect(clone.transitions[0]).toMatchObject({
+			fromItemId: parent.id,
+			toItemId: child.id
+		});
+		expect(clone.markers?.[0]?.id).not.toBe('marker');
+		expect(source.items[0]?.id).toBe('parent');
 	});
 });

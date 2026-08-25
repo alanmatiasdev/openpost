@@ -9,8 +9,10 @@ import {
 	createCompoundClip,
 	createSequence,
 	deleteSequence,
+	duplicateSequence,
 	dissolveCompoundClip,
 	nestSequence,
+	sequenceDeletionImpact,
 	switchSequence
 } from './sequence-actions';
 import { sequenceStore } from './sequence-store.svelte';
@@ -76,7 +78,10 @@ beforeEach(() => {
 describe('sequence navigation', () => {
 	it('keeps Motion compositions out of editorial tabs while allowing focused editing', () => {
 		const sequence = composition('sequence');
-		const motion = { ...composition('motion'), editorKind: 'composite-2d' as const };
+		const motion = {
+			...composition('motion'),
+			editorKind: 'composite-2d' as const
+		};
 		sequenceStore.load(
 			{
 				...createEmptyTimeline(),
@@ -119,8 +124,82 @@ describe('sequence navigation', () => {
 });
 
 describe('compound clips', () => {
+	it('duplicates owned content and reports root and nested deletion impact', () => {
+		const nested = composition('nested', [
+			item({
+				id: 'nested-title',
+				trackId: 'nested-video',
+				type: 'text',
+				mediaId: undefined
+			})
+		]);
+		const source = composition('source', [
+			item({
+				id: 'source-video',
+				trackId: 'source-video',
+				mediaId: 'shared-media'
+			}),
+			item({
+				id: 'source-nested',
+				trackId: 'source-video',
+				from: 30,
+				type: 'composition',
+				mediaId: undefined,
+				compositionId: nested.id
+			})
+		]);
+		const host = composition('host', [
+			item({
+				id: 'host-reference',
+				trackId: 'host-video',
+				type: 'composition',
+				compositionId: source.id
+			})
+		]);
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track('video', 'video', 0), track('audio', 'audio', 1)],
+				items: [
+					item({
+						id: 'root-reference',
+						type: 'composition',
+						compositionId: source.id
+					})
+				],
+				compositions: [nested, source, host],
+				topLevelSequenceIds: [source.id]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+
+		expect(sequenceDeletionImpact(source.id)).toEqual({
+			rootReferenceCount: 1,
+			nestedReferenceCount: 1,
+			totalReferenceCount: 2
+		});
+		const duplicateId = duplicateSequence(source.id);
+		expect(duplicateId).not.toBeNull();
+		const duplicate = sequenceStore.compositionById.get(duplicateId!);
+		expect(duplicate?.name).toBe('source copy');
+		expect(duplicate?.id).not.toBe(source.id);
+		expect(duplicate?.tracks[0]?.id).not.toBe(source.tracks[0]?.id);
+		expect(duplicate?.items[0]?.id).not.toBe(source.items[0]?.id);
+		expect(duplicate?.items[0]?.mediaId).toBe('shared-media');
+		expect(duplicate?.items[1]?.compositionId).toBe(nested.id);
+		expect(sequenceStore.topLevelSequenceIds).toContain(duplicateId);
+
+		commandHistory.undo();
+		expect(sequenceStore.compositionById.has(duplicateId!)).toBe(false);
+		expect(sequenceStore.compositionById.has(source.id)).toBe(true);
+	});
+
 	it('moves linked visual and audio items into one reusable composition', () => {
-		const visual = item({ id: 'visual', linkedGroupId: 'pair', mediaId: 'media' });
+		const visual = item({
+			id: 'visual',
+			linkedGroupId: 'pair',
+			mediaId: 'media'
+		});
 		const audio = item({
 			id: 'audio-item',
 			type: 'audio',
@@ -154,8 +233,20 @@ describe('compound clips', () => {
 			transformParent: {
 				parentItemId: 'parent',
 				parentReference: { x: 20, y: 0, width: 100, height: 100, rotation: 0 },
-				childLocalReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 },
-				childWorldReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 }
+				childLocalReference: {
+					x: 40,
+					y: 0,
+					width: 100,
+					height: 100,
+					rotation: 0
+				},
+				childWorldReference: {
+					x: 40,
+					y: 0,
+					width: 100,
+					height: 100,
+					rotation: 0
+				}
 			}
 		});
 		timelineStore._setItems([parent, child]);
@@ -197,7 +288,10 @@ describe('compound clips', () => {
 	});
 
 	it('remaps internal property links and transform parents when dissolving', () => {
-		const parent = item({ id: 'parent', transform: { x: 20, y: 0, width: 100, height: 100 } });
+		const parent = item({
+			id: 'parent',
+			transform: { x: 20, y: 0, width: 100, height: 100 }
+		});
 		const child = item({
 			id: 'child',
 			from: 15,
@@ -215,8 +309,20 @@ describe('compound clips', () => {
 			transformParent: {
 				parentItemId: 'parent',
 				parentReference: { x: 20, y: 0, width: 100, height: 100, rotation: 0 },
-				childLocalReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 },
-				childWorldReference: { x: 40, y: 0, width: 100, height: 100, rotation: 0 }
+				childLocalReference: {
+					x: 40,
+					y: 0,
+					width: 100,
+					height: 100,
+					rotation: 0
+				},
+				childWorldReference: {
+					x: 40,
+					y: 0,
+					width: 100,
+					height: 100,
+					rotation: 0
+				}
 			}
 		});
 		timelineStore._setItems([parent, child]);

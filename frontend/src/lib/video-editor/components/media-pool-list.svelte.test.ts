@@ -5,7 +5,10 @@ import { editorSession } from '../editor.svelte';
 import { mediaPool } from '../media/pool.svelte';
 import { mediaRecovery } from '../media/media-recovery.svelte';
 import type { MediaMetadata } from '../media/types';
+import { createEmptyTimeline } from '../project/defaults';
+import type { SubComposition, TimelineItem, TimelineTrack } from '../project/types';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
+import { commandHistory } from '../timeline/commands/command-store.svelte';
 import MediaPoolList from './media-pool-list.svelte';
 import '../../../routes/layout.css';
 
@@ -33,6 +36,7 @@ function media(
 }
 
 beforeEach(() => {
+	commandHistory.clearHistory();
 	mediaPool.clear();
 	mediaRecovery.reset();
 	sequenceStore.reset();
@@ -40,6 +44,84 @@ beforeEach(() => {
 });
 
 describe('MediaPoolList', () => {
+	it('shows rendered sequence thumbnails and keeps duplicate and delete actions safe', async () => {
+		await page.viewport(320, 720);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const shape: TimelineItem = {
+			id: 'shape',
+			trackId: track.id,
+			from: 0,
+			durationInFrames: 60,
+			label: 'Card',
+			type: 'shape',
+			shapeType: 'rectangle',
+			fillColor: '#ff0000',
+			fillEnabled: true,
+			transform: { width: 200, height: 100 }
+		};
+		const sequence: SubComposition = {
+			id: 'scene',
+			name: 'Scene',
+			items: [shape],
+			tracks: [track],
+			transitions: [],
+			fps: 30,
+			width: 200,
+			height: 100,
+			durationInFrames: 60
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track],
+				items: [
+					{
+						id: 'scene-reference',
+						trackId: track.id,
+						from: 0,
+						durationInFrames: 60,
+						label: sequence.name,
+						type: 'composition',
+						compositionId: sequence.id
+					}
+				],
+				compositions: [sequence],
+				topLevelSequenceIds: [sequence.id]
+			},
+			{ width: 200, height: 100, fps: 30 }
+		);
+
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector('img[src^="blob:"]')).not.toBeNull();
+		});
+		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
+		await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
+		await expect.element(screen.getByText('Scene copy')).toBeVisible();
+		expect(sequenceStore.compositions).toHaveLength(2);
+
+		await screen.getByRole('button', { name: 'Sequence options: Scene', exact: true }).click();
+		await screen.getByRole('menuitem', { name: 'Delete' }).click();
+		const dialog = screen.getByRole('dialog');
+		await expect.element(dialog.getByText(/removes 1 timeline reference/)).toBeVisible();
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+		await expect.element(dialog).not.toBeInTheDocument();
+		expect(sequenceStore.compositionById.has(sequence.id)).toBe(false);
+		expect(sequenceStore.projectTimeline().items).toHaveLength(0);
+		expect(sequenceStore.compositions).toHaveLength(1);
+	});
+
 	it('filters, groups, explains media facts, and fits its URL flow on a phone', async () => {
 		await page.viewport(320, 720);
 		mediaPool.loadAll([
