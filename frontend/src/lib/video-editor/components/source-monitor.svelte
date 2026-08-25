@@ -21,6 +21,11 @@
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SkipBackIcon from '@lucide/svelte/icons/skip-back';
 	import XIcon from '@lucide/svelte/icons/x';
+	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
+	import {
+		decodedPreviewAudio,
+		previewAudioContext
+	} from '$lib/video-editor/audio/reverse-preview-audio';
 
 	let {
 		mediaId,
@@ -52,7 +57,11 @@
 		return Math.max(1, Math.round(media.duration * sourceFps));
 	});
 	const hasVideo = $derived(kind !== 'audio');
-	const hasAudio = $derived(kind === 'audio' || (kind === 'video' && !!media?.audioCodec));
+	const hasAudio = $derived(
+		media?.audioCodecSupported !== false &&
+			(kind === 'audio' || (kind === 'video' && !!media?.audioCodec))
+	);
+	const needsCustomAudio = $derived(hasAudio && isAc3AudioCodec(media?.audioCodec));
 	const videoTracks = $derived(
 		effectiveMediaTracks(timelineStore.tracks).filter(
 			(track) => track.kind !== 'audio' && !track.locked
@@ -81,6 +90,10 @@
 	let audioTarget = $state<SourcePatchTarget>('auto');
 	let mediaElement = $state<HTMLMediaElement>();
 	let proxyAudioElement = $state<HTMLAudioElement>();
+	let customAudioBuffer = $state<AudioBuffer | null>(null);
+	let customAudioSource: AudioBufferSourceNode | null = null;
+	let customAudioStartedAt = 0;
+	let customAudioStartedOffset = 0;
 	let lottieCanvas = $state<HTMLCanvasElement>();
 	let lottieRenderer: LottieRenderer | null = null;
 	let animationFrame = 0;
@@ -176,11 +189,34 @@
 	});
 
 	$effect(() => {
+		const audioUrl = sourceAudioUrl || sourceUrl;
+		const codec = media?.audioCodec;
+		if (!needsCustomAudio || !audioUrl) {
+			customAudioBuffer = null;
+			stopCustomAudio();
+			return;
+		}
+		let stale = false;
+		void decodedPreviewAudio(audioUrl, codec)
+			.then((buffer) => {
+				if (!stale) customAudioBuffer = buffer;
+			})
+			.catch((error) => {
+				if (!stale) loadError = error instanceof Error ? error.message : String(error);
+			});
+		return () => {
+			stale = true;
+			stopCustomAudio();
+		};
+	});
+
+	$effect(() => {
 		lottieRenderer?.renderFrame(currentFrame);
 	});
 
 	onDestroy(() => {
 		cancelAnimationFrame(animationFrame);
+		stopCustomAudio();
 		lottieRenderer?.destroy();
 	});
 
@@ -214,6 +250,35 @@
 				proxyAudioElement.currentTime = time;
 			}
 		}
+		if (playing && needsCustomAudio) startCustomAudio(currentFrame / sourceFps);
+	}
+
+	function stopCustomAudio(): void {
+		if (!customAudioSource) return;
+		try {
+			customAudioSource.stop();
+		} catch {
+			// The source may finish between the guard and stop call.
+		}
+		customAudioSource.disconnect();
+		customAudioSource = null;
+	}
+
+	function startCustomAudio(offsetSeconds: number): void {
+		const buffer = customAudioBuffer;
+		if (!buffer || offsetSeconds >= buffer.duration) return;
+		stopCustomAudio();
+		const context = previewAudioContext();
+		const source = context.createBufferSource();
+		source.buffer = buffer;
+		source.connect(context.destination);
+		customAudioSource = source;
+		customAudioStartedOffset = offsetSeconds;
+		void context.resume().then(() => {
+			if (customAudioSource !== source) return;
+			customAudioStartedAt = context.currentTime;
+			source.start(0, offsetSeconds);
+		});
 	}
 
 	function pause(): void {
@@ -221,6 +286,7 @@
 		cancelAnimationFrame(animationFrame);
 		mediaElement?.pause();
 		proxyAudioElement?.pause();
+		stopCustomAudio();
 	}
 
 	function customPlaybackFrame(now: number): void {
@@ -242,12 +308,15 @@
 		}
 		if (currentFrame < inPoint || currentFrame >= outPoint - 1) seek(inPoint);
 		playing = true;
-		if (mediaElement) {
+		if (mediaElement && !(kind === 'audio' && (!hasAudio || needsCustomAudio))) {
 			try {
 				await Promise.all([
 					mediaElement.play(),
-					proxyAudioElement?.play().catch(() => undefined) ?? Promise.resolve()
+					needsCustomAudio
+						? Promise.resolve()
+						: (proxyAudioElement?.play().catch(() => undefined) ?? Promise.resolve())
 				]);
+				if (needsCustomAudio) startCustomAudio(currentFrame / sourceFps);
 			} catch {
 				playing = false;
 			}
@@ -255,6 +324,7 @@
 		}
 		playbackStartFrame = currentFrame;
 		playbackStartedAt = performance.now();
+		if (needsCustomAudio) startCustomAudio(currentFrame / sourceFps);
 		animationFrame = requestAnimationFrame(customPlaybackFrame);
 	}
 
@@ -266,6 +336,13 @@
 			Math.abs(proxyAudioElement.currentTime - mediaElement.currentTime) > 0.08
 		) {
 			proxyAudioElement.currentTime = mediaElement.currentTime;
+		}
+		if (needsCustomAudio && playing && customAudioSource) {
+			const context = previewAudioContext();
+			const actual = customAudioStartedOffset + context.currentTime - customAudioStartedAt;
+			if (Math.abs(actual - mediaElement.currentTime) > 0.08) {
+				startCustomAudio(mediaElement.currentTime);
+			}
 		}
 		if (next >= outPoint) {
 			seek(outPoint - 1);
@@ -440,6 +517,7 @@
 				src={sourceUrl}
 				class="size-full object-contain"
 				preload="auto"
+				muted={needsCustomAudio}
 				onplay={() => (playing = true)}
 				onpause={() => (playing = false)}
 				onended={pause}
@@ -457,6 +535,7 @@
 					bind:this={mediaElement}
 					src={sourceUrl}
 					preload="auto"
+					muted={needsCustomAudio}
 					onplay={() => (playing = true)}
 					onpause={() => (playing = false)}
 					onended={pause}

@@ -5,12 +5,12 @@
  * dimensions, fps estimate, keyframe timestamps, codecs) plus a JPEG
  * thumbnail blob. Heavy work stays off the main thread.
  *
- * Ported from FreeCut (MIT) — media-processor.worker.ts, trimmed to v1
- * (no ProRes live-decode registration, no AC-3 handling).
+ * Ported from FreeCut (MIT) media-processor.worker.ts and adapted to OpenPost.
  */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny';
 import { ensureProResDecoderForCodec, isProResCodec } from './prores-decoder';
+import { isAudioCodecSupported } from './audio-codec-support';
 
 export interface MediaProbeResult {
 	durationSeconds: number;
@@ -20,6 +20,7 @@ export interface MediaProbeResult {
 	videoCodec?: string;
 	videoCodecSupported: boolean;
 	audioCodec?: string;
+	audioCodecSupported: boolean;
 	bitrate?: number;
 	keyframeTimestamps?: number[];
 	gopInterval?: number;
@@ -135,6 +136,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 				height,
 				fps: 0,
 				videoCodecSupported: true,
+				audioCodecSupported: true,
 				thumbnailBlob,
 				hasAudio: false
 			};
@@ -187,6 +189,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 			videoCodec: videoCodec ?? undefined,
 			videoCodecSupported,
 			audioCodec: audioTrack?.codec ?? undefined,
+			audioCodecSupported: isAudioCodecSupported(audioTrack?.codec),
 			keyframeTimestamps,
 			gopInterval,
 			thumbnailBlob,

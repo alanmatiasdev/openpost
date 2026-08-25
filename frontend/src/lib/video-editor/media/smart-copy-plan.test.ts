@@ -116,6 +116,25 @@ describe('assessSmartCopy', () => {
 		});
 	});
 
+	it('omits an explicitly unsupported audio track from exact packet copies', () => {
+		const result = assessSmartCopy(
+			project(),
+			{
+				format: 'webm',
+				codec: 'vp9',
+				width: 1920,
+				height: 1080,
+				range: { startFrame: 30, endFrame: 90 }
+			},
+			[{ ...media, audioCodecSupported: false }]
+		);
+
+		expect(result).toMatchObject({
+			eligible: true,
+			plan: { includeAudio: false, audioCodec: undefined }
+		});
+	});
+
 	it('rejects non-keyframe starts and any visual or audio edit', () => {
 		expect(
 			assessSmartCopy(

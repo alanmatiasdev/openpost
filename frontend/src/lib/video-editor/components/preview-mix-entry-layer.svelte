@@ -28,6 +28,8 @@
 		SOUND_TOUCH_PREVIEW_PROCESSOR_NAME
 	} from '$lib/video-editor/audio/soundtouch-preview-worklet';
 	import { prepareAudioBufferForSoundTouchPreview } from '$lib/video-editor/audio/soundtouch-preview-buffer';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
 
 	let { entry, url }: { entry: MixEntry; url?: string | null } = $props();
 	let audio = $state<HTMLAudioElement | null>(null);
@@ -38,11 +40,14 @@
 	let processedStartedAt = 0;
 	let processedStartedFrame = 0;
 	let processedPlaying = false;
+	const audioCodec = $derived(mediaPool.get(entry.mediaId)?.audioCodec);
+	const unsupportedAudio = $derived(mediaPool.get(entry.mediaId)?.audioCodecSupported === false);
 	const needsProcessing = $derived(
 		entry.reversed ||
 			Math.abs(entry.playbackRate - 1) > 0.0001 ||
 			isAudioPitchShiftActive(entry.pitchShiftSemitones) ||
-			entry.audioEqStages.some(isAudioEqStageActive)
+			entry.audioEqStages.some(isAudioEqStageActive) ||
+			isAc3AudioCodec(audioCodec)
 	);
 
 	function gainAt(time: number): number {
@@ -117,7 +122,7 @@
 		setPreviewClipEq(graph, entry.audioEqStages);
 		void Promise.all([
 			ensureSoundTouchPreviewWorkletLoaded(context),
-			decodedPreviewAudio(sourceUrl)
+			decodedPreviewAudio(sourceUrl, audioCodec)
 		]).then(async ([loaded, decoded]) => {
 			if (!loaded || stale) return;
 			const prepared = await prepareAudioBufferForSoundTouchPreview(decoded, context.sampleRate);
@@ -217,7 +222,7 @@
 	});
 </script>
 
-{#if url}
+{#if url && !unsupportedAudio}
 	<!-- svelte-ignore a11y_media_has_caption -- nested sequence audio has no visual caption -->
 	<audio bind:this={audio} src={url} volume={needsProcessing ? 0 : undefined}></audio>
 {/if}

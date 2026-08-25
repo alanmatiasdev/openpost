@@ -71,15 +71,21 @@
 		type InterpolationFactor
 	} from '$lib/video-editor/media/processing/interpolation/interpolation-factor';
 	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+	import {
+		MediaImportCancelledError,
+		type UnsupportedAudioImportRequest
+	} from '$lib/video-editor/media/import.svelte';
 
 	let {
 		projectId,
 		onsequenceopen = () => undefined,
-		onsourceopen = () => undefined
+		onsourceopen = () => undefined,
+		onUnsupportedAudio
 	}: {
 		projectId: string;
 		onsequenceopen?: () => void;
 		onsourceopen?: (mediaId: string) => void;
+		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
 	} = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
@@ -219,7 +225,17 @@
 	}
 
 	async function importUrl(url: string): Promise<void> {
-		const id = await importMediaFromUrl(url, { projectId, storageMode: 'copy' });
+		let id: string;
+		try {
+			id = await importMediaFromUrl(url, {
+				projectId,
+				storageMode: 'copy',
+				onUnsupportedAudio
+			});
+		} catch (error) {
+			if (error instanceof MediaImportCancelledError) return;
+			throw error;
+		}
 		const imported = mediaPool.get(id);
 		showToast(m.video_editor_media_import_url_done({ name: imported?.fileName ?? id }), 'success');
 	}

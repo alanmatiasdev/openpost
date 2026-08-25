@@ -156,7 +156,10 @@
 			editorSession.fps,
 			transitionsStore.list,
 			sequenceStore.compositions
-		).filter((entry) => entry.itemId.includes('/'))
+		).filter(
+			(entry) =>
+				entry.itemId.includes('/') && mediaPool.get(entry.mediaId)?.audioCodecSupported !== false
+		)
 	);
 	const trackOrderById = $derived(
 		new Map(timelineStore.tracks.map((track) => [track.id, track.order]))

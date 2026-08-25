@@ -8,6 +8,8 @@
 
 import { createLogger } from '../../workspace-fs/logger';
 import { ensureProResDecoderForCodec } from '../prores-decoder';
+import { ensureAc3DecoderForCodec } from '../ac3-decoder';
+import { isAudioCodecSupported } from '../audio-codec-support';
 import { clampPacketToTimeline } from './audio-packet-timeline';
 
 const logger = createLogger('RenderSupport');
@@ -19,6 +21,8 @@ export type VideoSampleInstance = InstanceType<Mediabunny['VideoSample']>;
 export type VideoSampleSourceInstance = InstanceType<Mediabunny['VideoSampleSource']>;
 type EncodedPacketInstance = InstanceType<Mediabunny['EncodedPacket']>;
 type EncodedAudioPacketSourceInstance = InstanceType<Mediabunny['EncodedAudioPacketSource']>;
+type AudioSampleInstance = InstanceType<Mediabunny['AudioSample']>;
+type AudioSampleSourceInstance = InstanceType<Mediabunny['AudioSampleSource']>;
 
 export class Cancelled extends Error {
 	constructor() {
@@ -82,23 +86,32 @@ export class EncodeQueue {
 }
 
 /**
- * Copies the source's audio into the output **without re-encoding**. Both renders preserve the
- * source duration, so its packets are still valid verbatim; passthrough keeps the original quality
- * and costs nothing next to the render.
+ * Preserves source audio while video frames are re-rendered. Compatible codecs use exact packet
+ * passthrough. Decodable codecs that MP4 cannot carry, including AC-3, are transcoded once.
  *
  * Packets are pumped in step with the video timeline rather than all up front — the muxer would
  * otherwise buffer the entire video track while waiting for audio to catch up.
  *
- * When the source has no audio, or its codec cannot live in an MP4, this becomes a no-op rather
- * than a `null` the render loop has to branch on.
+ * Sources without audio and tracks the user explicitly accepted as unsupported become a no-op
+ * rather than a `null` the render loop has to branch on.
  */
-interface AudioStream {
+interface PacketAudioStream {
+	readonly kind: 'packet';
 	readonly source: EncodedAudioPacketSourceInstance;
 	readonly packets: AsyncGenerator<EncodedPacketInstance>;
 }
 
+interface SampleAudioStream {
+	readonly kind: 'sample';
+	readonly source: AudioSampleSourceInstance;
+	readonly samples: AsyncGenerator<AudioSampleInstance>;
+}
+
+type AudioStream = PacketAudioStream | SampleAudioStream;
+
 class AudioCopier {
 	private nextPacket: EncodedPacketInstance | null = null;
+	private nextSample: AudioSampleInstance | null = null;
 	private meta: EncodedAudioChunkMetadata | undefined;
 
 	/** Null once exhausted, and from the start when there is no audio to copy. */
@@ -121,6 +134,23 @@ class AudioCopier {
 	async pumpUntil(timestamp: number): Promise<void> {
 		const stream = this.stream;
 		if (!stream) return;
+		if (stream.kind === 'sample') {
+			for (;;) {
+				this.nextSample ??= (await stream.samples.next()).value ?? null;
+				const sample = this.nextSample;
+				if (!sample) {
+					this.stream = null;
+					return;
+				}
+				if (sample.timestamp > timestamp) return;
+				this.nextSample = null;
+				try {
+					await stream.source.add(sample);
+				} finally {
+					sample.close();
+				}
+			}
+		}
 
 		for (;;) {
 			this.nextPacket ??= (await stream.packets.next()).value ?? null;
@@ -146,7 +176,7 @@ class AudioCopier {
 	}
 }
 
-/** Passthrough is only possible when MP4 can carry the source's audio codec verbatim. */
+/** Use lossless packet passthrough when possible and transcode only when the container requires it. */
 export async function setupAudioCopy(
 	mb: Mediabunny,
 	input: InputInstance,
@@ -154,19 +184,36 @@ export async function setupAudioCopy(
 ): Promise<AudioCopier> {
 	const track = await input.getPrimaryAudioTrack();
 	const codec = track?.codec;
-	if (!track || !codec || !output.format.getSupportedAudioCodecs().includes(codec)) {
-		if (track) {
-			logger.warn('Dropping audio: MP4 cannot carry this codec verbatim', {
-				codec
-			});
-		}
+	if (!track || !codec) return AudioCopier.inert();
+	if (!isAudioCodecSupported(codec)) {
+		logger.warn('Leaving an explicitly unsupported audio track out of processed media', { codec });
 		return AudioCopier.inert();
 	}
+	if (output.format.getSupportedAudioCodecs().includes(codec)) {
+		const source = new mb.EncodedAudioPacketSource(codec);
+		output.addAudioTrack(source);
+		const packets = new mb.EncodedPacketSink(track).packets();
+		return AudioCopier.enabled({ kind: 'packet', source, packets }, await track.getDecoderConfig());
+	}
 
-	const source = new mb.EncodedAudioPacketSource(codec);
+	await ensureAc3DecoderForCodec(codec);
+	const outputCodecs = output.format.getSupportedAudioCodecs();
+	const transcodedCodec = await mb.getFirstEncodableAudioCodec(outputCodecs, {
+		numberOfChannels: track.numberOfChannels,
+		sampleRate: track.sampleRate,
+		bitrate: 192_000
+	});
+	if (!transcodedCodec) {
+		throw new Error(`No encoder can preserve the ${codec} audio track in processed media.`);
+	}
+	logger.info('Transcoding audio because the output container cannot carry it verbatim', {
+		fromCodec: codec,
+		toCodec: transcodedCodec
+	});
+	const source = new mb.AudioSampleSource({ codec: transcodedCodec, bitrate: 192_000 });
 	output.addAudioTrack(source);
-	const packets = new mb.EncodedPacketSink(track).packets();
-	return AudioCopier.enabled({ source, packets }, await track.getDecoderConfig());
+	const samples = new mb.AudioSampleSink(track).samples();
+	return AudioCopier.enabled({ kind: 'sample', source, samples }, null);
 }
 
 export async function getSourceBlobFromOpfs(path: string, mimeType?: string): Promise<Blob> {

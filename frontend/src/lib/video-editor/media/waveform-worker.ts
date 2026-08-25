@@ -7,6 +7,7 @@
  */
 
 import { Input, AudioSampleSink, ALL_FORMATS, BlobSource } from 'mediabunny';
+import { ensureAc3DecoderForCodec } from './ac3-decoder';
 
 export interface WaveformGenerateRequest {
 	type: 'generate';
@@ -90,6 +91,7 @@ self.onmessage = async (event: MessageEvent<WaveformWorkerRequest>): Promise<voi
 		input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
 		const audioTrack = await input.getPrimaryAudioTrack();
 		if (!audioTrack) throw new Error('No audio track found');
+		await ensureAc3DecoderForCodec(audioTrack.codec);
 		if (state.aborted) throw new DOMException('Waveform decoding cancelled', 'AbortError');
 
 		const durationSeconds = await audioTrack.computeDuration();

@@ -3,6 +3,7 @@ import { clearWaveformCache, getWaveform, subscribeWaveform } from './waveform-c
 import { loadWaveform } from './waveform-persistence';
 import type { MediaMetadata } from './types';
 import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
+import ac3FixtureUrl from './fixtures/tone-ac3.mkv?url';
 
 function linkedFileHandle(name: string, file: File | Promise<File>): FileSystemFileHandle {
 	const handle: FileSystemFileHandle = {
@@ -56,6 +57,37 @@ function sourceWave(): File {
 }
 
 describe('waveform cache maintenance', () => {
+	it('decodes real AC-3 peaks through the worker decoder', async () => {
+		const response = await fetch(ac3FixtureUrl);
+		expect(response.ok).toBe(true);
+		const file = new File([await response.blob()], 'tone-ac3.mkv', {
+			type: 'audio/x-matroska'
+		});
+		const id = `waveform-ac3-${crypto.randomUUID()}`;
+		const media: MediaMetadata = {
+			id,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(file.name, file),
+			fileName: file.name,
+			fileSize: file.size,
+			mimeType: file.type,
+			duration: 0.3,
+			width: 0,
+			height: 0,
+			fps: 0,
+			codec: '',
+			audioCodec: 'ac3',
+			audioCodecSupported: true,
+			bitrate: 96_000,
+			tags: ['audio']
+		};
+
+		const waveform = await getWaveform(media);
+		expect(waveform.peaks.length).toBeGreaterThan(100);
+		expect(Math.max(...waveform.peaks)).toBeGreaterThan(0.01);
+		await clearWaveformCache(id);
+	});
+
 	it('cancels a real decode without poisoning the next attempt', async () => {
 		const file = sourceWave();
 		const id = `waveform-cancel-${crypto.randomUUID()}`;

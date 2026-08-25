@@ -58,7 +58,11 @@ self.onmessage = async (event: MessageEvent<RenderExportWorkerRequest>) => {
 			assessSmartCopy(message.project, message.options, message.media).eligible;
 		const mediaWithAudio = new Set(
 			message.media
-				.filter((media) => Boolean(media.audioCodec) || media.tags.includes('audio'))
+				.filter(
+					(media) =>
+						media.audioCodecSupported !== false &&
+						(Boolean(media.audioCodec) || media.tags.includes('audio'))
+				)
 				.map((media) => media.id)
 		);
 		const plannedAudio = planNestedMixdown(

@@ -40,6 +40,8 @@
 	} from '$lib/video-editor/audio/soundtouch-preview-worklet';
 	import { prepareAudioBufferForSoundTouchPreview } from '$lib/video-editor/audio/soundtouch-preview-buffer';
 	import type { ResolvedAudioEqSettings } from '$lib/video-editor/audio/types';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
 
 	let { item, url }: { item: TimelineItem; url?: string | null } = $props();
 	let audio = $state<HTMLAudioElement | null>(null);
@@ -57,7 +59,13 @@
 	let processedPlaying = false;
 
 	const resolved = $derived(resolveAnimatedItemAt(item, timelineStore.currentFrame));
-	const needsProcessing = $derived(requiresProcessedPreviewAudio(item));
+	const audioCodec = $derived(item.mediaId ? mediaPool.get(item.mediaId)?.audioCodec : undefined);
+	const unsupportedAudio = $derived(
+		item.mediaId ? mediaPool.get(item.mediaId)?.audioCodecSupported === false : false
+	);
+	const needsProcessing = $derived(
+		requiresProcessedPreviewAudio(item) || isAc3AudioCodec(audioCodec)
+	);
 	const processingSignature = $derived(
 		JSON.stringify({
 			speed: item.speed ?? 1,
@@ -166,7 +174,7 @@
 				(item.sourceStart ?? 0) +
 					(item.durationInFrames / editorSession.fps) * (item.speed ?? 1) * sourceFps) / sourceFps;
 		let stale = false;
-		void reversedPreviewAudio(sourceUrl, startSeconds, endSeconds).then((buffer) => {
+		void reversedPreviewAudio(sourceUrl, startSeconds, endSeconds, audioCodec).then((buffer) => {
 			if (!stale) reverseBuffer = buffer;
 		});
 		return () => {
@@ -204,7 +212,7 @@
 		rampPreviewClipGain(graph, volume, context.currentTime, 0);
 		void Promise.all([
 			ensureSoundTouchPreviewWorkletLoaded(context),
-			decodedPreviewAudio(sourceUrl)
+			decodedPreviewAudio(sourceUrl, audioCodec)
 		]).then(async ([loaded, decoded]) => {
 			if (!loaded || stale) return;
 			const prepared = await prepareAudioBufferForSoundTouchPreview(decoded, context.sampleRate);
@@ -325,7 +333,7 @@
 	});
 </script>
 
-{#if url}
+{#if url && !unsupportedAudio}
 	<!-- svelte-ignore a11y_media_has_caption -- timeline audio has no visual caption -->
 	<audio bind:this={audio} src={url} volume={needsProcessing ? 0 : volume}></audio>
 {/if}

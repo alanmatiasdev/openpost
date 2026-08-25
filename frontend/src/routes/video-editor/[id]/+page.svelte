@@ -27,7 +27,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
 	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
 	import { insertFreezeFrame } from '$lib/video-editor/media/insert-freeze-frame.svelte';
-	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
+	import {
+		importFromPicker,
+		type UnsupportedAudioImportRequest
+	} from '$lib/video-editor/media/import.svelte';
 	import {
 		addTransition,
 		removeTransition,
@@ -69,6 +72,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import ColorGradingDock from '$lib/video-editor/components/color-grading-dock.svelte';
 	import MotionWorkspacePanel from '$lib/video-editor/components/motion-workspace-panel.svelte';
 	import MediaRecoveryDialog from '$lib/video-editor/components/media-recovery-dialog.svelte';
+	import UnsupportedAudioImportDialog from '$lib/video-editor/components/unsupported-audio-import-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
 	import SourceMonitor from '$lib/video-editor/components/source-monitor.svelte';
 	import TransportBar from '$lib/video-editor/components/transport-bar.svelte';
@@ -106,6 +110,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let freezingItemId = $state<string | null>(null);
 	let motionReturnStack = $state<Array<string | null>>([]);
 	let settingsOpen = $state(false);
+	let unsupportedAudioRequest = $state<UnsupportedAudioImportRequest | null>(null);
+	let unsupportedAudioResolve: ((decision: 'import' | 'cancel') => void) | null = null;
 	let assetPanel = $state<'media' | 'assets' | 'scenes' | 'ai'>('media');
 	let mobileEditPane = $state<'assets' | 'program' | 'tools'>('program');
 	const activeWorkspace = $derived(editorWorkspace.current);
@@ -136,10 +142,31 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	async function handleImport(): Promise<void> {
 		if (!projectId) return;
 		try {
-			await importFromPicker({ projectId, storageMode: 'copy' });
+			await importFromPicker({
+				projectId,
+				storageMode: 'copy',
+				onUnsupportedAudio: requestUnsupportedAudioDecision
+			});
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		}
+	}
+
+	function requestUnsupportedAudioDecision(
+		request: UnsupportedAudioImportRequest
+	): Promise<'import' | 'cancel'> {
+		resolveUnsupportedAudioDecision('cancel');
+		unsupportedAudioRequest = request;
+		return new Promise((resolve) => {
+			unsupportedAudioResolve = resolve;
+		});
+	}
+
+	function resolveUnsupportedAudioDecision(decision: 'import' | 'cancel'): void {
+		const resolve = unsupportedAudioResolve;
+		unsupportedAudioResolve = null;
+		unsupportedAudioRequest = null;
+		resolve?.(decision);
 	}
 
 	function handleGeneratedAudioInserted(itemId: string): void {
@@ -419,6 +446,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		const item = timelineStore.itemById.get(selectedItemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
 		if (!item || !media) return;
+		if (media.audioCodecSupported === false) {
+			showToast(m.video_editor_unsupported_audio_title(), 'error');
+			return;
+		}
 		transcribing = true;
 		transcriptionProgress = null;
 		transcriptionBackend = null;
@@ -913,6 +944,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{#if assetPanel === 'media'}
 								<MediaPoolList
 									{projectId}
+									onUnsupportedAudio={requestUnsupportedAudioDecision}
 									onsequenceopen={resetTimelineSelection}
 									onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
 								/>
@@ -1255,3 +1287,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 <EditorSettingsDialog bind:open={settingsOpen} />
 
 <MediaRecoveryDialog onedit={() => editorSession.scheduleAutosave()} />
+
+<UnsupportedAudioImportDialog
+	open={unsupportedAudioRequest !== null}
+	fileName={unsupportedAudioRequest?.fileName ?? ''}
+	codec={unsupportedAudioRequest?.codec ?? ''}
+	ondecision={resolveUnsupportedAudioDecision}
+/>

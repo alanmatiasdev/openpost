@@ -79,6 +79,7 @@ import { assessSmartCopy } from './smart-copy-plan';
 import { smartCopy } from './smart-copy';
 import { applyCompositionControlOverrides } from '../sequences/composition-controls';
 import { ensureProResDecoderForCodec } from './prores-decoder';
+import { ensureAc3DecoderForCodec } from './ac3-decoder';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -157,6 +158,7 @@ async function decodeAudioBuffer(blob: Blob): Promise<AudioBuffer> {
 	try {
 		const track = await input.getPrimaryAudioTrack();
 		if (!track) throw new Error('Clip has no audio to mix');
+		await ensureAc3DecoderForCodec(track.codec);
 		const sink = new AudioSampleSink(track);
 		const channels: Float32Array[][] = [];
 		let totalFrames = 0;

@@ -317,7 +317,11 @@ export function assessSmartCopy(
 	const activeAudioItem = companion ?? video;
 	const activeAudioTrack = trackById.get(activeAudioItem.trackId)!;
 	const audioVolume = (activeAudioItem.volume ?? 1) * (activeAudioTrack.volume ?? 1);
-	const includeAudio = !activeAudioTrack.muted && audioVolume > 0 && Boolean(media.audioCodec);
+	const includeAudio =
+		media.audioCodecSupported !== false &&
+		!activeAudioTrack.muted &&
+		audioVolume > 0 &&
+		Boolean(media.audioCodec);
 	const sourceAudioCodec = includeAudio ? audioCodec(media.audioCodec) : null;
 	if (
 		includeAudio &&

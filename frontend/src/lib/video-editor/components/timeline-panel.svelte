@@ -345,7 +345,9 @@
 			const mediaId = item.mediaId;
 			if ((item.type !== 'video' && item.type !== 'audio') || !mediaId) continue;
 			const media = mediaPool.get(mediaId);
-			const hasAudio = media?.tags.includes('audio') || Boolean(media?.audioCodec);
+			const hasAudio =
+				media?.audioCodecSupported !== false &&
+				(media?.tags.includes('audio') || Boolean(media?.audioCodec));
 			if (!media || !hasAudio) continue;
 			neededMediaIds.add(mediaId);
 			if (waveforms[mediaId]) continue;
@@ -488,7 +490,7 @@
 		};
 	}
 
-	function observeTimelineItem(node: HTMLElement, itemId: string): { destroy: () => void } {
+	function observeTimelineItem(node: HTMLElement, itemId: string) {
 		queueMicrotask(() => {
 			if (!node.isConnected || !scrollContainer) return;
 			if (!timelineItemObserver) {
@@ -496,7 +498,10 @@
 					(entries) => {
 						const next = new Set(visibleTimelineItemIds);
 						for (const entry of entries) {
-							const id = (entry.target as HTMLElement).dataset.timelineItemId;
+							const id =
+								entry.target instanceof HTMLElement
+									? entry.target.dataset.timelineItemId
+									: undefined;
 							if (!id) continue;
 							if (entry.isIntersecting) next.add(id);
 							else next.delete(id);
@@ -588,7 +593,7 @@
 					targetFrameIndices: [...(visibleTargets.get(mediaId) ?? [])],
 					allowExtraction: editorSettings.extractFilmstrips
 				})
-				.catch((error: unknown) => {
+				.catch((error: Error) => {
 					if (error instanceof DOMException && error.name === 'AbortError') return;
 					if (!filmstripUnsubscribers.has(mediaId)) return;
 					filmstrips[mediaId] = {

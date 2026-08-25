@@ -1,7 +1,8 @@
-import { ALL_FORMATS, BlobSource, EncodedPacketSink, Input } from 'mediabunny';
+import { ALL_FORMATS, AudioSampleSink, BlobSource, EncodedPacketSink, Input } from 'mediabunny';
 import { Chunker } from '../lib/chunker';
 import { downmixToMono, resampleTo16kHz } from '../lib/resampler';
 import type { MainThreadMessage, PCMChunk } from '../types';
+import { ensureAc3DecoderForCodec, isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
 
 let port: MessagePort | null = null;
 let whisperQueueSize = 0;
@@ -9,14 +10,19 @@ let whisperQueueWaiter: (() => void) | null = null;
 let paused = false;
 let pauseWaiter: (() => void) | null = null;
 
-self.onmessage = async (event: MessageEvent) => {
-	const message = event.data as {
-		type: string;
-		port?: MessagePort;
-		file?: File;
-		sourceStartSeconds?: number;
-		sourceEndSeconds?: number;
-	};
+type DecoderWorkerMessage =
+	| { type: 'port'; port: MessagePort }
+	| { type: 'pause' }
+	| { type: 'resume' }
+	| {
+			type: 'init';
+			file: File;
+			sourceStartSeconds?: number;
+			sourceEndSeconds?: number;
+	  };
+
+self.onmessage = async (event: MessageEvent<DecoderWorkerMessage>) => {
+	const message = event.data;
 
 	if (message.type === 'port' && message.port) {
 		port = message.port;
@@ -45,7 +51,7 @@ self.onmessage = async (event: MessageEvent) => {
 		return;
 	}
 
-	if (message.type === 'init' && message.file) {
+	if (message.type === 'init') {
 		try {
 			await run(message.file, message.sourceStartSeconds ?? 0, message.sourceEndSeconds);
 		} catch (error) {
@@ -65,10 +71,6 @@ function awaitResume(): Promise<void> {
 }
 
 async function run(file: File, requestedStart: number, requestedEnd?: number): Promise<void> {
-	if (typeof AudioDecoder === 'undefined') {
-		throw new Error('WebCodecs AudioDecoder is not available in this browser');
-	}
-
 	const input = new Input({
 		formats: ALL_FORMATS,
 		source: new BlobSource(file)
@@ -84,26 +86,65 @@ async function run(file: File, requestedStart: number, requestedEnd?: number): P
 	const sourceStart = Math.min(Math.max(0, requestedStart), mediaDuration);
 	const sourceEnd = Math.min(Math.max(sourceStart, requestedEnd ?? mediaDuration), mediaDuration);
 	const duration = sourceEnd - sourceStart;
+	const chunker = new Chunker((chunk: PCMChunk) => {
+		if (!port) return;
+		port.postMessage(chunk, [chunk.samples.buffer]);
+	}, duration);
+
+	if (isAc3AudioCodec(audioTrack.codec)) {
+		try {
+			await ensureAc3DecoderForCodec(audioTrack.codec);
+			let lastDecodePct = -1;
+			for await (const sample of new AudioSampleSink(audioTrack).samples(sourceStart, sourceEnd)) {
+				try {
+					if (paused) await awaitResume();
+					while (whisperQueueSize >= 3) {
+						await new Promise<void>((resolve) => (whisperQueueWaiter = resolve));
+					}
+					const channels: Float32Array[] = [];
+					for (let channel = 0; channel < sample.numberOfChannels; channel += 1) {
+						const plane = new Float32Array(sample.numberOfFrames);
+						sample.copyTo(plane, { format: 'f32-planar', planeIndex: channel });
+						channels.push(plane);
+					}
+					chunker.push(resampleTo16kHz(downmixToMono(channels), sample.sampleRate));
+					if (duration > 0) {
+						const progress = Math.min(Math.max(0, sample.timestamp - sourceStart) / duration, 1);
+						const pct = Math.floor(progress * 100);
+						if (pct > lastDecodePct) {
+							lastDecodePct = pct;
+							postMain({ type: 'progress', event: { stage: 'decoding', progress } });
+						}
+					}
+				} finally {
+					sample.close();
+				}
+			}
+			chunker.flush();
+			postMain({ type: 'progress', event: { stage: 'decoding', progress: 1 } });
+			return;
+		} finally {
+			input.dispose();
+		}
+	}
+
+	if (!globalThis.AudioDecoder) {
+		input.dispose();
+		throw new Error('WebCodecs AudioDecoder is not available in this browser');
+	}
 	const decoderConfig = await audioTrack.getDecoderConfig();
 	if (!decoderConfig) {
 		input.dispose();
 		throw new Error('MediaBunny returned no decoder config for this file');
 	}
 
-	const support = await AudioDecoder.isConfigSupported(decoderConfig);
+	const support = await globalThis.AudioDecoder.isConfigSupported(decoderConfig);
 	if (!support.supported) {
 		input.dispose();
 		throw new Error(`Audio codec is not supported by this browser (${decoderConfig.codec})`);
 	}
 
-	const chunker = new Chunker((chunk: PCMChunk) => {
-		if (!port) {
-			return;
-		}
-		port.postMessage(chunk, [chunk.samples.buffer]);
-	}, duration);
-
-	const decoder = new AudioDecoder({
+	const decoder = new globalThis.AudioDecoder({
 		output(audioData: AudioData) {
 			try {
 				const numChannels = audioData.numberOfChannels;
@@ -217,5 +258,5 @@ async function run(file: File, requestedStart: number, requestedEnd?: number): P
 }
 
 function postMain(message: MainThreadMessage): void {
-	(self as unknown as Worker).postMessage(message);
+	self.postMessage(message);
 }

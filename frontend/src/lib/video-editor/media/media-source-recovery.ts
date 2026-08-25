@@ -85,6 +85,7 @@ async function probeReplacement(file: File): Promise<ReplacementProbe> {
 		fps: probe.fps,
 		codec: probe.videoCodec ?? '',
 		audioCodec: probe.audioCodec,
+		audioCodecSupported: probe.audioCodecSupported,
 		keyframeTimestamps: probe.keyframeTimestamps,
 		gopInterval: probe.gopInterval,
 		thumbnailBlob: probe.thumbnailBlob
@@ -164,6 +165,7 @@ export function createMediaSourceRecovery(runtime: MediaSourceRecoveryRuntime) {
 			fps: probe.fps,
 			codec: probe.codec,
 			audioCodec: probe.audioCodec,
+			audioCodecSupported: probe.audioCodecSupported,
 			keyframeTimestamps: probe.keyframeTimestamps,
 			gopInterval: probe.gopInterval,
 			lottieTotalFrames: probe.lottieTotalFrames,

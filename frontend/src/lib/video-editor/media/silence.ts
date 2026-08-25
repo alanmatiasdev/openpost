@@ -13,6 +13,7 @@ import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './import.svelte';
 import type { TimelineItem } from '../project/types';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { ensureAc3DecoderForCodec } from './ac3-decoder';
 
 export interface RemoveSilenceOptions extends AudioSilenceDetectionOptions {
 	/** 'signal' decodes audio; 'speech' derives gaps from the transcript. */
@@ -47,6 +48,7 @@ async function decodeAudio(
 	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
 	const track = await input.getPrimaryAudioTrack();
 	if (!track) throw new Error('No audio track');
+	await ensureAc3DecoderForCodec(track.codec);
 	const sink = new AudioSampleSink(track);
 	let totalFrames = 0;
 	let sampleRate = 48000;

@@ -6,6 +6,7 @@ import {
 } from './media-file-types';
 import { probeMediaFile } from './probe-client';
 import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
+import ac3FixtureUrl from './fixtures/tone-ac3.mkv?url';
 
 function transparentGif(): File {
 	const bytes = Uint8Array.from(
@@ -68,5 +69,20 @@ describe('video media probe worker', () => {
 		expect([proRes.width, proRes.height]).toEqual([64, 36]);
 		expect(proRes.durationSeconds).toBeGreaterThan(0);
 		expect(proRes.thumbnailBlob?.size).toBeGreaterThan(0);
+	});
+});
+
+describe('audio media probe worker', () => {
+	it('marks real AC-3 media as supported by the custom decoder', async () => {
+		const response = await fetch(ac3FixtureUrl);
+		expect(response.ok).toBe(true);
+		const result = await probeMediaFile(
+			new File([await response.blob()], 'tone-ac3.mkv', { type: 'audio/x-matroska' })
+		);
+
+		expect(result.kind).toBe('audio');
+		expect(result.audioCodec).toBe('ac3');
+		expect(result.audioCodecSupported).toBe(true);
+		expect(result.durationSeconds).toBeGreaterThan(0.25);
 	});
 });

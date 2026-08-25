@@ -8,9 +8,10 @@ preview/export/UI behavior into OpenPost source; file names, type names, and tes
 alone were not accepted as parity. Focus areas were the largest LoC gaps: timeline,
 editor shell, preview/runtime, keyframes, export, media-library. Audited 2026-08-25.
 
-**Result: 12 confirmed behavioral gaps, none of which the parity audit lists as
-PARTIAL or MISSING.** Most are unclaimed sub-capabilities of rows marked PRESENT;
-two contradict their row's evidence. No product code was changed.
+**Initial result: 12 confirmed behavioral gaps, none of which the parity audit
+listed as PARTIAL or MISSING.** Most were unclaimed sub-capabilities of rows
+marked PRESENT; two contradicted their row's evidence. The list below preserves
+the audit evidence, while the resolution log records later product changes.
 
 ## Confirmed gaps (ordered by impact)
 
@@ -28,6 +29,16 @@ two contradict their row's evidence. No product code was changed.
 | 10  | Media-pool drag onto the timeline missing                                | `media-library/components/media-card.tsx` is draggable; `use-media-library-drag-drop.ts` + `timeline/hooks/use-external-drag-preview.ts` show a placement ghost on the timeline                                                                                                                                                                                                          | `components/media-pool-list.svelte` offers button insertion (`addToTimeline`, line 286); drag placement exists only for scene results (`timeline-panel.svelte:1229`)                                          | Placing media at a specific track/time requires insert-then-move; scene results alone support direct drag.                                                                                       |
 | 11  | No hover frame-preview bubble while scrubbing/hovering the timeline      | `timeline/components/timeline-preview-scrubber.tsx` + `shared/ui/timeline-preview-scrubber-visual`: floating filmstrip frame follows the pointer during ruler hover/scrub                                                                                                                                                                                                                | `components/timeline-panel.svelte` has ruler scrub for playback only; no hover frame preview                                                                                                                  | Finding an exact visually distinctive frame requires moving the playhead and watching the program monitor repeatedly.                                                                            |
 | 12  | No clear-keyframes command for selections                                | `editor/components/clear-keyframes-dialog.tsx`: Shift+A/context-menu clears all keyframes, or one property's keyframes, across the multi-selection, with confirmation and undo hint                                                                                                                                                                                                      | `timeline/actions/keyframes.ts` supports `removeKeyframes` by explicit refs only (dope-sheet selection); the inspector exposes no per-property or item-level clear                                            | Removing animation from several clips means marquee-selecting every key in the dope sheet per property.                                                                                          |
+
+## Resolution log
+
+- 2026-08-25: gap 2 resolved. Import probing now records codec support, DTS and
+  TrueHD require an explicit import-without-audio decision, and AC-3/E-AC-3 use
+  the lazy `@mediabunny/ac3` decoder in main-thread and worker realms. Real
+  Chromium fixtures prove probing, preview PCM, progressive waveform peaks,
+  transcription PCM, processed-media preservation, and WAV export. Silence
+  analysis and full video export share the same tested `AudioSampleSink` path.
+  Current unresolved count: 11.
 
 ## Rows checked with no gap found
 

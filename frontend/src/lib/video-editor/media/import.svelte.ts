@@ -51,6 +51,19 @@ export interface ImportOptions {
 	storageMode: 'copy' | 'link';
 	attribution?: MediaAttribution;
 	tags?: string[];
+	onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
+}
+
+export interface UnsupportedAudioImportRequest {
+	fileName: string;
+	codec: string;
+}
+
+export class MediaImportCancelledError extends Error {
+	constructor() {
+		super('Media import cancelled.');
+		this.name = 'MediaImportCancelledError';
+	}
 }
 
 export interface GeneratedImageImportOptions {
@@ -160,6 +173,13 @@ export async function importFile(
 				undefined;
 		} else {
 			const probe = await probeMediaFile(file);
+			if (probe.audioCodecSupported === false) {
+				const decision = await options.onUnsupportedAudio?.({
+					fileName: file.name,
+					codec: probe.audioCodec ?? 'unknown'
+				});
+				if (decision !== 'import') throw new MediaImportCancelledError();
+			}
 			metadata = {
 				id,
 				storageType: effectiveStorageMode === 'copy' ? 'workspace' : 'handle',
@@ -176,6 +196,7 @@ export async function importFile(
 				videoCodecSupported: probe.videoCodecSupported,
 				bitrate: Math.round((file.size * 8) / Math.max(probe.durationSeconds, 1)),
 				audioCodec: probe.audioCodec,
+				audioCodecSupported: probe.audioCodecSupported,
 				keyframeTimestamps: probe.keyframeTimestamps,
 				gopInterval: probe.gopInterval,
 				attribution: options.attribution,
@@ -204,6 +225,10 @@ export async function importFile(
 		mediaPool.upsert({ ...metadata, fileHandle: storedHandle }, 'ready');
 		return id;
 	} catch (error) {
+		if (error instanceof MediaImportCancelledError) {
+			mediaPool.remove(id);
+			throw error;
+		}
 		logger.error(`importFile(${handle.name}) failed`, error);
 		mediaPool.setStatus(id, 'failed', error instanceof Error ? error.message : String(error));
 		throw error;
@@ -351,6 +376,7 @@ export async function importGeneratedVideo(
 		videoCodecSupported: probe.videoCodecSupported,
 		bitrate: probe.bitrate || (duration > 0 ? Math.round((file.size * 8) / duration) : 0),
 		audioCodec: probe.audioCodec,
+		audioCodecSupported: probe.audioCodecSupported,
 		keyframeTimestamps: probe.keyframeTimestamps,
 		gopInterval: probe.gopInterval,
 		tags: [...new Set(['video', ...(options.tags ?? [])])]
@@ -469,7 +495,8 @@ export async function importFromPicker(options: ImportOptions): Promise<string[]
 	for (const handle of handles) {
 		try {
 			ids.push(await importFile(handle, options));
-		} catch {
+		} catch (error) {
+			if (error instanceof MediaImportCancelledError) continue;
 			// Per-file failure already surfaced via pool status; keep going.
 		}
 	}

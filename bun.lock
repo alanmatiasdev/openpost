@@ -48,6 +48,7 @@
         "@iconify/utils": "3.1.4",
         "@imgly/background-removal": "1.7.0",
         "@lottiefiles/dotlottie-web": "0.76.0",
+        "@mediabunny/ac3": "1.51.0",
         "@mediabunny/prores": "1.51.0",
         "@noble/hashes": "1.8.0",
         "@openpost/plan-catalog": "workspace:*",
@@ -726,6 +727,8 @@
     "@lottiefiles/dotlottie-web": ["@lottiefiles/dotlottie-web@0.76.0", "", {}, "sha512-uWJ86UJM6hjN4MY2aGSyyFcRQEAM4B9qDCnb/336dHab1zE6nyOF45b90t8xesZPwNtP/2moNGMrMQ1UJW6+lQ=="],
 
     "@lucide/svelte": ["@lucide/svelte@0.577.0", "", { "peerDependencies": { "svelte": "5.56.4" } }, "sha512-0P6mkySd2MapIEgq08tADPmcN4DHndC/02PWwaLkOerXlx5Sv9aT4BxyXLIY+eccr0g/nEyCYiJesqS61YdBZQ=="],
+
+    "@mediabunny/ac3": ["@mediabunny/ac3@1.51.0", "", { "peerDependencies": { "mediabunny": "^1.0.0" } }, "sha512-o/jpbCkV6q8PPUKzO0+JSNxzHduC7jODH0wQJVr3U9rSV6wPP/AV9zys1AhL5G3iq2uG7zj2pxUiwkjye+tkDw=="],
 
     "@mediabunny/prores": ["@mediabunny/prores@1.51.0", "", { "dependencies": { "turbores": "^1.2.2" }, "peerDependencies": { "mediabunny": "^1.49.0" } }, "sha512-YIeUb82gxfA7dnCfgNbp4QaI1i7bMGBheu2QQTyxWZ+CmxCIkzWOfY8X0G3SDTbEiyo/KrED0TIurTb+c8Wraw=="],
 

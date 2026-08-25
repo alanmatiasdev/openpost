@@ -33,7 +33,10 @@
 		},
 		{
 			label: m.video_editor_media_info_audio_codec(),
-			value: media.audioCodec || m.common_none()
+			value:
+				media.audioCodecSupported === false && media.audioCodec
+					? `${media.audioCodec} · ${m.video_editor_unsupported_audio_title()}`
+					: media.audioCodec || m.common_none()
 		},
 		{
 			label: m.video_editor_media_info_bitrate(),
