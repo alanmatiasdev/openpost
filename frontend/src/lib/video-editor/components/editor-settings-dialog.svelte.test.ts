@@ -74,7 +74,11 @@ describe('EditorSettingsDialog', () => {
 		const language = screen.getByRole('combobox', { name: 'Language' });
 		await expect.element(language).toHaveValue('en');
 		await expect.element(language.getByRole('option', { name: 'English' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: 'Español' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: 'Deutsch' })).toBeInTheDocument();
 		await expect.element(language.getByRole('option', { name: 'Português' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: '日本語' })).toBeInTheDocument();
+		await expect.element(language.getByRole('option', { name: '简体中文' })).toBeInTheDocument();
 	});
 
 	it('fits a phone and applies persistent general, timeline, and AI defaults', async () => {
