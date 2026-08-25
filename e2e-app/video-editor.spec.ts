@@ -60,6 +60,14 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
+    await page.getByRole("tab", { name: "Color" }).click();
+    const colorDock = page.getByRole("region", { name: "Color grading" });
+    await expect(colorDock).toBeVisible();
+    await expect(colorDock.getByRole("region", { name: "Timeline overview" })).toBeVisible();
+    await expect(colorDock.getByRole("slider", { name: "Timeline playhead" })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByRole("tab", { name: "Edit" }).click();
     const mobilePanels = page.getByRole("navigation", { name: "Editor panels" });
     await expect(mobilePanels).toBeVisible();
     await mobilePanels.getByRole("button", { name: "Edit", exact: true }).click();
@@ -77,6 +85,12 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   }
 
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("tab", { name: "Color" }).click();
+  const colorDock = page.getByRole("region", { name: "Color grading" });
+  await expect(colorDock).toBeVisible();
+  await expect(colorDock.getByRole("region", { name: "Timeline overview" })).toBeVisible();
+  await expect(colorDock.getByRole("slider", { name: "Timeline playhead" })).toBeVisible();
+  await page.getByRole("tab", { name: "Edit" }).click();
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);

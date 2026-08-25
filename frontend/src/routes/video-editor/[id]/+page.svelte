@@ -1255,6 +1255,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<ColorGradingDock
 						itemId={selectedSupportsEffects ? selectedItemId : null}
 						itemIds={selectedItemIds}
+						onselectitem={handleSelectItem}
 						onedit={() => editorSession.scheduleAutosave()}
 					/>
 				{/if}
