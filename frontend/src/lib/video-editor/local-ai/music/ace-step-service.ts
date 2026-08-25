@@ -13,8 +13,9 @@ import { localAiRuntimeRegistry } from '../runtime-registry';
 
 export const ACE_STEP_STANDARD_DOWNLOAD_BYTES = 5_415_546_914;
 export const ACE_STEP_HIGH_DOWNLOAD_BYTES = 7_793_145_257;
-export const ACE_STEP_MIN_DURATION_SECONDS = 10;
+export const ACE_STEP_MIN_DURATION_SECONDS = 2;
 export const ACE_STEP_MAX_DURATION_SECONDS = 120;
+const ACE_STEP_MODEL_MIN_DURATION_SECONDS = 10;
 const TURBO_UNUSED_ASSET_GROUP = 'audio-code-detokenizer';
 
 export interface MusicGenerationSupport {
@@ -89,6 +90,57 @@ function progressMessage(update: WorkerUpdate): string {
 	if (update.type === 'progress') return update.detail || update.stage.replaceAll('-', ' ');
 	if (update.type === 'stage') return update.detail || update.stage.replaceAll('-', ' ');
 	return 'Preparing ACE-Step';
+}
+
+function chunkId(bytes: Uint8Array, offset: number): string {
+	return String.fromCharCode(
+		bytes[offset] ?? 0,
+		bytes[offset + 1] ?? 0,
+		bytes[offset + 2] ?? 0,
+		bytes[offset + 3] ?? 0
+	);
+}
+
+/** Trim a PCM or float WAV at a whole sample frame without decoding or changing its samples. */
+export async function trimGeneratedWav(blob: Blob, durationSeconds: number): Promise<Blob> {
+	const bytes = new Uint8Array(await blob.arrayBuffer());
+	if (bytes.length < 44 || chunkId(bytes, 0) !== 'RIFF' || chunkId(bytes, 8) !== 'WAVE') {
+		throw new Error('ACE-Step returned an invalid WAV file.');
+	}
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	let offset = 12;
+	let sampleRate = 0;
+	let blockAlign = 0;
+	let dataHeader = -1;
+	let dataOffset = -1;
+	let dataSize = 0;
+	while (offset + 8 <= bytes.length) {
+		const id = chunkId(bytes, offset);
+		const size = view.getUint32(offset + 4, true);
+		const payload = offset + 8;
+		if (payload + size > bytes.length) throw new Error('ACE-Step returned a truncated WAV file.');
+		if (id === 'fmt ' && size >= 16) {
+			sampleRate = view.getUint32(payload + 4, true);
+			blockAlign = view.getUint16(payload + 12, true);
+		} else if (id === 'data') {
+			dataHeader = offset;
+			dataOffset = payload;
+			dataSize = size;
+			break;
+		}
+		offset = payload + size + (size % 2);
+	}
+	if (sampleRate <= 0 || blockAlign <= 0 || dataOffset < 0 || dataHeader < 0) {
+		throw new Error('ACE-Step returned a WAV without a usable audio stream.');
+	}
+	const requestedFrames = Math.max(1, Math.floor(durationSeconds * sampleRate));
+	const trimmedSize = Math.min(dataSize, requestedFrames * blockAlign);
+	if (trimmedSize >= dataSize) return blob;
+	const output = bytes.slice(0, dataOffset + trimmedSize);
+	const outputView = new DataView(output.buffer, output.byteOffset, output.byteLength);
+	outputView.setUint32(dataHeader + 4, trimmedSize, true);
+	outputView.setUint32(4, output.length - 8, true);
+	return new Blob([output], { type: 'audio/wav' });
 }
 
 export class AceStepMusicService {
@@ -215,9 +267,13 @@ export class AceStepMusicService {
 			const runtime = await this.ensureRuntime();
 			unsubscribe = runtime.subscribe(listener);
 			const seed = options.seed ?? crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
+			const renderDurationSeconds = Math.max(
+				ACE_STEP_MODEL_MIN_DURATION_SECONDS,
+				options.durationSeconds
+			);
 			const result: AceStepGenerationResult = await runtime.generate({
 				prompt,
-				durationSeconds: options.durationSeconds,
+				durationSeconds: renderDurationSeconds,
 				audioQuality: options.audioQuality,
 				plannerQuality: 'turbo',
 				seed,
@@ -225,12 +281,16 @@ export class AceStepMusicService {
 				allowWasmFallback: false,
 				signal: abort.signal
 			});
+			const wav =
+				options.durationSeconds < result.durationSeconds
+					? await trimGeneratedWav(result.wav, options.durationSeconds)
+					: result.wav;
 			const fileName = `ai-music-${sanitizeAiOutputFileNameSegment(prompt, 'track')}-${seed}.wav`;
-			const file = new File([result.wav], fileName, { type: 'audio/wav' });
+			const file = new File([wav], fileName, { type: 'audio/wav' });
 			return {
-				blob: result.wav,
+				blob: wav,
 				file,
-				duration: result.durationSeconds,
+				duration: Math.min(options.durationSeconds, result.durationSeconds),
 				sampleRate: result.sampleRate,
 				seed,
 				model: 'ace-step-1.5-xl-turbo',

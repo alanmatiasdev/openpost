@@ -295,7 +295,7 @@
 					type="range"
 					min={ACE_STEP_MIN_DURATION_SECONDS}
 					max={ACE_STEP_MAX_DURATION_SECONDS}
-					step="5"
+					step="1"
 					bind:value={durationSeconds}
 					disabled={generating}
 				/>

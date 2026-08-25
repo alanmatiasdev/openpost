@@ -92,7 +92,9 @@ describe('LocalMusicPanel', () => {
 
 		await expect.element(screen.getByText(/First use downloads up to 5.42 GB/)).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Generate music' })).toBeEnabled();
+		await screen.getByLabelText('Length').fill('2');
 		await screen.getByRole('button', { name: 'Generate music' }).click();
+		expect(generateMusic).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 2 }));
 		await expect.element(screen.getByText('Downloading ACE-Step DiT')).toBeVisible();
 		expect(mediaTasks.get(mediaTaskId('music-generation', 'project-1'))).toEqual(
 			expect.objectContaining({ progress: 0.25, totalBytes: ACE_STEP_STANDARD_DOWNLOAD_BYTES })

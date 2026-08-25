@@ -5,12 +5,13 @@ import {
 	ACE_STEP_STANDARD_DOWNLOAD_BYTES,
 	AceStepMusicService,
 	musicGenerationTags,
+	trimGeneratedWav,
 	type AceStepRuntime
 } from './ace-step-service';
 import { gpuMediaJobScheduler } from '../../media/processing/gpu-media-job-scheduler';
 
 function generationResult(seed: number): AceStepGenerationResult {
-	const wav = new Blob([new Uint8Array([82, 73, 70, 70])], { type: 'audio/wav' });
+	const wav = wavFixture(10);
 	// SAFETY: the service never reads audioBuffer in this wrapper test.
 	const audioBuffer = {} as AudioBuffer;
 	return {
@@ -30,6 +31,34 @@ function generationResult(seed: number): AceStepGenerationResult {
 		timings: {},
 		estimatedPeakBytes: 1
 	};
+}
+
+function wavFixture(durationSeconds: number): Blob {
+	const sampleRate = 48_000;
+	const channels = 1;
+	const bytesPerSample = 2;
+	const blockAlign = channels * bytesPerSample;
+	const dataSize = Math.round(durationSeconds * sampleRate) * blockAlign;
+	const bytes = new Uint8Array(44 + dataSize);
+	const view = new DataView(bytes.buffer);
+	const writeId = (offset: number, value: string) => {
+		for (let index = 0; index < value.length; index++)
+			bytes[offset + index] = value.charCodeAt(index);
+	};
+	writeId(0, 'RIFF');
+	view.setUint32(4, bytes.length - 8, true);
+	writeId(8, 'WAVE');
+	writeId(12, 'fmt ');
+	view.setUint32(16, 16, true);
+	view.setUint16(20, 1, true);
+	view.setUint16(22, channels, true);
+	view.setUint32(24, sampleRate, true);
+	view.setUint32(28, sampleRate * blockAlign, true);
+	view.setUint16(32, blockAlign, true);
+	view.setUint16(34, bytesPerSample * 8, true);
+	writeId(36, 'data');
+	view.setUint32(40, dataSize, true);
+	return new Blob([bytes], { type: 'audio/wav' });
 }
 
 function fakeRuntime() {
@@ -123,9 +152,33 @@ describe('AceStepMusicService', () => {
 			service.generate({ prompt: ' ', durationSeconds: 10, audioQuality: 'standard' })
 		).rejects.toThrow('Describe the music');
 		await expect(
-			service.generate({ prompt: 'Music', durationSeconds: 9, audioQuality: 'standard' })
-		).rejects.toThrow('10 to 120');
+			service.generate({ prompt: 'Music', durationSeconds: 1, audioQuality: 'standard' })
+		).rejects.toThrow('2 to 120');
 		expect(createRuntime).not.toHaveBeenCalled();
+	});
+
+	it('renders the model minimum once and returns an exact short WAV without re-encoding', async () => {
+		const { runtime, generate } = fakeRuntime();
+		const service = new AceStepMusicService(async () => runtime);
+		const result = await service.generate({
+			prompt: 'Two second logo sting',
+			durationSeconds: 2,
+			audioQuality: 'standard',
+			seed: 9
+		});
+
+		expect(generate).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 10 }));
+		expect(result.duration).toBe(2);
+		const bytes = new Uint8Array(await result.blob.arrayBuffer());
+		const view = new DataView(bytes.buffer);
+		expect(view.getUint32(40, true)).toBe(2 * 48_000 * 2);
+		expect(view.getUint32(4, true)).toBe(bytes.length - 8);
+	});
+
+	it('rejects malformed WAV data before exposing a shortened artifact', async () => {
+		await expect(trimGeneratedWav(new Blob([new Uint8Array([82, 73, 70, 70])]), 2)).rejects.toThrow(
+			'invalid WAV'
+		);
 	});
 
 	it('waits behind other GPU media work and cancels without loading the model', async () => {
