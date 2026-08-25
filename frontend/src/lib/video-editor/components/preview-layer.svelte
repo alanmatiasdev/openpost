@@ -893,14 +893,14 @@
 
 	function publishScopeSample(source: CanvasImageSource): void {
 		const now = performance.now();
-		if (now - lastScopeAt < 200) return;
+		if (now - lastScopeAt < (editorSession.clock.isPlaying ? 66 : 200)) return;
 		lastScopeAt = now;
 		const canvas = new OffscreenCanvas(256, 144);
-		const context = canvas.getContext('2d', { willReadFrequently: true });
+		const context = canvas.getContext('2d');
 		if (!context) return;
 		try {
 			context.drawImage(source, 0, 0, 256, 144);
-			scopeSamples.publish(item.id, context.getImageData(0, 0, 256, 144));
+			scopeSamples.publishCanvas(item.id, canvas);
 		} catch {
 			scopeSamples.clear(item.id);
 		}

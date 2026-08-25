@@ -109,7 +109,8 @@
 		status = m.video_editor_color_analyzing();
 		const captured = await colorPreviewStore.requestFrameCapture(targetItemId);
 		const fallback = scopeSamples.current;
-		const image = captured ?? (fallback?.itemId === targetItemId ? fallback.image : null);
+		const image =
+			captured ?? (fallback?.itemId === targetItemId ? scopeSamples.readImage(fallback) : null);
 		if (!image || itemId !== targetItemId) {
 			status = m.video_editor_color_sample_unavailable();
 			return;

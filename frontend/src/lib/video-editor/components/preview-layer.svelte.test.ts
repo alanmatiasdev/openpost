@@ -715,7 +715,8 @@ describe('PreviewLayer GPU rendering', () => {
 			expect(source.style.visibility).toBe('hidden');
 		});
 		await vi.waitFor(() => expect(scopeSamples.current?.itemId).toBe('image'));
-		const sample = scopeSamples.current?.image;
+		const currentSample = scopeSamples.current;
+		const sample = currentSample ? scopeSamples.readImage(currentSample) : null;
 		expect(sample).toBeDefined();
 		if (!sample) return;
 		const centerOffset = (Math.floor(sample.height / 2) * sample.width + sample.width / 2) * 4;

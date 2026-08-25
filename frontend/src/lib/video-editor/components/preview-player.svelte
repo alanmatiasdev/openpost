@@ -528,16 +528,16 @@
 		if (!canvas || !selectedItemId) return;
 		const now = performance.now();
 		const captureRequested = colorPreviewStore.frameCaptureItemId === selectedItemId;
-		if (!captureRequested && now - lastStackScopeAt < 200) return;
+		if (!captureRequested && now - lastStackScopeAt < (isPlaying ? 66 : 200)) return;
 		lastStackScopeAt = now;
 		const sample = new OffscreenCanvas(256, 144);
-		const context = sample.getContext('2d', { willReadFrequently: true });
+		const context = sample.getContext('2d', { willReadFrequently: captureRequested });
 		if (!context) return;
 		try {
 			context.drawImage(canvas, 0, 0, 256, 144);
-			const image = context.getImageData(0, 0, 256, 144);
-			scopeSamples.publish(selectedItemId, image);
-			colorPreviewStore.resolveFrameCapture(selectedItemId, image);
+			const image = captureRequested ? context.getImageData(0, 0, 256, 144) : null;
+			scopeSamples.publishCanvas(selectedItemId, sample, image);
+			if (image) colorPreviewStore.resolveFrameCapture(selectedItemId, image);
 		} catch {
 			scopeSamples.clear(selectedItemId);
 		}
@@ -691,22 +691,24 @@
 	function samplePicker(event: PointerEvent): { r: number; g: number; b: number } | null {
 		const active = scopeSamples.current;
 		if (!viewport || !active || active.itemId !== selectedItemId) return null;
+		const image = scopeSamples.readImage(active);
+		if (!image) return null;
 		const rect = viewport.getBoundingClientRect();
 		if (rect.width <= 0 || rect.height <= 0) return null;
 		const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
 		const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-		const pixelX = Math.min(active.image.width - 1, Math.floor(x * active.image.width));
-		const pixelY = Math.min(active.image.height - 1, Math.floor(y * active.image.height));
-		const offset = (pixelY * active.image.width + pixelX) * 4;
+		const pixelX = Math.min(image.width - 1, Math.floor(x * image.width));
+		const pixelY = Math.min(image.height - 1, Math.floor(y * image.height));
+		const offset = (pixelY * image.width + pixelX) * 4;
 		const color = {
-			r: (active.image.data[offset] ?? 0) / 255,
-			g: (active.image.data[offset + 1] ?? 0) / 255,
-			b: (active.image.data[offset + 2] ?? 0) / 255
+			r: (image.data[offset] ?? 0) / 255,
+			g: (image.data[offset + 1] ?? 0) / 255,
+			b: (image.data[offset + 2] ?? 0) / 255
 		};
 		pickerColor = color;
 		pickerX = Math.max(8, Math.min(rect.width - 88, event.clientX - rect.left + 16));
 		pickerY = Math.max(8, Math.min(rect.height - 104, event.clientY - rect.top + 16));
-		requestAnimationFrame(() => drawPickerLoupe(active.image, pixelX, pixelY));
+		requestAnimationFrame(() => drawPickerLoupe(image, pixelX, pixelY));
 		return color;
 	}
 
