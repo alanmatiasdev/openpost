@@ -16,6 +16,7 @@ import { spatialEffectEditorStore } from '../preview/spatial-effect-editor.svelt
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { createTransformParentBinding } from '../timeline/transform-parenting';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
+import { createMotionAnimationLayer } from '../timeline/motion-layer-eval';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -196,6 +197,71 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('commits a layered canvas move to the editable base without double-counting motion', async () => {
+		await page.viewport(1000, 700);
+		const item = colorLayer('layered', 'video-track', '#ff0000');
+		item.transform = { x: 0, y: 0, width: 100, height: 100, rotation: 0 };
+		item.motionLayers = [
+			createMotionAnimationLayer({
+				name: 'Offset',
+				source: 'built-in-preset',
+				sourcePresetId: 'slide-in-left',
+				anchor: { x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1 },
+				payloads: [{ property: 'x', frame: 0, value: 20, easing: 'linear' }]
+			})
+		];
+		const project: Project = {
+			id: 'layered-canvas-project',
+			name: 'Layered canvas project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [track('video-track', 0)], items: [item] }
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [item],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(PreviewPlayer, { selectedItemId: item.id, onedit });
+		screen.container.style.width = '800px';
+		screen.container.style.height = '500px';
+
+		const move = screen.getByRole('button', { name: 'Move selected clip' });
+		await expect.element(move).toBeVisible();
+		move
+			.element()
+			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+		expect(timelineStore.itemById.get(item.id)?.transform?.x).toBe(1);
+		expect(
+			resolveAnimatedItemAt(timelineStore.itemById.get(item.id)!, 0, {
+				fps: 30,
+				frameWidth: 800,
+				frameHeight: 400,
+				items: timelineStore.items
+			}).transform?.x
+		).toBe(21);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get(item.id)?.transform?.x).toBe(0);
+		expect(
+			resolveAnimatedItemAt(timelineStore.itemById.get(item.id)!, 0, {
+				fps: 30,
+				frameWidth: 800,
+				frameHeight: 400,
+				items: timelineStore.items
+			}).transform?.x
+		).toBe(20);
+	});
+
 	it('wires multi-selection transforms through one atomic timeline command', async () => {
 		await page.viewport(1000, 700);
 		commandHistory.clearHistory();

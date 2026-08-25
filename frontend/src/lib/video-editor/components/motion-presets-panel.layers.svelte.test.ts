@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -45,25 +46,31 @@ beforeEach(() => {
 
 describe('MotionPresetsPanel layers', () => {
 	it('exposes additive layer section with 44 px targets and keyboard access', async () => {
+		await page.viewport(320, 720);
 		const screen = await render(MotionPresetsPanel, props(['one']));
-		expect(screen.getByText('Additive layers')).toBeVisible();
-		expect(screen.getByText('No additive layers on the selection.')).toBeVisible();
-		// narrow width proof: section remains readable at 320 px
-		document.documentElement.style.width = '320px';
-		await screen.getByRole('button', { name: 'Add layer' }).click();
+		await expect.element(screen.getByRole('heading', { name: 'Additive layers' })).toBeVisible();
+		await expect.element(screen.getByText('No additive layers on the selection.')).toBeVisible();
+		const add = screen.getByRole('button', { name: /^Add .* as additive layer$/ }).nth(0);
+		expect(add.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		await add.click();
 		expect(timelineStore.itemById.get('one')?.motionLayers).toHaveLength(1);
-		expect(screen.getByText('Additive layers')).toBeVisible();
-		const toggle = document.querySelector<HTMLInputElement>('.layer-toggle input');
+		await expect.element(screen.getByRole('heading', { name: 'Additive layers' })).toBeVisible();
+		const toggle = screen.container.querySelector<HTMLInputElement>('.layer-toggle input');
 		expect(toggle).not.toBeNull();
-		expect(toggle!.getBoundingClientRect().height).toBeGreaterThanOrEqual(16);
+		expect(toggle!.closest('label')?.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 		const remove = screen.getByRole('button', { name: /Remove .* layer/ });
-		expect(remove.getBoundingClientRect().height).toBeGreaterThanOrEqual(32);
+		expect(remove.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 	});
 
 	it('adds the same preset as additive layer to every selected clip in one undo step', async () => {
 		const input = props(['one', 'two']);
 		const screen = await render(MotionPresetsPanel, input);
-		await screen.getAllByRole('button', { name: /Add .* as additive layer/ })[0]!.click();
+		await screen
+			.getByRole('button', { name: /^Add .* as additive layer$/ })
+			.nth(0)
+			.click();
 		expect(timelineStore.itemById.get('one')?.motionLayers).toHaveLength(1);
 		expect(timelineStore.itemById.get('two')?.motionLayers).toHaveLength(1);
 		expect(commandHistory.undoStack).toHaveLength(1);
@@ -74,9 +81,12 @@ describe('MotionPresetsPanel layers', () => {
 	it('toggles and removes layers without touching base keyframes', async () => {
 		const input = props(['one']);
 		const screen = await render(MotionPresetsPanel, input);
-		await screen.getAllByRole('button', { name: /Add .* as additive layer/ })[1]!.click();
+		await screen
+			.getByRole('button', { name: /^Add .* as additive layer$/ })
+			.nth(1)
+			.click();
 		const beforeToggle = commandHistory.undoStack.length;
-		const toggle = document.querySelector<HTMLInputElement>('.layer-toggle input')!;
+		const toggle = screen.container.querySelector<HTMLInputElement>('.layer-toggle input')!;
 		toggle.click();
 		await vi.waitFor(() =>
 			expect(timelineStore.itemById.get('one')?.motionLayers?.[0].enabled).toBe(false)

@@ -1203,6 +1203,16 @@
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
+	@media (max-width: 640px) {
+		.layer-add-btn,
+		.layer-toggle,
+		.layer-remove {
+			min-height: 2.75rem;
+		}
+		.layer-toggle {
+			flex: 1;
+		}
+	}
 	@media (max-width: 360px) {
 		.preset-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
