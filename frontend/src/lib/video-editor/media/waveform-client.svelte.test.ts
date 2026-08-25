@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { clearWaveformCache, getWaveform } from './waveform-client';
 import { loadWaveform } from './waveform-persistence';
 import type { MediaMetadata } from './types';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
-function linkedFileHandle(name: string, file: File): FileSystemFileHandle {
+function linkedFileHandle(name: string, file: File | Promise<File>): FileSystemFileHandle {
 	const handle: FileSystemFileHandle = {
 		kind: 'file',
 		name,
@@ -55,6 +56,41 @@ function sourceWave(): File {
 }
 
 describe('waveform cache maintenance', () => {
+	it('cancels a real decode without poisoning the next attempt', async () => {
+		const file = sourceWave();
+		const id = `waveform-cancel-${crypto.randomUUID()}`;
+		let releaseSource: ((file: File) => void) | undefined;
+		const sourceReady = new Promise<File>((resolve) => (releaseSource = resolve));
+		const media: MediaMetadata = {
+			id,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(file.name, sourceReady),
+			fileName: file.name,
+			fileSize: file.size,
+			mimeType: file.type,
+			duration: 0.5,
+			width: 0,
+			height: 0,
+			fps: 0,
+			codec: 'pcm_s16le',
+			bitrate: 128_000,
+			tags: ['audio']
+		};
+
+		const request = getWaveform(media);
+		const taskId = mediaTaskId('waveform', id);
+		await vi.waitFor(() => expect(mediaTasks.get(taskId)?.cancellable).toBe(true));
+		const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+		expect(mediaTasks.cancel(taskId)).toBe(true);
+		releaseSource?.(file);
+		await rejection;
+		expect(mediaTasks.get(taskId)).toBeUndefined();
+
+		const retried = await getWaveform(media);
+		expect(retried.peaks.length).toBeGreaterThan(0);
+		await clearWaveformCache(id);
+	});
+
 	it('removes decoded memory and OPFS peaks without touching the source', async () => {
 		const file = sourceWave();
 		const id = `waveform-clear-${crypto.randomUUID()}`;

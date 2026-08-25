@@ -11,6 +11,7 @@
 import type { MediaMetadata } from './types';
 import type { ProxyRequest, ProxyWorkerResponse } from './proxy-worker';
 import { SizedAccessedMemoryCache } from './sized-accessed-memory-cache';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 export const PROXY_MAX_HEIGHT = 540;
 export const PROXY_BITRATE = 1_000_000;
@@ -23,7 +24,13 @@ interface ProxyCacheEntry {
 
 const cache = new SizedAccessedMemoryCache<ProxyCacheEntry>(128 * 1024 * 1024);
 const inflight = new Map<string, Promise<Blob>>();
-const automaticInflight = new Map<string, Promise<Blob>>();
+interface AutomaticProxyJob {
+	controller: AbortController;
+	promise: Promise<Blob>;
+	waiters: Map<symbol, ((progress: number) => void) | undefined>;
+}
+
+const automaticInflight = new Map<string, AutomaticProxyJob>();
 const cacheVersions = new Map<string, number>();
 let automaticQueue: Promise<void> = Promise.resolve();
 
@@ -102,21 +109,91 @@ export function getAutomaticProxy(
 	onProgress?: (progress: number) => void,
 	signal?: AbortSignal
 ): Promise<Blob> {
-	const pending = automaticInflight.get(media.id);
-	if (pending) return pending;
+	if (signal?.aborted) {
+		return Promise.reject(new DOMException('Proxy generation aborted', 'AbortError'));
+	}
+	const pending = automaticInflight.get(media.id) ?? startAutomaticProxyJob(media);
+	return waitForAutomaticProxy(pending, onProgress, signal);
+}
+
+function startAutomaticProxyJob(media: MediaMetadata): AutomaticProxyJob {
+	const taskId = mediaTaskId('proxy', media.id);
+	const taskController = new AbortController();
+	const waiters = new Map<symbol, ((progress: number) => void) | undefined>();
+	const taskRevision = mediaTasks.start({
+		id: taskId,
+		kind: 'proxy',
+		mediaId: media.id,
+		label: media.fileName,
+		stage: 'queued',
+		status: 'queued',
+		progress: 0,
+		onCancel: () => taskController.abort()
+	});
 	const request = automaticQueue
 		.catch(() => undefined)
 		.then(() => {
-			if (signal?.aborted) throw new DOMException('Proxy generation aborted', 'AbortError');
-			return getProxy(media, onProgress, signal);
+			if (taskController.signal.aborted) {
+				throw new DOMException('Proxy generation aborted', 'AbortError');
+			}
+			mediaTasks.update(taskId, { stage: 'encoding', status: 'running' }, taskRevision);
+			return getProxy(
+				media,
+				(progress) => {
+					mediaTasks.update(taskId, { progress }, taskRevision);
+					for (const onProgress of waiters.values()) onProgress?.(progress);
+				},
+				taskController.signal
+			);
 		})
-		.finally(() => automaticInflight.delete(media.id));
-	automaticInflight.set(media.id, request);
+		.finally(() => {
+			if (automaticInflight.get(media.id)?.promise === request) {
+				automaticInflight.delete(media.id);
+			}
+			mediaTasks.finish(taskId, taskRevision);
+		});
+	const job: AutomaticProxyJob = { controller: taskController, promise: request, waiters };
+	automaticInflight.set(media.id, job);
 	automaticQueue = request.then(
 		() => undefined,
 		() => undefined
 	);
-	return request;
+	return job;
+}
+
+function waitForAutomaticProxy(
+	job: AutomaticProxyJob,
+	onProgress?: (progress: number) => void,
+	signal?: AbortSignal
+): Promise<Blob> {
+	const waiter = Symbol('automatic-proxy-waiter');
+	job.waiters.set(waiter, onProgress);
+	return new Promise((resolve, reject) => {
+		const release = () => {
+			job.waiters.delete(waiter);
+			signal?.removeEventListener('abort', abort);
+		};
+		const abort = () => {
+			release();
+			if (job.waiters.size === 0) job.controller.abort();
+			reject(new DOMException('Proxy generation aborted', 'AbortError'));
+		};
+		signal?.addEventListener('abort', abort, { once: true });
+		if (signal?.aborted) {
+			abort();
+			return;
+		}
+		job.promise.then(
+			(blob) => {
+				release();
+				resolve(blob);
+			},
+			(error) => {
+				release();
+				reject(error);
+			}
+		);
+	});
 }
 
 async function encodeProxy(

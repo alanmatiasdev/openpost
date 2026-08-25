@@ -16,7 +16,20 @@ export interface WaveformCompleteMessage {
 	durationSeconds: number;
 }
 
-export type WaveformWorkerResponse = WaveformCompleteMessage;
+export interface WaveformProgressMessage {
+	type: 'progress';
+	progress: number;
+}
+
+export interface WaveformErrorMessage {
+	type: 'error';
+	message: string;
+}
+
+export type WaveformWorkerResponse =
+	| WaveformCompleteMessage
+	| WaveformProgressMessage
+	| WaveformErrorMessage;
 
 self.onmessage = async (event: MessageEvent<WaveformRequest>): Promise<void> => {
 	const { file, samplesPerSecond } = event.data;
@@ -28,7 +41,9 @@ self.onmessage = async (event: MessageEvent<WaveformRequest>): Promise<void> => 
 		const sink = new AudioSampleSink(audioTrack);
 		const count = Math.max(1, Math.ceil(duration * samplesPerSecond));
 		const peaks = new Float32Array(count);
+		let lastPercent = -1;
 		for await (const sample of sink.samples()) {
+			const sampleEnd = (sample.timestamp ?? 0) + sample.duration;
 			try {
 				const frameCount = sample.numberOfFrames;
 				const channelCount = Math.max(1, sample.numberOfChannels);
@@ -45,6 +60,12 @@ self.onmessage = async (event: MessageEvent<WaveformRequest>): Promise<void> => 
 				}
 			} finally {
 				sample.close();
+			}
+			const percent = Math.min(99, Math.floor((sampleEnd / Math.max(duration, 0.001)) * 100));
+			if (percent > lastPercent) {
+				lastPercent = percent;
+				const message: WaveformProgressMessage = { type: 'progress', progress: percent / 100 };
+				self.postMessage(message);
 			}
 		}
 		const message: WaveformCompleteMessage = {

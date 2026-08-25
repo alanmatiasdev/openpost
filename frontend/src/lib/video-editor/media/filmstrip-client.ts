@@ -28,6 +28,7 @@ import type {
 } from './filmstrip-extraction.worker';
 import { loadFilmstrip, saveFilmstripFrame, saveFilmstripIndex } from './filmstrip-persistence';
 import { removeOpfsEntry } from './opfs-cache';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 export interface FilmstripFrame {
 	index: number;
@@ -93,6 +94,9 @@ class FilmstripCacheService {
 	private lastNotifyAt = new Map<string, number>();
 	private cacheVersions = new Map<string, number>();
 	private pendingPersistence = new Map<string, Promise<void>>();
+	private taskRevisions = new Map<string, number>();
+	private cancelExtractions = new Map<string, () => void>();
+	private cancelRequested = new Set<string>();
 
 	private readonly workerPool = createManagedWorkerPool({
 		createWorker: () =>
@@ -217,6 +221,8 @@ class FilmstripCacheService {
 	/** Clear one media item's derived filmstrip without deleting source media. */
 	async clearMedia(mediaId: string): Promise<void> {
 		this.cacheVersions.set(mediaId, (this.cacheVersions.get(mediaId) ?? 0) + 1);
+		this.requestCancel(mediaId);
+		mediaTasks.finish(mediaTaskId('filmstrip', mediaId));
 		this.dropEntry(mediaId);
 		this.notifyThrottled(mediaId, emptyFilmstrip(), true);
 		await this.pendingPersistence.get(mediaId)?.catch(() => undefined);
@@ -224,6 +230,10 @@ class FilmstripCacheService {
 	}
 
 	clearAll(): void {
+		for (const mediaId of this.taskRevisions.keys()) {
+			this.requestCancel(mediaId);
+			mediaTasks.finish(mediaTaskId('filmstrip', mediaId));
+		}
 		for (const mediaId of this.cache.keys()) {
 			this.dropEntry(mediaId);
 		}
@@ -236,6 +246,9 @@ class FilmstripCacheService {
 		this.extractionQueue = [];
 		this.activeExtractions.clear();
 		this.lastNotifyAt.clear();
+		this.taskRevisions.clear();
+		this.cancelExtractions.clear();
+		this.cancelRequested.clear();
 		this.workerPool.terminateAll();
 		this.prewarmStarted = false;
 	}
@@ -272,13 +285,52 @@ class FilmstripCacheService {
 			progress: cached?.progress ?? 0
 		};
 		this.storeAndNotify(media.id, initial, true);
+		const taskId = mediaTaskId('filmstrip', media.id);
+		const taskRevision = mediaTasks.start({
+			id: taskId,
+			kind: 'filmstrip',
+			mediaId: media.id,
+			label: media.fileName,
+			stage: 'queued',
+			status: 'queued',
+			progress: Math.max(0, Math.min(1, (cached?.progress ?? 0) / 100)),
+			onCancel: () => this.requestCancel(media.id)
+		});
+		this.taskRevisions.set(media.id, taskRevision);
 
-		const blob = await resolveMediaBlobForFilmstrip(media);
+		let blob: Blob;
+		try {
+			blob = await resolveMediaBlobForFilmstrip(media);
+		} catch (error) {
+			this.finishTask(media.id, taskRevision);
+			throw error;
+		}
+		if (this.cancelRequested.delete(media.id)) {
+			this.finishTask(media.id, taskRevision);
+			this.markExtractionStopped(media.id);
+			throw new DOMException('Filmstrip extraction cancelled', 'AbortError');
+		}
 
 		return new Promise<Filmstrip>((resolve, reject) => {
 			const requestId = `extract-${++this.requestSeq}`;
+			let settled = false;
+			const cancelQueued = () => {
+				if (settled) return;
+				settled = true;
+				this.pendingQueueStarts.delete(media.id);
+				this.pendingExtractions.delete(media.id);
+				this.extractionQueue = this.extractionQueue.filter((id) => id !== media.id);
+				this.cancelExtractions.delete(media.id);
+				this.finishTask(media.id, taskRevision);
+				this.markExtractionStopped(media.id);
+				reject(new DOMException('Filmstrip extraction cancelled', 'AbortError'));
+				this.pumpQueue();
+			};
 			this.pendingExtractions.set(media.id, { requestId, targetIndices, frames });
+			this.cancelExtractions.set(media.id, cancelQueued);
 			this.pendingQueueStarts.set(media.id, () => {
+				if (settled) return;
+				settled = true;
 				void this.runExtraction(
 					media,
 					blob,
@@ -288,10 +340,15 @@ class FilmstripCacheService {
 					bitmaps,
 					onProgress,
 					version,
+					taskRevision,
 					resolve,
 					reject
 				);
 			});
+			if (this.cancelRequested.delete(media.id)) {
+				cancelQueued();
+				return;
+			}
 			this.enqueueExtraction(media.id);
 		});
 	}
@@ -340,20 +397,36 @@ class FilmstripCacheService {
 		bitmaps: Map<number, ImageBitmap>,
 		onProgress: ((progress: number) => void) | undefined,
 		version: number,
+		taskRevision: number,
 		resolve: (filmstrip: Filmstrip) => void,
 		reject: (error: Error) => void
 	): Promise<void> {
 		const worker = this.workerPool.acquireWorker();
+		const taskId = mediaTaskId('filmstrip', media.id);
+		mediaTasks.update(taskId, { stage: 'extracting', status: 'running' }, taskRevision);
+		let settled = false;
 
-		const cleanup = () => {
+		const cleanup = (terminateWorker = false): boolean => {
+			if (settled) return false;
+			settled = true;
+			this.finishTask(media.id, taskRevision);
 			worker.removeEventListener('message', onMessage);
 			worker.removeEventListener('error', onError);
 			this.pendingExtractions.delete(media.id);
 			this.activeExtractions.delete(media.id);
 			this.pendingQueueStarts.delete(media.id);
-			this.workerPool.releaseWorker(worker, { maxIdleWorkers: MAX_IDLE_WORKERS });
+			this.cancelExtractions.delete(media.id);
+			if (terminateWorker) this.workerPool.terminateWorker(worker);
+			else this.workerPool.releaseWorker(worker, { maxIdleWorkers: MAX_IDLE_WORKERS });
 			this.pumpQueue();
+			return true;
 		};
+		const cancelActive = () => {
+			if (!cleanup(true)) return;
+			this.markExtractionStopped(media.id);
+			reject(new DOMException('Filmstrip extraction cancelled', 'AbortError'));
+		};
+		this.cancelExtractions.set(media.id, cancelActive);
 
 		const onMessage = (event: MessageEvent<FilmstripWorkerResponse>) => {
 			const message = event.data;
@@ -385,6 +458,7 @@ class FilmstripCacheService {
 						.catch(() => undefined);
 				}
 				onProgress?.(message.progress);
+				mediaTasks.update(taskId, { progress: message.progress / 100 }, taskRevision);
 				const filmstrip: Filmstrip = {
 					frames: sortFrames(frames, bitmaps),
 					isComplete: false,
@@ -397,7 +471,7 @@ class FilmstripCacheService {
 			}
 
 			if (message.type === 'complete') {
-				cleanup();
+				if (!cleanup()) return;
 				if (!current) {
 					resolve(emptyFilmstrip());
 					return;
@@ -425,18 +499,22 @@ class FilmstripCacheService {
 			}
 
 			if (message.type === 'error') {
-				cleanup();
+				if (!cleanup()) return;
 				reject(new Error(message.error));
 			}
 		};
 
 		const onError = (event: ErrorEvent) => {
-			cleanup();
+			if (!cleanup()) return;
 			reject(new Error(event.message));
 		};
 
 		worker.addEventListener('message', onMessage);
 		worker.addEventListener('error', onError);
+		if (this.cancelRequested.delete(media.id)) {
+			cancelActive();
+			return;
+		}
 
 		const request: FilmstripExtractRequest = {
 			type: 'extract',
@@ -446,6 +524,26 @@ class FilmstripCacheService {
 			targetIndices
 		};
 		worker.postMessage(request);
+	}
+
+	private requestCancel(mediaId: string): void {
+		if (!this.taskRevisions.has(mediaId)) return;
+		const cancel = this.cancelExtractions.get(mediaId);
+		if (cancel) cancel();
+		else this.cancelRequested.add(mediaId);
+	}
+
+	private finishTask(mediaId: string, revision: number): void {
+		mediaTasks.finish(mediaTaskId('filmstrip', mediaId), revision);
+		if (this.taskRevisions.get(mediaId) === revision) this.taskRevisions.delete(mediaId);
+	}
+
+	private markExtractionStopped(mediaId: string): void {
+		const current = this.cachedFilmstrip(mediaId);
+		if (!current) return;
+		const stopped = { ...current, isExtracting: false };
+		this.storeEntry(mediaId, stopped);
+		this.notifyThrottled(mediaId, stopped, true);
 	}
 
 	private storeAndNotify(mediaId: string, filmstrip: Filmstrip, force: boolean): void {

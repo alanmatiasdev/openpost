@@ -26,6 +26,7 @@ import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 import PreviewPlayer from '../components/preview-player.svelte';
 import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 const WIDTH = 1280;
 const HEIGHT = 720;
@@ -49,6 +50,7 @@ function linkedFileHandle(name: string, getFile: () => Promise<File>): FileSyste
 }
 
 afterEach(() => {
+	mediaTasks.reset();
 	mediaPool.clear();
 	timelineStore.clear();
 	sequenceStore.reset();
@@ -143,10 +145,52 @@ describe('proxy generation worker', () => {
 			tags: []
 		};
 
-		await expect(getAutomaticProxy(media, undefined, controller.signal)).rejects.toMatchObject({
+		const request = getAutomaticProxy(media, undefined, controller.signal);
+		const rejection = expect(request).rejects.toMatchObject({
 			name: 'AbortError'
 		});
+		expect(mediaTasks.get(mediaTaskId('proxy', media.id))).toBeUndefined();
+		await rejection;
 		expect(getFile).not.toHaveBeenCalled();
+		expect(mediaTasks.get(mediaTaskId('proxy', media.id))).toBeUndefined();
+	});
+
+	it('keeps a shared background proxy alive while another caller still waits', async () => {
+		const source = await sourceVideo();
+		let releaseSource: ((file: File) => void) | undefined;
+		const sourceReady = new Promise<File>((resolve) => (releaseSource = resolve));
+		const media: MediaMetadata = {
+			id: `shared-proxy-${crypto.randomUUID()}`,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle('shared.webm', () => sourceReady),
+			fileName: 'shared.webm',
+			fileSize: source.size,
+			mimeType: source.type,
+			duration: 1,
+			width: WIDTH,
+			height: HEIGHT,
+			fps: 60,
+			codec: 'vp8',
+			bitrate: 800_000,
+			tags: []
+		};
+		const firstController = new AbortController();
+		const first = getAutomaticProxy(media, undefined, firstController.signal);
+		const second = getAutomaticProxy(media);
+		const firstRejection = expect(first).rejects.toMatchObject({ name: 'AbortError' });
+
+		firstController.abort();
+		expect(mediaTasks.get(mediaTaskId('proxy', media.id))).toMatchObject({
+			status: 'queued',
+			cancellable: true
+		});
+		releaseSource?.(new File([source], 'shared.webm', { type: source.type }));
+
+		await firstRejection;
+		const proxy = await second;
+		expect(proxy.size).toBeGreaterThan(0);
+		expect(cachedProxy(media.id)).toBe(proxy);
+		clearProxyCache(media.id);
 	});
 
 	it('decodes real footage off thread and returns a bounded playable proxy', async () => {

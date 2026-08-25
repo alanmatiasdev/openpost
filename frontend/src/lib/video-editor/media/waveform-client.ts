@@ -12,6 +12,7 @@ import type { WaveformCompleteMessage, WaveformWorkerResponse } from './waveform
 import { SizedAccessedMemoryCache } from './sized-accessed-memory-cache';
 import { loadWaveform, saveWaveform } from './waveform-persistence';
 import { removeOpfsEntry } from './opfs-cache';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 export interface WaveformData {
 	peaks: Float32Array;
@@ -99,16 +100,42 @@ function queueWaveformPersistence(
 }
 
 async function decode(media: MediaMetadata, version: number): Promise<WaveformData> {
+	const taskId = mediaTaskId('waveform', media.id);
 	const worker = new Worker(new URL('./waveform-worker.ts', import.meta.url), {
 		type: 'module'
+	});
+	let cancelled = false;
+	let rejectDecode: ((error: DOMException) => void) | null = null;
+	const cancel = () => {
+		cancelled = true;
+		worker.terminate();
+		rejectDecode?.(new DOMException('Waveform decoding cancelled', 'AbortError'));
+	};
+	const taskRevision = mediaTasks.start({
+		id: taskId,
+		kind: 'waveform',
+		mediaId: media.id,
+		label: media.fileName,
+		stage: 'decoding',
+		progress: 0,
+		onCancel: cancel
 	});
 	try {
 		const { resolveMediaBlob } = await import('./import.svelte');
 		const file = await resolveMediaBlob(media);
+		if (cancelled) throw new DOMException('Waveform decoding cancelled', 'AbortError');
 		return await new Promise<WaveformData>((resolve, reject) => {
+			rejectDecode = reject;
+			if (cancelled) {
+				reject(new DOMException('Waveform decoding cancelled', 'AbortError'));
+				return;
+			}
 			worker.onmessage = (event: MessageEvent<WaveformWorkerResponse>) => {
-				// SAFETY: the worker's error branch posts {type:'error',message}, not a Response variant.
-				const message = event.data as WaveformWorkerResponse & { type: string; message?: string };
+				const message = event.data;
+				if (message.type === 'progress') {
+					mediaTasks.update(taskId, { progress: message.progress }, taskRevision);
+					return;
+				}
 				if (message.type === 'complete') {
 					const data: WaveformData = {
 						peaks: message.peaks,
@@ -128,18 +155,19 @@ async function decode(media: MediaMetadata, version: number): Promise<WaveformDa
 				if (cacheIsCurrent(media.id, version)) {
 					cache.add(media.id, {
 						data: null,
-						error: message.message ?? 'decode failed',
+						error: message.message || 'decode failed',
 						sizeBytes: 0,
 						lastAccessed: Date.now()
 					});
 				}
-				reject(new Error(message.message ?? 'Waveform decoding failed'));
+				reject(new Error(message.message || 'Waveform decoding failed'));
 			};
 			worker.onerror = (event) => reject(new Error(event.message));
 			worker.postMessage({ file, samplesPerSecond: SAMPLES_PER_SECOND });
 		});
 	} catch (error) {
-		if (cacheIsCurrent(media.id, version)) {
+		const wasCancelled = error instanceof Error && error.name === 'AbortError';
+		if (!wasCancelled && cacheIsCurrent(media.id, version)) {
 			cache.add(media.id, {
 				data: null,
 				error: error instanceof Error ? error.message : String(error),
@@ -149,12 +177,17 @@ async function decode(media: MediaMetadata, version: number): Promise<WaveformDa
 		}
 		throw error;
 	} finally {
+		rejectDecode = null;
+		mediaTasks.finish(taskId, taskRevision);
 		worker.terminate();
 	}
 }
 
 /** Clear one media item's derived waveform without touching source bytes. */
 export async function clearWaveformCache(mediaId: string): Promise<void> {
+	const taskId = mediaTaskId('waveform', mediaId);
+	mediaTasks.cancel(taskId);
+	mediaTasks.finish(taskId);
 	cacheVersions.set(mediaId, (cacheVersions.get(mediaId) ?? 0) + 1);
 	cache.delete(mediaId);
 	inflight.delete(mediaId);

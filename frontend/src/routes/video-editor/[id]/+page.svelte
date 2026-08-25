@@ -62,6 +62,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import RenderQueueController from '$lib/video-editor/components/render-queue-controller.svelte';
 	import TranscriptPanel from '$lib/video-editor/components/transcript-panel.svelte';
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
+	import MediaTaskProgress from '$lib/video-editor/components/media-task-progress.svelte';
 	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
 	import EditorSettingsDialog from '$lib/video-editor/components/editor-settings-dialog.svelte';
 	import PreviewDiagnosticsPanel from '$lib/video-editor/components/preview-diagnostics-panel.svelte';
@@ -96,6 +97,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
+	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -108,6 +110,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
+
+	$effect(() => {
+		if (!projectId) return;
+		return () => mediaTasks.reset();
+	});
 
 	$effect(() => {
 		if (selectedItemId) selectedTransitionId = null;
@@ -415,6 +422,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		transcriptionFallback = null;
 		const abort = new AbortController();
 		transcriptionAbort = abort;
+		const taskId = mediaTaskId('transcription', item.id);
+		const taskRevision = mediaTasks.start({
+			id: taskId,
+			kind: 'transcription',
+			mediaId: media.id,
+			label: media.fileName,
+			stage: 'preparing',
+			progress: null,
+			onCancel: () => abort.abort()
+		});
 		try {
 			const blob = await resolveMediaBlob(media);
 			const file =
@@ -424,7 +441,19 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				language: selection.language,
 				quantization: selection.quantization,
 				signal: abort.signal,
-				onProgress: (progress) => (transcriptionProgress = progress),
+				onProgress: (progress) => {
+					transcriptionProgress = progress;
+					mediaTasks.update(
+						taskId,
+						{
+							stage: progress.stage,
+							progress: progress.indeterminate ? null : progress.progress,
+							receivedBytes: progress.receivedBytes,
+							totalBytes: progress.totalBytes
+						},
+						taskRevision
+					);
+				},
 				onRuntimeInfo: (runtime) => {
 					if (runtime.backend) transcriptionBackend = runtime.backend;
 				},
@@ -438,6 +467,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				showToast(err instanceof Error ? err.message : String(err), 'error');
 			}
 		} finally {
+			mediaTasks.finish(taskId, taskRevision);
 			transcribing = false;
 			transcriptionAbort = null;
 		}
@@ -863,6 +893,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{:else}
 								<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 							{/if}
+							<MediaTaskProgress />
 						</aside>
 					{/if}
 

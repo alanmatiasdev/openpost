@@ -24,6 +24,7 @@
 		type CommitGeneratedAudioOptions
 	} from '$lib/video-editor/local-ai/commit-generated-audio';
 	import type { GeneratedAudio, LocalGenerationProgress } from '$lib/video-editor/local-ai/types';
+	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 
 	type GenerateSpeech = (options: LocalTtsGenerateOptions) => Promise<GeneratedAudio>;
 	type CommitAudio = typeof commitGeneratedAudio;
@@ -100,6 +101,15 @@
 		progress = null;
 		const abort = new AbortController();
 		abortController = abort;
+		const taskId = mediaTaskId('voice-generation', projectId);
+		const taskRevision = mediaTasks.start({
+			id: taskId,
+			kind: 'voice-generation',
+			label: m.video_editor_local_ai_voice(),
+			stage: 'preparing',
+			progress: null,
+			onCancel: () => abort.abort()
+		});
 		try {
 			const requestedEngine = engine;
 			const requestedVoice = voice;
@@ -110,7 +120,19 @@
 				language,
 				speed,
 				signal: abort.signal,
-				onProgress: (next) => (progress = next)
+				onProgress: (next) => {
+					progress = next;
+					mediaTasks.update(
+						taskId,
+						{
+							stage: next.stage,
+							progress: next.progress,
+							receivedBytes: next.receivedBytes,
+							totalBytes: next.totalBytes
+						},
+						taskRevision
+					);
+				}
 			});
 			generations = [
 				{
@@ -128,6 +150,7 @@
 				error = caught instanceof Error ? caught.message : String(caught);
 			}
 		} finally {
+			mediaTasks.finish(taskId, taskRevision);
 			if (abortController === abort) abortController = null;
 			generating = false;
 			progress = null;

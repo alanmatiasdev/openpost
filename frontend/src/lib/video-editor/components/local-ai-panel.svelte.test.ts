@@ -5,6 +5,7 @@ import type { MediaMetadata } from '$lib/video-editor/media/types';
 import type { GeneratedAudio } from '$lib/video-editor/local-ai/types';
 import type { LocalTtsGenerateOptions } from '$lib/video-editor/local-ai/tts/registry';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 import LocalAiPanel from './local-ai-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -31,6 +32,7 @@ const media: MediaMetadata = {
 };
 
 beforeEach(() => {
+	mediaTasks.reset();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ fps: 30, currentFrame: 91 });
 });
@@ -192,9 +194,16 @@ describe('LocalAiPanel', () => {
 		await screen.getByRole('button', { name: 'Generate voiceover' }).click();
 		const progress = screen.getByRole('progressbar', { name: 'Downloading voice model' }).element();
 		expect(progress).toHaveAttribute('aria-valuenow', '25');
-		await screen.getByRole('button', { name: 'Cancel generation' }).click();
+		const taskId = mediaTaskId('voice-generation', 'project-1');
+		expect(mediaTasks.get(taskId)).toMatchObject({
+			stage: 'downloading',
+			progress: 0.25,
+			cancellable: true
+		});
+		expect(mediaTasks.cancel(taskId)).toBe(true);
 
 		expect(receivedSignal?.aborted).toBe(true);
 		await expect.element(screen.getByRole('button', { name: 'Generate voiceover' })).toBeEnabled();
+		expect(mediaTasks.get(taskId)).toBeUndefined();
 	});
 });

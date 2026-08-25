@@ -12,6 +12,7 @@ import { analyzeSceneContent } from './ai/analyze-scenes';
 import { embeddingsProvider } from './ai/embeddings-provider';
 import { clipProvider } from './ai/clip-provider';
 import type { PaletteEntry } from './dominant-colors';
+import { mediaTaskId, mediaTasks } from '../media-tasks.svelte';
 
 export type SceneBrowserViewMode = 'grid' | 'list';
 export type SceneBrowserSortMode = 'relevance' | 'time' | 'name';
@@ -218,6 +219,16 @@ export const sceneBrowser = {
 		const controller = new AbortController();
 		analysisControllers.get(media.id)?.abort();
 		analysisControllers.set(media.id, controller);
+		const taskId = mediaTaskId('scene-analysis', media.id);
+		const taskRevision = mediaTasks.start({
+			id: taskId,
+			kind: 'scene-analysis',
+			mediaId: media.id,
+			label: media.fileName,
+			stage: 'detecting',
+			progress: 0,
+			onCancel: () => controller.abort()
+		});
 		delete state.errors[media.id];
 		state.progress[media.id] = {
 			stage: 'detecting',
@@ -231,6 +242,16 @@ export const sceneBrowser = {
 				signal: controller.signal,
 				onProgress(progress) {
 					state.progress[media.id] = progress;
+					mediaTasks.update(
+						taskId,
+						{
+							stage: progress.stage,
+							progress: progress.percent / 100,
+							completed: progress.completed,
+							total: progress.total
+						},
+						taskRevision
+					);
 				}
 			});
 			if (generation !== stateGeneration) {
@@ -241,6 +262,16 @@ export const sceneBrowser = {
 				signal: controller.signal,
 				onProgress(progress) {
 					state.progress[media.id] = progress;
+					mediaTasks.update(
+						taskId,
+						{
+							stage: progress.stage,
+							progress: progress.percent / 100,
+							completed: progress.completed,
+							total: progress.total
+						},
+						taskRevision
+					);
 				}
 			});
 			if (generation !== stateGeneration) {
@@ -254,6 +285,7 @@ export const sceneBrowser = {
 			}
 			throw error;
 		} finally {
+			mediaTasks.finish(taskId, taskRevision);
 			if (analysisControllers.get(media.id) === controller) {
 				delete state.progress[media.id];
 				analysisControllers.delete(media.id);

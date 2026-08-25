@@ -4,6 +4,7 @@ import { mediaReversePreviewPath } from '../workspace-fs/paths';
 import { requireWorkspaceRoot } from '../workspace-fs/root';
 import { renderMultiTrackVideoBlob, type RenderExportProgress } from './render-export';
 import type { MediaMetadata } from './types';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 const PREVIEW_MAX_WIDTH = 1280;
 const PREVIEW_MAX_HEIGHT = 720;
@@ -42,6 +43,13 @@ interface ReverseConformJob {
 	controller: AbortController;
 	waiters: Set<symbol>;
 	promise: Promise<ReverseConformResult>;
+}
+
+interface TemporaryReverseProject {
+	project: Project;
+	size: ReverseConformSize;
+	fps: number;
+	durationFrames: number;
 }
 
 const jobs = new Map<string, ReverseConformJob>();
@@ -100,12 +108,7 @@ export function subscribeReverseConform(
 	};
 }
 
-function temporaryReverseProject(media: MediaMetadata): {
-	project: Project;
-	size: ReverseConformSize;
-	fps: number;
-	durationFrames: number;
-} {
+function temporaryReverseProject(media: MediaMetadata): TemporaryReverseProject {
 	const size = fitReverseConformSize(media.width, media.height);
 	const fps = Math.min(60, Math.max(1, media.fps || 30));
 	const durationFrames = Math.max(1, Math.round(media.duration * fps));
@@ -160,48 +163,70 @@ function temporaryReverseProject(media: MediaMetadata): {
 
 function startJob(media: MediaMetadata, key: string): ReverseConformJob {
 	const controller = new AbortController();
+	const taskId = mediaTaskId('reverse-conform', media.id);
+	let taskRevision: number | undefined;
 	const promise = (async () => {
-		publish(media.id, { state: 'preparing', progress: 0 });
-		const root = requireWorkspaceRoot();
-		const path = mediaReversePreviewPath(media.id, key);
-		const cached = await readBlob(root, path);
-		const { project, size, fps, durationFrames } = temporaryReverseProject(media);
-		if (cached) {
-			publish(media.id, { state: 'ready', progress: 1 });
-			return { key, blob: cached, ...size, fps, durationFrames };
-		}
-		const blob = await renderMultiTrackVideoBlob(project, {
-			format: 'webm',
-			codec: 'vp9',
-			quality: 'draft',
-			width: size.width,
-			height: size.height,
-			subtitleMode: 'none',
-			signal: controller.signal,
-			onProgress: (progress: RenderExportProgress) => {
-				publish(media.id, {
-					state: progress.phase === 'preparing' ? 'preparing' : 'rendering',
-					progress: progress.progress
-				});
+		try {
+			publish(media.id, { state: 'preparing', progress: 0 });
+			const root = requireWorkspaceRoot();
+			const path = mediaReversePreviewPath(media.id, key);
+			const cached = await readBlob(root, path);
+			const { project, size, fps, durationFrames } = temporaryReverseProject(media);
+			if (cached) {
+				publish(media.id, { state: 'ready', progress: 1 });
+				return { key, blob: cached, ...size, fps, durationFrames };
 			}
-		});
-		await writeBlob(root, path, blob);
-		publish(media.id, { state: 'ready', progress: 1 });
-		return { key, blob, ...size, fps, durationFrames };
-	})()
-		.catch((error: unknown) => {
+			taskRevision = mediaTasks.start({
+				id: taskId,
+				kind: 'reverse-conform',
+				mediaId: media.id,
+				label: media.fileName,
+				stage: 'preparing',
+				progress: 0,
+				onCancel: () => controller.abort()
+			});
+			const blob = await renderMultiTrackVideoBlob(project, {
+				format: 'webm',
+				codec: 'vp9',
+				quality: 'draft',
+				width: size.width,
+				height: size.height,
+				subtitleMode: 'none',
+				signal: controller.signal,
+				onProgress: (progress: RenderExportProgress) => {
+					mediaTasks.update(
+						taskId,
+						{
+							stage: progress.phase === 'preparing' ? 'preparing' : 'rendering',
+							progress: progress.progress,
+							completed: progress.framesDone,
+							total: progress.totalFrames
+						},
+						taskRevision
+					);
+					publish(media.id, {
+						state: progress.phase === 'preparing' ? 'preparing' : 'rendering',
+						progress: progress.progress
+					});
+				}
+			});
+			await writeBlob(root, path, blob);
+			publish(media.id, { state: 'ready', progress: 1 });
+			return { key, blob, ...size, fps, durationFrames };
+		} catch (error) {
 			const canceled =
-				controller.signal.aborted || (error as { name?: string })?.name === 'AbortError';
+				controller.signal.aborted || (error instanceof Error && error.name === 'AbortError');
 			publish(media.id, {
 				state: canceled ? 'canceled' : 'error',
 				progress: 0,
 				error: canceled ? undefined : error instanceof Error ? error.message : String(error)
 			});
 			throw error;
-		})
-		.finally(() => {
+		} finally {
+			if (taskRevision !== undefined) mediaTasks.finish(taskId, taskRevision);
 			if (jobs.get(key)?.controller === controller) jobs.delete(key);
-		});
+		}
+	})();
 	const job: ReverseConformJob = {
 		mediaId: media.id,
 		controller,

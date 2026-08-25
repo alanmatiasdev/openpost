@@ -25,6 +25,7 @@ import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
 import { effectiveMediaStorageMode, prepareMediaImportFile } from './media-file-types';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 const logger = createLogger('MediaImport');
 
@@ -79,6 +80,7 @@ export async function importFile(
 	const root = requireWorkspaceRoot();
 	const id = crypto.randomUUID();
 	const { storageMode, projectId } = options;
+	const taskId = mediaTaskId('import', id);
 
 	mediaPool.upsert(
 		{
@@ -98,10 +100,19 @@ export async function importFile(
 		'importing',
 		0
 	);
+	const taskRevision = mediaTasks.start({
+		id: taskId,
+		kind: 'import',
+		mediaId: id,
+		label: handle.name,
+		stage: 'reading',
+		progress: 0.05
+	});
 
 	try {
 		const resolved = await writeFileForHandle(handle);
 		const file = await prepareMediaImportFile(resolved.file);
+		mediaTasks.update(taskId, { stage: 'probing', progress: 0.2 }, taskRevision);
 		const fileLastModified = resolved.lastModified;
 		const effectiveStorageMode = effectiveMediaStorageMode(storageMode, resolved.file, file);
 		const storedHandle = effectiveStorageMode === 'link' ? handle : undefined;
@@ -162,9 +173,11 @@ export async function importFile(
 		}
 
 		if (effectiveStorageMode === 'copy') {
+			mediaTasks.update(taskId, { stage: 'copying', progress: 0.65 }, taskRevision);
 			await writeBlob(root, mediaSourceByFileName(id, file.name), file);
 		}
 
+		mediaTasks.update(taskId, { stage: 'saving', progress: 0.82 }, taskRevision);
 		await createMedia(metadata);
 		if (thumbnailBlob) {
 			await writeBlob(root, mediaThumbnailPath(id), thumbnailBlob);
@@ -175,12 +188,15 @@ export async function importFile(
 		});
 		await associateMediaWithProject(projectId, id);
 
+		mediaTasks.update(taskId, { progress: 1 }, taskRevision);
 		mediaPool.upsert({ ...metadata, fileHandle: storedHandle }, 'ready');
 		return id;
 	} catch (error) {
 		logger.error(`importFile(${handle.name}) failed`, error);
 		mediaPool.setStatus(id, 'failed', error instanceof Error ? error.message : String(error));
 		throw error;
+	} finally {
+		mediaTasks.finish(taskId, taskRevision);
 	}
 }
 

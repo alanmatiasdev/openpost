@@ -3,8 +3,9 @@ import { BufferTarget, Output, VideoSample, VideoSampleSource, WebMOutputFormat 
 import { filmstripCache, type Filmstrip } from './filmstrip-client';
 import { loadFilmstrip } from './filmstrip-persistence';
 import type { MediaMetadata } from './types';
+import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
-function linkedFileHandle(name: string, file: File): FileSystemFileHandle {
+function linkedFileHandle(name: string, file: File | Promise<File>): FileSystemFileHandle {
 	const handle: FileSystemFileHandle = {
 		kind: 'file',
 		name,
@@ -49,6 +50,41 @@ afterEach(() => {
 });
 
 describe('filmstrip cache maintenance', () => {
+	it('cancels queued extraction and can restart from the same source', async () => {
+		const file = await sourceVideo();
+		const id = `filmstrip-cancel-${crypto.randomUUID()}`;
+		let releaseSource: ((file: File) => void) | undefined;
+		const sourceReady = new Promise<File>((resolve) => (releaseSource = resolve));
+		const media: MediaMetadata = {
+			id,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(file.name, sourceReady),
+			fileName: file.name,
+			fileSize: file.size,
+			mimeType: file.type,
+			duration: 1,
+			width: 320,
+			height: 180,
+			fps: 2,
+			codec: 'vp8',
+			bitrate: 200_000,
+			tags: ['video']
+		};
+
+		const request = filmstripCache.getFilmstrip(media);
+		const taskId = mediaTaskId('filmstrip', id);
+		await vi.waitFor(() => expect(mediaTasks.get(taskId)?.cancellable).toBe(true));
+		const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+		expect(mediaTasks.cancel(taskId)).toBe(true);
+		releaseSource?.(file);
+		await rejection;
+		expect(mediaTasks.get(taskId)).toBeUndefined();
+		expect(filmstripCache.cachedFilmstrip(id)?.isExtracting).toBe(false);
+
+		const retried = await filmstripCache.getFilmstrip(media);
+		expect(retried.frames.length).toBeGreaterThan(0);
+	});
+
 	it('removes decoded memory and OPFS frames without touching the source', async () => {
 		const file = await sourceVideo();
 		const id = `filmstrip-clear-${crypto.randomUUID()}`;
