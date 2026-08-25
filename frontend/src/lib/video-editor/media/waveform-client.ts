@@ -8,7 +8,7 @@
  */
 
 import type { MediaMetadata } from './types';
-import type { WaveformCompleteMessage, WaveformWorkerResponse } from './waveform-worker';
+import type { WaveformWorkerResponse } from './waveform-worker';
 import { SizedAccessedMemoryCache } from './sized-accessed-memory-cache';
 import { loadWaveform, saveWaveform } from './waveform-persistence';
 import { removeOpfsEntry } from './opfs-cache';
@@ -18,6 +18,8 @@ export interface WaveformData {
 	peaks: Float32Array;
 	durationSeconds: number;
 	samplesPerSecond: number;
+	loadedSamples: number;
+	isComplete: boolean;
 }
 
 interface WaveformMetadata {
@@ -27,12 +29,37 @@ interface WaveformMetadata {
 	lastAccessed: number;
 }
 
-const cache = new SizedAccessedMemoryCache<WaveformMetadata>(64 * 1024 * 1024);
+const cache = new SizedAccessedMemoryCache<WaveformMetadata>(128 * 1024 * 1024);
 const inflight = new Map<string, Promise<WaveformData>>();
 const cacheVersions = new Map<string, number>();
 const pendingPersistence = new Map<string, Promise<void>>();
+const subscribers = new Map<string, Set<(data: WaveformData) => void>>();
 
-const SAMPLES_PER_SECOND = 50;
+const SAMPLES_PER_SECOND = 500;
+
+function publish(mediaId: string, data: WaveformData): void {
+	cache.add(mediaId, {
+		data,
+		sizeBytes: data.peaks.byteLength,
+		lastAccessed: Date.now()
+	});
+	for (const subscriber of subscribers.get(mediaId) ?? []) subscriber(data);
+}
+
+export function subscribeWaveform(
+	mediaId: string,
+	subscriber: (data: WaveformData) => void
+): () => void {
+	const callbacks = subscribers.get(mediaId) ?? new Set<(data: WaveformData) => void>();
+	callbacks.add(subscriber);
+	subscribers.set(mediaId, callbacks);
+	const existing = cachedWaveform(mediaId);
+	if (existing) subscriber(existing);
+	return () => {
+		callbacks.delete(subscriber);
+		if (callbacks.size === 0) subscribers.delete(mediaId);
+	};
+}
 
 export function cachedWaveform(mediaId: string): WaveformData | null {
 	return cache.get(mediaId)?.data ?? null;
@@ -40,12 +67,12 @@ export function cachedWaveform(mediaId: string): WaveformData | null {
 
 export async function getWaveform(media: MediaMetadata): Promise<WaveformData> {
 	const existing = cache.get(media.id);
-	if (existing?.data) return existing.data;
-	if (existing) {
-		throw new Error(existing.error ?? 'Waveform unavailable');
-	}
+	if (existing?.data?.isComplete) return existing.data;
 	const pending = inflight.get(media.id);
 	if (pending) return pending;
+	if (existing && !existing.data) {
+		throw new Error(existing.error ?? 'Waveform unavailable');
+	}
 	const version = cacheVersions.get(media.id) ?? 0;
 	const promise = loadOrDecode(media, version);
 	inflight.set(media.id, promise);
@@ -64,11 +91,7 @@ async function loadOrDecode(media: MediaMetadata, version: number): Promise<Wave
 	const persisted = await loadWaveform(media.id);
 	if (persisted) {
 		if (cacheIsCurrent(media.id, version)) {
-			cache.add(media.id, {
-				data: persisted,
-				sizeBytes: persisted.peaks.byteLength,
-				lastAccessed: Date.now()
-			});
+			publish(media.id, persisted);
 		}
 		return persisted;
 	}
@@ -104,10 +127,12 @@ async function decode(media: MediaMetadata, version: number): Promise<WaveformDa
 	const worker = new Worker(new URL('./waveform-worker.ts', import.meta.url), {
 		type: 'module'
 	});
+	const requestId = `waveform-${media.id}-${crypto.randomUUID()}`;
 	let cancelled = false;
 	let rejectDecode: ((error: DOMException) => void) | null = null;
 	const cancel = () => {
 		cancelled = true;
+		worker.postMessage({ type: 'abort', requestId });
 		worker.terminate();
 		rejectDecode?.(new DOMException('Waveform decoding cancelled', 'AbortError'));
 	};
@@ -126,28 +151,51 @@ async function decode(media: MediaMetadata, version: number): Promise<WaveformDa
 		if (cancelled) throw new DOMException('Waveform decoding cancelled', 'AbortError');
 		return await new Promise<WaveformData>((resolve, reject) => {
 			rejectDecode = reject;
+			let data: WaveformData | null = null;
 			if (cancelled) {
 				reject(new DOMException('Waveform decoding cancelled', 'AbortError'));
 				return;
 			}
 			worker.onmessage = (event: MessageEvent<WaveformWorkerResponse>) => {
 				const message = event.data;
+				if (message.requestId !== requestId) return;
 				if (message.type === 'progress') {
 					mediaTasks.update(taskId, { progress: message.progress }, taskRevision);
 					return;
 				}
-				if (message.type === 'complete') {
-					const data: WaveformData = {
-						peaks: message.peaks,
+				if (message.type === 'init') {
+					data = {
+						peaks: new Float32Array(message.totalSamples),
 						durationSeconds: message.durationSeconds,
-						samplesPerSecond: SAMPLES_PER_SECOND
+						samplesPerSecond: SAMPLES_PER_SECOND,
+						loadedSamples: 0,
+						isComplete: false
+					};
+					if (cacheIsCurrent(media.id, version)) publish(media.id, data);
+					return;
+				}
+				if (message.type === 'chunk') {
+					if (!data) return;
+					data.peaks.set(message.peaks, message.startIndex);
+					data = {
+						...data,
+						loadedSamples: Math.max(data.loadedSamples, message.startIndex + message.peaks.length)
+					};
+					if (cacheIsCurrent(media.id, version)) publish(media.id, data);
+					return;
+				}
+				if (message.type === 'complete') {
+					if (!data) {
+						reject(new Error('Waveform worker completed before initialization'));
+						return;
+					}
+					data = {
+						...data,
+						loadedSamples: data.peaks.length,
+						isComplete: true
 					};
 					if (cacheIsCurrent(media.id, version)) {
-						cache.add(media.id, {
-							data,
-							sizeBytes: message.peaks.byteLength,
-							lastAccessed: Date.now()
-						});
+						publish(media.id, data);
 					}
 					resolve(data);
 					return;
@@ -163,7 +211,12 @@ async function decode(media: MediaMetadata, version: number): Promise<WaveformDa
 				reject(new Error(message.message || 'Waveform decoding failed'));
 			};
 			worker.onerror = (event) => reject(new Error(event.message));
-			worker.postMessage({ file, samplesPerSecond: SAMPLES_PER_SECOND });
+			worker.postMessage({
+				type: 'generate',
+				requestId,
+				file,
+				samplesPerSecond: SAMPLES_PER_SECOND
+			});
 		});
 	} catch (error) {
 		const wasCancelled = error instanceof Error && error.name === 'AbortError';

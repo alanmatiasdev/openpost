@@ -6,7 +6,9 @@ function waveform(peaks: number[]): WaveformData {
 	return {
 		peaks: Float32Array.from(peaks),
 		durationSeconds: peaks.length / 50,
-		samplesPerSecond: 50
+		samplesPerSecond: 50,
+		loadedSamples: peaks.length,
+		isComplete: true
 	};
 }
 

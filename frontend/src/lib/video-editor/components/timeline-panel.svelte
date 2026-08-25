@@ -31,7 +31,11 @@
 		timelineZoomToSlider,
 		type TimelineZoomAnchor
 	} from '$lib/video-editor/timeline/zoom';
-	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
+	import {
+		getWaveform,
+		cachedWaveform,
+		subscribeWaveform
+	} from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
@@ -282,7 +286,8 @@
 	const selectedMarker = $derived(
 		timelineStore.markers.find((marker) => marker.id === timelineStore.selectedMarkerId) ?? null
 	);
-	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
+	const waveforms = $state<Record<string, { data: WaveformData | null; failed: boolean }>>({});
+	const waveformUnsubscribers = new Map<string, () => void>();
 
 	$effect(() => {
 		const marker = selectedMarker;
@@ -323,13 +328,28 @@
 	});
 
 	$effect(() => {
-		if (!editorSettings.showWaveforms) return;
+		if (!editorSettings.showWaveforms) {
+			for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
+			waveformUnsubscribers.clear();
+			for (const mediaId of Object.keys(waveforms)) delete waveforms[mediaId];
+			return;
+		}
+		const neededMediaIds = new Set<string>();
 		for (const item of timelineStore.items) {
 			const mediaId = item.mediaId;
-			if (item.type !== 'video' || !mediaId || waveforms[mediaId]) continue;
+			if ((item.type !== 'video' && item.type !== 'audio') || !mediaId) continue;
 			const media = mediaPool.get(mediaId);
-			if (!media?.audioCodec) continue;
+			const hasAudio = media?.tags.includes('audio') || Boolean(media?.audioCodec);
+			if (!media || !hasAudio) continue;
+			neededMediaIds.add(mediaId);
+			if (waveforms[mediaId]) continue;
 			waveforms[mediaId] = { data: null, failed: false };
+			waveformUnsubscribers.set(
+				mediaId,
+				subscribeWaveform(mediaId, (data) => {
+					waveforms[mediaId] = { data, failed: false };
+				})
+			);
 			getWaveform(media)
 				.then((data) => {
 					waveforms[mediaId] = { data, failed: false };
@@ -337,6 +357,12 @@
 				.catch(() => {
 					waveforms[mediaId] = { data: null, failed: true };
 				});
+		}
+		for (const [mediaId, unsubscribe] of waveformUnsubscribers) {
+			if (neededMediaIds.has(mediaId)) continue;
+			unsubscribe();
+			waveformUnsubscribers.delete(mediaId);
+			delete waveforms[mediaId];
 		}
 	});
 
@@ -2141,6 +2167,7 @@
 		clearEffectDropPreview();
 		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
+		for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
 	});
 
 	function zoomFrameLimit(): number {

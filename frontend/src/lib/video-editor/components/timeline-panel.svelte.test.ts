@@ -14,6 +14,8 @@ import {
 	setSceneDragData
 } from '$lib/video-editor/media/scene-search/scene-drag';
 import type { MediaMetadata } from '$lib/video-editor/media/types';
+import { clearWaveformCache } from '$lib/video-editor/media/waveform-client';
+import { saveWaveform } from '$lib/video-editor/media/waveform-persistence';
 import TimelinePanel from './timeline-panel.svelte';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
@@ -113,6 +115,54 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel Bento layout entry', () => {
+	it('renders persisted waveforms for audio-only timeline clips', async () => {
+		const mediaId = `timeline-audio-${crypto.randomUUID()}`;
+		mediaPool.loadAll([
+			sceneMedia,
+			{
+				id: mediaId,
+				storageType: 'workspace',
+				fileName: 'music.wav',
+				fileSize: 100,
+				mimeType: 'audio/wav',
+				duration: 4,
+				width: 0,
+				height: 0,
+				fps: 0,
+				codec: 'pcm_s16le',
+				bitrate: 128_000,
+				tags: ['audio']
+			}
+		]);
+		timelineStore._setItems([
+			...timelineStore.items.filter((candidate) => candidate.id !== 'music-bed'),
+			item({
+				id: 'music-bed',
+				trackId: 'audio-track',
+				label: 'Music',
+				type: 'audio',
+				mediaId,
+				durationInFrames: 120,
+				sourceEnd: 120
+			})
+		]);
+		await saveWaveform(mediaId, {
+			peaks: Float32Array.from({ length: 2_000 }, (_, index) => (index % 100) / 100),
+			durationSeconds: 4,
+			samplesPerSecond: 500,
+			loadedSamples: 2_000,
+			isComplete: true
+		});
+
+		try {
+			const screen = await render(TimelinePanel, { onedit: vi.fn() });
+			const clip = screen.getByRole('button', { name: /Music/ });
+			await vi.waitFor(() => expect(clip.element().querySelector('svg')).not.toBeNull());
+		} finally {
+			await clearWaveformCache(mediaId);
+		}
+	});
+
 	it('rerenders indexed track rows when clips are added and removed', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		await expect.element(screen.getByText('Video', { exact: true })).toBeVisible();
@@ -129,8 +179,18 @@ describe('TimelinePanel Bento layout entry', () => {
 
 	it('opens layout work only for a multi-visual unlocked selection', async () => {
 		timelineStore._setItems([
-			item({ id: 'video', label: 'Video', sourceWidth: 1920, sourceHeight: 1080 }),
-			item({ id: 'cutaway', label: 'Cutaway', sourceWidth: 1080, sourceHeight: 1920 })
+			item({
+				id: 'video',
+				label: 'Video',
+				sourceWidth: 1920,
+				sourceHeight: 1080
+			}),
+			item({
+				id: 'cutaway',
+				label: 'Cutaway',
+				sourceWidth: 1080,
+				sourceHeight: 1920
+			})
 		]);
 		const screen = await render(TimelinePanel, {
 			onedit: vi.fn(),
@@ -140,7 +200,9 @@ describe('TimelinePanel Bento layout entry', () => {
 			canvasHeight: 720
 		});
 
-		const arrange = screen.getByRole('button', { name: 'Arrange selected clips' });
+		const arrange = screen.getByRole('button', {
+			name: 'Arrange selected clips'
+		});
 		await expect.element(arrange).toBeEnabled();
 		await arrange.click();
 		await expect.element(screen.getByRole('dialog', { name: 'Arrange clips' })).toBeVisible();

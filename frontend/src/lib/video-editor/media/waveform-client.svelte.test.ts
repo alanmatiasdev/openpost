@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { clearWaveformCache, getWaveform } from './waveform-client';
+import { clearWaveformCache, getWaveform, subscribeWaveform } from './waveform-client';
 import { loadWaveform } from './waveform-persistence';
 import type { MediaMetadata } from './types';
 import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
@@ -80,7 +80,9 @@ describe('waveform cache maintenance', () => {
 		const request = getWaveform(media);
 		const taskId = mediaTaskId('waveform', id);
 		await vi.waitFor(() => expect(mediaTasks.get(taskId)?.cancellable).toBe(true));
-		const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+		const rejection = expect(request).rejects.toMatchObject({
+			name: 'AbortError'
+		});
 		expect(mediaTasks.cancel(taskId)).toBe(true);
 		releaseSource?.(file);
 		await rejection;
@@ -110,9 +112,24 @@ describe('waveform cache maintenance', () => {
 			tags: ['audio']
 		};
 
+		const updates: Array<{ loadedSamples: number; isComplete: boolean }> = [];
+		const unsubscribe = subscribeWaveform(id, (data) => {
+			updates.push({
+				loadedSamples: data.loadedSamples,
+				isComplete: data.isComplete
+			});
+		});
 		const generated = await getWaveform(media);
+		unsubscribe();
 		expect(generated.peaks.length).toBeGreaterThan(0);
+		expect(generated.samplesPerSecond).toBe(500);
 		expect(Math.max(...generated.peaks)).toBeGreaterThan(0.5);
+		expect(updates).toContainEqual({ loadedSamples: 0, isComplete: false });
+		expect(updates.some((update) => update.loadedSamples > 0 && !update.isComplete)).toBe(true);
+		expect(updates.at(-1)).toEqual({
+			loadedSamples: generated.peaks.length,
+			isComplete: true
+		});
 		await vi.waitFor(async () => {
 			expect((await loadWaveform(id))?.peaks.length).toBe(generated.peaks.length);
 		});

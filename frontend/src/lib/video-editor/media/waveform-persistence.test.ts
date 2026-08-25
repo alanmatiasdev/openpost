@@ -16,7 +16,9 @@ describe('waveform persistence', () => {
 			{
 				peaks: new Float32Array([0.1, -0.5, 1]),
 				durationSeconds: 2.5,
-				samplesPerSecond: 50
+				samplesPerSecond: 50,
+				loadedSamples: 3,
+				isComplete: true
 			},
 			memoryStore
 		);
