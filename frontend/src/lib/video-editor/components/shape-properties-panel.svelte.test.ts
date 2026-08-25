@@ -17,7 +17,7 @@ const track: TimelineTrack = {
 	order: 0
 };
 
-function shape(): TimelineItem {
+function shape(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
 		id: 'shape',
 		trackId: track.id,
@@ -29,7 +29,8 @@ function shape(): TimelineItem {
 		fillEnabled: true,
 		strokeEnabled: true,
 		pathClosed: false,
-		transform: { width: 320, height: 180 }
+		transform: { width: 320, height: 180 },
+		...overrides
 	};
 }
 
@@ -88,5 +89,55 @@ describe('ShapePropertiesPanel masks', () => {
 		const panel = screen.container.querySelector('section');
 		expect(panel).not.toBeNull();
 		if (panel) expect(panel.scrollWidth).toBeLessThanOrEqual(260);
+	});
+
+	it('edits trim paths and true stroke tapers through undoable controls', async () => {
+		const onedit = vi.fn();
+		const screen = await render(ShapePropertiesPanel, {
+			item: timelineStore.itemById.get('shape')!,
+			onedit
+		});
+		const changeNumber = (name: string, value: string) => {
+			const input = screen.getByRole('spinbutton', { name }).query();
+			if (!(input instanceof HTMLInputElement)) throw new Error(`${name} did not render`);
+			input.value = value;
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		};
+
+		await expect.element(screen.getByText('Trim path')).toBeVisible();
+		await expect.element(screen.getByText('Stroke taper')).toBeVisible();
+		changeNumber('End (%)', '40');
+		changeNumber('Start width (%)', '0');
+		changeNumber('Start length (%)', '100');
+
+		expect(timelineStore.itemById.get('shape')).toMatchObject({
+			trimPathEnd: 40,
+			taperStartWidth: 0,
+			taperStartLength: 100
+		});
+		expect(onedit).toHaveBeenCalledTimes(3);
+		commandHistory.undo();
+		commandHistory.undo();
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('shape')?.trimPathEnd).toBeUndefined();
+		expect(timelineStore.itemById.get('shape')?.taperStartWidth).toBeUndefined();
+		expect(timelineStore.itemById.get('shape')?.taperStartLength).toBeUndefined();
+	});
+
+	it('hides stroke-only trim and taper controls while the shape is a mask', async () => {
+		timelineStore._setItems([
+			shape({
+				strokeEnabled: true,
+				isMask: true,
+				maskType: 'clip'
+			})
+		]);
+		const screen = await render(ShapePropertiesPanel, {
+			item: timelineStore.itemById.get('shape')!,
+			onedit: vi.fn()
+		});
+
+		expect(screen.container.textContent).not.toContain('Trim path');
+		expect(screen.container.textContent).not.toContain('Stroke taper');
 	});
 });

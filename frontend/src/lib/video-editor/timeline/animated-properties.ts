@@ -80,6 +80,17 @@ const TEXT_PROPERTIES: KeyframeProperty[] = [
 	'strokeWidth'
 ];
 
+const SHAPE_STROKE_PROPERTIES: KeyframeProperty[] = [
+	'strokeWidth',
+	'trimPathStart',
+	'trimPathEnd',
+	'trimPathOffset',
+	'taperStartWidth',
+	'taperEndWidth',
+	'taperStartLength',
+	'taperEndLength'
+];
+
 export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProperty[] {
 	let builtIn: KeyframeProperty[];
 	switch (item.type) {
@@ -103,6 +114,7 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 		case 'shape':
 			builtIn = [
 				...VISUAL_PROPERTIES,
+				...SHAPE_STROKE_PROPERTIES,
 				...(item.shapeType === 'path' ? pathVertexKeyframeProperties(item.pathVertices) : [])
 			];
 			break;
@@ -281,6 +293,13 @@ function applyResolvedValue(
 		case 'paddingY':
 		case 'borderRadius':
 		case 'strokeWidth':
+		case 'trimPathStart':
+		case 'trimPathEnd':
+		case 'trimPathOffset':
+		case 'taperStartWidth':
+		case 'taperEndWidth':
+		case 'taperStartLength':
+		case 'taperEndLength':
 			return { ...item, [property]: value };
 		case 'textShadowOffsetX':
 			return {

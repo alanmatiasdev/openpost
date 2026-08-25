@@ -76,6 +76,35 @@ describe('migrateProjectDocument', () => {
 		expect(result.warnings.some((warning) => warning.code === 'TRACK_GROUPS_REPAIRED')).toBe(true);
 	});
 
+	it('clamps invalid trim-path and taper values on load', () => {
+		const stored = createBlankProject();
+		stored.timeline!.items = [
+			{
+				id: 'shape',
+				trackId: 'track-video-overlay',
+				from: 0,
+				durationInFrames: 30,
+				label: 'Shape',
+				type: 'shape',
+				trimPathStart: -25,
+				trimPathEnd: 125,
+				trimPathOffset: 720,
+				taperStartWidth: 250,
+				taperEndLength: -10
+			}
+		];
+
+		const result = normalizeProject(stored);
+		expect(result.project.timeline!.items[0]).toMatchObject({
+			trimPathStart: 0,
+			trimPathEnd: 100,
+			trimPathOffset: 360,
+			taperStartWidth: 200,
+			taperEndLength: 0
+		});
+		expect(result.warnings.some((warning) => warning.code === 'SHAPE_STYLES_REPAIRED')).toBe(true);
+	});
+
 	it('flags future schema versions instead of failing', () => {
 		const stored = createBlankProject();
 		stored.schemaVersion = CURRENT_SCHEMA_VERSION + 5;

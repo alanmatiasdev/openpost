@@ -86,6 +86,50 @@ describe('shape browser raster', () => {
 		expect(pixel(context, 100, 90)[3]).toBe(0);
 	});
 
+	it('trims a stroke by arc length without trimming the shape fill path', () => {
+		const context = raster(
+			shape({
+				shapeType: 'path',
+				pathClosed: false,
+				fillEnabled: false,
+				strokeEnabled: true,
+				strokeColor: '#ffffff',
+				strokeWidth: 10,
+				trimPathStart: 0,
+				trimPathEnd: 50,
+				pathVertices: [
+					{ position: [0.1, 0.5], inHandle: [0, 0], outHandle: [0, 0] },
+					{ position: [0.9, 0.5], inHandle: [0, 0], outHandle: [0, 0] }
+				]
+			})
+		);
+
+		expect(pixel(context, 40, 50)[3]).toBeGreaterThan(200);
+		expect(pixel(context, 160, 50)[3]).toBe(0);
+	});
+
+	it('renders a true variable-width stroke taper', () => {
+		const context = raster(
+			shape({
+				shapeType: 'path',
+				pathClosed: false,
+				fillEnabled: false,
+				strokeEnabled: true,
+				strokeColor: '#ffffff',
+				strokeWidth: 20,
+				taperStartWidth: 0,
+				taperStartLength: 100,
+				pathVertices: [
+					{ position: [0.1, 0.5], inHandle: [0, 0], outHandle: [0, 0] },
+					{ position: [0.9, 0.5], inHandle: [0, 0], outHandle: [0, 0] }
+				]
+			})
+		);
+
+		expect(pixel(context, 30, 55)[3]).toBe(0);
+		expect(pixel(context, 170, 55)[3]).toBeGreaterThan(200);
+	});
+
 	it('uses the same shape raster in the full export compositor', async () => {
 		const item = shape({
 			shapeType: 'star',
@@ -127,6 +171,62 @@ describe('shape browser raster', () => {
 			expect(center[0]).toBeGreaterThan(200);
 			expect(center[1]).toBeLessThan(30);
 			expect(outside.slice(0, 3)).toEqual([0, 0, 0]);
+		} finally {
+			renderer.dispose();
+		}
+	});
+
+	it('keeps trim and taper pixels identical in the full export compositor', async () => {
+		const item = shape({
+			shapeType: 'path',
+			pathClosed: false,
+			fillEnabled: false,
+			strokeEnabled: true,
+			strokeColor: '#ffffff',
+			strokeWidth: 20,
+			trimPathStart: 0,
+			trimPathEnd: 50,
+			taperStartWidth: 0,
+			taperStartLength: 100,
+			pathVertices: [
+				{ position: [0.1, 0.5], inHandle: [0, 0], outHandle: [0, 0] },
+				{ position: [0.9, 0.5], inHandle: [0, 0], outHandle: [0, 0] }
+			],
+			transform: { width: 200, height: 100 }
+		});
+		const project: Project = {
+			id: 'shape-stroke-export',
+			name: 'Shape stroke export',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 3,
+			metadata: { width: 200, height: 100, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [
+					{
+						id: 'visual',
+						name: 'Visual',
+						kind: 'video',
+						height: 64,
+						locked: false,
+						visible: true,
+						muted: false,
+						solo: false,
+						order: 0
+					}
+				],
+				items: [item]
+			}
+		};
+		const renderer = new TimelineFrameRenderer(project);
+		try {
+			const output = await renderer.render(0);
+			const context = output.getContext('2d', { willReadFrequently: true });
+			if (!context) throw new Error('Canvas2D is required for export validation.');
+			expect(context.getImageData(30, 56, 1, 1).data[0]).toBe(0);
+			expect(context.getImageData(90, 56, 1, 1).data[0]).toBeGreaterThan(200);
+			expect(context.getImageData(150, 50, 1, 1).data[0]).toBe(0);
 		} finally {
 			renderer.dispose();
 		}

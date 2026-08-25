@@ -104,7 +104,14 @@ export const PROPERTY_VALUE_RANGES = {
 	textShadowOffsetX: { min: -100, max: 100, unit: 'px', decimals: 0 },
 	textShadowOffsetY: { min: -100, max: 100, unit: 'px', decimals: 0 },
 	textShadowBlur: { min: 0, max: 160, unit: 'px', decimals: 0 },
-	strokeWidth: { min: 0, max: 24, unit: 'px', decimals: 0 }
+	strokeWidth: { min: 0, max: 500, unit: 'px', decimals: 0 },
+	trimPathStart: { min: 0, max: 100, unit: '%', decimals: 0 },
+	trimPathEnd: { min: 0, max: 100, unit: '%', decimals: 0 },
+	trimPathOffset: { min: -360, max: 360, unit: '°', decimals: 0 },
+	taperStartWidth: { min: 0, max: 200, unit: '%', decimals: 0 },
+	taperEndWidth: { min: 0, max: 200, unit: '%', decimals: 0 },
+	taperStartLength: { min: 0, max: 100, unit: '%', decimals: 0 },
+	taperEndLength: { min: 0, max: 100, unit: '%', decimals: 0 }
 } satisfies Record<BuiltInKeyframeProperty, PropertyValueRange>;
 
 export function propertyValueRange(property: KeyframeProperty): PropertyValueRange {

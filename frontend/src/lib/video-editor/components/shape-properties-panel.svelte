@@ -20,6 +20,74 @@
 	const pathTopologyLocked = $derived(
 		item.shapeType === 'path' && hasPathVertexKeyframes(item.keyframes)
 	);
+	type StrokePathProperty =
+		| 'trimPathStart'
+		| 'trimPathEnd'
+		| 'trimPathOffset'
+		| 'taperStartWidth'
+		| 'taperEndWidth'
+		| 'taperStartLength'
+		| 'taperEndLength';
+	interface StrokePathField {
+		property: StrokePathProperty;
+		label: string;
+		minimum: number;
+		maximum: number;
+		defaultValue: number;
+	}
+	const trimPathFields: StrokePathField[] = [
+		{
+			property: 'trimPathStart',
+			label: m.video_editor_shape_trim_start(),
+			minimum: 0,
+			maximum: 100,
+			defaultValue: 0
+		},
+		{
+			property: 'trimPathEnd',
+			label: m.video_editor_shape_trim_end(),
+			minimum: 0,
+			maximum: 100,
+			defaultValue: 100
+		},
+		{
+			property: 'trimPathOffset',
+			label: m.video_editor_shape_trim_offset(),
+			minimum: -360,
+			maximum: 360,
+			defaultValue: 0
+		}
+	];
+	const taperFields: StrokePathField[] = [
+		{
+			property: 'taperStartWidth',
+			label: m.video_editor_shape_taper_start_width(),
+			minimum: 0,
+			maximum: 200,
+			defaultValue: 100
+		},
+		{
+			property: 'taperStartLength',
+			label: m.video_editor_shape_taper_start_length(),
+			minimum: 0,
+			maximum: 100,
+			defaultValue: 0
+		},
+		{
+			property: 'taperEndWidth',
+			label: m.video_editor_shape_taper_end_width(),
+			minimum: 0,
+			maximum: 200,
+			defaultValue: 100
+		},
+		{
+			property: 'taperEndLength',
+			label: m.video_editor_shape_taper_end_length(),
+			minimum: 0,
+			maximum: 100,
+			defaultValue: 0
+		}
+	];
 
 	function commit(patch: Partial<TimelineItem>): void {
 		updateItemProperties(item.id, patch, 'UPDATE_SHAPE_PROPERTIES');
@@ -28,6 +96,11 @@
 
 	function numberPatch(property: keyof TimelineItem, value: number): void {
 		if (Number.isFinite(value)) commit({ [property]: value });
+	}
+
+	function strokePathPatch(field: StrokePathField, value: number): void {
+		if (!Number.isFinite(value)) return;
+		commit({ [field.property]: Math.max(field.minimum, Math.min(field.maximum, value)) });
 	}
 
 	function setMaskEnabled(enabled: boolean): void {
@@ -233,6 +306,56 @@
 						onchange={(event) => numberPatch('strokeMiterLimit', event.currentTarget.valueAsNumber)}
 					/>
 				</label>
+			{/if}
+
+			{#if !item.isMask}
+				<fieldset class="space-y-1.5 border-t border-white/10 pt-2">
+					<legend
+						class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+					>
+						{m.video_editor_shape_trim_paths()}
+					</legend>
+					<div class="grid grid-cols-2 gap-1">
+						{#each trimPathFields as field (field.property)}
+							<label class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
+								{field.label}
+								<Input
+									type="number"
+									min={field.minimum}
+									max={field.maximum}
+									step="1"
+									class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+									value={item[field.property] ?? field.defaultValue}
+									onchange={(event) => strokePathPatch(field, event.currentTarget.valueAsNumber)}
+								/>
+							</label>
+						{/each}
+					</div>
+				</fieldset>
+
+				<fieldset class="space-y-1.5 border-t border-white/10 pt-2">
+					<legend
+						class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
+					>
+						{m.video_editor_shape_taper()}
+					</legend>
+					<div class="grid grid-cols-2 gap-1">
+						{#each taperFields as field (field.property)}
+							<label class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
+								{field.label}
+								<Input
+									type="number"
+									min={field.minimum}
+									max={field.maximum}
+									step="1"
+									class="mt-0.5 h-8 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 text-xs"
+									value={item[field.property] ?? field.defaultValue}
+									onchange={(event) => strokePathPatch(field, event.currentTarget.valueAsNumber)}
+								/>
+							</label>
+						{/each}
+					</div>
+				</fieldset>
 			{/if}
 		{/if}
 

@@ -1,7 +1,14 @@
 import type { ShapePathVertex, TimelineItem } from '../project/types';
+import {
+	flattenShapePath,
+	hasStrokeTaper,
+	hasTrimPath,
+	maximumTaperScale,
+	renderShapeStroke
+} from './stroke-path';
 
 type ShapeContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-type ShapePath = Pick<
+export type ShapePathTarget = Pick<
 	ShapeContext,
 	| 'beginPath'
 	| 'moveTo'
@@ -11,7 +18,7 @@ type ShapePath = Pick<
 	| 'closePath'
 	| 'ellipse'
 	| 'rect'
-> & { roundRect?: ShapeContext['roundRect'] };
+> & { roundRect?: (x: number, y: number, width: number, height: number, radius: number) => void };
 
 interface Point {
 	x: number;
@@ -51,7 +58,7 @@ function toward(from: Point, to: Point, amount: number): Point {
 	};
 }
 
-function polygonPath(path: ShapePath, vertices: Point[], radius: number): void {
+function polygonPath(path: ShapePathTarget, vertices: Point[], radius: number): void {
 	if (vertices.length < 3) return;
 	if (radius <= 0) {
 		path.moveTo(vertices[0]!.x, vertices[0]!.y);
@@ -139,7 +146,7 @@ function triangleVertices(
 }
 
 function customPath(
-	path: ShapePath,
+	path: ShapePathTarget,
 	vertices: ShapePathVertex[],
 	width: number,
 	height: number,
@@ -176,12 +183,15 @@ function customPath(
 
 /** Build the exact local path used by preview, export, and masks. */
 export function buildShapePath(
-	path: ShapePath,
+	path: ShapePathTarget,
 	item: TimelineItem,
 	width: number,
 	height: number
 ): void {
-	const strokeInset = item.strokeEnabled === false ? 0 : Math.max(0, item.strokeWidth ?? 0) / 2;
+	const strokeInset =
+		item.strokeEnabled === false
+			? 0
+			: (Math.max(0, item.strokeWidth ?? 0) * maximumTaperScale(item)) / 2;
 	const left = strokeInset;
 	const top = strokeInset;
 	const right = Math.max(left, width - strokeInset);
@@ -342,12 +352,17 @@ export function renderShapeItemRaster(
 			context.fill();
 		}
 		if ((item.strokeEnabled ?? false) && (item.strokeWidth ?? 0) > 0) {
-			context.strokeStyle = item.strokeColor ?? '#ffffff';
-			context.lineWidth = item.strokeWidth ?? 0;
-			context.lineCap = item.strokeLineCap ?? 'butt';
-			context.lineJoin = item.strokeLineJoin ?? 'miter';
-			context.miterLimit = item.strokeMiterLimit ?? 4;
-			context.stroke();
+			if (hasTrimPath(item) || hasStrokeTaper(item)) {
+				const flattened = flattenShapePath((target) => buildShapePath(target, item, width, height));
+				renderShapeStroke(context, flattened, item);
+			} else {
+				context.strokeStyle = item.strokeColor ?? '#ffffff';
+				context.lineWidth = item.strokeWidth ?? 0;
+				context.lineCap = item.strokeLineCap ?? 'butt';
+				context.lineJoin = item.strokeLineJoin ?? 'miter';
+				context.miterLimit = item.strokeMiterLimit ?? 4;
+				context.stroke();
+			}
 		}
 	} finally {
 		context.restore();

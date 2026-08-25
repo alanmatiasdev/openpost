@@ -5,7 +5,13 @@
  * OpenPost's append-only project schema history.
  */
 
-import type { Project, ProjectTimeline, SubComposition, TimelineTrack } from './types';
+import type {
+	Project,
+	ProjectTimeline,
+	SubComposition,
+	TimelineItem,
+	TimelineTrack
+} from './types';
 import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
 import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-groups';
 
@@ -99,8 +105,43 @@ export interface NormalizedProject {
 	warnings: ProjectWarning[];
 }
 
+function normalizeShapeStrokeStyle(item: TimelineItem): TimelineItem {
+	if (item.type !== 'shape') return item;
+	const clampOptional = (value: number | undefined, minimum: number, maximum: number) =>
+		value === undefined
+			? undefined
+			: Number.isFinite(value)
+				? Math.max(minimum, Math.min(maximum, value))
+				: undefined;
+	const patch: Partial<TimelineItem> = {
+		trimPathStart: clampOptional(item.trimPathStart, 0, 100),
+		trimPathEnd: clampOptional(item.trimPathEnd, 0, 100),
+		trimPathOffset: clampOptional(item.trimPathOffset, -360, 360),
+		taperStartWidth: clampOptional(item.taperStartWidth, 0, 200),
+		taperEndWidth: clampOptional(item.taperEndWidth, 0, 200),
+		taperStartLength: clampOptional(item.taperStartLength, 0, 100),
+		taperEndLength: clampOptional(item.taperEndLength, 0, 100)
+	};
+	const changed =
+		patch.trimPathStart !== item.trimPathStart ||
+		patch.trimPathEnd !== item.trimPathEnd ||
+		patch.trimPathOffset !== item.trimPathOffset ||
+		patch.taperStartWidth !== item.taperStartWidth ||
+		patch.taperEndWidth !== item.taperEndWidth ||
+		patch.taperStartLength !== item.taperStartLength ||
+		patch.taperEndLength !== item.taperEndLength;
+	return changed ? { ...item, ...patch } : item;
+}
+
 export function normalizeProject(project: Project): NormalizedProject {
 	const warnings: ProjectWarning[] = [];
+	let shapeStylesRepaired = false;
+	const normalizeItems = (items: TimelineItem[]): TimelineItem[] =>
+		items.map((item) => {
+			const normalized = normalizeShapeStrokeStyle(item);
+			if (normalized !== item) shapeStylesRepaired = true;
+			return normalized;
+		});
 	const timeline = project.timeline ?? createEmptyTimeline();
 	if (!project.timeline) {
 		warnings.push({
@@ -139,8 +180,10 @@ export function normalizeProject(project: Project): NormalizedProject {
 			message: 'Project had no video track; added one.'
 		});
 	}
-	if (!timeline.items) timeline.items = [];
-	const normalizedCompositions = (timeline.compositions ?? []).map(normalizeSubComposition);
+	timeline.items = normalizeItems(timeline.items ?? []);
+	const normalizedCompositions = (timeline.compositions ?? []).map((composition) =>
+		normalizeSubComposition(composition, normalizeItems)
+	);
 	const validSequenceIds = new Set(normalizedCompositions.map((composition) => composition.id));
 	const topLevelSequenceIds = [
 		...new Set((timeline.topLevelSequenceIds ?? []).filter((id) => validSequenceIds.has(id)))
@@ -157,6 +200,12 @@ export function normalizeProject(project: Project): NormalizedProject {
 	timeline.zoomLevel =
 		Number.isFinite(timeline.zoomLevel) && (timeline.zoomLevel ?? 1) > 0 ? timeline.zoomLevel : 1;
 	timeline.scrollPosition = Number.isFinite(timeline.scrollPosition) ? timeline.scrollPosition : 0;
+	if (shapeStylesRepaired) {
+		warnings.push({
+			code: 'SHAPE_STYLES_REPAIRED',
+			message: 'Clamped invalid trim-path or stroke-taper values.'
+		});
+	}
 
 	// SAFETY: normalizeProject guarantees a timeline above.
 	return {
@@ -165,11 +214,14 @@ export function normalizeProject(project: Project): NormalizedProject {
 	};
 }
 
-function normalizeSubComposition(composition: SubComposition): SubComposition {
+function normalizeSubComposition(
+	composition: SubComposition,
+	normalizeItems: (items: TimelineItem[]) => TimelineItem[]
+): SubComposition {
 	const tracks = normalizeTrackGroups(
 		composition.tracks?.length > 0 ? composition.tracks : createDefaultTracks()
 	);
-	const items = composition.items ?? [];
+	const items = normalizeItems(composition.items ?? []);
 	const contentDuration = items.reduce(
 		(max, item) => Math.max(max, item.from + item.durationInFrames),
 		0

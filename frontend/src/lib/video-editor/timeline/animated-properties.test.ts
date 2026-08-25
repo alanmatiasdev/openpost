@@ -62,6 +62,22 @@ describe('animatable properties', () => {
 		};
 		expect(getAnimatablePropertiesForItem(path)).toContain('pathVertex:0:outY');
 	});
+
+	it('exposes trim and taper lanes for shapes', () => {
+		const properties = getAnimatablePropertiesForItem(item('shape'));
+		expect(properties).toEqual(
+			expect.arrayContaining([
+				'strokeWidth',
+				'trimPathStart',
+				'trimPathEnd',
+				'trimPathOffset',
+				'taperStartWidth',
+				'taperEndWidth',
+				'taperStartLength',
+				'taperEndLength'
+			])
+		);
+	});
 });
 
 describe('resolveAnimatedItemAt', () => {
@@ -212,6 +228,24 @@ describe('resolveAnimatedItemAt', () => {
 		expect(resolved.pathVertices?.[1]?.inHandle).toEqual([-0.25, -0.25]);
 		expect(resolved.pathVertices?.[0]?.tangentMode).toBe('broken');
 		expect(path.pathVertices?.[0]?.position).toEqual([0, 0]);
+	});
+
+	it('interpolates trim paths and tapers for preview and export resolution', () => {
+		const shape: TimelineItem = {
+			...item('shape'),
+			shapeType: 'path',
+			trimPathEnd: 0,
+			taperStartWidth: 100,
+			keyframes: {
+				trimPathEnd: { frames: [0, 30], values: [0, 100] },
+				taperStartWidth: { frames: [0, 30], values: [100, 0] }
+			}
+		};
+
+		const resolved = resolveAnimatedItemAt(shape, 115);
+		expect(resolved.trimPathEnd).toBe(50);
+		expect(resolved.taperStartWidth).toBe(50);
+		expect(shape.trimPathEnd).toBe(0);
 	});
 
 	it('resolves effect params through the same item used by preview and export', () => {

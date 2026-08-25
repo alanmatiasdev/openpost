@@ -262,7 +262,14 @@ export type BuiltInKeyframeProperty =
 	| 'textShadowOffsetX'
 	| 'textShadowOffsetY'
 	| 'textShadowBlur'
-	| 'strokeWidth';
+	| 'strokeWidth'
+	| 'trimPathStart'
+	| 'trimPathEnd'
+	| 'trimPathOffset'
+	| 'taperStartWidth'
+	| 'taperEndWidth'
+	| 'taperStartLength'
+	| 'taperEndLength';
 
 /** Property that can be animated with per-item keyframes. */
 export type KeyframeProperty =
@@ -574,6 +581,17 @@ export interface TimelineItem extends TextStyleFields {
 	strokeLineCap?: 'butt' | 'round' | 'square';
 	strokeLineJoin?: 'miter' | 'round' | 'bevel';
 	strokeMiterLimit?: number;
+	/** Visible stroke range as percentages of the shape outline. */
+	trimPathStart?: number;
+	trimPathEnd?: number;
+	/** Cyclic phase for the visible stroke range, in degrees. */
+	trimPathOffset?: number;
+	/** Stroke-width percentages at the start and end of the visible range. */
+	taperStartWidth?: number;
+	taperEndWidth?: number;
+	/** Percentages of the visible range used to ease each taper to full width. */
+	taperStartLength?: number;
+	taperEndLength?: number;
 	shapeCornerRadius?: number;
 	shapeDirection?: 'up' | 'down' | 'left' | 'right';
 	shapePoints?: number;
