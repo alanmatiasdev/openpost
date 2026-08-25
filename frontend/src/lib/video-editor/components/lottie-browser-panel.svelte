@@ -23,7 +23,16 @@
 
 	const PAGE_SIZE = 24;
 	const categories: LottieBrowseCategory[] = ['featured', 'popular', 'recent'];
-	let { projectId }: { projectId: string } = $props();
+	type LottieBrowserPanelProps = {
+		projectId: string;
+		fetchAnimations?: typeof fetchLottieAnimations;
+		importAnimation?: typeof importRemoteLottie;
+	};
+	let {
+		projectId,
+		fetchAnimations = fetchLottieAnimations,
+		importAnimation = importRemoteLottie
+	}: LottieBrowserPanelProps = $props();
 	let category = $state<LottieBrowseCategory>('featured');
 	let inputValue = $state('');
 	let query = $state('');
@@ -60,7 +69,7 @@
 		error = '';
 		try {
 			const target = Math.max(0, nextPage);
-			const result = await fetchLottieAnimations({
+			const result = await fetchAnimations({
 				category: activeCategory,
 				query: activeQuery,
 				after: target === 0 ? null : offsetToCursor(target * PAGE_SIZE - 1),
@@ -96,7 +105,7 @@
 		importingIds = withId(importingIds, animation.id, true);
 		failedIds = withId(failedIds, animation.id, false);
 		try {
-			await importRemoteLottie({
+			await importAnimation({
 				projectId,
 				url: animation.lottieUrl,
 				fileName: animation.name,

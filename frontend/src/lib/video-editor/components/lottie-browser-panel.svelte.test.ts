@@ -1,36 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import * as importModule from '$lib/video-editor/media/import.svelte';
-import * as lottieApi from '$lib/video-editor/lottie/lottiefiles-api';
 import LottieBrowserPanel from './lottie-browser-panel.svelte';
-
-beforeEach(() => {
-	vi.spyOn(importModule, 'importRemoteLottie').mockResolvedValue('media-id');
-	vi.spyOn(lottieApi, 'fetchLottieAnimations').mockResolvedValue({
-		items: [
-			{
-				id: '42',
-				name: 'Wave hello',
-				lottieUrl: 'https://assets-v2.lottiefiles.com/wave.lottie',
-				gifUrl: null,
-				bgColor: '#ffffff',
-				author: 'Ada',
-				authorPath: '/ada'
-			}
-		],
-		endCursor: null,
-		hasNextPage: false,
-		totalCount: 1
-	});
-});
 
 describe('LottieBrowserPanel', () => {
 	it('loads, attributes, and imports a public animation in a compact asset panel', async () => {
-		const screen = await render(LottieBrowserPanel, { projectId: 'project' });
+		const importAnimation = vi.fn(async () => 'media-id');
+		const fetchAnimations = vi.fn(async () => ({
+			items: [
+				{
+					id: '42',
+					name: 'Wave hello',
+					lottieUrl: 'https://assets-v2.lottiefiles.com/wave.lottie',
+					gifUrl: null,
+					bgColor: '#ffffff',
+					author: 'Ada',
+					authorPath: '/ada'
+				}
+			],
+			endCursor: null,
+			hasNextPage: false,
+			totalCount: 1
+		}));
+		const screen = await render(LottieBrowserPanel, {
+			projectId: 'project',
+			fetchAnimations,
+			importAnimation
+		});
 		await expect.element(screen.getByText('Wave hello')).toBeVisible();
 		await screen.getByRole('button', { name: 'Add to media' }).click();
-		await vi.waitFor(() => expect(importModule.importRemoteLottie).toHaveBeenCalledTimes(1));
-		expect(importModule.importRemoteLottie).toHaveBeenCalledWith({
+		await vi.waitFor(() => expect(importAnimation).toHaveBeenCalledTimes(1));
+		expect(importAnimation).toHaveBeenCalledWith({
 			projectId: 'project',
 			url: 'https://assets-v2.lottiefiles.com/wave.lottie',
 			fileName: 'Wave hello',

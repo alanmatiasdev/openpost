@@ -3,23 +3,10 @@ import { render } from 'vitest-browser-svelte';
 import type { MediaMetadata } from '../media/types';
 import TimelineVoiceoverControl from '../components/timeline-voiceover-control.svelte';
 import TimelineVoiceoverOverlay from '../components/timeline-voiceover-overlay.svelte';
-import * as micModule from './mic-recorder';
-import * as importModule from '../media/import.svelte';
-import * as insertModule from '../local-ai/insert-generated-audio';
-
-const mocks = {
-	start: vi.fn(),
-	pause: vi.fn(),
-	resume: vi.fn(),
-	stop: vi.fn(),
-	cancel: vi.fn(),
-	elapsedMs: vi.fn(() => 500),
-	importRecordedAudio: vi.fn(),
-	insertVoiceover: vi.fn(() => 'voiceover-item'),
-	// SAFETY: empty device list stub is typed as MediaDeviceInfo[] for enumeration.
-	enumerateMicrophones: vi.fn(async () => [] as MediaDeviceInfo[]),
-	startMonitor: vi.fn()
-};
+import type {
+	VoiceoverRecorderDependencies,
+	VoiceoverRecorderDevice
+} from './voiceover-recorder.svelte';
 
 import { editorSession } from '../editor.svelte';
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
@@ -41,6 +28,19 @@ const recordedMedia: MediaMetadata = {
 	tags: ['audio', 'recorded', 'voiceover']
 };
 
+const mocks = {
+	start: vi.fn<VoiceoverRecorderDevice['start']>(),
+	pause: vi.fn<VoiceoverRecorderDevice['pause']>(),
+	resume: vi.fn<VoiceoverRecorderDevice['resume']>(),
+	stop: vi.fn<VoiceoverRecorderDevice['stop']>(),
+	cancel: vi.fn<VoiceoverRecorderDevice['cancel']>(),
+	elapsedMs: vi.fn<VoiceoverRecorderDevice['elapsedMs']>(() => 500),
+	importRecordedAudio: vi.fn<VoiceoverRecorderDependencies['importAudio']>(),
+	insertVoiceover: vi.fn<VoiceoverRecorderDependencies['insertOnNewTrack']>(() => 'voiceover-item'),
+	enumerateMicrophones: vi.fn<VoiceoverRecorderDependencies['enumerateDevices']>(async () => []),
+	startMonitor: vi.fn<VoiceoverRecorderDependencies['startMonitor']>()
+};
+
 function setProject(id: string): void {
 	// SAFETY: project stub provides the minimal shape consumed by voiceover recorder (id + metadata).
 	editorSession.project = {
@@ -60,38 +60,24 @@ describe('voiceoverRecorder', () => {
 		});
 		mocks.importRecordedAudio.mockResolvedValue(recordedMedia);
 		mocks.startMonitor.mockResolvedValue({ stop: vi.fn() });
-		// SAFETY: test fakes replace MicRecorder with a minimal stub implementing the recorder surface.
-		vi.spyOn(micModule, 'MicRecorder').mockImplementation(
-			() =>
-				({
-					start: mocks.start,
-					pause: mocks.pause,
-					resume: mocks.resume,
-					stop: mocks.stop,
-					cancel: mocks.cancel,
-					elapsedMs: mocks.elapsedMs
-				}) as micModule.MicRecorder
-		);
-		vi.spyOn(micModule, 'createBestEffortAudioContext').mockReturnValue(null);
-		// SAFETY: enumerateMicrophones stub returns empty device list for voiceover tests.
-		vi.spyOn(micModule, 'enumerateMicrophones').mockImplementation(
-			mocks.enumerateMicrophones as typeof micModule.enumerateMicrophones
-		);
-		vi.spyOn(micModule, 'hasMicRecordingSupport').mockReturnValue(true);
-		vi.spyOn(micModule, 'micRecordingExtension').mockReturnValue('webm');
-		// SAFETY: startMicLevelMonitor stub returns a no-op monitor handle for test isolation.
-		vi.spyOn(micModule, 'startMicLevelMonitor').mockImplementation(
-			mocks.startMonitor as typeof micModule.startMicLevelMonitor
-		);
-		// SAFETY: importRecordedAudio stub returns fixed recorded media for deterministic insert.
-		vi.spyOn(importModule, 'importRecordedAudio').mockImplementation(
-			mocks.importRecordedAudio as typeof importModule.importRecordedAudio
-		);
-		// SAFETY: insertVoiceover stub returns a fixed item id for transport assertions.
-		vi.spyOn(insertModule, 'insertVoiceoverOnNewTrack').mockImplementation(
-			mocks.insertVoiceover as typeof insertModule.insertVoiceoverOnNewTrack
-		);
 		voiceoverRecorder.__resetForTesting();
+		voiceoverRecorder.__setDependenciesForTesting({
+			createRecorder: () => ({
+				start: mocks.start,
+				pause: mocks.pause,
+				resume: mocks.resume,
+				stop: mocks.stop,
+				cancel: mocks.cancel,
+				elapsedMs: mocks.elapsedMs
+			}),
+			createAudioContext: () => null,
+			enumerateDevices: mocks.enumerateMicrophones,
+			isSupported: () => true,
+			recordingExtension: () => 'webm',
+			startMonitor: mocks.startMonitor,
+			importAudio: mocks.importRecordedAudio,
+			insertOnNewTrack: mocks.insertVoiceover
+		});
 		voiceoverRecorder.setMuteTimeline(true);
 		voiceoverRecorder.setSyncOffsetMs(0);
 		previewPlaybackSettings.setMuted(false);

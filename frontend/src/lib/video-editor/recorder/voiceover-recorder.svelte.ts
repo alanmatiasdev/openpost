@@ -12,6 +12,7 @@ import {
 	micRecordingExtension,
 	startMicLevelMonitor,
 	type MicMonitorHandle,
+	type MicRecorderOptions,
 	type MicRecorderResult
 } from './mic-recorder';
 
@@ -40,6 +41,39 @@ export type VoiceoverErrorCode =
 	| 'start-failed'
 	| 'empty-recording'
 	| 'save-failed';
+
+export interface VoiceoverRecorderDevice {
+	start(options?: MicRecorderOptions): Promise<void>;
+	pause(): void;
+	resume(): void;
+	stop(): Promise<MicRecorderResult>;
+	cancel(): void;
+	elapsedMs(): number;
+}
+
+export interface VoiceoverRecorderDependencies {
+	createRecorder(): VoiceoverRecorderDevice;
+	createAudioContext(): AudioContext | null;
+	enumerateDevices(): Promise<MediaDeviceInfo[]>;
+	isSupported(): boolean;
+	recordingExtension(mimeType: string): string;
+	startMonitor(options: MicRecorderOptions): Promise<MicMonitorHandle>;
+	importAudio: typeof importRecordedAudio;
+	insertOnNewTrack: typeof insertVoiceoverOnNewTrack;
+}
+
+const productionDependencies: VoiceoverRecorderDependencies = {
+	createRecorder: () => new MicRecorder(),
+	createAudioContext: createBestEffortAudioContext,
+	enumerateDevices: enumerateMicrophones,
+	isSupported: hasMicRecordingSupport,
+	recordingExtension: micRecordingExtension,
+	startMonitor: startMicLevelMonitor,
+	importAudio: importRecordedAudio,
+	insertOnNewTrack: insertVoiceoverOnNewTrack
+};
+
+let dependencies = productionDependencies;
 
 interface StoredVoiceoverPreferences {
 	selectedDeviceId?: string | null;
@@ -76,7 +110,7 @@ function errorCode(cause: unknown): VoiceoverErrorCode {
 
 async function decodedDurationSeconds(result: MicRecorderResult): Promise<number> {
 	if (result.blob.size === 0) return 0;
-	const context = createBestEffortAudioContext();
+	const context = dependencies.createAudioContext();
 	if (context) {
 		try {
 			const decoded = await context.decodeAudioData(await result.blob.arrayBuffer());
@@ -126,7 +160,7 @@ function persistPreferences(): void {
 }
 
 class VoiceoverRecorderController {
-	private recorder: MicRecorder | null = null;
+	private recorder: VoiceoverRecorderDevice | null = null;
 	private monitor: MicMonitorHandle | null = null;
 	private monitorGeneration = 0;
 	private sessionGeneration = 0;
@@ -192,7 +226,7 @@ class VoiceoverRecorderController {
 	}
 
 	get supported(): boolean {
-		return hasMicRecordingSupport();
+		return dependencies.isSupported();
 	}
 
 	clearError(): void {
@@ -238,7 +272,7 @@ class VoiceoverRecorderController {
 
 	async refreshDevices(): Promise<void> {
 		try {
-			state.devices = await enumerateMicrophones();
+			state.devices = await dependencies.enumerateDevices();
 			if (
 				state.selectedDeviceId &&
 				!state.devices.some((device) => device.deviceId === state.selectedDeviceId)
@@ -255,7 +289,7 @@ class VoiceoverRecorderController {
 		if (this.monitor || state.status !== 'idle' || !this.supported) return;
 		const generation = ++this.monitorGeneration;
 		try {
-			const monitor = await startMicLevelMonitor({
+			const monitor = await dependencies.startMonitor({
 				deviceId: state.selectedDeviceId ?? undefined,
 				noiseSuppression: state.noiseSuppression,
 				autoGainControl: state.autoGainControl,
@@ -295,7 +329,7 @@ class VoiceoverRecorderController {
 		state.status = 'requesting';
 		const generation = ++this.sessionGeneration;
 		this.sessionProjectId = projectId;
-		let recorder = new MicRecorder();
+		let recorder = dependencies.createRecorder();
 		this.recorder = recorder;
 		try {
 			await recorder.start(this.captureOptions());
@@ -308,7 +342,7 @@ class VoiceoverRecorderController {
 			) {
 				state.selectedDeviceId = null;
 				persistPreferences();
-				recorder = new MicRecorder();
+				recorder = dependencies.createRecorder();
 				this.recorder = recorder;
 				try {
 					await recorder.start(this.captureOptions());
@@ -412,13 +446,13 @@ class VoiceoverRecorderController {
 			const result = await recorder.stop();
 			const duration = await decodedDurationSeconds(result);
 			if (result.blob.size === 0 || duration <= 0) throw new Error('EMPTY_RECORDING');
-			const extension = micRecordingExtension(result.mimeType);
+			const extension = dependencies.recordingExtension(result.mimeType);
 			const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 			const file = new File([result.blob], `voiceover-${stamp}.${extension}`, {
 				type: result.mimeType,
 				lastModified: Date.now()
 			});
-			const media = await importRecordedAudio(file, {
+			const media = await dependencies.importAudio(file, {
 				projectId,
 				duration,
 				tags: ['voiceover']
@@ -430,7 +464,7 @@ class VoiceoverRecorderController {
 				0,
 				anchor + Math.round((state.syncOffsetMs / 1_000) * timelineStore.fps)
 			);
-			const itemId = insertVoiceoverOnNewTrack(media, from, trackName);
+			const itemId = dependencies.insertOnNewTrack(media, from, trackName);
 			editorSession.scheduleAutosave();
 			for (const listener of this.insertionListeners) listener(itemId);
 			return itemId;
@@ -536,6 +570,11 @@ class VoiceoverRecorderController {
 		this.cancel();
 		this.stopMonitor();
 		state.error = null;
+		dependencies = productionDependencies;
+	}
+
+	__setDependenciesForTesting(next: VoiceoverRecorderDependencies): void {
+		dependencies = next;
 	}
 }
 
