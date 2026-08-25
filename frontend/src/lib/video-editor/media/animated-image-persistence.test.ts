@@ -12,12 +12,7 @@ async function parseLoadWithMock(meta: unknown, frameBlobs: (Blob | null)[]) {
 			return frameBlobs[idx] ?? null;
 		}
 	);
-	// mock createImageBitmap to return a fake bitmap
-	// SAFETY: test stub assigns a minimal ImageBitmap surface to globalThis for persistence loader.
-	(
-		globalThis as unknown as { createImageBitmap: (blob: Blob) => Promise<ImageBitmap> }
-	).createImageBitmap = async (blob: Blob) => {
-		if (!blob) throw new Error('no blob');
+	globalThis.createImageBitmap = async () => {
 		// SAFETY: test stub returns minimal ImageBitmap surface for persistence loader.
 		return { close: () => {}, width: 2, height: 2 } as ImageBitmap;
 	};
