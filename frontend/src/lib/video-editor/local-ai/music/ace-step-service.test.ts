@@ -199,4 +199,73 @@ describe('AceStepMusicService', () => {
 			})
 		);
 	});
+
+	it('disposes a runtime that finishes loading after an explicit unload', async () => {
+		const { runtime } = fakeRuntime();
+		let resolveRuntime!: (runtime: AceStepRuntime) => void;
+		const service = new AceStepMusicService(
+			() => new Promise<AceStepRuntime>((resolve) => (resolveRuntime = resolve))
+		);
+		const pending = service.inspectCache();
+		expect(service.isLoaded()).toBe(true);
+
+		service.unload();
+		resolveRuntime(runtime);
+
+		await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		expect(runtime.dispose).toHaveBeenCalledOnce();
+		expect(service.isLoaded()).toBe(false);
+	});
+
+	it('clears cached assets with an idle runtime and always disposes it afterward', async () => {
+		const { runtime, listCachedModels } = fakeRuntime();
+		listCachedModels.mockResolvedValue({
+			origin: 'http://localhost:4173',
+			cacheName: 'ai-music-js-test',
+			expectedBytes: 128,
+			storedBytes: 128,
+			readyBytes: 128,
+			missingBytes: 0,
+			usageBytes: 128,
+			quotaBytes: 1024,
+			availableBytes: 896,
+			persisted: true,
+			models: []
+		});
+		const service = new AceStepMusicService(async () => runtime);
+
+		await expect(service.clearCache()).resolves.toBe(true);
+		expect(runtime.clearCache).toHaveBeenCalledOnce();
+		expect(runtime.dispose).toHaveBeenCalledOnce();
+		expect(service.isLoaded()).toBe(false);
+	});
+
+	it('rejects work queued before unload instead of loading the model again', async () => {
+		const { runtime, generate } = fakeRuntime();
+		let resolveFirst!: (result: AceStepGenerationResult) => void;
+		generate.mockImplementation(
+			() => new Promise<AceStepGenerationResult>((resolve) => (resolveFirst = resolve))
+		);
+		const service = new AceStepMusicService(async () => runtime);
+		const first = service.generate({
+			prompt: 'First track',
+			durationSeconds: 10,
+			audioQuality: 'standard',
+			seed: 1
+		});
+		const queued = service.generate({
+			prompt: 'Queued track',
+			durationSeconds: 10,
+			audioQuality: 'standard',
+			seed: 2
+		});
+		await vi.waitFor(() => expect(generate).toHaveBeenCalledOnce());
+
+		service.unload();
+		resolveFirst(generationResult(1));
+
+		await expect(first).resolves.toMatchObject({ seed: 1 });
+		await expect(queued).rejects.toMatchObject({ name: 'AbortError' });
+		expect(generate).toHaveBeenCalledOnce();
+	});
 });

@@ -5,6 +5,7 @@ import type {
 	InterpolationWorkerRequest,
 	InterpolationWorkerResponse
 } from '../workers/frame-interpolation-worker';
+import { gpuMediaJobScheduler } from '../gpu-media-job-scheduler';
 import {
 	FrameInterpolationService,
 	type FrameInterpolationServiceDependencies
@@ -177,5 +178,25 @@ describe('FrameInterpolationService lifecycle', () => {
 		expect(worker.terminated).toBe(true);
 		await vi.waitFor(() => expect(removeScratch).toHaveBeenCalledWith(request.jobId));
 		consoleError.mockRestore();
+	});
+
+	it('unloads a resident worker and rejects active work without leaving a task behind', async () => {
+		const removeScratch = vi.fn(async () => undefined);
+		const service = new FrameInterpolationService(dependencies({ removeScratch }));
+		const resultPromise = service.generate(media('resident'), 'project', 2);
+		await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+		const worker = FakeWorker.instances[0]!;
+		await vi.waitFor(() => expect(worker.requests[0]).toMatchObject({ type: 'interpolate' }));
+		expect(service.isLoaded()).toBe(true);
+
+		service.unload();
+
+		await expect(resultPromise).rejects.toMatchObject({ name: 'AbortError' });
+		expect(worker.terminated).toBe(true);
+		expect(service.isLoaded()).toBe(false);
+		expect(mediaTasks.get(mediaTaskId('frame-interpolation', 'resident'))).toBeUndefined();
+		await vi.waitFor(() => expect(removeScratch).toHaveBeenCalledOnce());
+		const releaseGpu = await gpuMediaJobScheduler.acquire(new AbortController().signal);
+		releaseGpu();
 	});
 });

@@ -11,6 +11,7 @@
 import { createLogger } from '../../../workspace-fs/logger';
 import type { EmbeddingsOptions } from './embedding-types';
 import { addAbortableWorkerMessageListener } from './worker-message-listener';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 
 function createClipWorker(): Worker {
 	return new Worker(new URL('./clip-worker.ts', import.meta.url), { type: 'module' });
@@ -26,6 +27,18 @@ const INIT_TIMEOUT_MS = 120_000;
 let worker: Worker | null = null;
 let readyPromise: Promise<void> | null = null;
 let nextId = 0;
+const pendingUnloadCancellations = new Set<() => void>();
+
+function disposeWorker(): void {
+	for (const cancel of [...pendingUnloadCancellations]) cancel();
+	pendingUnloadCancellations.clear();
+	if (worker) {
+		worker.postMessage({ type: 'dispose' });
+		worker.terminate();
+	}
+	worker = null;
+	readyPromise = null;
+}
 
 function getWorker(): Worker {
 	if (!worker) {
@@ -43,6 +56,7 @@ function ensureReady(options: EmbeddingsOptions = {}): Promise<void> {
 
 	readyPromise = new Promise<void>((resolve, reject) => {
 		let removeWorkerMessageListener = () => {};
+		let cancelForUnload = () => {};
 		const timeout = setTimeout(() => {
 			cleanup();
 			reject(new Error('CLIP worker init timed out'));
@@ -51,7 +65,13 @@ function ensureReady(options: EmbeddingsOptions = {}): Promise<void> {
 		const cleanup = () => {
 			clearTimeout(timeout);
 			removeWorkerMessageListener();
+			pendingUnloadCancellations.delete(cancelForUnload);
 		};
+		cancelForUnload = () => {
+			cleanup();
+			reject(new DOMException('Visual search runtime was unloaded.', 'AbortError'));
+		};
+		pendingUnloadCancellations.add(cancelForUnload);
 
 		const onAbort = () => {
 			cleanup();
@@ -105,10 +125,17 @@ function runEmbed(request: EmbedRequest, options: EmbeddingsOptions = {}): Promi
 				const id = ++nextId;
 				const w = getWorker();
 				let removeWorkerMessageListener = () => {};
+				let cancelForUnload = () => {};
 
 				const cleanup = () => {
 					removeWorkerMessageListener();
+					pendingUnloadCancellations.delete(cancelForUnload);
 				};
+				cancelForUnload = () => {
+					cleanup();
+					reject(new DOMException('Visual search runtime was unloaded.', 'AbortError'));
+				};
+				pendingUnloadCancellations.add(cancelForUnload);
 
 				const onAbort = () => {
 					cleanup();
@@ -120,6 +147,7 @@ function runEmbed(request: EmbedRequest, options: EmbeddingsOptions = {}): Promi
 					if (message.id !== id) return;
 					if (message.type === 'vectors') {
 						cleanup();
+						// SAFETY: The matching worker request returns one Float32Array per image or text input.
 						resolve(message.vectors as Float32Array[]);
 						return;
 					}
@@ -222,11 +250,13 @@ export const clipProvider = {
 		return averageAndNormalize(vectors);
 	},
 
-	dispose(): void {
-		if (!worker) return;
-		worker.postMessage({ type: 'dispose' });
-		worker.terminate();
-		worker = null;
-		readyPromise = null;
-	}
+	dispose: disposeWorker,
+	isLoaded: () => worker !== null || readyPromise !== null
 };
+
+localAiRuntimeRegistry.register({
+	id: 'visual-search',
+	label: 'Visual search',
+	isLoaded: clipProvider.isLoaded,
+	unload: clipProvider.dispose
+});

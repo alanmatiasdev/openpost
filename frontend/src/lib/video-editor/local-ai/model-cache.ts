@@ -1,10 +1,7 @@
 import { ONNX_MODEL_CACHE_NAME } from '../transcript/engine/onnx-model-cache';
-import { kokoroTtsService } from './tts/kokoro-service';
 import { clearMossModelStorage, inspectMossModelStorage } from './tts/moss-model-storage';
-import { mossTtsService } from './tts/moss-service';
-import { supertonicTtsService } from './tts/supertonic-service';
-import { unloadFrameInterpolationRuntime } from '../media/processing/runtime-registry';
 import { aceStepMusicService, inspectMusicGenerationSupport } from './music/ace-step-service';
+import { unloadLocalAiRuntime } from './runtime-registry';
 
 export const TRANSFORMERS_CACHE_NAME = 'transformers-cache';
 
@@ -233,17 +230,17 @@ export function inspectAllLocalModelCaches(): Promise<LocalModelCacheSummary[]> 
 	return Promise.all(LOCAL_MODEL_CACHE_DEFINITIONS.map(inspectLocalModelCache));
 }
 
-export async function clearLocalModelCache(
+const clearOperations = new Map<string, Promise<boolean>>();
+
+async function performClearLocalModelCache(
 	definition: LocalModelCacheDefinition
 ): Promise<boolean> {
 	if (definition.storage === 'ace-step') return aceStepMusicService.clearCache();
 	if (definition.storage === 'moss-opfs') {
-		mossTtsService.unload();
+		await unloadLocalAiRuntime(definition.id);
 		return clearMossModelStorage();
 	}
-	if (definition.id === 'kokoro-tts') await kokoroTtsService.unload();
-	if (definition.id === 'supertonic-tts') await supertonicTtsService.unload();
-	if (definition.id === 'rife-interpolation') unloadFrameInterpolationRuntime();
+	await unloadLocalAiRuntime(definition.id);
 	const storage = cacheStorage();
 	if (!storage) return false;
 	const names = await withTimeout(storage.keys());
@@ -252,8 +249,27 @@ export async function clearLocalModelCache(
 	const requests = (await withTimeout(cache.keys())).filter((request) =>
 		matches(definition, request)
 	);
-	const removed = await Promise.all(
+	const removed = await Promise.allSettled(
 		requests.map((request) => withTimeout(cache.delete(request), MATCH_TIMEOUT_MS))
 	);
-	return removed.some(Boolean);
+	const failures = removed.filter(
+		(result): result is PromiseRejectedResult => result.status === 'rejected'
+	);
+	if (failures.length > 0) {
+		throw new AggregateError(
+			failures.map((failure) => failure.reason),
+			`Failed to remove ${failures.length} local model cache entries`
+		);
+	}
+	return removed.some((result) => result.status === 'fulfilled' && result.value);
+}
+
+export function clearLocalModelCache(definition: LocalModelCacheDefinition): Promise<boolean> {
+	const existing = clearOperations.get(definition.id);
+	if (existing) return existing;
+	const operation = performClearLocalModelCache(definition).finally(() => {
+		if (clearOperations.get(definition.id) === operation) clearOperations.delete(definition.id);
+	});
+	clearOperations.set(definition.id, operation);
+	return operation;
 }

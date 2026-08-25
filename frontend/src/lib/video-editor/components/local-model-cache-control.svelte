@@ -7,6 +7,10 @@
 		inspectAllLocalModelCaches,
 		type LocalModelCacheSummary
 	} from '$lib/video-editor/local-ai/model-cache';
+	import {
+		inspectLocalAiRuntimes,
+		unloadAllLocalAiRuntimes
+	} from '$lib/video-editor/local-ai/runtime-registry';
 
 	let { disabled = false }: { disabled?: boolean } = $props();
 
@@ -14,6 +18,14 @@
 	let loading = $state(false);
 	let summaries = $state<LocalModelCacheSummary[]>([]);
 	let clearingId = $state<string | null>(null);
+	let loadedRuntimeCount = $state(0);
+	let unloadingRuntimes = $state(false);
+	let runtimeMessage = $state('');
+	let cacheMessage = $state('');
+
+	function refreshRuntimeCount(): void {
+		loadedRuntimeCount = inspectLocalAiRuntimes().filter((runtime) => runtime.loaded).length;
+	}
 
 	function formatBytes(bytes: number): string {
 		if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
@@ -25,6 +37,7 @@
 		loading = true;
 		try {
 			summaries = await inspectAllLocalModelCaches();
+			refreshRuntimeCount();
 		} finally {
 			loading = false;
 		}
@@ -33,14 +46,34 @@
 	function toggle(): void {
 		open = !open;
 		if (open && summaries.length === 0) void refresh();
+		else if (open) refreshRuntimeCount();
+	}
+
+	async function unloadRuntimes(): Promise<void> {
+		if (unloadingRuntimes || loadedRuntimeCount === 0) return;
+		unloadingRuntimes = true;
+		runtimeMessage = '';
+		try {
+			const result = await unloadAllLocalAiRuntimes();
+			runtimeMessage =
+				result.failures.length > 0
+					? m.video_editor_local_models_unload_failed()
+					: m.video_editor_local_models_unloaded({ count: result.unloadedIds.length });
+		} finally {
+			unloadingRuntimes = false;
+			refreshRuntimeCount();
+		}
 	}
 
 	async function remove(summary: LocalModelCacheSummary): Promise<void> {
 		if (clearingId) return;
 		clearingId = summary.id;
+		cacheMessage = '';
 		try {
 			await clearLocalModelCache(summary);
 			await refresh();
+		} catch {
+			cacheMessage = m.video_editor_models_remove_failed();
 		} finally {
 			clearingId = null;
 		}
@@ -60,6 +93,36 @@
 	</button>
 	{#if open}
 		<div class="mt-1 space-y-1" aria-live="polite">
+			<div class="flex items-center gap-1 rounded bg-[oklch(0.2_0.01_55)] px-1.5 py-1">
+				<div class="min-w-0 flex-1">
+					<div class="text-[10px] text-[oklch(0.82_0.008_70)]">
+						{m.video_editor_local_models_memory()}
+					</div>
+					<div class="text-[9px] text-[oklch(0.55_0.01_55)]">
+						{m.video_editor_local_models_loaded({ count: loadedRuntimeCount })}
+					</div>
+				</div>
+				<Button
+					size="xs"
+					variant="ghost"
+					disabled={disabled || unloadingRuntimes || loadedRuntimeCount === 0}
+					onclick={() => void unloadRuntimes()}
+				>
+					{unloadingRuntimes
+						? m.video_editor_local_models_unloading()
+						: m.video_editor_local_models_unload()}
+				</Button>
+			</div>
+			{#if runtimeMessage}
+				<p class="px-1 text-[9px] text-[oklch(0.62_0.012_55)]" role="status">
+					{runtimeMessage}
+				</p>
+			{/if}
+			{#if cacheMessage}
+				<p class="px-1 text-[9px] text-[var(--video-editor-danger)]" role="alert">
+					{cacheMessage}
+				</p>
+			{/if}
 			{#if loading && summaries.length === 0}
 				<div class="flex items-center gap-1 px-1 py-2 text-[10px] text-[oklch(0.6_0.012_55)]">
 					<LoaderIcon class="size-3 animate-spin" aria-hidden="true" />

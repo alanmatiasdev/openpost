@@ -16,6 +16,7 @@ import {
 	type EmbeddingsProvider
 } from './embedding-types';
 import { addAbortableWorkerMessageListener } from './worker-message-listener';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 
 function createEmbeddingsWorker(): Worker {
 	return new Worker(new URL('./embeddings-worker.ts', import.meta.url), { type: 'module' });
@@ -28,6 +29,18 @@ const INIT_TIMEOUT_MS = 60_000;
 let worker: Worker | null = null;
 let readyPromise: Promise<void> | null = null;
 let nextId = 0;
+const pendingUnloadCancellations = new Set<() => void>();
+
+function disposeWorker(): void {
+	for (const cancel of [...pendingUnloadCancellations]) cancel();
+	pendingUnloadCancellations.clear();
+	if (worker) {
+		worker.postMessage({ type: 'dispose' });
+		worker.terminate();
+	}
+	worker = null;
+	readyPromise = null;
+}
 
 function getWorker(): Worker {
 	if (!worker) {
@@ -45,6 +58,7 @@ function ensureReady(options: EmbeddingsOptions = {}): Promise<void> {
 
 	readyPromise = new Promise<void>((resolve, reject) => {
 		let removeWorkerMessageListener = () => {};
+		let cancelForUnload = () => {};
 		const timeout = setTimeout(() => {
 			cleanup();
 			reject(new Error('Embeddings worker init timed out'));
@@ -53,7 +67,13 @@ function ensureReady(options: EmbeddingsOptions = {}): Promise<void> {
 		const cleanup = () => {
 			clearTimeout(timeout);
 			removeWorkerMessageListener();
+			pendingUnloadCancellations.delete(cancelForUnload);
 		};
+		cancelForUnload = () => {
+			cleanup();
+			reject(new DOMException('Semantic search runtime was unloaded.', 'AbortError'));
+		};
+		pendingUnloadCancellations.add(cancelForUnload);
 
 		const onAbort = () => {
 			cleanup();
@@ -108,9 +128,16 @@ function embedBatch(texts: string[], options: EmbeddingsOptions = {}): Promise<F
 		() =>
 			new Promise<Float32Array[]>((resolve, reject) => {
 				let removeWorkerMessageListener = () => {};
+				let cancelForUnload = () => {};
 				const cleanup = () => {
 					removeWorkerMessageListener();
+					pendingUnloadCancellations.delete(cancelForUnload);
 				};
+				cancelForUnload = () => {
+					cleanup();
+					reject(new DOMException('Semantic search runtime was unloaded.', 'AbortError'));
+				};
+				pendingUnloadCancellations.add(cancelForUnload);
 
 				const onAbort = () => {
 					cleanup();
@@ -122,6 +149,7 @@ function embedBatch(texts: string[], options: EmbeddingsOptions = {}): Promise<F
 					if (message.id !== id) return;
 					if (message.type === 'embeddings') {
 						cleanup();
+						// SAFETY: The matching worker request returns one Float32Array per input string.
 						resolve(message.vectors as Float32Array[]);
 						return;
 					}
@@ -153,13 +181,14 @@ export const embeddingsProvider: EmbeddingsProvider = {
 		return vector;
 	},
 	embedBatch,
-	dispose() {
-		if (!worker) return;
-		worker.postMessage({ type: 'dispose' });
-		worker.terminate();
-		worker = null;
-		readyPromise = null;
-	}
+	dispose: disposeWorker
 };
+
+localAiRuntimeRegistry.register({
+	id: 'semantic-search',
+	label: 'Semantic search',
+	isLoaded: () => worker !== null || readyPromise !== null,
+	unload: embeddingsProvider.dispose
+});
 
 export { EMBEDDING_MODEL_ID, EMBEDDING_MODEL_DIM };

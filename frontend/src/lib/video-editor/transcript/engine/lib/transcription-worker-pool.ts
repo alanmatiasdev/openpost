@@ -1,4 +1,5 @@
 import type { TranscriptionEngine } from '../types';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 
 // Transcription model load + compile is the dominant per-job cost: Parakeet's 1.24 GB
 // encoder takes ~20s to compile on WebGPU, and even Whisper re-downloads/re-instantiates
@@ -9,15 +10,19 @@ import type { TranscriptionEngine } from '../types';
 
 const IDLE_EVICT_MS = 120_000;
 
-const workerFactories: Record<TranscriptionEngine, () => Worker> = {
+const workerFactories = {
 	whisper: () =>
 		new Worker(new URL('../workers/whisper.worker.ts', import.meta.url), { type: 'module' }),
 	parakeet: () =>
 		new Worker(new URL('../workers/parakeet.worker.ts', import.meta.url), { type: 'module' })
-};
+} satisfies Record<TranscriptionEngine, () => Worker>;
 
 const workers: Partial<Record<TranscriptionEngine, Worker>> = {};
 const idleTimers: Partial<Record<TranscriptionEngine, ReturnType<typeof setTimeout>>> = {};
+const unloadListeners = {
+	whisper: new Set<() => void>(),
+	parakeet: new Set<() => void>()
+} satisfies Record<TranscriptionEngine, Set<() => void>>;
 
 function clearIdleTimer(engine: TranscriptionEngine): void {
 	const timer = idleTimers[engine];
@@ -45,9 +50,34 @@ export function releaseTranscriptionWorker(engine: TranscriptionEngine): void {
 	idleTimers[engine] = setTimeout(() => disposeTranscriptionWorker(engine), IDLE_EVICT_MS);
 }
 
+/** Notify an active bridge when model memory is explicitly unloaded. */
+export function onTranscriptionWorkerUnload(
+	engine: TranscriptionEngine,
+	listener: () => void
+): () => void {
+	unloadListeners[engine].add(listener);
+	return () => unloadListeners[engine].delete(listener);
+}
+
 /** Tear an engine's worker down immediately (errors, cancellation, explicit unload). */
 export function disposeTranscriptionWorker(engine: TranscriptionEngine): void {
 	clearIdleTimer(engine);
-	workers[engine]?.terminate();
+	const worker = workers[engine];
 	delete workers[engine];
+	for (const listener of [...unloadListeners[engine]]) listener();
+	unloadListeners[engine].clear();
+	worker?.terminate();
+}
+
+export function hasTranscriptionWorker(engine: TranscriptionEngine): boolean {
+	return workers[engine] !== undefined;
+}
+
+for (const engine of ['whisper', 'parakeet'] as const) {
+	localAiRuntimeRegistry.register({
+		id: engine,
+		label: engine === 'whisper' ? 'Whisper transcription' : 'Parakeet transcription',
+		isLoaded: () => hasTranscriptionWorker(engine),
+		unload: () => disposeTranscriptionWorker(engine)
+	});
 }

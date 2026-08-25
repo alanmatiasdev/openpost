@@ -1,11 +1,11 @@
 import { createLogger } from '../../../workspace-fs/logger';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 import { importGeneratedVideo, rollbackNewGeneratedMedia } from '../../import.svelte';
 import { mediaTaskId, mediaTasks } from '../../media-tasks.svelte';
 import { resolveMediaBlob } from '../../resolve-media-blob';
 import type { MediaMetadata } from '../../types';
 import { gpuMediaJobScheduler } from '../gpu-media-job-scheduler';
 import { abortable } from '../abortable';
-import { registerFrameInterpolationRuntime } from '../runtime-registry';
 import type {
 	InterpolationWorkerRequest,
 	InterpolationWorkerResponse
@@ -174,6 +174,10 @@ export class FrameInterpolationService {
 		for (const mediaId of [...this.jobsByMediaId.keys()]) this.cancel(mediaId);
 	}
 
+	isLoaded(): boolean {
+		return this.worker !== null || this.activeJob !== null || this.pendingJobs.length > 0;
+	}
+
 	/** Release compiled RIFE sessions before its cached model bytes are removed. */
 	unload(): void {
 		this.cancelAll();
@@ -339,4 +343,9 @@ export class FrameInterpolationService {
 }
 
 export const frameInterpolationService = new FrameInterpolationService();
-registerFrameInterpolationRuntime(() => frameInterpolationService.unload());
+localAiRuntimeRegistry.register({
+	id: 'rife-interpolation',
+	label: 'Frame interpolation',
+	isLoaded: () => frameInterpolationService.isLoaded(),
+	unload: () => frameInterpolationService.unload()
+});

@@ -2,6 +2,7 @@ import { createLogger } from '../../workspace-fs/logger';
 import { fetchOnnxModelBytes, fetchOnnxModelText } from '../../transcript/engine/onnx-model-cache';
 import { sanitizeAiOutputFileNameSegment } from '../output-file-name';
 import type { GeneratedAudio, LocalGenerationProgress } from '../types';
+import { localAiRuntimeRegistry } from '../runtime-registry';
 import { validateTtsGenerateRequest } from './validation';
 import type { InferenceSession as OrtSession } from 'onnxruntime-web';
 
@@ -533,9 +534,14 @@ class SupertonicTtsService {
 	private ortPromise: Promise<OrtModule> | null = null;
 	private runtimePromise: Promise<SupertonicRuntime> | null = null;
 	private voiceStylePromises = new Map<SupertonicTtsVoice, Promise<VoiceStyleTensors>>();
+	private unloadGeneration = 0;
 
 	isSupported(): boolean {
 		return typeof window !== 'undefined' && typeof WebAssembly !== 'undefined';
+	}
+
+	isLoaded(): boolean {
+		return this.runtimePromise !== null || this.voiceStylePromises.size > 0;
 	}
 
 	private getOrt(): Promise<OrtModule> {
@@ -866,15 +872,19 @@ class SupertonicTtsService {
 	}
 
 	async unload(): Promise<void> {
+		this.unloadGeneration += 1;
+		const runtimePromise = this.runtimePromise;
+		const generationChain = this.generationChain;
+		this.runtimePromise = null;
 		try {
-			const runtime = this.runtimePromise ? await this.runtimePromise : null;
+			await generationChain;
+			const runtime = runtimePromise ? await runtimePromise : null;
 			if (runtime) {
 				await Promise.allSettled(Object.values(runtime.models).map(releaseOrtSession));
 			}
 		} catch (error) {
 			logger.warn('Failed to unload Supertonic runtime cleanly', error);
 		} finally {
-			this.runtimePromise = null;
 			this.voiceStylePromises.clear();
 		}
 	}
@@ -888,8 +898,12 @@ class SupertonicTtsService {
 		onProgress
 	}: SupertonicGenerateOptions): Promise<GeneratedAudio> {
 		const trimmedText = validateTtsGenerateRequest(text, this.isSupported());
+		const unloadGeneration = this.unloadGeneration;
 
 		return this.withGenerationLock(async () => {
+			if (unloadGeneration !== this.unloadGeneration) {
+				throw new DOMException('Supertonic runtime was unloaded.', 'AbortError');
+			}
 			throwIfAborted(signal);
 			const runtime = await this.ensureRuntime(onProgress);
 			const ort = await this.getOrt();
@@ -963,3 +977,9 @@ class SupertonicTtsService {
 }
 
 export const supertonicTtsService = new SupertonicTtsService();
+localAiRuntimeRegistry.register({
+	id: 'supertonic-tts',
+	label: 'Supertonic voices',
+	isLoaded: () => supertonicTtsService.isLoaded(),
+	unload: () => supertonicTtsService.unload()
+});

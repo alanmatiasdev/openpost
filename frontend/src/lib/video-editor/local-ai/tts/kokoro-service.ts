@@ -5,6 +5,7 @@ import { sanitizeAiOutputFileNameSegment } from '../output-file-name';
 import type { GeneratedAudio, LocalGenerationProgress } from '../types';
 import { chunkTextForKokoro } from './kokoro-text';
 import { validateTtsGenerateRequest } from './validation';
+import { localAiRuntimeRegistry } from '../runtime-registry';
 
 type KokoroModule = typeof import('kokoro-js');
 type KokoroInstance = Awaited<ReturnType<KokoroModule['KokoroTTS']['from_pretrained']>>;
@@ -107,9 +108,14 @@ class KokoroTtsService {
 	private modulePromise: Promise<KokoroModule> | null = null;
 	private runtimePromise: Promise<KokoroRuntime> | null = null;
 	private generationTail: Promise<void> = Promise.resolve();
+	private unloadGeneration = 0;
 
 	isSupported(): boolean {
 		return typeof WebAssembly !== 'undefined';
+	}
+
+	isLoaded(): boolean {
+		return this.runtimePromise !== null;
 	}
 
 	private async resolveBackend(): Promise<KokoroBackend> {
@@ -179,10 +185,12 @@ class KokoroTtsService {
 	}
 
 	async unload(): Promise<void> {
+		this.unloadGeneration += 1;
 		const runtimePromise = this.runtimePromise;
 		this.runtimePromise = null;
 		if (!runtimePromise) return;
 		try {
+			await this.generationTail;
 			const runtime = await runtimePromise;
 			await runtime.tts.model.dispose();
 		} catch {
@@ -192,7 +200,11 @@ class KokoroTtsService {
 
 	async generateSpeechFile(options: KokoroGenerateOptions): Promise<GeneratedAudio> {
 		const text = validateTtsGenerateRequest(options.text, this.isSupported());
+		const unloadGeneration = this.unloadGeneration;
 		return this.withGenerationLock(async () => {
+			if (unloadGeneration !== this.unloadGeneration) {
+				throw new DOMException('Kokoro runtime was unloaded.', 'AbortError');
+			}
 			throwIfAborted(options.signal);
 			const runtime = await this.ensureRuntime(options.onProgress);
 			throwIfAborted(options.signal);
@@ -241,3 +253,9 @@ class KokoroTtsService {
 }
 
 export const kokoroTtsService = new KokoroTtsService();
+localAiRuntimeRegistry.register({
+	id: 'kokoro-tts',
+	label: 'Kokoro voices',
+	isLoaded: () => kokoroTtsService.isLoaded(),
+	unload: () => kokoroTtsService.unload()
+});

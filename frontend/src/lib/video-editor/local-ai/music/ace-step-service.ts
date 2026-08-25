@@ -9,6 +9,7 @@ import type {
 import { gpuMediaJobScheduler } from '../../media/processing/gpu-media-job-scheduler';
 import { sanitizeAiOutputFileNameSegment } from '../output-file-name';
 import type { GeneratedAudio, LocalGenerationProgress } from '../types';
+import { localAiRuntimeRegistry } from '../runtime-registry';
 
 export const ACE_STEP_STANDARD_DOWNLOAD_BYTES = 5_626_494_229;
 export const ACE_STEP_HIGH_DOWNLOAD_BYTES = 8_004_092_572;
@@ -94,6 +95,8 @@ export class AceStepMusicService {
 	private runtimePromise: Promise<AceStepRuntime> | null = null;
 	private generationTail: Promise<void> = Promise.resolve();
 	private activeAbort: AbortController | null = null;
+	private runtimeGeneration = 0;
+	private unloadGeneration = 0;
 
 	constructor(
 		private readonly createRuntime: RuntimeFactory = AceStepMusicService.defaultRuntime
@@ -123,8 +126,13 @@ export class AceStepMusicService {
 			return Promise.resolve(this.runtime);
 		}
 		if (!this.runtimePromise) {
+			const generation = ++this.runtimeGeneration;
 			this.runtimePromise = this.createRuntime(() => undefined)
 				.then((runtime) => {
+					if (generation !== this.runtimeGeneration) {
+						runtime.dispose();
+						throw new DOMException('ACE-Step runtime was unloaded.', 'AbortError');
+					}
 					this.runtime = runtime;
 					return runtime;
 				})
@@ -133,6 +141,10 @@ export class AceStepMusicService {
 				});
 		}
 		return this.runtimePromise;
+	}
+
+	isLoaded(): boolean {
+		return this.runtime !== null || this.runtimePromise !== null || this.activeAbort !== null;
 	}
 
 	async generate(options: GenerateLocalMusicOptions): Promise<GeneratedMusic> {
@@ -148,6 +160,7 @@ export class AceStepMusicService {
 			);
 		}
 		const previous = this.generationTail;
+		const unloadGeneration = this.unloadGeneration;
 		let releaseTurn!: () => void;
 		this.generationTail = new Promise<void>((resolve) => {
 			releaseTurn = resolve;
@@ -187,6 +200,9 @@ export class AceStepMusicService {
 			options.onProgress?.(nextProgress);
 		};
 		try {
+			if (unloadGeneration !== this.unloadGeneration) {
+				throw new DOMException('ACE-Step runtime was unloaded.', 'AbortError');
+			}
 			releaseGpu = await gpuMediaJobScheduler.acquire(abort.signal);
 			options.onProgress?.({
 				stage: 'preparing',
@@ -281,15 +297,24 @@ export class AceStepMusicService {
 	}
 
 	async clearCache(signal?: AbortSignal): Promise<boolean> {
-		const inventory = await this.inspectCache(signal);
-		if (inventory.storedBytes === 0) return false;
-		await this.runtime?.clearCache(signal);
-		this.unload();
-		return true;
+		this.unloadGeneration += 1;
+		this.cancel();
+		await this.generationTail;
+		try {
+			const runtime = await this.ensureRuntime();
+			const inventory = await runtime.listCachedModels(signal);
+			if (inventory.storedBytes === 0) return false;
+			await runtime.clearCache(signal);
+			return true;
+		} finally {
+			this.unload();
+		}
 	}
 
 	unload(): void {
+		this.unloadGeneration += 1;
 		this.cancel();
+		this.runtimeGeneration += 1;
 		this.runtime?.dispose();
 		this.runtime = null;
 		this.runtimePromise = null;
@@ -297,6 +322,12 @@ export class AceStepMusicService {
 }
 
 export const aceStepMusicService = new AceStepMusicService();
+localAiRuntimeRegistry.register({
+	id: 'ace-step-music',
+	label: 'ACE-Step music',
+	isLoaded: () => aceStepMusicService.isLoaded(),
+	unload: () => aceStepMusicService.unload()
+});
 
 export function inspectMusicGenerationStorage(
 	audioQuality: AudioQuality,

@@ -8,6 +8,7 @@ import {
 } from '../audio';
 import { sanitizeAiOutputFileNameSegment } from '../output-file-name';
 import type { GeneratedAudio, LocalGenerationProgress } from '../types';
+import { localAiRuntimeRegistry } from '../runtime-registry';
 import { validateTtsGenerateRequest } from './validation';
 
 const HOST_SOURCE = 'openpost-moss-tts-worker';
@@ -186,6 +187,7 @@ class MossTtsService {
 	private preparedPromise: Promise<void> | null = null;
 	private generationChain: Promise<void> | null = null;
 	private pendingRequests = new Map<string, PendingRequest>();
+	private unloadGeneration = 0;
 
 	isSupported(): boolean {
 		return (
@@ -193,6 +195,12 @@ class MossTtsService {
 			typeof Worker !== 'undefined' &&
 			typeof WebAssembly !== 'undefined' &&
 			typeof navigator.storage?.getDirectory === 'function'
+		);
+	}
+
+	isLoaded(): boolean {
+		return (
+			this.worker !== null || this.workerReadyPromise !== null || this.preparedPromise !== null
 		);
 	}
 
@@ -338,6 +346,7 @@ class MossTtsService {
 	}
 
 	unload(): void {
+		this.unloadGeneration += 1;
 		this.resetWorker(new Error('MOSS TTS runtime was unloaded.'));
 	}
 
@@ -353,7 +362,9 @@ class MossTtsService {
 			this.isSupported(),
 			'This browser cannot run the local MOSS TTS runtime.'
 		);
+		const unloadGeneration = this.unloadGeneration;
 		return this.withGenerationLock(async () => {
+			if (unloadGeneration !== this.unloadGeneration) throw abortError();
 			if (signal?.aborted) throw abortError();
 			await this.ensurePrepared(signal, onProgress);
 			if (signal?.aborted) throw abortError();
@@ -397,3 +408,9 @@ class MossTtsService {
 }
 
 export const mossTtsService = new MossTtsService();
+localAiRuntimeRegistry.register({
+	id: 'moss-tts',
+	label: 'MOSS voices',
+	isLoaded: () => mossTtsService.isLoaded(),
+	unload: () => mossTtsService.unload()
+});

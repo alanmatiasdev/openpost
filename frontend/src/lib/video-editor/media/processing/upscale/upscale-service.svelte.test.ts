@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mediaTaskId, mediaTasks } from '../../media-tasks.svelte';
 import type { MediaMetadata } from '../../types';
 import type { UpscaleWorkerRequest, UpscaleWorkerResponse } from '../workers/upscale-worker';
+import { gpuMediaJobScheduler } from '../gpu-media-job-scheduler';
 import { UpscaleService, type UpscaleServiceDependencies } from './upscale-service.svelte';
 
 class FakeWorker extends EventTarget {
@@ -10,6 +11,7 @@ class FakeWorker extends EventTarget {
 	onerror: ((event: ErrorEvent) => void) | null = null;
 	onmessageerror: ((event: MessageEvent) => void) | null = null;
 	readonly requests: UpscaleWorkerRequest[] = [];
+	terminated = false;
 
 	constructor() {
 		super();
@@ -24,7 +26,9 @@ class FakeWorker extends EventTarget {
 		this.onmessage?.(new MessageEvent('message', { data: response }));
 	}
 
-	terminate(): void {}
+	terminate(): void {
+		this.terminated = true;
+	}
 }
 
 function media(id: string): MediaMetadata {
@@ -121,5 +125,34 @@ describe('UpscaleService lifecycle', () => {
 		worker.dispatch({ type: 'cancelled', jobId: secondRequest.jobId });
 		await expect(secondPromise).rejects.toMatchObject({ name: 'AbortError' });
 		expect(mediaTasks.get(mediaTaskId('upscale', 'second'))).toBeUndefined();
+	});
+
+	it('unloads a resident worker and rejects active work without leaving a task behind', async () => {
+		const removeScratch = vi.fn(async () => undefined);
+		const dependencies: UpscaleServiceDependencies = {
+			// SAFETY: FakeWorker implements every Worker member that UpscaleService uses.
+			createWorker: () => new FakeWorker() as Worker,
+			resolveSource: async () => new Blob(['source'], { type: 'video/mp4' }),
+			importVideo: async (file) => generated(file),
+			rollbackImport: async () => undefined,
+			readScratch: async () => null,
+			removeScratch
+		};
+		const service = new UpscaleService(dependencies);
+		const resultPromise = service.generate(media('resident'), 'project', 'liveAction');
+		await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+		const worker = FakeWorker.instances[0]!;
+		await vi.waitFor(() => expect(worker.requests[0]).toMatchObject({ type: 'upscale' }));
+		expect(service.isLoaded()).toBe(true);
+
+		service.unload();
+
+		await expect(resultPromise).rejects.toMatchObject({ name: 'AbortError' });
+		expect(worker.terminated).toBe(true);
+		expect(service.isLoaded()).toBe(false);
+		expect(mediaTasks.get(mediaTaskId('upscale', 'resident'))).toBeUndefined();
+		await vi.waitFor(() => expect(removeScratch).toHaveBeenCalledOnce());
+		const releaseGpu = await gpuMediaJobScheduler.acquire(new AbortController().signal);
+		releaseGpu();
 	});
 });

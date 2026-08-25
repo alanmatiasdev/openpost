@@ -1,4 +1,5 @@
 import { createLogger } from '../../../workspace-fs/logger';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 import { importGeneratedVideo, rollbackNewGeneratedMedia } from '../../import.svelte';
 import { mediaTaskId, mediaTasks } from '../../media-tasks.svelte';
 import { resolveMediaBlob } from '../../resolve-media-blob';
@@ -167,6 +168,24 @@ export class UpscaleService {
 		for (const mediaId of [...this.jobsByMediaId.keys()]) this.cancel(mediaId);
 	}
 
+	isLoaded(): boolean {
+		return this.worker !== null || this.activeJob !== null || this.pendingJobs.length > 0;
+	}
+
+	/** Cancel active work and release compiled Anime4K sessions held by the worker. */
+	unload(): void {
+		this.cancelAll();
+		const active = this.activeJob;
+		this.activeJob = null;
+		this.worker?.terminate();
+		this.worker = null;
+		if (!active) return;
+		active.releaseGpu?.();
+		if (this.jobsByMediaId.has(active.media.id)) this.settle(active, abortError());
+		void this.dependencies.removeScratch(active.jobId);
+		void this.drain();
+	}
+
 	private getWorker(): Worker {
 		if (this.worker) return this.worker;
 		const worker = this.dependencies.createWorker();
@@ -309,3 +328,9 @@ export class UpscaleService {
 }
 
 export const upscaleService = new UpscaleService();
+localAiRuntimeRegistry.register({
+	id: 'anime4k-upscale',
+	label: 'Anime4K upscaling',
+	isLoaded: () => upscaleService.isLoaded(),
+	unload: () => upscaleService.unload()
+});

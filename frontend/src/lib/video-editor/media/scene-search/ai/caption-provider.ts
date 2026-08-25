@@ -3,6 +3,7 @@
 import { createLogger } from '../../../workspace-fs/logger';
 import type { SceneCaptionData } from '../types';
 import { addAbortableWorkerMessageListener } from './worker-message-listener';
+import { localAiRuntimeRegistry } from '../../../local-ai/runtime-registry';
 
 export const SCENE_CAPTION_MODEL_ID = 'LiquidAI/LFM2.5-VL-450M-ONNX';
 const INIT_TIMEOUT_MS = 180_000;
@@ -28,6 +29,7 @@ const logger = createLogger('SceneCaptionProvider');
 let worker: Worker | null = null;
 let readyPromise: Promise<void> | null = null;
 let nextId = 0;
+const pendingUnloadCancellations = new Set<() => void>();
 
 function createWorker(): Worker {
 	return new Worker(new URL('./lfm-scene-worker.ts', import.meta.url), { type: 'module' });
@@ -44,6 +46,8 @@ function getWorker(): Worker {
 }
 
 function resetWorker(): void {
+	for (const cancel of [...pendingUnloadCancellations]) cancel();
+	pendingUnloadCancellations.clear();
 	if (worker) {
 		worker.postMessage({ type: 'dispose' });
 		worker.terminate();
@@ -57,6 +61,7 @@ function ensureReady(options: CaptionOptions = {}): Promise<void> {
 	const activeWorker = getWorker();
 	readyPromise = new Promise<void>((resolve, reject) => {
 		let detach: () => void = () => undefined;
+		let cancelForUnload: () => void = () => undefined;
 		const timeout = setTimeout(() => {
 			cleanup();
 			reject(new Error('Scene caption model timed out while loading'));
@@ -64,7 +69,13 @@ function ensureReady(options: CaptionOptions = {}): Promise<void> {
 		const cleanup = () => {
 			clearTimeout(timeout);
 			detach();
+			pendingUnloadCancellations.delete(cancelForUnload);
 		};
+		cancelForUnload = () => {
+			cleanup();
+			reject(new DOMException('Scene caption runtime was unloaded.', 'AbortError'));
+		};
+		pendingUnloadCancellations.add(cancelForUnload);
 		const onAbort = () => {
 			cleanup();
 			resetWorker();
@@ -113,7 +124,16 @@ function captionOne(
 	const activeWorker = getWorker();
 	return new Promise<CaptionedScene>((resolve, reject) => {
 		let detach: () => void = () => undefined;
-		const cleanup = () => detach();
+		let cancelForUnload: () => void = () => undefined;
+		const cleanup = () => {
+			detach();
+			pendingUnloadCancellations.delete(cancelForUnload);
+		};
+		cancelForUnload = () => {
+			cleanup();
+			reject(new DOMException('Scene caption runtime was unloaded.', 'AbortError'));
+		};
+		pendingUnloadCancellations.add(cancelForUnload);
 		const onAbort = () => {
 			cleanup();
 			resetWorker();
@@ -164,5 +184,13 @@ export const sceneCaptionProvider = {
 		}
 		return captions;
 	},
-	dispose: resetWorker
+	dispose: resetWorker,
+	isLoaded: () => worker !== null || readyPromise !== null
 };
+
+localAiRuntimeRegistry.register({
+	id: 'scene-captions',
+	label: 'Scene captions',
+	isLoaded: sceneCaptionProvider.isLoaded,
+	unload: sceneCaptionProvider.dispose
+});

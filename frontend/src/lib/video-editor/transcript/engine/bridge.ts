@@ -9,6 +9,7 @@ import type {
 import {
 	acquireTranscriptionWorker,
 	disposeTranscriptionWorker,
+	onTranscriptionWorkerUnload,
 	releaseTranscriptionWorker
 } from './lib/transcription-worker-pool';
 
@@ -31,6 +32,7 @@ export class TranscriptionBridge {
 	private activeEngine: TranscriptionEngine = 'whisper';
 	private detachEngine: (() => void) | null = null;
 	private closePorts: (() => void) | null = null;
+	private detachUnload: (() => void) | null = null;
 	private ended = false;
 
 	constructor(callbacks: TranscriptionBridgeCallbacks) {
@@ -79,6 +81,11 @@ export class TranscriptionBridge {
 			engineWorker.removeEventListener('message', handleEngineMessage);
 			engineWorker.removeEventListener('error', handleEngineError);
 		};
+		this.detachUnload = onTranscriptionWorkerUnload(engine, () => {
+			if (this.ended) return;
+			this.callbacks.onError('Local transcription model was unloaded');
+			this.finish(false);
+		});
 
 		decoder.onmessage = (event: MessageEvent<MainThreadMessage>): void => {
 			if (this.ended) return;
@@ -131,6 +138,8 @@ export class TranscriptionBridge {
 		this.ended = true;
 		this.detachEngine?.();
 		this.detachEngine = null;
+		this.detachUnload?.();
+		this.detachUnload = null;
 		this.decoder?.terminate();
 		this.decoder = null;
 		this.closePorts?.();
