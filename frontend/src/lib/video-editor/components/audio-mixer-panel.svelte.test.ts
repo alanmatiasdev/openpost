@@ -99,6 +99,25 @@ describe('AudioMixerPanel', () => {
 			.toHaveAttribute('tabindex', '-1');
 	});
 
+	it('cancels an unfinished fader draft when the mixer closes', async () => {
+		const screen = await render(AudioMixerPanel);
+		const fader = screen.getByRole('slider', { name: 'Dialogue volume' }).element();
+		vi.spyOn(fader, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 44, 100));
+		vi.spyOn(fader, 'setPointerCapture').mockImplementation(() => undefined);
+		vi.spyOn(fader, 'hasPointerCapture').mockReturnValue(true);
+		vi.spyOn(fader, 'releasePointerCapture').mockImplementation(() => undefined);
+
+		fader.dispatchEvent(pointer('pointerdown', 117, 3));
+		fader.dispatchEvent(pointer('pointermove', 190, 3));
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		await screen.unmount();
+
+		expect(timelineStore.tracks[0]?.volume).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(0);
+		expect(fader.hasPointerCapture(3)).toBe(true);
+		expect(fader.releasePointerCapture).toHaveBeenCalledWith(3);
+	});
+
 	it('contains narrow layouts inside the mixer scroller', async () => {
 		await page.viewport(320, 720);
 		const screen = await render(AudioMixerPanel);
