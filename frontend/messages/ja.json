@@ -1161,7 +1161,7 @@
 	"organization_delete_name_label": "Enter {name} exactly",
 	"organization_delete_confirm": "Delete Organization",
 	"organization_delete_success": "Organization deleted.",
-	"language_label": "Language",
+	"language_label": "言語",
 	"language_en": "English",
 	"language_pt": "Portuguese",
 	"landing_tagline": "Schedule posts across multiple social platforms.",

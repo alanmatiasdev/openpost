@@ -30,6 +30,14 @@ function sameList(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function translationArtifact(message) {
+  if (/\bPLCE\d+\b|プレース\d+/i.test(message)) return "placeholder stand-in";
+  if (/^(?:译|翻译)[：:]|^(?:translation|translated)[：:]/i.test(message)) {
+    return "translation marker";
+  }
+  return null;
+}
+
 for (const locale of locales.filter((locale) => locale !== referenceLocale)) {
   const catalog = catalogs.get(locale);
   const keys = new Set(Object.keys(catalog));
@@ -55,6 +63,25 @@ for (const locale of locales.filter((locale) => locale !== referenceLocale)) {
         `  ${key}: expected {${placeholders(referenceCatalog[key]).join(", ")}}, found {${placeholders(catalog[key]).join(", ")}}`,
       );
     }
+  }
+
+  const invalidMessages = [...referenceKeys].flatMap((key) => {
+    const message = catalog[key];
+    if (typeof message !== "string" || message.trim().length === 0) {
+      return [[key, "empty or non-string message"]];
+    }
+    const artifact = translationArtifact(message);
+    return artifact ? [[key, artifact]] : [];
+  });
+  if (invalidMessages.length > 0) {
+    failed = true;
+    console.error(`${locale}.json contains invalid translation artifacts:`);
+    for (const [key, reason] of invalidMessages) console.error(`  ${key}: ${reason}`);
+  }
+
+  if (catalog.language_label === referenceCatalog.language_label) {
+    failed = true;
+    console.error(`${locale}.json must localize language_label for the locale picker.`);
   }
 }
 
