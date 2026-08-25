@@ -11,7 +11,6 @@ const MAX_CONCURRENT_SCORES = 2;
 const SCORE_CACHE_MAX_ENTRIES = 500;
 
 const FILLER_LABELS = [
-	'filler word',
 	'hesitation sound',
 	'person saying um',
 	'person saying uh',
@@ -193,7 +192,7 @@ export function classifyFillerAudioConfidence(
 					: 'low',
 		fillerScore,
 		nonFillerScore,
-		label: filler?.label ?? 'filler word'
+		label: filler?.label ?? 'hesitation sound'
 	};
 }
 
