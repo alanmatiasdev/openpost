@@ -1,4 +1,5 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ensureProResDecoderForCodec } from './prores-decoder';
 import type { TimelineItem } from '../project/types';
 import { frameToSourceSeconds } from './render-plan';
 import type { MediaMetadata } from './types';
@@ -41,6 +42,7 @@ export async function extractFreezeFrameFromBlob(
 	try {
 		const track = await input.getPrimaryVideoTrack();
 		if (!track) throw new Error('The selected media has no video track.');
+		await ensureProResDecoderForCodec(track.codec);
 		const width = Math.max(1, Math.round(track.displayWidth));
 		const height = Math.max(1, Math.round(track.displayHeight));
 		const sink = new CanvasSink(track, { width, height, fit: 'fill' });

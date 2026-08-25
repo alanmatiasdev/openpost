@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isAutomaticProxyCandidate, PROXY_MAX_HEIGHT, proxyDimensions } from './proxy-client';
+import {
+	isAutomaticProxyCandidate,
+	PROXY_MAX_HEIGHT,
+	proxyDimensions,
+	shouldUseAutomaticProxy
+} from './proxy-client';
 import type { MediaMetadata } from './types';
 
 function media(overrides: Partial<MediaMetadata> = {}): MediaMetadata {
@@ -50,5 +55,11 @@ describe('proxyDimensions', () => {
 		expect(isAutomaticProxyCandidate(media({ mimeType: 'audio/mpeg', width: 0, height: 0 }))).toBe(
 			false
 		);
+	});
+
+	it('keeps compatibility proxies active at Full quality without forcing ordinary clips', () => {
+		expect(shouldUseAutomaticProxy(media({ videoCodecSupported: false }), 'full')).toBe(true);
+		expect(shouldUseAutomaticProxy(media(), 'full')).toBe(false);
+		expect(shouldUseAutomaticProxy(media({ width: 3840, height: 2160 }), 'auto')).toBe(true);
 	});
 });

@@ -15,10 +15,7 @@
 	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getMediaObjectUrl, revokeMediaObjectUrl } from '$lib/video-editor/media/media-source';
-	import {
-		getAutomaticProxy,
-		isAutomaticProxyCandidate
-	} from '$lib/video-editor/media/proxy-client';
+	import { getAutomaticProxy, shouldUseAutomaticProxy } from '$lib/video-editor/media/proxy-client';
 	import { paintOrder, planNestedMixdown } from '$lib/video-editor/media/render-plan';
 	import {
 		resolveAnimatedItemAt,
@@ -227,16 +224,20 @@
 	$effect(() => {
 		const usedMedia = timelineMediaIds;
 		for (const [mediaId, controller] of proxyControllers) {
-			if (previewPlaybackSettings.previewQuality === 'full' || !usedMedia.has(mediaId)) {
+			const media = mediaPool.get(mediaId);
+			if (
+				!usedMedia.has(mediaId) ||
+				!media ||
+				!shouldUseAutomaticProxy(media, previewPlaybackSettings.previewQuality)
+			) {
 				controller.abort();
 				proxyControllers.delete(mediaId);
 			}
 		}
-		if (previewPlaybackSettings.previewQuality !== 'auto') return;
 		for (const media of mediaPool.mediaList) {
 			if (
 				!usedMedia.has(media.id) ||
-				!isAutomaticProxyCandidate(media) ||
+				!shouldUseAutomaticProxy(media, previewPlaybackSettings.previewQuality) ||
 				attemptedProxyIds.has(media.id)
 			)
 				continue;
@@ -988,9 +989,12 @@
 				</div>
 			{/if}
 			{#each activeItems as item (item.id)}
+				{@const itemMedia = mediaPool.get(item.mediaId ?? '')}
 				<PreviewLayer
 					{item}
-					url={previewPlaybackSettings.previewQuality === 'auto' && proxyUrls[item.mediaId ?? '']
+					url={itemMedia &&
+					shouldUseAutomaticProxy(itemMedia, previewPlaybackSettings.previewQuality) &&
+					proxyUrls[item.mediaId ?? '']
 						? proxyUrls[item.mediaId ?? '']
 						: urls[item.mediaId ?? '']}
 					audioUrl={urls[item.mediaId ?? '']}

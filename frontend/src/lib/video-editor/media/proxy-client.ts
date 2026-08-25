@@ -49,6 +49,15 @@ export function isAutomaticProxyCandidate(media: MediaMetadata): boolean {
 	);
 }
 
+/** Compatibility proxies stay mandatory even when the user requests Full preview quality. */
+export function shouldUseAutomaticProxy(
+	media: MediaMetadata,
+	previewQuality: 'auto' | 'full'
+): boolean {
+	if (media.videoCodecSupported === false) return true;
+	return previewQuality === 'auto' && isAutomaticProxyCandidate(media);
+}
+
 /**
  * Pure sizing math: cap height at `maxHeight`, preserve aspect ratio, and
  * keep even dimensions (a codec requirement for VP9).

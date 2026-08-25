@@ -11,6 +11,7 @@
  */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ensureProResDecoderForCodec } from './prores-decoder';
 import { FILMSTRIP_EXTRACT_HEIGHT, FILMSTRIP_FRAME_RATE } from './filmstrip-plan';
 
 const IMAGE_FORMAT = 'image/jpeg';
@@ -101,6 +102,7 @@ async function extractAndSave(
 	try {
 		const videoTrack = await input.getPrimaryVideoTrack();
 		if (!videoTrack) throw new Error('No video track found');
+		await ensureProResDecoderForCodec(videoTrack.codec);
 
 		const [squarePixelWidth, squarePixelHeight, rotation] = await Promise.all([
 			videoTrack.getSquarePixelWidth(),

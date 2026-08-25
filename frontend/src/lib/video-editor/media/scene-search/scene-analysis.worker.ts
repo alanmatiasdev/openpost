@@ -1,6 +1,7 @@
 /** Scene detection and thumbnail extraction worker. Ported from FreeCut (MIT). */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ensureProResDecoderForCodec } from '../prores-decoder';
 import {
 	classifyAdaptiveSceneCuts,
 	compareFrameFeatures,
@@ -103,6 +104,7 @@ async function run(
 	try {
 		const track = await input.getPrimaryVideoTrack();
 		if (!track) throw new Error('No video track found');
+		await ensureProResDecoderForCodec(track.codec);
 		const durationSec = await track.computeDuration();
 		if (!(durationSec > 0)) {
 			self.postMessage({

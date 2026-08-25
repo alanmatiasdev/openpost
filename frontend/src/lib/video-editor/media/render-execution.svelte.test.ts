@@ -15,6 +15,7 @@ import type {
 	RenderExportWorkerResponse
 } from './render-export-worker.types';
 import { mediaPool } from './pool.svelte';
+import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
 
 const project: Project = {
 	id: 'worker-project',
@@ -260,12 +261,82 @@ describe('render export worker execution', () => {
 				videoJob({ project: imageProject, onProgress: (progress) => phases.push(progress.phase) })
 			);
 
+			expect(outcome.fallbackReason).toBeUndefined();
 			expect(outcome.renderPath).toBe('worker');
 			expect(outcome.artifact.fileName).toBe('Worker project.webm');
 			expect(outcome.artifact.blob.type).toBe('video/webm');
 			expect(outcome.artifact.blob.size).toBeGreaterThan(0);
 			expect(phases).toContain('rendering');
 			expect(phases.at(-1)).toBe('finalizing');
+		} finally {
+			await removeEntry(root, ['media', mediaId], { recursive: true });
+		}
+	});
+
+	it('decodes the original ProRes source inside the real export worker', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const source = await response.blob();
+		const root = await navigator.storage.getDirectory();
+		setWorkspaceRoot(root);
+		const mediaId = 'worker-prores-source';
+		const fileName = 'prores-proxy.mov';
+		await writeBlob(root, mediaSourceByFileName(mediaId, fileName), source);
+		mediaPool.upsert(
+			{
+				id: mediaId,
+				storageType: 'workspace',
+				fileName,
+				fileSize: source.size,
+				mimeType: 'video/quicktime',
+				duration: 0.125,
+				width: 64,
+				height: 36,
+				fps: 24,
+				codec: 'prores',
+				bitrate: 90_000,
+				videoCodecSupported: false,
+				tags: ['video']
+			},
+			'ready'
+		);
+		const proResProject: Project = {
+			...project,
+			duration: 0.125,
+			metadata: { width: 64, height: 36, fps: 24 },
+			timeline: {
+				tracks: project.timeline?.tracks ?? [],
+				items: [
+					{
+						id: 'prores-clip',
+						trackId: 'video-track',
+						from: 0,
+						durationInFrames: 3,
+						label: 'ProRes source',
+						type: 'video',
+						mediaId,
+						sourceStart: 0,
+						sourceEnd: 3,
+						sourceDuration: 3,
+						sourceFps: 24,
+						transform: { x: 0, y: 0, width: 64, height: 36 }
+					}
+				]
+			}
+		};
+
+		try {
+			const outcome = await renderExportArtifact(
+				videoJob({
+					project: proResProject,
+					videoOptions: { format: 'webm', codec: 'vp8', width: 64, height: 36 }
+				})
+			);
+
+			expect(outcome.fallbackReason).toBeUndefined();
+			expect(outcome.renderPath).toBe('worker');
+			expect(outcome.artifact.blob.type).toBe('video/webm');
+			expect(outcome.artifact.blob.size).toBeGreaterThan(0);
 		} finally {
 			await removeEntry(root, ['media', mediaId], { recursive: true });
 		}

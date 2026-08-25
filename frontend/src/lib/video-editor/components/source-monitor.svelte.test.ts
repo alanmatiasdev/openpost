@@ -8,6 +8,7 @@ import { commandHistory } from '$lib/video-editor/timeline/commands/command-stor
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { setWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
 import SourceMonitor from './source-monitor.svelte';
+import proResFixtureUrl from '../media/fixtures/prores-proxy.mov?url';
 
 const videoTrack: TimelineTrack = {
 	id: 'video',
@@ -55,6 +56,24 @@ function setRange(input: HTMLInputElement, value: number): void {
 	input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function linkedFileHandle(name: string, getFile: () => Promise<File>): FileSystemFileHandle {
+	const handle: FileSystemFileHandle = {
+		kind: 'file',
+		name,
+		getFile,
+		async createWritable() {
+			throw new Error('This read-only test handle cannot write.');
+		},
+		async createSyncAccessHandle() {
+			throw new Error('This read-only test handle cannot open synchronous access.');
+		},
+		async isSameEntry(other) {
+			return other === handle;
+		}
+	};
+	return handle;
+}
+
 beforeEach(() => {
 	commandHistory.clearHistory();
 	mediaPool.clear();
@@ -90,6 +109,43 @@ afterEach(() => {
 });
 
 describe('SourceMonitor', () => {
+	it('prepares a playable proxy while keeping original audio for a ProRes source', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const fixture = await response.blob();
+		const file = new File([fixture], 'prores-proxy.mov', { type: 'video/quicktime' });
+		mediaPool.clear();
+		mediaPool.upsert(
+			{
+				...source,
+				fileName: file.name,
+				fileSize: file.size,
+				mimeType: file.type,
+				duration: 0.125,
+				width: 64,
+				height: 36,
+				fps: 24,
+				codec: 'prores',
+				videoCodecSupported: false,
+				fileHandle: linkedFileHandle(file.name, async () => file)
+			},
+			'ready'
+		);
+
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit: vi.fn()
+		});
+		await vi.waitFor(() => expect(screen.container.querySelector('video')?.src).toMatch(/^blob:/));
+
+		const video = screen.container.querySelector('video')!;
+		const originalAudio = screen.container.querySelector('audio')!;
+		expect(originalAudio.src).toMatch(/^blob:/);
+		expect(originalAudio.src).not.toBe(video.src);
+		expect((await fetch(video.src)).headers.get('content-type')).toBe('video/webm');
+	});
+
 	it('marks an exclusive range and inserts linked video and audio at the program playhead', async () => {
 		const onedit = vi.fn();
 		const oninserted = vi.fn();
@@ -101,7 +157,9 @@ describe('SourceMonitor', () => {
 		});
 
 		await expect.element(screen.getByText(source.fileName)).toBeVisible();
-		const position = screen.getByLabelText('Source position').element() as HTMLInputElement;
+		const position = screen.getByLabelText('Source position').element();
+		if (!(position instanceof HTMLInputElement))
+			throw new Error('Source position is not a slider.');
 		setRange(position, 30);
 		await screen.getByRole('button', { name: 'Mark in (I)' }).click();
 		setRange(position, 59);
@@ -130,7 +188,8 @@ describe('SourceMonitor', () => {
 			onedit: vi.fn()
 		});
 		screen.container.style.width = '320px';
-		const monitor = screen.getByRole('region', { name: 'Source' }).element() as HTMLElement;
+		const monitor = screen.getByRole('region', { name: 'Source' }).element();
+		if (!(monitor instanceof HTMLElement)) throw new Error('Source monitor region is missing.');
 		expect(monitor.scrollWidth).toBeLessThanOrEqual(monitor.clientWidth);
 	});
 });

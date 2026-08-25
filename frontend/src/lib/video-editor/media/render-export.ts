@@ -76,6 +76,7 @@ import { saveRenderedExportArtifact } from './persist-rendered-export';
 import { assessSmartCopy } from './smart-copy-plan';
 import { smartCopy } from './smart-copy';
 import { applyCompositionControlOverrides } from '../sequences/composition-controls';
+import { ensureProResDecoderForCodec } from './prores-decoder';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -404,6 +405,7 @@ export class TimelineFrameRenderer {
 		this.inputs.push(input);
 		const videoTrack = await input.getPrimaryVideoTrack();
 		if (!videoTrack) return null;
+		await ensureProResDecoderForCodec(videoTrack.codec);
 		const decoder: VideoDecoder = {
 			input,
 			sink: new CanvasSink(videoTrack, {
@@ -750,9 +752,14 @@ export async function renderMultiTrackVideoArtifact(
 		}
 	}
 	report(options, 'mixing', 0, totalFrames);
+	const decodableMixEntries = mixEntries.filter((entry) => decodedAudio.has(entry.mediaId));
 	const mixed =
-		mixEntries.length > 0
-			? await renderMixdown(mixEntries, decodedAudio, mixDurationSeconds(mixEntries))
+		decodableMixEntries.length > 0
+			? await renderMixdown(
+					decodableMixEntries,
+					decodedAudio,
+					mixDurationSeconds(decodableMixEntries)
+				)
 			: null;
 	report(options, 'rendering', 0, totalFrames);
 

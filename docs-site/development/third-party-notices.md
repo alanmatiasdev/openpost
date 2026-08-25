@@ -13,7 +13,7 @@ The quantized background-removal model, WASM files, and their notices ship under
 
 OpenPost Video Editor uses:
 
-- **Mediabunny 1.51.x** for media inspection, bounded sample access, demuxing, and streaming MP4/WebM muxing.
+- **Mediabunny 1.51.x** for media inspection, bounded sample access, demuxing, streaming MP4/WebM muxing, and its MPL-2.0 ProRes extension with TurboRes for local ProRes decode.
 - **Transformers.js 3.8.1** and **ONNX Runtime Web 1.21.0** for local worker-based analysis.
 - **FreeCut** source adapted under the MIT License. The retained license is in `licenses/FREECUT.txt`.
 - **Paper Shaders** source adapted under the Apache License 2.0. Its retained license and notice are in `licenses/PAPER_SHADERS.txt` and `licenses/PAPER_SHADERS_NOTICE.txt`.

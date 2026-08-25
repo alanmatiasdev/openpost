@@ -35,7 +35,7 @@ Ported from FreeCut (adapt React→Svelte 5 runes, Tailwind 4 + bits-ui `ui/` pr
 | Export pipeline (settings resolution, packet-remux fast path, canvas render orchestrator/engine, render queue)                                                                               | FreeCut `features/export`                                 | Verbatim engine core; reduced item-type renderer surface                                                        |
 | Preview composition rendering                                                                                                                                                                | FreeCut `runtime/composition-runtime`                     | Rewrite in Svelte (largest rewrite surface): `<video>` pool + transform wrappers + text/subtitle canvas overlay |
 
-Dependencies in `frontend/package.json`: `mediabunny@^1.51.0`, `@huggingface/transformers@4.1.0`, `onnxruntime-web@1.26.0-dev.20260410-5e55544225`, and `fflate`.
+Dependencies in `frontend/package.json`: `mediabunny@^1.51.0`, `@mediabunny/prores@1.51.0`, `@huggingface/transformers@4.1.0`, `onnxruntime-web@1.26.0-dev.20260410-5e55544225`, and `fflate`.
 
 ### Deliberate reductions vs FreeCut (v1)
 

@@ -79,6 +79,7 @@
 		"@huggingface/transformers": "4.1.0",
 		"@imgly/background-removal": "1.7.0",
 		"@lottiefiles/dotlottie-web": "0.76.0",
+		"@mediabunny/prores": "1.51.0",
 		"@noble/hashes": "1.8.0",
 		"@openpost/plan-catalog": "workspace:*",
 		"@openpost/social-preview": "workspace:*",

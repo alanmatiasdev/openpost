@@ -5,6 +5,7 @@ import {
 	prepareMediaImportFile
 } from './media-file-types';
 import { probeMediaFile } from './probe-client';
+import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
 
 function transparentGif(): File {
 	const bytes = Uint8Array.from(
@@ -50,5 +51,22 @@ describe('image media probe worker', () => {
 		);
 
 		await expect(prepareMediaImportFile(unsafeSvg)).rejects.toThrow(/active or external content/);
+	});
+});
+
+describe('video media probe worker', () => {
+	it('decodes a real ProRes source for metadata and thumbnail fallback', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const proRes = await probeMediaFile(
+			new File([await response.blob()], 'prores-proxy.mov', { type: 'video/quicktime' })
+		);
+
+		expect(proRes.kind).toBe('video');
+		expect(proRes.videoCodec).toBe('prores');
+		expect(proRes.videoCodecSupported).toBe(false);
+		expect([proRes.width, proRes.height]).toEqual([64, 36]);
+		expect(proRes.durationSeconds).toBeGreaterThan(0);
+		expect(proRes.thumbnailBlob?.size).toBeGreaterThan(0);
 	});
 });

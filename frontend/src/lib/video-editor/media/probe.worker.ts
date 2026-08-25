@@ -10,6 +10,7 @@
  */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, Input } from 'mediabunny';
+import { ensureProResDecoderForCodec, isProResCodec } from './prores-decoder';
 
 export interface MediaProbeResult {
 	durationSeconds: number;
@@ -17,6 +18,7 @@ export interface MediaProbeResult {
 	height: number;
 	fps: number;
 	videoCodec?: string;
+	videoCodecSupported: boolean;
 	audioCodec?: string;
 	bitrate?: number;
 	keyframeTimestamps?: number[];
@@ -65,7 +67,11 @@ async function extractKeyframes(input: Input): Promise<number[] | undefined> {
 	}
 }
 
-async function generateThumbnail(input: Input, atSecond: number): Promise<Blob | undefined> {
+async function generateThumbnail(
+	input: Input,
+	atSecond: number,
+	strict = false
+): Promise<Blob | undefined> {
 	try {
 		const track = await input.getPrimaryVideoTrack();
 		if (!track) return undefined;
@@ -73,7 +79,8 @@ async function generateThumbnail(input: Input, atSecond: number): Promise<Blob |
 		const scale = track.displayHeight > 0 ? height / track.displayHeight : 1;
 		const sink = new CanvasSink(track, {
 			width: Math.round(track.displayWidth * scale),
-			height: Math.round(track.displayHeight * scale)
+			height: Math.round(track.displayHeight * scale),
+			fit: 'fill'
 		});
 		const wrapped = await sink.getCanvas(Math.min(atSecond, 0.1));
 		if (!wrapped) return undefined;
@@ -85,7 +92,8 @@ async function generateThumbnail(input: Input, atSecond: number): Promise<Blob |
 						(wrapped.canvas as HTMLCanvasElement).toBlob(resolve, 'image/jpeg', 0.8)
 					);
 		return blob ?? undefined;
-	} catch {
+	} catch (error) {
+		if (strict) throw error;
 		return undefined;
 	}
 }
@@ -113,6 +121,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 				width,
 				height,
 				fps: 0,
+				videoCodecSupported: true,
 				thumbnailBlob,
 				hasAudio: false
 			};
@@ -135,8 +144,14 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 			width = videoTrack.displayWidth;
 			height = videoTrack.displayHeight;
 			videoCodec = videoTrack.codec ?? undefined;
+			await ensureProResDecoderForCodec(videoCodec);
 			keyframeTimestamps = await extractKeyframes(input);
 		}
+		const videoCodecSupported = videoTrack
+			? isProResCodec(videoCodec)
+				? false
+				: await videoTrack.canDecode().catch(() => true)
+			: true;
 
 		let gopInterval: number | undefined;
 		if (keyframeTimestamps && keyframeTimestamps.length >= 2) {
@@ -147,7 +162,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 		}
 
 		const thumbnailBlob = videoTrack
-			? await generateThumbnail(input, duration > 2 ? 1 : duration / 2)
+			? await generateThumbnail(input, duration > 2 ? 1 : duration / 2, isProResCodec(videoCodec))
 			: undefined;
 
 		const result: MediaProbeResult = {
@@ -157,6 +172,7 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 			height,
 			fps: kind === 'audio' ? 0 : fps,
 			videoCodec: videoCodec ?? undefined,
+			videoCodecSupported,
 			audioCodec: audioTrack?.codec ?? undefined,
 			keyframeTimestamps,
 			gopInterval,

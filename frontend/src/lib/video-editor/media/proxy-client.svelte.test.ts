@@ -25,6 +25,7 @@ import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
 import PreviewPlayer from '../components/preview-player.svelte';
+import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
 
 const WIDTH = 1280;
 const HEIGHT = 720;
@@ -81,6 +82,45 @@ async function sourceVideo(): Promise<Blob> {
 }
 
 describe('proxy generation worker', () => {
+	it('transcodes a real browser-undecodable ProRes source into a playable proxy', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const source = await response.blob();
+		const media: MediaMetadata = {
+			id: `prores-proxy-${crypto.randomUUID()}`,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(
+				'prores-proxy.mov',
+				async () => new File([source], 'prores-proxy.mov', { type: 'video/quicktime' })
+			),
+			fileName: 'prores-proxy.mov',
+			fileSize: source.size,
+			mimeType: 'video/quicktime',
+			duration: 0.125,
+			width: 64,
+			height: 36,
+			fps: 24,
+			codec: 'prores',
+			bitrate: 90_000,
+			videoCodecSupported: false,
+			tags: ['video']
+		};
+
+		const proxy = await getProxy(media);
+		expect(proxy.type).toBe('video/webm');
+		expect(proxy.size).toBeGreaterThan(0);
+		const input = new Input({ source: new BlobSource(proxy), formats: ALL_FORMATS });
+		try {
+			const track = await input.getPrimaryVideoTrack();
+			expect(track?.displayWidth).toBe(64);
+			expect(track?.displayHeight).toBe(36);
+			expect(await track?.computeDuration()).toBeGreaterThan(0);
+		} finally {
+			input.dispose();
+			clearProxyCache(media.id);
+		}
+	});
+
 	it('drops canceled background work before reading the source', async () => {
 		const getFile = vi.fn(async () => {
 			throw new Error('Canceled proxy work must not read its source.');

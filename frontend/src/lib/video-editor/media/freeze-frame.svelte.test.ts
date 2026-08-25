@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BufferTarget, Output, VideoSample, VideoSampleSource, WebMOutputFormat } from 'mediabunny';
 import type { TimelineItem } from '../project/types';
 import { extractFreezeFrameFromBlob } from './freeze-frame';
+import proResFixtureUrl from './fixtures/prores-proxy.mov?url';
 
 const SIZE = 64;
 const FPS = 2;
@@ -57,6 +58,31 @@ function closeTo(actual: [number, number, number], expected: [number, number, nu
 }
 
 describe('freeze frame extraction', () => {
+	it('decodes a real ProRes frame through the custom main-thread decoder', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const item: TimelineItem = {
+			id: 'prores-clip',
+			trackId: 'video',
+			from: 0,
+			durationInFrames: 3,
+			label: 'ProRes fixture',
+			type: 'video',
+			sourceStart: 0,
+			sourceEnd: 3,
+			sourceDuration: 3,
+			sourceFps: 24
+		};
+
+		const extracted = await extractFreezeFrameFromBlob(await response.blob(), item, 1, 24);
+
+		expect([extracted.width, extracted.height]).toEqual([64, 36]);
+		const pixel = await centerPixel(extracted.blob);
+		expect(pixel[0]).toBeGreaterThan(180);
+		expect(pixel[1]).toBeGreaterThan(50);
+		expect(pixel[2]).toBeLessThan(120);
+	});
+
 	it('decodes the exact reversed source frame at native display resolution', async () => {
 		const item: TimelineItem = {
 			id: 'clip',

@@ -150,6 +150,7 @@ export async function importFile(
 				height: probe.height,
 				fps: probe.fps,
 				codec: probe.videoCodec ?? '',
+				videoCodecSupported: probe.videoCodecSupported,
 				bitrate: Math.round((file.size * 8) / Math.max(probe.durationSeconds, 1)),
 				audioCodec: probe.audioCodec,
 				keyframeTimestamps: probe.keyframeTimestamps,

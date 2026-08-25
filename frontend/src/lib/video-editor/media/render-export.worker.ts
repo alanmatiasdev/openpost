@@ -56,16 +56,21 @@ self.onmessage = async (event: MessageEvent<RenderExportWorkerRequest>) => {
 		const smartCopyEligible =
 			message.mode === 'video' &&
 			assessSmartCopy(message.project, message.options, message.media).eligible;
+		const mediaWithAudio = new Set(
+			message.media
+				.filter((media) => Boolean(media.audioCodec) || media.tags.includes('audio'))
+				.map((media) => media.id)
+		);
+		const plannedAudio = planNestedMixdown(
+			timeline?.items ?? [],
+			timeline?.tracks ?? [],
+			message.project.metadata.fps,
+			timeline?.transitions ?? [],
+			timeline?.compositions ?? []
+		);
 		const hasAudio =
 			!smartCopyEligible &&
-			(message.mode === 'audio' ||
-				planNestedMixdown(
-					timeline?.items ?? [],
-					timeline?.tracks ?? [],
-					message.project.metadata.fps,
-					timeline?.transitions ?? [],
-					timeline?.compositions ?? []
-				).length > 0);
+			(message.mode === 'audio' || plannedAudio.some((entry) => mediaWithAudio.has(entry.mediaId)));
 		if (hasAudio && !('OfflineAudioContext' in globalThis)) {
 			throw new Error('WORKER_REQUIRES_MAIN_THREAD:audio-context');
 		}

@@ -5,6 +5,7 @@
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { getAutomaticProxy } from '$lib/video-editor/media/proxy-client';
 	import { LottieRenderer } from '$lib/video-editor/lottie/frame-provider';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
@@ -64,7 +65,9 @@
 	);
 
 	let sourceUrl = $state('');
+	let sourceAudioUrl = $state('');
 	let loadError = $state('');
+	let proxyProgress = $state<number | null>(null);
 	let currentFrame = $state(0);
 	let inPoint = $state(0);
 	let outPoint = $state(1);
@@ -77,6 +80,7 @@
 	let videoTarget = $state<SourcePatchTarget>('auto');
 	let audioTarget = $state<SourcePatchTarget>('auto');
 	let mediaElement = $state<HTMLMediaElement>();
+	let proxyAudioElement = $state<HTMLAudioElement>();
 	let lottieCanvas = $state<HTMLCanvasElement>();
 	let lottieRenderer: LottieRenderer | null = null;
 	let animationFrame = 0;
@@ -87,6 +91,7 @@
 	let rangeDragStartX = 0;
 	let rangeDragStartIn = 0;
 	let rangeDragStartOut = 1;
+	type SourceLoadError = Error | DOMException;
 
 	const selectionLeft = $derived((inPoint / durationFrames) * 100);
 	const selectionWidth = $derived(((outPoint - inPoint) / durationFrames) * 100);
@@ -116,21 +121,46 @@
 	$effect(() => {
 		if (!media) return;
 		let disposed = false;
-		let objectUrl = '';
+		const controller = new AbortController();
+		const objectUrls: string[] = [];
 		loadError = '';
+		proxyProgress = media.videoCodecSupported === false ? 0 : null;
 		void resolveMediaBlob(media)
-			.then((blob) => {
+			.then(async (blob) => {
 				if (disposed) return;
-				objectUrl = URL.createObjectURL(blob);
-				sourceUrl = objectUrl;
+				const originalUrl = URL.createObjectURL(blob);
+				objectUrls.push(originalUrl);
+				if (media.videoCodecSupported !== false) {
+					sourceUrl = originalUrl;
+					return;
+				}
+				sourceAudioUrl = originalUrl;
+				const proxy = await getAutomaticProxy(
+					media,
+					(progress) => {
+						if (!disposed) proxyProgress = progress;
+					},
+					controller.signal
+				);
+				if (disposed) return;
+				const proxyUrl = URL.createObjectURL(proxy);
+				objectUrls.push(proxyUrl);
+				sourceUrl = proxyUrl;
+				proxyProgress = null;
 			})
-			.catch((error: unknown) => {
-				if (!disposed) loadError = error instanceof Error ? error.message : String(error);
+			.catch((error: SourceLoadError) => {
+				if (!disposed && !(error instanceof DOMException && error.name === 'AbortError')) {
+					loadError = error instanceof Error ? error.message : String(error);
+					proxyProgress = null;
+				}
 			});
 		return () => {
 			disposed = true;
+			controller.abort();
 			sourceUrl = '';
-			if (objectUrl) URL.revokeObjectURL(objectUrl);
+			sourceAudioUrl = '';
+			proxyProgress = null;
+			for (const url of objectUrls) URL.revokeObjectURL(url);
 		};
 	});
 
@@ -180,6 +210,9 @@
 		if (updateMedia && mediaElement) {
 			const time = currentFrame / sourceFps;
 			if (Math.abs(mediaElement.currentTime - time) > 0.01) mediaElement.currentTime = time;
+			if (proxyAudioElement && Math.abs(proxyAudioElement.currentTime - time) > 0.04) {
+				proxyAudioElement.currentTime = time;
+			}
 		}
 	}
 
@@ -187,6 +220,7 @@
 		playing = false;
 		cancelAnimationFrame(animationFrame);
 		mediaElement?.pause();
+		proxyAudioElement?.pause();
 	}
 
 	function customPlaybackFrame(now: number): void {
@@ -210,7 +244,10 @@
 		playing = true;
 		if (mediaElement) {
 			try {
-				await mediaElement.play();
+				await Promise.all([
+					mediaElement.play(),
+					proxyAudioElement?.play().catch(() => undefined) ?? Promise.resolve()
+				]);
 			} catch {
 				playing = false;
 			}
@@ -224,6 +261,12 @@
 	function updateFromMedia(): void {
 		if (!mediaElement) return;
 		const next = clampFrame(mediaElement.currentTime * sourceFps);
+		if (
+			proxyAudioElement &&
+			Math.abs(proxyAudioElement.currentTime - mediaElement.currentTime) > 0.08
+		) {
+			proxyAudioElement.currentTime = mediaElement.currentTime;
+		}
 		if (next >= outPoint) {
 			seek(outPoint - 1);
 			pause();
@@ -257,14 +300,16 @@
 	}
 
 	function startRangeDrag(event: PointerEvent): void {
+		if (!(event.currentTarget instanceof HTMLButtonElement)) return;
 		rangeDragStartX = event.clientX;
 		rangeDragStartIn = inPoint;
 		rangeDragStartOut = outPoint;
-		(event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
+		event.currentTarget.setPointerCapture(event.pointerId);
 	}
 
 	function dragRange(event: PointerEvent): void {
-		if (!(event.currentTarget as HTMLButtonElement).hasPointerCapture(event.pointerId)) return;
+		if (!(event.currentTarget instanceof HTMLButtonElement)) return;
+		if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
 		const width = stripElement?.clientWidth ?? 0;
 		if (width <= 0) return;
 		moveRange(((event.clientX - rangeDragStartX) / width) * durationFrames);
@@ -302,11 +347,16 @@
 				'success'
 			);
 		} catch (error) {
-			showToast(sourceEditErrorMessage(error), 'error');
+			showToast(
+				error instanceof Error
+					? sourceEditErrorMessage(error)
+					: m.video_editor_source_edit_failed(),
+				'error'
+			);
 		}
 	}
 
-	function sourceEditErrorMessage(error: unknown): string {
+	function sourceEditErrorMessage(error: SourceEditError | Error): string {
 		if (!(error instanceof SourceEditError)) return m.video_editor_source_edit_failed();
 		if (error.code === 'target-locked') return m.video_editor_source_target_locked();
 		if (error.code === 'target-invalid') return m.video_editor_source_target_invalid();
@@ -315,7 +365,8 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {
-		const target = event.target as HTMLElement;
+		if (!(event.target instanceof HTMLElement)) return;
+		const target = event.target;
 		if (target.matches('input, select, textarea, button')) {
 			if (monitorElement?.contains(target)) event.stopImmediatePropagation();
 			return;
@@ -377,7 +428,11 @@
 		{#if loadError}
 			<p class="max-w-xs px-4 text-center text-xs text-red-300">{loadError}</p>
 		{:else if !sourceUrl}
-			<p class="text-xs text-[oklch(0.62_0.015_55)]">{m.video_editor_source_loading()}</p>
+			<p class="text-xs text-[oklch(0.62_0.015_55)]">
+				{proxyProgress === null
+					? m.video_editor_source_loading()
+					: `${m.video_editor_proxy_preparing()} ${Math.round(proxyProgress * 100)}%`}
+			</p>
 		{:else if kind === 'video'}
 			<!-- svelte-ignore a11y_media_has_caption -- source media may not include a caption track -->
 			<video
@@ -390,6 +445,10 @@
 				onended={pause}
 				ontimeupdate={updateFromMedia}
 			></video>
+			{#if sourceAudioUrl && hasAudio}
+				<!-- svelte-ignore a11y_media_has_caption -- hidden original audio accompanies the proxy -->
+				<audio bind:this={proxyAudioElement} src={sourceAudioUrl} preload="auto"></audio>
+			{/if}
 		{:else if kind === 'audio'}
 			<div class="flex flex-col items-center gap-3 text-[oklch(0.66_0.015_55)]">
 				<Music2Icon class="size-10" aria-hidden="true" />

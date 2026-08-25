@@ -16,6 +16,7 @@ import {
 	WebMOutputFormat
 } from 'mediabunny';
 import { PROXY_BITRATE, PROXY_MAX_HEIGHT, proxyDimensions } from './proxy-client';
+import { ensureProResDecoderForCodec } from './prores-decoder';
 
 export interface ProxyRequest {
 	file: Blob;
@@ -33,6 +34,7 @@ self.onmessage = async (event: MessageEvent<ProxyRequest>): Promise<void> => {
 		const input = new Input({ source: new BlobSource(event.data.file), formats: ALL_FORMATS });
 		const track = await input.getPrimaryVideoTrack();
 		if (!track) throw new Error('No video track found');
+		await ensureProResDecoderForCodec(track.codec);
 		const duration = await track.computeDuration();
 		const size = proxyDimensions(track.displayWidth, track.displayHeight, maxHeight);
 		const sink = new CanvasSink(track, { width: size.width, height: size.height, fit: 'fill' });

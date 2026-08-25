@@ -9,6 +9,7 @@
  */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ensureProResDecoderForCodec } from './prores-decoder';
 import { resolveMediaBlob } from './import.svelte';
 import { detectSceneCuts, type FrameHistogram } from './scene-detection';
 import {
@@ -40,6 +41,7 @@ export async function scanSceneCuts(
 	try {
 		const track = await input.getPrimaryVideoTrack();
 		if (!track) throw new Error(`No video track in ${media.fileName}`);
+		await ensureProResDecoderForCodec(track.codec);
 		const duration = await track.computeDuration();
 		if (!(duration > 0)) return [];
 
