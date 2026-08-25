@@ -10,6 +10,12 @@ import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
 import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+import {
+	clearActiveMediaDrag,
+	mediaDragData,
+	writeMediaDragData
+} from '$lib/video-editor/media/media-drag';
+import { mediaPlacement } from '$lib/video-editor/media/media-placement.svelte';
 import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 import {
 	clearSceneDragData,
@@ -25,6 +31,7 @@ import animatedGifUrl from '$lib/video-editor/media/fixtures/animated-rgb.gif?ur
 import { get } from 'svelte/store';
 import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 import { editorSession } from '$lib/video-editor/editor.svelte';
+import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 
 const FILMSTRIP_TILE_WIDTH = 96;
 import TimelinePanel from './timeline-panel.svelte';
@@ -104,6 +111,9 @@ async function nextAnimationFrame(): Promise<void> {
 beforeEach(() => {
 	timelinePreviewScrub.__resetForTesting();
 	clearSceneDragData();
+	clearActiveMediaDrag();
+	mediaPlacement.cancel();
+	sequenceStore.reset();
 	mediaPool.loadAll([sceneMedia]);
 	keyboardShortcuts.resetAll();
 	timelineStore.__resetForTesting();
@@ -1288,6 +1298,234 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		);
 		expect(transitionsStore.list[0]?.durationInFrames).toBe(21);
 		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('TimelinePanel exact media placement', () => {
+	it('places from the keyboard on the shown track and frame as one undo step', async () => {
+		timelineStore._setItems([]);
+		setCurrentFrame(45);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+
+		mediaPlacement.begin(mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		await expect.element(screen.getByText(/Enter to place\. Arrow keys move/)).toBeVisible();
+		const ghost = document.querySelector<HTMLElement>('[data-media-drop-preview]');
+		expect(ghost?.closest('[data-track]')?.getAttribute('data-track')).toBe('video-track');
+		expect(ghost?.style.left).toBe('360px');
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+		);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+		expect(timelineStore.items).toHaveLength(1);
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: 'video-track',
+			from: 55,
+			durationInFrames: 240,
+			mediaId: sceneMedia.id
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(mediaPlacement.request).toBeNull();
+
+		mediaPlacement.begin(mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-media-drop-preview]')).not.toBeNull();
+		});
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(mediaPlacement.request).toBeNull();
+	});
+
+	it('keeps an occupied exact position rejected without mutating the timeline', async () => {
+		setCurrentFrame(15);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		commandHistory.clearHistory();
+
+		mediaPlacement.begin(mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		await expect.element(screen.getByText(/This position is unavailable/)).toBeVisible();
+		const ghost = document.querySelector<HTMLElement>('[data-media-drop-preview]');
+		expect(ghost?.dataset.valid).toBe('false');
+		expect(ghost?.dataset.reason).toBe('collision');
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+		expect(timelineStore.items.map((candidate) => candidate.id)).toEqual(['video', 'music-bed']);
+		expect(commandHistory.canUndo).toBe(false);
+		expect(onedit).not.toHaveBeenCalled();
+		expect(mediaPlacement.request).not.toBeNull();
+	});
+
+	it('uses only the custom drag payload and drops at the ghosted row and frame', async () => {
+		timelineStore._setItems([]);
+		timelineStore._setSnapEnabled(false);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(row).not.toBeNull();
+		const foreignTransfer = new DataTransfer();
+		foreignTransfer.setData(
+			'application/json',
+			JSON.stringify(mediaDragData('media', sceneMedia.id, sceneMedia.fileName))
+		);
+		row!.dispatchEvent(
+			new DragEvent('dragover', {
+				bubbles: true,
+				cancelable: true,
+				clientX: row!.getBoundingClientRect().left + 220,
+				dataTransfer: foreignTransfer
+			})
+		);
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-media-drop-preview]')).toBeNull();
+
+		const dataTransfer = new DataTransfer();
+		writeMediaDragData(dataTransfer, mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		const clientX = row!.getBoundingClientRect().left + 220;
+		row!.dispatchEvent(
+			new DragEvent('dragover', {
+				bubbles: true,
+				cancelable: true,
+				clientX,
+				dataTransfer
+			})
+		);
+		await nextAnimationFrame();
+		const ghost = document.querySelector<HTMLElement>('[data-media-drop-preview]');
+		expect(ghost?.dataset.valid).toBe('true');
+		expect(ghost?.style.left).toBe('220px');
+
+		row!.dispatchEvent(
+			new DragEvent('drop', {
+				bubbles: true,
+				cancelable: true,
+				clientX,
+				dataTransfer
+			})
+		);
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: 'video-track',
+			from: 10,
+			mediaId: sceneMedia.id
+		});
+		expect(onedit).toHaveBeenCalledOnce();
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('auto-scrolls the timeline while a media drag stays at an edge', async () => {
+		await page.viewport(320, 720);
+		timelineStore._setItems([]);
+		timelineStore._setSnapEnabled(false);
+		await render(TimelinePanel, { onedit: vi.fn() });
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		const surface = document.querySelector<HTMLElement>('[data-media-placement-surface]');
+		expect(row).not.toBeNull();
+		expect(surface).not.toBeNull();
+		const dataTransfer = new DataTransfer();
+		writeMediaDragData(dataTransfer, mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		row!.dispatchEvent(
+			new DragEvent('dragover', {
+				bubbles: true,
+				cancelable: true,
+				clientX: surface!.getBoundingClientRect().right - 1,
+				dataTransfer
+			})
+		);
+		await nextAnimationFrame();
+		await nextAnimationFrame();
+		await nextAnimationFrame();
+		expect(surface!.scrollLeft).toBeGreaterThan(0);
+		window.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-media-drop-preview]')).toBeNull();
+	});
+
+	it('places by touch without causing page overflow at 320 px', async () => {
+		await page.viewport(320, 720);
+		timelineStore._setItems([]);
+		timelineStore._setSnapEnabled(false);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		mediaPlacement.begin(mediaDragData('media', sceneMedia.id, sceneMedia.fileName));
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-media-drop-preview]')).not.toBeNull();
+		});
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth
+		);
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-media-placement-320.png'
+		});
+
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(row).not.toBeNull();
+		row!.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				cancelable: true,
+				button: 0,
+				buttons: 1,
+				clientX: row!.getBoundingClientRect().left + 220,
+				pointerId: 12,
+				pointerType: 'touch'
+			})
+		);
+
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: 'video-track',
+			from: 10,
+			mediaId: sceneMedia.id
+		});
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('previews and commits both exact rows for a sequence with video audio', async () => {
+		timelineStore._setItems([]);
+		sequenceStore.addComposition(
+			{
+				id: 'nested-sequence',
+				name: 'Nested sequence',
+				items: [
+					{
+						id: 'inside-video',
+						trackId: 'inside-video-track',
+						from: 0,
+						durationInFrames: 60,
+						label: 'Inside video',
+						type: 'video'
+					}
+				],
+				tracks: [track('inside-video-track', 'video', 0)],
+				transitions: [],
+				fps: 30,
+				width: 1920,
+				height: 1080,
+				durationInFrames: 60
+			},
+			true
+		);
+		setCurrentFrame(30);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+
+		mediaPlacement.begin(mediaDragData('composition', 'nested-sequence', 'Nested sequence'));
+		await vi.waitFor(() => {
+			expect(document.querySelectorAll('[data-media-drop-preview]')).toHaveLength(2);
+		});
+		const ghosts = [...document.querySelectorAll<HTMLElement>('[data-media-drop-preview]')];
+		expect(ghosts.every((ghost) => ghost.dataset.valid === 'true')).toBe(true);
+		expect(ghosts.filter((ghost) => ghost.dataset.secondary === 'true')).toHaveLength(1);
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(timelineStore.items).toHaveLength(2);
+		expect(timelineStore.items.map((candidate) => candidate.trackId).sort()).toEqual([
+			'audio-track',
+			'video-track'
+		]);
+		expect(new Set(timelineStore.items.map((candidate) => candidate.linkedGroupId)).size).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
 	});
 });
 

@@ -217,6 +217,24 @@
 		getSceneDragData
 	} from '$lib/video-editor/media/scene-search/scene-drag';
 	import { insertSceneAtFrame } from '$lib/video-editor/media/scene-search/scene-insert';
+	import {
+		clearActiveMediaDrag,
+		getMediaDragData,
+		type MediaDragData
+	} from '$lib/video-editor/media/media-drag';
+	import { mediaPlacement } from '$lib/video-editor/media/media-placement.svelte';
+	import {
+		evaluateExactMediaPlacement,
+		mediaDropAutoScrollDelta,
+		mediaDurationInFrames,
+		mediaTimelineKind,
+		planExactSequencePlacement,
+		type MediaDropRejection
+	} from '$lib/video-editor/media/media-drop-placement';
+	import { insertMediaAtFrame } from '$lib/video-editor/timeline/actions/insert-media';
+	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+	import { nestSequenceOnExactTracks } from '$lib/video-editor/sequences/sequence-actions';
+	import { wouldCreateCompositionCycle } from '$lib/video-editor/sequences/composition-graph';
 	import { Button } from '$lib/components/ui/button';
 	import BetweenHorizontalEndIcon from '@lucide/svelte/icons/between-horizontal-end';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
@@ -497,6 +515,33 @@
 		durationInFrames: number;
 		label: string;
 	} | null>(null);
+	let mediaDropPreview = $state<{
+		trackId: string;
+		secondaryTrackId: string | null;
+		from: number;
+		durationInFrames: number;
+		label: string;
+		valid: boolean;
+		reason: MediaDropRejection | null;
+		snapTarget: SnapTarget | null;
+	} | null>(null);
+	let pendingMediaDrop = $state<{
+		clientX: number;
+		trackId: string;
+		payload: MediaDragData;
+	} | null>(null);
+	let activeNativeMediaDrop: {
+		clientX: number;
+		trackId: string;
+		payload: MediaDragData;
+	} | null = null;
+	let mediaDropAnimationFrame: number | null = null;
+	let mediaDropAutoScrollFrame: number | null = null;
+	let handledPlacementRequestId = 0;
+	interface SnappedMediaFrame {
+		from: number;
+		snapTarget: SnapTarget | null;
+	}
 
 	$effect(() => {
 		if (effectDropTargetIds.length === 0) return;
@@ -507,6 +552,27 @@
 			window.removeEventListener('dragend', clear);
 			window.removeEventListener('drop', clear);
 		};
+	});
+
+	$effect(() => {
+		if (!mediaDropPreview || mediaPlacement.request) return;
+		const clear = () => {
+			clearMediaDropPreview();
+			clearActiveMediaDrag();
+		};
+		window.addEventListener('dragend', clear);
+		window.addEventListener('drop', clear);
+		return () => {
+			window.removeEventListener('dragend', clear);
+			window.removeEventListener('drop', clear);
+		};
+	});
+
+	$effect(() => {
+		const request = mediaPlacement.request;
+		if (!request || request.requestId === handledPlacementRequestId) return;
+		handledPlacementRequestId = request.requestId;
+		beginAccessibleMediaPlacement(request.payload);
 	});
 
 	// Reactive filmstrip state per video mediaId; frames stream in from the
@@ -1521,6 +1587,323 @@
 		onedit();
 	}
 
+	function resolveDraggedMedia(payload: MediaDragData) {
+		if (payload.source === 'media') {
+			const media = mediaPool.get(payload.id);
+			const entry = mediaPool.entry(payload.id);
+			if (!media || entry?.status !== 'ready') return null;
+			return {
+				source: 'media' as const,
+				media,
+				composition: null,
+				kind: mediaTimelineKind(media),
+				durationInFrames: mediaDurationInFrames(media, timelineStore.fps),
+				label: media.fileName
+			};
+		}
+		const composition = sequenceStore.compositionById.get(payload.id);
+		if (
+			!composition ||
+			wouldCreateCompositionCycle(
+				sequenceStore.activeSequenceId,
+				composition.id,
+				sequenceStore.compositionById
+			)
+		) {
+			return null;
+		}
+		const visual = composition.items.some((item) => item.type !== 'audio');
+		const audio = composition.items.some((item) => item.type === 'audio' || item.type === 'video');
+		if (!visual && !audio) return null;
+		return {
+			source: 'composition' as const,
+			media: null,
+			composition,
+			kind: visual ? ('video' as const) : ('audio' as const),
+			durationInFrames: Math.max(1, composition.durationInFrames),
+			label: composition.name
+		};
+	}
+
+	function snappedMediaFrame(clientX: number, durationInFrames: number): SnappedMediaFrame {
+		if (!scrollContainer) {
+			return { from: timelineStore.currentFrame, snapTarget: null };
+		}
+		const rect = scrollContainer.getBoundingClientRect();
+		const rawFrame = pxToFrame(
+			clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH
+		);
+		if (!timelineStore.snapEnabled) {
+			return { from: Math.max(0, Math.round(rawFrame)), snapTarget: null };
+		}
+		const targets = buildSnapTargets({
+			items: timelineStore.items,
+			tracks: timelineStore.tracks,
+			transitions: transitionsStore.list,
+			markers: timelineStore.markers,
+			currentFrame: timelineStore.currentFrame,
+			durationInFrames: timelineStore.maxItemEndFrame + fps * 10,
+			fps,
+			zoomLevel: zoom
+		});
+		const threshold = calculateAdaptiveSnapThreshold(zoom, pxPerFrame);
+		const result = calculateMoveSnap(rawFrame, durationInFrames, targets, threshold);
+		return {
+			from: Math.max(0, result.snappedFrame),
+			snapTarget: result.snapTarget ?? null
+		};
+	}
+
+	function exactMediaDropResult(
+		resolved: NonNullable<ReturnType<typeof resolveDraggedMedia>>,
+		trackId: string,
+		from: number
+	) {
+		return resolved.composition
+			? planExactSequencePlacement({
+					composition: resolved.composition,
+					preferredTrackId: trackId,
+					from,
+					tracks: timelineStore.tracks,
+					items: timelineStore.items
+				})
+			: evaluateExactMediaPlacement({
+					trackId,
+					from,
+					durationInFrames: resolved.durationInFrames,
+					kind: resolved.kind,
+					tracks: timelineStore.tracks,
+					items: timelineStore.items
+				});
+	}
+
+	function updateMediaDropPreview(
+		payload: MediaDragData,
+		trackId: string,
+		from: number,
+		snapTarget: SnapTarget | null = null
+	): boolean {
+		const resolved = resolveDraggedMedia(payload);
+		if (!resolved) {
+			clearMediaDropPreview();
+			return false;
+		}
+		const result = exactMediaDropResult(resolved, trackId, from);
+		mediaDropPreview = {
+			trackId,
+			secondaryTrackId:
+				result.valid &&
+				'audioTrackId' in result.placement &&
+				result.placement.audioTrackId !== trackId
+					? (result.placement.audioTrackId ?? null)
+					: null,
+			from: Math.max(0, Math.round(from)),
+			durationInFrames: resolved.durationInFrames,
+			label: resolved.label,
+			valid: result.valid,
+			reason: result.valid ? null : result.reason,
+			snapTarget
+		};
+		activeSnapTarget = snapTarget;
+		return result.valid;
+	}
+
+	function clearMediaDropPreview(cancelRequest = false): void {
+		mediaDropPreview = null;
+		pendingMediaDrop = null;
+		activeNativeMediaDrop = null;
+		activeSnapTarget = null;
+		if (mediaDropAnimationFrame !== null) {
+			cancelAnimationFrame(mediaDropAnimationFrame);
+			mediaDropAnimationFrame = null;
+		}
+		if (mediaDropAutoScrollFrame !== null) {
+			cancelAnimationFrame(mediaDropAutoScrollFrame);
+			mediaDropAutoScrollFrame = null;
+		}
+		if (cancelRequest) mediaPlacement.cancel();
+	}
+
+	function runMediaDropAutoScroll(): void {
+		mediaDropAutoScrollFrame = null;
+		const active = activeNativeMediaDrop;
+		if (!active || !scrollContainer) return;
+		const rect = scrollContainer.getBoundingClientRect();
+		const delta = mediaDropAutoScrollDelta(active.clientX, rect.left, rect.right);
+		if (delta === 0) return;
+		const before = scrollContainer.scrollLeft;
+		scrollContainer.scrollLeft += delta;
+		if (scrollContainer.scrollLeft === before) return;
+		pendingMediaDrop = active;
+		if (mediaDropAnimationFrame === null) {
+			mediaDropAnimationFrame = requestAnimationFrame(flushMediaDropPreview);
+		}
+		mediaDropAutoScrollFrame = requestAnimationFrame(runMediaDropAutoScroll);
+	}
+
+	function scheduleMediaDropAutoScroll(): void {
+		if (mediaDropAutoScrollFrame === null) {
+			mediaDropAutoScrollFrame = requestAnimationFrame(runMediaDropAutoScroll);
+		}
+	}
+
+	function flushMediaDropPreview(): void {
+		mediaDropAnimationFrame = null;
+		const pending = pendingMediaDrop;
+		pendingMediaDrop = null;
+		if (!pending) return;
+		const resolved = resolveDraggedMedia(pending.payload);
+		if (!resolved) {
+			clearMediaDropPreview();
+			return;
+		}
+		const position = snappedMediaFrame(pending.clientX, resolved.durationInFrames);
+		updateMediaDropPreview(pending.payload, pending.trackId, position.from, position.snapTarget);
+	}
+
+	function previewMediaDrop(event: DragEvent, trackId: string): boolean {
+		const payload = getMediaDragData(event.dataTransfer);
+		if (!payload || !resolveDraggedMedia(payload)) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		pendingMediaDrop = { clientX: event.clientX, trackId, payload };
+		activeNativeMediaDrop = pendingMediaDrop;
+		if (mediaDropAnimationFrame === null) {
+			mediaDropAnimationFrame = requestAnimationFrame(flushMediaDropPreview);
+		}
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect =
+				mediaDropPreview?.trackId === trackId && mediaDropPreview.valid ? 'copy' : 'none';
+		}
+		scheduleMediaDropAutoScroll();
+		return true;
+	}
+
+	function leaveMediaDrop(event: DragEvent): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		clearMediaDropPreview();
+	}
+
+	function commitMediaPlacement(payload: MediaDragData): boolean {
+		const preview = mediaDropPreview;
+		const resolved = resolveDraggedMedia(payload);
+		if (!preview || !preview.valid || !resolved) return false;
+		try {
+			const ids = resolved.media
+				? [
+						insertMediaAtFrame(resolved.media, preview.from, {
+							exactTrackId: preview.trackId,
+							label: resolved.label
+						})
+					]
+				: nestSequenceOnExactTracks(resolved.composition!.id, preview.from, {
+						visualTrackId: resolved.kind === 'video' ? preview.trackId : undefined,
+						audioTrackId:
+							resolved.kind === 'audio' ? preview.trackId : (preview.secondaryTrackId ?? undefined)
+					});
+			selectedItemId = ids[0] ?? null;
+			selectedItemIds = ids;
+			clearMediaDropPreview(true);
+			clearActiveMediaDrag();
+			onedit();
+			return true;
+		} catch {
+			updateMediaDropPreview(payload, preview.trackId, preview.from, preview.snapTarget);
+			return false;
+		}
+	}
+
+	function dropMedia(event: DragEvent, trackId: string): boolean {
+		const payload = getMediaDragData(event.dataTransfer);
+		const resolved = payload ? resolveDraggedMedia(payload) : null;
+		if (!payload || !resolved) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		const position = snappedMediaFrame(event.clientX, resolved.durationInFrames);
+		updateMediaDropPreview(payload, trackId, position.from, position.snapTarget);
+		const inserted = commitMediaPlacement(payload);
+		if (!inserted) {
+			clearMediaDropPreview();
+			clearActiveMediaDrag();
+		}
+		return true;
+	}
+
+	function candidatePlacementTracks(payload: MediaDragData) {
+		const resolved = resolveDraggedMedia(payload);
+		if (!resolved) return [];
+		return visibleTrackRows(timelineStore.tracks).filter(
+			(track) => !isTrackGroup(track) && track.kind === resolved.kind
+		);
+	}
+
+	function beginAccessibleMediaPlacement(payload: MediaDragData): void {
+		const resolved = resolveDraggedMedia(payload);
+		const candidates = candidatePlacementTracks(payload);
+		if (!resolved || candidates.length === 0) {
+			clearMediaDropPreview(true);
+			return;
+		}
+		const from = timelineStore.currentFrame;
+		const open = candidates.find((track) => exactMediaDropResult(resolved, track.id, from).valid);
+		updateMediaDropPreview(payload, (open ?? candidates[0])!.id, from);
+		queueMicrotask(() => scrollContainer?.focus({ preventScroll: true }));
+	}
+
+	function moveAccessibleMediaTrack(payload: MediaDragData, direction: -1 | 1): void {
+		if (!mediaDropPreview) return;
+		const candidates = candidatePlacementTracks(payload);
+		if (candidates.length === 0) return;
+		const currentIndex = candidates.findIndex((track) => track.id === mediaDropPreview?.trackId);
+		const nextIndex = (currentIndex + direction + candidates.length) % candidates.length;
+		const next = candidates[nextIndex];
+		if (next) updateMediaDropPreview(payload, next.id, mediaDropPreview.from);
+	}
+
+	function handleAccessibleMediaPlacementKey(event: KeyboardEvent): boolean {
+		const request = mediaPlacement.request;
+		if (!request || !mediaDropPreview) return false;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			clearMediaDropPreview(true);
+			return true;
+		}
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			commitMediaPlacement(request.payload);
+			return true;
+		}
+		if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+			event.preventDefault();
+			moveAccessibleMediaTrack(request.payload, event.key === 'ArrowUp' ? -1 : 1);
+			return true;
+		}
+		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+			event.preventDefault();
+			const delta = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowLeft' ? -1 : 1);
+			updateMediaDropPreview(
+				request.payload,
+				mediaDropPreview.trackId,
+				Math.max(0, mediaDropPreview.from + delta)
+			);
+			return true;
+		}
+		return false;
+	}
+
+	function placeMediaWithPointer(event: PointerEvent, trackId: string): boolean {
+		const request = mediaPlacement.request;
+		const resolved = request ? resolveDraggedMedia(request.payload) : null;
+		if (!request || !resolved) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		const position = snappedMediaFrame(event.clientX, resolved.durationInFrames);
+		updateMediaDropPreview(request.payload, trackId, position.from, position.snapTarget);
+		commitMediaPlacement(request.payload);
+		return true;
+	}
+
 	function marqueeStyle(): string {
 		if (!marquee || !scrollContainer) return '';
 		const rect = scrollContainer.getBoundingClientRect();
@@ -1733,6 +2116,7 @@
 	}
 
 	function onPanelKeydown(event: KeyboardEvent): void {
+		if (handleAccessibleMediaPlacementKey(event)) return;
 		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
@@ -2398,6 +2782,8 @@
 	}
 
 	onDestroy(() => {
+		clearMediaDropPreview(true);
+		clearActiveMediaDrag();
 		clearHoverPreview();
 		if (drag) finishDrag(true);
 		if (transitionResize) finishTransitionResize(true);
@@ -2530,6 +2916,7 @@
 				marquee ||
 				trackHeightResize ||
 				markerDrag ||
+				mediaDropPreview ||
 				effectDropTargetIds.length > 0 ||
 				sceneDropPreview ||
 				deleteGroupDialogOpen ||
@@ -3480,9 +3867,12 @@
 
 <div
 	bind:this={scrollContainer}
+	tabindex="-1"
+	data-media-placement-surface
 	onscroll={updateTimelineViewport}
 	onpointerdown={(event) => {
 		clearHoverPreview();
+		if (mediaPlacement.request) return;
 		startMarquee(event);
 	}}
 	onpointermove={rememberTimelinePointer}
@@ -3492,6 +3882,21 @@
 	role="region"
 	aria-label={m.video_editor_timeline()}
 >
+	{#if mediaPlacement.request && mediaDropPreview}
+		<div
+			class="pointer-events-none absolute top-1 right-2 left-2 z-[70] w-auto rounded-md border border-[oklch(0.38_0.015_55)] bg-[oklch(0.17_0.01_55_/_0.96)] px-3 py-1.5 text-[11px] text-white shadow-xl sm:right-auto sm:left-1/2 sm:w-max sm:max-w-[calc(100%-1rem)] sm:-translate-x-1/2"
+			role="status"
+			aria-live="polite"
+			data-media-placement-status
+		>
+			<span class="font-medium">{mediaDropPreview.label}</span>
+			<span class="ml-1 text-[oklch(0.7_0.015_55)]">
+				{mediaDropPreview.valid
+					? m.video_editor_media_placement_ready()
+					: m.video_editor_media_placement_unavailable()}
+			</span>
+		</div>
+	{/if}
 	<div class="relative select-none" style="width:{timelineWidth}px">
 		{#if marquee?.active}
 			<div
@@ -3578,10 +3983,39 @@
 				data-track={track.id}
 				role="group"
 				aria-label={track.name}
-				ondragenter={track.isGroup ? undefined : (event) => previewSceneDrop(event, track.id)}
-				ondragover={track.isGroup ? undefined : (event) => previewSceneDrop(event, track.id)}
-				ondragleave={track.isGroup ? undefined : leaveSceneDrop}
-				ondrop={track.isGroup ? undefined : (event) => dropScene(event, track.id)}
+				onpointerdown={track.isGroup
+					? undefined
+					: (event) => placeMediaWithPointer(event, track.id)}
+				onpointermove={track.isGroup
+					? undefined
+					: (event) => {
+							const request = mediaPlacement.request;
+							const resolved = request ? resolveDraggedMedia(request.payload) : null;
+							if (!request || !resolved) return;
+							const position = snappedMediaFrame(event.clientX, resolved.durationInFrames);
+							updateMediaDropPreview(request.payload, track.id, position.from, position.snapTarget);
+						}}
+				ondragenter={track.isGroup
+					? undefined
+					: (event) => {
+							if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+						}}
+				ondragover={track.isGroup
+					? undefined
+					: (event) => {
+							if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+						}}
+				ondragleave={track.isGroup
+					? undefined
+					: (event) => {
+							leaveMediaDrop(event);
+							leaveSceneDrop(event);
+						}}
+				ondrop={track.isGroup
+					? undefined
+					: (event) => {
+							if (!dropMedia(event, track.id)) dropScene(event, track.id);
+						}}
 			>
 				<div
 					class="sticky left-0 z-30 h-full"
@@ -3656,6 +4090,20 @@
 						<span class="sr-only" role="status" aria-live="polite">
 							{m.video_editor_scene_drop_ready()}
 						</span>
+					</div>
+				{/if}
+				{#if mediaDropPreview && (mediaDropPreview.trackId === track.id || mediaDropPreview.secondaryTrackId === track.id)}
+					<div
+						class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-[10px] text-white shadow-lg {mediaDropPreview.valid
+							? 'border-[oklch(0.72_0.14_145)] bg-[oklch(0.32_0.09_145_/_0.86)]'
+							: 'border-red-400 bg-red-500/25'}"
+						style={`left:${timelineX(mediaDropPreview.from)}px;width:${frameToPx(mediaDropPreview.durationInFrames)}px`}
+						data-media-drop-preview
+						data-valid={String(mediaDropPreview.valid)}
+						data-reason={mediaDropPreview.reason ?? undefined}
+						data-secondary={String(mediaDropPreview.secondaryTrackId === track.id)}
+					>
+						<span class="block truncate">{mediaDropPreview.label}</span>
 					</div>
 				{/if}
 				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}

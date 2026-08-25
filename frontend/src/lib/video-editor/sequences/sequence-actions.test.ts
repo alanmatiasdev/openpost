@@ -12,6 +12,7 @@ import {
 	duplicateSequence,
 	dissolveCompoundClip,
 	nestSequence,
+	nestSequenceOnExactTracks,
 	sequenceDeletionImpact,
 	switchSequence
 } from './sequence-actions';
@@ -473,6 +474,53 @@ describe('compound clips', () => {
 		switchSequence('a');
 		expect(() => nestSequence('a')).toThrow('cannot contain itself');
 		expect(() => nestSequence('b')).toThrow('cannot contain itself');
+	});
+
+	it('nests linked visual and audio wrappers on exact open tracks as one undo step', () => {
+		const nested = composition('nested', [item({ id: 'inside' })]);
+		sequenceStore.addComposition(nested, true);
+
+		const ids = nestSequenceOnExactTracks('nested', 45, {
+			visualTrackId: 'video',
+			audioTrackId: 'audio'
+		});
+		expect(ids).toHaveLength(2);
+		expect(timelineStore.items).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: 'composition',
+					trackId: 'video',
+					from: 45,
+					compositionId: 'nested'
+				}),
+				expect.objectContaining({
+					type: 'audio',
+					trackId: 'audio',
+					from: 45,
+					compositionId: 'nested'
+				})
+			])
+		);
+		expect(new Set(timelineStore.items.map((candidate) => candidate.linkedGroupId)).size).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.items).toHaveLength(0);
+	});
+
+	it('rejects an occupied exact sequence track without partial wrappers or history', () => {
+		const nested = composition('nested', [item({ id: 'inside' })]);
+		sequenceStore.addComposition(nested, true);
+		timelineStore._addItem(item({ id: 'occupied', from: 40, durationInFrames: 20 }));
+		commandHistory.clearHistory();
+
+		expect(() =>
+			nestSequenceOnExactTracks('nested', 45, {
+				visualTrackId: 'video',
+				audioTrackId: 'audio'
+			})
+		).toThrow('occupied');
+		expect(timelineStore.items.map((candidate) => candidate.id)).toEqual(['occupied']);
+		expect(commandHistory.canUndo).toBe(false);
 	});
 
 	it('deletes references from Main and every nested sequence', () => {

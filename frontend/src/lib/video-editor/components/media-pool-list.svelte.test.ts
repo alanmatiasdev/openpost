@@ -4,6 +4,8 @@ import { render } from 'vitest-browser-svelte';
 import { editorSession } from '../editor.svelte';
 import { mediaPool } from '../media/pool.svelte';
 import { mediaRecovery } from '../media/media-recovery.svelte';
+import { mediaPlacement } from '../media/media-placement.svelte';
+import { parseMediaDragData, VIDEO_EDITOR_MEDIA_DRAG_MIME } from '../media/media-drag';
 import type { MediaMetadata } from '../media/types';
 import { createEmptyTimeline } from '../project/defaults';
 import type { SubComposition, TimelineItem, TimelineTrack } from '../project/types';
@@ -39,26 +41,37 @@ beforeEach(() => {
 	commandHistory.clearHistory();
 	mediaPool.clear();
 	mediaRecovery.reset();
+	mediaPlacement.cancel();
 	sequenceStore.reset();
 	editorSession.project = null;
 });
 
 describe('MediaPoolList', () => {
-	it('adds ready media to the matching unlocked timeline track', async () => {
+	it('starts exact keyboard and touch placement for ready media', async () => {
 		const timeline = createEmptyTimeline();
 		sequenceStore.load(timeline, { width: 1920, height: 1080, fps: 30 });
 		mediaPool.loadAll([media('video', 'Interview.mp4', ['video'], { duration: 2.7 })]);
 
 		const screen = await render(MediaPoolList, { projectId: 'project' });
-		await screen.getByRole('button', { name: 'Add to timeline: Interview.mp4' }).click();
+		const row = screen.getByText('Interview.mp4').element().closest('li');
+		expect(row).not.toBeNull();
+		const dataTransfer = new DataTransfer();
+		row!.dispatchEvent(
+			new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer })
+		);
+		expect([...dataTransfer.types]).toContain(VIDEO_EDITOR_MEDIA_DRAG_MIME);
+		expect(parseMediaDragData(dataTransfer.getData(VIDEO_EDITOR_MEDIA_DRAG_MIME))).toMatchObject({
+			source: 'media',
+			id: 'video'
+		});
+		await screen.getByRole('button', { name: 'Place on timeline: Interview.mp4' }).click();
 
-		const inserted = sequenceStore.projectTimeline().items;
-		expect(inserted).toHaveLength(1);
-		expect(inserted[0]).toMatchObject({
-			trackId: 'track-video-main',
-			type: 'video',
-			mediaId: 'video',
-			durationInFrames: 81
+		expect(sequenceStore.projectTimeline().items).toHaveLength(0);
+		expect(mediaPlacement.request?.payload).toMatchObject({
+			version: 1,
+			source: 'media',
+			id: 'video',
+			label: 'Interview.mp4'
 		});
 	});
 
@@ -158,6 +171,15 @@ describe('MediaPoolList', () => {
 		await vi.waitFor(() => {
 			expect(screen.container.querySelector('img[src^="blob:"]')).not.toBeNull();
 		});
+		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
+		await screen.getByRole('menuitem', { name: 'Place on timeline' }).click();
+		expect(mediaPlacement.request?.payload).toMatchObject({
+			source: 'composition',
+			id: 'scene',
+			label: 'Scene'
+		});
+		mediaPlacement.cancel();
+
 		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
 		await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
 		await expect.element(screen.getByText('Scene copy')).toBeVisible();

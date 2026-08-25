@@ -106,7 +106,21 @@ the audit evidence, while the resolution log records later product changes.
   and master gain, mute, and attachment ownership; a real AC-3 WAV export
   proves exact -6.02 dB amplitude and master silence. Chromium component tests
   cover gestures, cancellation, locks, narrow layout, and the timeline entry.
-  Current unresolved count: 5.
+- 2026-08-25: gap 10 resolved. Ready media and nested sequences can now be
+  dragged from the media pool to an exact timeline row and frame through a
+  versioned OpenPost-only MIME payload. The timeline coalesces pointer work,
+  snaps the start and end against the shared target set, auto-scrolls at both
+  edges, and shows a green or rejected ghost before any mutation. Compatibility,
+  inherited locks and visibility, occupied ranges, missing companion audio
+  rows, and composition cycles reject the shown position instead of silently
+  choosing or creating another track. Mixed nested sequences preview and insert
+  linked visual and audio wrappers on both shown rows as one undo step. The
+  media action also opens the same placement mode for keyboard and touch input:
+  arrows choose the row and frame, Enter commits, Escape cancels, and a tap
+  places at the touched frame. Pure payload, collision, duration, companion-row,
+  and edge-scroll tests combine with real Chromium drag, rejection, linked
+  composition, repeated keyboard, touch, undo, and 320 px visual checks.
+  Current unresolved count: 4.
 
 ## Rows checked with no gap found
 

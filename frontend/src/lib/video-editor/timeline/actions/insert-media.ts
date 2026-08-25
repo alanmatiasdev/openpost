@@ -1,4 +1,9 @@
 import { editorSession } from '../../editor.svelte';
+import {
+	evaluateExactMediaPlacement,
+	mediaDurationInFrames,
+	mediaTimelineKind
+} from '../../media/media-drop-placement';
 import type { MediaMetadata } from '../../media/types';
 import type { TimelineItem, TimelineTrack } from '../../project/types';
 import { sequenceStore } from '../../sequences/sequence-store.svelte';
@@ -8,6 +13,8 @@ import { effectiveMediaTracks } from '../utils/track-groups';
 
 export interface InsertMediaOptions {
 	preferredTrackId?: string;
+	/** Require this exact track. Invalid or occupied targets throw without changing state. */
+	exactTrackId?: string;
 	label?: string;
 }
 
@@ -16,18 +23,6 @@ function itemKind(media: MediaMetadata): TimelineItem['type'] {
 	if (media.tags.includes('lottie')) return 'lottie';
 	if (media.tags.includes('image')) return 'image';
 	return 'video';
-}
-
-function itemDuration(media: MediaMetadata, type: TimelineItem['type'], fps: number): number {
-	if (type === 'image') {
-		// Animated GIF/WebP clips span their real loop length instead of a fixed
-		// 3-second still so the timeline shows true animation timing.
-		if ((media.animationFrameCount ?? 0) > 1 && media.duration > 0) {
-			return Math.max(1, Math.round(media.duration * fps));
-		}
-		return Math.max(1, Math.round(3 * fps));
-	}
-	return Math.max(1, Math.round(Math.max(media.duration, 1 / fps) * fps));
 }
 
 function collides(trackId: string, from: number, end: number): boolean {
@@ -89,8 +84,26 @@ export function insertMediaAtFrame(
 		const type = itemKind(media);
 		const trackKind = type === 'audio' ? 'audio' : 'video';
 		const from = Math.max(0, Math.round(frame));
-		const durationInFrames = itemDuration(media, type, fps);
-		const track = targetTrack(trackKind, from, from + durationInFrames, options.preferredTrackId);
+		const durationInFrames = mediaDurationInFrames(media, fps);
+		let track: TimelineTrack;
+		if (options.exactTrackId) {
+			const exact = evaluateExactMediaPlacement({
+				trackId: options.exactTrackId,
+				from,
+				durationInFrames,
+				kind: mediaTimelineKind(media),
+				tracks: timelineStore.tracks,
+				items: timelineStore.items
+			});
+			if (!exact.valid) throw new Error(`Exact media placement rejected: ${exact.reason}`);
+			const exactTrack = timelineStore.tracks.find(
+				(candidate) => candidate.id === exact.placement.trackId
+			);
+			if (!exactTrack) throw new Error('Exact media placement rejected: missing-track');
+			track = exactTrack;
+		} else {
+			track = targetTrack(trackKind, from, from + durationInFrames, options.preferredTrackId);
+		}
 		if (!timelineStore.tracks.some((candidate) => candidate.id === track.id)) {
 			timelineStore._setTracks([...timelineStore.tracks, track]);
 		}

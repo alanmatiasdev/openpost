@@ -3,16 +3,18 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import {
+		clearActiveMediaDrag,
+		mediaDragData,
+		writeMediaDragData
+	} from '$lib/video-editor/media/media-drag';
+	import { mediaPlacement } from '$lib/video-editor/media/media-placement.svelte';
 	import { getMediaObjectUrl } from '$lib/video-editor/media/media-source';
-	import { addItems } from '$lib/video-editor/timeline/actions/items';
-	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
-	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import {
 		deleteSequence,
 		duplicateSequence,
-		nestSequence,
 		sequenceDeletionImpact,
 		switchSequence
 	} from '$lib/video-editor/sequences/sequence-actions';
@@ -189,7 +191,25 @@
 		compoundThumbnailService.clearAll();
 		for (const url of ownedThumbnailUrls.values()) URL.revokeObjectURL(url);
 		ownedThumbnailUrls.clear();
+		clearActiveMediaDrag();
 	});
+
+	function startMediaDrag(event: DragEvent, media: MediaMetadata): void {
+		if (!event.dataTransfer) return;
+		writeMediaDragData(event.dataTransfer, mediaDragData('media', media.id, media.fileName));
+	}
+
+	function startCompositionDrag(event: DragEvent, composition: SubComposition): void {
+		if (!event.dataTransfer) return;
+		writeMediaDragData(
+			event.dataTransfer,
+			mediaDragData('composition', composition.id, composition.name)
+		);
+	}
+
+	function placeMedia(media: MediaMetadata): void {
+		mediaPlacement.begin(mediaDragData('media', media.id, media.fileName));
+	}
 
 	function groupLabel(kind: MediaLibraryKind): string {
 		switch (kind) {
@@ -299,72 +319,6 @@
 		}
 	}
 
-	function addToTimeline(mediaId: string): void {
-		const media = mediaPool.get(mediaId);
-		if (!media) return;
-		const fps = editorSession.fps;
-		const isAudio = media.tags.includes('audio');
-		const isLottie = media.tags.includes('lottie');
-		const isImage = media.tags.includes('image');
-		const itemType = isAudio ? 'audio' : isLottie ? 'lottie' : isImage ? 'image' : 'video';
-		const durationFrames = Math.max(1, Math.round((media.duration || (isImage ? 3 : 1)) * fps));
-		const targetTrack = effectiveMediaTracks(timelineStore.tracks)
-			.filter(
-				(track) => (isAudio ? track.kind === 'audio' : track.kind !== 'audio') && !track.locked
-			)
-			.toSorted((left, right) => right.order - left.order)[0];
-		if (!targetTrack) return;
-		const trackId = targetTrack.id;
-		const canvasWidth =
-			sequenceStore.activeSequence?.width ?? editorSession.project?.metadata.width ?? 1920;
-		const canvasHeight =
-			sequenceStore.activeSequence?.height ?? editorSession.project?.metadata.height ?? 1080;
-		const sourceWidth = media.width || canvasWidth;
-		const sourceHeight = media.height || canvasHeight;
-		const fitScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-		// Place after the last item on the target track.
-		const trackItems = timelineStore.itemsByTrackId.get(trackId) ?? [];
-		const end = trackItems.reduce(
-			(max, item) => Math.max(max, item.from + item.durationInFrames),
-			0
-		);
-		addItems([
-			{
-				id: crypto.randomUUID(),
-				trackId,
-				from: end,
-				durationInFrames: durationFrames,
-				label: media.fileName,
-				type: itemType,
-				mediaId,
-				sourceStart: 0,
-				sourceEnd: isImage
-					? undefined
-					: Math.max(1, Math.round(media.duration * (media.fps || fps))),
-				sourceDuration: isImage
-					? durationFrames
-					: Math.max(1, Math.round(media.duration * (media.fps || fps))),
-				sourceFps: media.fps > 0 ? media.fps : undefined,
-				sourceWidth: isAudio ? undefined : sourceWidth,
-				sourceHeight: isAudio ? undefined : sourceHeight,
-				transform: isAudio
-					? undefined
-					: {
-							x: 0,
-							y: 0,
-							width: Math.round(sourceWidth * fitScale),
-							height: Math.round(sourceHeight * fitScale),
-							rotation: 0
-						},
-				lottieTotalFrames: isLottie ? (media.lottieTotalFrames ?? 1) : undefined,
-				lottieFrameRate: isLottie ? media.fps || 30 : undefined,
-				lottieLoop: isLottie ? true : undefined,
-				lottieMarkers: isLottie ? media.lottieMarkers : undefined
-			}
-		]);
-		editorSession.scheduleAutosave();
-	}
-
 	function openSequence(id: string): void {
 		sequenceStore.promoteToTab(id);
 		editorSession.pausePlayback();
@@ -374,13 +328,8 @@
 		editorSession.scheduleAutosave();
 	}
 
-	function addSequence(id: string): void {
-		try {
-			nestSequence(id);
-			editorSession.scheduleAutosave();
-		} catch (error) {
-			showToast(error instanceof Error ? error.message : m.video_editor_sequence_cycle(), 'error');
-		}
+	function placeSequence(sequence: SubComposition): void {
+		mediaPlacement.begin(mediaDragData('composition', sequence.id, sequence.name));
 	}
 
 	function duplicateComposition(sequence: SubComposition): void {
@@ -535,7 +484,11 @@
 			<ul class="flex flex-col gap-1">
 				{#each sequenceStore.compositions as sequence (sequence.id)}
 					<li
-						class="group flex items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)]"
+						draggable="true"
+						ondragstart={(event) => startCompositionDrag(event, sequence)}
+						ondragend={clearActiveMediaDrag}
+						title={m.video_editor_media_drag_hint()}
+						class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing"
 					>
 						<span
 							class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
@@ -576,9 +529,9 @@
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content class="video-editor-theme" align="end">
-								<DropdownMenu.Item onclick={() => addSequence(sequence.id)}>
+								<DropdownMenu.Item onclick={() => placeSequence(sequence)}>
 									<PlusIcon class="size-4" aria-hidden="true" />
-									{m.video_editor_sequence_add()}
+									{m.video_editor_media_place()}
 								</DropdownMenu.Item>
 								<DropdownMenu.Separator />
 								<DropdownMenu.Item onclick={() => duplicateComposition(sequence)}>
@@ -613,7 +566,16 @@
 				{#each group.media as media (media.id)}
 					{@const id = media.id}
 					{@const entry = mediaPool.entry(id)}
-					<li class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)]">
+					<li
+						draggable={entry?.status === 'ready'}
+						ondragstart={(event) => entry?.status === 'ready' && startMediaDrag(event, entry.media)}
+						ondragend={clearActiveMediaDrag}
+						title={entry?.status === 'ready' ? m.video_editor_media_drag_hint() : undefined}
+						class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {entry?.status ===
+						'ready'
+							? 'cursor-grab active:cursor-grabbing'
+							: ''}"
+					>
 						<button
 							type="button"
 							class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
@@ -719,8 +681,9 @@
 							type="button"
 							class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
 							disabled={entry?.status !== 'ready'}
-							aria-label={`${m.video_editor_media_add()}: ${entry?.media.fileName ?? ''}`}
-							onclick={() => entry && addToTimeline(id)}
+							aria-label={`${m.video_editor_media_place()}: ${entry?.media.fileName ?? ''}`}
+							title={m.video_editor_media_place()}
+							onclick={() => entry && placeMedia(entry.media)}
 						>
 							<PlusIcon class="size-3.5" aria-hidden="true" />
 						</button>

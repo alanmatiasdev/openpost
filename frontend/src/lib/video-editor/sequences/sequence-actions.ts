@@ -44,6 +44,62 @@ function wrapperSourceFields(composition: SubComposition) {
 	};
 }
 
+function nestedSequenceWrappers(
+	composition: SubComposition,
+	from: number,
+	visualTrack: TimelineTrack | undefined,
+	audioTrack: TimelineTrack | undefined
+): TimelineItem[] {
+	const linkedGroupId =
+		hasVisual(composition.items) && hasAudio(composition.items) ? crypto.randomUUID() : undefined;
+	const wrappers: TimelineItem[] = [];
+	if (hasVisual(composition.items) && visualTrack) {
+		wrappers.push({
+			id: crypto.randomUUID(),
+			type: 'composition',
+			trackId: visualTrack.id,
+			from,
+			durationInFrames: Math.max(1, composition.durationInFrames),
+			label: composition.name,
+			compositionId: composition.id,
+			compositionWidth: composition.width,
+			compositionHeight: composition.height,
+			linkedGroupId,
+			transform: { x: 0, y: 0, rotation: 0, opacity: 1 },
+			...wrapperSourceFields(composition)
+		});
+	}
+	if (hasAudio(composition.items) && audioTrack) {
+		wrappers.push({
+			id: crypto.randomUUID(),
+			type: 'audio',
+			trackId: audioTrack.id,
+			from,
+			durationInFrames: Math.max(1, composition.durationInFrames),
+			label: composition.name,
+			compositionId: composition.id,
+			linkedGroupId,
+			...wrapperSourceFields(composition)
+		});
+	}
+	return wrappers;
+}
+
+function assertCompositionCanNest(compositionId: string): SubComposition {
+	const composition = sequenceStore.compositionById.get(compositionId);
+	if (!composition) throw new Error('Sequence not found.');
+	if (
+		wouldCreateCompositionCycle(
+			sequenceStore.activeSequenceId,
+			compositionId,
+			sequenceStore.compositionById
+		)
+	) {
+		throw new Error('A sequence cannot contain itself.');
+	}
+	return composition;
+}
+
 function visualTrackFor(items: TimelineItem[], tracks: TimelineTrack[]): TimelineTrack | undefined {
 	const selectedTrackIds = new Set(items.map((item) => item.trackId));
 	return tracks
@@ -143,16 +199,7 @@ export function sequenceDeletionImpact(compositionId: string): SequenceDeletionI
 
 export function nestSequence(compositionId: string, from = timelineStore.currentFrame): string[] {
 	return execute('NEST_SEQUENCE', () => {
-		const composition = sequenceStore.compositionById.get(compositionId);
-		if (!composition) throw new Error('Sequence not found.');
-		if (
-			wouldCreateCompositionCycle(
-				sequenceStore.activeSequenceId,
-				compositionId,
-				sequenceStore.compositionById
-			)
-		)
-			throw new Error('A sequence cannot contain itself.');
+		const composition = assertCompositionCanNest(compositionId);
 		const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
 		const visualTrack = effectiveTracks
 			.filter((track) => track.kind !== 'audio' && !track.locked)
@@ -160,39 +207,52 @@ export function nestSequence(compositionId: string, from = timelineStore.current
 		const audioTrack = effectiveTracks
 			.filter((track) => track.kind === 'audio' && !track.locked)
 			.toSorted((left, right) => right.order - left.order)[0];
-		const linkedGroupId =
-			hasVisual(composition.items) && hasAudio(composition.items) ? crypto.randomUUID() : undefined;
-		const wrappers: TimelineItem[] = [];
-		if (hasVisual(composition.items) && visualTrack) {
-			wrappers.push({
-				id: crypto.randomUUID(),
-				type: 'composition',
-				trackId: visualTrack.id,
-				from,
-				durationInFrames: Math.max(1, composition.durationInFrames),
-				label: composition.name,
-				compositionId,
-				compositionWidth: composition.width,
-				compositionHeight: composition.height,
-				linkedGroupId,
-				transform: { x: 0, y: 0, rotation: 0, opacity: 1 },
-				...wrapperSourceFields(composition)
-			});
-		}
-		if (hasAudio(composition.items) && audioTrack) {
-			wrappers.push({
-				id: crypto.randomUUID(),
-				type: 'audio',
-				trackId: audioTrack.id,
-				from,
-				durationInFrames: Math.max(1, composition.durationInFrames),
-				label: composition.name,
-				compositionId,
-				linkedGroupId,
-				...wrapperSourceFields(composition)
-			});
-		}
+		const wrappers = nestedSequenceWrappers(composition, from, visualTrack, audioTrack);
 		if (wrappers.length === 0) throw new Error('No compatible unlocked track is available.');
+		timelineStore._setItems([...timelineStore.items, ...wrappers]);
+		return wrappers.map((wrapper) => wrapper.id);
+	});
+}
+
+export interface ExactSequencePlacement {
+	visualTrackId?: string;
+	audioTrackId?: string;
+}
+
+/** Nest a sequence on the exact rows shown by a placement preview. */
+export function nestSequenceOnExactTracks(
+	compositionId: string,
+	from: number,
+	placement: ExactSequencePlacement
+): string[] {
+	return execute('NEST_SEQUENCE', () => {
+		const composition = assertCompositionCanNest(compositionId);
+		const exactFrom = Math.max(0, Math.round(from));
+		const duration = Math.max(1, composition.durationInFrames);
+		const end = exactFrom + duration;
+		const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
+		const exactTrack = (trackId: string | undefined, kind: 'video' | 'audio') => {
+			if (!trackId) return undefined;
+			const track = effectiveTracks.find((candidate) => candidate.id === trackId);
+			if (!track || track.kind !== kind || track.locked || track.visible === false) {
+				throw new Error('Exact sequence placement target is unavailable.');
+			}
+			const occupied = (timelineStore.itemsByTrackId.get(track.id) ?? []).some(
+				(item) => item.from < end && item.from + item.durationInFrames > exactFrom
+			);
+			if (occupied) throw new Error('Exact sequence placement target is occupied.');
+			return track;
+		};
+		const visualTrack = exactTrack(placement.visualTrackId, 'video');
+		const audioTrack = exactTrack(placement.audioTrackId, 'audio');
+		if (hasVisual(composition.items) && !visualTrack) {
+			throw new Error('Exact sequence placement needs a video track.');
+		}
+		if (hasAudio(composition.items) && !audioTrack) {
+			throw new Error('Exact sequence placement needs an audio track.');
+		}
+		const wrappers = nestedSequenceWrappers(composition, exactFrom, visualTrack, audioTrack);
+		if (wrappers.length === 0) throw new Error('Sequence has no placeable media.');
 		timelineStore._setItems([...timelineStore.items, ...wrappers]);
 		return wrappers.map((wrapper) => wrapper.id);
 	});

@@ -94,4 +94,22 @@ describe('insertMediaAtFrame', () => {
 		expect(timelineStore.itemById.get(id)?.trackId).toBe('video-1');
 		expect(timelineStore.tracks).toHaveLength(2);
 	});
+
+	it('rejects an occupied exact track without adding an item, track, or undo entry', () => {
+		timelineStore._addItem({
+			id: 'existing',
+			trackId: 'video-1',
+			from: 0,
+			durationInFrames: 300,
+			label: 'Background',
+			type: 'image',
+			mediaId: 'background'
+		});
+		commandHistory.clearHistory();
+
+		expect(() => insertMediaAtFrame(image, 60, { exactTrackId: 'video-1' })).toThrow('collision');
+		expect(timelineStore.items.map((item) => item.id)).toEqual(['existing']);
+		expect(timelineStore.tracks.map((track) => track.id)).toEqual(['video-1']);
+		expect(commandHistory.canUndo).toBe(false);
+	});
 });
