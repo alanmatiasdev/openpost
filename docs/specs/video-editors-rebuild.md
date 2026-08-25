@@ -80,4 +80,4 @@ Docs/marketing/legal: docs-site `usage/video-editor.md` rewritten for the new mo
 
 ## Out of scope (v1)
 
-Music generation, generated images, upscale, frame interpolation, Android wrapper optimization for editors, collaborative editing, and cloud editing remain outside the initial v1 build. Three-engine local voice generation landed as a post-v1 parity expansion. The other applicable items stay in the active FreeCut parity backlog.
+Music generation, Android wrapper optimization for editors, collaborative editing, and cloud editing remain outside the initial v1 build. Post-v1 parity work now includes three-engine local voice generation, durable editor-generated images, upscaling, and frame interpolation. The other applicable items stay in the active FreeCut parity backlog.

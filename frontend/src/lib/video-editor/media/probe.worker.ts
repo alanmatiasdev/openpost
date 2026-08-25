@@ -30,6 +30,7 @@ export interface MediaProbeResult {
 
 const KEYFRAME_MAX_PACKETS = 5_000;
 const FPS_MAX_PACKETS = 180;
+const THUMBNAIL_MAX_EDGE = 320;
 
 async function estimateFps(track: {
 	computePacketStats(count: number): Promise<{ averagePacketRate: number } | null>;
@@ -111,10 +112,22 @@ self.onmessage = async (event: MessageEvent<{ id: number; file: File }>) => {
 			const bitmap = await createImageBitmap(file);
 			const width = bitmap.width;
 			const height = bitmap.height;
-			const canvas = new OffscreenCanvas(width, height);
-			canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
-			bitmap.close();
-			const thumbnailBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+			const scale = Math.min(1, THUMBNAIL_MAX_EDGE / Math.max(width, height));
+			const thumbnailWidth = Math.max(1, Math.round(width * scale));
+			const thumbnailHeight = Math.max(1, Math.round(height * scale));
+			let thumbnailBlob: Blob | undefined;
+			try {
+				const canvas = new OffscreenCanvas(thumbnailWidth, thumbnailHeight);
+				const context = canvas.getContext('2d');
+				if (context) {
+					context.drawImage(bitmap, 0, 0, thumbnailWidth, thumbnailHeight);
+					thumbnailBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+				}
+			} catch {
+				// A thumbnail is optional. Keep the decoded source usable when JPEG encoding fails.
+			} finally {
+				bitmap.close();
+			}
 			const result: MediaProbeResult = {
 				kind,
 				durationSeconds: 0,

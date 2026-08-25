@@ -24,7 +24,11 @@ import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
-import { effectiveMediaStorageMode, prepareMediaImportFile } from './media-file-types';
+import {
+	effectiveMediaStorageMode,
+	fileWithInferredMediaType,
+	prepareMediaImportFile
+} from './media-file-types';
 import { mediaTaskId, mediaTasks } from './media-tasks.svelte';
 
 const logger = createLogger('MediaImport');
@@ -49,8 +53,9 @@ export interface ImportOptions {
 
 export interface GeneratedImageImportOptions {
 	projectId: string;
-	width: number;
-	height: number;
+	/** Optional renderer assertion. Decoded source dimensions remain authoritative. */
+	width?: number;
+	height?: number;
 	tags?: string[];
 }
 
@@ -257,26 +262,50 @@ export async function importGeneratedImage(
 	options: GeneratedImageImportOptions
 ): Promise<MediaMetadata> {
 	const root = requireWorkspaceRoot();
+	const resolvedFile = fileWithInferredMediaType(file);
+	if (!resolvedFile.type.startsWith('image/')) {
+		throw new Error(
+			`Generated file must be an image. Received "${resolvedFile.type || 'unknown'}".`
+		);
+	}
+	const probe = await probeMediaFile(resolvedFile);
+	if (probe.kind !== 'image' || !(probe.width > 0) || !(probe.height > 0)) {
+		throw new Error('The generated file does not contain a usable image.');
+	}
+	const expectedWidth = Number.isFinite(options.width) ? Math.round(options.width ?? 0) : 0;
+	const expectedHeight = Number.isFinite(options.height) ? Math.round(options.height ?? 0) : 0;
+	if (
+		(expectedWidth > 0 && expectedWidth !== probe.width) ||
+		(expectedHeight > 0 && expectedHeight !== probe.height)
+	) {
+		throw new Error(
+			`Generated image dimensions do not match its pixels (${probe.width}x${probe.height}).`
+		);
+	}
 	const id = crypto.randomUUID();
-	const fileName = sanitizeWorkspaceFileName(file.name);
+	const fileName = sanitizeWorkspaceFileName(resolvedFile.name);
 	const metadata: MediaMetadata = {
 		id,
 		storageType: 'workspace',
 		fileName,
-		fileSize: file.size,
-		mimeType: file.type || 'image/png',
+		fileSize: resolvedFile.size,
+		mimeType: resolvedFile.type,
 		duration: 0,
-		width: options.width,
-		height: options.height,
+		width: probe.width,
+		height: probe.height,
 		fps: 0,
-		codec: 'png',
+		codec: resolvedFile.type.slice('image/'.length).split(';', 1)[0] || 'unknown',
 		bitrate: 0,
 		tags: [...new Set(['image', ...(options.tags ?? [])])]
 	};
 
 	try {
-		await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+		await writeBlob(root, mediaSourceByFileName(id, fileName), resolvedFile);
 		await createMedia(metadata);
+		if (probe.thumbnailBlob) {
+			await writeBlob(root, mediaThumbnailPath(id), probe.thumbnailBlob);
+		}
+		await writeJsonAtomic(root, mediaMetadataPath(id), metadata);
 		await associateMediaWithProject(options.projectId, id);
 		mediaPool.upsert(metadata, 'ready');
 		return metadata;
