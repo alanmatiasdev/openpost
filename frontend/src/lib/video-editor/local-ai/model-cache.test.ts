@@ -79,6 +79,28 @@ afterEach(() => {
 });
 
 describe('local model cache', () => {
+	it('accounts for the cached RIFE interpolation model separately', async () => {
+		setCaches(
+			createCacheStorage([
+				{
+					url: 'https://huggingface.co/walterlow/RIFE_fp32_timestep/resolve/main/RIFE_fp32_timestep.onnx',
+					bytes: 24_000_000
+				},
+				{
+					url: 'https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-smoothquant-onnx/encoder.onnx',
+					bytes: 50
+				}
+			])
+		);
+		const rife = LOCAL_MODEL_CACHE_DEFINITIONS.find((entry) => entry.id === 'rife-interpolation')!;
+		await expect(inspectLocalModelCache(rife)).resolves.toMatchObject({
+			downloaded: true,
+			entryCount: 1,
+			totalBytes: 24_000_000,
+			sizeStatus: 'exact'
+		});
+	});
+
 	it('reports only the entries that belong to one model', async () => {
 		setCaches(
 			createCacheStorage([

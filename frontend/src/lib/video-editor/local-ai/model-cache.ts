@@ -3,6 +3,7 @@ import { kokoroTtsService } from './tts/kokoro-service';
 import { clearMossModelStorage, inspectMossModelStorage } from './tts/moss-model-storage';
 import { mossTtsService } from './tts/moss-service';
 import { supertonicTtsService } from './tts/supertonic-service';
+import { unloadFrameInterpolationRuntime } from '../media/processing/runtime-registry';
 
 export const TRANSFORMERS_CACHE_NAME = 'transformers-cache';
 
@@ -38,6 +39,13 @@ export const LOCAL_MODEL_CACHE_DEFINITIONS: LocalModelCacheDefinition[] = [
 		description: 'Speech recognition encoder, decoder and vocabulary.',
 		cacheName: ONNX_MODEL_CACHE_NAME,
 		matchPathFragments: ['/parakeet-tdt-0.6b-v3-smoothquant-onnx/']
+	},
+	{
+		id: 'rife-interpolation',
+		label: 'Frame interpolation',
+		description: 'RIFE motion model for creating higher-frame-rate video.',
+		cacheName: ONNX_MODEL_CACHE_NAME,
+		matchPathFragments: ['/rife_fp32_timestep/']
 	},
 	{
 		id: 'scene-captions',
@@ -210,6 +218,7 @@ export async function clearLocalModelCache(
 	}
 	if (definition.id === 'kokoro-tts') await kokoroTtsService.unload();
 	if (definition.id === 'supertonic-tts') await supertonicTtsService.unload();
+	if (definition.id === 'rife-interpolation') unloadFrameInterpolationRuntime();
 	const storage = cacheStorage();
 	if (!storage) return false;
 	const names = await withTimeout(storage.keys());

@@ -35,6 +35,8 @@
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
 	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
+	import ScanLineIcon from '@lucide/svelte/icons/scan-line';
+	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Select from '$lib/components/ui/select';
@@ -61,6 +63,14 @@
 	import MediaUrlImportDialog from './media-url-import-dialog.svelte';
 	import { mediaRecovery } from '$lib/video-editor/media/media-recovery.svelte';
 	import type { SubComposition } from '$lib/video-editor/project/types';
+	import { upscaleService } from '$lib/video-editor/media/processing/upscale/upscale-service.svelte';
+	import type { UpscaleVariant } from '$lib/video-editor/media/processing/upscale/upscale-variant';
+	import { frameInterpolationService } from '$lib/video-editor/media/processing/interpolation/frame-interpolation-service.svelte';
+	import {
+		SUPPORTED_INTERPOLATION_FACTORS,
+		type InterpolationFactor
+	} from '$lib/video-editor/media/processing/interpolation/interpolation-factor';
+	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 
 	let {
 		projectId,
@@ -212,6 +222,65 @@
 		const id = await importMediaFromUrl(url, { projectId, storageMode: 'copy' });
 		const imported = mediaPool.get(id);
 		showToast(m.video_editor_media_import_url_done({ name: imported?.fileName ?? id }), 'success');
+	}
+
+	function mediaProcessing(mediaId: string): boolean {
+		return Boolean(
+			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
+			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId))
+		);
+	}
+
+	function upscaleActionLabel(media: MediaMetadata): string {
+		if (mediaProcessing(media.id)) {
+			return m.video_editor_media_tool_busy({ tool: m.video_editor_media_upscale() });
+		}
+		if (!upscaleService.canUpscaleMedia(media)) {
+			return m.video_editor_media_upscale_too_large();
+		}
+		return m.video_editor_media_upscale();
+	}
+
+	function interpolationActionLabel(media: MediaMetadata): string {
+		if (mediaProcessing(media.id)) {
+			return m.video_editor_media_tool_busy({ tool: m.video_editor_media_interpolate() });
+		}
+		if (!frameInterpolationService.canInterpolateMedia(media)) {
+			return m.video_editor_media_interpolate_unknown_fps();
+		}
+		return m.video_editor_media_interpolate();
+	}
+
+	function processFailure(media: MediaMetadata, error: Error): void {
+		if (error instanceof DOMException && error.name === 'AbortError') return;
+		showToast(
+			m.video_editor_media_process_failed({
+				name: media.fileName,
+				reason: error.message
+			}),
+			'error'
+		);
+	}
+
+	async function upscaleMedia(media: MediaMetadata, variant: UpscaleVariant): Promise<void> {
+		try {
+			const generated = await upscaleService.generate(media, projectId, variant);
+			showToast(m.video_editor_media_upscale_done({ name: generated.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	async function interpolateMedia(
+		media: MediaMetadata,
+		factor: InterpolationFactor
+	): Promise<void> {
+		try {
+			const generated = await frameInterpolationService.generate(media, projectId, factor);
+			showToast(m.video_editor_media_interpolate_done({ name: generated.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
 	}
 
 	function addToTimeline(mediaId: string): void {
@@ -565,21 +634,74 @@
 						{#if entry}
 							<MediaInfoPopover media={entry.media} />
 						{/if}
-						{#if entry?.status === 'ready' && canExtractEmbeddedSubtitles(entry.media)}
-							<Button
-								variant="ghost"
-								size="icon-xs"
-								class="text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100"
-								aria-label={`${m.video_editor_extract_embedded_subtitles()}: ${entry.media.fileName}`}
-								title={m.video_editor_extract_embedded_subtitles()}
-								onclick={() => openSubtitlePicker(entry.media)}
-							>
-								<CaptionsIcon class="size-3.5" aria-hidden="true" />
-							</Button>
+						{#if entry?.status === 'ready'}
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="ghost"
+											size="icon-xs"
+											class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
+											aria-label={m.video_editor_media_more_actions({ name: entry.media.fileName })}
+										>
+											<MoreIcon class="size-3.5" aria-hidden="true" />
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+									{#if canExtractEmbeddedSubtitles(entry.media)}
+										<DropdownMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
+											<CaptionsIcon class="size-4" aria-hidden="true" />
+											{m.video_editor_extract_embedded_subtitles()}
+										</DropdownMenu.Item>
+										<DropdownMenu.Separator />
+									{/if}
+									<DropdownMenu.Sub>
+										<DropdownMenu.SubTrigger
+											disabled={!upscaleService.canUpscaleMedia(entry.media) || mediaProcessing(id)}
+											aria-label={upscaleActionLabel(entry.media)}
+											title={upscaleActionLabel(entry.media)}
+										>
+											<ScanLineIcon class="size-4" aria-hidden="true" />
+											{m.video_editor_media_upscale()}
+										</DropdownMenu.SubTrigger>
+										<DropdownMenu.SubContent class="video-editor-theme w-44">
+											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'liveAction')}>
+												{m.video_editor_media_upscale_live_action()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'animation')}>
+												{m.video_editor_media_upscale_animation()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'threeD')}>
+												{m.video_editor_media_upscale_3d()}
+											</DropdownMenu.Item>
+										</DropdownMenu.SubContent>
+									</DropdownMenu.Sub>
+									<DropdownMenu.Sub>
+										<DropdownMenu.SubTrigger
+											disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
+												mediaProcessing(id)}
+											aria-label={interpolationActionLabel(entry.media)}
+											title={interpolationActionLabel(entry.media)}
+										>
+											<GaugeIcon class="size-4" aria-hidden="true" />
+											{m.video_editor_media_interpolate()}
+										</DropdownMenu.SubTrigger>
+										<DropdownMenu.SubContent class="video-editor-theme w-32">
+											{#each SUPPORTED_INTERPOLATION_FACTORS as factor}
+												<DropdownMenu.Item onclick={() => interpolateMedia(entry.media, factor)}>
+													{factor}x
+												</DropdownMenu.Item>
+											{/each}
+										</DropdownMenu.SubContent>
+									</DropdownMenu.Sub>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
 						{/if}
 						<button
 							type="button"
-							class="rounded p-1.5 text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30"
+							class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
 							disabled={entry?.status !== 'ready'}
 							aria-label={`${m.video_editor_media_add()}: ${entry?.media.fileName ?? ''}`}
 							onclick={() => entry && addToTimeline(id)}

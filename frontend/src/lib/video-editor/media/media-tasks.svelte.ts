@@ -6,7 +6,9 @@ export type MediaTaskKind =
 	| 'scene-analysis'
 	| 'transcription'
 	| 'voice-generation'
-	| 'reverse-conform';
+	| 'reverse-conform'
+	| 'upscale'
+	| 'frame-interpolation';
 
 export type MediaTaskStatus = 'queued' | 'running' | 'cancelling';
 
@@ -25,6 +27,7 @@ export interface MediaTask {
 	total?: number;
 	receivedBytes?: number;
 	totalBytes?: number;
+	etaSeconds?: number | null;
 	cancellable: boolean;
 	startedAt: number;
 	updatedAt: number;
@@ -42,6 +45,7 @@ export interface StartMediaTask {
 	total?: number;
 	receivedBytes?: number;
 	totalBytes?: number;
+	etaSeconds?: number | null;
 	onCancel?: () => void;
 }
 
@@ -56,6 +60,7 @@ export type MediaTaskUpdate = Partial<
 		| 'total'
 		| 'receivedBytes'
 		| 'totalBytes'
+		| 'etaSeconds'
 	>
 >;
 
@@ -109,6 +114,7 @@ export const mediaTasks = {
 			total: input.total,
 			receivedBytes: input.receivedBytes,
 			totalBytes: input.totalBytes,
+			etaSeconds: input.etaSeconds,
 			cancellable: Boolean(input.onCancel),
 			startedAt: current?.startedAt ?? now,
 			updatedAt: now

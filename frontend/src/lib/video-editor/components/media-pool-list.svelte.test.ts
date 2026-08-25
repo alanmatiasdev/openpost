@@ -44,6 +44,40 @@ beforeEach(() => {
 });
 
 describe('MediaPoolList', () => {
+	it('keeps high-cost video tools in one clear menu with honest size gates', async () => {
+		await page.viewport(320, 720);
+		mediaPool.loadAll([
+			media('hd', 'Interview.mp4', ['video']),
+			media('four-k', 'Master 4K.mp4', ['video'], { width: 3840, height: 2160 })
+		]);
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+
+		await screen.getByRole('button', { name: 'More actions for Interview.mp4' }).click();
+		const upscale = screen.getByRole('menuitem', { name: 'Upscale 2x' });
+		await expect.element(upscale).toBeEnabled();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Increase frame rate' }))
+			.toBeEnabled();
+		await upscale.click();
+		await expect.element(screen.getByRole('menuitem', { name: 'Live action' })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: 'Animation' })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: '3D render' })).toBeVisible();
+
+		document.body.click();
+		await screen.getByRole('button', { name: 'More actions for Master 4K.mp4' }).click();
+		await expect
+			.element(
+				screen.getByRole('menuitem', {
+					name: 'Upscale 2x unavailable: the result would exceed the safe browser limit'
+				})
+			)
+			.toBeDisabled();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Increase frame rate' }))
+			.toBeEnabled();
+	});
+
 	it('shows rendered sequence thumbnails and keeps duplicate and delete actions safe', async () => {
 		await page.viewport(320, 720);
 		const track: TimelineTrack = {

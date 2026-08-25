@@ -6130,5 +6130,21 @@
 	"video_editor_lottiefiles_next": "Next animation page",
 	"video_editor_lottiefiles_page": "{page} of {total}",
 	"video_editor_lottiefiles_license": "Free public animations use the Lottie Simple License. Check each animation before publishing.",
-	"video_editor_lottiefiles_license_link": "Read the license"
+	"video_editor_lottiefiles_license_link": "Read the license",
+	"video_editor_media_more_actions": "More actions for {name}",
+	"video_editor_media_upscale": "Upscale 2x",
+	"video_editor_media_upscale_too_large": "Upscale 2x unavailable: the result would exceed the safe browser limit",
+	"video_editor_media_tool_busy": "{tool} unavailable while this video is processing",
+	"video_editor_media_upscale_live_action": "Live action",
+	"video_editor_media_upscale_animation": "Animation",
+	"video_editor_media_upscale_3d": "3D render",
+	"video_editor_media_interpolate": "Increase frame rate",
+	"video_editor_media_interpolate_unknown_fps": "Increase frame rate unavailable: this video's frame rate is unknown",
+	"video_editor_media_upscale_done": "Created {name}",
+	"video_editor_media_interpolate_done": "Created {name}",
+	"video_editor_media_process_failed": "Could not process {name}: {reason}",
+	"video_editor_task_upscale": "Upscaling video",
+	"video_editor_task_interpolation": "Increasing frame rate",
+	"video_editor_task_downloading_motion_model": "Downloading motion model",
+	"video_editor_task_preparing_video": "Preparing video"
 }

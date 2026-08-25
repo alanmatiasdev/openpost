@@ -29,13 +29,15 @@ describe('mediaTasks', () => {
 			status: 'running',
 			progress: 1.4,
 			completed: 4,
-			total: 8
+			total: 8,
+			etaSeconds: 12.5
 		});
 		expect(mediaTasks.get(first)).toMatchObject({
 			status: 'running',
 			progress: 1,
 			completed: 4,
-			total: 8
+			total: 8,
+			etaSeconds: 12.5
 		});
 
 		mediaTasks.finish(first);

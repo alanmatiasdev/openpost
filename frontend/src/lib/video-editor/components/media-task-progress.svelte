@@ -37,6 +37,10 @@
 				return m.video_editor_task_voice_generation();
 			case 'reverse-conform':
 				return m.video_editor_task_reverse_conform();
+			case 'upscale':
+				return m.video_editor_task_upscale();
+			case 'frame-interpolation':
+				return m.video_editor_task_interpolation();
 		}
 	}
 
@@ -104,6 +108,13 @@
 				? m.video_editor_task_rendering_reverse()
 				: m.video_editor_task_reverse_conform();
 		}
+		if (task.kind === 'upscale' || task.kind === 'frame-interpolation') {
+			if (task.stage === 'downloading-model') {
+				return m.video_editor_task_downloading_motion_model();
+			}
+			if (task.stage === 'preparing') return m.video_editor_task_preparing_video();
+			if (task.stage === 'rendering') return kindLabel(task);
+		}
 		return kindLabel(task);
 	}
 
@@ -114,7 +125,14 @@
 		if (task.completed != null && task.total) {
 			return `${Math.min(task.completed, task.total)} / ${task.total}`;
 		}
-		if (task.progress !== null) return `${Math.round(task.progress * 100)}%`;
+		if (task.progress !== null) {
+			const percent = `${Math.round(task.progress * 100)}%`;
+			if (task.etaSeconds != null && task.etaSeconds > 0) {
+				const seconds = Math.max(1, Math.round(task.etaSeconds));
+				return `${percent} · ${seconds < 60 ? `${seconds}s` : `${Math.ceil(seconds / 60)}m`}`;
+			}
+			return percent;
+		}
 		return m.video_editor_task_working();
 	}
 

@@ -60,6 +60,11 @@ export interface GeneratedAudioImportOptions {
 	tags?: string[];
 }
 
+export interface GeneratedVideoImportOptions {
+	projectId: string;
+	tags?: string[];
+}
+
 export type RecordedAudioImportOptions = GeneratedAudioImportOptions;
 
 async function writeFileForHandle(
@@ -272,6 +277,54 @@ export async function importGeneratedImage(
 	try {
 		await writeBlob(root, mediaSourceByFileName(id, fileName), file);
 		await createMedia(metadata);
+		await associateMediaWithProject(options.projectId, id);
+		mediaPool.upsert(metadata, 'ready');
+		return metadata;
+	} catch (error) {
+		await rollbackNewGeneratedMedia(options.projectId, id);
+		throw error;
+	}
+}
+
+/** Save a renderer-created video as an ordinary, editable workspace source. */
+export async function importGeneratedVideo(
+	file: File,
+	options: GeneratedVideoImportOptions
+): Promise<MediaMetadata> {
+	const root = requireWorkspaceRoot();
+	const id = crypto.randomUUID();
+	const fileName = sanitizeWorkspaceFileName(file.name);
+	const probe = await probeMediaFile(file);
+	if (probe.kind !== 'video' || !(probe.width > 0) || !(probe.height > 0)) {
+		throw new Error('The generated file does not contain a usable video track.');
+	}
+	const duration = Math.max(0, probe.durationSeconds);
+	const metadata: MediaMetadata = {
+		id,
+		storageType: 'workspace',
+		fileName,
+		fileSize: file.size,
+		mimeType: file.type || 'video/mp4',
+		duration,
+		width: probe.width,
+		height: probe.height,
+		fps: probe.fps,
+		codec: probe.videoCodec ?? '',
+		videoCodecSupported: probe.videoCodecSupported,
+		bitrate: probe.bitrate || (duration > 0 ? Math.round((file.size * 8) / duration) : 0),
+		audioCodec: probe.audioCodec,
+		keyframeTimestamps: probe.keyframeTimestamps,
+		gopInterval: probe.gopInterval,
+		tags: [...new Set(['video', ...(options.tags ?? [])])]
+	};
+
+	try {
+		await writeBlob(root, mediaSourceByFileName(id, fileName), file);
+		await createMedia(metadata);
+		if (probe.thumbnailBlob) {
+			await writeBlob(root, mediaThumbnailPath(id), probe.thumbnailBlob);
+		}
+		await writeJsonAtomic(root, mediaMetadataPath(id), metadata);
 		await associateMediaWithProject(options.projectId, id);
 		mediaPool.upsert(metadata, 'ready');
 		return metadata;

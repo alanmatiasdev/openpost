@@ -6130,5 +6130,21 @@
 	"video_editor_lottiefiles_next": "Página seguinte de animações",
 	"video_editor_lottiefiles_page": "{page} de {total}",
 	"video_editor_lottiefiles_license": "As animações públicas gratuitas usam a Licença Simples Lottie. Verifique cada animação antes de publicar.",
-	"video_editor_lottiefiles_license_link": "Ler a licença"
+	"video_editor_lottiefiles_license_link": "Ler a licença",
+	"video_editor_media_more_actions": "Mais ações para {name}",
+	"video_editor_media_upscale": "Aumentar resolução 2x",
+	"video_editor_media_upscale_too_large": "Aumento de resolução 2x indisponível: o resultado excederia o limite seguro do navegador",
+	"video_editor_media_tool_busy": "{tool} indisponível enquanto este vídeo está a ser processado",
+	"video_editor_media_upscale_live_action": "Imagem real",
+	"video_editor_media_upscale_animation": "Animação",
+	"video_editor_media_upscale_3d": "Renderização 3D",
+	"video_editor_media_interpolate": "Aumentar taxa de fotogramas",
+	"video_editor_media_interpolate_unknown_fps": "Aumento da taxa de fotogramas indisponível: a taxa de fotogramas deste vídeo é desconhecida",
+	"video_editor_media_upscale_done": "{name} criado",
+	"video_editor_media_interpolate_done": "{name} criado",
+	"video_editor_media_process_failed": "Não foi possível processar {name}: {reason}",
+	"video_editor_task_upscale": "A aumentar resolução do vídeo",
+	"video_editor_task_interpolation": "A aumentar taxa de fotogramas",
+	"video_editor_task_downloading_motion_model": "A transferir modelo de movimento",
+	"video_editor_task_preparing_video": "A preparar vídeo"
 }
