@@ -147,8 +147,8 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		replaceThumbnailUrls({});
 	});
 
-	function openProject(project: Project): void {
-		void goto(`/video-editor/${project.id}`);
+	async function openProject(project: Project): Promise<void> {
+		await goto(`/video-editor/${project.id}`);
 	}
 
 	async function handleCreateProject(name: string): Promise<boolean> {
@@ -159,7 +159,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 			const project = createBlankProject(name || m.video_editor_project_untitled());
 			await createProject(project);
 			await loadProjects();
-			openProject(project);
+			await openProject(project);
 			return true;
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : String(error), 'error');
