@@ -204,6 +204,61 @@ describe('OnCanvasTools', () => {
 		expect(callbacks.oncommitvalues).not.toHaveBeenCalled();
 	});
 
+	it('shows and commits screen-stable canvas snap guides during a move', async () => {
+		const { screen, callbacks } = await renderTools(
+			imageItem({ transform: { x: -100, y: 0, width: 100, height: 100, rotation: 0 } })
+		);
+		const root = canvasRoot(screen.container);
+		const start = canvasClientPoint(root, { x: 400, y: 250 });
+		const pointer = { bubbles: true, pointerId: 30, ...start };
+		moveSurface(screen.container).dispatchEvent(new PointerEvent('pointerdown', pointer));
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				...pointer,
+				clientX: start.clientX + 96,
+				buttons: 1
+			})
+		);
+		await vi.waitFor(() =>
+			expect(screen.container.querySelector('[data-canvas-snap-guide="vertical"]')).not.toBeNull()
+		);
+		await page.screenshot({
+			element: root,
+			path: '../../../../.svelte-kit/openpost-on-canvas-snap.png'
+		});
+		await expect.element(screen.getByText('50%', { exact: true }).first()).toBeVisible();
+		expect(callbacks.ontransformdraft).toHaveBeenLastCalledWith(
+			expect.objectContaining({ x: 0, y: 0 })
+		);
+
+		window.dispatchEvent(
+			new PointerEvent('pointerup', {
+				...pointer,
+				clientX: start.clientX + 96
+			})
+		);
+		expect(callbacks.oncommitvalues).toHaveBeenCalledWith(12, { x: 0, y: 0 });
+		await vi.waitFor(() =>
+			expect(screen.container.querySelector('[data-canvas-snap-guide]')).toBeNull()
+		);
+
+		const freePointer = { ...pointer, pointerId: 31 };
+		moveSurface(screen.container).dispatchEvent(new PointerEvent('pointerdown', freePointer));
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				...freePointer,
+				clientX: start.clientX + 96,
+				buttons: 1,
+				altKey: true
+			})
+		);
+		expect(callbacks.ontransformdraft).toHaveBeenLastCalledWith(
+			expect.objectContaining({ x: -4, y: 0 })
+		);
+		expect(screen.container.querySelector('[data-canvas-snap-guide]')).toBeNull();
+		window.dispatchEvent(new PointerEvent('pointercancel', freePointer));
+	});
+
 	it('exposes and keyboard-operates the full transform gizmo', async () => {
 		const { screen, callbacks } = await renderTools(imageItem());
 		expect(canvasRoot(screen.container).getBoundingClientRect().width).toBe(1000);

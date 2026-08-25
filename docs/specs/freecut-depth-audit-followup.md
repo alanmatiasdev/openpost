@@ -44,7 +44,16 @@ the audit evidence, while the resolution log records later product changes.
   unchanged, the dialog reports exact key counts, and one undo restores the
   full selection edit. A real 320 px Chromium test covers the visible warning,
   44 px action, mutation, lock behavior, and one-step history.
-  Current unresolved count: 10.
+- 2026-08-25: gap 5 resolved. Direct move and resize gestures now snap to
+  canvas edges, centers, 25 percent divisions, and neighboring visible layer
+  edges and centers. The 8 px enter and 18 px release thresholds stay constant
+  across preview scales, rotated and off-center-anchor bounds use their visual
+  AABB, Alt bypasses snapping, the shared magnet disables it, and localized
+  live guides show each held target. Focused geometry tests cover thresholds,
+  hysteresis, rotation, item alignment, aspect-locked and free resize; a real
+  Chromium pointer test covers the visible guide, snapped commit, cleanup, and
+  Alt bypass.
+  Current unresolved count: 9.
 
 ## Rows checked with no gap found
 

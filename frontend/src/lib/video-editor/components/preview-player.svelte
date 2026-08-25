@@ -1039,6 +1039,8 @@
 					}}
 					{canvasWidth}
 					{canvasHeight}
+					snapItems={activeItems}
+					snappingEnabled={timelineStore.snapEnabled}
 					currentFrame={timelineStore.currentFrame}
 					{isPlaying}
 					ontransformdraft={(value) => (draftTransform = value)}

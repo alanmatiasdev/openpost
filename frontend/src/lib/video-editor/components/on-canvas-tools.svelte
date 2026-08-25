@@ -29,6 +29,14 @@
 		type TransformHandle
 	} from '$lib/video-editor/preview/on-canvas-tools';
 	import { withSpatialTangent } from '$lib/video-editor/timeline/vector-keyframes';
+	import {
+		applyCanvasMoveSnapping,
+		applyCanvasResizeSnapping,
+		computeCanvasItemBounds,
+		type CanvasSnapLabel,
+		type CanvasSnapLine,
+		type SnapTransform
+	} from '$lib/video-editor/preview/canvas-snapping';
 	import type { AnimatedItemMotionContext } from '$lib/video-editor/timeline/animated-properties';
 	import PathEditorOverlay from './path-editor-overlay.svelte';
 	import CornerPinOverlay from './corner-pin-overlay.svelte';
@@ -45,6 +53,8 @@
 		canvasHeight,
 		currentFrame,
 		isPlaying = false,
+		snapItems = [],
+		snappingEnabled = true,
 		ontransformdraft,
 		oncropdraft,
 		ontextdraft,
@@ -66,6 +76,8 @@
 		canvasHeight: number;
 		currentFrame: number;
 		isPlaying?: boolean;
+		snapItems?: TimelineItem[];
+		snappingEnabled?: boolean;
 		ontransformdraft: (transform: ItemTransform | null) => void;
 		oncropdraft: (crop: CropSettings | null) => void;
 		ontextdraft: (text: string | null) => void;
@@ -89,6 +101,7 @@
 	let draftText = $state<string | null>(null);
 	let motionDraft = $state<{ frame: number; x: number; y: number } | null>(null);
 	let spatialDraft = $state<{ frame: number; spatial: SpatialBezierTangents } | null>(null);
+	let snapLines = $state<CanvasSnapLine[]>([]);
 	let activeMotionFrame = $state<number | null>(null);
 	let textSession = $state(false);
 	let screenScale = $state(1);
@@ -141,6 +154,18 @@
 			`height:${(height / canvasHeight) * 100}%`,
 			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${rotation}deg)`
 		].join(';')
+	);
+	const otherItemBounds = $derived(
+		snapItems
+			.filter((candidate) => candidate.id !== item.id && candidate.transform)
+			.map((candidate) =>
+				computeCanvasItemBounds(
+					snapTransform(candidate.transform ?? {}),
+					canvasWidth,
+					canvasHeight,
+					shapeStrokeExpansion(candidate)
+				)
+			)
 	);
 
 	$effect(() => {
@@ -225,6 +250,7 @@
 		draftCrop = null;
 		motionDraft = null;
 		spatialDraft = null;
+		snapLines = [];
 		ontransformdraft(null);
 		oncropdraft(null);
 		ontextdraft(null);
@@ -309,6 +335,7 @@
 				? transformHandlePoint({ transform: base, handle, canvasWidth, canvasHeight })
 				: null;
 		let moveAxis: 'x' | 'y' | null = null;
+		const strokeExpansion = shapeStrokeExpansion(item);
 		attachPointerGesture(
 			event,
 			(point, pointer) => {
@@ -320,9 +347,26 @@
 						if (moveAxis === 'x') dy = 0;
 						else dx = 0;
 					}
-					draftTransform = { ...base, x: base.x + dx, y: base.y + dy };
+					const candidate = { ...base, x: base.x + dx, y: base.y + dy };
+					if (snappingEnabled && !pointer.altKey) {
+						const snapped = applyCanvasMoveSnapping({
+							transform: candidate,
+							canvasWidth,
+							canvasHeight,
+							currentSnapLines: snapLines,
+							strokeExpansion,
+							canvasScale: screenScale,
+							otherItemBounds
+						});
+						draftTransform = snapped.transform;
+						snapLines = snapped.snapLines;
+					} else {
+						draftTransform = candidate;
+						snapLines = [];
+					}
 				} else if (operation === 'resize' && handle) {
-					draftTransform = calculateTransformResize({
+					const maintainAspectRatio = aspectRatioLocked(pointer.shiftKey);
+					const candidate = calculateTransformResize({
 						startTransform: base,
 						handle,
 						startPoint: resizeStart ?? start,
@@ -332,11 +376,27 @@
 									y: resizeStart.y + point.y - start.y
 								}
 							: point,
-						maintainAspectRatio: aspectRatioLocked(pointer.shiftKey),
+						maintainAspectRatio,
 						oppositeAnchored: pointer.ctrlKey,
 						canvasWidth,
 						canvasHeight
 					});
+					if (snappingEnabled && !pointer.altKey) {
+						const snapped = applyCanvasResizeSnapping({
+							transform: candidate,
+							canvasWidth,
+							canvasHeight,
+							currentSnapLines: snapLines,
+							strokeExpansion,
+							canvasScale: screenScale,
+							maintainAspectRatio
+						});
+						draftTransform = snapped.transform;
+						snapLines = snapped.snapLines;
+					} else {
+						draftTransform = candidate;
+						snapLines = [];
+					}
 				} else if (operation === 'rotate') {
 					draftTransform = calculateTransformRotation({
 						startTransform: base,
@@ -344,8 +404,9 @@
 						currentPoint: point,
 						canvasWidth,
 						canvasHeight,
-						snap: !pointer.altKey
+						snap: snappingEnabled && !pointer.altKey
 					});
+					snapLines = [];
 				}
 				ontransformdraft(draftTransform);
 			},
@@ -372,13 +433,37 @@
 					}
 				}
 				draftTransform = null;
+				snapLines = [];
 				ontransformdraft(null);
 			},
 			() => {
 				draftTransform = null;
+				snapLines = [];
 				ontransformdraft(null);
 			}
 		);
+	}
+
+	function snapTransform(source: ItemTransform): SnapTransform {
+		return {
+			...source,
+			x: source.x ?? 0,
+			y: source.y ?? 0,
+			width: Math.max(MIN_TRANSFORM_SIZE, source.width ?? canvasWidth),
+			height: Math.max(MIN_TRANSFORM_SIZE, source.height ?? canvasHeight),
+			rotation: source.rotation ?? 0
+		};
+	}
+
+	function shapeStrokeExpansion(candidate: TimelineItem): number {
+		return candidate.type === 'shape' && candidate.strokeEnabled ? (candidate.strokeWidth ?? 0) : 0;
+	}
+
+	function snapLineLabel(label: CanvasSnapLabel): string {
+		if (label === 'edge') return m.video_editor_canvas_snap_edge();
+		if (label === 'align') return m.video_editor_canvas_snap_align();
+		if (label === 'center') return m.video_editor_canvas_snap_center();
+		return label;
 	}
 
 	function aspectRatioLocked(shiftKey: boolean): boolean {
@@ -916,6 +1001,28 @@
 			>
 		{/if}
 	</div>
+
+	{#each snapLines as line (`${line.type}:${line.position}`)}
+		<div
+			class="pointer-events-none absolute z-20 bg-[oklch(0.76_0.16_340)] shadow-[0_0_5px_oklch(0.76_0.16_340)]"
+			class:h-px={line.type === 'horizontal'}
+			class:w-full={line.type === 'horizontal'}
+			class:w-px={line.type === 'vertical'}
+			class:h-full={line.type === 'vertical'}
+			style:left={line.type === 'vertical' ? `${(line.position / canvasWidth) * 100}%` : '0'}
+			style:top={line.type === 'horizontal' ? `${(line.position / canvasHeight) * 100}%` : '0'}
+			data-canvas-snap-guide={line.type}
+			data-canvas-snap-position={line.position}
+		>
+			{#if line.label}
+				<span
+					class="absolute top-1 left-1 rounded-sm bg-[oklch(0.76_0.16_340)] px-1 py-0.5 text-[10px] leading-none font-semibold whitespace-nowrap text-white shadow-sm"
+				>
+					{snapLineLabel(line.label)}
+				</span>
+			{/if}
+		</div>
+	{/each}
 
 	{#if activeTool === 'motion' && !isPlaying && motionPoints.length > 0}
 		<svg
