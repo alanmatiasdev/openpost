@@ -12,6 +12,12 @@ import {
 import type { Project, TimelineItem, TimelineTrack } from '../project/types';
 import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import type { MediaMetadata } from './types';
+import {
+	appendResolvedAudioEqSources,
+	getAudioEqSettings,
+	isAudioEqStageActive
+} from '../audio/audio-eq';
+import { isAudioPitchShiftActive, getAudioPitchShiftSemitones } from '../audio/audio-pitch';
 
 export type SmartCopyFormat = 'webm' | 'mp4' | 'mov' | 'mkv';
 
@@ -173,9 +179,14 @@ function unmodifiedVideo(item: TimelineItem, media: MediaMetadata): boolean {
 
 function unmodifiedAudio(item: TimelineItem, track: TimelineTrack): boolean {
 	const volume = (item.volume ?? 1) * (track.volume ?? 1);
+	const hasEq = appendResolvedAudioEqSources(undefined, getAudioEqSettings(item)).some(
+		isAudioEqStageActive
+	);
 	return (
 		closeTo(item.speed ?? 1, 1) &&
 		!item.isReversed &&
+		!isAudioPitchShiftActive(getAudioPitchShiftSemitones(item)) &&
+		!hasEq &&
 		(volume === 0 || closeTo(volume, 1)) &&
 		closeTo(item.audioFadeIn ?? 0, 0) &&
 		closeTo(item.audioFadeOut ?? 0, 0) &&

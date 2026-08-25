@@ -1,11 +1,12 @@
 import { reverseAudioWindow } from './reverse-audio';
+import { getSharedPreviewAudioContext } from './preview-audio-graph';
 
-let context: AudioContext | null = null;
 const decodedByUrl = new Map<string, Promise<AudioBuffer>>();
 const reversedByWindow = new Map<string, Promise<AudioBuffer>>();
 
 export function previewAudioContext(): AudioContext {
-	context ??= new AudioContext({ latencyHint: 'interactive' });
+	const context = getSharedPreviewAudioContext();
+	if (!context) throw new Error('Web Audio is unavailable in this browser.');
 	return context;
 }
 

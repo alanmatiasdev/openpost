@@ -149,6 +149,19 @@ describe('assessSmartCopy', () => {
 				[media]
 			)
 		).toEqual({ eligible: false, blocker: 'edited-audio' });
+
+		for (const editedAudio of [
+			{ ...audio, audioPitchSemitones: 3 },
+			{ ...audio, audioEqEnabled: true, audioEqHighMidGainDb: 4 }
+		]) {
+			expect(
+				assessSmartCopy(
+					project([video, editedAudio]),
+					{ format: 'webm', codec: 'vp9', width: 1920, height: 1080 },
+					[media]
+				)
+			).toEqual({ eligible: false, blocker: 'edited-audio' });
+		}
 	});
 
 	it('rejects a codec, container, or canvas-size change', () => {

@@ -336,6 +336,8 @@ describe('transition mix planning', () => {
 			whenSeconds: 0,
 			sourceOffsetSeconds: 1,
 			playbackRate: 2,
+			pitchShiftSemitones: 0,
+			audioEqStages: [],
 			reversed: false,
 			durationSeconds: 4,
 			gainPoints: [

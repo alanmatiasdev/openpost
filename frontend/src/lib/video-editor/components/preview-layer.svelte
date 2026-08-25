@@ -38,6 +38,7 @@
 		hasLinkedAudioCompanion
 	} from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import { requiresProcessedPreviewAudio } from '$lib/video-editor/audio/preview-processing';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
 	import { isTextMotionActive } from '$lib/video-editor/timeline/text-motion-eval';
 	import { renderShapeItemRaster } from '$lib/video-editor/shapes/render';
@@ -251,6 +252,7 @@
 			!item.isReversed &&
 			Boolean(previewMediaUrl && audioUrl && previewMediaUrl !== audioUrl)
 	);
+	const usesProcessedAudio = $derived(item.type === 'video' && requiresProcessedPreviewAudio(item));
 
 	$effect(() => {
 		const mediaId = item.mediaId;
@@ -491,7 +493,9 @@
 		const videoScheduler = new SeekScheduler((target) => {
 			video.currentTime = target;
 		});
-		const audio = usesSeparateProxyAudio ? proxyAudioElement : null;
+		const audio = usesSeparateProxyAudio && !usesProcessedAudio ? proxyAudioElement : null;
+		if (usesProcessedAudio && proxyAudioElement && !proxyAudioElement.paused)
+			proxyAudioElement.pause();
 		const audioScheduler = audio
 			? new SeekScheduler((target) => {
 					audio.currentTime = target;
@@ -920,14 +924,18 @@
 			class="absolute object-fill"
 			style={mediaCropStyle}
 			playsinline
-			volume={usesSeparateProxyAudio ? 0 : previewVolume}
+			volume={usesSeparateProxyAudio || usesProcessedAudio ? 0 : previewVolume}
 			data-proxy-preview={usesSeparateProxyAudio ? 'true' : undefined}
 			onloadeddata={handleVideoSettled}
 			onseeked={handleVideoSettled}
 		></video>
 		{#if usesSeparateProxyAudio && audioUrl}
 			<!-- svelte-ignore a11y_media_has_caption -- proxy visuals keep source audio hidden -->
-			<audio bind:this={proxyAudioElement} src={audioUrl} volume={previewVolume}></audio>
+			<audio
+				bind:this={proxyAudioElement}
+				src={audioUrl}
+				volume={usesProcessedAudio ? 0 : previewVolume}
+			></audio>
 		{/if}
 	{:else if resolved.type === 'image' && url}
 		<img

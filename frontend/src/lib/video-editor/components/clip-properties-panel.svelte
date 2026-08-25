@@ -31,6 +31,11 @@
 	import { resolveAnimatedItemLocalAt } from '$lib/video-editor/timeline/animated-properties';
 	import { getSynchronizedLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
 	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
+	import {
+		clampAudioPitchCents,
+		clampAudioPitchSemitones
+	} from '$lib/video-editor/audio/audio-pitch';
+	import AudioEqPanel from './audio-eq-panel.svelte';
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -400,6 +405,16 @@
 		}
 	}
 
+	function commitPitch(field: 'audioPitchSemitones' | 'audioPitchCents', value: number): void {
+		if (!Number.isFinite(value)) return;
+		commitAudioPatch({
+			[field]:
+				field === 'audioPitchSemitones'
+					? clampAudioPitchSemitones(value)
+					: clampAudioPitchCents(value)
+		});
+	}
+
 	function commitTextShadowColor(color: string): void {
 		const current = itemId ? timelineStore.itemById.get(itemId) : undefined;
 		commitText({
@@ -476,7 +491,9 @@
 						class="h-8 justify-between px-2 text-xs"
 						aria-pressed={item.transform?.flipHorizontal === true}
 						onclick={() =>
-							commitTransformPatch({ flipHorizontal: !item.transform?.flipHorizontal })}
+							commitTransformPatch({
+								flipHorizontal: !item.transform?.flipHorizontal
+							})}
 					>
 						<span>{m.video_editor_property_flip_x()}</span>
 					</Button>
@@ -486,7 +503,10 @@
 						variant={item.transform?.flipVertical ? 'secondary' : 'outline'}
 						class="h-8 justify-between px-2 text-xs"
 						aria-pressed={item.transform?.flipVertical === true}
-						onclick={() => commitTransformPatch({ flipVertical: !item.transform?.flipVertical })}
+						onclick={() =>
+							commitTransformPatch({
+								flipVertical: !item.transform?.flipVertical
+							})}
 					>
 						<span>{m.video_editor_property_flip_y()}</span>
 					</Button>
@@ -672,6 +692,32 @@
 							/>
 						</div>
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							Pitch (semitones)
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="-12"
+								max="12"
+								step="1"
+								value={audioItem.audioPitchSemitones ?? 0}
+								onchange={(event) =>
+									commitPitch('audioPitchSemitones', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
+							Fine pitch (cents)
+							<Input
+								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
+								type="number"
+								min="-100"
+								max="100"
+								step="1"
+								value={audioItem.audioPitchCents ?? 0}
+								onchange={(event) =>
+									commitPitch('audioPitchCents', event.currentTarget.valueAsNumber)}
+							/>
+						</label>
+						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
 							{m.video_editor_clip_fade_in_seconds()}
 							<Input
 								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
@@ -697,6 +743,38 @@
 									commitAudioFade('audioFadeOut', event.currentTarget.valueAsNumber)}
 							/>
 						</label>
+					</div>
+					<details class="mt-2 rounded-md border border-white/10 bg-black/10">
+						<summary
+							class="flex min-h-8 cursor-pointer list-none items-center justify-between px-2 text-[10px] text-white/70 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+						>
+							<span>Fade shape</span><span class="text-white/40">Curve and timing bias</span>
+						</summary>
+						<div class="grid grid-cols-2 gap-1 border-t border-white/10 p-2">
+							{#each [{ label: 'In curve', field: 'audioFadeInCurve', value: audioItem.audioFadeInCurve ?? 0, min: -1, max: 1 }, { label: 'Out curve', field: 'audioFadeOutCurve', value: audioItem.audioFadeOutCurve ?? 0, min: -1, max: 1 }, { label: 'In bias', field: 'audioFadeInCurveX', value: audioItem.audioFadeInCurveX ?? 0.52, min: 0.04, max: 0.96 }, { label: 'Out bias', field: 'audioFadeOutCurveX', value: audioItem.audioFadeOutCurveX ?? 0.52, min: 0.04, max: 0.96 }] as control (control.field)}
+								<label class="text-[10px] text-white/60">
+									{control.label}
+									<Input
+										class="mt-0.5 h-8 w-full bg-[oklch(0.22_0.01_50)] text-xs"
+										type="number"
+										min={control.min}
+										max={control.max}
+										step="0.01"
+										value={control.value}
+										onchange={(event) =>
+											commitAudioPatch({
+												[control.field]: Math.max(
+													control.min,
+													Math.min(control.max, event.currentTarget.valueAsNumber)
+												)
+											})}
+									/>
+								</label>
+							{/each}
+						</div>
+					</details>
+					<div class="mt-2">
+						<AudioEqPanel item={audioItem} {onedit} />
 					</div>
 				</section>
 			{/if}

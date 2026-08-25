@@ -28,6 +28,13 @@ import {
 	type TransitionGainSpan
 } from '../audio/transition-crossfade';
 import { audioClipFadeGainAtFrame } from './clip-fades';
+import {
+	appendResolvedAudioEqSources,
+	getAudioEqSettings,
+	prependResolvedAudioEqSources
+} from '../audio/audio-eq';
+import { getAudioPitchShiftSemitones } from '../audio/audio-pitch';
+import type { ResolvedAudioEqSettings } from '../audio/types';
 
 /** One scheduled clip in the offline audio mixdown. */
 export interface MixEntry {
@@ -39,6 +46,10 @@ export interface MixEntry {
 	sourceOffsetSeconds: number;
 	/** Source seconds played per real second (the item's speed). */
 	playbackRate: number;
+	/** Independent pitch offset. Tempo remains owned by playbackRate. */
+	pitchShiftSemitones: number;
+	/** Ordered outer-to-inner parametric EQ stages. */
+	audioEqStages: ResolvedAudioEqSettings[];
 	/** Read the source window backward while keeping timeline time forward. */
 	reversed: boolean;
 	/** Real seconds this clip occupies in the mixdown. */
@@ -136,6 +147,8 @@ export function planMixdown(
 					)
 				: Math.max(0, (item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed),
 			playbackRate: speed,
+			pitchShiftSemitones: getAudioPitchShiftSemitones(item),
+			audioEqStages: appendResolvedAudioEqSources(undefined, getAudioEqSettings(item)),
 			reversed: item.isReversed === true,
 			durationSeconds: (endFrame - startFrame) / fps,
 			gainPoints: volumeGainPoints(item, track.volume ?? 1, fps, startFrame, endFrame),
@@ -203,6 +216,7 @@ export function planNestedMixdown(
 		const sliced = sliceMixEntries(childEntries, sourceStart, sourceEnd);
 		const wrapperStart = wrapper.from / fps;
 		const wrapperGain = (wrapper.volume ?? 1) * (track.volume ?? 1);
+		const wrapperPitch = getAudioPitchShiftSemitones(wrapper);
 		const outerSpans = transitionGainSpansForItem(wrapper, transitions, itemsById, fps);
 		for (const entry of sliced) {
 			entries.push({
@@ -210,6 +224,11 @@ export function planNestedMixdown(
 				itemId: `${wrapper.id}/${entry.itemId}`,
 				whenSeconds: wrapperStart + entry.whenSeconds / wrapperSpeed,
 				playbackRate: entry.playbackRate * wrapperSpeed,
+				pitchShiftSemitones: entry.pitchShiftSemitones + wrapperPitch,
+				audioEqStages: prependResolvedAudioEqSources(
+					entry.audioEqStages,
+					getAudioEqSettings(wrapper)
+				),
 				durationSeconds: entry.durationSeconds / wrapperSpeed,
 				gainPoints: entry.gainPoints.map((point) => ({
 					whenSeconds: wrapperStart + point.whenSeconds / wrapperSpeed,

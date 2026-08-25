@@ -211,6 +211,29 @@ describe('planMixdown', () => {
 		expect(entries[0]?.durationSeconds).toBeCloseTo(2);
 	});
 
+	it('plans independent pitch and the clip EQ without changing gain or tempo', () => {
+		const [entry] = planMixdown(
+			[
+				item({
+					mediaId: 'dialogue',
+					speed: 1.5,
+					volume: 0.5,
+					audioPitchSemitones: 3,
+					audioPitchCents: 25,
+					audioEqEnabled: true,
+					audioEqHighMidGainDb: 4
+				})
+			],
+			[track('track-video-main', 'video', 1)],
+			30
+		);
+		expect(entry?.playbackRate).toBe(1.5);
+		expect(entry?.pitchShiftSemitones).toBe(3.25);
+		expect(entry?.gainPoints[0]?.value).toBe(0.5);
+		expect(entry?.audioEqStages).toHaveLength(1);
+		expect(entry?.audioEqStages[0]?.highMidGainDb).toBe(4);
+	});
+
 	it('schedules and range-slices reversed audio from the exclusive source end', () => {
 		const entries = planMixdown(
 			[

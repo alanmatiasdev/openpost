@@ -8,10 +8,42 @@
 	import { SeekScheduler, seekDriftExceeded } from '$lib/video-editor/preview/seek-throttle';
 	import { transitionGainAtProgress } from '$lib/video-editor/audio/transition-crossfade';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import {
+		isAudioPitchShiftActive,
+		getAudioPitchRatioFromSemitones
+	} from '$lib/video-editor/audio/audio-pitch';
+	import { isAudioEqStageActive } from '$lib/video-editor/audio/audio-eq';
+	import {
+		decodedPreviewAudio,
+		previewAudioContext
+	} from '$lib/video-editor/audio/reverse-preview-audio';
+	import {
+		createPreviewClipAudioGraph,
+		rampPreviewClipGain,
+		setPreviewClipEq,
+		type PreviewClipAudioGraph
+	} from '$lib/video-editor/audio/preview-audio-graph';
+	import {
+		ensureSoundTouchPreviewWorkletLoaded,
+		SOUND_TOUCH_PREVIEW_PROCESSOR_NAME
+	} from '$lib/video-editor/audio/soundtouch-preview-worklet';
+	import { prepareAudioBufferForSoundTouchPreview } from '$lib/video-editor/audio/soundtouch-preview-buffer';
 
 	let { entry, url }: { entry: MixEntry; url?: string | null } = $props();
 	let audio = $state<HTMLAudioElement | null>(null);
 	let syncMedia = $state<(() => void) | null>(null);
+	let processedNode: AudioWorkletNode | null = null;
+	let processedGraph: PreviewClipAudioGraph | null = null;
+	let processedSampleRate = 0;
+	let processedStartedAt = 0;
+	let processedStartedFrame = 0;
+	let processedPlaying = false;
+	const needsProcessing = $derived(
+		entry.reversed ||
+			Math.abs(entry.playbackRate - 1) > 0.0001 ||
+			isAudioPitchShiftActive(entry.pitchShiftSemitones) ||
+			entry.audioEqStages.some(isAudioEqStageActive)
+	);
 
 	function gainAt(time: number): number {
 		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
@@ -42,12 +74,117 @@
 		);
 	}
 
+	function sourceFrameAtTimelineTime(time: number): number {
+		return Math.max(
+			0,
+			Math.round(
+				(entry.sourceOffsetSeconds +
+					(time - entry.whenSeconds) * entry.playbackRate * (entry.reversed ? -1 : 1)) *
+					processedSampleRate
+			)
+		);
+	}
+
+	function seekProcessed(time: number, playing: boolean): void {
+		if (!processedNode || !processedGraph || processedSampleRate <= 0) return;
+		const frame = sourceFrameAtTimelineTime(time);
+		processedNode.port.postMessage({
+			type: 'seek',
+			frame,
+			direction: entry.reversed ? -1 : 1
+		});
+		processedNode.port.postMessage({ type: 'set-playing', playing });
+		processedStartedAt = processedGraph.context.currentTime;
+		processedStartedFrame = frame;
+		processedPlaying = playing;
+	}
+
+	$effect(() => {
+		if (processedGraph)
+			rampPreviewClipGain(processedGraph, gainAt(timelineStore.currentFrame / editorSession.fps));
+	});
+
+	$effect(() => {
+		const sourceUrl = url;
+		if (!sourceUrl || !needsProcessing) return;
+		let stale = false;
+		const context = previewAudioContext();
+		const graph = createPreviewClipAudioGraph({
+			eqStageCount: Math.max(1, entry.audioEqStages.length)
+		});
+		if (!graph) return;
+		processedGraph = graph;
+		setPreviewClipEq(graph, entry.audioEqStages);
+		void Promise.all([
+			ensureSoundTouchPreviewWorkletLoaded(context),
+			decodedPreviewAudio(sourceUrl)
+		]).then(async ([loaded, decoded]) => {
+			if (!loaded || stale) return;
+			const prepared = await prepareAudioBufferForSoundTouchPreview(decoded, context.sampleRate);
+			if (stale) return;
+			const node = new AudioWorkletNode(context, SOUND_TOUCH_PREVIEW_PROCESSOR_NAME, {
+				numberOfInputs: 0,
+				numberOfOutputs: 1,
+				outputChannelCount: [2]
+			});
+			node.connect(graph.sourceInputNode);
+			node.port.postMessage(
+				{
+					type: 'append-source',
+					startFrame: 0,
+					leftChannel: prepared.leftChannel.buffer,
+					rightChannel: prepared.rightChannel.buffer,
+					frameCount: prepared.frameCount,
+					sampleRate: prepared.sampleRate
+				},
+				[prepared.leftChannel.buffer, prepared.rightChannel.buffer]
+			);
+			node.port.postMessage({ type: 'set-tempo', tempo: entry.playbackRate });
+			node.port.postMessage({
+				type: 'set-pitch',
+				pitch: getAudioPitchRatioFromSemitones(entry.pitchShiftSemitones)
+			});
+			processedNode = node;
+			processedSampleRate = prepared.sampleRate;
+			const time = untrack(() => timelineStore.currentFrame) / editorSession.fps;
+			seekProcessed(time, editorSession.clock.isPlaying);
+			void context.resume().catch(() => undefined);
+		});
+		return () => {
+			stale = true;
+			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
+			processedNode?.disconnect();
+			graph.dispose();
+			processedNode = null;
+			processedGraph = null;
+			processedPlaying = false;
+		};
+	});
+
 	$effect(() => {
 		const media = audio;
 		if (!media) return;
 		const scheduler = new SeekScheduler((target) => (media.currentTime = target));
 		const sync = () => {
 			const time = untrack(() => timelineStore.currentFrame) / editorSession.fps;
+			if (needsProcessing) {
+				if (!media.paused) media.pause();
+				if (!processedNode || !processedGraph || processedSampleRate <= 0) return;
+				if (!editorSession.clock.isPlaying) {
+					seekProcessed(time, false);
+					return;
+				}
+				const expectedFrame = sourceFrameAtTimelineTime(time);
+				const elapsedFrames =
+					(processedGraph.context.currentTime - processedStartedAt) *
+					processedSampleRate *
+					entry.playbackRate;
+				const actualFrame =
+					processedStartedFrame + (entry.reversed ? -elapsedFrames : elapsedFrames);
+				if (!processedPlaying || Math.abs(actualFrame - expectedFrame) > processedSampleRate * 0.08)
+					seekProcessed(time, true);
+				return;
+			}
 			const sourceTime =
 				entry.sourceOffsetSeconds +
 				(time - entry.whenSeconds) * entry.playbackRate * (entry.reversed ? -1 : 1);
@@ -82,5 +219,5 @@
 
 {#if url}
 	<!-- svelte-ignore a11y_media_has_caption -- nested sequence audio has no visual caption -->
-	<audio bind:this={audio} src={url}></audio>
+	<audio bind:this={audio} src={url} volume={needsProcessing ? 0 : undefined}></audio>
 {/if}

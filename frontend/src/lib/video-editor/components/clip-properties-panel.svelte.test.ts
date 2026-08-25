@@ -123,9 +123,36 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		expect(timelineStore.itemById.get('audio-item')?.volume).toBeCloseTo(0.501187, 5);
 		expect(timelineStore.itemById.get('video-item')?.volume).toBeUndefined();
 
+		const semitones = screen.getByRole('spinbutton', { name: 'Pitch (semitones)' }).query();
+		const cents = screen.getByRole('spinbutton', { name: 'Fine pitch (cents)' }).query();
+		if (!(semitones instanceof HTMLInputElement) || !(cents instanceof HTMLInputElement)) {
+			throw new Error('Pitch controls did not render.');
+		}
+		semitones.value = '3';
+		semitones.dispatchEvent(new Event('change', { bubbles: true }));
+		cents.value = '25';
+		cents.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(timelineStore.itemById.get('audio-item')).toMatchObject({
+			audioPitchSemitones: 3,
+			audioPitchCents: 25
+		});
+
+		await screen.getByText('Parametric EQ', { exact: true }).click();
+		await screen.getByRole('button', { name: 'EQ preset' }).click();
+		await screen.getByRole('option', { name: 'Voice Clarity' }).click();
+		expect(timelineStore.itemById.get('audio-item')).toMatchObject({
+			audioEqEnabled: true,
+			audioEqBand1Enabled: true,
+			audioEqBand1FrequencyHz: 80,
+			audioEqHighMidGainDb: 4.5,
+			audioEqHighFrequencyHz: 7200
+		});
+		screen.container.style.width = '304px';
+		expect(screen.container.firstElementChild?.scrollWidth ?? 0).toBeLessThanOrEqual(304);
+
 		await screen.getByRole('button', { name: 'Flip X' }).click();
 		expect(timelineStore.itemById.get('video-item')?.transform?.flipHorizontal).toBe(true);
-		expect(onedit).toHaveBeenCalledTimes(3);
+		expect(onedit).toHaveBeenCalledTimes(6);
 	});
 });
 

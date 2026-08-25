@@ -64,7 +64,8 @@ import {
 	transitionBlendAtFrame,
 	type MixEntry
 } from './render-plan';
-import { reverseAudioWindow } from '../audio/reverse-audio';
+import { reverseAudioWindow, type ReversedAudioWindow } from '../audio/reverse-audio';
+import { processAudioChannels } from '../audio/process-audio';
 import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 import { shapeMasksForTrack } from '../shapes/masks';
 import { LottieFrameProvider, mapTimelineFrameToLottieFrame } from '../lottie/frame-provider';
@@ -213,25 +214,27 @@ async function renderMixdown(
 		const buffer = decoded.get(entry.mediaId);
 		if (!buffer) continue;
 		const source = context.createBufferSource();
-		let sourceBuffer = buffer;
-		if (entry.reversed) {
-			const window = reverseAudioWindow(
-				buffer,
-				entry.sourceOffsetSeconds,
-				entry.durationSeconds * entry.playbackRate
-			);
-			if (window.channels[0]?.length === 0) continue;
-			sourceBuffer = context.createBuffer(
-				window.channels.length,
-				window.channels[0]!.length,
-				window.sampleRate
-			);
-			for (let channel = 0; channel < window.channels.length; channel++) {
-				sourceBuffer.getChannelData(channel).set(window.channels[channel]!);
-			}
+		const sourceDuration = entry.durationSeconds * entry.playbackRate;
+		const window = entry.reversed
+			? reverseAudioWindow(buffer, entry.sourceOffsetSeconds, sourceDuration)
+			: copyAudioWindow(buffer, entry.sourceOffsetSeconds, sourceDuration);
+		if (window.channels[0]?.length === 0) continue;
+		const processedChannels = await processAudioChannels(window.channels, {
+			speed: entry.playbackRate,
+			pitchShiftSemitones: entry.pitchShiftSemitones,
+			sampleRate: window.sampleRate,
+			eqStages: entry.audioEqStages
+		});
+		if (processedChannels[0]?.length === 0) continue;
+		const sourceBuffer = context.createBuffer(
+			processedChannels.length,
+			processedChannels[0]!.length,
+			window.sampleRate
+		);
+		for (let channel = 0; channel < processedChannels.length; channel++) {
+			sourceBuffer.getChannelData(channel).set(processedChannels[channel]!);
 		}
 		source.buffer = sourceBuffer;
-		source.playbackRate.value = entry.playbackRate;
 		const gain = context.createGain();
 		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
 		const firstPoint = points[0];
@@ -252,13 +255,26 @@ async function renderMixdown(
 			transitionGain.gain.setValueCurveAtTime(curve, start, end - start);
 		}
 		source.connect(gain).connect(transitionGain).connect(context.destination);
-		source.start(
-			entry.whenSeconds,
-			entry.reversed ? 0 : entry.sourceOffsetSeconds,
-			entry.durationSeconds * entry.playbackRate
-		);
+		source.start(entry.whenSeconds, 0, Math.min(entry.durationSeconds, sourceBuffer.duration));
 	}
 	return context.startRendering();
+}
+
+function copyAudioWindow(
+	buffer: AudioBuffer,
+	startSeconds: number,
+	durationSeconds: number
+): ReversedAudioWindow {
+	const startFrame = Math.min(
+		buffer.length,
+		Math.max(0, Math.round(startSeconds * buffer.sampleRate))
+	);
+	const requestedFrames = Math.max(0, Math.round(durationSeconds * buffer.sampleRate));
+	const endFrame = Math.min(buffer.length, startFrame + requestedFrames);
+	const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
+		buffer.getChannelData(channel).slice(startFrame, endFrame)
+	);
+	return { channels, sampleRate: buffer.sampleRate };
 }
 
 /** Ported from FreeCut (MIT) addAudioDataInChunks — feeds f32-planar chunks. */

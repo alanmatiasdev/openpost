@@ -60,7 +60,11 @@
 	import { withoutColorGradeEffects } from '$lib/video-editor/effects/color-grade';
 	import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 	import { toast } from 'svelte-sonner';
-	import { isAudioTransitionParticipantAtFrame } from '$lib/video-editor/audio/transition-crossfade';
+	import {
+		hasLinkedAudioCompanion,
+		isAudioTransitionParticipantAtFrame
+	} from '$lib/video-editor/audio/transition-crossfade';
+	import { requiresProcessedPreviewAudio } from '$lib/video-editor/audio/preview-processing';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { shapeMasksForTrack } from '$lib/video-editor/shapes/masks';
 	import { hasCornerPin } from '$lib/video-editor/preview/corner-pin';
@@ -606,7 +610,10 @@
 
 	$effect(() => {
 		const stack = stackCompositor;
-		const gpu = stack?.diagnostics() ?? { webgl2Ready: false, webgpuTransitionsReady: false };
+		const gpu = stack?.diagnostics() ?? {
+			webgl2Ready: false,
+			webgpuTransitionsReady: false
+		};
 		previewDiagnostics.updateRuntime({
 			renderPath: needsStackedComposition ? 'composited' : 'direct',
 			renderWidth: stackWidth,
@@ -1120,7 +1127,7 @@
 			{/if}
 		{/if}
 	</div>
-	{#each timelineStore.items.filter((item) => item.type === 'audio' && isAudioTransitionParticipantAtFrame(item, timelineStore.currentFrame, transitionsStore.list, timelineStore.itemById, editorSession.fps)) as item (item.id)}
+	{#each timelineStore.items.filter((item) => (item.type === 'audio' || (item.type === 'video' && requiresProcessedPreviewAudio(item) && !hasLinkedAudioCompanion(item, timelineStore.items))) && isAudioTransitionParticipantAtFrame(item, timelineStore.currentFrame, transitionsStore.list, timelineStore.itemById, editorSession.fps)) as item (item.id)}
 		<PreviewAudioLayer {item} url={urls[item.mediaId ?? '']} />
 	{/each}
 	{#each nestedMixEntries.filter((entry) => timelineStore.currentFrame / editorSession.fps >= entry.whenSeconds && timelineStore.currentFrame / editorSession.fps < entry.whenSeconds + entry.durationSeconds) as entry (entry.itemId)}

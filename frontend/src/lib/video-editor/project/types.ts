@@ -12,6 +12,8 @@ import type {
 	TransitionTiming,
 	WipeDirection as TransitionDirection
 } from '../transitions/types';
+import type { AudioEqFieldSource } from '../audio/audio-eq';
+import type { AudioPitchFieldSource } from '../audio/audio-pitch';
 
 export type {
 	BezierPoints as TransitionBezierPoints,
@@ -516,7 +518,7 @@ export interface SubtitleWord {
 	text: string;
 }
 
-export interface TimelineItem extends TextStyleFields {
+export interface TimelineItem extends TextStyleFields, AudioEqFieldSource, AudioPitchFieldSource {
 	id: string;
 	trackId: string;
 	from: number;
