@@ -8,8 +8,8 @@
  * - Concurrency limits by core count + queue scored by remaining frames (kept).
  * - Throttled progressive notify (kept).
  * - OPFS frame and index persistence with ImageBitmap hydration (adapted).
- * - Skipped: priority-window refinement phases and exact-target merge/restart
- *   machinery.
+ * - Viewport-exact target refinement is adapted to Svelte's shared timeline
+ *   viewport rather than React's per-clip hooks.
  */
 
 import type { MediaMetadata } from './types';
@@ -18,6 +18,7 @@ import {
 	FILMSTRIP_EXTRACT_HEIGHT,
 	FILMSTRIP_EXTRACT_WIDTH,
 	FILMSTRIP_FRAME_RATE,
+	prioritizeFilmstripTargetIndices,
 	type FrameRange
 } from './filmstrip-plan';
 import { SizedAccessedMemoryCache } from './sized-accessed-memory-cache';
@@ -50,6 +51,13 @@ interface FilmstripCacheEntry {
 }
 
 type FilmstripUpdateCallback = (filmstrip: Filmstrip) => void;
+
+export interface FilmstripRequestOptions {
+	priorityRange?: FrameRange;
+	targetFrameIndices?: readonly number[];
+	onProgress?: (progress: number) => void;
+	allowExtraction?: boolean;
+}
 
 const MEMORY_SOFT_LIMIT_BYTES = 256 * 1024 * 1024;
 const CACHE_EVICT_IDLE_MS = 15_000;
@@ -134,6 +142,11 @@ class FilmstripCacheService {
 		return this.pendingExtractions.has(mediaId) || this.loadingPromises.has(mediaId);
 	}
 
+	/** Stop queued or active derived-frame work without dropping completed frames. */
+	abort(mediaId: string): void {
+		this.requestCancel(mediaId);
+	}
+
 	subscribe(mediaId: string, callback: FilmstripUpdateCallback): () => void {
 		this.prewarm();
 		this.clearIdleTimer(mediaId);
@@ -160,17 +173,31 @@ class FilmstripCacheService {
 
 	async getFilmstrip(
 		media: MediaMetadata,
-		priorityRange?: FrameRange,
-		onProgress?: (progress: number) => void,
-		allowExtraction = true
+		options: FilmstripRequestOptions = {}
 	): Promise<Filmstrip> {
 		this.clearIdleTimer(media.id);
 
 		const totalFrames = Math.max(1, Math.ceil(media.duration * FILMSTRIP_FRAME_RATE));
-		const targetIndices = buildTargetIndices(totalFrames, priorityRange ?? null);
+		const targetIndices = prioritizeFilmstripTargetIndices(
+			buildTargetIndices(
+				totalFrames,
+				options.priorityRange ?? null,
+				undefined,
+				options.targetFrameIndices
+			),
+			options.targetFrameIndices
+		);
 
 		const loading = this.loadingPromises.get(media.id);
-		if (loading) return loading;
+		if (loading) {
+			return loading.then((loaded) => {
+				const current = this.cachedFilmstrip(media.id) ?? loaded;
+				if ((options.allowExtraction ?? true) && this.missingTargets(current, targetIndices)) {
+					return this.getFilmstrip(media, options);
+				}
+				return current;
+			});
+		}
 
 		const cached = this.cachedFilmstrip(media.id);
 		if (cached?.isComplete && !this.missingTargets(cached, targetIndices)) {
@@ -181,8 +208,8 @@ class FilmstripCacheService {
 		const promise = this.loadPersistedOrExtract(
 			media,
 			targetIndices,
-			onProgress,
-			allowExtraction,
+			options.onProgress,
+			options.allowExtraction ?? true,
 			version
 		);
 		this.loadingPromises.set(media.id, promise);
@@ -435,27 +462,16 @@ class FilmstripCacheService {
 
 			if (message.type === 'progress') {
 				if (!current) return;
+				for (const transferred of message.bitmapFrames) {
+					bitmaps.get(transferred.index)?.close();
+					bitmaps.set(transferred.index, transferred.bitmap);
+				}
 				for (const saved of message.savedFrames) {
 					pendingFrameUrlRevoker(this.cache.get(media.id)?.filmstrip, saved.index);
 					frames.set(saved.index, URL.createObjectURL(saved.blob));
 					void this.queuePersistence(media.id, () =>
 						saveFilmstripFrame(media.id, saved.index, saved.blob)
 					);
-					void createImageBitmap(saved.blob)
-						.then((bitmap) => {
-							if (!this.cacheIsCurrent(media.id, version)) {
-								bitmap.close();
-								return;
-							}
-							bitmaps.get(saved.index)?.close();
-							bitmaps.set(saved.index, bitmap);
-							const current = this.cachedFilmstrip(media.id);
-							if (!current) return;
-							const next = { ...current, frames: sortFrames(frames, bitmaps) };
-							this.storeEntry(media.id, next);
-							this.notifyThrottled(media.id, next);
-						})
-						.catch(() => undefined);
 				}
 				onProgress?.(message.progress);
 				mediaTasks.update(taskId, { progress: message.progress / 100 }, taskRevision);
@@ -465,7 +481,10 @@ class FilmstripCacheService {
 					isExtracting: true,
 					progress: message.progress
 				};
-				this.notifyThrottled(media.id, filmstrip);
+				const shouldPaintFirstFrame =
+					(this.cachedFilmstrip(media.id)?.frames.length ?? 0) === 0 && filmstrip.frames.length > 0;
+				this.storeEntry(media.id, filmstrip);
+				this.notifyThrottled(media.id, filmstrip, shouldPaintFirstFrame);
 				this.enforceMemoryBudget();
 				return;
 			}

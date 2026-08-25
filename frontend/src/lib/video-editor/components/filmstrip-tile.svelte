@@ -12,12 +12,18 @@
 </script>
 
 {#if bitmap}
-	<canvas bind:this={canvas} class="absolute top-0 h-full rounded-sm opacity-90" {style}></canvas>
+	<canvas
+		bind:this={canvas}
+		class="absolute top-0 h-full rounded-sm opacity-90"
+		{style}
+		data-filmstrip-tile
+	></canvas>
 {:else}
 	<img
 		src={url ?? ''}
 		alt=""
 		class="absolute top-0 h-full rounded-sm object-cover opacity-90"
 		{style}
+		data-filmstrip-tile
 	/>
 {/if}

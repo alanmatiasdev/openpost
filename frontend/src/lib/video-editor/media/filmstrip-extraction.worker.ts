@@ -2,12 +2,10 @@
  * Ported from FreeCut (MIT) — timeline/workers/filmstrip-extraction-worker.ts.
  *
  * Extracts filmstrip frames at 1 source frame per second using mediabunny's
- * CanvasSink. All heavy decode and JPEG encode work happens in the worker;
- * the main thread turns the returned JPEG blobs into object URLs for <img>
- * tiles. Trimmed versus FreeCut: Blob-based input (no blobUrl/sourceMetadata
- * indirection), no ProRes live-decode registration, no per-worker range
- * chunking (concurrency happens across media ids instead), and no ImageBitmap
- * fast path (tiles render as <img> from the persisted-quality JPEGs).
+ * CanvasSink. All heavy decode and JPEG encode work happens in the worker. It
+ * transfers display bitmaps before the trailing JPEG cache writes settle.
+ * Trimmed versus FreeCut: Blob-based input (no blobUrl/sourceMetadata
+ * indirection) and concurrency across media ids instead of range workers.
  */
 
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
@@ -39,6 +37,7 @@ export interface FilmstripProgressResponse {
 	type: 'progress';
 	requestId: string;
 	savedFrames: Array<{ index: number; blob: Blob }>;
+	bitmapFrames: Array<{ index: number; bitmap: ImageBitmap }>;
 	progress: number;
 }
 
@@ -77,7 +76,8 @@ async function extractAndSave(
 	const { requestId, blob, durationSeconds, targetIndices } = request;
 
 	const totalFrames = Math.max(1, Math.ceil(durationSeconds * FILMSTRIP_FRAME_RATE));
-	const requested = [...targetIndices].sort((a, b) => a - b);
+	// The client puts visible viewport frames first, so preserve request order.
+	const requested = [...new Set(targetIndices)];
 	const framesToExtract = requested
 		.filter((index) => index >= 0 && index < totalFrames)
 		.map((index) => ({ index, timestamp: index / FILMSTRIP_FRAME_RATE }));
@@ -131,9 +131,34 @@ async function extractAndSave(
 		const canvasIterable = sink.canvasesAtTimestamps(timestampGenerator());
 
 		let savedSinceLastReport: Array<{ index: number; blob: Blob }> = [];
+		let bitmapFramesSinceLastReport: Array<{ index: number; bitmap: ImageBitmap }> = [];
+		let pendingEncode: Promise<{ index: number; blob: Blob }> | null = null;
 		let extractedCount = completedWithoutWork;
 		let frameListIndex = 0;
 		const unavailableIndices: number[] = [];
+
+		const flushPendingEncode = async (): Promise<void> => {
+			if (!pendingEncode) return;
+			savedSinceLastReport.push(await pendingEncode);
+			pendingEncode = null;
+		};
+
+		const reportProgress = (progress: number): void => {
+			const savedFrames = savedSinceLastReport;
+			const bitmapFrames = bitmapFramesSinceLastReport;
+			savedSinceLastReport = [];
+			bitmapFramesSinceLastReport = [];
+			self.postMessage(
+				{
+					type: 'progress',
+					requestId,
+					savedFrames,
+					bitmapFrames,
+					progress
+				} satisfies FilmstripProgressResponse,
+				{ transfer: bitmapFrames.map((frame) => frame.bitmap) }
+			);
+		};
 
 		for await (const wrapped of canvasIterable) {
 			if (state.aborted) break;
@@ -141,53 +166,43 @@ async function extractAndSave(
 			const frame = framesToExtract[frameListIndex];
 			if (!frame) break;
 
-			frameListIndex++;
 			if (!wrapped) {
 				unavailableIndices.push(frame.index);
+				frameListIndex++;
 				continue;
 			}
 
-			const frameBlob = await new Promise<Blob | null>((resolve) => {
-				if (wrapped.canvas instanceof OffscreenCanvas) {
-					void wrapped.canvas.convertToBlob({ type: IMAGE_FORMAT, quality: IMAGE_QUALITY }).then(
-						(b) => resolve(b),
-						() => resolve(null)
-					);
-				} else {
-					// SAFETY: this branch is the HTMLCanvasElement half of the union.
-					(wrapped.canvas as HTMLCanvasElement).toBlob(resolve, IMAGE_FORMAT, IMAGE_QUALITY);
-				}
+			const sourceCanvas = wrapped.canvas;
+			const encodeCanvas = new OffscreenCanvas(sourceCanvas.width, sourceCanvas.height);
+			const context = encodeCanvas.getContext('2d');
+			if (!context) throw new Error('Filmstrip canvas context unavailable');
+			context.drawImage(sourceCanvas, 0, 0);
+			await flushPendingEncode();
+			bitmapFramesSinceLastReport.push({
+				index: frame.index,
+				bitmap: await createImageBitmap(encodeCanvas)
 			});
-			if (!frameBlob) {
-				unavailableIndices.push(frame.index);
-				continue;
-			}
+			pendingEncode = encodeCanvas
+				.convertToBlob({ type: IMAGE_FORMAT, quality: IMAGE_QUALITY })
+				.then((blob) => ({ index: frame.index, blob }));
 
 			extractedCount++;
-			savedSinceLastReport.push({ index: frame.index, blob: frameBlob });
+			frameListIndex++;
 
 			const shouldReport =
-				extractedCount <= 3 || extractedCount % 10 === 0 || savedSinceLastReport.length >= 8;
+				extractedCount <= 3 || extractedCount % 10 === 0 || bitmapFramesSinceLastReport.length > 0;
 			if (shouldReport) {
-				const progress = Math.min(99, Math.round((extractedCount / totalFrames) * 100));
-				self.postMessage({
-					type: 'progress',
-					requestId,
-					savedFrames: savedSinceLastReport,
-					progress
-				} satisfies FilmstripProgressResponse);
-				savedSinceLastReport = [];
+				const progress = Math.min(99, Math.round((frameListIndex / framesToExtract.length) * 100));
+				reportProgress(progress);
 			}
 		}
 
-		if (savedSinceLastReport.length > 0 && !state.aborted) {
-			self.postMessage({
-				type: 'progress',
-				requestId,
-				savedFrames: savedSinceLastReport,
-				progress: 99
-			} satisfies FilmstripProgressResponse);
-			savedSinceLastReport = [];
+		await flushPendingEncode();
+		if (
+			(savedSinceLastReport.length > 0 || bitmapFramesSinceLastReport.length > 0) &&
+			!state.aborted
+		) {
+			reportProgress(99);
 		}
 
 		if (!state.aborted) {

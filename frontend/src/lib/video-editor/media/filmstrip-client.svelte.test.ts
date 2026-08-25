@@ -23,7 +23,7 @@ function linkedFileHandle(name: string, file: File | Promise<File>): FileSystemF
 	return handle;
 }
 
-async function sourceVideo(): Promise<File> {
+async function sourceVideo(durationSeconds = 1): Promise<File> {
 	const target = new BufferTarget();
 	const output = new Output({ format: new WebMOutputFormat(), target });
 	const source = new VideoSampleSource({ codec: 'vp8', bitrate: 200_000, keyFrameInterval: 1 });
@@ -32,7 +32,10 @@ async function sourceVideo(): Promise<File> {
 	const canvas = new OffscreenCanvas(320, 180);
 	const context = canvas.getContext('2d');
 	if (!context) throw new Error('2D canvas unavailable.');
-	for (const [frame, color] of ['#dc2626', '#2563eb'].entries()) {
+	const colors = Array.from({ length: durationSeconds * 2 }, (_, frame) =>
+		frame % 2 === 0 ? '#dc2626' : '#2563eb'
+	);
+	for (const [frame, color] of colors.entries()) {
 		context.fillStyle = color;
 		context.fillRect(0, 0, canvas.width, canvas.height);
 		const sample = new VideoSample(canvas, { timestamp: frame / 2, duration: 0.5 });
@@ -50,6 +53,36 @@ afterEach(() => {
 });
 
 describe('filmstrip cache maintenance', () => {
+	it('streams viewport targets first without skipping later source seconds', async () => {
+		const file = await sourceVideo(3);
+		const id = `filmstrip-priority-${crypto.randomUUID()}`;
+		const media: MediaMetadata = {
+			id,
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(file.name, file),
+			fileName: file.name,
+			fileSize: file.size,
+			mimeType: file.type,
+			duration: 3,
+			width: 320,
+			height: 180,
+			fps: 2,
+			codec: 'vp8',
+			bitrate: 200_000,
+			tags: ['video']
+		};
+		const updates: Filmstrip[] = [];
+		const unsubscribe = filmstripCache.subscribe(id, (value) => updates.push(value));
+
+		const generated = await filmstripCache.getFilmstrip(media, { targetFrameIndices: [2] });
+
+		expect(generated.frames.map((frame) => frame.index)).toEqual([0, 1, 2]);
+		const firstPaint = updates.find((update) => update.frames.length > 0);
+		expect(firstPaint?.frames.map((frame) => frame.index)).toEqual([2]);
+		expect(firstPaint?.frames[0]?.bitmap).toBeInstanceOf(ImageBitmap);
+		unsubscribe();
+	});
+
 	it('cancels queued extraction and can restart from the same source', async () => {
 		const file = await sourceVideo();
 		const id = `filmstrip-cancel-${crypto.randomUUID()}`;
@@ -108,6 +141,13 @@ describe('filmstrip cache maintenance', () => {
 
 		const generated = await filmstripCache.getFilmstrip(media);
 		expect(generated.frames.length).toBeGreaterThan(0);
+		expect(generated.frames.every((frame) => frame.bitmap instanceof ImageBitmap)).toBe(true);
+		expect(
+			updates.some(
+				(update) =>
+					update.isExtracting && update.frames.some((frame) => frame.bitmap instanceof ImageBitmap)
+			)
+		).toBe(true);
 		await vi.waitFor(async () => {
 			expect((await loadFilmstrip(id)).length).toBeGreaterThan(0);
 		});

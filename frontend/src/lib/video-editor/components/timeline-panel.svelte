@@ -51,7 +51,10 @@
 	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import PropertyRuntimePanel from './property-runtime-panel.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
-	import { computeFilmstripTiles } from '$lib/video-editor/media/filmstrip-plan';
+	import {
+		computeFilmstripTiles,
+		visibleFilmstripTargetIndices
+	} from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
@@ -248,6 +251,9 @@
 		selectedTransitionId?: string | null;
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
+	let timelineViewport = $state({ scrollLeft: 0, width: 0 });
+	let visibleTimelineItemIds = $state<Set<string>>(new Set());
+	let timelineItemObserver: IntersectionObserver | null = null;
 	let selectedTrackIds = $state<string[]>([]);
 	let deleteGroupTarget = $state<{ id: string; name: string; trackCount: number } | null>(null);
 	let deleteGroupDialogOpen = $state(false);
@@ -471,19 +477,100 @@
 	// extraction worker and tiles render as they arrive.
 	const filmstrips = $state<Record<string, { frames: FilmstripFrame[]; failed: boolean }>>({});
 	const filmstripUnsubscribers = new Map<string, () => void>();
+	const FILMSTRIP_TILE_WIDTH_PX = 96;
+	const FILMSTRIP_OVERSCAN_PX = FILMSTRIP_TILE_WIDTH_PX * 2;
+
+	function updateTimelineViewport(): void {
+		if (!scrollContainer) return;
+		timelineViewport = {
+			scrollLeft: scrollContainer.scrollLeft,
+			width: scrollContainer.clientWidth
+		};
+	}
+
+	function observeTimelineItem(node: HTMLElement, itemId: string): { destroy: () => void } {
+		queueMicrotask(() => {
+			if (!node.isConnected || !scrollContainer) return;
+			if (!timelineItemObserver) {
+				timelineItemObserver = new IntersectionObserver(
+					(entries) => {
+						const next = new Set(visibleTimelineItemIds);
+						for (const entry of entries) {
+							const id = (entry.target as HTMLElement).dataset.timelineItemId;
+							if (!id) continue;
+							if (entry.isIntersecting) next.add(id);
+							else next.delete(id);
+						}
+						visibleTimelineItemIds = next;
+					},
+					{ root: scrollContainer, rootMargin: `0px ${FILMSTRIP_OVERSCAN_PX}px` }
+				);
+			}
+			timelineItemObserver.observe(node);
+		});
+		return {
+			destroy: () => {
+				timelineItemObserver?.unobserve(node);
+				const next = new Set(visibleTimelineItemIds);
+				next.delete(itemId);
+				visibleTimelineItemIds = next;
+			}
+		};
+	}
 
 	$effect(() => {
 		if (!editorSettings.showFilmstrips) {
-			for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
+			for (const [mediaId, unsubscribe] of filmstripUnsubscribers) {
+				unsubscribe();
+				filmstripCache.abort(mediaId);
+			}
 			filmstripUnsubscribers.clear();
 			for (const mediaId of Object.keys(filmstrips)) delete filmstrips[mediaId];
 			return;
 		}
+		if (timelineViewport.width <= 0) return;
+		const visibleTargets = new Map<string, Set<number>>();
+		const visibleMedia = new Map<string, NonNullable<ReturnType<typeof mediaPool.get>>>();
+		const viewportStart = timelineViewport.scrollLeft + TRACK_HEADER_WIDTH;
+		const viewportEnd = timelineViewport.scrollLeft + timelineViewport.width;
 		for (const item of timelineStore.items) {
 			if (item.type !== 'video' || !item.mediaId) continue;
+			if (!visibleTimelineItemIds.has(item.id)) continue;
 			const mediaId = item.mediaId;
 			const media = mediaPool.get(mediaId);
 			if (!media?.tags.includes('video')) continue;
+			const clipLeft = TRACK_HEADER_WIDTH + frameToPx(item.from);
+			const clipWidth = frameToPx(item.durationInFrames);
+			const visibleStartPx = Math.max(0, viewportStart - clipLeft - FILMSTRIP_OVERSCAN_PX);
+			const visibleEndPx = Math.min(clipWidth, viewportEnd - clipLeft + FILMSTRIP_OVERSCAN_PX);
+			if (visibleEndPx <= visibleStartPx) continue;
+			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : Math.max(1, fps);
+			const sourceStartSeconds = (item.sourceStart ?? 0) / sourceFps;
+			const clipSpanSeconds = (item.durationInFrames / fps) * (item.speed ?? 1);
+			const targets = visibleFilmstripTargetIndices({
+				sourceStartSeconds,
+				clipSpanSeconds,
+				clipWidthPx: clipWidth,
+				visibleStartPx,
+				visibleEndPx,
+				tileWidthPx: FILMSTRIP_TILE_WIDTH_PX,
+				totalSourceFrames: Math.max(1, Math.ceil(media.duration)),
+				reversed: item.isReversed
+			});
+			if (targets.length === 0) continue;
+			visibleMedia.set(mediaId, media);
+			const merged = visibleTargets.get(mediaId) ?? new Set<number>();
+			for (const target of targets) merged.add(target);
+			visibleTargets.set(mediaId, merged);
+		}
+		for (const [mediaId, unsubscribe] of filmstripUnsubscribers) {
+			if (visibleMedia.has(mediaId)) continue;
+			unsubscribe();
+			filmstripUnsubscribers.delete(mediaId);
+			filmstripCache.abort(mediaId);
+			delete filmstrips[mediaId];
+		}
+		for (const [mediaId, media] of visibleMedia) {
 			if (!filmstripUnsubscribers.has(mediaId)) {
 				filmstrips[mediaId] = { frames: [], failed: false };
 				filmstripUnsubscribers.set(
@@ -497,8 +584,13 @@
 				);
 			}
 			filmstripCache
-				.getFilmstrip(media, undefined, undefined, editorSettings.extractFilmstrips)
-				.catch(() => {
+				.getFilmstrip(media, {
+					targetFrameIndices: [...(visibleTargets.get(mediaId) ?? [])],
+					allowExtraction: editorSettings.extractFilmstrips
+				})
+				.catch((error: unknown) => {
+					if (error instanceof DOMException && error.name === 'AbortError') return;
+					if (!filmstripUnsubscribers.has(mediaId)) return;
 					filmstrips[mediaId] = {
 						frames: filmstrips[mediaId]?.frames ?? [],
 						failed: true
@@ -508,6 +600,7 @@
 	});
 
 	function filmstripTilesFor(item: {
+		from: number;
 		mediaId?: string;
 		sourceStart?: number;
 		sourceEnd?: number;
@@ -524,12 +617,24 @@
 		const startSeconds = (item.sourceStart ?? 0) / sourceFps;
 		const spanSeconds = (item.durationInFrames / fps) * speed;
 		if (!(spanSeconds > 0)) return null;
+		const clipWidth = frameToPx(item.durationInFrames);
+		const clipLeft = TRACK_HEADER_WIDTH + frameToPx(item.from);
+		const viewportStart = timelineViewport.scrollLeft + TRACK_HEADER_WIDTH;
+		const viewportEnd = timelineViewport.scrollLeft + timelineViewport.width;
+		const visibleStartPx = Math.max(0, viewportStart - clipLeft - FILMSTRIP_OVERSCAN_PX);
+		const visibleEndPx = Math.min(clipWidth, viewportEnd - clipLeft + FILMSTRIP_OVERSCAN_PX);
+		if (visibleEndPx <= visibleStartPx) return null;
 		return computeFilmstripTiles(
 			entry.frames,
 			startSeconds,
 			spanSeconds,
-			frameToPx(item.durationInFrames),
-			item.isReversed
+			clipWidth,
+			item.isReversed,
+			{
+				tileWidthPx: FILMSTRIP_TILE_WIDTH_PX,
+				visibleStartPx,
+				visibleEndPx
+			}
 		);
 	}
 
@@ -2168,6 +2273,8 @@
 		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
 		for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
+		timelineItemObserver?.disconnect();
+		timelineItemObserver = null;
 	});
 
 	function zoomFrameLimit(): number {
@@ -2501,6 +2608,11 @@
 
 	onMount(() => {
 		customEasingPresets = loadCustomEasingPresets();
+		updateTimelineViewport();
+		if (!scrollContainer) return;
+		const observer = new ResizeObserver(updateTimelineViewport);
+		observer.observe(scrollContainer);
+		return () => observer.disconnect();
 	});
 
 	$effect(() => {
@@ -3074,6 +3186,7 @@
 
 <div
 	bind:this={scrollContainer}
+	onscroll={updateTimelineViewport}
 	onpointerdown={startMarquee}
 	onpointermove={rememberTimelinePointer}
 	onpointerleave={forgetTimelinePointer}
@@ -3257,6 +3370,7 @@
 								: 'border-transparent'} {resolvedTrack.locked ? 'opacity-75' : ''}"
 							style={clipStyle(displayItem)}
 							data-timeline-item-id={item.id}
+							use:observeTimelineItem={item.id}
 							ondragenter={(event) => previewEffectDrop(event, item.id)}
 							ondragover={(event) => previewEffectDrop(event, item.id)}
 							ondragleave={(event) => leaveEffectDrop(event, item.id)}
@@ -3301,16 +3415,22 @@
 								onkeydown={(event) => applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
 								onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}
 							>
-								{#if editorSettings.showFilmstrips && item.type === 'video' && filmstripTilesFor(displayItem)}
-									<div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden">
-										{#each filmstripTilesFor(displayItem) as tile (tile.index)}
-											<FilmstripTile
-												bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
-												url={tile.url}
-												style="left:{tile.x}px;width:{tile.width}px"
-											/>
-										{/each}
-									</div>
+								{#if editorSettings.showFilmstrips && item.type === 'video'}
+									{@const filmstripTiles = filmstripTilesFor(displayItem)}
+									{#if filmstripTiles}
+										<div
+											class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden"
+											data-filmstrip
+										>
+											{#each filmstripTiles as tile (tile.slot)}
+												<FilmstripTile
+													bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
+													url={tile.url}
+													style="left:{tile.x}px;width:{tile.width}px"
+												/>
+											{/each}
+										</div>
+									{/if}
 								{/if}
 								{#if editorSettings.showWaveforms}
 									{@const waveformPoints = waveformSvgPoints(displayItem)}

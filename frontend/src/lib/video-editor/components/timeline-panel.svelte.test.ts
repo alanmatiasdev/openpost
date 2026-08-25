@@ -16,6 +16,7 @@ import {
 import type { MediaMetadata } from '$lib/video-editor/media/types';
 import { clearWaveformCache } from '$lib/video-editor/media/waveform-client';
 import { saveWaveform } from '$lib/video-editor/media/waveform-persistence';
+import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
 import TimelinePanel from './timeline-panel.svelte';
 
 function track(id: string, kind: TimelineTrack['kind'], order: number): TimelineTrack {
@@ -160,6 +161,92 @@ describe('TimelinePanel Bento layout entry', () => {
 			await vi.waitFor(() => expect(clip.element().querySelector('svg')).not.toBeNull());
 		} finally {
 			await clearWaveformCache(mediaId);
+		}
+	});
+
+	it('fills a long visible clip with sparse tiles and refines only the viewport', async () => {
+		const longMedia: MediaMetadata = {
+			...sceneMedia,
+			id: 'long-video',
+			fileName: 'long-video.mp4',
+			duration: 3_600
+		};
+		const offscreenMedia: MediaMetadata = {
+			...sceneMedia,
+			id: 'offscreen-video',
+			fileName: 'offscreen-video.mp4',
+			duration: 60
+		};
+		mediaPool.loadAll([longMedia, offscreenMedia]);
+		const longTracks = Array.from({ length: 8 }, (_, index) =>
+			track(`long-track-${index}`, 'video', index)
+		);
+		timelineStore.setAll({
+			tracks: longTracks,
+			items: [
+				item({
+					id: 'long-video-clip',
+					label: 'Long video',
+					trackId: longTracks[0]!.id,
+					mediaId: longMedia.id,
+					durationInFrames: 108_000,
+					sourceEnd: 108_000,
+					sourceDuration: 108_000
+				}),
+				item({
+					id: 'offscreen-video-clip',
+					label: 'Offscreen video',
+					trackId: longTracks[7]!.id,
+					mediaId: offscreenMedia.id,
+					from: 0,
+					durationInFrames: 1_800,
+					sourceEnd: 1_800,
+					sourceDuration: 1_800
+				})
+			],
+			fps: 30
+		});
+		const sparseFrames = [0, 600, 1_200, 1_800, 2_400, 3_000, 3_599].map((index) => ({
+			index,
+			url: `data:image/gif;base64,R0lGODlhAQABAAAAACw=`
+		}));
+		const subscribe = vi
+			.spyOn(filmstripCache, 'subscribe')
+			.mockImplementation((mediaId, callback) => {
+				if (mediaId === longMedia.id) {
+					callback({ frames: sparseFrames, isComplete: false, isExtracting: true, progress: 10 });
+				}
+				return () => undefined;
+			});
+		const getFilmstrip = vi.spyOn(filmstripCache, 'getFilmstrip').mockResolvedValue({
+			frames: sparseFrames,
+			isComplete: false,
+			isExtracting: true,
+			progress: 10
+		});
+
+		try {
+			const screen = await render(TimelinePanel, { onedit: vi.fn() });
+			await vi.waitFor(() => expect(getFilmstrip).toHaveBeenCalled());
+			expect(getFilmstrip.mock.calls.map(([media]) => media.id)).not.toContain(offscreenMedia.id);
+
+			const clip = screen.getByRole('button', { name: /Long video/ }).element();
+			await vi.waitFor(() =>
+				expect(clip.querySelectorAll('[data-filmstrip-tile]').length).toBeGreaterThan(3)
+			);
+			const firstTargets = getFilmstrip.mock.calls[0]?.[1]?.targetFrameIndices ?? [];
+			expect(firstTargets.length).toBeGreaterThan(0);
+			expect(firstTargets.length).toBeLessThan(40);
+
+			const region = screen.getByRole('region', { name: 'Timeline' }).element();
+			region.scrollLeft = 2_000;
+			region.dispatchEvent(new Event('scroll'));
+			await vi.waitFor(() => expect(getFilmstrip.mock.calls.length).toBeGreaterThan(1));
+			const latestTargets = getFilmstrip.mock.calls.at(-1)?.[1]?.targetFrameIndices ?? [];
+			expect(latestTargets).not.toEqual(firstTargets);
+		} finally {
+			subscribe.mockRestore();
+			getFilmstrip.mockRestore();
 		}
 	});
 

@@ -5,7 +5,9 @@ import {
 	computeFilmstripTiles,
 	fitFilmstripFrameSize,
 	getBackgroundStride,
-	getTargetFrameBudget
+	getTargetFrameBudget,
+	prioritizeFilmstripTargetIndices,
+	visibleFilmstripTargetIndices
 } from './filmstrip-plan';
 
 describe('fitFilmstripFrameSize', () => {
@@ -66,8 +68,22 @@ describe('buildTargetIndices', () => {
 		for (let i = 10; i < 20; i++) expect(targets).toContain(i);
 	});
 
+	it('always includes exact viewport targets even when the background budget is full', () => {
+		const exactTargets = [101, 203, 307, 409];
+		const targets = buildTargetIndices(3600, null, 2, exactTargets);
+		for (const index of exactTargets) expect(targets).toContain(index);
+	});
+
 	it('returns everything for tiny clips regardless of range', () => {
 		expect(buildTargetIndices(5, null)).toEqual([0, 1, 2, 3, 4]);
+	});
+});
+
+describe('prioritizeFilmstripTargetIndices', () => {
+	it('decodes exact viewport frames before the background sample', () => {
+		expect(prioritizeFilmstripTargetIndices([0, 100, 200, 300], [200, 100])).toEqual([
+			200, 100, 0, 300
+		]);
 	});
 });
 
@@ -111,6 +127,51 @@ describe('computeFilmstripTiles', () => {
 		expect(computeFilmstripTiles(frames, 0, 2, 200)).toEqual([]);
 		expect(computeFilmstripTiles(frames, 0, 0, 200)).toEqual([]);
 		expect(computeFilmstripTiles(frames, 0, 2, 0)).toEqual([]);
+	});
+
+	it('fills a sparse long clip with viewport-sized nearest-frame tiles', () => {
+		const frames = [0, 120, 240, 359].map((index) => ({ index, url: `frame-${index}` }));
+		const tiles = computeFilmstripTiles(frames, 0, 360, 720, false, {
+			tileWidthPx: 120,
+			visibleStartPx: 240,
+			visibleEndPx: 600
+		});
+
+		expect(tiles.map((tile) => ({ slot: tile.slot, index: tile.index, x: tile.x }))).toEqual([
+			{ slot: 2, index: 120, x: 240 },
+			{ slot: 3, index: 240, x: 360 },
+			{ slot: 4, index: 240, x: 480 }
+		]);
+		expect(tiles.every((tile) => tile.width === 120)).toBe(true);
+	});
+
+	it('returns exact source-second targets for the visible tile window', () => {
+		expect(
+			visibleFilmstripTargetIndices({
+				sourceStartSeconds: 30,
+				clipSpanSeconds: 300,
+				clipWidthPx: 600,
+				visibleStartPx: 120,
+				visibleEndPx: 360,
+				tileWidthPx: 120,
+				totalSourceFrames: 400
+			})
+		).toEqual([120, 180]);
+	});
+
+	it('mirrors visible target seconds for reversed playback', () => {
+		expect(
+			visibleFilmstripTargetIndices({
+				sourceStartSeconds: 30,
+				clipSpanSeconds: 300,
+				clipWidthPx: 600,
+				visibleStartPx: 120,
+				visibleEndPx: 360,
+				tileWidthPx: 120,
+				totalSourceFrames: 400,
+				reversed: true
+			})
+		).toEqual([180, 240]);
 	});
 });
 

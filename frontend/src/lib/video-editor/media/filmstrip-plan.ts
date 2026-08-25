@@ -104,7 +104,8 @@ export function getBackgroundStride(totalFrames: number): number {
 export function buildTargetIndices(
 	totalFrames: number,
 	priorityRange: FrameRange | null,
-	targetFrameCount?: number | null
+	targetFrameCount?: number | null,
+	exactTargetIndices?: readonly number[] | null
 ): number[] {
 	if (totalFrames <= 0) return [];
 
@@ -114,6 +115,9 @@ export function buildTargetIndices(
 
 	for (const index of buildPriorityIndices(totalFrames, priorityRange)) {
 		target.add(index);
+	}
+	for (const index of exactTargetIndices ?? []) {
+		if (Number.isInteger(index) && index >= 0 && index < totalFrames) target.add(index);
 	}
 
 	if (totalFrames <= MIN_FILMSTRIP_TARGET_FRAMES) {
@@ -152,6 +156,28 @@ export function buildTargetIndices(
 	return [...target].sort((a, b) => a - b);
 }
 
+/** Keep the planned set intact while moving visible viewport frames to the decode front. */
+export function prioritizeFilmstripTargetIndices(
+	planned: readonly number[],
+	priority: readonly number[] | null | undefined
+): number[] {
+	if (!priority?.length) return [...planned];
+	const plannedSet = new Set(planned);
+	const ordered: number[] = [];
+	const seen = new Set<number>();
+	for (const index of priority) {
+		if (!plannedSet.has(index) || seen.has(index)) continue;
+		seen.add(index);
+		ordered.push(index);
+	}
+	for (const index of planned) {
+		if (seen.has(index)) continue;
+		seen.add(index);
+		ordered.push(index);
+	}
+	return ordered;
+}
+
 /**
  * Dense (capped) indices for the priority range — the window around the
  * playhead or viewport that should fill in first.
@@ -188,26 +214,60 @@ export interface FilmstripFrameRef {
 }
 
 export interface FilmstripTile {
+	slot: number;
 	index: number;
 	url: string | null;
 	x: number;
 	width: number;
 }
 
+export interface FilmstripTileWindow {
+	tileWidthPx: number;
+	visibleStartPx?: number;
+	visibleEndPx?: number;
+}
+
 /**
- * Layout for one-second thumbnail tiles across a clip's visible span. Each
- * frame `i` covers source seconds [i, i+1); tiles are clipped to the trimmed
- * window [sourceStartSeconds, sourceStartSeconds + clipSpanSeconds] and sized
- * against `clipWidthPx`.
+ * Layout filmstrip frames across a clip. The viewport mode fills stable display
+ * slots with the nearest decoded frame; the legacy mode keeps exact one-second
+ * geometry for callers that need source-time tiles.
  */
 export function computeFilmstripTiles(
 	frames: readonly FilmstripFrameRef[],
 	sourceStartSeconds: number,
 	clipSpanSeconds: number,
 	clipWidthPx: number,
-	reversed = false
+	reversed = false,
+	window?: FilmstripTileWindow
 ): FilmstripTile[] {
-	if (!(clipSpanSeconds > 0) || !(clipWidthPx > 0)) return [];
+	if (!(clipSpanSeconds > 0) || !(clipWidthPx > 0) || frames.length === 0) return [];
+
+	if (window) {
+		const tileWidth = Math.max(1, window.tileWidthPx);
+		const visibleStart = Math.max(0, Math.min(clipWidthPx, window.visibleStartPx ?? 0));
+		const visibleEnd = Math.max(
+			visibleStart,
+			Math.min(clipWidthPx, window.visibleEndPx ?? clipWidthPx)
+		);
+		if (visibleEnd <= visibleStart) return [];
+
+		const sortedFrames = [...frames].toSorted((left, right) => left.index - right.index);
+		const firstSlot = Math.floor(visibleStart / tileWidth);
+		const lastSlot = Math.ceil(visibleEnd / tileWidth);
+		const tiles: FilmstripTile[] = [];
+		for (let slot = firstSlot; slot < lastSlot; slot++) {
+			const x = slot * tileWidth;
+			const width = Math.min(tileWidth, clipWidthPx - x);
+			if (width <= 0) continue;
+			const centerRatio = Math.max(0, Math.min(1, (x + width / 2) / clipWidthPx));
+			const sourceSecond = reversed
+				? sourceStartSeconds + clipSpanSeconds * (1 - centerRatio)
+				: sourceStartSeconds + clipSpanSeconds * centerRatio;
+			const frame = nearestFilmstripFrame(sortedFrames, sourceSecond);
+			tiles.push({ slot, index: frame.index, url: frame.url, x, width });
+		}
+		return tiles;
+	}
 
 	const pxPerSecond = clipWidthPx / clipSpanSeconds;
 	const endSeconds = sourceStartSeconds + clipSpanSeconds;
@@ -220,6 +280,7 @@ export function computeFilmstripTiles(
 		if (span <= 0) continue;
 		const x = (visibleStart - sourceStartSeconds) * pxPerSecond;
 		tiles.push({
+			slot: frame.index,
 			index: frame.index,
 			url: frame.url,
 			x: reversed ? clipWidthPx - x - span * pxPerSecond : x,
@@ -228,4 +289,64 @@ export function computeFilmstripTiles(
 	}
 
 	return tiles.toSorted((left, right) => left.x - right.x);
+}
+
+function nearestFilmstripFrame(
+	frames: readonly FilmstripFrameRef[],
+	targetSecond: number
+): FilmstripFrameRef {
+	let low = 0;
+	let high = frames.length - 1;
+	while (low < high) {
+		const middle = Math.floor((low + high) / 2);
+		const current = frames[middle];
+		if (!current || current.index < targetSecond) low = middle + 1;
+		else high = middle;
+	}
+	const after = frames[low] ?? frames[frames.length - 1]!;
+	const before = frames[Math.max(0, low - 1)] ?? after;
+	return Math.abs(before.index - targetSecond) <= Math.abs(after.index - targetSecond)
+		? before
+		: after;
+}
+
+export interface VisibleFilmstripTargetsInput {
+	sourceStartSeconds: number;
+	clipSpanSeconds: number;
+	clipWidthPx: number;
+	visibleStartPx: number;
+	visibleEndPx: number;
+	tileWidthPx: number;
+	totalSourceFrames: number;
+	reversed?: boolean;
+}
+
+/** Exact 1 fps source frames needed to fill the visible timeline tile window. */
+export function visibleFilmstripTargetIndices(input: VisibleFilmstripTargetsInput): number[] {
+	if (
+		!(input.clipSpanSeconds > 0) ||
+		!(input.clipWidthPx > 0) ||
+		!(input.tileWidthPx > 0) ||
+		input.totalSourceFrames <= 0
+	) {
+		return [];
+	}
+	const visibleStart = Math.max(0, Math.min(input.clipWidthPx, input.visibleStartPx));
+	const visibleEnd = Math.max(visibleStart, Math.min(input.clipWidthPx, input.visibleEndPx));
+	if (visibleEnd <= visibleStart) return [];
+
+	const indices = new Set<number>();
+	const firstSlot = Math.floor(visibleStart / input.tileWidthPx);
+	const lastSlot = Math.ceil(visibleEnd / input.tileWidthPx);
+	for (let slot = firstSlot; slot < lastSlot; slot++) {
+		const x = slot * input.tileWidthPx;
+		const width = Math.min(input.tileWidthPx, input.clipWidthPx - x);
+		if (width <= 0) continue;
+		const centerRatio = Math.max(0, Math.min(1, (x + width / 2) / input.clipWidthPx));
+		const sourceSecond = input.reversed
+			? input.sourceStartSeconds + input.clipSpanSeconds * (1 - centerRatio)
+			: input.sourceStartSeconds + input.clipSpanSeconds * centerRatio;
+		indices.add(Math.max(0, Math.min(input.totalSourceFrames - 1, Math.floor(sourceSecond))));
+	}
+	return [...indices].toSorted((left, right) => left - right);
 }
