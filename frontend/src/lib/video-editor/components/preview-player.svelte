@@ -75,6 +75,7 @@
 	} from '$lib/video-editor/preview/decoder-prewarm-client';
 	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
 	import type { CanvasAnimatedValues } from '$lib/video-editor/preview/on-canvas-tools';
+	import { previewDiagnostics } from '$lib/video-editor/preview/diagnostics.svelte';
 
 	const MAX_STACK_PREVIEW_PIXELS = 1920 * 1080;
 
@@ -204,6 +205,8 @@
 		const entry = Object.entries(proxyProgress).find(([, progress]) => progress < 1);
 		return entry ? { mediaId: entry[0], progress: entry[1] } : null;
 	});
+	const diagnosticSnapshot = $derived(previewDiagnostics.snapshot);
+	const diagnosticClip = $derived(selectedItem?.type === 'video' ? selectedItem : undefined);
 
 	$effect(() => {
 		filmstripCache.prewarm();
@@ -297,13 +300,26 @@
 	});
 
 	$effect(() => {
-		const syncPlay = () => (isPlaying = true);
+		previewDiagnostics.setPlaying(editorSession.clock.isPlaying);
+		const syncPlay = () => {
+			isPlaying = true;
+			previewDiagnostics.setPlaying(true);
+		};
 		const syncPause = () => {
 			isPlaying = false;
+			previewDiagnostics.setPlaying(false);
 			adaptivePreviewQuality.reset();
 			scheduleStackFrame();
 		};
 		const sampleFrame = (frame: number) => {
+			if (editorSession.clock.isPlaying) {
+				previewDiagnostics.recordFrame(
+					frame,
+					performance.now(),
+					editorSession.fps,
+					editorSession.clock.playbackRate
+				);
+			}
 			if (previewPlaybackSettings.previewQuality !== 'auto' || !editorSession.clock.isPlaying)
 				return;
 			adaptivePreviewQuality.recordFrame(
@@ -374,6 +390,7 @@
 		const projectState = project;
 		const inputs = pendingStackInputs;
 		if (!stack || !projectState || !inputs || !needsStackedComposition) return;
+		const renderStartedAt = performance.now();
 		stack.beginFrame(
 			inputs.width,
 			inputs.height,
@@ -497,6 +514,9 @@
 			}
 		}
 		publishStackScope(stackCanvas);
+		const gpu = stack.diagnostics();
+		previewDiagnostics.setGpuStatus(gpu.webgl2Ready, gpu.webgpuTransitionsReady);
+		previewDiagnostics.recordRender(performance.now() - renderStartedAt, stack.failureReason());
 	}
 
 	function publishStackScope(canvas: HTMLCanvasElement | null): void {
@@ -581,6 +601,24 @@
 			stack.dispose();
 			if (stackCompositor === stack) stackCompositor = null;
 		};
+	});
+
+	$effect(() => {
+		const stack = stackCompositor;
+		const gpu = stack?.diagnostics() ?? { webgl2Ready: false, webgpuTransitionsReady: false };
+		previewDiagnostics.updateRuntime({
+			renderPath: needsStackedComposition ? 'composited' : 'direct',
+			renderWidth: stackWidth,
+			renderHeight: stackHeight,
+			activeLayers: activeItems.length,
+			qualityMode: previewPlaybackSettings.previewQuality,
+			qualityScale: previewRenderScale,
+			readyProxies: Object.keys(proxyUrls).length,
+			pendingProxies: Object.values(proxyProgress).filter((progress) => progress < 1).length,
+			webgl2Ready: gpu.webgl2Ready,
+			webgpuTransitionsReady: gpu.webgpuTransitionsReady
+		});
+		if (!needsStackedComposition) previewDiagnostics.recordRender(null, null);
 	});
 
 	$effect(() => {
@@ -1026,6 +1064,55 @@
 						</span>
 					{/if}
 				</button>
+			{/if}
+			{#if previewDiagnostics.clipTimingOverlay && diagnosticClip}
+				<div
+					class="pointer-events-none absolute top-2 left-2 z-40 max-w-[calc(100%-1rem)] rounded-md bg-black/80 px-2 py-1.5 font-mono text-[10px] leading-4 text-white/90"
+					data-testid="preview-clip-diagnostics"
+				>
+					<div>
+						{diagnosticClip.id.slice(0, 8)} · {diagnosticClip.from}-{diagnosticClip.from +
+							diagnosticClip.durationInFrames}f
+					</div>
+					<div class="text-white/65">
+						{m.video_editor_diagnostics_overlay_source({
+							start: diagnosticClip.sourceStart ?? 0,
+							end: diagnosticClip.sourceEnd ?? diagnosticClip.sourceDuration ?? 0
+						})}
+						· {(diagnosticClip.speed ?? 1).toFixed(2)}x{diagnosticClip.isReversed
+							? ` · ${m.video_editor_diagnostics_overlay_reverse()}`
+							: ''}
+					</div>
+				</div>
+			{/if}
+			{#if previewDiagnostics.performanceOverlay}
+				<div
+					class="pointer-events-none absolute right-2 bottom-2 z-40 rounded-md bg-black/80 px-2 py-1.5 font-mono text-[10px] leading-4 text-white/90"
+					data-testid="preview-performance-diagnostics"
+				>
+					<div>
+						{diagnosticSnapshot.samples > 0
+							? `${diagnosticSnapshot.frameTimeEmaMs.toFixed(1)} ms`
+							: m.video_editor_diagnostics_status_waiting()}
+						· {m.video_editor_diagnostics_overlay_budget({
+							value: diagnosticSnapshot.frameBudgetMs.toFixed(1)
+						})}
+					</div>
+					<div class="text-white/65">
+						{Math.round(diagnosticSnapshot.qualityScale * 100)}% · {diagnosticSnapshot.renderPath ===
+						'composited'
+							? m.video_editor_diagnostics_composited()
+							: m.video_editor_diagnostics_direct()} · {diagnosticSnapshot.renderWidth}x{diagnosticSnapshot.renderHeight}
+					</div>
+					<div class="text-white/65">
+						{m.video_editor_diagnostics_overlay_skipped({
+							count: diagnosticSnapshot.skippedFrames
+						})}
+						· {m.video_editor_diagnostics_overlay_layers({
+							count: diagnosticSnapshot.activeLayers
+						})}
+					</div>
+				</div>
 			{/if}
 		{/if}
 	</div>

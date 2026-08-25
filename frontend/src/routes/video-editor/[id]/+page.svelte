@@ -64,6 +64,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import TranscriptionControls from '$lib/video-editor/components/transcription-controls.svelte';
 	import SpeechCleanupDialog from '$lib/video-editor/components/speech-cleanup-dialog.svelte';
 	import EditorSettingsDialog from '$lib/video-editor/components/editor-settings-dialog.svelte';
+	import PreviewDiagnosticsPanel from '$lib/video-editor/components/preview-diagnostics-panel.svelte';
 	import EditorWorkspaceSwitcher from '$lib/video-editor/components/editor-workspace-switcher.svelte';
 	import ColorGradingDock from '$lib/video-editor/components/color-grading-dock.svelte';
 	import MotionWorkspacePanel from '$lib/video-editor/components/motion-workspace-panel.svelte';
@@ -748,6 +749,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			{:else if !timelineStore.isDirty}
 				<span class="hidden sm:inline">{m.video_editor_saved()}</span>
 			{/if}
+			<PreviewDiagnosticsPanel />
 			<Button
 				type="button"
 				variant="ghost"

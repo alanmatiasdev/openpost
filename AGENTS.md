@@ -49,6 +49,7 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 - Video Editor color comparison and pickers use `colorPreviewStore` as preview-only state; export always reads the persisted full effect stack, and grade presets clone color-category GPU effects instead of sharing mutable params.
 - Video Editor keyboard commands use the closed catalog in `settings/keyboard-shortcuts.ts`; page and timeline handlers resolve saved bindings by command ID and must not add hardcoded key comparisons.
 - Video Editor interface sounds use `soundPreferences` as the only Cuelume owner and semantic tokens through `sounds/editor-sounds.ts`; suppress normal cues during preview playback and remove generic control cues when an outcome cue owns the same gesture.
+- Video Editor diagnostics use `previewDiagnostics` as the single owner for measured playback and renderer state. Reports must exclude project names, clip labels, media IDs, and file paths; keep repair and fixture tools out of the normal product UI.
 
 ## Reference repositories
 

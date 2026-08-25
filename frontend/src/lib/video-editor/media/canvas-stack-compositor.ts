@@ -36,6 +36,11 @@ export interface StackTransitionParticipant {
 	masks?: TimelineItem[];
 }
 
+export interface CanvasStackDiagnostics {
+	webgl2Ready: boolean;
+	webgpuTransitionsReady: boolean;
+}
+
 function createStackCanvas(): StackCanvas {
 	return typeof OffscreenCanvas === 'function'
 		? new OffscreenCanvas(1, 1)
@@ -468,6 +473,13 @@ export class CanvasStackCompositor {
 
 	failureReason(): string | null {
 		return this.lastFailure;
+	}
+
+	diagnostics(): CanvasStackDiagnostics {
+		return {
+			webgl2Ready: this.gpuCompositor !== null,
+			webgpuTransitionsReady: this.transitionPipeline !== null
+		};
 	}
 
 	dispose(): void {

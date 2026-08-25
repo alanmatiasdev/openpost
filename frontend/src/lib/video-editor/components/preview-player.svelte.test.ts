@@ -9,6 +9,7 @@ import { colorPreviewStore } from '../effects/color-preview-store.svelte';
 import { scopeSamples } from '../effects/scope-samples.svelte';
 import { adaptivePreviewQuality } from '../preview/adaptive-preview-quality.svelte';
 import { previewPlaybackSettings } from '../preview/playback-settings.svelte';
+import { previewDiagnostics } from '../preview/diagnostics.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -113,6 +114,32 @@ function cornerPinnedProject(): Project {
 	};
 }
 
+function diagnosticVideoProject(): Project {
+	const item: TimelineItem = {
+		id: 'clip-12345678',
+		trackId: 'video-track',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Private clip name',
+		type: 'video',
+		mediaId: 'private-media-id',
+		sourceStart: 5,
+		sourceEnd: 35,
+		sourceDuration: 60,
+		speed: 1.5
+	};
+	return {
+		id: 'diagnostic-project',
+		name: 'Private project name',
+		description: '',
+		createdAt: 0,
+		updatedAt: 0,
+		duration: 1,
+		metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000000' },
+		timeline: { tracks: [track('video-track', 0)], items: [item] }
+	};
+}
+
 function centerPixel(canvas: HTMLCanvasElement | OffscreenCanvas): number[] {
 	const context = canvas.getContext('2d', { willReadFrequently: true });
 	if (!context) throw new Error('2D canvas unavailable');
@@ -125,6 +152,10 @@ afterEach(() => {
 	colorPreviewStore.__resetForTesting();
 	adaptivePreviewQuality.reset();
 	previewPlaybackSettings.setPreviewQuality('auto');
+	previewDiagnostics.setPerformanceOverlay(false);
+	previewDiagnostics.setClipTimingOverlay(false);
+	previewDiagnostics.resetCounters();
+	previewDiagnostics.setPlaying(false);
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -155,6 +186,33 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('shows opt-in live and clip timing overlays without project or media names', async () => {
+		const project = diagnosticVideoProject();
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: project.timeline?.items ?? [],
+			tracks: project.timeline?.tracks ?? [],
+			currentFrame: 0,
+			fps: 30
+		});
+		previewDiagnostics.setPerformanceOverlay(true);
+		previewDiagnostics.setClipTimingOverlay(true);
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'clip-12345678',
+			onedit: vi.fn()
+		});
+
+		await expect.element(screen.getByTestId('preview-performance-diagnostics')).toBeVisible();
+		const clipOverlay = screen.getByTestId('preview-clip-diagnostics');
+		await expect.element(clipOverlay).toBeVisible();
+		await expect.element(screen.getByText(/clip-123 · 0-30f/)).toBeVisible();
+		expect(clipOverlay.element().textContent).toContain('Source 5-35f');
+		expect(clipOverlay.element().textContent).toContain('1.50x');
+		expect(screen.container.textContent).not.toContain('Private clip name');
+		expect(screen.container.textContent).not.toContain('Private project name');
+		expect(screen.container.textContent).not.toContain('private-media-id');
+	});
+
 	it('reduces real stacked preview pixels when Auto quality adapts down', async () => {
 		const project = maskedProject();
 		editorSession.project = project;
