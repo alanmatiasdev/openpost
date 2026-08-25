@@ -49,6 +49,7 @@ export interface ImportOptions {
 	/** 'copy' collects bytes into the workspace; 'link' references in place. */
 	storageMode: 'copy' | 'link';
 	attribution?: MediaAttribution;
+	tags?: string[];
 }
 
 export interface GeneratedImageImportOptions {
@@ -150,7 +151,7 @@ export async function importFile(
 				lottieTotalFrames: lottie.totalFrames,
 				lottieMarkers: lottie.markers,
 				attribution: options.attribution,
-				tags: ['lottie']
+				tags: [...new Set(['lottie', ...(options.tags ?? [])])]
 			};
 			const { renderLottieThumbnail } = await import('../lottie/frame-provider');
 			thumbnailBlob =
@@ -177,7 +178,7 @@ export async function importFile(
 				keyframeTimestamps: probe.keyframeTimestamps,
 				gopInterval: probe.gopInterval,
 				attribution: options.attribution,
-				tags: [probe.kind]
+				tags: [...new Set([probe.kind, ...(options.tags ?? [])])]
 			};
 			thumbnailBlob = probe.thumbnailBlob;
 		}
@@ -208,6 +209,20 @@ export async function importFile(
 	} finally {
 		mediaTasks.finish(taskId, taskRevision);
 	}
+}
+
+/** Copy an in-memory file into the workspace through the normal import path. */
+export async function importCopiedFile(
+	file: File,
+	options: Omit<ImportOptions, 'storageMode'>
+): Promise<string> {
+	// SAFETY: importFile only reads name, kind, and getFile from a copy-only handle.
+	const handle = {
+		name: file.name,
+		kind: 'file',
+		getFile: async () => file
+	} as FileSystemFileHandle;
+	return importFile(handle, { ...options, storageMode: 'copy' });
 }
 
 const MAX_REMOTE_LOTTIE_BYTES = 20 * 1024 * 1024;
@@ -241,15 +256,8 @@ export async function importRemoteLottie(options: {
 		type: 'application/zip',
 		lastModified: Date.now()
 	});
-	// SAFETY: importFile only reads name, kind, and getFile from this copy-only handle.
-	const handle = {
-		name: file.name,
-		kind: 'file',
-		getFile: async () => file
-	} as FileSystemFileHandle;
-	return importFile(handle, {
+	return importCopiedFile(file, {
 		projectId: options.projectId,
-		storageMode: 'copy',
 		attribution: options.attribution
 	});
 }

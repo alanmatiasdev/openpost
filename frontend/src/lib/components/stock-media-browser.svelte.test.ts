@@ -68,4 +68,17 @@ describe('StockMediaBrowser', () => {
 			.element(screen.getByRole('option', { name: 'Unsplash · Photos only' }))
 			.not.toBeInTheDocument();
 	});
+
+	it('shows one actionable error when provider discovery fails', async () => {
+		mocks.listProviders.mockRejectedValueOnce(new Error('Stock media providers could not load.'));
+		const screen = await render(StockMediaBrowser, {
+			accept: 'both',
+			onSelect: vi.fn(),
+			services: mocks
+		});
+
+		await expect.element(screen.getByText('Stock media providers could not load.')).toBeVisible();
+		await expect.element(screen.getByText('Stock media is unavailable')).not.toBeInTheDocument();
+		await expect.element(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
+	});
 });

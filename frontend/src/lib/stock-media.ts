@@ -17,6 +17,16 @@ export interface StockMediaProvenance {
 	attribution_text: string;
 }
 
+export const MAX_STOCK_PHOTO_BYTES = 100 * 1024 * 1024;
+export const MAX_STOCK_VIDEO_BYTES = 512 * 1024 * 1024;
+
+export class StockMediaDownloadError extends Error {
+	constructor(readonly code: 'download-failed' | 'photo-too-large' | 'video-too-large') {
+		super(code);
+		this.name = 'StockMediaDownloadError';
+	}
+}
+
 type StockProviderID = 'pexels' | 'unsplash' | 'pixabay';
 
 export interface StockMediaSearchInput {
@@ -85,6 +95,75 @@ export async function resolveStockAsset(
 	});
 	if (error || !data) throw new Error(error?.detail ?? 'That stock item is no longer available.');
 	return data;
+}
+
+function stockFileExtension(mimeType: string): string {
+	if (mimeType === 'image/png') return 'png';
+	if (mimeType === 'image/webp') return 'webp';
+	if (mimeType === 'image/gif') return 'gif';
+	if (mimeType === 'video/webm') return 'webm';
+	if (mimeType.startsWith('video/')) return 'mp4';
+	return 'jpg';
+}
+
+async function readBlobWithinLimit(response: Response, maximumBytes: number): Promise<Blob> {
+	const declaredSize = Number(response.headers.get('content-length') ?? 0);
+	if (Number.isFinite(declaredSize) && declaredSize > maximumBytes) {
+		throw new RangeError('too-large');
+	}
+	if (!response.body) {
+		const blob = await response.blob();
+		if (blob.size > maximumBytes) throw new RangeError('too-large');
+		return blob;
+	}
+	const reader = response.body.getReader();
+	const chunks: ArrayBuffer[] = [];
+	let total = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value) continue;
+			total += value.byteLength;
+			if (total > maximumBytes) throw new RangeError('too-large');
+			const copy = new Uint8Array(value.byteLength);
+			copy.set(value);
+			chunks.push(copy.buffer);
+		}
+	} catch (error) {
+		await reader.cancel().catch(() => undefined);
+		throw error;
+	}
+	return new Blob(chunks, { type: response.headers.get('content-type') ?? '' });
+}
+
+export async function downloadStockAsset(
+	asset: StockAsset,
+	resolved: ResolvedStockAsset,
+	fetcher: typeof fetch = fetch
+): Promise<File> {
+	const isVideo = resolved.mime_type.startsWith('video/');
+	const maximumBytes = isVideo ? MAX_STOCK_VIDEO_BYTES : MAX_STOCK_PHOTO_BYTES;
+	try {
+		const response = await fetcher(resolved.download_url, {
+			mode: 'cors',
+			credentials: 'omit',
+			referrerPolicy: 'no-referrer'
+		});
+		if (!response.ok) throw new StockMediaDownloadError('download-failed');
+		const blob = await readBlobWithinLimit(response, maximumBytes);
+		return new File(
+			[blob],
+			`${asset.provider}-${asset.external_id.replaceAll(':', '-')}.${stockFileExtension(resolved.mime_type)}`,
+			{ type: resolved.mime_type, lastModified: Date.now() }
+		);
+	} catch (error) {
+		if (error instanceof StockMediaDownloadError) throw error;
+		if (error instanceof RangeError) {
+			throw new StockMediaDownloadError(isVideo ? 'video-too-large' : 'photo-too-large');
+		}
+		throw new StockMediaDownloadError('download-failed');
+	}
 }
 
 function parseStockProviderID(provider: string): StockProviderID {

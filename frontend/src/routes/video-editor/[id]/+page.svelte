@@ -50,9 +50,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
-	import VectorAssetPanel from '$lib/video-editor/components/shape-panel.svelte';
+	import AssetLibraryPanel from '$lib/video-editor/components/asset-library-panel.svelte';
 	import LocalAiPanel from '$lib/video-editor/components/local-ai-panel.svelte';
-	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import MotionPresetsPanel from '$lib/video-editor/components/motion-presets-panel.svelte';
 	import TextMotionPanel from '$lib/video-editor/components/text-motion-panel.svelte';
@@ -107,7 +106,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let freezingItemId = $state<string | null>(null);
 	let motionReturnStack = $state<Array<string | null>>([]);
 	let settingsOpen = $state(false);
-	let assetPanel = $state<'media' | 'scenes' | 'shapes' | 'lottie' | 'ai'>('media');
+	let assetPanel = $state<'media' | 'assets' | 'scenes' | 'ai'>('media');
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
 
@@ -824,15 +823,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						>
 							<div class="flex items-center gap-1 p-2">
 								<div
-									class="grid min-w-0 flex-1 grid-cols-5 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5"
+									class="grid min-w-0 flex-1 grid-cols-4 rounded-md bg-[oklch(0.18_0.01_55)] p-0.5"
 								>
 									<button
 										type="button"
-										class:active={assetPanel === 'shapes'}
+										class:active={assetPanel === 'assets'}
 										class="rounded px-1 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-										onclick={() => (assetPanel = 'shapes')}
+										onclick={() => (assetPanel = 'assets')}
 									>
-										{m.video_editor_shapes()}
+										{m.video_editor_assets()}
 									</button>
 									<button
 										type="button"
@@ -840,15 +839,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 										onclick={() => (assetPanel = 'media')}
 									>
-										{m.video_editor_media_pool()}
-									</button>
-									<button
-										type="button"
-										class:active={assetPanel === 'lottie'}
-										class="rounded px-0.5 py-1 text-[10px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-										onclick={() => (assetPanel = 'lottie')}
-									>
-										{m.video_editor_lottie()}
+										{m.video_editor_media_tab()}
 									</button>
 									<button
 										type="button"
@@ -886,10 +877,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								/>
 							{:else if assetPanel === 'scenes'}
 								<SceneBrowserPanel />
-							{:else if assetPanel === 'shapes'}
-								<VectorAssetPanel oninserted={handleVectorAssetInserted} />
-							{:else if assetPanel === 'lottie'}
-								<LottieBrowserPanel {projectId} />
+							{:else if assetPanel === 'assets'}
+								<AssetLibraryPanel {projectId} oninserted={handleVectorAssetInserted} />
 							{:else}
 								<LocalAiPanel {projectId} oninserted={handleGeneratedAudioInserted} />
 							{/if}

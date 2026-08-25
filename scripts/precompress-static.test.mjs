@@ -13,15 +13,21 @@ test("precompresses only eligible package-local text assets", async (t) => {
   const source = Buffer.from("const openpost = true;\n".repeat(100));
   await Promise.all([
     writeFile(path.join(directory, "app.js"), source),
+    writeFile(path.join(directory, "catalog.json"), source),
     writeFile(path.join(directory, "small.css"), "body{}\n"),
     writeFile(path.join(directory, "image.png"), source),
   ]);
 
   const result = await precompressDirectory(directory);
 
-  assert.equal(result.candidates, 1);
+  assert.equal(result.candidates, 2);
   assert.deepEqual(gunzipSync(await readFile(path.join(directory, "app.js.gz"))), source);
   assert.deepEqual(brotliDecompressSync(await readFile(path.join(directory, "app.js.br"))), source);
+  assert.deepEqual(gunzipSync(await readFile(path.join(directory, "catalog.json.gz"))), source);
+  assert.deepEqual(
+    brotliDecompressSync(await readFile(path.join(directory, "catalog.json.br"))),
+    source,
+  );
   await assert.rejects(readFile(path.join(directory, "small.css.gz")), /ENOENT/);
   await assert.rejects(readFile(path.join(directory, "image.png.gz")), /ENOENT/);
 });

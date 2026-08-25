@@ -3,7 +3,15 @@
   "surfaces": {
     "application": {
       "description": "Server, web and native applications, CLI, shared runtime packages, and application browser coverage",
-      "prefixes": ["backend/", "cli/", "e2e-app/", "frontend/", "mobile/", "packages/"],
+      "prefixes": [
+        "backend/",
+        "cli/",
+        "e2e-app/",
+        "examples/",
+        "frontend/",
+        "mobile/",
+        "packages/"
+      ],
       "paths": ["playwright.app.config.ts"]
     },
     "marketing": {
@@ -21,7 +29,7 @@
     },
     "documentation": {
       "description": "Product, operator, contributor, policy, and generated documentation",
-      "prefixes": ["docs-site/", "docs/", "e2e-docs/", "packages/social-images/"],
+      "prefixes": ["docs-site/", "docs/", "e2e-docs/", "licenses/", "packages/social-images/"],
       "paths": [
         "AGENTS.md",
         "AUDIT_REMEDIATION_TODO.md",

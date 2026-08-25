@@ -9,9 +9,11 @@
 	import { m } from '$lib/paraglide/messages';
 	import { stockMediaKindsForProviders } from '$lib/stock-media-kinds';
 	import {
+		downloadStockAsset,
 		listStockProviders,
 		resolveStockAsset,
 		searchStockMedia,
+		StockMediaDownloadError,
 		type StockAsset,
 		type StockMediaSearchInput,
 		type StockProvider
@@ -25,6 +27,7 @@
 
 	interface Props {
 		accept?: 'photo' | 'video' | 'both';
+		actionLabel?: string;
 		compact?: boolean;
 		onSelect: (file: File, asset: StockAsset) => void | Promise<void>;
 		services?: StockMediaServices;
@@ -42,6 +45,7 @@
 
 	let {
 		accept = 'both',
+		actionLabel = m.stock_media_use(),
 		compact = false,
 		onSelect,
 		services = {
@@ -242,22 +246,17 @@
 		error = '';
 		try {
 			const resolved = await services.resolve(asset.provider, asset.external_id);
-			const response = await fetch(resolved.download_url, {
-				mode: 'cors',
-				credentials: 'omit',
-				referrerPolicy: 'no-referrer'
-			});
-			if (!response.ok) throw new Error(m.stock_media_download_failed());
-			const blob = await response.blob();
-			const extension = resolved.mime_type.includes('video') ? 'mp4' : 'jpg';
-			const file = new File(
-				[blob],
-				`${asset.provider}-${asset.external_id.replaceAll(':', '-')}.${extension}`,
-				{ type: resolved.mime_type, lastModified: Date.now() }
-			);
+			const file = await downloadStockAsset(asset, resolved);
 			await onSelect(file, asset);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.stock_media_download_failed();
+			error =
+				cause instanceof StockMediaDownloadError && cause.code === 'photo-too-large'
+					? m.stock_media_photo_too_large()
+					: cause instanceof StockMediaDownloadError && cause.code === 'video-too-large'
+						? m.stock_media_video_too_large()
+						: cause instanceof Error && !(cause instanceof StockMediaDownloadError)
+							? cause.message
+							: m.stock_media_download_failed();
 		} finally {
 			selecting = '';
 		}
@@ -316,7 +315,9 @@
 			{m.common_loading()}
 		</div>
 	{:else if providers.length === 0}
-		<InlineNotice tone="info" message={m.stock_media_unavailable()} />
+		{#if !error}
+			<InlineNotice tone="info" message={m.stock_media_unavailable()} />
+		{/if}
 	{:else}
 		<form
 			class="space-y-3"
@@ -629,7 +630,7 @@
 								{#if selecting === asset.external_id}<LoaderIcon class="size-4 animate-spin" />{/if}
 								{selecting === asset.external_id
 									? m.stock_media_downloading({ title: asset.title || asset.kind })
-									: m.stock_media_use()}
+									: actionLabel}
 							</Button>
 						</div>
 					</article>
