@@ -144,6 +144,16 @@
 		type TrackPushGesturePlan
 	} from '$lib/video-editor/timeline/track-push';
 	import {
+		DENSE_TIMELINE_TRACK_ITEM_THRESHOLD,
+		buildTimelineDensityBuckets,
+		buildTimelineItemRangeIndex,
+		buildTimelineTrackRenderPlan,
+		queryTimelineItemRange,
+		timelineCullRange,
+		type TimelineItemRangeIndex,
+		type TimelineTrackRenderPlan
+	} from '$lib/video-editor/timeline/timeline-viewport';
+	import {
 		captureSnapshot,
 		restoreSnapshot,
 		snapshotsEqual
@@ -193,6 +203,8 @@
 		visibleTrackRows
 	} from '$lib/video-editor/timeline/utils/track-groups';
 	import TimelineTrackHeader from './timeline-track-header.svelte';
+	import TimelineDensityOverview from './timeline-density-overview.svelte';
+	import TimelineNavigator from './timeline-navigator.svelte';
 	import AudioMixerPanel from './audio-mixer-panel.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import BentoLayoutDialog from './bento-layout-dialog.svelte';
@@ -294,6 +306,7 @@
 	} = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
 	let timelineViewport = $state({ scrollLeft: 0, width: 0 });
+	let timelineViewportAnimationFrame: number | null = null;
 	let visibleTimelineItemIds = $state<Set<string>>(new Set());
 	let timelineItemObserver: IntersectionObserver | null = null;
 	let selectedTrackIds = $state<string[]>([]);
@@ -602,11 +615,17 @@
 	const FILMSTRIP_OVERSCAN_PX = FILMSTRIP_TILE_WIDTH_PX * 2;
 
 	function updateTimelineViewport(): void {
+		timelineViewportAnimationFrame = null;
 		if (!scrollContainer) return;
 		timelineViewport = {
 			scrollLeft: scrollContainer.scrollLeft,
 			width: scrollContainer.clientWidth
 		};
+	}
+
+	function scheduleTimelineViewportUpdate(): void {
+		if (timelineViewportAnimationFrame !== null) return;
+		timelineViewportAnimationFrame = requestAnimationFrame(updateTimelineViewport);
 	}
 
 	function observeTimelineItem(node: HTMLElement, itemId: string) {
@@ -862,9 +881,77 @@
 	const pxPerFrame = $derived(timelinePixelsPerFrame(zoom));
 	const TRACK_HEADER_WIDTH = 180;
 	const DRAG_THRESHOLD_PIXELS = 3;
+	const EMPTY_TIMELINE_ITEM_RANGE_INDEX = buildTimelineItemRangeIndex([]);
 	const timelineWidth = $derived(
 		TRACK_HEADER_WIDTH + Math.max(800, (timelineStore.maxItemEndFrame + fps * 10) * pxPerFrame)
 	);
+	const timelineContentFrames = $derived(
+		Math.max(fps * 10, timelineStore.maxItemEndFrame + fps * 10)
+	);
+	const timelineItemRangeIndexes = $derived.by(() => {
+		const indexes = new Map<string, TimelineItemRangeIndex>();
+		for (const track of mediaTracks(timelineStore.tracks)) {
+			indexes.set(
+				track.id,
+				buildTimelineItemRangeIndex(timelineStore.itemsByTrackId.get(track.id) ?? [])
+			);
+		}
+		return indexes;
+	});
+	const timelineDensityBucketsByTrackId = $derived.by(() => {
+		const buckets = new Map<string, ReturnType<typeof buildTimelineDensityBuckets>>();
+		for (const [trackId, index] of timelineItemRangeIndexes) {
+			if (index.items.length >= DENSE_TIMELINE_TRACK_ITEM_THRESHOLD) {
+				buckets.set(trackId, buildTimelineDensityBuckets(index.items));
+			}
+		}
+		return buckets;
+	});
+	const timelineTransitionsByTrackId = $derived.by(() => {
+		const byTrackId = new Map<string, TimelineTransition[]>();
+		for (const transition of transitionsStore.list) {
+			const from = timelineStore.itemById.get(transition.fromItemId);
+			const to = timelineStore.itemById.get(transition.toItemId);
+			if (!from || !to || from.trackId !== to.trackId) continue;
+			const list = byTrackId.get(from.trackId);
+			if (list) list.push(transition);
+			else byTrackId.set(from.trackId, [transition]);
+		}
+		return byTrackId;
+	});
+
+	function timelineRenderPlan(trackId: string): TimelineTrackRenderPlan {
+		const index = timelineItemRangeIndexes.get(trackId) ?? EMPTY_TIMELINE_ITEM_RANGE_INDEX;
+		const range = timelineCullRange({
+			scrollLeft: timelineViewport.scrollLeft,
+			viewportWidth: timelineViewport.width,
+			headerWidth: TRACK_HEADER_WIDTH,
+			pixelsPerFrame: pxPerFrame,
+			trackItemCount: index.items.length
+		});
+		return buildTimelineTrackRenderPlan({
+			index,
+			range,
+			pixelsPerFrame: pxPerFrame,
+			selectedItemIds,
+			primarySelectedItemId: selectedItemId,
+			densityBuckets: timelineDensityBucketsByTrackId.get(trackId)
+		});
+	}
+
+	function visibleTransitionsForTrack(
+		trackId: string,
+		plan: TimelineTrackRenderPlan
+	): TimelineTransition[] {
+		return (timelineTransitionsByTrackId.get(trackId) ?? []).filter((transition) => {
+			const from = timelineStore.itemById.get(transition.fromItemId);
+			const to = timelineStore.itemById.get(transition.toItemId);
+			if (!from || !to || from.trackId !== trackId || to.trackId !== trackId) return false;
+			if (transition.id === selectedTransitionId) return true;
+			const window = resolveTransitionWindow(transition, from, to);
+			return !!window && window.endFrame > plan.range.start && window.startFrame < plan.range.end;
+		});
+	}
 
 	function frameToPx(frame: number): number {
 		return frame * pxPerFrame;
@@ -1941,20 +2028,27 @@
 			top: Math.min(marquee.startY, marquee.currentY),
 			bottom: Math.max(marquee.startY, marquee.currentY)
 		};
-		const hitIds = Array.from(
-			scrollContainer.querySelectorAll<HTMLElement>('[data-timeline-item-id]')
-		)
-			.filter((element) => {
-				const rect = element.getBoundingClientRect();
-				return (
-					rect.left < selectionRect.right &&
-					rect.right > selectionRect.left &&
-					rect.top < selectionRect.bottom &&
-					rect.bottom > selectionRect.top
-				);
-			})
-			.map((element) => element.dataset.timelineItemId)
-			.filter((id): id is string => id !== undefined);
+		const containerRect = scrollContainer.getBoundingClientRect();
+		const contentLeft =
+			selectionRect.left - containerRect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH;
+		const contentRight =
+			selectionRect.right - containerRect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH;
+		const frameRange = {
+			start: Math.max(0, contentLeft / pxPerFrame),
+			end: Math.max(0, contentRight / pxPerFrame)
+		};
+		const hitIds: string[] = [];
+		if (frameRange.end > frameRange.start) {
+			for (const trackElement of scrollContainer.querySelectorAll<HTMLElement>('[data-track]')) {
+				const trackRect = trackElement.getBoundingClientRect();
+				if (trackRect.top >= selectionRect.bottom || trackRect.bottom <= selectionRect.top)
+					continue;
+				const trackId = trackElement.dataset.track;
+				const index = trackId ? timelineItemRangeIndexes.get(trackId) : undefined;
+				if (!index) continue;
+				for (const item of queryTimelineItemRange(index, frameRange)) hitIds.push(item.id);
+			}
+		}
 		selectedItemIds = marquee.additive
 			? Array.from(new Set([...marquee.baseIds, ...hitIds]))
 			: hitIds;
@@ -2880,6 +2974,8 @@
 		if (markerDrag) completeMarkerDrag(true);
 		if (audioSkimStopTimer) clearTimeout(audioSkimStopTimer);
 		if (timelineZoomAnimationFrame !== null) cancelAnimationFrame(timelineZoomAnimationFrame);
+		if (timelineViewportAnimationFrame !== null)
+			cancelAnimationFrame(timelineViewportAnimationFrame);
 		audioSkimController.dispose();
 		clearEffectDropPreview();
 		clearEffectDragData();
@@ -2912,6 +3008,21 @@
 		queueMicrotask(() => {
 			if (scrollContainer) scrollContainer.scrollLeft = nextScrollLeft;
 		});
+	}
+
+	function scrollTimelineFromNavigator(nextScrollLeft: number): void {
+		if (!scrollContainer) return;
+		cancelQueuedTimelineZoom();
+		clearHoverPreview();
+		scrollContainer.scrollLeft = Math.max(0, nextScrollLeft);
+		scheduleTimelineViewportUpdate();
+	}
+
+	function zoomTimelineFromNavigator(level: number, nextScrollLeft: number): void {
+		cancelQueuedTimelineZoom();
+		clearHoverPreview();
+		timelineStore._setZoomLevel(clampTimelineZoom(level));
+		queueMicrotask(() => scrollTimelineFromNavigator(nextScrollLeft));
 	}
 
 	function playheadAnchor(): TimelineZoomAnchor {
@@ -3321,7 +3432,7 @@
 		customEasingPresets = loadCustomEasingPresets();
 		updateTimelineViewport();
 		if (!scrollContainer) return;
-		const observer = new ResizeObserver(updateTimelineViewport);
+		const observer = new ResizeObserver(scheduleTimelineViewportUpdate);
 		observer.observe(scrollContainer);
 		return () => observer.disconnect();
 	});
@@ -3844,7 +3955,6 @@
 		</button>
 	</div>
 </div>
-
 <DestructiveConfirmDialog
 	bind:open={deleteGroupDialogOpen}
 	title={m.video_editor_track_group_delete_title()}
@@ -3966,9 +4076,10 @@
 
 <div
 	bind:this={scrollContainer}
+	id="video-editor-timeline-scroll"
 	tabindex="-1"
 	data-media-placement-surface
-	onscroll={updateTimelineViewport}
+	onscroll={scheduleTimelineViewportUpdate}
 	onpointerdown={(event) => {
 		clearHoverPreview();
 		if (mediaPlacement.request) return;
@@ -4073,6 +4184,8 @@
 				...track,
 				...effectiveTrackState(track, timelineStore.tracks)
 			}}
+			{@const renderPlan = timelineRenderPlan(track.id)}
+			{@const trackTransitions = visibleTransitionsForTrack(track.id, renderPlan)}
 			<div
 				class="relative border-b border-[oklch(0.22_0.01_50)] {resolvedTrack.visible === false ||
 				(track.kind === 'audio' && resolvedTrack.muted)
@@ -4205,7 +4318,18 @@
 						<span class="block truncate">{mediaDropPreview.label}</span>
 					</div>
 				{/if}
-				{#each timelineStore.itemsByTrackId.get(track.id) ?? [] as item (item.id)}
+				{#if renderPlan.isDense}
+					<TimelineDensityOverview
+						buckets={renderPlan.densityBuckets}
+						{selectedItemIds}
+						locked={resolvedTrack.locked}
+						{timelineX}
+						{frameToPx}
+						onpointeritem={(event, item) => startDrag(event, item.id, activeEditTool ?? 'move')}
+						onselectitem={(event, item) => selectItem(event, item.id)}
+					/>
+				{/if}
+				{#each renderPlan.nativeItems as item (item.id)}
 					{@const displayItem = previewedItem(item)}
 					{@const pushAvailability = trackPushAvailability(item)}
 					{#if !syncLockPreviewById[item.id]?.hidden}
@@ -4392,7 +4516,7 @@
 						</div>
 					{/if}
 				{/each}
-				{#each transitionsStore.list as transition (transition.id)}
+				{#each trackTransitions as transition (transition.id)}
 					{@const geometry = transitionGeometry(transition, track.id)}
 					{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
 						<div
@@ -4631,3 +4755,14 @@
 		{/if}
 	</div>
 </div>
+<TimelineNavigator
+	{timelineWidth}
+	viewportWidth={timelineViewport.width}
+	scrollLeft={timelineViewport.scrollLeft}
+	headerWidth={TRACK_HEADER_WIDTH}
+	contentFrames={timelineContentFrames}
+	zoomLevel={zoom}
+	items={timelineStore.items}
+	onscroll={scrollTimelineFromNavigator}
+	onzoom={zoomTimelineFromNavigator}
+/>

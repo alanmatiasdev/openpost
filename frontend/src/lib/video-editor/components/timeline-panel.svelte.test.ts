@@ -260,9 +260,13 @@ describe('TimelinePanel Bento layout entry', () => {
 			expect(firstTargets.length).toBeLessThan(40);
 
 			const region = screen.getByRole('region', { name: 'Timeline' }).element();
+			const callCountBeforeScroll = getFilmstrip.mock.calls.length;
 			region.scrollLeft = 2_000;
 			region.dispatchEvent(new Event('scroll'));
-			await vi.waitFor(() => expect(getFilmstrip.mock.calls.length).toBeGreaterThan(1));
+			await nextAnimationFrame();
+			await vi.waitFor(() =>
+				expect(getFilmstrip.mock.calls.length).toBeGreaterThan(callCountBeforeScroll)
+			);
 			const latestTargets = getFilmstrip.mock.calls.at(-1)?.[1]?.targetFrameIndices ?? [];
 			expect(latestTargets).not.toEqual(firstTargets);
 		} finally {
@@ -1712,6 +1716,142 @@ describe('TimelinePanel track push', () => {
 	});
 });
 
+describe('TimelinePanel viewport performance', () => {
+	it('mounts only sparse clips near the viewport and swaps the window after scrolling', async () => {
+		const sparseItems = Array.from({ length: 79 }, (_, index) =>
+			item({
+				id: `sparse-${index}`,
+				label: `Sparse ${index}`,
+				from: index * 5_000,
+				durationInFrames: 60
+			})
+		);
+		timelineStore.setAll({
+			tracks: [track('video-track', 'video', 0)],
+			items: sparseItems,
+			fps: 30
+		});
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const region = screen.getByRole('region', { name: 'Timeline' }).element();
+		await nextAnimationFrame();
+		expect(document.querySelectorAll('[data-timeline-item-id]').length).toBeLessThanOrEqual(2);
+		expect(document.querySelector('[data-timeline-item-id="sparse-0"]')).not.toBeNull();
+		expect(document.querySelector('[data-timeline-item-id="sparse-1"]')).toBeNull();
+
+		region.scrollLeft = 5_000 * 4;
+		region.dispatchEvent(new Event('scroll'));
+		await nextAnimationFrame();
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-timeline-item-id="sparse-1"]')).not.toBeNull();
+		});
+		expect(document.querySelector('[data-timeline-item-id="sparse-0"]')).toBeNull();
+		expect(document.querySelectorAll('[data-timeline-item-id]').length).toBeLessThanOrEqual(2);
+	});
+
+	it('bounds a 30,000 clip track while preserving direct picks and geometry marquee', async () => {
+		await page.viewport(320, 720);
+		const denseItems = Array.from({ length: 30_000 }, (_, index) =>
+			item({
+				id: `dense-${index}`,
+				label: `Dense ${index}`,
+				from: index * 3,
+				durationInFrames: 2
+			})
+		);
+		timelineStore.setAll({
+			tracks: [track('video-track', 'video', 0)],
+			items: denseItems,
+			fps: 30
+		});
+		await render(TimelinePanel, { onedit: vi.fn() });
+		await nextAnimationFrame();
+		const overview = document.querySelector<HTMLElement>('[data-timeline-density-overview]');
+		expect(overview).not.toBeNull();
+		expect(Number(overview?.dataset.densityBucketCount)).toBeLessThanOrEqual(1_024);
+		expect(document.querySelectorAll('[data-timeline-item-id]')).toHaveLength(0);
+		expect(document.querySelectorAll('[data-timeline-density-bucket]').length).toBeLessThanOrEqual(
+			1_024
+		);
+		await page.screenshot({ path: '../../../../.svelte-kit/openpost-timeline-density-320.png' });
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth
+		);
+
+		const firstBucket = document.querySelector<HTMLElement>('[data-timeline-density-bucket="0"]')!;
+		dispatchPointer(firstBucket, 'pointerdown', firstBucket.getBoundingClientRect().left + 1);
+		dispatchPointer(window, 'pointerup', firstBucket.getBoundingClientRect().left + 1);
+		await vi.waitFor(() => {
+			expect(document.querySelectorAll('[data-timeline-item-id]')).toHaveLength(1);
+		});
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]')!;
+		const rowRect = row.getBoundingClientRect();
+		const startX = rowRect.left + 181;
+		const y = rowRect.top + rowRect.height / 2;
+		dispatchPointer(row, 'pointerdown', startX, false, y);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				buttons: 1,
+				clientX: startX + 200,
+				clientY: y,
+				pointerId: 7
+			})
+		);
+		await nextAnimationFrame();
+		const promotedCount = document.querySelectorAll('[data-timeline-item-id]').length;
+		expect(promotedCount).toBeGreaterThan(10);
+		expect(promotedCount).toBeLessThanOrEqual(128);
+		dispatchPointer(window, 'pointerup', startX + 200, false, y);
+		expect(document.querySelectorAll('[data-timeline-density-bucket]').length).toBeLessThanOrEqual(
+			1_024
+		);
+	});
+
+	it('pans, resizes, cancels, and uses the keyboard through the timeline navigator', async () => {
+		await page.viewport(1280, 720);
+		timelineStore.setAll({
+			items: [item({ id: 'long', label: 'Long', durationInFrames: 10_000, sourceEnd: 10_000 })],
+			zoomLevel: 0.25
+		});
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const region = screen.getByRole('region', { name: 'Timeline' }).element();
+		const thumb = screen.getByRole('scrollbar', { name: 'Visible timeline range' }).element();
+		await vi.waitFor(() => expect(thumb.getBoundingClientRect().width).toBeGreaterThan(0));
+		await page.screenshot({ path: '../../../../.svelte-kit/openpost-timeline-navigator-1280.png' });
+
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		await nextAnimationFrame();
+		expect(region.scrollLeft).toBeGreaterThan(0);
+
+		const beforePan = region.scrollLeft;
+		const thumbRect = thumb.getBoundingClientRect();
+		dispatchPointer(thumb, 'pointerdown', thumbRect.left + thumbRect.width / 2);
+		dispatchPointer(window, 'pointermove', thumbRect.left + thumbRect.width / 2 + 40);
+		await nextAnimationFrame();
+		dispatchPointer(window, 'pointerup', thumbRect.left + thumbRect.width / 2 + 40);
+		expect(region.scrollLeft).toBeGreaterThan(beforePan);
+
+		const resizeHandle = screen.getByRole('button', { name: 'Resize view from the end' }).element();
+		const startZoom = timelineStore.zoomLevel;
+		const handleRect = resizeHandle.getBoundingClientRect();
+		dispatchPointer(resizeHandle, 'pointerdown', handleRect.left + handleRect.width / 2);
+		dispatchPointer(window, 'pointermove', handleRect.left + handleRect.width / 2 - 30);
+		await nextAnimationFrame();
+		expect(timelineStore.zoomLevel).toBeGreaterThan(startZoom);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await nextAnimationFrame();
+		expect(timelineStore.zoomLevel).toBe(startZoom);
+
+		dispatchPointer(resizeHandle, 'pointerdown', handleRect.left + handleRect.width / 2);
+		dispatchPointer(window, 'pointermove', handleRect.left + handleRect.width / 2 - 30);
+		dispatchPointer(window, 'pointerup', handleRect.left + handleRect.width / 2 - 30);
+		await nextAnimationFrame();
+		expect(timelineStore.zoomLevel).toBeGreaterThan(startZoom);
+	});
+});
+
 const FRAME_COLORS = [
 	[220, 38, 38],
 	[22, 163, 74],
@@ -1775,12 +1915,14 @@ describe('TimelinePanel animated image filmstrips', () => {
 			const tiles = [...clip.querySelectorAll<HTMLCanvasElement>('[data-filmstrip-tile]')];
 			const clipWidth = 300 * 4; // default zoom renders 4 px per frame
 			const tileWidth = FILMSTRIP_TILE_WIDTH;
-			tiles.forEach((canvas, slot) => {
+			tiles.forEach((canvas) => {
 				const context = canvas.getContext('2d');
 				expect(context).not.toBeNull();
 				const data = context!.getImageData(8, 6, 1, 1).data;
 				const painted = colorName(data![0]!, data![1]!, data![2]!);
-				const ratio = (slot * tileWidth + tileWidth / 2) / clipWidth;
+				const tileLeft = Number.parseFloat(canvas.style.left);
+				const renderedTileWidth = Number.parseFloat(canvas.style.width);
+				const ratio = (tileLeft + renderedTileWidth / 2) / clipWidth;
 				const expectedIndex = animatedFrameIndexAtTime(
 					frames.cumulativeDelaysMs,
 					frames.totalDurationMs,

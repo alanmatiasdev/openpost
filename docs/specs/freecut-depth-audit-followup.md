@@ -155,7 +155,22 @@ the audit evidence, while the resolution log records later product changes.
   inherited locks, and transition partitions. Real Chromium covers live
   preview, cancellation, transition cleanup, undo, exact keyboard steps,
   locked feedback, and the 320 px layout.
-  Current unresolved count: 1.
+- 2026-08-25: gap 3 resolved. Timeline rows now use an interval index to mount
+  only clips and transitions inside a bounded viewport overscan, including long
+  clips whose starts sit offscreen. Dense rows collapse compact clips into at
+  most 1,024 indexed density buckets, cap rich clip roots at 256, and promote a
+  bounded selection without losing the primary item. Bucket presses enter the
+  normal drag path, while geometry-backed marquee selection still reaches
+  unmounted clips and records no edit history. Scroll work coalesces through one
+  animation frame. A project-wide navigator renders bounded density, pans with
+  a draggable viewport, zooms from either edge, supports keyboard and Escape
+  rollback, and keeps 44 px coarse-pointer handles with an 88 px minimum thumb.
+  Pure tests cover long overlaps, sparse and dense overscan, 30,000 compact
+  clips, 10,000 overlapping wide clips, root caps, selection promotion, and
+  navigator math. Forty-one real Chromium tests cover culling swaps, density
+  interaction, geometry marquee, pan, resize, cancellation, undo boundaries,
+  and the 320 px layout.
+  Current unresolved count: 0.
 
 ## Rows checked with no gap found
 
@@ -207,20 +222,21 @@ also keeps production code outside `src/features` (`infrastructure`,
 
 | Area (mapped)                            | FreeCut production LoC                                                            | OpenPost production LoC                                                                       |
 | ---------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Timeline editing & gestures              | 87,951 (`features/timeline`)                                                      | 16,990 (`timeline` + `sequences`)                                                             |
+| Timeline editing & gestures              | 88,078 (`features/timeline`)                                                      | 17,761 (`timeline` + `sequences`)                                                             |
 | Preview/playback runtime                 | 44,697 (`features/preview` 41,318 + `runtime/player` 3,379)                       | ~9,915 (`preview` 2,339 + `audio` 4,852 + preview-player/layer/transport 2,724)               |
-| Editor shell, panels, workspaces         | 46,457 (`features/editor`)                                                        | ~31,972 (`components` 30,658 + `workspaces` 57 + editor page 1,257)                           |
+| Editor shell, panels, workspaces         | 46,463 (`features/editor`)                                                        | 36,660 (`components` + `workspaces` + editor routes)                                          |
 | Keyframes & animation                    | 26,452 (`features/keyframes`)                                                     | ~11,090 (keyframe/easing/motion/vector files inside `timeline`, `effects`, `components`)      |
-| Export & render queue                    | 25,342 (`features/export`)                                                        | ~9,717 (`export` + `media/render-*`, smart-copy, preflight)                                   |
-| Media library & local AI                 | 24,859 (`features/media-library`) + storage infra 7,504                           | ~22,882 (`media` 17,144 + `local-ai` 2,912 + `workspace-fs` 2,826)                            |
+| Export & render queue                    | 25,468 (`features/export`)                                                        | ~9,717 (`export` + `media/render-*`, smart-copy, preflight)                                   |
+| Media library & local AI                 | 32,131 (`features/media-library` + storage infra)                                 | ~24,669 (`media` 18,931 + `local-ai` 2,912 + `workspace-fs` 2,826)                            |
 | Effects/color/scopes/shapes/transitions  | ~14,700 (`features/effects` 6,385 + `infrastructure/gpu-*` ~13,900 minus overlap) | ~19,000 (`effects` 9,580 + `transitions` 5,781 + `shapes` 1,308 + typography/lottie/stickers) |
 | Cross-cutting runtime/composition engine | 20,066 (`runtime/composition-runtime`) + `shared` 26,283                          | distributed across stores/actions (no single counterpart)                                     |
-| **Total production**                     | **~356,000**                                                                      | **~109,300** (incl. page + `$lib/media` helpers)                                              |
-| Tests (reference)                        | ~134,000                                                                          | ~39,300                                                                                       |
+| **Total production**                     | **369,361**                                                                       | **118,192** (incl. page + `$lib/media` helpers)                                               |
+| Tests (reference)                        | 133,763                                                                           | 44,289                                                                                        |
 
 Reading: OpenPost is not a shallow port - effects, transitions, local AI, and
 persistence areas meet or exceed FreeCut depth, and several gaps above were
 closed in prior passes (waveforms, scopes, transitions catalog). But overall
-production depth is roughly one-third of FreeCut's, concentrated exactly where
-this follow-up found behavioral gaps: timeline interaction breadth, canvas
-direct-manipulation affordances, and import-time media truth.
+production LoC remains 32.0% of FreeCut's. The twelve source-audit gaps are now
+closed. The size difference remains concentrated in React component and state
+plumbing plus FreeCut's separate preview, export, and shared runtime stacks,
+where OpenPost reuses Svelte stores, actions, and one compositor.
