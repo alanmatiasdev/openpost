@@ -20,9 +20,9 @@
 	];
 
 	let {
-		projectId = null as string | null,
-		storageSufficient = true as boolean,
-		storageUnknown = false as boolean
+		projectId = null,
+		storageSufficient = true,
+		storageUnknown = false
 	}: {
 		projectId?: string | null;
 		storageSufficient?: boolean;
