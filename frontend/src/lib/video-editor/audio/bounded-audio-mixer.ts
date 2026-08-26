@@ -3,7 +3,7 @@ import { mediaPool } from '../media/pool.svelte';
 import { resolveMediaBlob } from '../media/resolve-media-blob';
 import { reverseAudioWindow, type DecodedAudioWindowSource } from './reverse-audio';
 import { processAudioChannels } from './process-audio';
-import { downmixToOutputChannels, resampleChannelLinear } from './sample-rate-converter';
+import { AbsolutePhaseResampler, downmixToOutputChannels } from './sample-rate-converter';
 import { buildTransitionGainCurve } from './transition-crossfade';
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny';
 import { ensureAc3DecoderForCodec } from '../media/ac3-decoder';
@@ -202,13 +202,12 @@ export async function* mixAudioWindows(
 					continue;
 				}
 			}
-			// Resample to MIX_SAMPLE_RATE if needed - use absolute-phase per window via expectedOutputFrames
 			if (decoded.sampleRate !== MIX_SAMPLE_RATE) {
 				const resampled: Float32Array[] = [];
 				for (const ch of channels) {
-					let r = resampleChannelLinear(ch, decoded.sampleRate, MIX_SAMPLE_RATE);
+					const resampler = new AbsolutePhaseResampler(decoded.sampleRate, MIX_SAMPLE_RATE);
+					let r = resampler.processChunk(ch, true);
 					if (r.length !== overlapLength) {
-						// Trim or pad to exact overlapLength to keep window alignment
 						if (r.length > overlapLength) r = r.slice(0, overlapLength);
 						else {
 							const padded = new Float32Array(overlapLength);
