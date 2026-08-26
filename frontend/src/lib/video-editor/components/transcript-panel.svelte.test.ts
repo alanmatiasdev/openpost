@@ -171,6 +171,7 @@ describe('TranscriptPanel cue formatting', () => {
 			sourceFps: 30,
 			speed: 1
 		};
+		const repeatedUse: TimelineItem = { ...video, id: 'repeat', from: 120 };
 		const timedCaptions: TimelineItem = {
 			...item,
 			captionSource: {
@@ -196,27 +197,41 @@ describe('TranscriptPanel cue formatting', () => {
 		};
 		timelineStore.setAll({
 			tracks: [track, videoTrack],
-			items: [video, timedCaptions],
+			items: [video, repeatedUse, timedCaptions],
 			currentFrame: 0,
 			fps: 30
 		});
 		commandHistory.clearHistory();
 		const onedit = vi.fn();
-		const screen = await render(TranscriptPanel, { onedit });
+		const screen = await render(TranscriptPanel, { onedit, itemIds: [video.id] });
 
 		await screen.getByRole('button', { name: 'Edit video by transcript' }).click();
+		await screen.getByRole('button', { name: 'Project', exact: true }).click();
+		expect(screen.container.querySelectorAll('[data-source-item-id="video"]')).toHaveLength(3);
+		expect(screen.container.querySelectorAll('[data-source-item-id="repeat"]')).toHaveLength(3);
+		await screen.getByRole('button', { name: 'Selection', exact: true }).click();
+		expect(screen.container.querySelectorAll('[data-source-item-id="repeat"]')).toHaveLength(0);
+		await expect
+			.element(screen.getByRole('button', { name: 'Select "Please"' }))
+			.toHaveAttribute('data-active', 'true');
 		await screen.getByRole('button', { name: 'Select "um"' }).click();
 		await expect.element(screen.getByText('Words selected: 1')).toBeVisible();
 		await screen.getByRole('button', { name: 'Stage words' }).click();
 		await expect.element(screen.getByText('1 staged · 0.5s')).toBeVisible();
 		expect(screen.container.querySelector('[data-ignored="true"]')).not.toBeNull();
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
-		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(1);
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(2);
 		expect(commandHistory.undoStack).toHaveLength(0);
 
 		await screen.getByRole('button', { name: 'Cut staged words' }).click();
 
-		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(2);
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(3);
+		expect(timelineStore.itemById.get('repeat')).toMatchObject({
+			from: 105,
+			durationInFrames: 90,
+			sourceStart: 0,
+			sourceEnd: 90
+		});
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe('<b>Please continue</b>');
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.words).toMatchObject([
 			{ id: 'please', startFrame: 0, endFrame: 25 },
@@ -227,9 +242,124 @@ describe('TranscriptPanel cue formatting', () => {
 		expect(onedit).toHaveBeenCalledOnce();
 		expect(transcriptIgnoreStore.spanCount).toBe(0);
 		commandHistory.undo();
-		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(1);
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(2);
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
 			'<b>Please um continue</b>'
 		);
+
+		await screen.getByRole('button', { name: 'Project', exact: true }).click();
+		const repeatedUm = [
+			...screen.container.querySelectorAll<HTMLButtonElement>('[data-source-item-id="repeat"]')
+		].find((button) => button.textContent?.trim() === 'um');
+		expect(repeatedUm).toBeDefined();
+		repeatedUm?.click();
+		await screen.getByRole('button', { name: 'Stage words' }).click();
+		await screen.getByRole('button', { name: 'Cut staged words' }).click();
+
+		expect(timelineStore.itemById.get('video')).toMatchObject({
+			from: 0,
+			durationInFrames: 90,
+			sourceStart: 0,
+			sourceEnd: 90
+		});
+		expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(3);
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
+			'<b>Please um continue</b>'
+		);
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('drag-selects a contiguous phrase and owns Backspace plus commit', async () => {
+		const videoTrack: TimelineTrack = { ...track, id: 'video', name: 'Video', order: 1 };
+		const video: TimelineItem = {
+			id: 'video',
+			trackId: videoTrack.id,
+			from: 0,
+			durationInFrames: 90,
+			label: 'Interview',
+			type: 'video',
+			mediaId: 'media',
+			sourceStart: 0,
+			sourceEnd: 90,
+			sourceFps: 30,
+			speed: 1
+		};
+		const captions: TimelineItem = {
+			...item,
+			captionSource: {
+				type: 'transcript',
+				clipId: video.id,
+				mediaId: 'media',
+				sourceStartSeconds: 0,
+				playbackSpeed: 1
+			},
+			cues: [
+				{
+					id: 'cue',
+					startFrame: 0,
+					endFrame: 90,
+					text: 'One two three',
+					words: [
+						{ id: 'one', startFrame: 0, endFrame: 20, text: 'One' },
+						{ id: 'two', startFrame: 30, endFrame: 50, text: 'two' },
+						{ id: 'three', startFrame: 60, endFrame: 90, text: 'three' }
+					]
+				}
+			]
+		};
+		timelineStore.setAll({
+			tracks: [track, videoTrack],
+			items: [video, captions],
+			currentFrame: 0,
+			fps: 30
+		});
+		commandHistory.clearHistory();
+		const onedit = vi.fn();
+		const screen = await render(TranscriptPanel, { onedit, itemIds: [video.id] });
+		await screen.getByRole('button', { name: 'Edit video by transcript' }).click();
+		const first = screen.getByRole('button', { name: 'Select "One"' }).element();
+		const last = screen.getByRole('button', { name: 'Select "three"' }).element();
+		const firstRect = first.getBoundingClientRect();
+		const lastRect = last.getBoundingClientRect();
+		first.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				pointerId: 91,
+				button: 0,
+				clientX: firstRect.left + firstRect.width / 2,
+				clientY: firstRect.top + firstRect.height / 2,
+				bubbles: true
+			})
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				pointerId: 91,
+				clientX: lastRect.left + lastRect.width / 2,
+				clientY: lastRect.top + lastRect.height / 2,
+				bubbles: true
+			})
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointerup', {
+				pointerId: 91,
+				clientX: lastRect.left + lastRect.width / 2,
+				clientY: lastRect.top + lastRect.height / 2,
+				bubbles: true
+			})
+		);
+		await expect.element(screen.getByText('Words selected: 3')).toBeVisible();
+
+		const panel = screen.getByTestId('transcript-panel').element();
+		panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+		expect(transcriptIgnoreStore.ranges).toEqual({ media: [{ start: 0, end: 3 }] });
+		await expect.element(screen.getByText('3 staged · 3.0s')).toBeVisible();
+		expect(commandHistory.undoStack).toHaveLength(0);
+		panel.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })
+		);
+		await vi.waitFor(() =>
+			expect(timelineStore.items.filter((candidate) => candidate.type === 'video')).toHaveLength(0)
+		);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
 	});
 });

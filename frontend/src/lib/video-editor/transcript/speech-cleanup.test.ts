@@ -72,6 +72,27 @@ describe('speech cleanup transcript mapping', () => {
 		const words = collectTranscriptSourceWords([source, tail, captions], [tail.id], 30);
 		expect(words.map((word) => word.wordId)).toEqual(['inside']);
 	});
+
+	it('orders repeated source uses by timeline position and dedupes linked companions', () => {
+		const captions = transcript([{ id: 'word', text: 'again', start: 15, end: 24 }]);
+		const repeat = { ...source, id: 'repeat', from: 300 };
+		const linkedAudio = {
+			...source,
+			id: 'audio',
+			type: 'audio' as const,
+			linkedGroupId: 'pair'
+		};
+		const linkedVideo = { ...source, linkedGroupId: 'pair' };
+		const words = collectTranscriptSourceWords(
+			[linkedVideo, linkedAudio, repeat, captions],
+			[linkedVideo.id, linkedAudio.id, repeat.id],
+			30
+		);
+		expect(words).toMatchObject([
+			{ sourceItemId: 'source', timelineStartFrame: 105, timelineEndFrame: 114 },
+			{ sourceItemId: 'repeat', timelineStartFrame: 315, timelineEndFrame: 324 }
+		]);
+	});
 });
 
 describe('filler detection', () => {

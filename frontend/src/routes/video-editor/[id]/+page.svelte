@@ -1285,7 +1285,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<div
 										class="mt-1 max-h-64 overflow-y-auto rounded-md border border-[oklch(0.25_0.015_55)] p-1"
 									>
-										<TranscriptPanel onedit={() => editorSession.scheduleAutosave()} />
+										<TranscriptPanel
+											itemIds={selectedItemIds.length > 0
+												? selectedItemIds
+												: selectedItemId
+													? [selectedItemId]
+													: []}
+											onedit={() => editorSession.scheduleAutosave()}
+										/>
 									</div>
 								{/if}
 							</div>
