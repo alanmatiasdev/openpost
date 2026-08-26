@@ -51,8 +51,15 @@ describe('EditorAssistantPanel switcher', () => {
 			selectedIds: [],
 			onautosave: vi.fn()
 		});
-		const root = screen.getByTestId('editor-assistant-panel').element() as HTMLElement;
+		const root = screen.getByTestId('editor-assistant-panel').element();
+		expect(root).toBeInstanceOf(HTMLElement);
+		if (!(root instanceof HTMLElement)) throw new Error('Expected editor assistant panel element');
 		expect(root.scrollWidth).toBeLessThanOrEqual(320);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+		await page.screenshot({
+			element: screen.container,
+			path: '../../../../.svelte-kit/openpost-editor-assistant-320.png'
+		});
 		await page.viewport(390, 720);
 		expect(root.scrollWidth).toBeLessThanOrEqual(390);
 		const tab = screen.getByRole('tab', { name: 'Generate' });

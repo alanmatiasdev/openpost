@@ -41,14 +41,8 @@ function stubAdapter(responses: string[]): LlmAdapter {
 
 beforeEach(() => {
 	// Ensure WebGPU gate passes in test Chromium
-	if (typeof navigator !== 'undefined' && !('gpu' in navigator)) {
-		(
-			Object.defineProperty as unknown as (
-				obj: unknown,
-				prop: string,
-				desc: PropertyDescriptor
-			) => void
-		)(navigator, 'gpu', {
+	if (!('gpu' in navigator)) {
+		Object.defineProperty(navigator, 'gpu', {
 			value: { requestAdapter: async () => ({ features: { has: () => false } }) },
 			configurable: true
 		});
@@ -62,6 +56,7 @@ beforeEach(() => {
 
 describe('AgentChatPanel', () => {
 	it('does not mutate timeline until Run is pressed and reports step results sequentially', async () => {
+		await page.viewport(420, 900);
 		const a: TimelineItem = {
 			id: 'a',
 			trackId: track.id,
@@ -82,11 +77,15 @@ describe('AgentChatPanel', () => {
 			await textarea.fill('add a title');
 			await screen.getByRole('button', { name: 'Send' }).click();
 			await expect.element(screen.getByTestId('agent-plan-card')).toBeVisible();
+			await page.screenshot({
+				element: screen.container,
+				path: '../../../../.svelte-kit/openpost-assistant-plan-desktop.png'
+			});
 			// Timeline unchanged before Run
 			expect(timelineStore.items.some((item) => item.type === 'text')).toBe(false);
 			// Run plan
 			await screen.getByTestId('agent-run-plan').click();
-			await expect.element(screen.getByText('✓ Added a title \"Hello\".')).toBeVisible();
+			await expect.element(screen.getByText('✓ Added a title "Hello".')).toBeVisible();
 			expect(
 				timelineStore.items.some((item) => item.type === 'text' && item.label === 'Hello')
 			).toBe(true);
@@ -147,8 +146,15 @@ describe('AgentChatPanel', () => {
 		const unregister = registerLlmAdapter(stubAdapter(['{}']));
 		try {
 			const screen = await render(AgentChatPanel);
-			const root = screen.getByTestId('agent-chat-panel').element() as HTMLElement;
+			const root = screen.getByTestId('agent-chat-panel').element();
+			expect(root).toBeInstanceOf(HTMLElement);
+			if (!(root instanceof HTMLElement)) throw new Error('Expected assistant panel element');
 			expect(root.scrollWidth).toBeLessThanOrEqual(320);
+			expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+			await page.screenshot({
+				element: screen.container,
+				path: '../../../../.svelte-kit/openpost-assistant-chat-320.png'
+			});
 		} finally {
 			unregister();
 		}

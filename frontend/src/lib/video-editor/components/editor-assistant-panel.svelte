@@ -9,7 +9,11 @@
 		setAgentSelectionHandler,
 		setAgentHandoffHandlers
 	} from '$lib/video-editor/agent/tools/definitions';
-	import { inspectAgentStorage, type AgentStorageStatus } from '$lib/video-editor/agent/storage';
+	import {
+		AGENT_EXPECTED_BYTES,
+		inspectAgentStorage,
+		type AgentStorageStatus
+	} from '$lib/video-editor/agent/storage';
 
 	let {
 		projectId,
@@ -34,7 +38,7 @@
 	let generateTab: HTMLButtonElement | undefined = $state(undefined);
 	let storage = $state<AgentStorageStatus | null>(null);
 	let checkingStorage = $state(false);
-	let storageError = $state('');
+	let storageCheckFailed = $state(false);
 
 	const agentSupported = $derived(agentStore.supported);
 
@@ -46,11 +50,11 @@
 	async function refreshStorage(): Promise<void> {
 		if (!agentSupported) return;
 		checkingStorage = true;
-		storageError = '';
+		storageCheckFailed = false;
 		try {
 			storage = await inspectAgentStorage();
-		} catch (error) {
-			storageError = error instanceof Error ? error.message : String(error);
+		} catch {
+			storageCheckFailed = true;
 			storage = null;
 		} finally {
 			checkingStorage = false;
@@ -91,11 +95,16 @@
 		};
 	});
 
-	// Keep store's autosave hook not needed here; page wires via selection but agent store will call autosave via page if needed.
 	$effect(() => {
 		void mode;
 		void agentSupported;
-		if (mode === 'assistant' && agentSupported && !storage && !checkingStorage) {
+		if (
+			mode === 'assistant' &&
+			agentSupported &&
+			!storage &&
+			!checkingStorage &&
+			!storageCheckFailed
+		) {
 			void refreshStorage();
 		}
 	});
@@ -159,8 +168,10 @@
 				<p class="mt-1 text-[11px] text-[oklch(0.65_0.015_55)]">
 					{m.video_editor_agent_storage_checking()}
 				</p>
-			{:else if storageError}
-				<p class="mt-1 text-[11px] text-[oklch(0.82_0.1_25)]">{storageError}</p>
+			{:else if storageCheckFailed}
+				<p class="mt-1 text-[11px] text-[oklch(0.65_0.015_55)]">
+					{m.video_editor_agent_storage_unknown({ size: formatBytes(AGENT_EXPECTED_BYTES) })}
+				</p>
 			{:else if storage}
 				{#if !storage.sufficient}
 					<p
