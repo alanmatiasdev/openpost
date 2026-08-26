@@ -11,6 +11,10 @@
 	import ItalicIcon from '@lucide/svelte/icons/italic';
 	import UnderlineIcon from '@lucide/svelte/icons/underline';
 	import ScissorsIcon from '@lucide/svelte/icons/scissors';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import XIcon from '@lucide/svelte/icons/x';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 	import { execute } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -26,6 +30,7 @@
 	import { applyTranscriptWordRemoval } from '$lib/video-editor/transcript/speech-cleanup-actions';
 	import { transcriptIgnoreStore } from '$lib/video-editor/transcript/transcript-ignore-store.svelte';
 	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
+	import { findTranscriptWordMatches } from '$lib/video-editor/transcript/fuzzy-search';
 
 	let { onedit }: { onedit: () => void } = $props();
 
@@ -35,6 +40,54 @@
 	let draftTexts = $state<Record<string, string>>({});
 	let editVideoMode = $state(false);
 	let selectedSourceWordIds = $state<Set<string>>(new Set());
+	let searchQuery = $state('');
+	let activeSearchMatch = $state(0);
+
+	interface SearchToken {
+		key: string;
+		text: string;
+		frame: number;
+	}
+
+	const searchTokens = $derived.by(() => {
+		const tokens: SearchToken[] = [];
+		for (const item of subtitleItems) {
+			for (const cue of item.cues ?? []) {
+				if (cue.words?.length) {
+					for (const word of cue.words) {
+						tokens.push({
+							key: `${item.id}:${cue.id}:${word.id}`,
+							text: word.text,
+							frame: word.startFrame
+						});
+					}
+				} else {
+					tokens.push({
+						key: `${item.id}:${cue.id}`,
+						text: parseSubtitleCueText(cue.text).plainText,
+						frame: cue.startFrame
+					});
+				}
+			}
+		}
+		return tokens;
+	});
+	const searchIndexByKey = $derived(
+		new Map(searchTokens.map((token, index) => [token.key, index]))
+	);
+	const searchResult = $derived(
+		findTranscriptWordMatches(
+			searchTokens.map((token) => token.text),
+			searchQuery
+		)
+	);
+	const matchedSearchIndices = $derived.by(() => {
+		const indices = new Set<number>();
+		for (const span of searchResult.spans) {
+			for (let index = span.start; index <= span.end; index++) indices.add(index);
+		}
+		return indices;
+	});
 	const sourceMediaItemIds = $derived(
 		timelineStore.items
 			.filter((item) => item.type === 'video' || item.type === 'audio')
@@ -228,10 +281,26 @@
 	function ignoredDurationLabel(): string {
 		return `${transcriptIgnoreStore.durationSeconds.toFixed(1)}s`;
 	}
+
+	function focusSearchMatch(index: number): void {
+		const count = searchResult.spans.length;
+		if (count === 0) return;
+		activeSearchMatch = ((index % count) + count) % count;
+		const tokenIndex = searchResult.spans[activeSearchMatch]?.start;
+		if (tokenIndex === undefined) return;
+		const token = searchTokens[tokenIndex];
+		if (!token) return;
+		setCurrentFrame(token.frame);
+		requestAnimationFrame(() => {
+			document
+				.querySelector<HTMLElement>(`[data-transcript-search-index="${tokenIndex}"]`)
+				?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		});
+	}
 </script>
 
 <div class="video-editor-theme flex flex-col gap-1">
-	<div class="flex items-center justify-between gap-2 px-1">
+	<div class="flex flex-wrap items-center justify-between gap-2 px-1">
 		<h3 class="text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 			{m.video_editor_transcript()}
 		</h3>
@@ -251,6 +320,80 @@
 			{m.video_editor_edit_by_transcript()}
 		</Button>
 	</div>
+	{#if subtitleItems.length > 0}
+		<div class="mx-1 flex min-w-0 items-center gap-1" role="search">
+			<div class="relative min-w-24 flex-1">
+				<SearchIcon
+					class="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-[oklch(0.58_0.01_55)]"
+					aria-hidden="true"
+				/>
+				<Input
+					class="h-7 w-full min-w-0 pr-7 pl-7 text-[10px]"
+					type="search"
+					value={searchQuery}
+					placeholder={m.video_editor_transcript_search()}
+					aria-label={m.video_editor_transcript_search()}
+					oninput={(event) => {
+						searchQuery = event.currentTarget.value;
+						activeSearchMatch = 0;
+					}}
+					onkeydown={(event) => {
+						if (event.key === 'Enter') {
+							event.preventDefault();
+							focusSearchMatch(activeSearchMatch + (event.shiftKey ? -1 : 1));
+						}
+					}}
+				/>
+				{#if searchQuery}
+					<button
+						type="button"
+						class="absolute top-1/2 right-1 grid size-5 -translate-y-1/2 place-items-center rounded hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[var(--video-editor-focus)]"
+						aria-label={m.video_editor_transcript_search_clear()}
+						onclick={() => {
+							searchQuery = '';
+							activeSearchMatch = 0;
+						}}
+					>
+						<XIcon class="size-3" aria-hidden="true" />
+					</button>
+				{/if}
+			</div>
+			{#if searchQuery}
+				<span
+					class="shrink-0 text-[10px] text-[oklch(0.66_0.01_55)] tabular-nums"
+					title={searchResult.approximate
+						? m.video_editor_transcript_search_approximate()
+						: undefined}
+				>
+					{#if searchResult.spans.length > 0}
+						{searchResult.approximate ? '~' : ''}{activeSearchMatch + 1}/{searchResult.spans.length}
+					{:else}{m.video_editor_transcript_search_empty()}{/if}
+				</span>
+				<div class="flex shrink-0 gap-0.5">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						disabled={searchResult.spans.length === 0}
+						aria-label={m.video_editor_transcript_search_previous()}
+						onclick={() => focusSearchMatch(activeSearchMatch - 1)}
+					>
+						<ChevronUpIcon class="size-3" aria-hidden="true" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						disabled={searchResult.spans.length === 0}
+						aria-label={m.video_editor_transcript_search_next()}
+						onclick={() => focusSearchMatch(activeSearchMatch + 1)}
+					>
+						<ChevronDownIcon class="size-3" aria-hidden="true" />
+					</Button>
+				</div>
+			{/if}
+		</div>
+	{/if}
 	{#if editVideoMode}
 		<div
 			class="mx-1 mb-1 flex flex-col gap-2 rounded-md border border-[oklch(0.31_0.018_55)] bg-[oklch(0.2_0.012_50)] px-2 py-2"
@@ -315,7 +458,14 @@
 		{#each subtitleItems as item (item.id)}
 			<ul class="flex flex-col gap-0.5" aria-label={item.label}>
 				{#each item.cues ?? [] as cue (cue.id)}
-					<li class="rounded bg-[oklch(0.19_0.01_50)] p-1">
+					{@const cueSearchIndex = searchIndexByKey.get(`${item.id}:${cue.id}`)}
+					<li
+						class="rounded bg-[oklch(0.19_0.01_50)] p-1 {cueSearchIndex !== undefined &&
+						matchedSearchIndices.has(cueSearchIndex)
+							? 'ring-1 ring-amber-500/70 ring-inset'
+							: ''}"
+						data-transcript-search-index={cueSearchIndex}
+					>
 						<div class="flex items-center gap-1">
 							<Input
 								class="min-w-0 flex-1 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
@@ -397,13 +547,20 @@
 						{#if cue.words?.length}
 							<div class="mt-1 flex flex-wrap gap-1">
 								{#each cue.words as word (word.id)}
+									{@const searchIndex = searchIndexByKey.get(`${item.id}:${cue.id}:${word.id}`)}
 									{@const sourceWord = sourceWordByUiId.get(`${item.id}:${cue.id}:${word.id}`)}
 									{@const wordIgnored = sourceWord
 										? transcriptIgnoreStore.isIgnored(sourceWord)
 										: false}
 									<div
-										class="group rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.23_0.01_50)] p-1"
+										class="group rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.23_0.01_50)] p-1 {searchIndex !==
+											undefined && matchedSearchIndices.has(searchIndex)
+											? searchResult.approximate
+												? 'ring-1 ring-amber-500/40 ring-inset'
+												: 'ring-1 ring-amber-500/80 ring-inset'
+											: ''}"
 										data-ignored={wordIgnored}
+										data-transcript-search-index={searchIndex}
 									>
 										{#if editVideoMode && sourceWordByUiId.has(`${item.id}:${cue.id}:${word.id}`)}
 											<button

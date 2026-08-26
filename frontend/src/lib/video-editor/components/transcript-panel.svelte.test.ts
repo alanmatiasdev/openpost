@@ -51,6 +51,52 @@ beforeEach(() => {
 });
 
 describe('TranscriptPanel cue formatting', () => {
+	it('finds exact phrases first, falls back to fuzzy words, and seeks between results', async () => {
+		await page.viewport(320, 720);
+		timelineStore.setAll({
+			tracks: [track],
+			items: [
+				{
+					...item,
+					cues: [
+						{
+							id: 'cue',
+							startFrame: 0,
+							endFrame: 90,
+							text: 'video vido launch today',
+							words: [
+								{ id: 'video', startFrame: 0, endFrame: 20, text: 'video' },
+								{ id: 'vido', startFrame: 30, endFrame: 45, text: 'vido' },
+								{ id: 'launch', startFrame: 50, endFrame: 70, text: 'launch' },
+								{ id: 'today', startFrame: 71, endFrame: 90, text: 'today' }
+							]
+						}
+					]
+				}
+			],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(TranscriptPanel, { onedit: vi.fn() });
+		const search = screen.getByRole('searchbox', { name: 'Search transcript' });
+
+		await search.fill('launch tod');
+		await expect.element(screen.getByText('1/1', { exact: true })).toBeVisible();
+		expect(screen.container.querySelectorAll('[data-transcript-search-index].ring-1')).toHaveLength(
+			2
+		);
+
+		await search.fill('vidoe');
+		await expect.element(screen.getByText('~1/2', { exact: true })).toBeVisible();
+		expect(screen.container.querySelectorAll('[data-transcript-search-index].ring-1')).toHaveLength(
+			2
+		);
+		await screen.getByRole('button', { name: 'Next match' }).click();
+		expect(timelineStore.currentFrame).toBe(30);
+		await expect.element(screen.getByText('~2/2', { exact: true })).toBeVisible();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
+	});
+
 	it('hides markup and preserves cue-wide formatting through copy and word edits', async () => {
 		const onedit = vi.fn();
 		const screen = await render(TranscriptPanel, { onedit });
