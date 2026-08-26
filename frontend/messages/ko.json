@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "소스 불러오는 중...",
 	"video_editor_source_missing": "소스를 사용할 수 없음",
 	"video_editor_source_audio_only": "오디오 소스",
+	"video_editor_source_audio_waveform": "소스 오디오 파형",
 	"video_editor_source_show_frames": "프레임 번호 표시",
 	"video_editor_source_show_timecode": "타임코드 표시",
 	"video_editor_source_position": "소스 위치",

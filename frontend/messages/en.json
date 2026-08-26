@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "Loading source...",
 	"video_editor_source_missing": "Source unavailable",
 	"video_editor_source_audio_only": "Audio source",
+	"video_editor_source_audio_waveform": "Source audio waveform",
 	"video_editor_source_show_frames": "Show frame numbers",
 	"video_editor_source_show_timecode": "Show timecode",
 	"video_editor_source_position": "Source position",

@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "Quelle wird geladen…",
 	"video_editor_source_missing": "Quelle nicht verfügbar",
 	"video_editor_source_audio_only": "Audioquelle",
+	"video_editor_source_audio_waveform": "Wellenform der Audioquelle",
 	"video_editor_source_show_frames": "Frame-Nummern anzeigen",
 	"video_editor_source_show_timecode": "Timecode anzeigen",
 	"video_editor_source_position": "Quellposition",

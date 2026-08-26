@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "ソースを読み込み中...",
 	"video_editor_source_missing": "ソースが利用できません",
 	"video_editor_source_audio_only": "音声ソース",
+	"video_editor_source_audio_waveform": "ソース音声の波形",
 	"video_editor_source_show_frames": "フレーム番号を表示",
 	"video_editor_source_show_timecode": "タイムコードを表示",
 	"video_editor_source_position": "ソース位置",

@@ -9,6 +9,8 @@ import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.
 import { setWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
 import SourceMonitor from './source-monitor.svelte';
 import proResFixtureUrl from '../media/fixtures/prores-proxy.mov?url';
+import { clearWaveformCache } from '$lib/video-editor/media/waveform-client';
+import { saveWaveform } from '$lib/video-editor/media/waveform-persistence';
 
 const videoTrack: TimelineTrack = {
 	id: 'video',
@@ -191,5 +193,64 @@ describe('SourceMonitor', () => {
 		const monitor = screen.getByRole('region', { name: 'Source' }).element();
 		if (!(monitor instanceof HTMLElement)) throw new Error('Source monitor region is missing.');
 		expect(monitor.scrollWidth).toBeLessThanOrEqual(monitor.clientWidth);
+	});
+
+	it('shows a seekable overview and detail waveform for audio sources', async () => {
+		const mediaId = `source-audio-${crypto.randomUUID()}`;
+		const audioFile = new File([new Uint8Array(256)], 'narration.wav', { type: 'audio/wav' });
+		mediaPool.clear();
+		mediaPool.upsert(
+			{
+				id: mediaId,
+				storageType: 'handle',
+				fileName: audioFile.name,
+				fileSize: audioFile.size,
+				mimeType: audioFile.type,
+				duration: 10,
+				width: 0,
+				height: 0,
+				fps: 0,
+				codec: 'pcm_s16le',
+				bitrate: 128_000,
+				tags: ['audio'],
+				fileHandle: linkedFileHandle(audioFile.name, async () => audioFile)
+			},
+			'ready'
+		);
+		await saveWaveform(mediaId, {
+			peaks: Float32Array.from({ length: 5_000 }, (_, index) => (index % 250) / 250),
+			durationSeconds: 10,
+			samplesPerSecond: 500,
+			loadedSamples: 5_000,
+			isComplete: true
+		});
+
+		try {
+			const screen = await render(SourceMonitor, {
+				mediaId,
+				onclose: vi.fn(),
+				onedit: vi.fn()
+			});
+			screen.container.style.width = '320px';
+			screen.container.style.height = '720px';
+			const waveformSlider = screen.getByRole('slider', {
+				name: 'Source audio waveform'
+			});
+			await expect.element(waveformSlider).toBeVisible();
+			await vi.waitFor(() =>
+				expect(waveformSlider.element().querySelector('canvas')).not.toBeNull()
+			);
+
+			waveformSlider
+				.element()
+				.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+			const position = screen.getByLabelText('Source position').element();
+			if (!(position instanceof HTMLInputElement))
+				throw new Error('Source position is not a slider.');
+			await vi.waitFor(() => expect(position.value).toBe('299'));
+			expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		} finally {
+			await clearWaveformCache(mediaId);
+		}
 	});
 });

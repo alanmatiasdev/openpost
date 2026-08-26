@@ -26,6 +26,7 @@
 		decodedPreviewAudio,
 		previewAudioContext
 	} from '$lib/video-editor/audio/reverse-preview-audio';
+	import SourceAudioWaveform from './source-audio-waveform.svelte';
 
 	let {
 		mediaId,
@@ -528,9 +529,24 @@
 				<audio bind:this={proxyAudioElement} src={sourceAudioUrl} preload="auto"></audio>
 			{/if}
 		{:else if kind === 'audio'}
-			<div class="flex flex-col items-center gap-3 text-[oklch(0.66_0.015_55)]">
-				<Music2Icon class="size-10" aria-hidden="true" />
-				<span class="text-xs">{m.video_editor_source_audio_only()}</span>
+			<div class="flex size-full max-h-[360px] min-h-48 flex-col p-3 text-[oklch(0.66_0.015_55)]">
+				<div class="mb-2 flex items-center justify-center gap-2 text-xs">
+					<Music2Icon class="size-4" aria-hidden="true" />
+					<span>{m.video_editor_source_audio_only()}</span>
+				</div>
+				{#if media}
+					<div class="min-h-0 flex-1 overflow-hidden rounded border border-white/10">
+						<SourceAudioWaveform
+							{media}
+							durationSeconds={durationFrames / sourceFps}
+							currentTimeSeconds={currentFrame / sourceFps}
+							onseek={(seconds) => {
+								pause();
+								seek(seconds * sourceFps);
+							}}
+						/>
+					</div>
+				{/if}
 				<audio
 					bind:this={mediaElement}
 					src={sourceUrl}

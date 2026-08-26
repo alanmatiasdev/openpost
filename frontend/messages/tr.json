@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "Kaynak yükleniyor...",
 	"video_editor_source_missing": "Kaynak kullanılamıyor",
 	"video_editor_source_audio_only": "Ses kaynağı",
+	"video_editor_source_audio_waveform": "Kaynak ses dalga biçimi",
 	"video_editor_source_show_frames": "Kare numaralarını göster",
 	"video_editor_source_show_timecode": "Zaman kodunu göster",
 	"video_editor_source_position": "Kaynak konumu",

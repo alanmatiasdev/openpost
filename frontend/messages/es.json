@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "Cargando fuente...",
 	"video_editor_source_missing": "Fuente no disponible",
 	"video_editor_source_audio_only": "Fuente de audio",
+	"video_editor_source_audio_waveform": "Forma de onda del audio fuente",
 	"video_editor_source_show_frames": "Mostrar los números de marco",
 	"video_editor_source_show_timecode": "Mostrar código de tiempo",
 	"video_editor_source_position": "Posición de origen",

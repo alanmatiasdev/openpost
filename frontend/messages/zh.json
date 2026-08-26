@@ -5597,6 +5597,7 @@
 	"video_editor_source_loading": "正在加载素材…",
 	"video_editor_source_missing": "来源不可用",
 	"video_editor_source_audio_only": "音频来源",
+	"video_editor_source_audio_waveform": "源音频波形",
 	"video_editor_source_show_frames": "显示帧号",
 	"video_editor_source_show_timecode": "显示时间码",
 	"video_editor_source_position": "源位置",
