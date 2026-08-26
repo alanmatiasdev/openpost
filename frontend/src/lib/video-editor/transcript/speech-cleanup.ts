@@ -4,6 +4,10 @@ import {
 	getItemSourceSpanSeconds,
 	sourceSecondsToTimelineFrame
 } from '../timeline/utils/media-item-frames';
+import {
+	captionFramesToSourceRange,
+	resolveTranscriptCaptionTiming
+} from './caption-source-mapping';
 import { buildCueText, getCueFormatFlags, parseSubtitleCueText } from './subtitle-cue-format';
 
 const SIMPLE_FILLERS = [
@@ -208,20 +212,16 @@ export function collectTranscriptSourceWords(
 		)
 			continue;
 		const source = sourceItemForCaption(items, captionSource.clipId);
-		const sourceFps = source?.sourceFps && source.sourceFps > 0 ? source.sourceFps : timelineFps;
-		const sourceStartSeconds =
-			captionSource.sourceStartSeconds ?? Math.max(0, (source?.sourceStart ?? 0) / sourceFps);
-		const playbackSpeed =
-			captionSource.playbackSpeed && captionSource.playbackSpeed > 0
-				? captionSource.playbackSpeed
-				: source?.speed && source.speed > 0
-					? source.speed
-					: 1;
+		const timing = resolveTranscriptCaptionTiming(captionSource, source, timelineFps);
 
 		for (const cue of subtitle.cues ?? []) {
 			for (const word of cue.words ?? []) {
-				const start = sourceStartSeconds + (word.startFrame * playbackSpeed) / timelineFps;
-				const end = sourceStartSeconds + (word.endFrame * playbackSpeed) / timelineFps;
+				const { start, end } = captionFramesToSourceRange(
+					word.startFrame,
+					word.endFrame,
+					timing,
+					timelineFps
+				);
 				if (end <= start) continue;
 				for (const selectedItem of selectedItemsByMediaId.get(captionSource.mediaId) ?? []) {
 					const span = getItemSourceSpanSeconds(selectedItem, timelineFps);

@@ -18,7 +18,7 @@ import { isTrackEffectivelyLocked } from '../timeline/utils/track-groups';
 
 export interface TranscriptionSourceWindow {
 	sourceStartSeconds: number;
-	sourceEndSeconds?: number;
+	sourceEndSeconds: number;
 }
 
 export interface TranscriptionSourceSnapshot extends TranscriptionSourceWindow {
@@ -129,8 +129,17 @@ export function addGeneratedSubtitleItem(
 		}
 		const fps = timelineStore.fps;
 		const speed = source.speed && source.speed > 0 ? source.speed : 1;
-		const { sourceStartSeconds } = transcriptionSourceWindow(source);
-		const cues = buildCuesFromWords(words, { fps: fps / speed });
+		const { sourceStartSeconds, sourceEndSeconds } = transcriptionSourceWindow(source);
+		const cueWords = source.isReversed
+			? words
+					.map((word) => ({
+						...word,
+						startSeconds: Math.max(0, sourceEndSeconds - sourceStartSeconds - word.endSeconds),
+						endSeconds: Math.max(0, sourceEndSeconds - sourceStartSeconds - word.startSeconds)
+					}))
+					.toSorted((left, right) => left.startSeconds - right.startSeconds)
+			: words;
+		const cues = buildCuesFromWords(cueWords, { fps: fps / speed });
 		if (cues.length === 0) throw new Error('Transcription produced no words');
 		const matches = timelineStore.items.filter(
 			(item) => item.captionSource?.type === 'transcript' && item.captionSource.clipId === source.id
@@ -153,10 +162,7 @@ export function addGeneratedSubtitleItem(
 			id,
 			trackId: existing?.trackId ?? topTrack!.id,
 			from: source.from,
-			durationInFrames: Math.min(
-				source.durationInFrames,
-				cues.reduce((max, cue) => Math.max(max, cue.endFrame), 0)
-			),
+			durationInFrames: source.durationInFrames,
 			label: m.video_editor_transcribe(),
 			type: 'subtitle',
 			captionSource: {
@@ -164,7 +170,9 @@ export function addGeneratedSubtitleItem(
 				clipId: source.id,
 				mediaId: source.mediaId ?? '',
 				sourceStartSeconds,
-				playbackSpeed: speed
+				sourceEndSeconds,
+				playbackSpeed: speed,
+				isReversed: source.isReversed === true
 			},
 			cues
 		} satisfies TimelineItem;

@@ -18,6 +18,7 @@ import {
 	setCurrentFrame,
 	setItemSpeed,
 	setItemsReversed,
+	splitItemsAtFrame,
 	updateItemProperties,
 	updateMarker,
 	unlinkItems
@@ -414,6 +415,101 @@ describe('linked item actions', () => {
 		timelineStore._setItems([clip({ id: 'video' })]);
 
 		expect(linkItems(['video'])).toBe(false);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('splits generated transcript captions with their source clip in one undo step', () => {
+		const video = clip({ id: 'video', durationInFrames: 60, sourceEnd: 60, sourceFps: 30 });
+		const captions: TimelineItem = {
+			id: 'captions',
+			trackId: 'track-video-overlay',
+			from: 0,
+			durationInFrames: 60,
+			label: 'Auto captions',
+			type: 'subtitle',
+			captionSource: {
+				type: 'transcript',
+				clipId: video.id,
+				mediaId: 'media',
+				sourceStartSeconds: 0,
+				sourceEndSeconds: 2,
+				playbackSpeed: 1,
+				isReversed: false
+			},
+			cues: [
+				{
+					id: 'cue',
+					startFrame: 5,
+					endFrame: 45,
+					text: 'Hello before after',
+					words: [
+						{ id: 'hello', text: 'Hello', startFrame: 5, endFrame: 15 },
+						{ id: 'before', text: 'before', startFrame: 20, endFrame: 28 },
+						{ id: 'after', text: 'after', startFrame: 35, endFrame: 45 }
+					]
+				}
+			]
+		};
+		const originalItems = structuredClone([captions, video]);
+		// Caption-first storage order proves the split action resolves the source dependency first.
+		timelineStore._setItems([captions, video]);
+
+		const result = splitItemsAtFrame(30, [captions.id, video.id]);
+		const rightVideo = timelineStore.itemById.get(result.right[0]!)!;
+		const splitCaptions = timelineStore.items.filter((item) => item.type === 'subtitle');
+
+		expect(splitCaptions).toHaveLength(2);
+		expect(splitCaptions[0]).toMatchObject({
+			id: captions.id,
+			from: 0,
+			durationInFrames: 30,
+			captionSource: { clipId: video.id, sourceStartSeconds: 0, sourceEndSeconds: 1 },
+			cues: [{ text: 'Hello before' }]
+		});
+		expect(splitCaptions[1]).toMatchObject({
+			from: 30,
+			durationInFrames: 30,
+			captionSource: {
+				clipId: rightVideo.id,
+				sourceStartSeconds: 1,
+				sourceEndSeconds: 2
+			},
+			cues: [
+				{
+					startFrame: 5,
+					endFrame: 15,
+					text: 'after',
+					words: [{ text: 'after', startFrame: 5, endFrame: 15 }]
+				}
+			]
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.items).toEqual(originalItems);
+	});
+
+	it('keeps a source clip whole when its generated caption track is locked', () => {
+		const video = clip({ id: 'video', durationInFrames: 60, sourceEnd: 60, sourceFps: 30 });
+		const captions: TimelineItem = {
+			id: 'captions',
+			trackId: 'track-video-overlay',
+			from: 0,
+			durationInFrames: 60,
+			label: 'Auto captions',
+			type: 'subtitle',
+			captionSource: { type: 'transcript', clipId: video.id, mediaId: 'media' },
+			cues: [{ id: 'cue', text: 'Locked', startFrame: 0, endFrame: 30 }]
+		};
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === captions.trackId ? { ...track, locked: true } : track
+			)
+		);
+		timelineStore._setItems([video, captions]);
+		commandHistory.clearHistory();
+
+		expect(splitItemsAtFrame(30, [video.id])).toEqual({ left: [], right: [] });
+		expect(timelineStore.items).toHaveLength(2);
 		expect(commandHistory.canUndo).toBe(false);
 	});
 

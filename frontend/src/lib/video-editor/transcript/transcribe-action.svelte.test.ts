@@ -74,6 +74,31 @@ describe('transcription timeline mapping', () => {
 		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 
+	it('orders reversed captions by their exact timeline source direction', () => {
+		timelineStore._updateItems([{ id: source.id, patch: { isReversed: true } }]);
+		const subtitleId = addGeneratedSubtitleItem(source.id, [
+			{ text: 'Early', startSeconds: 1, endSeconds: 2 },
+			{ text: 'Late', startSeconds: 8, endSeconds: 9 }
+		]);
+		const subtitle = timelineStore.itemById.get(subtitleId)!;
+		const words = subtitle.cues?.flatMap((cue) => cue.words ?? []) ?? [];
+
+		expect(words.map((word) => word.text)).toEqual(['Late', 'Early']);
+		expect(words.map((word) => [word.startFrame, word.endFrame])).toEqual([
+			[15, 30],
+			[120, 135]
+		]);
+		expect(subtitle).toMatchObject({
+			durationInFrames: source.durationInFrames,
+			captionSource: {
+				sourceStartSeconds: 10,
+				sourceEndSeconds: 20,
+				playbackSpeed: 2,
+				isReversed: true
+			}
+		});
+	});
+
 	it('replaces every prior generated caption for the same clip in one undo step', () => {
 		const firstSubtitleId = addGeneratedSubtitleItem(source.id, [
 			{ text: 'Old words', startSeconds: 1, endSeconds: 2 }

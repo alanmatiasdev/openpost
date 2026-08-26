@@ -113,7 +113,9 @@ describe('speech cleanup transcript mapping', () => {
 			playbackSpeed: 1
 		};
 		const words = collectTranscriptSourceWords([reversed, captions], [reversed.id], 30);
-		expect(words).toMatchObject([{ timelineStartFrame: 130, timelineEndFrame: 160 }]);
+		expect(words).toMatchObject([
+			{ start: 11, end: 12, timelineStartFrame: 130, timelineEndFrame: 160 }
+		]);
 	});
 });
 

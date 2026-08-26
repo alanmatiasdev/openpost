@@ -416,6 +416,21 @@ export function unlinkItems(ids: string[]): boolean {
 	return true;
 }
 
+function splitBlockedItemIds(): Set<string> {
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
+	const blocked = new Set(
+		timelineStore.items.filter((item) => trackById.get(item.trackId)?.locked).map((item) => item.id)
+	);
+	for (const item of timelineStore.items) {
+		if (item.captionSource?.type === 'transcript' && trackById.get(item.trackId)?.locked) {
+			blocked.add(item.captionSource.clipId);
+		}
+	}
+	return blocked;
+}
+
 /**
  * Split every item crossing `frame` on the given track (or all tracks when
  * undefined). One undo step; keeps selection semantics simple by returning
@@ -425,12 +440,20 @@ export function splitAtFrame(frame: number, trackId?: string): { left: string[];
 	return execute('SPLIT_ITEMS', () => {
 		const left: string[] = [];
 		const right: string[] = [];
-		const targets = timelineStore.items.filter(
-			(item) =>
-				(!trackId || item.trackId === trackId) &&
-				frame > item.from &&
-				frame < item.from + item.durationInFrames
-		);
+		const blockedIds = splitBlockedItemIds();
+		const targets = timelineStore.items
+			.filter(
+				(item) =>
+					(!trackId || item.trackId === trackId) &&
+					!blockedIds.has(item.id) &&
+					frame > item.from &&
+					frame < item.from + item.durationInFrames
+			)
+			.toSorted(
+				(left, right) =>
+					Number(left.captionSource?.type === 'transcript') -
+					Number(right.captionSource?.type === 'transcript')
+			);
 		for (const item of targets) {
 			const result = timelineStore._splitItem(item.id, frame);
 			if (result) {
@@ -450,9 +473,20 @@ export function splitItemsAtFrame(
 		const left: string[] = [];
 		const right: string[] = [];
 		const idSet = new Set(itemIds);
-		const targets = timelineStore.items.filter(
-			(item) => idSet.has(item.id) && frame > item.from && frame < item.from + item.durationInFrames
-		);
+		const blockedIds = splitBlockedItemIds();
+		const targets = timelineStore.items
+			.filter(
+				(item) =>
+					idSet.has(item.id) &&
+					!blockedIds.has(item.id) &&
+					frame > item.from &&
+					frame < item.from + item.durationInFrames
+			)
+			.toSorted(
+				(left, right) =>
+					Number(left.captionSource?.type === 'transcript') -
+					Number(right.captionSource?.type === 'transcript')
+			);
 		for (const item of targets) {
 			const result = timelineStore._splitItem(item.id, frame);
 			if (result) {
@@ -472,6 +506,8 @@ export function splitItemsAtFrame(
  */
 export function splitAtScenes(id: string, frames: number[]): number {
 	return execute('SPLIT_AT_SCENES', () => {
+		const source = timelineStore.itemById.get(id);
+		if (!source || splitBlockedItemIds().has(source.id)) return 0;
 		let count = 0;
 		for (const frame of [...frames].sort((a, b) => b - a)) {
 			if (timelineStore._splitItem(id, frame)) count++;

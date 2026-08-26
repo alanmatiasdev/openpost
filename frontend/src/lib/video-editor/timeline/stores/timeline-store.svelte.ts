@@ -14,6 +14,7 @@
 import type { TimelineItem, TimelineMarker, TimelineTrack } from '$lib/video-editor/project/types';
 import { clampTimelineZoom } from '$lib/video-editor/timeline/zoom';
 import { calculateSplitSourceBoundaries } from '../utils/source-calculations';
+import { synchronizeTranscriptCaptionsAfterSplit } from '../../transcript/split-transcript-captions';
 
 export interface TimelineSettings {
 	fps: number;
@@ -280,6 +281,7 @@ export const timelineStore = {
 			durationInFrames: rightDuration,
 			label: item.label
 		};
+		item.durationInFrames = leftDuration;
 		if (
 			rightItem.type === 'video' ||
 			rightItem.type === 'audio' ||
@@ -300,10 +302,16 @@ export const timelineStore = {
 			item.sourceEnd = boundaries.left.sourceEnd;
 			rightItem.sourceStart = boundaries.right.sourceStart;
 			rightItem.sourceEnd = boundaries.right.sourceEnd;
+			state.items = synchronizeTranscriptCaptionsAfterSplit(
+				state.items,
+				item,
+				rightItem,
+				frame,
+				state.settings.fps
+			);
 		} else if (rightItem.type === 'lottie') {
 			rightItem.lottiePhaseOffset = (item.lottiePhaseOffset ?? 0) + relative;
 		}
-		item.durationInFrames = leftDuration;
 		// Both halves carry the original's lineage so downstream range-removal
 		// can identify every piece of the clip that was edited.
 		if (!item.originId) item.originId = rightItem.originId;

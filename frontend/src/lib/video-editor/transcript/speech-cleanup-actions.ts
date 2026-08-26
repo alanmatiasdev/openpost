@@ -7,6 +7,10 @@ import {
 	removeTranscriptRangesFromItems
 } from '../timeline/actions/range-removal';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import {
+	resolveTranscriptCaptionTiming,
+	sourceRangeToCaptionFrames
+} from './caption-source-mapping';
 import { cueWithoutWords, type FillerRange, type TranscriptSourceWord } from './speech-cleanup';
 import type { TranscriptSelectionTargets } from './transcript-edit-model';
 
@@ -53,23 +57,11 @@ function rippleTranscriptCaptions(
 			: (rangesByMediaId[source.mediaId] ?? []);
 		if (sourceRanges.length === 0) continue;
 		const sourceItem = sourceItemForCaption(subtitle);
-		const sourceFps =
-			sourceItem?.sourceFps && sourceItem.sourceFps > 0 ? sourceItem.sourceFps : timelineStore.fps;
-		const sourceStart = source.sourceStartSeconds ?? (sourceItem?.sourceStart ?? 0) / sourceFps;
-		const speed =
-			source.playbackSpeed && source.playbackSpeed > 0
-				? source.playbackSpeed
-				: sourceItem?.speed && sourceItem.speed > 0
-					? sourceItem.speed
-					: 1;
+		const timing = resolveTranscriptCaptionTiming(source, sourceItem, timelineStore.fps);
 		const frameRanges = mergedFrameRanges(
-			sourceRanges.map((range) => ({
-				start: Math.max(0, Math.round(((range.start - sourceStart) * timelineStore.fps) / speed)),
-				end: Math.min(
-					subtitle.durationInFrames,
-					Math.round(((range.end - sourceStart) * timelineStore.fps) / speed)
-				)
-			}))
+			sourceRanges.map((range) =>
+				sourceRangeToCaptionFrames(range, timing, timelineStore.fps, subtitle.durationInFrames)
+			)
 		);
 		if (frameRanges.length === 0) continue;
 		const removedIds = removedIdsBySubtitle.get(subtitle.id) ?? new Set<string>();

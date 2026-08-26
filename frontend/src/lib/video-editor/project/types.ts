@@ -506,8 +506,12 @@ export interface TranscriptCaptionSource extends CaptionSourceBase {
 	type: 'transcript';
 	/** Source window used for transcription, before timeline speed scaling. */
 	sourceStartSeconds?: number;
+	/** Exclusive end of the transcribed source window. */
+	sourceEndSeconds?: number;
 	/** Playback speed used when source-second word timings became cue frames. */
 	playbackSpeed?: number;
+	/** Whether cue frames advance from the source window end toward its start. */
+	isReversed?: boolean;
 }
 
 export interface SubtitleImportCaptionSource extends CaptionSourceBase {
