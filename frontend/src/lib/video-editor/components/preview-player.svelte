@@ -1,6 +1,6 @@
 <!-- Multi-track composited preview with direct transform gizmos. -->
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type {
 		ItemTransform,
@@ -78,7 +78,10 @@
 		prewarmPreviewFrame,
 		warmPreviewDecoder
 	} from '$lib/video-editor/preview/decoder-prewarm-client';
-	import { collectPreviewPrewarmTargets } from '$lib/video-editor/preview/prewarm-plan';
+	import {
+		collectPreviewPrewarmTargets,
+		previewPrewarmPlanningFrame
+	} from '$lib/video-editor/preview/prewarm-plan';
 	import type { CanvasAnimatedValues } from '$lib/video-editor/preview/on-canvas-tools';
 	import { previewDiagnostics } from '$lib/video-editor/preview/diagnostics.svelte';
 	import { spatialEffectEditorStore } from '$lib/video-editor/preview/spatial-effect-editor.svelte';
@@ -116,6 +119,9 @@
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
 	const displayFrame = $derived(
 		resolveTimelinePreviewFrame($timelinePreviewScrub, timelineStore.currentFrame)
+	);
+	const prewarmPlanningFrame = $derived(
+		previewPrewarmPlanningFrame(displayFrame, editorSession.fps)
 	);
 	const previewRenderScale = $derived(
 		previewPlaybackSettings.previewQuality === 'auto' ? adaptivePreviewQuality.scale : 1
@@ -330,8 +336,11 @@
 		const targets = collectPreviewPrewarmTargets({
 			items: timelineStore.items,
 			tracks: timelineStore.tracks,
-			currentFrame: displayFrame,
-			fps: editorSession.fps
+			currentFrame: prewarmPlanningFrame,
+			minimumBoundaryFrame: untrack(() => displayFrame),
+			fps: editorSession.fps,
+			transitions: transitionsStore.list,
+			compositions: sequenceStore.compositions
 		});
 		for (const target of targets) {
 			const media = mediaPool.get(target.mediaId);
