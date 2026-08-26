@@ -71,7 +71,8 @@ export class AbsolutePhaseResampler {
 			this.sourceRate,
 			this.targetRate
 		);
-		const outputs: number[] = [];
+		const output = new Float32Array(Math.max(0, desiredTotalOutput - this.totalOutputEmitted));
+		let outputFrames = 0;
 		while (this.totalOutputEmitted < desiredTotalOutput) {
 			const srcPos = (this.totalOutputEmitted * this.sourceRate) / this.targetRate;
 			const left = Math.floor(srcPos);
@@ -85,7 +86,7 @@ export class AbsolutePhaseResampler {
 			if (!isLast && !rightExists) break;
 			const l = leftExists ? leftSample! : 0;
 			const r = rightExists ? rightSample! : 0;
-			outputs.push(l * (1 - frac) + r * frac);
+			output[outputFrames++] = l * (1 - frac) + r * frac;
 			this.totalOutputEmitted++;
 		}
 		if (isLast) {
@@ -96,7 +97,7 @@ export class AbsolutePhaseResampler {
 				const localLeft = left - this.pendingStartInputIndex;
 				const l = this.pending[localLeft] ?? 0;
 				const r = this.pending[localLeft + 1] ?? 0;
-				outputs.push(l * (1 - frac) + r * frac);
+				output[outputFrames++] = l * (1 - frac) + r * frac;
 				this.totalOutputEmitted++;
 			}
 			this.pending = new Float32Array(0);
@@ -119,7 +120,7 @@ export class AbsolutePhaseResampler {
 				this.pendingStartInputIndex += drop;
 			}
 		}
-		return Float32Array.from(outputs);
+		return outputFrames === output.length ? output : output.slice(0, outputFrames);
 	}
 
 	flush(): Float32Array {
