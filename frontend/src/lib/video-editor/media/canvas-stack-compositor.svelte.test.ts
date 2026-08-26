@@ -280,6 +280,31 @@ describe('CanvasStackCompositor', () => {
 		stack.dispose();
 	});
 
+	it('reports and rejects a frame when an enabled GPU effect cannot render', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		stack.beginFrame(4, 4, '#000000');
+		const source = solid('#ff0000');
+		const item = layer('normal');
+		item.effects = [
+			{
+				id: 'missing-renderer',
+				type: 'gpu',
+				effectId: 'gpu-missing-renderer',
+				enabled: true,
+				params: {}
+			}
+		];
+
+		stack.compositeLayer({ source, width: 4, height: 4 }, item, 1, 0);
+
+		expect(stack.exactRenderFailureReason()).toContain('gpu-missing-renderer');
+		expect(() => stack.assertExactRender()).toThrowError(
+			'Video frame could not render exactly: GPU effect renderer unavailable: gpu-missing-renderer'
+		);
+		stack.dispose();
+	});
+
 	it.each(ALL_BLEND_MODES)('keeps the exact CPU fallback aligned with GPU %s', (mode) => {
 		const base = solid('rgb(80 140 200)', 1, 1);
 		const layerCanvas = solid('rgb(220 60 130 / 60%)', 1, 1);

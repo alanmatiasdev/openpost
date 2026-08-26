@@ -671,6 +671,7 @@ export class TimelineFrameRenderer {
 			);
 		}
 
+		this.stackCompositor.assertExactRender();
 		return this.canvas;
 	}
 

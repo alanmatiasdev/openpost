@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Project, TimelineItem, TimelineTrack } from '../project/types';
 import { mediaPool } from './pool.svelte';
-import { renderTimelineAudioArtifact } from './render-export';
+import { renderTimelineAudioArtifact, TimelineFrameRenderer } from './render-export';
 import ac3FixtureUrl from './fixtures/tone-ac3.mkv?url';
 
 function linkedFileHandle(file: File): FileSystemFileHandle {
@@ -98,5 +98,61 @@ describe('render export audio decoding', () => {
 		const muted = await context.decodeAudioData(await mutedArtifact.blob.arrayBuffer());
 		expect(Math.max(...muted.getChannelData(0).map((sample) => Math.abs(sample)))).toBe(0);
 		await context.close();
+	});
+});
+
+describe('render export exactness', () => {
+	it('rejects an export frame instead of omitting an enabled GPU effect', async () => {
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual 1',
+			kind: 'video',
+			height: 72,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const item: TimelineItem = {
+			id: 'shape',
+			trackId: track.id,
+			from: 0,
+			durationInFrames: 30,
+			label: 'Shape',
+			type: 'shape',
+			shapeType: 'rectangle',
+			fillColor: '#ff0000',
+			fillEnabled: true,
+			transform: { width: 32, height: 32 },
+			effects: [
+				{
+					id: 'missing-renderer',
+					type: 'gpu',
+					effectId: 'gpu-missing-renderer',
+					enabled: true,
+					params: {}
+				}
+			]
+		};
+		const project: Project = {
+			id: 'exactness',
+			name: 'Exact export',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 64, height: 64, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [track], items: [item] }
+		};
+		const renderer = new TimelineFrameRenderer(project);
+
+		try {
+			await expect(renderer.render(0)).rejects.toThrowError(
+				'Video frame could not render exactly: GPU effect renderer unavailable: gpu-missing-renderer'
+			);
+		} finally {
+			renderer.dispose();
+		}
 	});
 });

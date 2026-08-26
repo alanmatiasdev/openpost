@@ -134,6 +134,7 @@ export class CanvasStackCompositor {
 	private width = 1;
 	private height = 1;
 	private lastFailure: string | null = null;
+	private exactRenderFailure: string | null = null;
 
 	constructor(
 		private readonly canvas: StackCanvas,
@@ -214,6 +215,7 @@ export class CanvasStackCompositor {
 		this.context.fillStyle = backgroundColor;
 		this.context.fillRect(0, 0, this.width, this.height);
 		this.lastFailure = null;
+		this.exactRenderFailure = null;
 	}
 
 	private beginFromBackdrop(backdrop: StackCanvas, width: number, height: number): void {
@@ -222,6 +224,12 @@ export class CanvasStackCompositor {
 		this.context.drawImage(backdrop, 0, 0, this.width, this.height);
 		this.context.globalCompositeOperation = 'source-over';
 		this.lastFailure = null;
+		this.exactRenderFailure = null;
+	}
+
+	private recordExactRenderFailure(reason: string): void {
+		this.exactRenderFailure ??= reason;
+		this.lastFailure ??= reason;
 	}
 
 	private gpuEffects(item: TimelineItem): GpuRenderEffect[] {
@@ -246,7 +254,11 @@ export class CanvasStackCompositor {
 		time: number
 	): CanvasImageSource {
 		const effects = this.gpuEffects(item);
-		if (effects.length === 0 || !this.gpuCompositor) return source.source;
+		if (effects.length === 0) return source.source;
+		if (!this.gpuCompositor) {
+			this.recordExactRenderFailure('WebGL2 is unavailable for enabled GPU effects');
+			return source.source;
+		}
 		const rendered = this.gpuCompositor.render(
 			source.source,
 			source.width,
@@ -255,7 +267,9 @@ export class CanvasStackCompositor {
 			{ time }
 		);
 		if (!rendered) {
-			this.lastFailure = this.gpuCompositor.failureReason();
+			this.recordExactRenderFailure(
+				this.gpuCompositor.failureReason() ?? 'An enabled GPU effect could not render'
+			);
 			return source.source;
 		}
 		return this.gpuCanvas;
@@ -410,7 +424,7 @@ export class CanvasStackCompositor {
 			!outputCanvas ||
 			!outputContext
 		) {
-			this.lastFailure = 'Transition branches unavailable';
+			this.recordExactRenderFailure('Transition branches unavailable');
 			return false;
 		}
 		const presentation =
@@ -418,7 +432,7 @@ export class CanvasStackCompositor {
 		const rendererEntry = transitionRegistry.getRenderer(presentation);
 		const renderer = rendererEntry?.renderCanvas;
 		if (!renderer) {
-			this.lastFailure = `Transition renderer unavailable: ${presentation}`;
+			this.recordExactRenderFailure(`Transition renderer unavailable: ${presentation}`);
 			return false;
 		}
 
@@ -467,12 +481,24 @@ export class CanvasStackCompositor {
 		this.context.filter = 'none';
 		this.context.drawImage(outputCanvas, 0, 0, this.width, this.height);
 		this.context.globalCompositeOperation = 'source-over';
-		this.lastFailure = leftStack.failureReason() ?? rightStack.failureReason();
+		const branchExactFailure =
+			leftStack.exactRenderFailureReason() ?? rightStack.exactRenderFailureReason();
+		if (branchExactFailure) this.recordExactRenderFailure(branchExactFailure);
+		this.lastFailure ??= leftStack.failureReason() ?? rightStack.failureReason();
 		return true;
 	}
 
 	failureReason(): string | null {
 		return this.lastFailure;
+	}
+
+	exactRenderFailureReason(): string | null {
+		return this.exactRenderFailure;
+	}
+
+	assertExactRender(): void {
+		if (!this.exactRenderFailure) return;
+		throw new Error(`Video frame could not render exactly: ${this.exactRenderFailure}`);
 	}
 
 	diagnostics(): CanvasStackDiagnostics {
