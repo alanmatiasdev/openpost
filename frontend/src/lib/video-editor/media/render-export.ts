@@ -85,10 +85,8 @@ import { smartCopy } from './smart-copy';
 import { applyCompositionControlOverrides } from '../sequences/composition-controls';
 import { ensureProResDecoderForCodec } from './prores-decoder';
 import { ensureAc3DecoderForCodec } from './ac3-decoder';
-import {
-	downmixToOutputChannels,
-	expectedOutputFrames as expectedFramesForRate
-} from '../audio/sample-rate-converter';
+import { downmixToOutputChannels } from '../audio/sample-rate-converter';
+import { mixAudioWindows } from '../audio/bounded-audio-mixer';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -350,7 +348,8 @@ async function renderMixdownEntries(
 				range.end,
 				signal
 			);
-		} catch {
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') throw error;
 			completed++;
 			onEntryProgress?.(completed, entries.length);
 			continue;
@@ -981,17 +980,9 @@ export async function renderMultiTrackVideoArtifact(
 		endFrame / fps
 	);
 	report(options, 'mixing', 0, totalFrames);
-	const mixed =
-		mixEntries.length > 0
-			? await renderMixdownEntries(mixEntries, options.signal, (done, total) =>
-					report(
-						options,
-						'mixing',
-						Math.round((done / Math.max(1, total)) * totalFrames),
-						totalFrames
-					)
-				)
-			: null;
+	// Mixing is now streaming via bounded windows; report mixing as we feed windows during encoding.
+	const hasAudio = mixEntries.length > 0;
+	const audioDurationSeconds = hasAudio ? mixDurationSeconds(mixEntries) : 0;
 	report(options, 'rendering', 0, totalFrames);
 
 	const format = options.format ?? 'webm';
@@ -1033,7 +1024,7 @@ export async function renderMultiTrackVideoArtifact(
 	}
 
 	let audioSource: AudioSampleSource | null = null;
-	if (mixed) {
+	if (hasAudio) {
 		audioSource = new AudioSampleSource({
 			codec: format === 'webm' || format === 'mkv' ? 'opus' : 'aac',
 			bitrate: 192_000
@@ -1048,10 +1039,37 @@ export async function renderMultiTrackVideoArtifact(
 	}
 
 	async function runFeed(): Promise<void> {
-		if (!mixed || !audioSource) return;
+		if (!hasAudio || !audioSource) return;
 		const source = audioSource;
+		let samplesFed = 0;
+		const totalSamples = Math.ceil(audioDurationSeconds * MIX_SAMPLE_RATE);
 		try {
-			await feedEncodedAudio(source, mixed);
+			for await (const win of mixAudioWindows(mixEntries, audioDurationSeconds, options.signal)) {
+				throwIfAborted(options.signal);
+				const windowSamples = win.samples[0]!.length;
+				for (let off = 0; off < windowSamples; off += AUDIO_ENCODE_CHUNK_FRAMES) {
+					throwIfAborted(options.signal);
+					const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, windowSamples - off);
+					const planar = new Float32Array(frameCount * MIX_CHANNELS);
+					for (let c = 0; c < MIX_CHANNELS; c++)
+						planar.set(win.samples[c]!.subarray(off, off + frameCount), c * frameCount);
+					const sample = new AudioSample({
+						data: planar,
+						format: 'f32-planar',
+						numberOfChannels: MIX_CHANNELS,
+						sampleRate: MIX_SAMPLE_RATE,
+						timestamp: (samplesFed + off) / MIX_SAMPLE_RATE
+					});
+					try {
+						await source.add(sample);
+					} finally {
+						sample.close();
+					}
+				}
+				samplesFed += windowSamples;
+				const progress = totalSamples > 0 ? samplesFed / totalSamples : 1;
+				report(options, 'encoding', Math.round(progress * totalFrames), totalFrames);
+			}
 		} finally {
 			source.close();
 			audioSource = null;
@@ -1158,10 +1176,8 @@ export async function renderTimelineAudioArtifact(
 	if (entries.length === 0) throw new Error('The selected range has no audible clips.');
 	report(options, 'preparing', 0, totalFrames);
 	report(options, 'mixing', 0, totalFrames);
-	const mixed = await renderMixdownEntries(entries, options.signal, (done, total) =>
-		report(options, 'mixing', Math.round((done / Math.max(1, total)) * totalFrames), totalFrames)
-	);
-	if (!mixed) throw new Error('The audio mix is empty.');
+	const durationSeconds = mixDurationSeconds(entries);
+	if (durationSeconds <= 0) throw new Error('The audio mix is empty.');
 	const format = audioOutputFormatFor(options.format);
 	const target = new BufferTarget();
 	const output = new Output({ format, target });
@@ -1175,11 +1191,41 @@ export async function renderTimelineAudioArtifact(
 	try {
 		throwIfAborted(options.signal);
 		report(options, 'encoding', 0, totalFrames);
-		await feedEncodedAudio(source, mixed, (encodedFrames, encodedTotal) => {
+		let samplesFed = 0;
+		const totalSamples = Math.ceil(durationSeconds * MIX_SAMPLE_RATE);
+		let producedWindows = 0;
+		let hasDecodeFailure = false;
+		for await (const win of mixAudioWindows(entries, durationSeconds, options.signal)) {
 			throwIfAborted(options.signal);
-			const ratio = encodedTotal > 0 ? encodedFrames / encodedTotal : 1;
+			producedWindows++;
+			const windowSamples = win.samples[0]!.length;
+			for (let off = 0; off < windowSamples; off += AUDIO_ENCODE_CHUNK_FRAMES) {
+				throwIfAborted(options.signal);
+				const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, windowSamples - off);
+				const planar = new Float32Array(frameCount * MIX_CHANNELS);
+				for (let c = 0; c < MIX_CHANNELS; c++)
+					planar.set(win.samples[c]!.subarray(off, off + frameCount), c * frameCount);
+				const sample = new AudioSample({
+					data: planar,
+					format: 'f32-planar',
+					numberOfChannels: MIX_CHANNELS,
+					sampleRate: MIX_SAMPLE_RATE,
+					timestamp: (samplesFed + off) / MIX_SAMPLE_RATE
+				});
+				try {
+					await source.add(sample);
+				} finally {
+					sample.close();
+				}
+			}
+			samplesFed += windowSamples;
+			const ratio = totalSamples > 0 ? samplesFed / totalSamples : 1;
 			report(options, 'encoding', Math.round(totalFrames * ratio), totalFrames);
-		});
+		}
+		if (producedWindows === 0) {
+			hasDecodeFailure = true;
+		}
+		if (hasDecodeFailure) throw new Error('The audio mix is empty.');
 		source.close();
 		report(options, 'finalizing', totalFrames, totalFrames);
 		await output.finalize();

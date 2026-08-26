@@ -49,9 +49,10 @@ export function resampleAudioChannels(
 }
 
 export class AbsolutePhaseResampler {
-	private totalInput = 0;
-	private totalOutput = 0;
-	private buffered = new Float32Array(0);
+	private totalInputFed = 0;
+	private totalOutputEmitted = 0;
+	private pending = new Float32Array(0);
+	private pendingStartInputIndex = 0;
 
 	constructor(
 		private readonly sourceRate: number,
@@ -59,39 +60,78 @@ export class AbsolutePhaseResampler {
 	) {}
 
 	processChunk(chunk: Float32Array, isLast: boolean): Float32Array {
-		const combined = new Float32Array(this.buffered.length + chunk.length);
-		combined.set(this.buffered, 0);
-		combined.set(chunk, this.buffered.length);
-		const nextTotalInput = this.totalInput + chunk.length;
-		const nextTotalOutput = expectedOutputFrames(nextTotalInput, this.sourceRate, this.targetRate);
-		const chunkOutputFrames = nextTotalOutput - this.totalOutput;
-		const output = new Float32Array(chunkOutputFrames);
-		for (let i = 0; i < chunkOutputFrames; i++) {
-			const globalOut = this.totalOutput + i;
-			const srcPos = (globalOut * this.sourceRate) / this.targetRate;
-			const localPos = srcPos - (this.totalInput - this.buffered.length);
-			const left = Math.floor(localPos);
-			const frac = localPos - left;
-			const leftSample = combined[left] ?? 0;
-			const rightSample = combined[left + 1] ?? 0;
-			output[i] = leftSample * (1 - frac) + rightSample * frac;
+		if (chunk.length === 0 && !isLast) return new Float32Array(0);
+		const newPending = new Float32Array(this.pending.length + chunk.length);
+		newPending.set(this.pending, 0);
+		newPending.set(chunk, this.pending.length);
+		this.pending = newPending;
+		this.totalInputFed += chunk.length;
+		const desiredTotalOutput = expectedOutputFrames(
+			this.totalInputFed,
+			this.sourceRate,
+			this.targetRate
+		);
+		const outputs: number[] = [];
+		while (this.totalOutputEmitted < desiredTotalOutput) {
+			const srcPos = (this.totalOutputEmitted * this.sourceRate) / this.targetRate;
+			const left = Math.floor(srcPos);
+			const frac = srcPos - left;
+			const localLeft = left - this.pendingStartInputIndex;
+			const leftSample = this.pending[localLeft];
+			const rightSample = this.pending[localLeft + 1];
+			const leftExists = localLeft >= 0 && localLeft < this.pending.length;
+			const rightExists = localLeft + 1 >= 0 && localLeft + 1 < this.pending.length;
+			if (!leftExists && !rightExists) break;
+			if (!isLast && !rightExists) break;
+			const l = leftExists ? leftSample! : 0;
+			const r = rightExists ? rightSample! : 0;
+			outputs.push(l * (1 - frac) + r * frac);
+			this.totalOutputEmitted++;
 		}
-		this.totalInput = nextTotalInput;
-		this.totalOutput = nextTotalOutput;
-		if (chunk.length > 0) this.buffered = new Float32Array([chunk[chunk.length - 1]!]);
-		else this.buffered = new Float32Array(0);
-		if (isLast) this.buffered = new Float32Array(0);
-		return output;
+		if (isLast) {
+			while (this.totalOutputEmitted < desiredTotalOutput) {
+				const srcPos = (this.totalOutputEmitted * this.sourceRate) / this.targetRate;
+				const left = Math.floor(srcPos);
+				const frac = srcPos - left;
+				const localLeft = left - this.pendingStartInputIndex;
+				const l = this.pending[localLeft] ?? 0;
+				const r = this.pending[localLeft + 1] ?? 0;
+				outputs.push(l * (1 - frac) + r * frac);
+				this.totalOutputEmitted++;
+			}
+			this.pending = new Float32Array(0);
+			this.pendingStartInputIndex = this.totalInputFed;
+		} else {
+			const lastEmittedSrcPos =
+				this.totalOutputEmitted > 0
+					? ((this.totalOutputEmitted - 1) * this.sourceRate) / this.targetRate
+					: -1;
+			const keepFrom = Math.max(0, Math.floor(lastEmittedSrcPos) - 1);
+			const discardCount = Math.max(0, keepFrom - this.pendingStartInputIndex);
+			if (discardCount > 0) {
+				this.pending = this.pending.slice(discardCount);
+				this.pendingStartInputIndex += discardCount;
+			}
+			if (this.pending.length > 8192) {
+				const maxKeep = 8192;
+				const drop = this.pending.length - maxKeep;
+				this.pending = this.pending.slice(drop);
+				this.pendingStartInputIndex += drop;
+			}
+		}
+		return Float32Array.from(outputs);
 	}
 
 	flush(): Float32Array {
-		return new Float32Array(0);
+		if (this.pending.length === 0) return new Float32Array(0);
+		return this.processChunk(new Float32Array(0), true);
 	}
 
 	reset(): void {
-		this.totalInput = 0;
-		this.totalOutput = 0;
-		this.buffered = new Float32Array(0);
+		this.totalInputFed = 0;
+		this.totalOutputEmitted = 0;
+		this.pending = new Float32Array(0);
+		this.pendingStartInputIndex = 0;
 	}
 }
 
