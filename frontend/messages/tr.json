@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Bağlı seçimi etkinleştir (Shift+L)",
 	"video_editor_linked_selection_disable": "Bağlı seçimi devre dışı bırak (Shift+L)",
 	"video_editor_linked_selection_hint": "Düzenleme sırasında eşitlenmiş bağlı klipleri birlikte tut",
+	"video_editor_linked_sync_offset": "Bağlı klipler {offset} kaymış durumda",
 	"video_editor_link_selected": "Seçili klipleri bağla",
 	"video_editor_link_selected_hint": "Seçili klipleri bağlar (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Seçili kliplerin bağını kaldır",

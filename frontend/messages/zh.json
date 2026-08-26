@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "启用联动选择（Shift+L）",
 	"video_editor_linked_selection_disable": "停用联动选择（Shift+L）",
 	"video_editor_linked_selection_hint": "编辑时保持关联剪辑同步移动",
+	"video_editor_linked_sync_offset": "关联剪辑不同步，相差 {offset}",
 	"video_editor_link_selected": "链接所选片段",
 	"video_editor_link_selected_hint": "链接所选剪辑（Ctrl+Alt+L）",
 	"video_editor_unlink_selected": "取消链接所选片段",

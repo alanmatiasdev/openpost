@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Activer la sélection liée (Shift+L)",
 	"video_editor_linked_selection_disable": "Désactiver la sélection liée (Shift+L)",
 	"video_editor_linked_selection_hint": "Gardez ensemble les clips liés synchronisés pendant le montage",
+	"video_editor_linked_sync_offset": "Les clips liés sont décalés de {offset}",
 	"video_editor_link_selected": "Lier les clips sélectionnés",
 	"video_editor_link_selected_hint": "Lie les clips sélectionnés (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Délier les clips sélectionnés",

@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Verknüpfte Auswahl aktivieren (Umschalt+L)",
 	"video_editor_linked_selection_disable": "Verknüpfte Auswahl deaktivieren (Umschalt+L)",
 	"video_editor_linked_selection_hint": "Verknüpfte Clips bei der Bearbeitung zusammenhalten",
+	"video_editor_linked_sync_offset": "Verknüpfte Clips sind um {offset} versetzt",
 	"video_editor_link_selected": "Ausgewählte Clips verknüpfen",
 	"video_editor_link_selected_hint": "Ausgewählte Clips verknüpfen (Strg+Alt+L)",
 	"video_editor_unlink_selected": "Verknüpfung ausgewählter Clips aufheben",

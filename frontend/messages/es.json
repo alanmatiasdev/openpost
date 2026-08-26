@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Habilitar la selección vinculada (Mayús+L)",
 	"video_editor_linked_selection_disable": "Desactivar la selección vinculada (Mayús+L)",
 	"video_editor_linked_selection_hint": "Mantener juntos los clips enlazados sincronizados mientras se edita",
+	"video_editor_linked_sync_offset": "Los clips vinculados están desincronizados {offset}",
 	"video_editor_link_selected": "Vincular los clips seleccionados",
 	"video_editor_link_selected_hint": "Vincular los clips seleccionados (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Desvincular los clips seleccionados",

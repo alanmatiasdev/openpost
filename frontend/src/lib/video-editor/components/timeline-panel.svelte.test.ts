@@ -137,6 +137,66 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel Bento layout entry', () => {
+	it('shows exact linked A/V drift without crowding short clips', async () => {
+		await page.viewport(320, 720);
+		timelineStore._setItems([
+			item({
+				id: 'linked-video',
+				label: 'Linked video',
+				from: 12,
+				durationInFrames: 60,
+				linkedGroupId: 'wide-group'
+			}),
+			item({
+				id: 'linked-audio',
+				trackId: 'audio-track',
+				label: 'Linked audio',
+				type: 'audio',
+				durationInFrames: 60,
+				linkedGroupId: 'wide-group'
+			}),
+			item({
+				id: 'short-video',
+				label: 'Short video',
+				from: 90,
+				durationInFrames: 6,
+				linkedGroupId: 'short-group'
+			}),
+			item({
+				id: 'short-audio',
+				trackId: 'audio-track',
+				label: 'Short audio',
+				from: 88,
+				durationInFrames: 6,
+				type: 'audio',
+				linkedGroupId: 'short-group'
+			})
+		]);
+
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		await vi.waitFor(() => {
+			const badges = [...document.querySelectorAll<HTMLElement>('[data-linked-sync-offset]')];
+			expect(badges.map((badge) => badge.textContent?.trim()).sort()).toEqual(['+00:12', '-00:12']);
+		});
+		await expect
+			.element(screen.getByRole('button', { name: /Linked video.*out of sync by \+00:12/ }))
+			.toBeVisible();
+		expect(
+			document.querySelector('[data-timeline-item-id="short-video"] [data-linked-sync-offset]')
+		).toBeNull();
+		expect(
+			document.querySelector('[data-timeline-item-id="short-audio"] [data-linked-sync-offset]')
+		).toBeNull();
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+		const timeline = document.querySelector<HTMLElement>('#video-editor-timeline-scroll');
+		expect(timeline).not.toBeNull();
+		if (!timeline) throw new Error('Timeline scroll container did not render.');
+		timeline.scrollLeft = 170;
+		timeline.dispatchEvent(new Event('scroll'));
+		await nextAnimationFrame();
+		await page.screenshot({ path: '../../../../.svelte-kit/openpost-linked-sync-320.png' });
+	});
+
 	it('renders persisted waveforms for audio-only timeline clips', async () => {
 		const mediaId = `timeline-audio-${crypto.randomUUID()}`;
 		mediaPool.loadAll([

@@ -228,8 +228,11 @@
 	import {
 		canLinkSelection,
 		expandSelectionWithLinkedItems,
+		getLinkedSyncOffsetFrames,
 		getSynchronizedLinkedItems
 	} from '$lib/video-editor/timeline/utils/linked-items';
+	import TimelineLinkedSyncBadge from './timeline-linked-sync-badge.svelte';
+	import { formatLinkedSyncOffset } from '$lib/video-editor/timeline/linked-sync-display';
 	import { updateTimelineItemSelection } from '$lib/video-editor/timeline/selection';
 	import {
 		areItemIdListsEqual,
@@ -1046,6 +1049,26 @@
 			from: preview.from ?? item.from,
 			durationInFrames: preview.durationInFrames ?? item.durationInFrames
 		};
+	}
+
+	function linkedSyncOffset(item: TimelineItem): number | null {
+		if (item.type !== 'video' && item.type !== 'audio' && item.type !== 'composition') return null;
+		if (timelineStore.linkedSelectionEnabled && drag) return null;
+		return getLinkedSyncOffsetFrames(timelineStore.items, item.id, fps);
+	}
+
+	function timelineItemAriaLabel(item: TimelineItem, syncOffsetFrames: number | null): string {
+		const parts = [item.label];
+		if (item.isReversed) parts.push(m.video_editor_clip_reverse());
+		if (syncOffsetFrames !== null) {
+			parts.push(
+				m.video_editor_linked_sync_offset({
+					offset: formatLinkedSyncOffset(syncOffsetFrames, fps)
+				})
+			);
+		}
+		parts.push(m.video_editor_timing_keyboard());
+		return parts.join('. ');
 	}
 
 	function setSyncLockPreview(updates: SyncLockPreviewUpdate[]): void {
@@ -4594,6 +4617,7 @@
 				{#each renderPlan.nativeItems as item (item.id)}
 					{@const displayItem = previewedItem(item)}
 					{@const pushAvailability = trackPushAvailability(item)}
+					{@const syncOffsetFrames = linkedSyncOffset(item)}
 					{#if !syncLockPreviewById[item.id]?.hidden}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
@@ -4643,7 +4667,7 @@
 									: 'cursor-grab active:cursor-grabbing'}"
 								aria-label={activeEditTool === 'track-push'
 									? `${item.label}. ${m.video_editor_track_push_handle()}`
-									: `${item.label}${item.isReversed ? `, ${m.video_editor_clip_reverse()}` : ''}. ${m.video_editor_timing_keyboard()}`}
+									: timelineItemAriaLabel(item, syncOffsetFrames)}
 								aria-disabled={activeEditTool === 'track-push' && pushAvailability !== 'ready'}
 								title={activeEditTool === 'track-push' ? trackPushTitle(item) : undefined}
 								onclick={(event) => {
@@ -4712,9 +4736,16 @@
 										</svg>
 									{/if}
 								{/if}
-								<span class="relative z-10 truncate px-2 text-[11px] text-white/90"
+								<span class="relative z-10 min-w-0 flex-1 truncate px-2 text-[11px] text-white/90"
 									>{item.label}</span
 								>
+								{#if syncOffsetFrames !== null}
+									<TimelineLinkedSyncBadge
+										offsetFrames={syncOffsetFrames}
+										{fps}
+										clipWidthPx={frameToPx(displayItem.durationInFrames)}
+									/>
+								{/if}
 								{#if item.isReversed}
 									<span
 										class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-[8px] font-semibold tracking-wide text-white/85"

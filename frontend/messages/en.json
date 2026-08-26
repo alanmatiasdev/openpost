@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Enable linked selection (Shift+L)",
 	"video_editor_linked_selection_disable": "Disable linked selection (Shift+L)",
 	"video_editor_linked_selection_hint": "Keep synchronized linked clips together while editing",
+	"video_editor_linked_sync_offset": "Linked clips are out of sync by {offset}",
 	"video_editor_link_selected": "Link selected clips",
 	"video_editor_link_selected_hint": "Link selected clips (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Unlink selected clips",

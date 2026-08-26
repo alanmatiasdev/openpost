@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "Ativar seleção vinculada (Shift+L)",
 	"video_editor_linked_selection_disable": "Desativar seleção vinculada (Shift+L)",
 	"video_editor_linked_selection_hint": "Manter juntos os clipes vinculados e sincronizados durante a edição",
+	"video_editor_linked_sync_offset": "Os clipes vinculados estão fora de sincronia por {offset}",
 	"video_editor_link_selected": "Vincular clipes selecionados",
 	"video_editor_link_selected_hint": "Vincular clipes selecionados (Ctrl+Alt+L)",
 	"video_editor_unlink_selected": "Desvincular clipes selecionados",

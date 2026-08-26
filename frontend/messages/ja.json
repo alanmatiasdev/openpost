@@ -3975,6 +3975,7 @@
 	"video_editor_linked_selection_enable": "リンク選択を有効にする（Shift+L）",
 	"video_editor_linked_selection_disable": "リンク選択を無効にする（Shift+L）",
 	"video_editor_linked_selection_hint": "編集中もリンクされたクリップを一緒に動かします",
+	"video_editor_linked_sync_offset": "リンクされたクリップが {offset} ずれています",
 	"video_editor_link_selected": "選択したクリップをリンク",
 	"video_editor_link_selected_hint": "選択したクリップをリンクします（Ctrl+Alt+L）",
 	"video_editor_unlink_selected": "選択したクリップのリンクを解除",
