@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "소스 인 지점",
 	"video_editor_source_out_point": "소스 아웃 지점",
 	"video_editor_source_clear_marks": "표시 지우기",
+	"video_editor_source_play_in_to_out": "인 지점부터 아웃 지점까지 재생",
 	"video_editor_source_video_target": "동영상 대상 트랙",
 	"video_editor_source_audio_target": "오디오 대상 트랙",
 	"video_editor_source_target_auto": "자동",

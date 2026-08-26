@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "ソースのイン点",
 	"video_editor_source_out_point": "ソースのアウト点",
 	"video_editor_source_clear_marks": "マークをクリア",
+	"video_editor_source_play_in_to_out": "イン点からアウト点まで再生",
 	"video_editor_source_video_target": "映像の配置先トラック",
 	"video_editor_source_audio_target": "音声の配置先トラック",
 	"video_editor_source_target_auto": "自動",

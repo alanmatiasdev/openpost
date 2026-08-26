@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "源入点",
 	"video_editor_source_out_point": "源出点",
 	"video_editor_source_clear_marks": "清除标记",
+	"video_editor_source_play_in_to_out": "播放入点到出点",
 	"video_editor_source_video_target": "视频目标轨道",
 	"video_editor_source_audio_target": "音频目标轨道",
 	"video_editor_source_target_auto": "自动",

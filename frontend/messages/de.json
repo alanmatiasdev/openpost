@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "Quell-Ein-Punkt",
 	"video_editor_source_out_point": "Quell-Aus-Punkt",
 	"video_editor_source_clear_marks": "Marken löschen",
+	"video_editor_source_play_in_to_out": "Von Ein bis Aus abspielen",
 	"video_editor_source_video_target": "Video-Zielspur",
 	"video_editor_source_audio_target": "Audio-Zielspur",
 	"video_editor_source_target_auto": "Auto",

@@ -19,6 +19,7 @@
 	import Music2Icon from '@lucide/svelte/icons/music-2';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import PlayIcon from '@lucide/svelte/icons/play';
+	import RepeatIcon from '@lucide/svelte/icons/repeat-2';
 	import SkipBackIcon from '@lucide/svelte/icons/skip-back';
 	import SkipForwardIcon from '@lucide/svelte/icons/skip-forward';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -333,6 +334,13 @@
 		playbackStartedAt = performance.now();
 		if (needsCustomAudio) startCustomAudio(currentFrame / sourceFps);
 		animationFrame = requestAnimationFrame(customPlaybackFrame);
+	}
+
+	function replayMarkedRange(): void {
+		if (!marksActive) return;
+		pause();
+		seek(inPoint);
+		void togglePlayback();
 	}
 
 	function updateFromMedia(): void {
@@ -663,6 +671,15 @@
 			<button
 				class="transport-button"
 				type="button"
+				disabled={!marksActive}
+				aria-label={m.video_editor_source_play_in_to_out()}
+				onclick={replayMarkedRange}
+			>
+				<RepeatIcon class="size-3.5" aria-hidden="true" />
+			</button>
+			<button
+				class="transport-button"
+				type="button"
 				aria-label={m.video_editor_go_to_start()}
 				title={formatShortcutBinding(keyboardShortcuts.bindings.GO_TO_START)}
 				onclick={() => seek(0)}
@@ -814,6 +831,9 @@
 	.transport-button.primary {
 		color: white;
 		background: oklch(0.63 0.16 45);
+	}
+	.transport-button:disabled {
+		opacity: 0.4;
 	}
 	.mark-button {
 		padding: 0.38rem 0.48rem;

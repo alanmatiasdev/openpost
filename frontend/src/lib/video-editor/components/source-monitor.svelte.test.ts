@@ -198,6 +198,29 @@ describe('SourceMonitor', () => {
 		expect(monitor.scrollWidth).toBeLessThanOrEqual(monitor.clientWidth);
 	});
 
+	it('replays the marked source range from its in point', async () => {
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit: vi.fn()
+		});
+		const position = screen.getByLabelText('Source position').element();
+		if (!(position instanceof HTMLInputElement)) {
+			throw new Error('Source position is not a slider.');
+		}
+		const replay = screen.getByRole('button', { name: 'Play in to out' });
+		expect(replay.element()).toBeDisabled();
+		setRange(position, 30);
+		await screen.getByRole('button', { name: 'Mark in' }).click();
+		setRange(position, 59);
+		await screen.getByRole('button', { name: 'Mark out' }).click();
+
+		await replay.click();
+
+		expect(position.value).toBe('30');
+		expect(replay.element()).toBeEnabled();
+	});
+
 	it('goes to the last source frame and honors remapped source edit shortcuts', async () => {
 		keyboardShortcuts.setBinding('MARK_IN', 'alt+9');
 		keyboardShortcuts.setBinding('MARK_OUT', 'alt+0');

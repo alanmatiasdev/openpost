@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "Point d'entrée de la source",
 	"video_editor_source_out_point": "Point de sortie de la source",
 	"video_editor_source_clear_marks": "Effacer les points",
+	"video_editor_source_play_in_to_out": "Lire du point d'entrée au point de sortie",
 	"video_editor_source_video_target": "Piste vidéo de destination",
 	"video_editor_source_audio_target": "Piste audio de destination",
 	"video_editor_source_target_auto": "Auto",

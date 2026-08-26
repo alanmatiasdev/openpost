@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "Source in point",
 	"video_editor_source_out_point": "Source out point",
 	"video_editor_source_clear_marks": "Clear marks",
+	"video_editor_source_play_in_to_out": "Play in to out",
 	"video_editor_source_video_target": "Video destination track",
 	"video_editor_source_audio_target": "Audio destination track",
 	"video_editor_source_target_auto": "Auto",

@@ -5605,6 +5605,7 @@
 	"video_editor_source_in_point": "Kaynak giriş noktası",
 	"video_editor_source_out_point": "Kaynak çıkış noktası",
 	"video_editor_source_clear_marks": "İşaretleri temizle",
+	"video_editor_source_play_in_to_out": "Girişten çıkışa oynat",
 	"video_editor_source_video_target": "Video hedef parçası",
 	"video_editor_source_audio_target": "Ses hedef parçası",
 	"video_editor_source_target_auto": "Otomatik",
