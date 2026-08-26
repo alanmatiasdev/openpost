@@ -16,7 +16,7 @@ function isFiniteNumber(value: number): boolean {
 export function createSegment(
 	start: number,
 	end: number,
-	opts: { name?: string; id?: string; sourceId?: string } = {}
+	opts: { name?: string; id?: string; sourceId?: string; cutMode?: CutMode } = {}
 ): QuickCutSegment {
 	return {
 		id: opts.id ?? crypto.randomUUID(),
@@ -24,8 +24,16 @@ export function createSegment(
 		start,
 		end,
 		name: opts.name,
-		enabled: true
+		enabled: true,
+		cutMode: opts.cutMode
 	};
+}
+
+export function resolveSegmentCutMode(
+	segment: Pick<QuickCutSegment, 'cutMode'>,
+	projectCutMode: CutMode
+): CutMode {
+	return segment.cutMode ?? projectCutMode;
 }
 
 export function sortSegments(segments: QuickCutSegment[]): QuickCutSegment[] {
@@ -53,7 +61,8 @@ export function normalizeSegments(segments: QuickCutSegment[]): QuickCutSegment[
 			current.sourceId === seg.sourceId &&
 			seg.start <= current.end &&
 			seg.enabled !== false &&
-			current.enabled !== false;
+			current.enabled !== false &&
+			current.cutMode === seg.cutMode;
 		if (canMerge) {
 			current = {
 				...current,
@@ -224,7 +233,9 @@ export function reorderSegment(
 export function editSegment(
 	segments: QuickCutSegment[],
 	id: string,
-	patch: Partial<Pick<QuickCutSegment, 'start' | 'end' | 'name' | 'enabled' | 'sourceId'>>
+	patch: Partial<
+		Pick<QuickCutSegment, 'start' | 'end' | 'name' | 'enabled' | 'sourceId' | 'cutMode'>
+	>
 ): QuickCutSegment[] {
 	return segments.map((s) => (s.id === id ? { ...s, ...patch } : s));
 }
@@ -353,8 +364,13 @@ export function assessExport(
 		const kfs = getKfs(sid);
 		return findNearestKeyframe(time, kfs, tolerance).aligned;
 	};
-	if (cutMode === 'exact') {
+	const hasExact = segments.some((segment) => resolveSegmentCutMode(segment, cutMode) === 'exact');
+	const hasNearest = segments.some(
+		(segment) => resolveSegmentCutMode(segment, cutMode) === 'nearestKeyframe'
+	);
+	if (hasExact) {
 		for (const seg of segments) {
+			if (resolveSegmentCutMode(seg, cutMode) !== 'exact') continue;
 			const state = getState(seg.sourceId);
 			if (state === 'unknown') {
 				return {
@@ -370,9 +386,9 @@ export function assessExport(
 				};
 			}
 		}
-		return { wasLossless: true, reason: 'All starts are on keyframes. Stream copy is possible.' };
 	}
 	for (const seg of segments) {
+		if (resolveSegmentCutMode(seg, cutMode) === 'exact') continue;
 		const state = getState(seg.sourceId);
 		if (state === 'unknown') {
 			return {
@@ -399,7 +415,15 @@ export function assessExport(
 			};
 		}
 	}
-	return { wasLossless: true, reason: 'Lossless copy using nearest keyframes.' };
+	return {
+		wasLossless: true,
+		reason:
+			hasExact && hasNearest
+				? 'Exact starts align; remaining starts use nearest keyframes.'
+				: hasExact
+					? 'All exact starts are on keyframes. Stream copy is possible.'
+					: 'Lossless copy using nearest keyframes.'
+	};
 }
 
 export function parseTimecode(input: string): number | null {

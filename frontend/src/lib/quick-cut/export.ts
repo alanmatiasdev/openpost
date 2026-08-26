@@ -21,7 +21,12 @@ import {
 	type AudioCodec
 } from 'mediabunny';
 import type { QuickCutSegment, QuickCutSource, CutMode } from './types';
-import { findNearestKeyframe, findSnapKeyframe, estimateOutputBytes } from './model';
+import {
+	findNearestKeyframe,
+	findSnapKeyframe,
+	estimateOutputBytes,
+	resolveSegmentCutMode
+} from './model';
 import { createStreamingOutputTarget } from '$lib/video/stream-target';
 import { probeSourceFile, resolveSourceFile } from './source';
 import { ensureAc3DecoderForCodec } from '$lib/video-editor/media/ac3-decoder';
@@ -237,8 +242,9 @@ export async function preflightExport(
 	for (const seg of enabled) {
 		const src = sourceById.get(seg.sourceId)!;
 		const kfs = src.keyframeTimestamps;
+		const segmentCutMode = resolveSegmentCutMode(seg, cutMode);
 		if (src.keyframeState === 'audio-only') {
-			const exactAudio = cutMode === 'exact';
+			const exactAudio = segmentCutMode === 'exact';
 			perSegment.push({
 				segmentId: seg.id,
 				requiresTranscode: exactAudio,
@@ -267,7 +273,7 @@ export async function preflightExport(
 			});
 			continue;
 		}
-		if (cutMode === 'exact') {
+		if (segmentCutMode === 'exact') {
 			const aligned =
 				seg.start <= KEYFRAME_TOLERANCE
 					? true
@@ -354,7 +360,10 @@ export async function preflightExport(
 			requiresTranscode = true;
 			reason = 'One or more segments not on keyframe; merged exact cut requires re-encoding.';
 		}
-		if (!requiresTranscode && cutMode === 'nearestKeyframe') {
+		if (
+			!requiresTranscode &&
+			enabled.every((segment) => resolveSegmentCutMode(segment, cutMode) === 'nearestKeyframe')
+		) {
 			const hasBeforeSnap = snapInfo.some(
 				(s) => s.direction === 'before' && Math.abs(s.delta) > 0.001
 			);
@@ -367,7 +376,7 @@ export async function preflightExport(
 		// For individual exports, requiresTranscode is per segment, not global; but for merged false, we keep global false and let perSegment decide
 		// If any perSegment requires transcode, we don't force all to transcode; caller will handle per segment
 		const anyNeedsTranscode = perSegment.some((p) => p.requiresTranscode);
-		if (anyNeedsTranscode && cutMode === 'exact') {
+		if (anyNeedsTranscode) {
 			// For individual, not merged, we don't set global requiresTranscode; each segment will be handled individually
 			reason = 'Some segments require re-encoding; others can be stream copied.';
 		}

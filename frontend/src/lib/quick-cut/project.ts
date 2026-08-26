@@ -48,7 +48,8 @@ const segmentSchema = z.object({
 	start: z.number().min(0),
 	end: z.number().min(0),
 	name: z.string().max(MAX_NAME_LENGTH).optional(),
-	enabled: z.boolean().optional()
+	enabled: z.boolean().optional(),
+	cutMode: z.enum(['nearestKeyframe', 'exact']).optional()
 });
 
 const projectSchema = z.object({

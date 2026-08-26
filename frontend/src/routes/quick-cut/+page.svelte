@@ -266,6 +266,11 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		syncProject();
 	}
 
+	function changeDefaultCutMode(mode: CutMode): void {
+		cutMode = mode;
+		syncProject();
+	}
+
 	function moveSegment(from: number, to: number): void {
 		segments = reorderSegment(segments, from, to);
 		syncProject();
@@ -895,7 +900,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 									name="cutMode"
 									value="nearestKeyframe"
 									checked={cutMode === 'nearestKeyframe'}
-									onchange={() => (cutMode = 'nearestKeyframe')}
+									onchange={() => changeDefaultCutMode('nearestKeyframe')}
 									class="h-4 w-4"
 								/>
 								{m.quick_cut_cut_mode_nearest()}
@@ -906,7 +911,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 									name="cutMode"
 									value="exact"
 									checked={cutMode === 'exact'}
-									onchange={() => (cutMode = 'exact')}
+									onchange={() => changeDefaultCutMode('exact')}
 									class="h-4 w-4"
 								/>
 								{m.quick_cut_cut_mode_exact()}
@@ -938,6 +943,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								{segments}
 								{sources}
 								{selectedId}
+								defaultCutMode={cutMode}
 								onSelect={onSelectSegment}
 								onRemove={removeSegment}
 								onUpdate={updateSegment}

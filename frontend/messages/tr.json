@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "Kesim modu",
 	"quick_cut_cut_mode_nearest": "En yakın keyframe (kayıpsız)",
 	"quick_cut_cut_mode_exact": "Tam zaman (yeniden kodlayabilir)",
+	"quick_cut_cut_mode_project": "Proje modu: {mode}",
 	"quick_cut_keyframe_indexing": "Keyframe'ler okunuyor…",
 	"quick_cut_keyframe_failed": "Keyframe'ler okunamadı.",
 	"quick_cut_overlap_error": "Bölümler çakışıyor.",

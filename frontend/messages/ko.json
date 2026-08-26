@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "컷 모드",
 	"quick_cut_cut_mode_nearest": "가장 가까운 키프레임 (무손실)",
 	"quick_cut_cut_mode_exact": "정확한 시간 (재인코딩)",
+	"quick_cut_cut_mode_project": "프로젝트 모드: {mode}",
 	"quick_cut_keyframe_indexing": "키프레임 읽는 중…",
 	"quick_cut_keyframe_failed": "키프레임을 읽을 수 없습니다.",
 	"quick_cut_overlap_error": "구간이 겹칩니다.",

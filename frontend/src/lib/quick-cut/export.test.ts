@@ -43,6 +43,35 @@ describe('quick-cut preflight', () => {
 		expect(pre.perSegment[1]?.requiresTranscode).toBe(false);
 	});
 
+	it('honors mixed per-segment cut modes without transcoding the lossless ranges', async () => {
+		const src = makeSource('s1');
+		const exact = createSegment(0.5, 2, {
+			id: 'exact',
+			sourceId: src.id,
+			cutMode: 'exact'
+		});
+		const lossless = createSegment(2.5, 4, {
+			id: 'lossless',
+			sourceId: src.id,
+			cutMode: 'nearestKeyframe'
+		});
+
+		const individual = await preflightExport([src], [exact, lossless], 'nearestKeyframe', false);
+		expect(individual.requiresTranscode).toBe(false);
+		expect(individual.perSegment).toEqual([
+			expect.objectContaining({ segmentId: exact.id, requiresTranscode: true }),
+			expect.objectContaining({
+				segmentId: lossless.id,
+				requiresTranscode: false,
+				snappedStart: 2
+			})
+		]);
+
+		const merged = await preflightExport([src], [exact, lossless], 'nearestKeyframe', true);
+		expect(merged.requiresTranscode).toBe(true);
+		expect(merged.reason).toMatch(/one or more segments/iu);
+	});
+
 	it('detects incompatible codecs for merge', async () => {
 		const s1 = makeSource('s1', { videoCodec: 'avc' });
 		const s2 = makeSource('s2', { videoCodec: 'hevc' });

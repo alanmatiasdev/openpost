@@ -8,7 +8,8 @@ import {
 	findSnapKeyframe,
 	formatTimecode,
 	parseTimecode,
-	hasOverlap
+	hasOverlap,
+	assessExport
 } from './model';
 
 const SRC_A = 'src-a';
@@ -42,6 +43,15 @@ describe('quick-cut model', () => {
 		expect(norm).toHaveLength(2);
 		expect(norm[0]?.start).toBe(0);
 		expect(norm[0]?.end).toBe(7);
+	});
+
+	it('does not merge ranges with different cut strategies', () => {
+		const segments = [
+			createSegment(0, 5, { id: 'lossless', sourceId: SRC_A, cutMode: 'nearestKeyframe' }),
+			createSegment(3, 7, { id: 'exact', sourceId: SRC_A, cutMode: 'exact' })
+		];
+
+		expect(normalizeSegments(segments).map((segment) => segment.id)).toEqual(['lossless', 'exact']);
 	});
 
 	it('never reorders an explicit A/B/A edit while normalizing', () => {
@@ -86,6 +96,23 @@ describe('quick-cut model', () => {
 		expect(findNearestKeyframe(2.04, kfs, 0.06).aligned).toBe(true);
 		expect(findSnapKeyframe(2.1, kfs).direction).toBe('before');
 		expect(findSnapKeyframe(3.9, kfs).direction).toBe('after');
+	});
+
+	it('assesses exact and lossless segment overrides independently', () => {
+		const exact = createSegment(2, 3, {
+			id: 'exact',
+			sourceId: SRC_A,
+			cutMode: 'exact'
+		});
+		const lossless = createSegment(3.5, 5, {
+			id: 'lossless',
+			sourceId: SRC_A,
+			cutMode: 'nearestKeyframe'
+		});
+
+		const assessment = assessExport([exact, lossless], [0, 2, 4], 'exact', false);
+		expect(assessment.wasLossless).toBe(true);
+		expect(assessment.reason).toMatch(/start 3\.50s snaps/iu);
 	});
 
 	it('formats and parses timecodes', () => {

@@ -287,6 +287,39 @@ describe('quick-cut mediabunny fixture', () => {
 		await discardScratchFile(artifact!.scratchPath);
 	}, 30_000);
 
+	it('executes mixed per-segment strategies through separate export paths', async () => {
+		const file = await createToneWebM(220);
+		const source = await probeSourceFile(file);
+		const exact = createSegment(0.1, 0.4, {
+			id: 'exact',
+			sourceId: source.id,
+			cutMode: 'exact'
+		});
+		const lossless = createSegment(0.5, 0.9, {
+			id: 'lossless',
+			sourceId: source.id,
+			cutMode: 'nearestKeyframe'
+		});
+
+		const artifacts = await exportSegments({
+			sources: [source],
+			segments: [exact, lossless],
+			cutMode: 'nearestKeyframe',
+			merge: false
+		});
+		try {
+			expect(artifacts).toHaveLength(2);
+			expect(artifacts[0]?.wasLossless).toBe(false);
+			expect(artifacts[1]?.wasLossless).toBe(true);
+			const exactAudio = await decodedMono(artifacts[0]!.scratchFile);
+			const losslessAudio = await decodedMono(artifacts[1]!.scratchFile);
+			expect(exactAudio.samples.length / exactAudio.sampleRate).toBeCloseTo(0.3, 1);
+			expect(losslessAudio.samples.length / losslessAudio.sampleRate).toBeGreaterThan(0.35);
+		} finally {
+			await Promise.all(artifacts.map((artifact) => discardScratchFile(artifact.scratchPath)));
+		}
+	}, 30_000);
+
 	it('exact non-keyframe A/B/A proves bounded transcode merge', async () => {
 		const fileA = await createColorMp4('green', 2, 128, 72);
 		const srcA = await probeSourceFile(fileA);

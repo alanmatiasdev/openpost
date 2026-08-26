@@ -40,6 +40,20 @@ describe('quick-cut project parsing', () => {
 		]);
 	});
 
+	it('round-trips per-segment cut strategies and keeps older segments on the project mode', () => {
+		const project = createNewProject([source()]);
+		project.cutMode = 'nearestKeyframe';
+		project.segments = [
+			createSegment(0, 1, { id: 'project-mode', sourceId: 'source-a' }),
+			createSegment(1, 2, { id: 'exact', sourceId: 'source-a', cutMode: 'exact' })
+		];
+
+		const parsed = parseProject(serializeProject(project));
+		expect(parsed.segments[0]).toEqual(expect.objectContaining({ id: 'project-mode' }));
+		expect(parsed.segments[0]).not.toHaveProperty('cutMode');
+		expect(parsed.segments[1]).toEqual(expect.objectContaining({ id: 'exact', cutMode: 'exact' }));
+	});
+
 	it('rejects segments that reference a missing source', () => {
 		const project = createNewProject([source()]);
 		project.segments = [createSegment(0, 1, { id: 'missing', sourceId: 'removed' })];

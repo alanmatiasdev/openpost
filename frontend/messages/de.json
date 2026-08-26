@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "Schnittmodus",
 	"quick_cut_cut_mode_nearest": "Nächster Keyframe (verlustfrei)",
 	"quick_cut_cut_mode_exact": "Exakte Zeit (erfordert evtl. Neukodierung)",
+	"quick_cut_cut_mode_project": "Projektmodus: {mode}",
 	"quick_cut_keyframe_indexing": "Keyframes werden gelesen…",
 	"quick_cut_keyframe_failed": "Keyframes konnten nicht gelesen werden.",
 	"quick_cut_overlap_error": "Segmente überlappen. Normalisieren oder Bereich anpassen.",

@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "Modo de corte",
 	"quick_cut_cut_mode_nearest": "Keyframe mais próximo (sem perdas)",
 	"quick_cut_cut_mode_exact": "Tempo exato (pode recodificar)",
+	"quick_cut_cut_mode_project": "Modo do projeto: {mode}",
 	"quick_cut_keyframe_indexing": "Lendo keyframes…",
 	"quick_cut_keyframe_failed": "Não foi possível ler keyframes.",
 	"quick_cut_overlap_error": "Segmentos sobrepostos.",

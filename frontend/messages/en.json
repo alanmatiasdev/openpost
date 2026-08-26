@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "Cut mode",
 	"quick_cut_cut_mode_nearest": "Nearest keyframe (lossless)",
 	"quick_cut_cut_mode_exact": "Exact time (may re-encode)",
+	"quick_cut_cut_mode_project": "Project mode: {mode}",
 	"quick_cut_keyframe_indexing": "Reading keyframes…",
 	"quick_cut_keyframe_failed": "Could not read keyframes for this file.",
 	"quick_cut_overlap_error": "Segments overlap. Normalize or adjust the range.",

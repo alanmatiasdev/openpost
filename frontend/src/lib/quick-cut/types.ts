@@ -52,6 +52,8 @@ export interface QuickCutSegment {
 	end: number;
 	name?: string;
 	enabled?: boolean;
+	/** Overrides the project cut mode for this kept range. */
+	cutMode?: CutMode;
 }
 
 export interface QuickCutProject {

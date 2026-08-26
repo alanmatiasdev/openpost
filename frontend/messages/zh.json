@@ -6751,6 +6751,7 @@
 	"quick_cut_cut_mode": "剪切模式",
 	"quick_cut_cut_mode_nearest": "最近关键帧（无损）",
 	"quick_cut_cut_mode_exact": "精确时间（可能转码）",
+	"quick_cut_cut_mode_project": "项目模式：{mode}",
 	"quick_cut_keyframe_indexing": "正在读取关键帧…",
 	"quick_cut_keyframe_failed": "无法读取关键帧。",
 	"quick_cut_overlap_error": "片段重叠。",

@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
-	import type { QuickCutSegment, QuickCutSource } from '../types';
+	import type { CutMode, QuickCutSegment, QuickCutSource } from '../types';
 	import { formatTimecode, parseTimecode } from '../model';
 
 	let {
 		segments,
 		sources,
 		selectedId,
+		defaultCutMode,
 		onSelect,
 		onRemove,
 		onUpdate,
@@ -16,6 +17,7 @@
 		segments: QuickCutSegment[];
 		sources: QuickCutSource[];
 		selectedId: string | null;
+		defaultCutMode: CutMode;
 		onSelect: (id: string) => void;
 		onRemove: (id: string) => void;
 		onUpdate: (id: string, patch: Partial<QuickCutSegment>) => void;
@@ -32,6 +34,11 @@
 		const clamped = Math.max(0, Math.min(duration, parsed));
 		if (field === 'start') onUpdate(id, { start: clamped });
 		else onUpdate(id, { end: clamped });
+	}
+
+	function parseCutMode(value: string): CutMode | undefined {
+		if (value === 'nearestKeyframe' || value === 'exact') return value;
+		return undefined;
 	}
 </script>
 
@@ -98,6 +105,27 @@
 						>{(seg.end - seg.start).toFixed(2)}s</span
 					>
 				</div>
+				<label class="flex min-h-11 items-center gap-2 text-xs md:min-h-9">
+					<span class="shrink-0 text-muted-foreground">{m.quick_cut_cut_mode()}</span>
+					<select
+						class="h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-2 focus-visible:outline-primary md:h-9"
+						value={seg.cutMode ?? ''}
+						aria-label={`${m.quick_cut_cut_mode()} ${index + 1}`}
+						onchange={(event) =>
+							onUpdate(seg.id, { cutMode: parseCutMode(event.currentTarget.value) })}
+					>
+						<option value="">
+							{m.quick_cut_cut_mode_project({
+								mode:
+									defaultCutMode === 'exact'
+										? m.quick_cut_cut_mode_exact()
+										: m.quick_cut_cut_mode_nearest()
+							})}
+						</option>
+						<option value="nearestKeyframe">{m.quick_cut_cut_mode_nearest()}</option>
+						<option value="exact">{m.quick_cut_cut_mode_exact()}</option>
+					</select>
+				</label>
 			</div>
 
 			<div class="flex items-center gap-1">
