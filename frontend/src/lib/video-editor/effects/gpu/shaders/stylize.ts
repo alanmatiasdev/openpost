@@ -9,7 +9,7 @@
  */
 
 import type { GpuShaderDefinition } from '../types';
-import { parseHexColor, readNumber } from '../types';
+import { parseHexColor, readNumber, readString } from '../types';
 
 export const vignette: GpuShaderDefinition = {
 	id: 'gpu-vignette',
@@ -617,22 +617,38 @@ vec4 crtFragment(vec2 vUv) {
 	})
 };
 
-const DITHER_PATTERN_MAP = {
-	bayer2: 0,
-	bayer4: 1,
-	bayer8: 2,
-	halftone: 3,
-	lines: 4,
-	crosses: 5,
-	dots: 6,
-	grid: 7,
-	scales: 8
-};
+const DITHER_PATTERN_MAP = new Map([
+	['bayer2', 0],
+	['bayer4', 1],
+	['bayer8', 2],
+	['halftone', 3],
+	['lines', 4],
+	['crosses', 5],
+	['dots', 6],
+	['grid', 7],
+	['scales', 8]
+]);
 
-const DITHER_MODE_MAP = { image: 0, linear: 1, radial: 2 };
-const DITHER_STYLE_MAP = { threshold: 0, scaled: 1 };
-const DITHER_CELL_KIND = { circle: 0, square: 1, diamond: 2 };
-const DITHER_PALETTE_MAP = { bw: 0, gameboy: 1, cga: 2, sepia: 3 };
+const DITHER_MODE_MAP = new Map([
+	['image', 0],
+	['linear', 1],
+	['radial', 2]
+]);
+const DITHER_STYLE_MAP = new Map([
+	['threshold', 0],
+	['scaled', 1]
+]);
+const DITHER_CELL_KIND = new Map([
+	['circle', 0],
+	['square', 1],
+	['diamond', 2]
+]);
+const DITHER_PALETTE_MAP = new Map([
+	['bw', 0],
+	['gameboy', 1],
+	['cga', 2],
+	['sepia', 3]
+]);
 
 export const dither: GpuShaderDefinition = {
 	id: 'gpu-dither',
@@ -1019,18 +1035,11 @@ vec4 ditherFragment(vec2 vUv) {
 		uHeight: h,
 		uOffsetX: readNumber(p, 'offsetX', 0),
 		uOffsetY: readNumber(p, 'offsetY', 0),
-		uPatternKind:
-			(DITHER_PATTERN_MAP as Record<string, number>)[p.pattern as string] ??
-			DITHER_PATTERN_MAP.bayer4,
-		uModeKind:
-			(DITHER_MODE_MAP as Record<string, number>)[p.mode as string] ?? DITHER_MODE_MAP.image,
-		uStyleKind:
-			(DITHER_STYLE_MAP as Record<string, number>)[p.style as string] ?? DITHER_STYLE_MAP.threshold,
-		uCellKind:
-			(DITHER_CELL_KIND as Record<string, number>)[p.shape as string] ?? DITHER_CELL_KIND.square,
-		uPaletteKind:
-			(DITHER_PALETTE_MAP as Record<string, number>)[p.palette as string] ??
-			DITHER_PALETTE_MAP.gameboy
+		uPatternKind: DITHER_PATTERN_MAP.get(readString(p, 'pattern', 'bayer4')) ?? 1,
+		uModeKind: DITHER_MODE_MAP.get(readString(p, 'mode', 'image')) ?? 0,
+		uStyleKind: DITHER_STYLE_MAP.get(readString(p, 'style', 'threshold')) ?? 0,
+		uCellKind: DITHER_CELL_KIND.get(readString(p, 'shape', 'square')) ?? 1,
+		uPaletteKind: DITHER_PALETTE_MAP.get(readString(p, 'palette', 'gameboy')) ?? 1
 	})
 };
 
@@ -1278,8 +1287,8 @@ vec4 inkFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p, w, h) => {
-		const ink = parseHexColor((p.inkColor as string) ?? '#141414', [0.08, 0.08, 0.08, 1]);
-		const paper = parseHexColor((p.paperColor as string) ?? '#f4f1e8', [0.96, 0.95, 0.91, 1]);
+		const ink = parseHexColor(readString(p, 'inkColor', '#141414'), [0.08, 0.08, 0.08, 1]);
+		const paper = parseHexColor(readString(p, 'paperColor', '#f4f1e8'), [0.96, 0.95, 0.91, 1]);
 		return {
 			uStrength: readNumber(p, 'strength', 1),
 			uSpacing: readNumber(p, 'spacing', 6),

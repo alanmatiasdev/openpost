@@ -7,8 +7,8 @@
  * gpu-curves (CPU-baked LUT + point-editor JSON params) — see registry.ts.
  */
 
-import type { GpuShaderDefinition } from '../types';
-import { parseHexColor, readNumber } from '../types';
+import type { GpuParamValues, GpuShaderDefinition } from '../types';
+import { parseHexColor, readNumber, readString } from '../types';
 
 export const brightness: GpuShaderDefinition = {
 	id: 'gpu-brightness',
@@ -1186,10 +1186,12 @@ const GRADIENT_MAP_PALETTE_ORDER = [
 	'grayscale'
 ] as const;
 
-function resolveGradientPreset(params: Record<string, unknown>): string {
-	if (typeof params.preset === 'string' && params.preset.length > 0) return params.preset;
-	if (typeof params.palette === 'number') {
-		const idx = Math.round(params.palette);
+function resolveGradientPreset(params: GpuParamValues): string {
+	const preset = readString(params, 'preset', '');
+	if (preset.length > 0) return preset;
+	const legacyPalette = params.palette;
+	if (typeof legacyPalette === 'number') {
+		const idx = Math.round(legacyPalette);
 		if (idx >= 0 && idx < GRADIENT_MAP_PALETTE_ORDER.length)
 			return GRADIENT_MAP_PALETTE_ORDER[idx]!;
 	}
@@ -1242,17 +1244,16 @@ vec4 gradientMapFragment(vec2 vUv) {
 	uniformValues: (p) => ({ uMix: readNumber(p, 'mix', 1) }),
 	dataTexture: {
 		key: (p) => {
-			const preset = resolveGradientPreset(p as Record<string, unknown>);
-			return preset === 'custom' ? `custom:${(p.customStops as string) ?? ''}` : `preset:${preset}`;
+			const preset = resolveGradientPreset(p);
+			return preset === 'custom'
+				? `custom:${readString(p, 'customStops', '')}`
+				: `preset:${preset}`;
 		},
 		build: (p) => ({
 			width: 256,
 			height: 1,
 			data: buildGradientMapLut(
-				gradientMapStops(
-					resolveGradientPreset(p as Record<string, unknown>),
-					(p.customStops as string) ?? ''
-				)
+				gradientMapStops(resolveGradientPreset(p), readString(p, 'customStops', ''))
 			)
 		})
 	}

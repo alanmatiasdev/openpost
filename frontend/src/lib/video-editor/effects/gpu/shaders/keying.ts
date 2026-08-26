@@ -8,7 +8,7 @@
  */
 
 import type { GpuShaderDefinition } from '../types';
-import { readNumber } from '../types';
+import { readNumber, readString } from '../types';
 
 export const chromaKey: GpuShaderDefinition = {
 	id: 'gpu-chroma-key',
@@ -92,7 +92,7 @@ vec4 chromaKeyFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p) => {
-		const isBlue = (p.keyColor as string) === 'blue';
+		const isBlue = readString(p, 'keyColor', 'green') === 'blue';
 		return {
 			uKeyR: isBlue ? 0 : 0,
 			uKeyG: isBlue ? 0 : 1,

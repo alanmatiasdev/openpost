@@ -151,6 +151,12 @@ export function readNumber(params: GpuParamValues, key: string, fallback: number
 	return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+/** Read a string param with fallback; keeps select, color, and text decoding at one boundary. */
+export function readString(params: GpuParamValues, key: string, fallback: string): string {
+	const value = params[key];
+	return typeof value === 'string' ? value : fallback;
+}
+
 /** Parse #rgb/#rgba/#rrggbb/#rrggbbaa into normalized RGBA; port of parseHexColor. */
 export function parseHexColor(
 	color: string,

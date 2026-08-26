@@ -9,7 +9,7 @@
  */
 
 import type { GpuShaderDefinition } from '../types';
-import { parseHexColor, readNumber } from '../types';
+import { parseHexColor, readNumber, readString } from '../types';
 
 export const pixelate: GpuShaderDefinition = {
 	id: 'gpu-pixelate',
@@ -341,7 +341,7 @@ vec4 triggerWaveFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p, w, h, time) => {
-		const glow = parseHexColor((p.glowColor as string) ?? '#2e6b8c', [0.18, 0.42, 0.55, 1]);
+		const glow = parseHexColor(readString(p, 'glowColor', '#2e6b8c'), [0.18, 0.42, 0.55, 1]);
 		return {
 			uStrength: readNumber(p, 'strength', 0.035),
 			uRadius: readNumber(p, 'radius', 0.85),
@@ -503,6 +503,21 @@ vec4 mirrorFragment(vec2 vUv) {
 		uVertical: p.vertical === true ? 1 : 0
 	})
 };
+
+const FLUTED_GRID_SHAPE_KIND = new Map([
+	['lines', 1],
+	['linesIrregular', 2],
+	['wave', 3],
+	['zigzag', 4],
+	['pattern', 5]
+]);
+const FLUTED_DISTORTION_SHAPE_KIND = new Map([
+	['prism', 1],
+	['lens', 2],
+	['contour', 3],
+	['cascade', 4],
+	['flat', 5]
+]);
 
 // Adapted from Paper Design's fluted-glass shader (published package source).
 export const flutedGlass: GpuShaderDefinition = {
@@ -1005,24 +1020,10 @@ vec4 flutedGlassFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p, w, h) => {
-		const gridShapeMap: Record<string, number> = {
-			lines: 1,
-			linesIrregular: 2,
-			wave: 3,
-			zigzag: 4,
-			pattern: 5
-		};
-		const distortionShapeMap: Record<string, number> = {
-			prism: 1,
-			lens: 2,
-			contour: 3,
-			cascade: 4,
-			flat: 5
-		};
 		const margin = readNumber(p, 'margin', 0);
-		const colorBack = parseHexColor((p.colorBack as string) ?? '#00000000', [0, 0, 0, 0]);
-		const colorShadow = parseHexColor((p.colorShadow as string) ?? '#000000', [0, 0, 0, 1]);
-		const colorHighlight = parseHexColor((p.colorHighlight as string) ?? '#ffffff', [1, 1, 1, 1]);
+		const colorBack = parseHexColor(readString(p, 'colorBack', '#00000000'), [0, 0, 0, 0]);
+		const colorShadow = parseHexColor(readString(p, 'colorShadow', '#000000'), [0, 0, 0, 1]);
+		const colorHighlight = parseHexColor(readString(p, 'colorHighlight', '#ffffff'), [1, 1, 1, 1]);
 		return {
 			uBackR: colorBack[0],
 			uBackG: colorBack[1],
@@ -1040,10 +1041,10 @@ vec4 flutedGlassFragment(vec2 vUv) {
 			uShadowsAmount: readNumber(p, 'shadows', 0.25),
 			uAngleDeg: readNumber(p, 'angle', 0),
 			uStretch: readNumber(p, 'stretch', 0),
-			uPatternKind: gridShapeMap[p.shape as string] ?? 1,
+			uPatternKind: FLUTED_GRID_SHAPE_KIND.get(readString(p, 'shape', 'lines')) ?? 1,
 			uDistortion: readNumber(p, 'distortion', 0.5),
 			uHighlights: readNumber(p, 'highlights', 0.1),
-			uBendKind: distortionShapeMap[p.distortionShape as string] ?? 1,
+			uBendKind: FLUTED_DISTORTION_SHAPE_KIND.get(readString(p, 'distortionShape', 'prism')) ?? 1,
 			uShift: readNumber(p, 'shift', 0),
 			uBlur: readNumber(p, 'blur', 0),
 			uEdges: readNumber(p, 'edges', 0.25),
@@ -1052,10 +1053,10 @@ vec4 flutedGlassFragment(vec2 vUv) {
 			uWidth: w,
 			uHeight: h,
 			uAspect: w / Math.max(h, 1),
-			uMarginLeft: (p.marginLeft as number | undefined) ?? margin,
-			uMarginTop: (p.marginTop as number | undefined) ?? margin,
-			uMarginRight: (p.marginRight as number | undefined) ?? margin,
-			uMarginBottom: (p.marginBottom as number | undefined) ?? margin
+			uMarginLeft: readNumber(p, 'marginLeft', margin),
+			uMarginTop: readNumber(p, 'marginTop', margin),
+			uMarginRight: readNumber(p, 'marginRight', margin),
+			uMarginBottom: readNumber(p, 'marginBottom', margin)
 		};
 	}
 };
@@ -1229,8 +1230,8 @@ vec4 rippleGlassFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p, w, h) => {
-		const shadow = parseHexColor((p.colorShadow as string) ?? '#000000', [0, 0, 0, 1]);
-		const highlight = parseHexColor((p.colorHighlight as string) ?? '#ffffff', [1, 1, 1, 1]);
+		const shadow = parseHexColor(readString(p, 'colorShadow', '#000000'), [0, 0, 0, 1]);
+		const highlight = parseHexColor(readString(p, 'colorHighlight', '#ffffff'), [1, 1, 1, 1]);
 		return {
 			uShadowR: shadow[0],
 			uShadowG: shadow[1],
@@ -1385,8 +1386,8 @@ vec4 glassMosaicFragment(vec2 vUv) {
 		}
 	],
 	uniformValues: (p, w, h) => {
-		const shadow = parseHexColor((p.colorShadow as string) ?? '#000000', [0, 0, 0, 1]);
-		const highlight = parseHexColor((p.colorHighlight as string) ?? '#ffffff', [1, 1, 1, 1]);
+		const shadow = parseHexColor(readString(p, 'colorShadow', '#000000'), [0, 0, 0, 1]);
+		const highlight = parseHexColor(readString(p, 'colorHighlight', '#ffffff'), [1, 1, 1, 1]);
 		return {
 			uShadowR: shadow[0],
 			uShadowG: shadow[1],
