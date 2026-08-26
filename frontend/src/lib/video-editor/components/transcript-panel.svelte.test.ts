@@ -123,8 +123,33 @@ describe('TranscriptPanel cue formatting', () => {
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
 			'{\\an8}<b><i>Shipped</i></b>'
 		);
-		expect(commandHistory.undoStack).toHaveLength(3);
-		expect(onedit).toHaveBeenCalledTimes(3);
+
+		const wordStart = screen.getByRole('spinbutton', { name: 'Word start frame' });
+		await wordStart.fill('5');
+		wordStart.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]).toMatchObject({
+			startFrame: 5,
+			words: [{ id: 'word', startFrame: 5, endFrame: 30, text: 'Shipped' }]
+		});
+
+		const wordEnd = screen.getByRole('spinbutton', { name: 'Word end frame' });
+		await wordEnd.fill('28');
+		wordEnd.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]).toMatchObject({
+			startFrame: 5,
+			endFrame: 28,
+			words: [{ id: 'word', startFrame: 5, endFrame: 28, text: 'Shipped' }]
+		});
+
+		await wordStart.fill('');
+		wordStart.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.words?.[0]?.startFrame).toBe(5);
+		expect(commandHistory.undoStack).toHaveLength(5);
+		expect(onedit).toHaveBeenCalledTimes(5);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.endFrame).toBe(30);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.startFrame).toBe(0);
 
 		screen.container.style.width = '320px';
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);

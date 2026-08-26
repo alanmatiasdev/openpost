@@ -31,6 +31,10 @@
 	import { transcriptIgnoreStore } from '$lib/video-editor/transcript/transcript-ignore-store.svelte';
 	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
 	import { findTranscriptWordMatches } from '$lib/video-editor/transcript/fuzzy-search';
+	import {
+		correctedCueTiming,
+		correctedSubtitleWord
+	} from '$lib/video-editor/transcript/caption-correction';
 
 	let { onedit }: { onedit: () => void } = $props();
 
@@ -187,8 +191,7 @@
 		startFrame: number,
 		endFrame: number
 	): void {
-		const start = Math.max(0, Math.round(startFrame));
-		const end = Math.max(start + 1, Math.round(endFrame));
+		const { startFrame: start, endFrame: end } = correctedCueTiming(cue, startFrame, endFrame);
 		if (start === cue.startFrame && end === cue.endFrame) return;
 		replaceCue(item, { ...cue, startFrame: start, endFrame: end }, 'EDIT_CUE_TIMING');
 	}
@@ -199,19 +202,20 @@
 		wordId: string,
 		patch: Partial<SubtitleWord>
 	): void {
-		const words = cue.words;
-		if (!words) return;
-		const nextWords = words.map((word) => (word.id === wordId ? { ...word, ...patch } : word));
-		const first = nextWords[0];
-		const last = nextWords[nextWords.length - 1];
+		const corrected = correctedSubtitleWord(cue, wordId, patch);
+		if (!corrected) return;
 		replaceCue(
 			item,
 			{
 				...cue,
-				words: nextWords,
-				text: buildCueText(nextWords.map((word) => word.text).join(' '), cueFlags(cue), cue.text),
-				startFrame: first?.startFrame ?? cue.startFrame,
-				endFrame: last?.endFrame ?? cue.endFrame
+				words: corrected.words,
+				text: buildCueText(
+					corrected.words.map((word) => word.text).join(' '),
+					cueFlags(cue),
+					cue.text
+				),
+				startFrame: corrected.startFrame,
+				endFrame: corrected.endFrame
 			},
 			'EDIT_TRANSCRIPT_WORD'
 		);
