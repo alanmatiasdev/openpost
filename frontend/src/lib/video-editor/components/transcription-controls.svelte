@@ -21,10 +21,14 @@
 		TranscriptionSelection
 	} from '$lib/video-editor/transcript/engine/types';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import type { TranscriptionJobStatus } from '$lib/video-editor/transcript/transcription-service.svelte';
 
 	let {
 		canTranscribe,
 		busy,
+		status,
+		queuePosition,
+		queueTotal,
 		progress,
 		backend,
 		fallback,
@@ -33,6 +37,9 @@
 	}: {
 		canTranscribe: boolean;
 		busy: boolean;
+		status?: TranscriptionJobStatus;
+		queuePosition?: number | null;
+		queueTotal?: number;
 		progress: TranscribeProgress | null;
 		backend: 'webgpu' | 'wasm' | null;
 		fallback: ResolvedTranscriptionEngine | null;
@@ -113,7 +120,24 @@
 			class="col-span-2 rounded bg-[oklch(0.24_0.045_65)] px-1.5 py-1 text-[10px] text-[oklch(0.84_0.08_70)]"
 			role="status"
 		>
-			{m.video_editor_transcribe_fallback({ model: transcriptionModelUiLabel(fallback.model) })}
+			{fallback.fallbackReason === 'out-of-memory'
+				? m.video_editor_transcribe_memory_fallback({
+						model: transcriptionModelUiLabel(fallback.model)
+					})
+				: m.video_editor_transcribe_fallback({
+						model: transcriptionModelUiLabel(fallback.model)
+					})}
+		</p>
+	{/if}
+	{#if busy && status === 'queued'}
+		<p
+			class="col-span-2 rounded bg-[oklch(0.22_0.015_55)] px-1.5 py-1 text-[10px] text-[oklch(0.76_0.02_55)]"
+			role="status"
+		>
+			{m.video_editor_transcribe_queued({
+				position: queuePosition ?? 1,
+				total: Math.max(queueTotal ?? 1, queuePosition ?? 1)
+			})}
 		</p>
 	{/if}
 	{#if busy && progress}

@@ -37,16 +37,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		transitionsStore
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
-	import {
-		transcribeClip,
-		addGeneratedSubtitleItem
-	} from '$lib/video-editor/transcript/transcribe-action';
-	import type {
-		ResolvedTranscriptionEngine,
-		TranscribeProgress,
-		TranscriptionSelection
-	} from '$lib/video-editor/transcript/engine/types';
-	import { resolveMediaBlob } from '$lib/video-editor/media/import.svelte';
+	import type { TranscriptionSelection } from '$lib/video-editor/transcript/engine/types';
+	import { transcriptionService } from '$lib/video-editor/transcript/transcription-service.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
@@ -109,7 +101,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { sourceHoverStore } from '$lib/video-editor/source-monitor/source-hover.svelte';
 	import { shuttleScrubResume } from '$lib/video-editor/preview/shuttle-scrub-resume.svelte';
-	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+	import { mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 	import type { TextVoiceRequest } from '$lib/video-editor/local-ai/types';
 
 	const projectId = $derived(page.params.id ?? '');
@@ -132,6 +124,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let textVoiceRequest = $state<TextVoiceRequest | null>(null);
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
+	const selectedTranscriptionJob = $derived(
+		selectedItemId ? transcriptionService.jobForItem(selectedItemId) : undefined
+	);
+	const selectedTranscriptionQueuePosition = $derived(
+		selectedTranscriptionJob
+			? transcriptionService.queuePosition(selectedTranscriptionJob.id)
+			: null
+	);
+	const transcriptionJobCount = $derived(transcriptionService.jobs.length);
 
 	function openTextVoice(itemId: string, text: string): void {
 		textVoiceRequest = {
@@ -145,7 +146,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	$effect(() => {
 		if (!projectId) return;
-		return () => mediaTasks.reset();
+		return () => {
+			transcriptionService.reset();
+			mediaTasks.reset();
+		};
 	});
 
 	$effect(() => {
@@ -463,12 +467,6 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		}
 	}
 
-	let transcribing = $state(false);
-	let transcriptionProgress = $state<TranscribeProgress | null>(null);
-	let transcriptionBackend = $state<'webgpu' | 'wasm' | null>(null);
-	let transcriptionFallback = $state<ResolvedTranscriptionEngine | null>(null);
-	let transcriptionAbort: AbortController | null = null;
-
 	function handleAddText(): void {
 		const id = addTextItem(m.video_editor_text_default_label());
 		selectedItemId = id;
@@ -482,7 +480,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	async function handleTranscribe(selection: TranscriptionSelection): Promise<void> {
-		if (!selectedItemId || transcribing) return;
+		if (!selectedItemId) return;
 		const item = timelineStore.itemById.get(selectedItemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
 		if (!item || !media) return;
@@ -490,65 +488,19 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			showToast(m.video_editor_unsupported_audio_title(), 'error');
 			return;
 		}
-		transcribing = true;
-		transcriptionProgress = null;
-		transcriptionBackend = null;
-		transcriptionFallback = null;
-		const abort = new AbortController();
-		transcriptionAbort = abort;
-		const taskId = mediaTaskId('transcription', item.id);
-		const taskRevision = mediaTasks.start({
-			id: taskId,
-			kind: 'transcription',
-			mediaId: media.id,
-			label: media.fileName,
-			stage: 'preparing',
-			progress: null,
-			onCancel: () => abort.abort()
-		});
 		try {
-			const blob = await resolveMediaBlob(media);
-			const file =
-				blob instanceof File ? blob : new File([blob], media.fileName, { type: media.mimeType });
-			const words = await transcribeClip(item, file, {
-				model: selection.model,
-				language: selection.language,
-				quantization: selection.quantization,
-				signal: abort.signal,
-				onProgress: (progress) => {
-					transcriptionProgress = progress;
-					mediaTasks.update(
-						taskId,
-						{
-							stage: progress.stage,
-							progress: progress.indeterminate ? null : progress.progress,
-							receivedBytes: progress.receivedBytes,
-							totalBytes: progress.totalBytes
-						},
-						taskRevision
-					);
-				},
-				onRuntimeInfo: (runtime) => {
-					if (runtime.backend) transcriptionBackend = runtime.backend;
-				},
-				onFallback: (fallback) => (transcriptionFallback = fallback)
-			});
-			addGeneratedSubtitleItem(item.id, words);
+			await transcriptionService.enqueue(item.id, selection);
 			editorSession.scheduleAutosave();
 			showToast(m.video_editor_transcribe_done(), 'success');
 		} catch (err) {
 			if (!(err instanceof DOMException && err.name === 'AbortError')) {
 				showToast(err instanceof Error ? err.message : String(err), 'error');
 			}
-		} finally {
-			mediaTasks.finish(taskId, taskRevision);
-			transcribing = false;
-			transcriptionAbort = null;
 		}
 	}
 
 	function cancelTranscription(): void {
-		transcriptionAbort?.abort();
+		if (selectedItemId) transcriptionService.cancelForItem(selectedItemId);
 	}
 
 	async function handleImportCaptions(): Promise<void> {
@@ -1333,10 +1285,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								{#if showTranscript}
 									<TranscriptionControls
 										canTranscribe={selectedIsMedia}
-										busy={transcribing}
-										progress={transcriptionProgress}
-										backend={transcriptionBackend}
-										fallback={transcriptionFallback}
+										busy={selectedTranscriptionJob !== undefined}
+										status={selectedTranscriptionJob?.status}
+										queuePosition={selectedTranscriptionQueuePosition}
+										queueTotal={transcriptionJobCount}
+										progress={selectedTranscriptionJob?.progress ?? null}
+										backend={selectedTranscriptionJob?.backend ?? null}
+										fallback={selectedTranscriptionJob?.fallback ?? null}
 										onstart={(selection) => void handleTranscribe(selection)}
 										oncancel={cancelTranscription}
 									/>

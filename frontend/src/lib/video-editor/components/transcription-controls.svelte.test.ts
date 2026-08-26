@@ -73,4 +73,27 @@ describe('TranscriptionControls', () => {
 		});
 		await expect.element(screen.getByRole('button', { name: 'Auto-captions' })).toBeDisabled();
 	});
+
+	it('shows the selected clip queue position and keeps cancellation reachable at 320px', async () => {
+		const oncancel = vi.fn();
+		const screen = await render(TranscriptionControls, {
+			canTranscribe: true,
+			busy: true,
+			status: 'queued',
+			queuePosition: 2,
+			queueTotal: 3,
+			progress: null,
+			backend: null,
+			fallback: null,
+			onstart: vi.fn(),
+			oncancel
+		});
+		screen.container.style.width = '320px';
+		await expect.element(screen.getByText('Queued 2 of 3')).toBeVisible();
+		const cancel = screen.getByRole('button', { name: 'Cancel transcription' });
+		await expect.element(cancel).toBeVisible();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		await cancel.click();
+		expect(oncancel).toHaveBeenCalledOnce();
+	});
 });
