@@ -61,6 +61,24 @@ describe('effect keyframe properties', () => {
 		expect(customColorProperties).not.toContain('effect:gpu-ascii:ascii:colorSaturation');
 	});
 
+	it('matches FreeCut time-control and pixel-sort animation metadata', () => {
+		const nonAnimatableTimeControls = [
+			gpuEffect('hue', 'gpu-hue-shift'),
+			gpuEffect('wave', 'gpu-trigger-wave'),
+			gpuEffect('vhs', 'gpu-vhs')
+		] as const;
+		const paramNames = ['flow', 'speed', 'speed'] as const;
+
+		for (const [index, effect] of nonAnimatableTimeControls.entries()) {
+			expect(getGpuEffectKeyframeProperty(effect, paramNames[index]!)).toBeNull();
+		}
+
+		const pixelSort = gpuEffect('sort', 'gpu-pixel-sort');
+		expect(getGpuEffectKeyframeProperty(pixelSort, 'length')).toBe(
+			'effect:gpu-pixel-sort:sort:length'
+		);
+	});
+
 	it('patches the exact effect instance without changing the rest of the stack', () => {
 		const first = gpuEffect('first', 'gpu-contrast');
 		const second = gpuEffect('second', 'gpu-contrast');
