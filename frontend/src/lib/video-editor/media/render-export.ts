@@ -2,17 +2,16 @@
  * Multi-track rendered export: flattens every visible/audible timeline item
  * into one composed video file.
  *
- * Ported from FreeCut (MIT) — features/export/utils/canvas-render-orchestrator.ts,
- * client-renderer.ts, and canvas-audio.ts — retargeted to OpenPost's
+ * Ported from FreeCut (MIT) - features/export/utils/canvas-render-orchestrator.ts,
+ * client-renderer.ts, and canvas-audio.ts - retargeted to OpenPost's
  * TimelineItem model with a worker-safe render loop, explicit main-thread
- * fallback, and whole-timeline OfflineAudioContext mixdown (48 kHz stereo).
+ * fallback, persistent chunked audio DSP, and OPFS-backed output streaming.
  */
 
 import {
 	ALL_FORMATS,
 	AdtsOutputFormat,
 	AudioSample,
-	AudioSampleSink,
 	AudioSampleSource,
 	BlobSource,
 	BufferTarget,
@@ -25,6 +24,7 @@ import {
 	Mp3OutputFormat,
 	Mp4OutputFormat,
 	Output,
+	StreamTarget,
 	type OutputFormat,
 	type VideoCodec,
 	TextSubtitleSource,
@@ -69,9 +69,6 @@ import {
 	transitionBlendAtFrame,
 	type MixEntry
 } from './render-plan';
-import { reverseAudioWindow, type ReversedAudioWindow } from '../audio/reverse-audio';
-import { processAudioChannels } from '../audio/process-audio';
-import { buildTransitionGainCurve } from '../audio/transition-crossfade';
 import { shapeMasksForTrack } from '../shapes/masks';
 import { LottieFrameProvider, mapTimelineFrameToLottieFrame } from '../lottie/frame-provider';
 import {
@@ -85,6 +82,7 @@ import { smartCopy } from './smart-copy';
 import { applyCompositionControlOverrides } from '../sequences/composition-controls';
 import { ensureProResDecoderForCodec } from './prores-decoder';
 import { ensureAc3DecoderForCodec } from './ac3-decoder';
+import { mixAudioWindows } from '../audio/bounded-audio-mixer';
 
 export interface RenderExportProgress {
 	phase: 'preparing' | 'mixing' | 'rendering' | 'encoding' | 'finalizing';
@@ -129,6 +127,9 @@ export interface AudioExportOptions {
 const MIX_SAMPLE_RATE = 48_000;
 const MIX_CHANNELS = 2;
 const AUDIO_ENCODE_CHUNK_FRAMES = 48_000;
+const EXPORT_STREAM_CHUNK_BYTES = 16 * 1024 * 1024;
+const EXPORT_SCRATCH_DIRECTORY = 'openpost-export-scratch';
+const EXPORT_SCRATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const VIDEO_BITRATES = {
 	draft: 4_000_000,
 	standard: 8_000_000,
@@ -138,6 +139,85 @@ const VIDEO_BITRATES = {
 interface VideoDecoder {
 	input: Input;
 	sink: CanvasSink;
+}
+
+interface ArtifactTarget {
+	target: BufferTarget | StreamTarget;
+	finish(): Promise<Blob>;
+	discard(): Promise<void>;
+}
+
+async function pruneStaleExportScratch(directory: FileSystemDirectoryHandle): Promise<void> {
+	const cutoff = Date.now() - EXPORT_SCRATCH_MAX_AGE_MS;
+	try {
+		for await (const [name, handle] of directory.entries()) {
+			if (handle.kind !== 'file') continue;
+			try {
+				const file = await handle.getFile();
+				if (file.lastModified < cutoff) await directory.removeEntry(name);
+			} catch {
+				// A concurrent export or maintenance pass may have changed this entry.
+			}
+		}
+	} catch {
+		// Scratch cleanup must not block a new export.
+	}
+}
+
+async function createArtifactTarget(mimeType: string, extension: string): Promise<ArtifactTarget> {
+	if (globalThis.navigator?.storage?.getDirectory) {
+		let directory: FileSystemDirectoryHandle | null = null;
+		let fileName = '';
+		try {
+			const root = await globalThis.navigator.storage.getDirectory();
+			directory = await root.getDirectoryHandle(EXPORT_SCRATCH_DIRECTORY, { create: true });
+			await pruneStaleExportScratch(directory);
+			fileName = `${crypto.randomUUID()}.${extension}`;
+			const handle = await directory.getFileHandle(fileName, { create: true });
+			const writable = await handle.createWritable();
+			let settled = false;
+			const remove = async (): Promise<void> => {
+				if (settled) return;
+				settled = true;
+				try {
+					await directory!.removeEntry(fileName);
+				} catch {
+					// The browser may already have removed an aborted scratch file.
+				}
+			};
+			return {
+				target: new StreamTarget(writable, {
+					chunked: true,
+					chunkSize: EXPORT_STREAM_CHUNK_BYTES
+				}),
+				async finish() {
+					const file = await handle.getFile();
+					// Chromium keeps OPFS-backed Blob data lazy. Removing the file here would
+					// invalidate the artifact before save/download reads it. The next export
+					// prunes completed scratch files after the retention window.
+					return file.slice(0, file.size, mimeType);
+				},
+				discard: remove
+			};
+		} catch {
+			if (directory && fileName) {
+				try {
+					await directory.removeEntry(fileName);
+				} catch {
+					// OPFS initialization failed before a usable target existed.
+				}
+			}
+		}
+	}
+	const target = new BufferTarget();
+	return {
+		target,
+		async finish() {
+			if (!target.buffer) throw new Error('Render produced no data.');
+			return new Blob([target.buffer], { type: mimeType });
+		},
+		async discard() {}
+	};
 }
 
 function report(
@@ -154,54 +234,6 @@ function report(
 	});
 }
 
-/** Decode the primary audio track to an AudioBuffer at its native rate. */
-async function decodeAudioBuffer(blob: Blob): Promise<AudioBuffer> {
-	const input = new Input({
-		source: new BlobSource(blob),
-		formats: ALL_FORMATS
-	});
-	try {
-		const track = await input.getPrimaryAudioTrack();
-		if (!track) throw new Error('Clip has no audio to mix');
-		await ensureAc3DecoderForCodec(track.codec);
-		const sink = new AudioSampleSink(track);
-		const channels: Float32Array[][] = [];
-		let totalFrames = 0;
-		let sampleRate = track.sampleRate || MIX_SAMPLE_RATE;
-		for await (const sample of sink.samples()) {
-			try {
-				sampleRate = sample.sampleRate || sampleRate;
-				const frameCount = sample.numberOfFrames;
-				const planes: Float32Array[] = [];
-				for (let c = 0; c < sample.numberOfChannels; c++) {
-					// SAFETY: copyTo fills a planar f32 view of the decoded sample.
-					const plane = new Float32Array(frameCount);
-					sample.copyTo(plane, { planeIndex: c, format: 'f32-planar' });
-					planes.push(plane);
-				}
-				channels.push(planes);
-				totalFrames += frameCount;
-			} finally {
-				sample.close();
-			}
-		}
-		const outChannels = Math.min(MIX_CHANNELS, Math.max(1, channels[0]?.length ?? 1));
-		const context = new OfflineAudioContext(outChannels, Math.max(1, totalFrames), sampleRate);
-		const buffer = context.createBuffer(outChannels, Math.max(1, totalFrames), sampleRate);
-		for (let c = 0; c < outChannels; c++) {
-			const data = buffer.getChannelData(c);
-			let offset = 0;
-			for (const planes of channels) {
-				data.set(planes[c] ?? planes[0] ?? new Float32Array(0), offset);
-				offset += planes[0]?.length ?? 0;
-			}
-		}
-		return buffer;
-	} finally {
-		input.dispose?.();
-	}
-}
-
 function mixDurationSeconds(entries: MixEntry[]): number {
 	return entries.reduce(
 		(max, entry) => Math.max(max, entry.whenSeconds + entry.durationSeconds),
@@ -209,111 +241,15 @@ function mixDurationSeconds(entries: MixEntry[]): number {
 	);
 }
 
-async function renderMixdown(
-	entries: MixEntry[],
-	decoded: Map<string, AudioBuffer>,
-	durationSeconds: number
-): Promise<AudioBuffer | null> {
-	if (entries.length === 0) return null;
-	const length = Math.max(1, Math.ceil(durationSeconds * MIX_SAMPLE_RATE));
-	const context = new OfflineAudioContext(MIX_CHANNELS, length, MIX_SAMPLE_RATE);
-	for (const entry of entries) {
-		const buffer = decoded.get(entry.mediaId);
-		if (!buffer) continue;
-		const source = context.createBufferSource();
-		const sourceDuration = entry.durationSeconds * entry.playbackRate;
-		const window = entry.reversed
-			? reverseAudioWindow(buffer, entry.sourceOffsetSeconds, sourceDuration)
-			: copyAudioWindow(buffer, entry.sourceOffsetSeconds, sourceDuration);
-		if (window.channels[0]?.length === 0) continue;
-		const processedChannels = await processAudioChannels(window.channels, {
-			speed: entry.playbackRate,
-			pitchShiftSemitones: entry.pitchShiftSemitones,
-			sampleRate: window.sampleRate,
-			eqStages: entry.audioEqStages
-		});
-		if (processedChannels[0]?.length === 0) continue;
-		const sourceBuffer = context.createBuffer(
-			processedChannels.length,
-			processedChannels[0]!.length,
-			window.sampleRate
+function entriesWithAudioSources(entries: MixEntry[]): MixEntry[] {
+	return entries.filter((entry) => {
+		const media = mediaPool.get(entry.mediaId);
+		if (!media) return true;
+		return (
+			media.audioCodecSupported !== false &&
+			(Boolean(media.audioCodec) || media.tags.includes('audio'))
 		);
-		for (let channel = 0; channel < processedChannels.length; channel++) {
-			sourceBuffer.getChannelData(channel).set(processedChannels[channel]!);
-		}
-		source.buffer = sourceBuffer;
-		const gain = context.createGain();
-		const points = entry.gainPoints.toSorted((left, right) => left.whenSeconds - right.whenSeconds);
-		const firstPoint = points[0];
-		if (firstPoint) {
-			gain.gain.setValueAtTime(Math.max(0, firstPoint.value), firstPoint.whenSeconds);
-			for (const point of points.slice(1)) {
-				gain.gain.linearRampToValueAtTime(Math.max(0, point.value), point.whenSeconds);
-			}
-		}
-		const transitionGain = context.createGain();
-		const entryEnd = entry.whenSeconds + entry.durationSeconds;
-		for (const span of entry.transitionGainSpans) {
-			const spanEnd = span.startSeconds + span.durationSeconds;
-			const start = Math.max(entry.whenSeconds, span.startSeconds);
-			const end = Math.min(entryEnd, spanEnd);
-			if (end <= start || span.durationSeconds <= 0) continue;
-			const curve = buildTransitionGainCurve(span, start, end, context.sampleRate);
-			transitionGain.gain.setValueCurveAtTime(curve, start, end - start);
-		}
-		source.connect(gain).connect(transitionGain).connect(context.destination);
-		source.start(entry.whenSeconds, 0, Math.min(entry.durationSeconds, sourceBuffer.duration));
-	}
-	return context.startRendering();
-}
-
-function copyAudioWindow(
-	buffer: AudioBuffer,
-	startSeconds: number,
-	durationSeconds: number
-): ReversedAudioWindow {
-	const startFrame = Math.min(
-		buffer.length,
-		Math.max(0, Math.round(startSeconds * buffer.sampleRate))
-	);
-	const requestedFrames = Math.max(0, Math.round(durationSeconds * buffer.sampleRate));
-	const endFrame = Math.min(buffer.length, startFrame + requestedFrames);
-	const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
-		buffer.getChannelData(channel).slice(startFrame, endFrame)
-	);
-	return { channels, sampleRate: buffer.sampleRate };
-}
-
-/** Ported from FreeCut (MIT) addAudioDataInChunks — feeds f32-planar chunks. */
-async function feedEncodedAudio(
-	audioSource: AudioSampleSource,
-	buffer: AudioBuffer,
-	onChunk?: (framesDone: number, totalFrames: number) => void
-): Promise<void> {
-	const channelCount = buffer.numberOfChannels;
-	const channelData: Float32Array[] = [];
-	for (let c = 0; c < channelCount; c++) channelData.push(buffer.getChannelData(c));
-	for (let offset = 0; offset < buffer.length; offset += AUDIO_ENCODE_CHUNK_FRAMES) {
-		const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, buffer.length - offset);
-		const planar = new Float32Array(frameCount * channelCount);
-		for (let c = 0; c < channelCount; c++) {
-			const samples = channelData[c];
-			if (samples) planar.set(samples.subarray(offset, offset + frameCount), c * frameCount);
-		}
-		const sample = new AudioSample({
-			data: planar,
-			format: 'f32-planar',
-			numberOfChannels: channelCount,
-			sampleRate: buffer.sampleRate,
-			timestamp: offset / buffer.sampleRate
-		});
-		try {
-			await audioSource.add(sample);
-			onChunk?.(Math.min(buffer.length, offset + frameCount), buffer.length);
-		} finally {
-			sample.close();
-		}
-	}
+	});
 }
 
 export interface TimelineFrameRenderOptions {
@@ -810,34 +746,20 @@ export async function renderMultiTrackVideoArtifact(
 	}
 
 	const transitions = timeline?.transitions ?? [];
-	const mixEntries = sliceMixEntries(
-		applyMixEntryGain(
-			planNestedMixdown(items, tracks, fps, transitions, timeline?.compositions ?? []),
-			masterBusGain(timeline)
-		),
-		startFrame / fps,
-		endFrame / fps
+	const mixEntries = entriesWithAudioSources(
+		sliceMixEntries(
+			applyMixEntryGain(
+				planNestedMixdown(items, tracks, fps, transitions, timeline?.compositions ?? []),
+				masterBusGain(timeline)
+			),
+			startFrame / fps,
+			endFrame / fps
+		)
 	);
-	const decodedAudio = new Map<string, AudioBuffer>();
-	for (const mediaId of new Set(mixEntries.map((entry) => entry.mediaId))) {
-		const media = mediaPool.get(mediaId);
-		if (!media) continue;
-		try {
-			decodedAudio.set(mediaId, await decodeAudioBuffer(await resolveMediaBlob(media)));
-		} catch {
-			// Silent or unreadable audio drops out of the mix rather than failing export.
-		}
-	}
 	report(options, 'mixing', 0, totalFrames);
-	const decodableMixEntries = mixEntries.filter((entry) => decodedAudio.has(entry.mediaId));
-	const mixed =
-		decodableMixEntries.length > 0
-			? await renderMixdown(
-					decodableMixEntries,
-					decodedAudio,
-					mixDurationSeconds(decodableMixEntries)
-				)
-			: null;
+	// Mixing is now streaming via bounded windows; report mixing as we feed windows during encoding.
+	const hasAudio = mixEntries.length > 0;
+	const audioDurationSeconds = hasAudio ? mixDurationSeconds(mixEntries) : 0;
 	report(options, 'rendering', 0, totalFrames);
 
 	const format = options.format ?? 'webm';
@@ -860,8 +782,8 @@ export async function renderMultiTrackVideoArtifact(
 				bitrate
 			});
 	if (!codec) throw new Error(`This browser cannot encode video for ${format.toUpperCase()}.`);
-	const target = new BufferTarget();
-	const output = new Output({ format: outputFormat, target });
+	const artifactTarget = await createArtifactTarget(outputFormat.mimeType, format);
+	const output = new Output({ format: outputFormat, target: artifactTarget.target });
 	const videoSource = new VideoSampleSource({
 		codec,
 		bitrate,
@@ -879,7 +801,7 @@ export async function renderMultiTrackVideoArtifact(
 	}
 
 	let audioSource: AudioSampleSource | null = null;
-	if (mixed) {
+	if (hasAudio) {
 		audioSource = new AudioSampleSource({
 			codec: format === 'webm' || format === 'mkv' ? 'opus' : 'aac',
 			bitrate: 192_000
@@ -887,17 +809,54 @@ export async function renderMultiTrackVideoArtifact(
 		output.addAudioTrack(audioSource);
 	}
 
-	await output.start();
-	if (subtitleSource) {
-		await subtitleSource.add(subtitleWebVtt(items, fps, startFrame, endFrame));
-		subtitleSource.close();
+	try {
+		await output.start();
+		if (subtitleSource) {
+			await subtitleSource.add(subtitleWebVtt(items, fps, startFrame, endFrame));
+			subtitleSource.close();
+		}
+	} catch (error) {
+		try {
+			if (output.state === 'started') await output.cancel();
+		} catch {
+			// The original start or subtitle failure matters more than cancel errors.
+		}
+		await artifactTarget.discard();
+		throw error;
 	}
 
 	async function runFeed(): Promise<void> {
-		if (!mixed || !audioSource) return;
+		if (!hasAudio || !audioSource) return;
 		const source = audioSource;
+		let samplesFed = 0;
+		const totalSamples = Math.ceil(audioDurationSeconds * MIX_SAMPLE_RATE);
 		try {
-			await feedEncodedAudio(source, mixed);
+			for await (const win of mixAudioWindows(mixEntries, audioDurationSeconds, options.signal)) {
+				throwIfAborted(options.signal);
+				const windowSamples = win.samples[0]!.length;
+				for (let off = 0; off < windowSamples; off += AUDIO_ENCODE_CHUNK_FRAMES) {
+					throwIfAborted(options.signal);
+					const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, windowSamples - off);
+					const planar = new Float32Array(frameCount * MIX_CHANNELS);
+					for (let c = 0; c < MIX_CHANNELS; c++)
+						planar.set(win.samples[c]!.subarray(off, off + frameCount), c * frameCount);
+					const sample = new AudioSample({
+						data: planar,
+						format: 'f32-planar',
+						numberOfChannels: MIX_CHANNELS,
+						sampleRate: MIX_SAMPLE_RATE,
+						timestamp: (samplesFed + off) / MIX_SAMPLE_RATE
+					});
+					try {
+						await source.add(sample);
+					} finally {
+						sample.close();
+					}
+				}
+				samplesFed += windowSamples;
+				const progress = totalSamples > 0 ? samplesFed / totalSamples : 1;
+				report(options, 'encoding', Math.round(progress * totalFrames), totalFrames);
+			}
 		} finally {
 			source.close();
 			audioSource = null;
@@ -939,14 +898,13 @@ export async function renderMultiTrackVideoArtifact(
 		} catch {
 			// The original failure below matters more than cancel errors.
 		}
+		await artifactTarget.discard();
 		throw error;
 	} finally {
 		frameRenderer.dispose();
 	}
 
-	const buffer = target.buffer;
-	if (!buffer) throw new Error('Render produced no data.');
-	const blob = new Blob([buffer], { type: outputFormat.mimeType });
+	const blob = await artifactTarget.finish();
 	const baseName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${format}`;
 	let sidecar: RenderedExportArtifact['sidecar'];
 	if (subtitleMode === 'sidecar') {
@@ -993,43 +951,65 @@ export async function renderTimelineAudioArtifact(
 	const endFrame = Math.min(fullDuration, Math.ceil(options.range?.endFrame ?? fullDuration));
 	const totalFrames = Math.max(0, endFrame - startFrame);
 	const transitions = project.timeline?.transitions ?? [];
-	const entries = sliceMixEntries(
-		applyMixEntryGain(
-			planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
-			masterBusGain(project.timeline)
-		),
-		startFrame / fps,
-		endFrame / fps
+	const entries = entriesWithAudioSources(
+		sliceMixEntries(
+			applyMixEntryGain(
+				planNestedMixdown(items, tracks, fps, transitions, project.timeline?.compositions ?? []),
+				masterBusGain(project.timeline)
+			),
+			startFrame / fps,
+			endFrame / fps
+		)
 	);
 	if (entries.length === 0) throw new Error('The selected range has no audible clips.');
 	report(options, 'preparing', 0, totalFrames);
-	const decoded = new Map<string, AudioBuffer>();
-	for (const mediaId of new Set(entries.map((entry) => entry.mediaId))) {
-		throwIfAborted(options.signal);
-		const media = mediaPool.get(mediaId);
-		if (media) decoded.set(mediaId, await decodeAudioBuffer(await resolveMediaBlob(media)));
-	}
 	report(options, 'mixing', 0, totalFrames);
-	const mixed = await renderMixdown(entries, decoded, mixDurationSeconds(entries));
-	if (!mixed) throw new Error('The audio mix is empty.');
+	const durationSeconds = mixDurationSeconds(entries);
+	if (durationSeconds <= 0) throw new Error('The audio mix is empty.');
 	const format = audioOutputFormatFor(options.format);
-	const target = new BufferTarget();
-	const output = new Output({ format, target });
+	const artifactTarget = await createArtifactTarget(format.mimeType, options.format);
+	const output = new Output({ format, target: artifactTarget.target });
 	const codec = options.format === 'mp3' ? 'mp3' : options.format === 'aac' ? 'aac' : 'pcm-s16';
 	const source = new AudioSampleSource({
 		codec,
 		bitrate: options.format === 'wav' ? undefined : 192_000
 	});
 	output.addAudioTrack(source);
-	await output.start();
 	try {
+		await output.start();
 		throwIfAborted(options.signal);
 		report(options, 'encoding', 0, totalFrames);
-		await feedEncodedAudio(source, mixed, (encodedFrames, encodedTotal) => {
+		let samplesFed = 0;
+		const totalSamples = Math.ceil(durationSeconds * MIX_SAMPLE_RATE);
+		let producedWindows = 0;
+		for await (const win of mixAudioWindows(entries, durationSeconds, options.signal)) {
 			throwIfAborted(options.signal);
-			const ratio = encodedTotal > 0 ? encodedFrames / encodedTotal : 1;
+			producedWindows++;
+			const windowSamples = win.samples[0]!.length;
+			for (let off = 0; off < windowSamples; off += AUDIO_ENCODE_CHUNK_FRAMES) {
+				throwIfAborted(options.signal);
+				const frameCount = Math.min(AUDIO_ENCODE_CHUNK_FRAMES, windowSamples - off);
+				const planar = new Float32Array(frameCount * MIX_CHANNELS);
+				for (let c = 0; c < MIX_CHANNELS; c++)
+					planar.set(win.samples[c]!.subarray(off, off + frameCount), c * frameCount);
+				const sample = new AudioSample({
+					data: planar,
+					format: 'f32-planar',
+					numberOfChannels: MIX_CHANNELS,
+					sampleRate: MIX_SAMPLE_RATE,
+					timestamp: (samplesFed + off) / MIX_SAMPLE_RATE
+				});
+				try {
+					await source.add(sample);
+				} finally {
+					sample.close();
+				}
+			}
+			samplesFed += windowSamples;
+			const ratio = totalSamples > 0 ? samplesFed / totalSamples : 1;
 			report(options, 'encoding', Math.round(totalFrames * ratio), totalFrames);
-		});
+		}
+		if (producedWindows === 0) throw new Error('The audio mix is empty.');
 		source.close();
 		report(options, 'finalizing', totalFrames, totalFrames);
 		await output.finalize();
@@ -1039,10 +1019,10 @@ export async function renderTimelineAudioArtifact(
 		} catch {
 			// Keep the first failure.
 		}
+		await artifactTarget.discard();
 		throw error;
 	}
-	if (!target.buffer) throw new Error('Audio render produced no data.');
-	const blob = new Blob([target.buffer], { type: format.mimeType });
+	const blob = await artifactTarget.finish();
 	const fileName = `${project.name.replace(/[\\/:*?"<>|]+/g, '_')}.${options.format}`;
 	return { fileName, blob };
 }

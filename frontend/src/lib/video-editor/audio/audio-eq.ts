@@ -1450,6 +1450,214 @@ export function sampleAudioEqResponseCurve(
 	});
 }
 
+class StreamingBiquad {
+	private x1 = 0;
+	private x2 = 0;
+	private y1 = 0;
+	private y2 = 0;
+
+	constructor(private readonly coefficients: BiquadCoefficients) {}
+
+	process(samples: Float32Array): Float32Array {
+		const output = new Float32Array(samples.length);
+		const coefficients = this.coefficients;
+		for (let i = 0; i < samples.length; i++) {
+			const x0 = samples[i] ?? 0;
+			const y0 =
+				coefficients.b0 * x0 +
+				coefficients.b1 * this.x1 +
+				coefficients.b2 * this.x2 -
+				coefficients.a1 * this.y1 -
+				coefficients.a2 * this.y2;
+			output[i] = y0;
+			this.x2 = this.x1;
+			this.x1 = x0;
+			this.y2 = this.y1;
+			this.y1 = y0;
+		}
+		return output;
+	}
+}
+
+class StreamingOnePole {
+	private x1 = 0;
+	private y1 = 0;
+
+	constructor(private readonly coefficients: OnePoleCoefficients) {}
+
+	process(samples: Float32Array): Float32Array {
+		const output = new Float32Array(samples.length);
+		const coefficients = this.coefficients;
+		for (let i = 0; i < samples.length; i++) {
+			const x0 = samples[i] ?? 0;
+			const y0 = coefficients.b0 * x0 + coefficients.b1 * this.x1 - coefficients.a1 * this.y1;
+			output[i] = y0;
+			this.x1 = x0;
+			this.y1 = y0;
+		}
+		return output;
+	}
+}
+
+class StreamingLinearGain {
+	constructor(private readonly gain: number) {}
+
+	process(samples: Float32Array): Float32Array {
+		const output = new Float32Array(samples.length);
+		for (let i = 0; i < samples.length; i++) output[i] = (samples[i] ?? 0) * this.gain;
+		return output;
+	}
+}
+
+type StreamingEqFilter = StreamingBiquad | StreamingOnePole | StreamingLinearGain;
+
+function appendCutFilters(
+	filters: StreamingEqFilter[],
+	type: 'highpass' | 'lowpass',
+	frequencyHz: number,
+	slopeDbPerOct: AudioEqCutSlopeDbPerOct,
+	sampleRate: number
+): void {
+	const coefficients = buildOnePolePassCoefficients(type, frequencyHz, sampleRate);
+	for (let i = 0; i < getCutFilterStageCount(slopeDbPerOct); i++) {
+		filters.push(new StreamingOnePole(coefficients));
+	}
+}
+
+function appendStreamingStage(
+	filters: StreamingEqFilter[],
+	sampleRate: number,
+	stage: ResolvedAudioEqSettings
+): void {
+	if (stage.band1Enabled && isPassBand1Type(stage.band1Type)) {
+		appendCutFilters(
+			filters,
+			'highpass',
+			stage.band1FrequencyHz,
+			stage.band1SlopeDbPerOct,
+			sampleRate
+		);
+	} else if (stage.band1Enabled) {
+		const type = getBand1BiquadType(stage.band1Type);
+		if (type) {
+			filters.push(
+				new StreamingBiquad(
+					buildEqBiquadCoefficients(
+						type,
+						stage.band1FrequencyHz,
+						stage.band1GainDb,
+						sampleRate,
+						stage.band1Q
+					)
+				)
+			);
+		}
+	}
+
+	const lowerBands = [
+		[stage.lowEnabled, stage.lowType, stage.lowFrequencyHz, stage.lowGainDb, stage.lowQ],
+		[
+			stage.lowMidEnabled,
+			stage.lowMidType,
+			stage.lowMidFrequencyHz,
+			stage.lowMidGainDb,
+			stage.lowMidQ
+		]
+	] as const;
+	for (const [enabled, type, frequency, gain, q] of lowerBands) {
+		if (!enabled || (type !== 'notch' && Math.abs(gain) <= AUDIO_EQ_ACTIVE_EPSILON)) continue;
+		filters.push(
+			new StreamingBiquad(
+				buildEqBiquadCoefficients(getInnerBandBiquadType(type), frequency, gain, sampleRate, q)
+			)
+		);
+	}
+	if (Math.abs(stage.midGainDb) > AUDIO_EQ_ACTIVE_EPSILON) {
+		filters.push(
+			new StreamingBiquad(
+				buildPeakingCoefficients(
+					AUDIO_EQ_MID_FREQUENCY_HZ,
+					stage.midGainDb,
+					sampleRate,
+					AUDIO_EQ_MID_Q
+				)
+			)
+		);
+	}
+	const upperBands = [
+		[
+			stage.highMidEnabled,
+			stage.highMidType,
+			stage.highMidFrequencyHz,
+			stage.highMidGainDb,
+			stage.highMidQ
+		],
+		[stage.highEnabled, stage.highType, stage.highFrequencyHz, stage.highGainDb, stage.highQ]
+	] as const;
+	for (const [enabled, type, frequency, gain, q] of upperBands) {
+		if (!enabled || (type !== 'notch' && Math.abs(gain) <= AUDIO_EQ_ACTIVE_EPSILON)) continue;
+		filters.push(
+			new StreamingBiquad(
+				buildEqBiquadCoefficients(getInnerBandBiquadType(type), frequency, gain, sampleRate, q)
+			)
+		);
+	}
+	if (stage.band6Enabled && isPassBand6Type(stage.band6Type)) {
+		appendCutFilters(
+			filters,
+			'lowpass',
+			stage.band6FrequencyHz,
+			stage.band6SlopeDbPerOct,
+			sampleRate
+		);
+	} else if (stage.band6Enabled) {
+		const type = getBand6BiquadType(stage.band6Type);
+		if (type) {
+			filters.push(
+				new StreamingBiquad(
+					buildEqBiquadCoefficients(
+						type,
+						stage.band6FrequencyHz,
+						stage.band6GainDb,
+						sampleRate,
+						stage.band6Q
+					)
+				)
+			);
+		}
+	}
+	if (Math.abs(stage.outputGainDb) > AUDIO_EQ_ACTIVE_EPSILON) {
+		filters.push(new StreamingLinearGain(Math.pow(10, stage.outputGainDb / 20)));
+	}
+}
+
+/** Stateful EQ chain for chunked preview/export work. Filter history survives chunk boundaries. */
+export class StreamingAudioEq {
+	private readonly filtersByChannel: StreamingEqFilter[][];
+
+	constructor(
+		channelCount: number,
+		sampleRate: number,
+		stages: ReadonlyArray<ResolvedAudioEqSettings> | undefined
+	) {
+		this.filtersByChannel = Array.from({ length: channelCount }, () => {
+			const filters: StreamingEqFilter[] = [];
+			for (const stage of stages ?? []) {
+				if (isAudioEqStageActive(stage)) appendStreamingStage(filters, sampleRate, stage);
+			}
+			return filters;
+		});
+	}
+
+	process(channels: Float32Array[]): Float32Array[] {
+		return channels.map((channel, index) => {
+			let output = channel;
+			for (const filter of this.filtersByChannel[index] ?? []) output = filter.process(output);
+			return output;
+		});
+	}
+}
+
 function applyBiquad(samples: Float32Array, coefficients: BiquadCoefficients): Float32Array {
 	const output = new Float32Array(samples.length);
 	let x1 = 0;
