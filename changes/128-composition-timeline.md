@@ -10,3 +10,4 @@
 
 - Composition fps header no longer hardcodes 30 due to missing parentheses.
 - Keyboard Delete/Arrow nudge now works from the focusable, correctly named timeline region (`role="region"` with `aria-label`) as well as the window, with proper focus and a single undo entry.
+- Motion gestures now share one pointer session with exact ownership, frame-coalesced previews, outside-release commits, and Escape, capture-loss, supersession, and destroy cancellation. Media drops use real pool metadata and exact lanes; work-area trims preserve source bounds; published controls, property links, all compositor blend modes, and program-monitor ghost scrubbing use their canonical runtime paths. Variable-height sidebar virtualization keeps large compositions bounded while preserving expanded rows, and source-aware timing edits, inherited locks, and atomic undo now cover every inline edit.

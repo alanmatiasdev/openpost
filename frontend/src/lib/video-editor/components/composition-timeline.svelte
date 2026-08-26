@@ -15,12 +15,22 @@
 	import { m } from '$lib/paraglide/messages';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
-	import { removeItems } from '$lib/video-editor/timeline/actions/items';
+	import { removeItems, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import {
 		setTransformParent,
 		detachTransformParent
 	} from '$lib/video-editor/timeline/actions/transform-parenting';
-	import { timelinePixelsPerFrame } from '$lib/video-editor/timeline/zoom';
+	import {
+		clampTimelineZoom,
+		timelinePixelsPerFrame,
+		TIMELINE_ZOOM_MAX,
+		TIMELINE_ZOOM_MIN
+	} from '$lib/video-editor/timeline/zoom';
+	import {
+		createBrowserPointerGestureSessionHost,
+		type PointerGestureEvent,
+		type PointerGestureSessionHost
+	} from '$lib/video-editor/timeline/pointer-gesture-session';
 	import {
 		buildTimelineItemRangeIndex,
 		queryTimelineItemRange
@@ -32,15 +42,25 @@
 		calculateMoveSnap
 	} from '$lib/video-editor/timeline/snapping';
 	import { planLinkedMoveGesture, planTrimGesture } from '$lib/video-editor/timeline/edit-gesture';
+	import { planTrimCompositionToRange } from '$lib/video-editor/timeline/trim-composition-range';
+	import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 	import { editorKeyframes, keyframeIdentity } from '$lib/video-editor/timeline/keyframe-editor';
 	import { activeVectorKeyframes } from '$lib/video-editor/timeline/vector-keyframes';
 	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
-	import { updateKeyframes } from '$lib/video-editor/timeline/actions/keyframes';
+	import {
+		setKeyframeEasings,
+		updateKeyframes
+	} from '$lib/video-editor/timeline/actions/keyframes';
 	import {
 		getTextMotionTimelineBands,
 		getMaxOffsetFrames
 	} from '$lib/video-editor/timeline/text-motion-timeline';
 	import type { TextMotionPresetId, TextMotionSlot } from '$lib/video-editor/project/types';
+	import {
+		TEXT_MOTION_IN_PRESET_IDS,
+		TEXT_MOTION_LOOP_PRESET_IDS,
+		TEXT_MOTION_OUT_PRESET_IDS
+	} from '$lib/video-editor/project/types';
 	import {
 		beginTextMotionEdit,
 		updateTextMotionLive,
@@ -57,37 +77,61 @@
 	} from '$lib/video-editor/timeline/text-motion-labels';
 	import {
 		captureSnapshot,
-		restoreSnapshot
+		restoreSnapshot,
+		snapshotsEqual
 	} from '$lib/video-editor/timeline/commands/snapshot.svelte';
-	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import {
+		commandHistory,
+		executeAtomic
+	} from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import { insertMediaAtFrame } from '$lib/video-editor/timeline/actions/insert-media';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { clearActiveMediaDrag, getMediaDragData } from '$lib/video-editor/media/media-drag';
+	import {
+		evaluateExactMediaPlacement,
+		mediaDurationInFrames,
+		mediaTimelineKind,
+		planExactSequencePlacement
+	} from '$lib/video-editor/media/media-drop-placement';
+	import { wouldCreateCompositionCycle } from '$lib/video-editor/sequences/composition-graph';
+	import { nestSequenceOnExactTracks } from '$lib/video-editor/sequences/sequence-actions';
 	import {
 		planMotionTimelineRows,
 		expandMotionLayerItemIds
 	} from '$lib/video-editor/timeline/motion-timeline-rows';
-	import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
-	import type { KeyframeProperty } from '$lib/video-editor/project/types';
+	import type {
+		CompositionControlDefinition,
+		DirectLinkableProperty,
+		TimelineItem,
+		TimelineTrack
+	} from '$lib/video-editor/project/types';
+	import { getCompositionControlSourceValue } from '$lib/video-editor/sequences/composition-controls';
+	import type { EasingType, KeyframeProperty } from '$lib/video-editor/project/types';
 	import KeyframeDopesheet from '$lib/video-editor/components/keyframe-dopesheet.svelte';
 	import KeyframeValueGraph from '$lib/video-editor/components/keyframe-value-graph.svelte';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
+	import { removeMotionLayerFromItems } from '$lib/video-editor/timeline/actions/motion-layers';
+	import { removeMotionModifierFromItems } from '$lib/video-editor/timeline/actions/motion-modifiers';
 	import {
-		getMotionPresets,
-		type MotionPresetId as MotionLayerPresetId
-	} from '$lib/video-editor/timeline/motion-presets';
+		ALL_BLEND_MODES,
+		BLEND_MODE_GROUPS,
+		type BlendMode
+	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import {
-		applyMotionLayersToItems,
-		removeMotionLayerFromItems
-	} from '$lib/video-editor/timeline/actions/motion-layers';
-	import {
-		applyMotionModifierToItems,
-		removeMotionModifierFromItems
-	} from '$lib/video-editor/timeline/actions/motion-modifiers';
-	import {
-		setPropertyExpression,
-		removePropertyExpression
+		removeDirectPropertyLink,
+		setDirectPropertyLink
 	} from '$lib/video-editor/timeline/actions/property-runtime';
-	import { compositionControlsStore } from '$lib/video-editor/sequences/composition-controls';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Button } from '$lib/components/ui/button';
+	import type {
+		MotionTimelineGroupRow,
+		MotionTimelineLayerRow,
+		MotionTimelineRow
+	} from '$lib/video-editor/timeline/motion-timeline-rows';
+	import {
+		buildVirtualRowLayout,
+		queryVirtualRowLayout
+	} from '$lib/video-editor/timeline/virtual-row-window';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink-2';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
@@ -105,6 +149,136 @@
 	import BlendIcon from '@lucide/svelte/icons/blend';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+
+	function isLayerRow(row: MotionTimelineRow): row is MotionTimelineLayerRow {
+		return row.kind === 'layer';
+	}
+
+	function motionRowKey(row: MotionTimelineRow): string {
+		return row.kind === 'group' ? `group:${row.track.id}` : `layer:${row.item.id}`;
+	}
+
+	function isBlendMode(value: string): value is BlendMode {
+		return ALL_BLEND_MODES.some((mode) => mode === value);
+	}
+
+	function isKeyframeProperty(value: string): value is KeyframeProperty {
+		return (
+			value === 'x' ||
+			value === 'y' ||
+			value === 'width' ||
+			value === 'height' ||
+			value === 'anchorX' ||
+			value === 'anchorY' ||
+			value === 'rotation' ||
+			value === 'opacity' ||
+			value === 'scaleX' ||
+			value === 'scaleY'
+		);
+	}
+	function isEasingType(value: string): value is EasingType {
+		return (
+			value === 'linear' || value === 'ease-in' || value === 'ease-out' || value === 'ease-in-out'
+		);
+	}
+
+	function isDirectLinkableProperty(value: string): value is DirectLinkableProperty {
+		return (
+			isKeyframeProperty(value) ||
+			value === 'cornerRadius' ||
+			value === 'position' ||
+			value === 'scale' ||
+			value === 'anchor'
+		);
+	}
+
+	const TEXT_PRESET_SET = new Set<string>([
+		...TEXT_MOTION_IN_PRESET_IDS,
+		...TEXT_MOTION_OUT_PRESET_IDS,
+		...TEXT_MOTION_LOOP_PRESET_IDS
+	]);
+	const blendModeLabels = $derived<Record<BlendMode, string>>({
+		normal: m.video_editor_blend_normal(),
+		dissolve: m.video_editor_blend_dissolve(),
+		darken: m.video_editor_blend_darken(),
+		multiply: m.video_editor_blend_multiply(),
+		'color-burn': m.video_editor_blend_color_burn(),
+		'linear-burn': m.video_editor_blend_linear_burn(),
+		lighten: m.video_editor_blend_lighten(),
+		screen: m.video_editor_blend_screen(),
+		'color-dodge': m.video_editor_blend_color_dodge(),
+		'linear-dodge': m.video_editor_blend_linear_dodge(),
+		overlay: m.video_editor_blend_overlay(),
+		'soft-light': m.video_editor_blend_soft_light(),
+		'hard-light': m.video_editor_blend_hard_light(),
+		'vivid-light': m.video_editor_blend_vivid_light(),
+		'linear-light': m.video_editor_blend_linear_light(),
+		'pin-light': m.video_editor_blend_pin_light(),
+		'hard-mix': m.video_editor_blend_hard_mix(),
+		difference: m.video_editor_blend_difference(),
+		exclusion: m.video_editor_blend_exclusion(),
+		subtract: m.video_editor_blend_subtract(),
+		divide: m.video_editor_blend_divide(),
+		hue: m.video_editor_blend_hue(),
+		saturation: m.video_editor_blend_saturation(),
+		color: m.video_editor_blend_color(),
+		luminosity: m.video_editor_blend_luminosity()
+	});
+	const blendGroupLabels = $derived<Record<string, string>>({
+		normal: m.video_editor_blend_group_normal(),
+		darken: m.video_editor_blend_group_darken(),
+		lighten: m.video_editor_blend_group_lighten(),
+		contrast: m.video_editor_blend_group_contrast(),
+		inversion: m.video_editor_blend_group_inversion(),
+		component: m.video_editor_blend_group_component()
+	});
+
+	function isTextMotionPresetId(value: string): value is TextMotionPresetId {
+		return TEXT_PRESET_SET.has(value);
+	}
+
+	function publishedControls(item: TimelineItem): CompositionControlDefinition[] {
+		if (item.type !== 'composition' || !item.compositionId) return [];
+		return (
+			sequenceStore.compositionById.get(item.compositionId)?.compositionControls?.controls ?? []
+		);
+	}
+
+	function compositionControlValue(
+		item: TimelineItem,
+		control: CompositionControlDefinition
+	): string {
+		const override = item.compositionControlOverrides?.[control.id];
+		if (override !== undefined) return override;
+		const nestedItems = item.compositionId
+			? (sequenceStore.compositionById.get(item.compositionId)?.items ?? [])
+			: [];
+		return getCompositionControlSourceValue(nestedItems, control);
+	}
+
+	function setCompositionControlValue(
+		item: TimelineItem,
+		control: CompositionControlDefinition,
+		value: string
+	): void {
+		const overrides = { ...(item.compositionControlOverrides ?? {}) };
+		const nestedItems = item.compositionId
+			? (sequenceStore.compositionById.get(item.compositionId)?.items ?? [])
+			: [];
+		if (value === getCompositionControlSourceValue(nestedItems, control)) {
+			delete overrides[control.id];
+		} else {
+			overrides[control.id] = value;
+		}
+		updateItemProperties(
+			item.id,
+			{
+				compositionControlOverrides: Object.keys(overrides).length > 0 ? overrides : undefined
+			},
+			'UPDATE_COMPOSITION_CONTROL_OVERRIDE'
+		);
+		onedit();
+	}
 
 	let {
 		onedit,
@@ -135,20 +309,36 @@
 	const timelineWidth = $derived(Math.max(800, durationFrames * pxPerFrame));
 	let scrollLeft = $state(0);
 	let scrollEl: HTMLDivElement | null = $state(null);
+	let layerBarsEl: HTMLDivElement | null = $state(null);
 	let sidebarEl: HTMLDivElement | null = $state(null);
+	let timelineViewportWidth = $state(1200);
+	let sidebarViewportHeight = $state(400);
 	let sidebarScrollTop = $state(0);
+	let sidebarRowHeights = $state<Map<string, number>>(new Map());
 	let selectedItemIds = $state<Set<string>>(new Set());
 	let lastSelectedId = $state<string | null>(null);
 	$effect(() => {
-		if (externalId !== null) {
-			selectedItemIds = new Set([externalId]);
-			lastSelectedId = externalId;
-		}
+		selectedItemIds = externalId === null ? new Set() : new Set([externalId]);
+		lastSelectedId = externalId;
+	});
+	$effect(() => {
+		const timeline = scrollEl;
+		const sidebar = sidebarEl;
+		if (!timeline && !sidebar) return;
+		const updateSizes = () => {
+			if (timeline) timelineViewportWidth = timeline.clientWidth;
+			if (sidebar) sidebarViewportHeight = sidebar.clientHeight;
+		};
+		updateSizes();
+		const observer = new ResizeObserver(updateSizes);
+		if (timeline) observer.observe(timeline);
+		if (sidebar) observer.observe(sidebar);
+		return () => observer.disconnect();
 	});
 	let pickTarget: string | null = $state(null);
 	let pendingParent: string | null = $state(null);
 	let status = $state('');
-	let zoomSlider = $state(1);
+	let zoomSlider = $derived(timelineStore.zoomLevel);
 	let showNewDialog = $state(false);
 	let newName = $state('');
 	let newFps = $state(30);
@@ -163,44 +353,101 @@
 	let dopesheetMode: 'lanes' | 'graph' = $state('lanes');
 	let selectedEasing: string = $state('linear');
 	let linkPickSource: { itemId: string; property: string } | null = $state(null);
-	$effect(() => {
-		zoomSlider = timelineStore.zoomLevel;
-	});
+	const ROW_H = 34;
+	const VECTOR_H = 20;
+	const TEXT_BAND_H = 22;
 	const visibleRange = $derived({
-		start: Math.max(0, (scrollLeft - 400) / Math.max(0.001, pxPerFrame)),
-		end: Math.max(0, (scrollLeft + 1200) / Math.max(0.001, pxPerFrame))
+		start: Math.max(0, (scrollLeft - 600) / Math.max(0.001, pxPerFrame)),
+		end: Math.max(
+			0,
+			(scrollLeft + Math.max(1, timelineViewportWidth) + 600) / Math.max(0.001, pxPerFrame)
+		)
 	});
 	const motionPlan = $derived(
 		planMotionTimelineRows({ items: timelineStore.items, tracks: timelineStore.tracks })
 	);
 	const motionRows = $derived(motionPlan.rows);
 	const trackById = $derived(new Map(timelineStore.tracks.map((t) => [t.id, t])));
-	const groupRows = $derived(motionRows.filter((r) => r.kind === 'group'));
-	const layerEntries = $derived(motionRows.filter((r) => r.kind === 'layer'));
-	const SIDEBAR_VIEWPORT_H = 400;
-	const visibleSidebarRows = $derived.by(() => {
-		if (motionRows.length < 80) return motionRows;
-		const startIdx = Math.max(0, Math.floor(sidebarScrollTop / ROW_H) - 8);
-		const endIdx = Math.min(
-			motionRows.length,
-			Math.ceil((sidebarScrollTop + SIDEBAR_VIEWPORT_H) / ROW_H) + 8
+	const groupRows = $derived(
+		motionRows.filter((r): r is MotionTimelineGroupRow => r.kind === 'group')
+	);
+	const layerEntries = $derived(motionRows.filter(isLayerRow));
+	const sidebarRows = $derived.by(() => {
+		const query = filterText.trim().toLowerCase();
+		if (!query) return motionRows;
+		const matchingItemIds = new Set(
+			layerEntries
+				.filter((row) => itemLabel(row.item).toLowerCase().includes(query))
+				.map((row) => row.item.id)
 		);
-		return motionRows.slice(startIdx, endIdx);
+		return motionRows.filter((row) =>
+			row.kind === 'layer'
+				? matchingItemIds.has(row.item.id)
+				: row.track.name.toLowerCase().includes(query) ||
+					row.itemIds.some((itemId) => matchingItemIds.has(itemId))
+		);
 	});
+	const sidebarRowKeys = $derived(sidebarRows.map(motionRowKey));
+	const sidebarLayout = $derived(
+		buildVirtualRowLayout(sidebarRowKeys, sidebarRowHeights, ROW_H + 4)
+	);
+	const sidebarWindow = $derived(
+		queryVirtualRowLayout(sidebarLayout, sidebarScrollTop, sidebarViewportHeight, ROW_H * 8)
+	);
+	const visibleSidebarRows = $derived(
+		sidebarRows.slice(sidebarWindow.startIndex, sidebarWindow.endIndex)
+	);
+	$effect(() => {
+		const activeKeys = new Set(sidebarRowKeys);
+		if ([...sidebarRowHeights.keys()].every((key) => activeKeys.has(key))) return;
+		sidebarRowHeights = new Map([...sidebarRowHeights].filter(([key]) => activeKeys.has(key)));
+	});
+	function setSidebarRowHeight(key: string, size: number): void {
+		if (!Number.isFinite(size) || size <= 0) return;
+		const previous = sidebarRowHeights.get(key);
+		if (previous !== undefined && Math.abs(previous - size) < 0.5) return;
+		const next = new Map(sidebarRowHeights);
+		next.set(key, size);
+		sidebarRowHeights = next;
+	}
+	function measureSidebarRow(node: HTMLElement, key: string) {
+		let activeKey = key;
+		const measure = () => {
+			const style = getComputedStyle(node);
+			const marginBottom = Number.parseFloat(style.marginBottom) || 0;
+			setSidebarRowHeight(activeKey, node.getBoundingClientRect().height + marginBottom);
+		};
+		const observer = new ResizeObserver(measure);
+		observer.observe(node);
+		measure();
+		return {
+			update(nextKey: string) {
+				activeKey = nextKey;
+				measure();
+			},
+			destroy() {
+				observer.disconnect();
+			}
+		};
+	}
 
 	// Viewport culling: only mount visible bars + selected
-	const visualLayerItems = $derived(
-		layerEntries.map((r) => (r as Extract<typeof r, { kind: 'layer' }>).item)
-	);
+	const visualLayerItems = $derived(layerEntries.map((r) => r.item));
 	const itemIndex = $derived(buildTimelineItemRangeIndex(visualLayerItems));
 	const visibleBars = $derived(
 		queryTimelineItemRange(itemIndex, { start: visibleRange.start, end: visibleRange.end })
 	);
-	const visibleIds = $derived(new Set([...visibleBars.map((i) => i.id), ...selectedItemIds]));
+	const layerEntryByItemId = $derived(
+		new Map(layerEntries.map((row, index) => [row.item.id, { row, index }]))
+	);
+	const visibleLayerEntries = $derived.by(() => {
+		const ids = new Set([...visibleBars.map((item) => item.id), ...selectedItemIds]);
+		const entries = [...ids]
+			.map((id) => layerEntryByItemId.get(id))
+			.filter((entry) => entry !== undefined);
+		return entries.toSorted((a, b) => a.index - b.index);
+	});
 
-	const ROW_H = 34;
-	const VECTOR_H = 20;
-	const TEXT_BAND_H = 22;
 	const compositions = $derived(
 		sequenceStore.compositions.filter((c) => c.editorKind === 'composite-2d')
 	);
@@ -208,9 +455,23 @@
 	function itemLabel(item: TimelineItem): string {
 		return item.label || item.type;
 	}
+	function toggleLayerExpanded(itemId: string): void {
+		const next = new Set(expandedLayerIds);
+		if (next.has(itemId)) {
+			next.delete(itemId);
+		} else {
+			next.add(itemId);
+			while (next.size > 3) {
+				const oldest = next.values().next().value;
+				if (oldest === undefined) break;
+				next.delete(oldest);
+			}
+		}
+		expandedLayerIds = next;
+	}
 	function selectItem(id: string, additive: boolean, range: boolean): void {
 		if (range && lastSelectedId) {
-			const ids = layerEntries.map((r) => (r as { item: TimelineItem }).item.id);
+			const ids = layerEntries.map((r) => r.item.id);
 			const a = ids.indexOf(lastSelectedId);
 			const b = ids.indexOf(id);
 			if (a !== -1 && b !== -1) {
@@ -250,7 +511,8 @@
 		timelineStore._setCurrentFrame(clamped);
 	}
 	function handleTimelineClick(event: MouseEvent): void {
-		const target = event.target as HTMLElement;
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
 		if (
 			target.closest('[data-layer-row]') ||
 			target.closest('[data-vector-row]') ||
@@ -273,18 +535,37 @@
 		const span = Math.max(60, durationFrames);
 		const containerWidth = scrollEl ? scrollEl.clientWidth - 220 : 800;
 		const targetPxPerFrame = containerWidth / span;
-		const level = Math.max(0.25, Math.min(4, targetPxPerFrame / 12));
+		const level = clampTimelineZoom(targetPxPerFrame / 4);
 		timelineStore._setZoomLevel(level);
 		status = m.video_editor_composition_timeline_fit();
 	}
+	function updateCompositionTiming(
+		patch: { fps?: number; durationInFrames?: number },
+		commandType: string
+	): void {
+		if (!composition) return;
+		const unchanged =
+			(patch.fps === undefined || patch.fps === composition.fps) &&
+			(patch.durationInFrames === undefined ||
+				patch.durationInFrames === composition.durationInFrames);
+		if (unchanged) return;
+		const before = captureSnapshot();
+		sequenceStore.updateComposition(composition.id, patch);
+		commandHistory.addUndoEntry({ type: commandType }, before);
+		onedit();
+	}
 	function handleScroll(event: Event): void {
-		const el = event.currentTarget as HTMLDivElement;
+		const current = event.currentTarget;
+		if (!(current instanceof HTMLDivElement)) return;
+		const el = current;
 		scrollLeft = el.scrollLeft;
 		sidebarScrollTop = el.scrollTop;
 		if (sidebarEl && sidebarEl !== el) sidebarEl.scrollTop = el.scrollTop;
 	}
 	function handleSidebarScroll(event: Event): void {
-		const el = event.currentTarget as HTMLDivElement;
+		const current = event.currentTarget;
+		if (!(current instanceof HTMLDivElement)) return;
+		const el = current;
 		sidebarScrollTop = el.scrollTop;
 		if (scrollEl) scrollEl.scrollTop = el.scrollTop;
 	}
@@ -293,18 +574,18 @@
 		if (event.ctrlKey || event.metaKey) {
 			event.preventDefault();
 			if (!scrollEl) return;
-			const rect = scrollEl.getBoundingClientRect();
+			const activeScroll = scrollEl;
+			const rect = activeScroll.getBoundingClientRect();
 			const pointerRatio = (event.clientX - rect.left + scrollLeft) / Math.max(1, timelineWidth);
 			const delta = event.deltaY > 0 ? 0.9 : 1.1;
-			const next = Math.max(0.25, Math.min(4, timelineStore.zoomLevel * delta));
-			const oldPx = pxPerFrame;
+			const next = clampTimelineZoom(timelineStore.zoomLevel * delta);
 			timelineStore._setZoomLevel(next);
 			// compensate scroll to keep frame under pointer anchored
 			requestAnimationFrame(() => {
 				const newPx = timelinePixelsPerFrame(next);
 				const newWidth = durationFrames * newPx;
 				const newScroll = pointerRatio * newWidth - (event.clientX - rect.left);
-				scrollEl!.scrollLeft = Math.max(0, newScroll);
+				activeScroll.scrollLeft = Math.max(0, newScroll);
 			});
 			return;
 		}
@@ -315,15 +596,18 @@
 	}
 	function handleGhostScrubMove(frame: number): void {
 		previewFrame = Math.max(0, Math.min(frame, durationFrames - 1));
+		timelinePreviewScrub.setFrame(previewFrame);
 	}
 	function commitGhostScrub(): void {
 		if (previewFrame !== null) {
 			timelineStore._setCurrentFrame(previewFrame);
 			previewFrame = null;
 		}
+		timelinePreviewScrub.clear();
 	}
 	function cancelGhostScrub(): void {
 		previewFrame = null;
+		timelinePreviewScrub.clear();
 	}
 	function handleTrimToActive(): void {
 		const inP = timelineStore.inPoint;
@@ -332,79 +616,72 @@
 			status = m.video_editor_composition_timeline_no_work_area();
 			return;
 		}
+		if (!composition) return;
+		const plan = planTrimCompositionToRange({
+			items: timelineStore.items,
+			tracks: timelineStore.tracks,
+			transitions: composition.transitions,
+			markers: timelineStore.markers,
+			inPoint: inP,
+			outPoint: outP,
+			currentFrame: timelineStore.currentFrame,
+			fps: timelineStore.fps
+		});
+		if (!plan.ok) {
+			status = m.video_editor_motion_track_locked();
+			return;
+		}
 		const before = captureSnapshot();
-		const toRemove = timelineStore.items
-			.filter((item) => item.from + item.durationInFrames <= inP || item.from >= outP)
-			.map((i) => i.id);
-		const toTrim = timelineStore.items.filter(
-			(item) =>
-				(item.from < inP && item.from + item.durationInFrames > inP) ||
-				(item.from < outP && item.from + item.durationInFrames > outP)
-		);
-		for (const item of toTrim) {
-			let patch: Partial<TimelineItem> = {};
-			if (item.from < inP && item.from + item.durationInFrames > inP && item.from < outP) {
-				const cut = inP - item.from;
-				patch = { from: inP, durationInFrames: item.durationInFrames - cut };
-			}
-			if (item.from < outP && item.from + item.durationInFrames > outP) {
-				const extra = item.from + item.durationInFrames - outP;
-				const dur = (patch.durationInFrames ?? item.durationInFrames) - extra;
-				patch = { ...patch, durationInFrames: Math.max(1, dur) };
-				if (!patch.from) patch.from = item.from;
-			}
-			if (Object.keys(patch).length) timelineStore._updateItems([{ id: item.id, patch }]);
-		}
-		if (toRemove.length) timelineStore._removeItems(toRemove);
-		const newDur = outP - inP;
-		if (composition) sequenceStore.updateComposition(composition.id, { durationInFrames: newDur });
-		// shift remaining items so active starts at 0
-		for (const item of timelineStore.items) {
-			if (item.from >= inP && item.from < outP)
-				timelineStore._updateItems([{ id: item.id, patch: { from: item.from - inP } }]);
-		}
+		if (plan.updates.length > 0) timelineStore._updateItems(plan.updates);
+		if (plan.removeIds.length > 0) timelineStore._removeItems(plan.removeIds);
+		timelineStore._setMarkers(plan.markers);
+		timelineStore._setCurrentFrame(plan.currentFrame);
+		sequenceStore.updateComposition(composition.id, {
+			durationInFrames: plan.durationInFrames,
+			transitions: plan.transitions,
+			markers: plan.markers
+		});
 		timelineStore._setInPoint(null);
 		timelineStore._setOutPoint(null);
 		commandHistory.addUndoEntry({ type: 'TRIM_TO_ACTIVE' }, before);
 		onedit();
 		status = m.video_editor_composition_timeline_trimmed();
 	}
-	let windowCleanup: Array<() => void> = [];
+	let pointerGestures: PointerGestureSessionHost | null = null;
+	onMount(() => {
+		pointerGestures = createBrowserPointerGestureSessionHost();
+	});
 	onDestroy(() => {
-		for (const fn of windowCleanup) fn();
-		windowCleanup = [];
+		pointerGestures?.destroy();
+		pointerGestures = null;
+		timelinePreviewScrub.clear();
 		if (drag) restoreSnapshot(drag.before);
-		if (kfDrag) restoreSnapshot(kfDrag.before);
 		if (textDrag?.before) restoreSnapshot(textDrag.before);
 		drag = null;
 		kfDrag = null;
 		textDrag = null;
 		restorePick();
 	});
-	function trackWindowCleanup(fn: () => void): void {
-		windowCleanup.push(fn);
-	}
-	let pickCleanup: (() => void) | null = null;
 	function restorePick(): void {
-		if (pickCleanup) pickCleanup();
-		pickCleanup = null;
 		pendingParent = null;
 		pickTarget = null;
 	}
 	function beginParentPick(childId: string, event: PointerEvent): void {
 		if (event.button !== 0) return;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		event.preventDefault();
+		pointerGestures?.cancel('superseded');
 		pendingParent = childId;
 		pickTarget = null;
-		const onMove = (move: PointerEvent) => {
-			const el = document.elementFromPoint(move.clientX, move.clientY) as HTMLElement | null;
+		const onMove = (move: PointerGestureEvent) => {
+			const maybeEl = document.elementFromPoint(move.clientX, move.clientY);
+			const el = maybeEl instanceof HTMLElement ? maybeEl : null;
 			const row = el?.closest<HTMLElement>('[data-layer-row]');
 			pickTarget = row?.dataset.layerRow ?? null;
 			if (pickTarget === childId) pickTarget = null;
 		};
-		const onUp = () => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
+		const onCommit = () => {
 			const targetId = pickTarget && pickTarget !== childId ? pickTarget : null;
 			if (pendingParent && targetId) {
 				const parent = timelineStore.itemById.get(targetId);
@@ -428,12 +705,13 @@
 			}
 			restorePick();
 		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		pickCleanup = () => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-		};
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target,
+			onMove,
+			onCommit,
+			onCancel: restorePick
+		});
 	}
 	function detachParent(childId: string): void {
 		if (detachTransformParent(childId)) {
@@ -444,11 +722,9 @@
 	function removeSelected(): void {
 		if (selectedItemIds.size === 0) return;
 		const ids = expandMotionLayerItemIds(motionPlan, [...selectedItemIds]);
-		const before = captureSnapshot();
 		const removed = removeItems(ids, false);
 		if (removed.length > 0) {
 			clearSelection();
-			commandHistory.addUndoEntry({ type: 'REMOVE_ITEMS' }, before);
 			onedit();
 		}
 	}
@@ -527,13 +803,7 @@
 		onedit();
 	}
 	function toggleGroupCollapse(groupId: string): void {
-		const track = trackById.get(groupId);
-		if (!track) return;
-		timelineStore._setTracks(
-			timelineStore.tracks.map((t) =>
-				t.id === groupId ? { ...t, isCollapsed: !t.isCollapsed } : t
-			)
-		);
+		updateTrackFlag(groupId, 'isCollapsed', 'TOGGLE_TRACK_GROUP');
 	}
 	function renameStart(id: string, current: string): void {
 		editingNameId = id;
@@ -565,43 +835,74 @@
 		editingNameId = null;
 	}
 	function toggleTrackVisible(trackId: string): void {
-		const t = trackById.get(trackId);
-		if (!t) return;
-		timelineStore._setTracks(
-			timelineStore.tracks.map((x) => (x.id === trackId ? { ...x, visible: !x.visible } : x))
-		);
-		onedit();
+		updateTrackFlag(trackId, 'visible', 'TOGGLE_TRACK_VISIBILITY');
 	}
 	function toggleTrackLocked(trackId: string): void {
-		const t = trackById.get(trackId);
-		if (!t) return;
-		timelineStore._setTracks(
-			timelineStore.tracks.map((x) => (x.id === trackId ? { ...x, locked: !x.locked } : x))
-		);
-		onedit();
+		updateTrackFlag(trackId, 'locked', 'TOGGLE_TRACK_LOCK');
 	}
 	function toggleTrackMuted(trackId: string): void {
-		const t = trackById.get(trackId);
-		if (!t) return;
-		timelineStore._setTracks(
-			timelineStore.tracks.map((x) => (x.id === trackId ? { ...x, muted: !x.muted } : x))
-		);
-		onedit();
+		updateTrackFlag(trackId, 'muted', 'TOGGLE_TRACK_MUTE');
 	}
 	function toggleTrackSolo(trackId: string): void {
+		updateTrackFlag(trackId, 'solo', 'TOGGLE_TRACK_SOLO');
+	}
+	function updateTrackFlag(
+		trackId: string,
+		property: 'visible' | 'locked' | 'muted' | 'solo' | 'isCollapsed',
+		commandType: string
+	): void {
 		const t = trackById.get(trackId);
 		if (!t) return;
+		const before = captureSnapshot();
 		timelineStore._setTracks(
-			timelineStore.tracks.map((x) => (x.id === trackId ? { ...x, solo: !x.solo } : x))
+			timelineStore.tracks.map((track) =>
+				track.id === trackId ? { ...track, [property]: !track[property] } : track
+			)
 		);
+		commandHistory.addUndoEntry({ type: commandType }, before);
 		onedit();
 	}
 	function setBlendMode(itemId: string, mode: string): void {
+		if (!isBlendMode(mode)) return;
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || isLocked(item) || item.blendMode === mode) return;
 		const before = captureSnapshot();
-		timelineStore._updateItems([
-			{ id: itemId, patch: { blendMode: mode as TimelineItem['blendMode'] } }
-		]);
+		timelineStore._updateItems([{ id: itemId, patch: { blendMode: mode } }]);
 		commandHistory.addUndoEntry({ type: 'SET_BLEND_MODE' }, before);
+		onedit();
+	}
+	function editItemTiming(item: TimelineItem, edge: 'in' | 'out', rawValue: string): void {
+		if (isLocked(item)) return;
+		const parsed = Number(rawValue);
+		if (!Number.isFinite(parsed)) return;
+		const requestedEdge = Math.round(parsed);
+		const currentEdge = edge === 'in' ? item.from : item.from + item.durationInFrames;
+		const plan = planTrimGesture(
+			item,
+			edge === 'in' ? 'start' : 'end',
+			requestedEdge - currentEdge,
+			timelineStore.items,
+			fps,
+			[],
+			0,
+			composition?.transitions ?? []
+		);
+		const updates = [{ id: item.id, patch: plan.patch }, ...(plan.linkedPatches ?? [])];
+		if (
+			updates.some((update) =>
+				isTrackEffectivelyLocked(
+					timelineStore.itemById.get(update.id)?.trackId ?? '',
+					timelineStore.tracks
+				)
+			)
+		) {
+			status = m.video_editor_motion_track_locked();
+			return;
+		}
+		const before = captureSnapshot();
+		timelineStore._updateItems(updates);
+		if (snapshotsEqual(before, captureSnapshot())) return;
+		commandHistory.addUndoEntry({ type: 'EDIT_TIMING' }, before);
 		onedit();
 	}
 	function handleCreateComposition(): void {
@@ -652,25 +953,32 @@
 		onedit();
 	}
 	function addGeneratedLayer(kind: 'text' | 'solid' | 'gradient' | 'shape' | 'controller'): void {
+		const track = timelineStore.tracks.find(
+			(candidate) =>
+				candidate.kind !== 'audio' &&
+				!candidate.isGroup &&
+				!isTrackEffectivelyLocked(candidate.id, timelineStore.tracks)
+		);
+		if (!track) {
+			status = m.video_editor_motion_track_locked();
+			return;
+		}
 		const before = captureSnapshot();
-		const track =
-			timelineStore.tracks.find((t) => t.kind !== 'audio' && !t.isGroup) ?? timelineStore.tracks[0];
-		if (!track) return;
-		const base: Partial<TimelineItem> = {
+		const base: TimelineItem = {
 			id: crypto.randomUUID(),
 			trackId: track.id,
 			from: timelineStore.currentFrame,
 			durationInFrames: Math.max(30, Math.min(300, durationFrames - timelineStore.currentFrame)),
 			label:
 				kind === 'text'
-					? 'Text layer'
+					? m.video_editor_motion_add_text()
 					: kind === 'solid'
-						? 'Solid'
+						? m.video_editor_motion_add_solid()
 						: kind === 'gradient'
-							? 'Gradient'
+							? m.video_editor_motion_add_gradient()
 							: kind === 'shape'
-								? 'Shape'
-								: 'Controller',
+								? m.video_editor_motion_add_shape()
+								: m.video_editor_motion_controller_default(),
 			type:
 				kind === 'text'
 					? 'text'
@@ -702,80 +1010,137 @@
 			base.transformParent = undefined;
 			// controller is non-rendering: participates in transforms but never renders (preview/export filter by type)
 		}
-		timelineStore._setItems([...timelineStore.items, base as TimelineItem]);
+		timelineStore._setItems([...timelineStore.items, base]);
 		commandHistory.addUndoEntry({ type: 'ADD_LAYER' }, before);
 		onedit();
 	}
-	let dropGhost: { frame: number; trackId: string | null; valid: boolean } | null = $state(null);
+	type MotionDropSource =
+		| { kind: 'media'; id: string; label: string }
+		| { kind: 'composition'; id: string; label: string };
+	let dropGhost: {
+		frame: number;
+		trackId: string | null;
+		visualTrackId: string | null;
+		audioTrackId: string | null;
+		valid: boolean;
+		source: MotionDropSource | null;
+	} | null = $state(null);
+
+	function resolveMotionDropSource(event: DragEvent): MotionDropSource | null {
+		const payload = getMediaDragData(event.dataTransfer);
+		if (!payload) return null;
+		if (payload.source === 'media') {
+			const entry = mediaPool.entry(payload.id);
+			if (!entry || entry.status !== 'ready') return null;
+			return { kind: 'media', id: payload.id, label: entry.media.fileName };
+		}
+		const nested = sequenceStore.compositionById.get(payload.id);
+		if (
+			!nested ||
+			wouldCreateCompositionCycle(
+				sequenceStore.activeSequenceId,
+				nested.id,
+				sequenceStore.compositionById
+			)
+		) {
+			return null;
+		}
+		return { kind: 'composition', id: nested.id, label: nested.name };
+	}
+
 	function handleDragOver(event: DragEvent): void {
+		const source = resolveMotionDropSource(event);
+		if (!source) return;
 		event.preventDefault();
-		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-		const x = event.clientX - rect.left - 320;
+		if (!scrollEl) return;
+		const scrollRect = scrollEl.getBoundingClientRect();
+		const x = event.clientX - scrollRect.left + scrollEl.scrollLeft;
 		const frame = Math.round(Math.max(0, x / Math.max(1, pxPerFrame)));
-		// validate track under pointer
-		const el = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+		// Resolve the exact row from either the layer list or the timeline lane.
+		const maybeEl = document.elementFromPoint(event.clientX, event.clientY);
+		const el = maybeEl instanceof HTMLElement ? maybeEl : null;
 		const row = el?.closest<HTMLElement>('[data-layer-row]');
-		const trackId = row?.dataset.layerRow
+		let trackId = row?.dataset.layerRow
 			? (timelineStore.itemById.get(row.dataset.layerRow)?.trackId ?? null)
 			: null;
-		const valid = trackId ? !isTrackEffectivelyLocked(trackId, timelineStore.tracks) : false;
-		dropGhost = { frame, trackId, valid };
+		if (!trackId && layerBarsEl) {
+			const barsRect = layerBarsEl.getBoundingClientRect();
+			if (event.clientY >= barsRect.top && event.clientY <= barsRect.bottom) {
+				const rowIndex = Math.floor((event.clientY - barsRect.top) / ROW_H);
+				trackId = layerEntries[rowIndex]?.item.trackId ?? null;
+			}
+		}
+		let visualTrackId: string | null = null;
+		let audioTrackId: string | null = null;
+		let valid = false;
+		if (trackId && source.kind === 'media') {
+			const media = mediaPool.get(source.id);
+			if (media) {
+				valid = evaluateExactMediaPlacement({
+					trackId,
+					from: frame,
+					durationInFrames: mediaDurationInFrames(media, fps),
+					kind: mediaTimelineKind(media),
+					tracks: timelineStore.tracks,
+					items: timelineStore.items
+				}).valid;
+			}
+		} else if (trackId) {
+			const nested = sequenceStore.compositionById.get(source.id);
+			if (nested) {
+				const result = planExactSequencePlacement({
+					composition: nested,
+					preferredTrackId: trackId,
+					from: frame,
+					tracks: timelineStore.tracks,
+					items: timelineStore.items
+				});
+				valid = result.valid;
+				if (result.valid) {
+					visualTrackId = result.placement.visualTrackId ?? null;
+					audioTrackId = result.placement.audioTrackId ?? null;
+				}
+			}
+		}
+		if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'copy' : 'none';
+		dropGhost = { frame, trackId, visualTrackId, audioTrackId, valid, source };
 	}
 	function handleDragLeave(): void {
 		dropGhost = null;
 	}
 	function handleDrop(event: DragEvent): void {
-		event.preventDefault();
 		const ghost = dropGhost;
 		dropGhost = null;
-		const mediaId =
-			event.dataTransfer?.getData('text/plain') ??
-			event.dataTransfer?.getData('application/x-openpost-media');
-		if (!mediaId || mediaId.length < 6) return;
-		// track-aware validated drop: use ghost track if valid, otherwise first unlocked video track
-		let targetTrack: TimelineTrack | undefined;
-		if (ghost?.trackId && !isTrackEffectivelyLocked(ghost.trackId, timelineStore.tracks)) {
-			targetTrack = timelineStore.tracks.find((t) => t.id === ghost.trackId);
-		}
-		if (!targetTrack)
-			targetTrack = timelineStore.tracks.find(
-				(t) =>
-					!t.isGroup && t.kind !== 'audio' && !isTrackEffectivelyLocked(t.id, timelineStore.tracks)
-			);
-		if (!targetTrack) {
+		if (!ghost?.valid || !ghost.trackId || !ghost.source) {
 			status = m.video_editor_motion_track_locked();
 			return;
 		}
-		// controller items are non-rendering layers, not tracks — drop target is a track, so no controller-track gate needed here.
-		// Locked/overlap checks above already guard the drop; preview/export exclude controller items by type.
-		const frame = ghost ? ghost.frame : timelineStore.currentFrame;
-		const before = captureSnapshot();
-		// build dropped item via track-aware validated path (mirrors buildDroppedMediaTimelineItems)
-		const item: TimelineItem = {
-			id: crypto.randomUUID(),
-			trackId: targetTrack.id,
-			from: Math.max(0, frame),
-			durationInFrames: 60,
-			label: mediaId.slice(0, 12),
-			type: 'video',
-			transform: { x: 0, y: 0, rotation: 0, opacity: 1 }
-		};
-		// ensure no overlap with existing items on target track
-		const overlaps = timelineStore.items.some(
-			(it) =>
-				it.trackId === targetTrack!.id &&
-				it.from < item.from + item.durationInFrames &&
-				it.from + it.durationInFrames > item.from
-		);
-		if (overlaps) {
+		event.preventDefault();
+		try {
+			let ids: string[];
+			if (ghost.source.kind === 'media') {
+				const media = mediaPool.get(ghost.source.id);
+				if (!media) return;
+				ids = [
+					insertMediaAtFrame(media, ghost.frame, {
+						exactTrackId: ghost.trackId,
+						label: ghost.source.label
+					})
+				];
+			} else {
+				ids = nestSequenceOnExactTracks(ghost.source.id, ghost.frame, {
+					visualTrackId: ghost.visualTrackId ?? undefined,
+					audioTrackId: ghost.audioTrackId ?? undefined
+				});
+			}
+			const selected = ids[0];
+			if (selected) selectItem(selected, false, false);
+			clearActiveMediaDrag();
+			onedit();
+			status = m.video_editor_motion_drop_media();
+		} catch {
 			status = m.video_editor_motion_track_locked();
-			return;
 		}
-		timelineStore._setItems([...timelineStore.items, item]);
-		commandHistory.addUndoEntry({ type: 'DROP_MEDIA' }, before);
-		onedit();
-		status = m.video_editor_motion_drop_media();
 	}
 	function handleLinkPick(itemId: string, property: string): void {
 		if (
@@ -790,20 +1155,35 @@
 	}
 	function handleLinkSelect(targetId: string, targetProp: string): void {
 		if (!linkPickSource) return;
-		const before = captureSnapshot();
-		try {
-			setPropertyExpression(
-				linkPickSource.itemId,
-				linkPickSource.property as KeyframeProperty,
-				`${targetId}.${targetProp}`,
-				true
-			);
-			commandHistory.addUndoEntry({ type: 'SET_LINK' }, before);
+		if (
+			!isDirectLinkableProperty(linkPickSource.property) ||
+			!isDirectLinkableProperty(targetProp)
+		) {
+			status = m.video_editor_motion_parent_failed();
+			linkPickSource = null;
+			return;
+		}
+		const result = setDirectPropertyLink(linkPickSource.itemId, {
+			type: 'link',
+			targetProperty: linkPickSource.property,
+			sourceItemId: targetId,
+			sourceProperty: targetProp,
+			enabled: true,
+			timeOffsetFrames: 0
+		});
+		if (result.ok) {
 			onedit();
-		} catch {
+		} else {
 			status = m.video_editor_motion_parent_failed();
 		}
 		linkPickSource = null;
+	}
+	function handleLinkButton(itemId: string): void {
+		if (!linkPickSource || linkPickSource.itemId === itemId) {
+			handleLinkPick(itemId, 'x');
+			return;
+		}
+		handleLinkSelect(itemId, 'x');
 	}
 	type DragState = {
 		kind: 'move' | 'trim-start' | 'trim-end';
@@ -814,22 +1194,29 @@
 		before: ReturnType<typeof captureSnapshot>;
 		active: boolean;
 		pointerId: number;
+		snapTargets: ReturnType<typeof buildSnapTargets>;
+		snapThreshold: number;
+		snapEnabled: boolean;
 	};
 	let drag: DragState | null = $state(null);
-	let rafId: number | null = null;
 	function isLocked(item: TimelineItem): boolean {
 		return isTrackEffectivelyLocked(item.trackId, timelineStore.tracks);
 	}
 	function startBarPointerDown(item: TimelineItem, event: PointerEvent): void {
 		if (event.button !== 0 || isLocked(item)) return;
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const current = event.currentTarget;
+		if (!(current instanceof HTMLElement)) return;
+		const barElement = current;
+		const rect = barElement.getBoundingClientRect();
 		const xInBar = event.clientX - rect.left;
 		const w = rect.width;
 		const edge = 8;
 		let kind: DragState['kind'] = 'move';
 		if (xInBar < edge) kind = 'trim-start';
 		else if (xInBar > w - edge) kind = 'trim-end';
+		selectItem(item.id, event.ctrlKey || event.metaKey, event.shiftKey);
 		const before = captureSnapshot();
+		pointerGestures?.cancel('superseded');
 		drag = {
 			kind,
 			id: item.id,
@@ -838,144 +1225,116 @@
 			originalDuration: item.durationInFrames,
 			before,
 			active: false,
-			pointerId: event.pointerId
+			pointerId: event.pointerId,
+			snapTargets: buildSnapTargets({
+				items: timelineStore.items,
+				tracks: timelineStore.tracks,
+				transitions: composition?.transitions ?? [],
+				markers: timelineStore.markers,
+				currentFrame: timelineStore.currentFrame,
+				durationInFrames: durationFrames,
+				fps,
+				zoomLevel: timelineStore.zoomLevel,
+				excludeItemIds: [...selectedItemIds]
+			}),
+			snapThreshold: calculateAdaptiveSnapThreshold(timelineStore.zoomLevel, pxPerFrame),
+			snapEnabled: timelineStore.snapEnabled
 		};
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {}
-		const onMove = (e: PointerEvent) => onBarPointerMove(e);
-		const onUp = (e: PointerEvent) => onBarPointerUp(e, false);
-		const onCancel = (e: PointerEvent) => onBarPointerUp(e, true);
-		const onLost = () => onBarPointerUp(new PointerEvent('pointercancel'), true);
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		window.addEventListener('pointercancel', onCancel);
-		(event.currentTarget as HTMLElement).addEventListener('lostpointercapture', onLost, {
-			once: true
-		});
-		trackWindowCleanup(() => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target: barElement,
+			onMove: onBarPointerMove,
+			onCommit: () => onBarPointerUp(false),
+			onCancel: () => onBarPointerUp(true)
 		});
 		event.preventDefault();
-		selectItem(item.id, event.ctrlKey || event.metaKey, event.shiftKey);
 	}
-	function onBarPointerMove(event: PointerEvent): void {
+	function onBarPointerMove(event: PointerGestureEvent): void {
 		if (!drag || event.pointerId !== drag.pointerId) return;
 		const deltaPx = event.clientX - drag.startX;
 		if (!drag.active && Math.abs(deltaPx) < 3) return;
 		drag.active = true;
-		if (rafId !== null) cancelAnimationFrame(rafId);
-		rafId = requestAnimationFrame(() => {
-			if (!drag) return;
-			const deltaFrames = Math.round(deltaPx / Math.max(0.001, pxPerFrame));
-			const item = timelineStore.itemById.get(drag!.id);
-			if (!item) return;
-			const snapThreshold = calculateAdaptiveSnapThreshold(timelineStore.zoomLevel, pxPerFrame);
-			const snapTargets = buildSnapTargets({
-				items: timelineStore.items,
-				tracks: timelineStore.tracks,
-				excludeIds: new Set([drag!.id]),
-				currentFrame: timelineStore.currentFrame,
-				markers: timelineStore.markers
+		const activeDrag = drag;
+		const deltaFrames = Math.round(deltaPx / Math.max(0.001, pxPerFrame));
+		const item = timelineStore.itemById.get(activeDrag.id);
+		if (!item) return;
+		if (activeDrag.kind === 'move') {
+			const proposed = activeDrag.originalFrom + deltaFrames;
+			const snap = activeDrag.snapEnabled
+				? calculateMoveSnap(
+						proposed,
+						activeDrag.originalDuration,
+						activeDrag.snapTargets,
+						activeDrag.snapThreshold
+					)
+				: { snappedFrame: proposed, snapTarget: null };
+			snapGuideFrame = snap.snapTarget ? snap.snappedFrame : null;
+			const patchFrom = Math.max(0, snap.snappedFrame);
+			// linked audio propagation: move companions together via planLinkedMoveGesture
+			const anchorItem: TimelineItem = {
+				...item,
+				from: activeDrag.originalFrom,
+				durationInFrames: activeDrag.originalDuration
+			};
+			const plan = planLinkedMoveGesture(
+				anchorItem,
+				patchFrom,
+				timelineStore.items,
+				selectedItemIds.has(anchorItem.id) ? [...selectedItemIds] : [anchorItem.id]
+			);
+			const locked = plan.some((u) => {
+				const it = timelineStore.itemById.get(u.id);
+				return it ? isTrackEffectivelyLocked(it.trackId, timelineStore.tracks) : false;
 			});
-			if (drag!.kind === 'move') {
-				const proposed = drag!.originalFrom + deltaFrames;
-				const snap = calculateMoveSnap(
-					proposed,
-					drag!.originalDuration,
-					snapTargets,
-					snapThreshold
-				);
-				snapGuideFrame = snap.snappedFrame !== proposed ? snap.snappedFrame : null;
-				const patchFrom = Math.max(0, snap.snappedFrame);
-				// linked audio propagation: move companions together via planLinkedMoveGesture
-				const plan = planLinkedMoveGesture(
-					{
-						...item,
-						from: drag!.originalFrom,
-						durationInFrames: drag!.originalDuration
-					} as TimelineItem,
-					patchFrom - drag!.originalFrom,
-					timelineStore.items,
-					timelineStore.tracks
-				);
-				// check transition blocking: if any transition owns the moving item, block
-				const blocked = plan.blockedByTransition;
-				if (blocked) {
-					status = m.video_editor_motion_transition_blocked();
-					return;
-				}
-				// check group lock
-				const locked = plan.updates.some((u) => {
-					const it = timelineStore.itemById.get(u.id);
-					return it ? isTrackEffectivelyLocked(it.trackId, timelineStore.tracks) : false;
-				});
-				if (locked) {
-					status = m.video_editor_motion_track_locked();
-					return;
-				}
-				for (const u of plan.updates) {
-					const it = timelineStore.itemById.get(u.id);
-					if (it) timelineStore._updateItems([{ id: u.id, patch: { from: u.from } }]);
-				}
-			} else {
-				const handle = drag!.kind === 'trim-start' ? 'start' : 'end';
-				const snap = calculateEdgeSnap(
-					(handle === 'start' ? drag!.originalFrom : drag!.originalFrom + drag!.originalDuration) +
-						deltaFrames,
-					snapTargets,
-					snapThreshold
-				);
-				snapGuideFrame =
-					snap.snappedFrame !==
-					(handle === 'start' ? drag!.originalFrom : drag!.originalFrom + drag!.originalDuration) +
-						deltaFrames
-						? snap.snappedFrame
-						: null;
-				const plan = planTrimGesture(
-					{
-						...item,
-						from: drag!.originalFrom,
-						durationInFrames: drag!.originalDuration
-					} as TimelineItem,
-					handle,
-					snap.snappedFrame -
-						(handle === 'start' ? drag!.originalFrom : drag!.originalFrom + drag!.originalDuration),
-					timelineStore.items,
-					timelineStore.fps,
-					snapTargets,
-					snapThreshold,
-					[]
-				);
-				if ((plan as { blockedByTransition?: boolean }).blockedByTransition) {
-					status = m.video_editor_motion_transition_blocked();
-					return;
-				}
-				timelineStore._updateItems([{ id: drag!.id, patch: plan.patch }]);
+			if (locked) {
+				status = m.video_editor_motion_track_locked();
+				return;
 			}
-		});
+			timelineStore._moveItems(plan);
+		} else {
+			const handle = activeDrag.kind === 'trim-start' ? 'start' : 'end';
+			const originalEdge =
+				handle === 'start'
+					? activeDrag.originalFrom
+					: activeDrag.originalFrom + activeDrag.originalDuration;
+			const proposedEdge = originalEdge + deltaFrames;
+			const snap = activeDrag.snapEnabled
+				? calculateEdgeSnap(proposedEdge, activeDrag.snapTargets, activeDrag.snapThreshold)
+				: { snappedFrame: proposedEdge, snapTarget: null };
+			snapGuideFrame = snap.snapTarget ? snap.snappedFrame : null;
+			const trimAnchor: TimelineItem = {
+				...item,
+				from: activeDrag.originalFrom,
+				durationInFrames: activeDrag.originalDuration
+			};
+			const plan = planTrimGesture(
+				trimAnchor,
+				handle,
+				snap.snappedFrame - originalEdge,
+				timelineStore.items,
+				timelineStore.fps,
+				activeDrag.snapEnabled ? activeDrag.snapTargets : [],
+				activeDrag.snapThreshold,
+				composition?.transitions ?? []
+			);
+			timelineStore._updateItems([
+				{ id: activeDrag.id, patch: plan.patch },
+				...(plan.linkedPatches ?? [])
+			]);
+		}
 	}
-	function onBarPointerUp(event: PointerEvent, cancelled: boolean): void {
+	function onBarPointerUp(cancelled: boolean): void {
 		snapGuideFrame = null;
 		if (!drag) return;
-		if (rafId !== null) {
-			cancelAnimationFrame(rafId);
-			rafId = null;
-		}
 		const before = drag.before;
 		const wasActive = drag.active;
-		window.removeEventListener('pointermove', onBarPointerMove);
-		window.removeEventListener('pointerup', onBarPointerUp);
-		window.removeEventListener('pointercancel', onBarPointerUp);
 		if (cancelled || !wasActive) {
 			restoreSnapshot(before);
 			drag = null;
 			return;
 		}
 		const after = captureSnapshot();
-		const changed = JSON.stringify(before) !== JSON.stringify(after);
+		const changed = !snapshotsEqual(before, after);
 		if (changed) {
 			commandHistory.addUndoEntry(
 				{ type: drag.kind === 'move' ? 'MOVE_ITEMS' : 'TRIM_ITEM' },
@@ -989,26 +1348,23 @@
 	let reorderDrag: {
 		id: string;
 		startY: number;
-		pointerId: number;
 		before: ReturnType<typeof captureSnapshot>;
 	} | null = $state(null);
 	function startReorder(trackId: string, event: PointerEvent): void {
 		if (event.button !== 0) return;
 		event.preventDefault();
+		const current = event.currentTarget;
+		if (!(current instanceof HTMLElement)) return;
 		const before = captureSnapshot();
-		reorderDrag = { id: trackId, startY: event.clientY, pointerId: event.pointerId, before };
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {}
-		const onMove = (e: PointerEvent) => {
-			if (!reorderDrag || e.pointerId !== reorderDrag.pointerId) return;
+		pointerGestures?.cancel('superseded');
+		reorderDrag = { id: trackId, startY: event.clientY, before };
+		const onMove = (e: PointerGestureEvent) => {
+			if (!reorderDrag) return;
 			const deltaY = e.clientY - reorderDrag.startY;
 			if (Math.abs(deltaY) < 6) return;
 			const rows = motionRows;
 			const idx = rows.findIndex((r) =>
-				r.kind === 'layer'
-					? (r as { track?: TimelineTrack }).track?.id === trackId
-					: r.track.id === trackId
+				isLayerRow(r) ? r.track?.id === trackId : r.track.id === trackId
 			);
 			const targetIdx = Math.max(0, Math.min(rows.length - 1, idx + Math.round(deltaY / ROW_H)));
 			if (targetIdx === idx || targetIdx < 0) return;
@@ -1019,7 +1375,7 @@
 			const fromOrder = fromTrack.order;
 			const toRow = rows[targetIdx];
 			const toTrackId =
-				toRow.kind === 'group' ? toRow.track.id : (toRow as { track?: TimelineTrack }).track?.id;
+				toRow.kind === 'group' ? toRow.track.id : isLayerRow(toRow) ? toRow.track?.id : undefined;
 			if (!toTrackId) return;
 			const toOrder = trackById.get(toTrackId)?.order ?? fromOrder;
 			const newTracks = timelineStore.tracks.map((t) => {
@@ -1033,29 +1389,23 @@
 			timelineStore._setTracks(newTracks);
 			reorderDrag.startY = e.clientY;
 		};
-		const onUp = (e: PointerEvent, cancelled = false) => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
-			if (cancelled) {
-				if (reorderDrag) restoreSnapshot(reorderDrag.before);
-			} else if (reorderDrag) {
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target: current,
+			onMove,
+			onCommit: () => {
+				if (!reorderDrag) return;
 				const after = captureSnapshot();
-				if (JSON.stringify(reorderDrag.before) !== JSON.stringify(after)) {
+				if (!snapshotsEqual(reorderDrag.before, after)) {
 					commandHistory.addUndoEntry({ type: 'REORDER_TRACKS' }, reorderDrag.before);
 					onedit();
 				}
+				reorderDrag = null;
+			},
+			onCancel: () => {
+				if (reorderDrag) restoreSnapshot(reorderDrag.before);
+				reorderDrag = null;
 			}
-			reorderDrag = null;
-		};
-		const onCancel = () => onUp(new PointerEvent('pointercancel'), true);
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		window.addEventListener('pointercancel', onCancel);
-		trackWindowCleanup(() => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
 		});
 	}
 	function handleKeydown(event: KeyboardEvent): void {
@@ -1063,6 +1413,10 @@
 			return;
 		if (event.key === 'Escape') {
 			let handled = false;
+			if (pointerGestures?.activePointerId !== null) {
+				pointerGestures.cancel('escape');
+				handled = true;
+			}
 			if (previewFrame !== null) {
 				cancelGhostScrub();
 				handled = true;
@@ -1073,7 +1427,6 @@
 				handled = true;
 			}
 			if (kfDrag) {
-				restoreSnapshot(kfDrag.before);
 				kfDrag = null;
 				handled = true;
 			}
@@ -1150,22 +1503,26 @@
 			const amount = event.shiftKey ? 10 : 1;
 			const before = captureSnapshot();
 			let moved = false;
-			for (const id of selectedItemIds) {
-				const item = timelineStore.itemById.get(id);
-				if (!item || isLocked(item)) continue;
+			const anchor = [...selectedItemIds]
+				.map((id) => timelineStore.itemById.get(id))
+				.find((item): item is TimelineItem => item !== undefined && !isLocked(item));
+			if (anchor) {
 				const plan = planLinkedMoveGesture(
-					item,
-					delta * amount,
+					anchor,
+					anchor.from + delta * amount,
 					timelineStore.items,
-					timelineStore.tracks
+					[...selectedItemIds]
 				);
-				if (plan.blockedByTransition) continue;
-				for (const u of plan.updates) {
-					const it = timelineStore.itemById.get(u.id);
-					if (it && !isTrackEffectivelyLocked(it.trackId, timelineStore.tracks)) {
-						timelineStore._updateItems([{ id: u.id, patch: { from: u.from } }]);
-						moved = true;
-					}
+				const includesLockedItem = plan.some((update) => {
+					const item = timelineStore.itemById.get(update.id);
+					return item ? isTrackEffectivelyLocked(item.trackId, timelineStore.tracks) : false;
+				});
+				if (!includesLockedItem) {
+					moved = plan.some((update) => {
+						const original = timelineStore.itemById.get(update.id);
+						return original?.from !== update.from;
+					});
+					if (moved) timelineStore._moveItems(plan);
 				}
 			}
 			if (moved) {
@@ -1180,9 +1537,7 @@
 			const item = timelineStore.itemById.get(lastSelectedId);
 			if (!item) return;
 			const rows = motionRows;
-			const idx = rows.findIndex(
-				(r) => r.kind === 'layer' && (r as { item: TimelineItem }).item.id === lastSelectedId
-			);
+			const idx = rows.findIndex((r) => isLayerRow(r) && r.item.id === lastSelectedId);
 			const dir = event.key === 'ArrowUp' ? -1 : 1;
 			const targetIdx = idx + dir;
 			if (targetIdx < 0 || targetIdx >= rows.length) return;
@@ -1190,7 +1545,7 @@
 			const fromTrack = trackById.get(item.trackId);
 			const toRow = rows[targetIdx];
 			const toTrackId =
-				toRow.kind === 'group' ? toRow.track.id : (toRow as { track?: TimelineTrack }).track?.id;
+				toRow.kind === 'group' ? toRow.track.id : isLayerRow(toRow) ? toRow.track?.id : undefined;
 			if (!fromTrack || !toTrackId) return;
 			const toOrder = trackById.get(toTrackId)?.order ?? fromTrack.order;
 			const newTracks = timelineStore.tracks.map((t) =>
@@ -1204,6 +1559,10 @@
 			commandHistory.addUndoEntry({ type: 'REORDER_TRACKS' }, before);
 			onedit();
 		}
+	}
+	function handleTimelineKeydown(event: KeyboardEvent): void {
+		handleKeydown(event);
+		event.stopPropagation();
 	}
 	function timelineX(frame: number): number {
 		return frame * pxPerFrame;
@@ -1241,6 +1600,15 @@
 	function keyframesForVector(item: TimelineItem, property: KeyframeProperty) {
 		return editorKeyframes(item, property);
 	}
+	function keyframeDisplayFrame(
+		itemId: string,
+		property: KeyframeProperty,
+		keyframe: ReturnType<typeof editorKeyframes>[number]
+	): number {
+		return kfDrag?.itemId === itemId && kfDrag.property === property && kfDrag.id === keyframe.id
+			? kfDrag.currentFrame
+			: keyframe.frame;
+	}
 	function selectVectorKeyframe(itemId: string, property: KeyframeProperty, frame: number): void {
 		const item = timelineStore.itemById.get(itemId);
 		if (!item) return;
@@ -1254,8 +1622,9 @@
 		property: KeyframeProperty;
 		id: string;
 		startFrame: number;
+		currentFrame: number;
 		startX: number;
-		before: ReturnType<typeof captureSnapshot>;
+		pointerId: number;
 	} | null = $state(null);
 	let textDrag: {
 		itemId: string;
@@ -1267,7 +1636,7 @@
 		maxOffset: number;
 		before: ReturnType<typeof captureSnapshot> | null;
 		active: boolean;
-		pointerId?: number;
+		pointerId: number;
 	} | null = $state(null);
 	function isTextLocked(item: TimelineItem): boolean {
 		return isTrackEffectivelyLocked(item.trackId, timelineStore.tracks);
@@ -1276,7 +1645,8 @@
 		return textMotionSlotLabel(slot);
 	}
 	function textPresetLabel(presetId: string): string {
-		return textMotionPresetLabel(presetId as TextMotionPresetId);
+		if (isTextMotionPresetId(presetId)) return textMotionPresetLabel(presetId);
+		return presetId;
 	}
 	function startTextBandDrag(
 		item: TimelineItem,
@@ -1288,12 +1658,12 @@
 		if (kind === 'offset' && band.slot === 'loop') return;
 		event.preventDefault();
 		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement;
-		try {
-			target.setPointerCapture(event.pointerId);
-		} catch {}
+		const maybeTarget = event.currentTarget;
+		if (!(maybeTarget instanceof HTMLElement)) return;
+		const target = maybeTarget;
 		const bands = kind === 'offset' ? getTextMotionTimelineBands(item) : [];
 		const maxOffset = kind === 'offset' ? getMaxOffsetFrames(band, bands) : 0;
+		pointerGestures?.cancel('superseded');
 		textDrag = {
 			itemId: item.id,
 			slot: band.slot,
@@ -1306,22 +1676,7 @@
 			active: false,
 			pointerId: event.pointerId
 		};
-		let cleanup: (() => void) | null = null;
-		const doCleanup = () => {
-			if (!cleanup) return;
-			try {
-				target.releasePointerCapture(textDrag!.pointerId!);
-			} catch {}
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
-			window.removeEventListener('keydown', onEsc);
-			target.removeEventListener('lostpointercapture', onLost);
-			const idx = windowCleanup.indexOf(doCleanup);
-			if (idx !== -1) windowCleanup.splice(idx, 1);
-			cleanup = null;
-		};
-		const onMove = (e: PointerEvent) => {
+		const onMove = (e: PointerGestureEvent) => {
 			if (
 				!textDrag ||
 				textDrag.itemId !== item.id ||
@@ -1347,8 +1702,7 @@
 				updateTextMotionLive([item.id], band.slot, { offsetFrames: next });
 			}
 		};
-		const onUp = () => {
-			doCleanup();
+		const onCommit = () => {
 			if (!textDrag || !textDrag.active || !textDrag.before) {
 				if (textDrag?.before) restoreSnapshot(textDrag.before);
 				textDrag = null;
@@ -1372,30 +1726,16 @@
 			onedit();
 		};
 		const onCancel = () => {
-			doCleanup();
 			if (textDrag?.before) restoreSnapshot(textDrag.before);
 			textDrag = null;
 		};
-		const onLost = () => {
-			doCleanup();
-			if (textDrag?.before) restoreSnapshot(textDrag.before);
-			textDrag = null;
-		};
-		const onEsc = (e: KeyboardEvent) => {
-			if (e.key === 'Escape' && textDrag) {
-				e.preventDefault();
-				doCleanup();
-				if (textDrag.before) restoreSnapshot(textDrag.before);
-				textDrag = null;
-			}
-		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		window.addEventListener('pointercancel', onCancel);
-		window.addEventListener('keydown', onEsc);
-		target.addEventListener('lostpointercapture', onLost);
-		trackWindowCleanup(doCleanup);
-		cleanup = doCleanup;
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target,
+			onMove,
+			onCommit,
+			onCancel
+		});
 	}
 	function startTextDurationDrag(
 		item: TimelineItem,
@@ -1418,73 +1758,57 @@
 		event: PointerEvent
 	): void {
 		if (event.button !== 0) return;
+		const item = timelineStore.itemById.get(itemId);
+		if (!item || isLocked(item)) return;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		event.preventDefault();
 		event.stopPropagation();
 		selectVectorKeyframe(itemId, property, frame);
-		const before = captureSnapshot();
+		const keyframe = editorKeyframes(item, property).find((candidate) => candidate.frame === frame);
+		if (!keyframe) return;
+		pointerGestures?.cancel('superseded');
 		kfDrag = {
 			itemId,
 			property,
-			id: `${itemId}:${property}:${frame}`,
+			id: keyframe.id,
 			startFrame: frame,
+			currentFrame: frame,
 			startX: event.clientX,
-			before
+			pointerId: event.pointerId
 		};
-		const onMove = (e: PointerEvent) => {
-			if (!kfDrag) return;
+		const onMove = (e: PointerGestureEvent) => {
+			if (!kfDrag || e.pointerId !== kfDrag.pointerId) return;
 			const delta = Math.round((e.clientX - kfDrag.startX) / Math.max(0.001, pxPerFrame));
-			const newFrame = Math.max(0, kfDrag.startFrame + delta);
-			const item = timelineStore.itemById.get(kfDrag.itemId);
-			if (!item) return;
-			const kfs = editorKeyframes(item, kfDrag.property);
-			const kf = kfs.find((k) => k.frame === kfDrag.startFrame);
-			if (!kf) return;
-			// live preview via direct mutation (coalesced; no per-frame history)
-			const idx = kfs.findIndex((k) => k.id === kf.id);
-			if (idx === -1) return;
-			const patch = {
-				keyframes: {
-					...item.keyframes,
-					[kfDrag.property]: {
-						frames: kfs.map((k, i) => (i === idx ? newFrame : k.frame)),
-						values: kfs.map((k) => k.value),
-						ids: kfs.map((k) => k.id),
-						easings: kfs.map((k) => k.easing)
-					}
-				}
-			} as unknown as Partial<TimelineItem>;
-			timelineStore._updateItems([{ id: kfDrag.itemId, patch }]);
+			kfDrag.currentFrame = Math.max(0, kfDrag.startFrame + delta);
 		};
-		const onUp = (e: PointerEvent, cancelled = false) => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
+		const onCommit = () => {
 			if (!kfDrag) return;
-			if (cancelled) {
-				restoreSnapshot(kfDrag.before);
-				kfDrag = null;
-				return;
-			}
-			const delta = Math.round((e.clientX - kfDrag.startX) / Math.max(0.001, pxPerFrame));
-			if (delta !== 0) {
-				const newFrame = Math.max(0, kfDrag.startFrame + delta);
-				const item = timelineStore.itemById.get(kfDrag.itemId);
-				if (item) {
-					const kfs = editorKeyframes(item, kfDrag.property);
-					const kf = kfs.find((k) => k.frame === kfDrag.startFrame);
-					if (kf) {
-						updateKeyframes(kfDrag.itemId, [{ ref: kf, frame: newFrame, value: kf.value }]);
-						commandHistory.addUndoEntry({ type: 'UPDATE_KEYFRAMES' }, kfDrag.before);
-						onedit();
-					}
-				}
-			}
+			const finished = kfDrag;
 			kfDrag = null;
+			if (finished.currentFrame !== finished.startFrame) {
+				const item = timelineStore.itemById.get(finished.itemId);
+				if (item) {
+					const kfs = editorKeyframes(item, finished.property);
+					const kf = kfs.find((candidate) => candidate.id === finished.id);
+					if (kf) {
+						const changed = updateKeyframes(finished.itemId, [
+							{ ref: kf, frame: finished.currentFrame, value: kf.value }
+						]);
+						if (changed) onedit();
+					}
+				}
+			}
 		};
-		const onCancel = () => onUp(new PointerEvent('pointercancel'), true);
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		window.addEventListener('pointercancel', onCancel);
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target,
+			onMove,
+			onCommit,
+			onCancel: () => {
+				kfDrag = null;
+			}
+		});
 	}
 	// marquee selection
 	let marquee: {
@@ -1497,7 +1821,8 @@
 		active: boolean;
 	} | null = $state(null);
 	function startMarquee(event: PointerEvent): void {
-		const target = event.target as HTMLElement;
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
 		if (
 			target.closest('[data-layer-row]') ||
 			target.closest('button') ||
@@ -1505,7 +1830,11 @@
 		)
 			return;
 		if (event.button !== 0) return;
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const marqueeRoot = event.currentTarget;
+		if (!(marqueeRoot instanceof HTMLElement)) return;
+		const rect = marqueeRoot.getBoundingClientRect();
+		const rowIndexById = new Map(visualLayerItems.map((item, index) => [item.id, index]));
+		pointerGestures?.cancel('superseded');
 		marquee = {
 			x: event.clientX - rect.left,
 			y: event.clientY - rect.top,
@@ -1515,27 +1844,23 @@
 			startY: event.clientY,
 			active: false
 		};
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {}
-		const onMove = (e: PointerEvent) => {
+		const onMove = (e: PointerGestureEvent) => {
 			if (!marquee) return;
 			const dx = e.clientX - marquee.startX;
 			const dy = e.clientY - marquee.startY;
 			if (!marquee.active && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
 			marquee.active = true;
-			const curRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-			const curX = e.clientX - curRect.left;
-			const curY = e.clientY - curRect.top;
+			const curX = e.clientX - rect.left;
+			const curY = e.clientY - rect.top;
 			marquee.w = curX - marquee.x;
 			marquee.h = curY - marquee.y;
 			// select items whose bar overlaps marquee in timeline content
 			const sel = new Set<string>();
 			for (const row of layerEntries) {
-				const item = (row as { item: TimelineItem }).item;
+				const item = row.item;
 				const left = timelineX(item.from) - scrollLeft;
 				const right = timelineX(item.from + item.durationInFrames) - scrollLeft;
-				const top = 8 + visualLayerItems.indexOf(item) * ROW_H;
+				const top = 8 + (rowIndexById.get(item.id) ?? 0) * ROW_H;
 				const barRect = { left, right, top, bottom: top + ROW_H - 12 };
 				const mRect = {
 					left: Math.min(marquee.x, marquee.x + marquee.w),
@@ -1553,38 +1878,37 @@
 			}
 			if (sel.size) selectedItemIds = sel;
 		};
-		const onUp = () => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
-			marquee = null;
-		};
-		const onCancel = () => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
-			marquee = null;
-		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-		window.addEventListener('pointercancel', onCancel);
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target: marqueeRoot,
+			onMove,
+			onCommit: () => {
+				marquee = null;
+			},
+			onCancel: () => {
+				marquee = null;
+			}
+		});
 	}
 	// ghost scrub: separate previewFrame, commit on release, cancel on Escape/pointercancel
 	let scrubActive = $state(false);
 	function startScrub(event: PointerEvent): void {
 		if (event.button !== 0) return;
+		const eventTarget = event.target;
+		if (eventTarget instanceof Element && eventTarget.closest('button')) return;
+		event.stopPropagation();
+		const scrubRoot = event.currentTarget;
+		if (!(scrubRoot instanceof HTMLElement)) return;
+		pointerGestures?.cancel('superseded');
 		scrubActive = true;
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const rect = scrubRoot.getBoundingClientRect();
 		const frame = Math.round(
 			((event.clientX - rect.left) / Math.max(1, rect.width)) *
 				(visibleRange.end - visibleRange.start) +
 				visibleRange.start
 		);
 		handleGhostScrubMove(frame);
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {}
-		const onMove = (e: PointerEvent) => {
+		const onMove = (e: PointerGestureEvent) => {
 			const f = Math.round(
 				((e.clientX - rect.left) / Math.max(1, rect.width)) *
 					(visibleRange.end - visibleRange.start) +
@@ -1592,62 +1916,83 @@
 			);
 			handleGhostScrubMove(f);
 		};
-		const onUp = (e: PointerEvent) => {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-			window.removeEventListener('pointercancel', onCancel);
-			window.removeEventListener('keydown', onEsc);
-			if (e.type === 'pointercancel') cancelGhostScrub();
-			else commitGhostScrub();
-			scrubActive = false;
-		};
-		const onCancel = () => onUp(new PointerEvent('pointercancel'));
-		const onEsc = (ev: KeyboardEvent) => {
-			if (ev.key === 'Escape') {
-				ev.preventDefault();
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target: scrubRoot,
+			onMove,
+			onCommit: () => {
+				commitGhostScrub();
+				scrubActive = false;
+			},
+			onCancel: () => {
 				cancelGhostScrub();
 				scrubActive = false;
-				window.removeEventListener('pointermove', onMove);
-				window.removeEventListener('pointerup', onUp);
-				window.removeEventListener('pointercancel', onCancel);
-				window.removeEventListener('keydown', onEsc);
 			}
-		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp, { once: true });
-		window.addEventListener('pointercancel', onCancel, { once: true });
-		window.addEventListener('keydown', onEsc);
+		});
 	}
 	const rulerTicks = $derived.by(() => {
 		const start = Math.floor(visibleRange.start);
 		const end = Math.ceil(visibleRange.end);
-		const step = Math.max(1, Math.round((30 / fps) * 15));
+		const target = Math.ceil(80 / pxPerFrame);
+		const options = [1, 5, 10, 30, 60, 150, 300, 600, 1_800, 3_600];
+		const step = options.find((option) => option >= target) ?? 3_600;
 		const ticks: number[] = [];
 		for (let frame = start - (start % step); frame <= end; frame += step)
 			if (frame >= 0) ticks.push(frame);
-		return ticks.slice(0, 64);
+		return ticks.slice(0, 128);
 	});
 	const regions = $derived(motionRegions());
 	const inP = $derived(timelineStore.inPoint);
 	const outP = $derived(timelineStore.outPoint);
-	// filter rows by filterText
-	const filteredRows = $derived(
-		filterText.trim()
-			? layerEntries.filter((r) =>
-					(r as { item: TimelineItem }).item.label.toLowerCase().includes(filterText.toLowerCase())
-				)
-			: layerEntries
-	);
+	function startRangeHandleDrag(kind: 'in' | 'out', event: PointerEvent): void {
+		if (event.button !== 0) return;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
+		const startValue = kind === 'in' ? timelineStore.inPoint : timelineStore.outPoint;
+		if (startValue === null) return;
+		event.preventDefault();
+		const startX = event.clientX;
+		const pixelsPerFrame = pxPerFrame;
+		const before = captureSnapshot();
+		pointerGestures?.cancel('superseded');
+		pointerGestures?.start({
+			pointerId: event.pointerId,
+			target,
+			onMove: (move) => {
+				const deltaFrames = Math.round((move.clientX - startX) / pixelsPerFrame);
+				if (kind === 'in') {
+					const next = Math.max(
+						0,
+						Math.min(startValue + deltaFrames, (timelineStore.outPoint ?? durationFrames) - 1)
+					);
+					timelineStore._setInPoint(next);
+					return;
+				}
+				const next = Math.max(
+					(timelineStore.inPoint ?? 0) + 1,
+					Math.min(startValue + deltaFrames, durationFrames)
+				);
+				timelineStore._setOutPoint(next);
+			},
+			onCommit: () => {
+				if (snapshotsEqual(before, captureSnapshot())) return;
+				commandHistory.addUndoEntry(
+					{ type: kind === 'in' ? 'SET_IN_POINT' : 'SET_OUT_POINT' },
+					before
+				);
+				onedit();
+			},
+			onCancel: () => restoreSnapshot(before)
+		});
+	}
 	onMount(() => {
 		const onSeqChange = () => {
+			pointerGestures?.cancel('cancel');
 			if (drag) {
 				restoreSnapshot(drag.before);
 				drag = null;
 			}
-			if (kfDrag) {
-				restoreSnapshot(kfDrag.before);
-				kfDrag = null;
-			}
+			kfDrag = null;
 			if (textDrag?.before) restoreSnapshot(textDrag.before);
 			textDrag = null;
 			restorePick();
@@ -1665,8 +2010,6 @@
 		class="composition-timeline"
 		aria-label={m.video_editor_composition_timeline_label()}
 		data-testid="composition-timeline"
-		role="region"
-		tabindex="0"
 		ondragover={handleDragOver}
 		ondragleave={handleDragLeave}
 		ondrop={handleDrop}
@@ -1722,13 +2065,9 @@
 						onchange={(e) => {
 							const v = Math.max(
 								1,
-								Math.min(
-									120,
-									Math.round(Number((e.currentTarget as HTMLInputElement).value) || fps)
-								)
+								Math.min(120, Math.round(Number(e.currentTarget.value) || fps))
 							);
-							sequenceStore.updateComposition(composition.id, { fps: v });
-							onedit();
+							updateCompositionTiming({ fps: v }, 'UPDATE_COMPOSITION_FPS');
 						}}
 						data-testid="composition-fps"
 					/>
@@ -1740,12 +2079,8 @@
 						min="1"
 						value={durationFrames}
 						onchange={(e) => {
-							const v = Math.max(
-								1,
-								Math.round(Number((e.currentTarget as HTMLInputElement).value) || durationFrames)
-							);
-							sequenceStore.updateComposition(composition.id, { durationInFrames: v });
-							onedit();
+							const v = Math.max(1, Math.round(Number(e.currentTarget.value) || durationFrames));
+							updateCompositionTiming({ durationInFrames: v }, 'UPDATE_COMPOSITION_DURATION');
 						}}
 						data-testid="composition-duration"
 					/>
@@ -1761,8 +2096,8 @@
 						<Slider
 							id="composition-zoom-slider"
 							value={[zoomSlider]}
-							min={0.25}
-							max={4}
+							min={TIMELINE_ZOOM_MIN}
+							max={TIMELINE_ZOOM_MAX}
 							step={0.05}
 							onValueChange={handleZoomChange}
 							aria-label={m.video_editor_composition_timeline_zoom()}
@@ -1870,42 +2205,7 @@
 						)}%"
 						aria-label={m.video_editor_composition_timeline_in_point()}
 						data-testid="composition-io-in"
-						onpointerdown={(event) => {
-							const startX = event.clientX;
-							const startIn = inP;
-							const before = captureSnapshot();
-							let changed = false;
-							const onMove = (move: PointerEvent) => {
-								const deltaFrames = Math.round((move.clientX - startX) / pxPerFrame);
-								const next = Math.max(
-									0,
-									Math.min(startIn + deltaFrames, (outP ?? durationFrames) - 1)
-								);
-								if (next !== timelineStore.inPoint) {
-									changed = true;
-									timelineStore._setInPoint(next);
-								}
-							};
-							const cleanup = () => {
-								window.removeEventListener('pointermove', onMove);
-								window.removeEventListener('pointerup', onUp);
-								window.removeEventListener('pointercancel', onCancel);
-							};
-							const onUp = () => {
-								cleanup();
-								if (changed && JSON.stringify(before) !== JSON.stringify(captureSnapshot())) {
-									commandHistory.addUndoEntry({ type: 'SET_IN_POINT' }, before);
-									onedit();
-								}
-							};
-							const onCancel = () => {
-								cleanup();
-								restoreSnapshot(before);
-							};
-							window.addEventListener('pointermove', onMove);
-							window.addEventListener('pointerup', onUp);
-							window.addEventListener('pointercancel', onCancel);
-						}}
+						onpointerdown={(event) => startRangeHandleDrag('in', event)}
 					></button>
 					<button
 						type="button"
@@ -1919,42 +2219,7 @@
 						)}%"
 						aria-label={m.video_editor_composition_timeline_out_point()}
 						data-testid="composition-io-out"
-						onpointerdown={(event) => {
-							const startX = event.clientX;
-							const startOut = outP;
-							const before = captureSnapshot();
-							let changed = false;
-							const onMove = (move: PointerEvent) => {
-								const deltaFrames = Math.round((move.clientX - startX) / pxPerFrame);
-								const next = Math.max(
-									(inP ?? 0) + 1,
-									Math.min(startOut + deltaFrames, durationFrames)
-								);
-								if (next !== timelineStore.outPoint) {
-									changed = true;
-									timelineStore._setOutPoint(next);
-								}
-							};
-							const cleanup = () => {
-								window.removeEventListener('pointermove', onMove);
-								window.removeEventListener('pointerup', onUp);
-								window.removeEventListener('pointercancel', onCancel);
-							};
-							const onUp = () => {
-								cleanup();
-								if (changed && JSON.stringify(before) !== JSON.stringify(captureSnapshot())) {
-									commandHistory.addUndoEntry({ type: 'SET_OUT_POINT' }, before);
-									onedit();
-								}
-							};
-							const onCancel = () => {
-								cleanup();
-								restoreSnapshot(before);
-							};
-							window.addEventListener('pointermove', onMove);
-							window.addEventListener('pointerup', onUp);
-							window.addEventListener('pointercancel', onCancel);
-						}}
+						onpointerdown={(event) => startRangeHandleDrag('out', event)}
 					></button>
 				{/if}
 				{#if !regions.hasActive}
@@ -1968,8 +2233,6 @@
 				aria-label={m.video_editor_composition_timeline_layers()}
 				bind:this={sidebarEl}
 				onscroll={handleSidebarScroll}
-				role="region"
-				tabindex="0"
 			>
 				<div class="layer-sidebar-header">
 					<span>{m.video_editor_composition_timeline_layer()}</span>
@@ -1977,12 +2240,22 @@
 					<span class="col-blend"><BlendIcon class="size-3" /></span>
 					<span class="col-timing">{m.video_editor_composition_timeline_timing()}</span>
 				</div>
-				{#each visibleSidebarRows as row (row.kind === 'group' ? row.track.id : (row as { item: TimelineItem }).item.id)}
+				{#if sidebarWindow.beforeSize > 0}
+					<div
+						class="sidebar-virtual-spacer"
+						style:height={`${sidebarWindow.beforeSize}px`}
+						aria-hidden="true"
+						data-testid="sidebar-virtual-before"
+					></div>
+				{/if}
+				{#each visibleSidebarRows as row (row.kind === 'group' ? row.track.id : row.item.id)}
+					{@const rowKey = motionRowKey(row)}
 					{#if row.kind === 'group'}
 						{@const isExpanded = !row.track.isCollapsed}
 						{@const groupSelected = row.itemIds.some((id) => selectedItemIds.has(id))}
 						<div
 							class="group-row"
+							use:measureSidebarRow={rowKey}
 							data-group-row={row.track.id}
 							data-testid={`group-row-${row.track.id}`}
 						>
@@ -1993,6 +2266,7 @@
 								aria-pressed={groupSelected}
 								aria-label={row.track.name}
 								data-testid={`group-header-${row.track.id}`}
+								ondblclick={() => renameStart(row.track.id, row.track.name)}
 								onclick={() => {
 									if (row.itemIds.length === 0) return;
 									const allSelected = row.itemIds.every((id) => selectedItemIds.has(id));
@@ -2045,11 +2319,7 @@
 										aria-label={m.video_editor_composition_timeline_rename()}
 									/>
 								{:else}
-									<span
-										class="group-name"
-										ondblclick={() => renameStart(row.track.id, row.track.name)}
-										>{row.track.name}</span
-									>
+									<span class="group-name">{row.track.name}</span>
 									<span class="group-span"
 										>{row.itemIds.length
 											? `${Math.min(...row.itemIds.map((id) => timelineStore.itemById.get(id)?.from ?? 0))}–${Math.max(...row.itemIds.map((id) => (timelineStore.itemById.get(id)?.from ?? 0) + (timelineStore.itemById.get(id)?.durationInFrames ?? 0)))}`
@@ -2115,18 +2385,20 @@
 									variant="ghost"
 									aria-label={m.video_editor_composition_timeline_delete_group()}
 									onclick={() => {
-										const before = captureSnapshot();
 										const ids = row.itemIds.flatMap((id) =>
 											expandMotionLayerItemIds(motionPlan, [id])
 										);
-										if (ids.length) removeItems(ids, false);
-										const remaining = timelineStore.tracks
-											.filter((t) => t.id !== row.track.id)
-											.map((t) =>
-												t.parentTrackId === row.track.id ? { ...t, parentTrackId: undefined } : t
-											);
-										timelineStore._setTracks(remaining);
-										commandHistory.addUndoEntry({ type: 'DELETE_GROUP' }, before);
+										executeAtomic('DELETE_GROUP', () => {
+											if (ids.length) removeItems(ids, false);
+											const remaining = timelineStore.tracks
+												.filter((track) => track.id !== row.track.id)
+												.map((track) =>
+													track.parentTrackId === row.track.id
+														? { ...track, parentTrackId: undefined }
+														: track
+												);
+											timelineStore._setTracks(remaining);
+										});
 										onedit();
 									}}
 									data-testid={`group-delete-${row.track.id}`}
@@ -2149,8 +2421,8 @@
 							>
 						</div>
 					{:else}
-						{@const item = (row as { item: TimelineItem }).item}
-						{@const track = (row as { track?: TimelineTrack }).track}
+						{@const item = row.item}
+						{@const track = row.track}
 						{@const isSelected = selectedItemIds.has(item.id)}
 						{@const parentId = item.transformParent?.parentItemId}
 						{@const expanded = expandedLayerIds.has(item.id)}
@@ -2162,10 +2434,7 @@
 							{@const textBands = item.type === 'text' ? getTextMotionTimelineBands(item) : []}
 							<div
 								class="layer-row-wrap"
-								style="height:{ROW_H +
-									vRows.length * VECTOR_H +
-									textBands.length * TEXT_BAND_H +
-									(expanded ? 28 : 0)}px"
+								use:measureSidebarRow={rowKey}
 								data-row-id={item.id}
 								data-layer-row={item.id}
 							>
@@ -2179,6 +2448,7 @@
 									tabindex="0"
 									aria-pressed={isSelected}
 									aria-label={itemLabel(item)}
+									ondblclick={() => renameStart(item.id, itemLabel(item))}
 									onclick={(e) => selectItem(item.id, e.ctrlKey || e.metaKey, e.shiftKey)}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
@@ -2205,10 +2475,7 @@
 										tabindex="0"
 										onclick={(e) => {
 											e.stopPropagation();
-											const next = new Set(expandedLayerIds);
-											if (next.has(item.id)) next.delete(item.id);
-											else next.add(item.id);
-											expandedLayerIds = next;
+											toggleLayerExpanded(item.id);
 										}}
 										data-testid={`layer-expand-${item.id}`}
 									>
@@ -2232,11 +2499,7 @@
 											aria-label={m.video_editor_composition_timeline_rename()}
 										/>
 									{:else}
-										<span
-											class="layer-name"
-											ondblclick={() => renameStart(item.id, itemLabel(item))}
-											title={itemLabel(item)}>{itemLabel(item)}</span
-										>
+										<span class="layer-name" title={itemLabel(item)}>{itemLabel(item)}</span>
 									{/if}
 									<span class="layer-type-badge" aria-label={item.type}
 										>{item.type === 'text'
@@ -2360,14 +2623,17 @@
 											value={item.blendMode ?? 'normal'}
 											onchange={(e) =>
 												setBlendMode(item.id, (e.currentTarget as HTMLSelectElement).value)}
+											disabled={isLocked(item)}
 											data-testid={`blend-${item.id}`}
 											class="blend-select"
 										>
-											<option value="normal">Normal</option>
-											<option value="multiply">Multiply</option>
-											<option value="screen">Screen</option>
-											<option value="overlay">Overlay</option>
-											<option value="add">Add</option>
+											{#each BLEND_MODE_GROUPS as group (group.label)}
+												<optgroup label={blendGroupLabels[group.label] ?? group.label}>
+													{#each group.modes as mode (mode)}
+														<option value={mode}>{blendModeLabels[mode]}</option>
+													{/each}
+												</optgroup>
+											{/each}
 										</select>
 									</label>
 									<span class="timing-cell" data-testid={`timing-${item.id}`}>
@@ -2377,18 +2643,9 @@
 											min="0"
 											value={item.from}
 											aria-label="{itemLabel(item)} in"
-											onchange={(e) => {
-												const v = Math.max(
-													0,
-													Math.round(
-														Number((e.currentTarget as HTMLInputElement).value) || item.from
-													)
-												);
-												const before = captureSnapshot();
-												timelineStore._updateItems([{ id: item.id, patch: { from: v } }]);
-												commandHistory.addUndoEntry({ type: 'EDIT_TIMING' }, before);
-												onedit();
-											}}
+											disabled={isLocked(item)}
+											onchange={(e) =>
+												editItemTiming(item, 'in', (e.currentTarget as HTMLInputElement).value)}
 											data-testid={`timing-in-${item.id}`}
 										/>
 										<span>–</span>
@@ -2398,22 +2655,9 @@
 											min="1"
 											value={item.from + item.durationInFrames}
 											aria-label="{itemLabel(item)} out"
-											onchange={(e) => {
-												const v = Math.max(
-													item.from + 1,
-													Math.round(
-														Number((e.currentTarget as HTMLInputElement).value) ||
-															item.from + item.durationInFrames
-													)
-												);
-												const dur = Math.max(1, v - item.from);
-												const before = captureSnapshot();
-												timelineStore._updateItems([
-													{ id: item.id, patch: { durationInFrames: dur } }
-												]);
-												commandHistory.addUndoEntry({ type: 'EDIT_TIMING' }, before);
-												onedit();
-											}}
+											disabled={isLocked(item)}
+											onchange={(e) =>
+												editItemTiming(item, 'out', (e.currentTarget as HTMLInputElement).value)}
 											data-testid={`timing-out-${item.id}`}
 										/>
 									</span>
@@ -2453,6 +2697,9 @@
 								{/each}
 								{#if expanded}
 									<div class="inline-props" data-testid={`inline-props-${item.id}`}>
+										<span class="inline-label"
+											>{m.video_editor_composition_timeline_inline_props()}</span
+										>
 										<div class="dopesheet-mode-row" data-testid={`dopesheet-mode-${item.id}`}>
 											<button
 												type="button"
@@ -2460,7 +2707,8 @@
 												class:active={dopesheetMode === 'lanes'}
 												aria-pressed={dopesheetMode === 'lanes'}
 												onclick={() => (dopesheetMode = 'lanes')}
-												data-testid={`mode-lanes-${item.id}`}>Lanes</button
+												data-testid={`mode-lanes-${item.id}`}
+												>{m.video_editor_keyframe_sheet_title()}</button
 											>
 											<button
 												type="button"
@@ -2468,49 +2716,49 @@
 												class:active={dopesheetMode === 'graph'}
 												aria-pressed={dopesheetMode === 'graph'}
 												onclick={() => (dopesheetMode = 'graph')}
-												data-testid={`mode-graph-${item.id}`}>Graph</button
+												data-testid={`mode-graph-${item.id}`}
+												>{m.video_editor_composition_timeline_graph()}</button
 											>
 											<label class="easing-picker" data-testid={`easing-picker-${item.id}`}
-												><span>Easing</span><select
+												><span>{m.video_editor_keyframe_easing()}</span><select
 													value={selectedEasing}
 													onchange={(e) => {
-														const v = (e.currentTarget as HTMLSelectElement).value;
+														const v = e.currentTarget.value;
+														if (!isEasingType(v)) return;
 														selectedEasing = v;
 														const sel = keyframeSelectionStore.forItem(item.id);
 														if (sel.size === 0) return;
-														const before = captureSnapshot();
 														const props = getAnimatablePropertiesForItem(item);
-														let changed = false;
+														const updates: Array<{
+															property: KeyframeProperty;
+															frame: number;
+															easing: EasingType;
+														}> = [];
 														for (const prop of props) {
 															for (const kf of editorKeyframes(item, prop)) {
 																if (!sel.has(keyframeIdentity(kf))) continue;
-																updateKeyframes(item.id, [
-																	{ ref: kf, frame: kf.frame, value: kf.value, easing: v as any }
-																]);
-																changed = true;
+																updates.push({ property: prop, frame: kf.frame, easing: v });
 															}
 														}
-														if (changed)
-															commandHistory.addUndoEntry({ type: 'SET_EASING' }, before);
-														onedit();
+														if (setKeyframeEasings(item.id, updates)) onedit();
 													}}
 													data-testid={`easing-select-${item.id}`}
-													><option value="linear">Linear</option><option value="ease-in"
-														>Ease In</option
-													><option value="ease-out">Ease Out</option><option value="ease-in-out"
-														>Ease In Out</option
+													><option value="linear">{m.video_editor_keyframe_easing_linear()}</option
+													><option value="ease-in">{m.video_editor_keyframe_easing_in()}</option
+													><option value="ease-out">{m.video_editor_keyframe_easing_out()}</option
+													><option value="ease-in-out"
+														>{m.video_editor_keyframe_easing_in_out()}</option
 													></select
 												></label
 											>
 											<button
 												type="button"
 												class="retime-btn"
-												aria-label="Retime selected keys 0.9x"
-												title="Scale selected keys around first key"
+												aria-label={m.video_editor_composition_timeline_retime()}
+												title={m.video_editor_composition_timeline_retime_hint()}
 												onclick={() => {
 													const sel = new Set(keyframeSelectionStore.forItem(item.id));
 													if (sel.size < 2) return;
-													const before = captureSnapshot();
 													const props = getAnimatablePropertiesForItem(item);
 													const selected: {
 														ref: ReturnType<typeof editorKeyframes>[number];
@@ -2524,18 +2772,18 @@
 													const max = Math.max(...selected.map((s) => s.ref.frame));
 													const span = max - min || 1;
 													const factor = 0.9;
+													const edits: Parameters<typeof updateKeyframes>[1][number][] = [];
 													for (const s of selected) {
 														const t = (s.ref.frame - min) / span;
 														const newFrame = Math.round(min + t * span * factor);
-														if (newFrame !== s.ref.frame)
-															updateKeyframes(item.id, [
-																{ ref: s.ref, frame: newFrame, value: s.ref.value }
-															]);
+														if (newFrame !== s.ref.frame) {
+															edits.push({ ref: s.ref, frame: newFrame, value: s.ref.value });
+														}
 													}
-													commandHistory.addUndoEntry({ type: 'RETIME_BATCH' }, before);
-													onedit();
+													if (updateKeyframes(item.id, edits)) onedit();
 												}}
-												data-testid={`retime-batch-${item.id}`}>Retime 0.9x</button
+												data-testid={`retime-batch-${item.id}`}
+												>{m.video_editor_composition_timeline_retime()}</button
 											>
 										</div>
 										{#if dopesheetMode === 'lanes'}
@@ -2546,9 +2794,7 @@
 												pixelsPerFrame={pxPerFrame}
 												{timelineWidth}
 												{timelineX}
-												onscrub={(f) => {
-													previewFrame = f;
-												}}
+												onscrub={seekTo}
 												{onedit}
 											/>
 										{:else}
@@ -2560,10 +2806,7 @@
 													getAnimatablePropertiesForItem(item)[0] ??
 													('x' as KeyframeProperty)}
 												currentFrame={previewFrame ?? timelineStore.currentFrame}
-												onscrub={(f) => {
-													previewFrame = f;
-													timelineStore._setCurrentFrame(f);
-												}}
+												onscrub={seekTo}
 												{onedit}
 											/>
 										{/if}
@@ -2581,10 +2824,7 @@
 													data-testid={`motion-layer-${item.id}-${layer.id}`}
 													aria-label={layer.name ?? layer.presetId ?? 'layer'}
 													onclick={() => {
-														const before = captureSnapshot();
-														removeMotionLayerFromItems([item.id], layer.id);
-														commandHistory.addUndoEntry({ type: 'REMOVE_MOTION_LAYER' }, before);
-														onedit();
+														if (removeMotionLayerFromItems([item.id], layer.id) > 0) onedit();
 													}}
 												>
 													<span class="band-label">{layer.name ?? layer.presetId ?? 'layer'}</span>
@@ -2605,10 +2845,7 @@
 													data-testid={`modifier-${item.id}-${mod.type}`}
 													aria-label={mod.type}
 													onclick={() => {
-														const before = captureSnapshot();
-														removeMotionModifierFromItems([item.id], mod.type);
-														commandHistory.addUndoEntry({ type: 'REMOVE_MODIFIER' }, before);
-														onedit();
+														if (removeMotionModifierFromItems([item.id], mod.type) > 0) onedit();
 													}}
 												>
 													<span class="band-label">{mod.type}</span>
@@ -2634,12 +2871,14 @@
 											type="button"
 											class="link-pick-btn"
 											aria-pressed={linkPickSource?.itemId === item.id}
-											aria-label="Link pick"
-											onclick={() => handleLinkPick(item.id, 'x')}
+											aria-label={m.video_editor_expression_pick_link()}
+											onclick={() => handleLinkButton(item.id)}
 											data-testid={`link-pick-btn-${item.id}`}
 										>
 											<Link2Icon class="size-3" />
-											{linkPickSource?.itemId === item.id ? 'Pick target…' : 'Link'}
+											{linkPickSource
+												? m.video_editor_expression_source_layer()
+												: m.video_editor_expression_link_title()}
 										</button>
 										{#if item.propertyLinks && item.propertyLinks.length > 0}
 											{#each item.propertyLinks as link (link.targetProperty)}
@@ -2651,15 +2890,9 @@
 												<button
 													type="button"
 													class="icon-btn"
-													aria-label="Remove link"
+													aria-label={m.video_editor_expression_remove_link()}
 													onclick={() => {
-														const before = captureSnapshot();
-														removePropertyExpression(
-															item.id,
-															link.targetProperty as KeyframeProperty
-														);
-														commandHistory.addUndoEntry({ type: 'REMOVE_LINK' }, before);
-														onedit();
+														if (removeDirectPropertyLink(item.id, link.targetProperty)) onedit();
 													}}
 													data-testid={`link-remove-${item.id}-${link.targetProperty}`}
 													><UnlinkIcon class="size-3" /></button
@@ -2667,29 +2900,19 @@
 											{/each}
 										{/if}
 									</div>
-									{#if composition?.compositionControls && Object.keys(composition.compositionControls).length > 0}
+									{#if publishedControls(item).length > 0}
 										<div class="published-controls" data-testid={`published-controls-${item.id}`}>
-											<span class="band-label">Published controls</span>
-											{#each Object.entries(composition.compositionControls) as [key, ctrl]}
+											<span class="band-label">{m.video_editor_motion_overrides_title()}</span>
+											{#each publishedControls(item) as control (control.id)}
 												<label class="control-row"
-													><span>{key}</span><input
-														type="text"
-														value={item.compositionControlOverrides?.[key] ?? ''}
-														placeholder={String(ctrl.defaultValue ?? '')}
+													><span>{control.name}</span><input
+														type={control.kind === 'color' ? 'color' : 'text'}
+														value={compositionControlValue(item, control)}
+														placeholder={control.defaultValue}
 														onchange={(e) => {
-															const v = (e.currentTarget as HTMLInputElement).value;
-															const before = captureSnapshot();
-															const overrides = {
-																...(item.compositionControlOverrides ?? {}),
-																[key]: v
-															};
-															timelineStore._updateItems([
-																{ id: item.id, patch: { compositionControlOverrides: overrides } }
-															]);
-															commandHistory.addUndoEntry({ type: 'SET_CONTROL_OVERRIDE' }, before);
-															onedit();
+															setCompositionControlValue(item, control, e.currentTarget.value);
 														}}
-														data-testid={`control-override-${item.id}-${key}`}
+														data-testid={`control-override-${item.id}-${control.id}`}
 													/></label
 												>
 											{/each}
@@ -2700,6 +2923,14 @@
 						{/if}
 					{/if}
 				{/each}
+				{#if sidebarWindow.afterSize > 0}
+					<div
+						class="sidebar-virtual-spacer"
+						style:height={`${sidebarWindow.afterSize}px`}
+						aria-hidden="true"
+						data-testid="sidebar-virtual-after"
+					></div>
+				{/if}
 				{#if motionRows.length === 0}
 					<div class="empty-layers" data-testid="composition-empty-layers">
 						<p>{m.video_editor_composition_timeline_empty()}</p>
@@ -2726,8 +2957,9 @@
 				onwheel={handleWheel}
 				onclick={handleTimelineClick}
 				onpointerdown={startMarquee}
-				role="region"
+				role="grid"
 				tabindex="0"
+				onkeydown={handleTimelineKeydown}
 				aria-label={m.video_editor_composition_timeline_layers()}
 				data-testid="composition-scroll"
 			>
@@ -2798,117 +3030,121 @@
 					</div>
 					<div
 						class="layer-bars"
+						bind:this={layerBarsEl}
 						data-testid="composition-layer-bars"
 						style="height:{Math.max(200, layerEntries.length * ROW_H)}px"
 					>
-						{#each layerEntries as row, idx (row.item.id)}
+						{#each visibleLayerEntries as entry (entry.row.item.id)}
+							{@const row = entry.row}
+							{@const idx = entry.index}
 							{@const item = row.item}
 							{@const isSelected = selectedItemIds.has(item.id)}
-							{#if visibleIds.has(item.id) || isSelected}
-								{@const vRows = vectorRowsFor(item)}
-								{@const textBands = item.type === 'text' ? getTextMotionTimelineBands(item) : []}
-								<button
-									type="button"
-									class="layer-bar"
-									class:selected={isSelected}
-									style="left:{timelineX(item.from)}px; top:{8 + idx * ROW_H}px; width:{Math.max(
-										8,
-										item.durationInFrames * pxPerFrame
-									)}px; height:{ROW_H - 12}px"
-									data-testid={`composition-bar-${item.id}`}
-									aria-label={itemLabel(item)}
-									aria-pressed={isSelected}
-									onpointerdown={(event) => startBarPointerDown(item, event)}
-									onclick={(event) => {
-										event.stopPropagation();
-										selectItem(item.id, event.ctrlKey || event.metaKey, event.shiftKey);
-									}}
-									ondblclick={() => {
-										const mid = item.from + Math.floor(item.durationInFrames / 2);
-										seekTo(mid);
-									}}
+							{@const vRows = vectorRowsFor(item)}
+							{@const textBands = item.type === 'text' ? getTextMotionTimelineBands(item) : []}
+							<button
+								type="button"
+								class="layer-bar"
+								class:selected={isSelected}
+								style="left:{timelineX(item.from)}px; top:{8 + idx * ROW_H}px; width:{Math.max(
+									8,
+									item.durationInFrames * pxPerFrame
+								)}px; height:{ROW_H - 12}px"
+								data-testid={`composition-bar-${item.id}`}
+								aria-label={itemLabel(item)}
+								aria-pressed={isSelected}
+								onpointerdown={(event) => startBarPointerDown(item, event)}
+								onclick={(event) => {
+									event.stopPropagation();
+									selectItem(item.id, event.ctrlKey || event.metaKey, event.shiftKey);
+								}}
+								ondblclick={() => {
+									const mid = item.from + Math.floor(item.durationInFrames / 2);
+									seekTo(mid);
+								}}
+							>
+								<span class="bar-label">{itemLabel(item)}</span>
+							</button>
+							{#each vRows as vRow, vIdx (vRow.property)}
+								<div
+									class="vector-lane"
+									style="top:{8 + idx * ROW_H + ROW_H + vIdx * VECTOR_H}px; height:{VECTOR_H}px"
+									data-testid={`vector-lane-${item.id}-${vRow.property}`}
 								>
-									<span class="bar-label">{itemLabel(item)}</span>
-								</button>
-								{#each vRows as vRow, vIdx (vRow.property)}
-									<div
-										class="vector-lane"
-										style="top:{8 + idx * ROW_H + ROW_H + vIdx * VECTOR_H}px; height:{VECTOR_H}px"
-										data-testid={`vector-lane-${item.id}-${vRow.property}`}
-									>
-										{#each keyframesForVector(item, vRow.primary) as kf (keyframeIdentity(kf))}
-											<button
-												type="button"
-												class="vector-key"
-												class:selected={keyframeSelectionStore
-													.forItem(item.id)
-													.has(keyframeIdentity(kf))}
-												style="left:{timelineX(item.from + kf.frame)}px"
-												aria-label={`${vectorLabel(vRow.property)} ${kf.frame}`}
-												data-testid={`vector-key-${item.id}-${vRow.property}-${kf.frame}`}
-												onclick={(e) => {
-													e.stopPropagation();
-													selectVectorKeyframe(item.id, vRow.primary, kf.frame);
-												}}
-												onpointerdown={(e) => startKeyframeDrag(item.id, vRow.primary, kf.frame, e)}
-											></button>
-										{/each}
-										{#each keyframesForVector(item, vRow.secondary) as kf (keyframeIdentity(kf))}
-											<button
-												type="button"
-												class="vector-key vector-key-secondary"
-												style="left:{timelineX(item.from + kf.frame)}px"
-												aria-label={`${vectorLabel(vRow.property)} ${kf.frame} y`}
-												data-testid={`vector-key-${item.id}-${vRow.property}-y-${kf.frame}`}
-												onclick={(e) => {
-													e.stopPropagation();
-													selectVectorKeyframe(item.id, vRow.secondary, kf.frame);
-												}}
-												onpointerdown={(e) =>
-													startKeyframeDrag(item.id, vRow.secondary, kf.frame, e)}
-											></button>
-										{/each}
-									</div>
-								{/each}
-								{#each textBands as band, bIdx (band.slot)}
-									<div
-										class="text-band-lane"
-										style="top:{8 +
-											idx * ROW_H +
-											ROW_H +
-											vRows.length * VECTOR_H +
-											bIdx * TEXT_BAND_H}px; height:{TEXT_BAND_H}px"
-										data-testid={`text-lane-${item.id}-${band.slot}`}
-									>
+									{#each keyframesForVector(item, vRow.primary) as kf (keyframeIdentity(kf))}
 										<button
 											type="button"
-											class="text-band"
-											class:locked={isTextLocked(item)}
-											style="left:{timelineX(band.fromFrame)}px; width:{Math.max(
-												8,
-												(band.toFrame - band.fromFrame) * pxPerFrame
+											class="vector-key"
+											class:selected={keyframeSelectionStore
+												.forItem(item.id)
+												.has(keyframeIdentity(kf))}
+											style="left:{timelineX(
+												item.from + keyframeDisplayFrame(item.id, vRow.primary, kf)
 											)}px"
-											data-testid={`text-band-${item.id}-${band.slot}`}
-											aria-label={`${band.slot} ${band.presetId} ${band.durationFrames}f`}
-											onpointerdown={(e) => startTextOffsetDrag(item, band, e)}
-										>
-											<span class="text-band-slot">{textSlotLabel(band.slot)}</span>
-											<span class="text-band-preset">{textPresetLabel(band.presetId)}</span>
-										</button>
+											aria-label={`${vectorLabel(vRow.property)} ${keyframeDisplayFrame(item.id, vRow.primary, kf)}`}
+											data-testid={`vector-key-${item.id}-${vRow.property}-${kf.frame}`}
+											onclick={(e) => {
+												e.stopPropagation();
+												selectVectorKeyframe(item.id, vRow.primary, kf.frame);
+											}}
+											onpointerdown={(e) => startKeyframeDrag(item.id, vRow.primary, kf.frame, e)}
+										></button>
+									{/each}
+									{#each keyframesForVector(item, vRow.secondary) as kf (keyframeIdentity(kf))}
 										<button
 											type="button"
-											class="text-band-handle"
-											class:disabled={isTextLocked(item)}
-											style="left:{band.slot === 'out'
-												? timelineX(band.fromFrame) - 4
-												: timelineX(band.toFrame) - 4}px"
-											data-testid={`text-band-handle-${item.id}-${band.slot}`}
-											aria-label={`${textSlotLabel(band.slot)} ${m.video_editor_composition_timeline_text_duration_handle()}`}
-											onpointerdown={(e) => startTextDurationDrag(item, band, e)}
+											class="vector-key vector-key-secondary"
+											style="left:{timelineX(
+												item.from + keyframeDisplayFrame(item.id, vRow.secondary, kf)
+											)}px"
+											aria-label={`${vectorLabel(vRow.property)} ${keyframeDisplayFrame(item.id, vRow.secondary, kf)} y`}
+											data-testid={`vector-key-${item.id}-${vRow.property}-y-${kf.frame}`}
+											onclick={(e) => {
+												e.stopPropagation();
+												selectVectorKeyframe(item.id, vRow.secondary, kf.frame);
+											}}
+											onpointerdown={(e) => startKeyframeDrag(item.id, vRow.secondary, kf.frame, e)}
 										></button>
-									</div>
-								{/each}
-							{/if}
+									{/each}
+								</div>
+							{/each}
+							{#each textBands as band, bIdx (band.slot)}
+								<div
+									class="text-band-lane"
+									style="top:{8 +
+										idx * ROW_H +
+										ROW_H +
+										vRows.length * VECTOR_H +
+										bIdx * TEXT_BAND_H}px; height:{TEXT_BAND_H}px"
+									data-testid={`text-lane-${item.id}-${band.slot}`}
+								>
+									<button
+										type="button"
+										class="text-band"
+										class:locked={isTextLocked(item)}
+										style="left:{timelineX(band.fromFrame)}px; width:{Math.max(
+											8,
+											(band.toFrame - band.fromFrame) * pxPerFrame
+										)}px"
+										data-testid={`text-band-${item.id}-${band.slot}`}
+										aria-label={`${band.slot} ${band.presetId} ${band.durationFrames}f`}
+										onpointerdown={(e) => startTextOffsetDrag(item, band, e)}
+									>
+										<span class="text-band-slot">{textSlotLabel(band.slot)}</span>
+										<span class="text-band-preset">{textPresetLabel(band.presetId)}</span>
+									</button>
+									<button
+										type="button"
+										class="text-band-handle"
+										class:disabled={isTextLocked(item)}
+										style="left:{band.slot === 'out'
+											? timelineX(band.fromFrame) - 4
+											: timelineX(band.toFrame) - 4}px"
+										data-testid={`text-band-handle-${item.id}-${band.slot}`}
+										aria-label={`${textSlotLabel(band.slot)} ${m.video_editor_composition_timeline_text_duration_handle()}`}
+										onpointerdown={(e) => startTextDurationDrag(item, band, e)}
+									></button>
+								</div>
+							{/each}
 						{/each}
 						<div
 							class="bars-playhead"
@@ -3264,6 +3500,7 @@
 		margin-left: auto;
 	}
 	.filter-input {
+		box-sizing: border-box;
 		width: 180px;
 		height: 32px;
 		border-radius: 0.32rem;
@@ -3330,15 +3567,55 @@
 	.composition-body {
 		display: grid;
 		grid-template-columns: 320px 1fr;
+		height: clamp(260px, 44vh, 560px);
 		min-height: 260px;
 		overflow: hidden;
 	}
 	@media (max-width: 720px) {
 		.composition-body {
 			grid-template-columns: 1fr;
+			height: auto;
 		}
 		.layer-sidebar {
 			max-height: 280px;
+		}
+	}
+	@media (max-width: 480px) {
+		.composition-header,
+		.composition-toolbar {
+			padding-inline: 0.45rem;
+		}
+		.header-left,
+		.header-center,
+		.header-right,
+		.toolbar-search {
+			width: 100%;
+		}
+		.composition-picker,
+		.filter-input {
+			min-width: 0;
+			width: 100%;
+		}
+		.header-zoom {
+			flex: 1;
+			min-width: 0;
+		}
+		.zoom-slider-wrap {
+			flex: 1;
+			min-width: 96px;
+			width: auto;
+		}
+		.layer-sidebar-header {
+			grid-template-columns: minmax(0, 1fr) 70px 40px 52px;
+		}
+		.layer-meta-row {
+			grid-template-columns: minmax(0, 1fr) 78px 58px 20px;
+			padding-inline: 0.2rem;
+		}
+		.composition-footer,
+		.footer-actions {
+			align-items: stretch;
+			width: 100%;
 		}
 	}
 	.layer-sidebar {
@@ -3351,6 +3628,10 @@
 	.layer-sidebar:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: -2px;
+	}
+	.sidebar-virtual-spacer {
+		width: 1px;
+		pointer-events: none;
 	}
 	.layer-sidebar-header {
 		display: grid;
@@ -3427,6 +3708,7 @@
 	}
 	.layer-row {
 		display: flex;
+		box-sizing: border-box;
 		width: 100%;
 		align-items: center;
 		gap: 0.35rem;
@@ -3623,8 +3905,7 @@
 	.vector-key:active {
 		cursor: grabbing;
 	}
-	.vector-key.selected,
-	.vector-key[aria-pressed='true'] {
+	.vector-key.selected {
 		background: oklch(0.88 0.16 45);
 		box-shadow: 0 0 0 2px oklch(0.66 0.14 45 / 0.4);
 	}
@@ -3996,6 +4277,16 @@
 	.drop-ghost.invalid {
 		background: oklch(0.6 0.18 25);
 	}
+	.snap-guide {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background: oklch(0.76 0.14 45);
+		box-shadow: 0 0 0 1px oklch(0.18 0.01 55 / 0.75);
+		pointer-events: none;
+		z-index: 12;
+	}
 	.marquee {
 		position: absolute;
 		border: 1px solid oklch(0.66 0.14 45);
@@ -4005,6 +4296,9 @@
 	}
 	.composition-footer {
 		display: flex;
+		box-sizing: border-box;
+		max-width: 100%;
+		min-width: 0;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.6rem;
@@ -4020,6 +4314,9 @@
 	}
 	.footer-actions {
 		display: flex;
+		box-sizing: border-box;
+		max-width: 100%;
+		min-width: 0;
 		align-items: center;
 		gap: 0.35rem;
 		flex-wrap: wrap;
@@ -4055,7 +4352,9 @@
 		border-radius: 0.5rem;
 		padding: 1rem;
 		z-index: 50;
-		min-width: 320px;
+		box-sizing: border-box;
+		width: min(320px, calc(100vw - 2rem));
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 0.6rem;

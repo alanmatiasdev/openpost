@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { get } from 'svelte/store';
 import { createEmptyTimeline } from '$lib/video-editor/project/defaults';
 import type { SubComposition, TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
+import type { MediaMetadata } from '$lib/video-editor/media/types';
+import {
+	clearActiveMediaDrag,
+	mediaDragData,
+	writeMediaDragData
+} from '$lib/video-editor/media/media-drag';
 import CompositionTimeline from './composition-timeline.svelte';
 
 const track: TimelineTrack = {
@@ -63,6 +72,9 @@ beforeEach(() => {
 	sequenceStore.reset();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
+	mediaPool.clear();
+	clearActiveMediaDrag();
+	timelinePreviewScrub.__resetForTesting();
 });
 
 afterEach(async () => {
@@ -70,6 +82,9 @@ afterEach(async () => {
 	sequenceStore.reset();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
+	mediaPool.clear();
+	clearActiveMediaDrag();
+	timelinePreviewScrub.__resetForTesting();
 });
 
 describe('CompositionTimeline focused 2D composition timeline', () => {
@@ -83,9 +98,9 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		);
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
-		expect(screen.getByText('Promo')).toBeVisible();
+		expect(screen.getByRole('heading', { name: 'Promo' })).toBeVisible();
 		expect(screen.getByText(/1280×720/)).toBeVisible();
-		expect(screen.getByText(/60 fps/)).toBeVisible();
+		expect(screen.getByTestId('composition-fps')).toHaveValue(60);
 		expect(screen.getByTestId('composition-timeline')).toBeVisible();
 	});
 
@@ -244,8 +259,69 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		expect(screen.getByTestId('vector-key-one-position-0')).toBeVisible();
 	});
 
-	it('keeps compact layout without horizontal overflow at 320px', async () => {
-		await page.viewport(320, 720);
+	it('moves one vector keyframe once without losing its id, easing, or spatial tangents', async () => {
+		const first = {
+			id: 'vk1',
+			frame: 0,
+			value: { x: 0, y: 4 },
+			easing: 'ease-in-out' as const,
+			easingConfig: {
+				type: 'ease-in-out' as const,
+				bezier: { x1: 0.2, y1: 0.1, x2: 0.8, y2: 0.9 }
+			},
+			spatial: {
+				inTangent: { x: -12, y: -3 },
+				outTangent: { x: 18, y: 6 },
+				continuous: true
+			}
+		};
+		const animated = makeItem({
+			id: 'one',
+			vectorKeyframes: {
+				position: [first, { id: 'vk2', frame: 30, value: { x: 100, y: 50 }, easing: 'linear' }]
+			}
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [animated] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		const key = screen.getByTestId('vector-key-one-position-0').element();
+		const rect = key.getBoundingClientRect();
+		key.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				button: 0,
+				pointerId: 12,
+				clientX: rect.left,
+				bubbles: true
+			})
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', {
+				pointerId: 12,
+				clientX: rect.left + 40,
+				bubbles: true
+			})
+		);
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 12, bubbles: true }));
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get('one')?.vectorKeyframes?.position?.[0]?.frame).toBe(10)
+		);
+		expect(timelineStore.itemById.get('one')?.vectorKeyframes?.position?.[0]).toEqual({
+			...first,
+			frame: 10
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('one')?.vectorKeyframes?.position?.[0]).toEqual(first);
+	});
+
+	it.each([320, 390])('keeps compact layout without horizontal overflow at %ipx', async (width) => {
+		await page.viewport(width, 720);
 		sequenceStore.load(
 			{ ...createEmptyTimeline(), compositions: [composition()] },
 			{ width: 1920, height: 1080, fps: 30 }
@@ -254,8 +330,43 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		const section = screen.getByTestId('composition-timeline').element();
 		expect(section.scrollWidth).toBeLessThanOrEqual(section.clientWidth + 1);
-		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(321);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width + 1);
 		expect(screen.getByTestId('composition-body')).toBeVisible();
+	});
+
+	it('keeps a bounded sidebar DOM while scrolling a large composition', async () => {
+		const items = Array.from({ length: 250 }, (_, index) =>
+			makeItem({ id: `layer-${index}`, from: index * 30, durationInFrames: 30 })
+		);
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [composition({ items, durationInFrames: 7_500 })]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		await render(CompositionTimeline, { onedit: vi.fn() });
+		await vi.waitFor(() =>
+			expect(document.querySelectorAll('[data-layer-row]').length).toBeGreaterThan(0)
+		);
+		expect(document.querySelectorAll('[data-layer-row]').length).toBeLessThan(60);
+		expect(document.querySelector('[data-layer-row="layer-0"]')).not.toBeNull();
+		expect(document.querySelector('[data-testid="sidebar-virtual-after"]')).not.toBeNull();
+
+		const sidebar = document.querySelector('.layer-sidebar');
+		if (!(sidebar instanceof HTMLDivElement)) throw new Error('layer sidebar should be a div');
+		sidebar.scrollTop = 3_400;
+		sidebar.dispatchEvent(new Event('scroll', { bubbles: true }));
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-testid="sidebar-virtual-before"]')).not.toBeNull()
+		);
+		expect(document.querySelector('[data-layer-row="layer-0"]')).toBeNull();
+		expect(document.querySelectorAll('[data-layer-row]').length).toBeLessThan(60);
+		const renderedIndexes = [...document.querySelectorAll<HTMLElement>('[data-layer-row]')].map(
+			(node) => Number(node.dataset.layerRow?.replace('layer-', ''))
+		);
+		expect(Math.max(...renderedIndexes)).toBeGreaterThan(60);
 	});
 
 	it('renders typed In Loop Out bands for text items and shows preset metadata', async () => {
@@ -479,22 +590,43 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 	});
 
 	it('shows inline dopesheet and toggles to value graph per expanded layer', async () => {
-		const item = makeItem({ id: 'one', keyframes: { x: { frames: [0, 10], values: [0, 100], ids: ['a', 'b'], easings: ['linear', 'linear'] } } as any });
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] }, { width: 1920, height: 1080, fps: 30 });
+		// SAFETY: test supplies minimal keyframe track shape for inline dopesheet toggling; full TimelineItem contract not needed.
+		const item = makeItem({
+			id: 'one',
+			keyframes: {
+				x: { frames: [0, 10], values: [0, 100], ids: ['a', 'b'], easings: ['linear', 'linear'] }
+			} as any
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		await screen.getByTestId('layer-expand-one').click();
 		await vi.waitFor(() => expect(screen.getByTestId('inline-props-one')).toBeVisible());
 		expect(screen.getByTestId('inline-props-one').element().textContent).toMatch(/Properties/);
 		await screen.getByTestId('mode-graph-one').click();
-		await vi.waitFor(() => expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible());
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible()
+		);
 		await screen.getByTestId('mode-lanes-one').click();
 		expect(document.querySelector('[data-keyframe-value-graph]')).toBeNull();
 	});
 
 	it('renders motion-layer and modifier bands with one-undo remove', async () => {
-		const item = makeItem({ id: 'one', motionLayers: [{ id: 'ml1', name: 'Drift', presetId: 'drift', enabled: true, blend: 'add' } as any], motionModifiers: [{ type: 'wiggle', enabled: true } as any] });
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] }, { width: 1920, height: 1080, fps: 30 });
+		// SAFETY: test uses minimal motion layer/modifier stubs for band rendering; full typed contracts not required here.
+		const item = makeItem({
+			id: 'one',
+			motionLayers: [
+				{ id: 'ml1', name: 'Drift', presetId: 'drift', enabled: true, blend: 'add' } as any
+			],
+			motionModifiers: [{ type: 'wiggle', enabled: true } as any]
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const onedit = vi.fn();
 		const screen = await render(CompositionTimeline, { onedit });
@@ -510,9 +642,27 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 	});
 
 	it('shows path vertex and mask lanes', async () => {
-		const pathItem = makeItem({ id: 'shape1', type: 'shape', shapeType: 'path', pathVertices: [{ x: 0, y: 0 }, { x: 10, y: 10 }] as any });
-		const maskItem = makeItem({ id: 'mask1', isMask: true, maskType: 'alpha', maskFeather: 5 } as any);
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ items: [pathItem, maskItem] })] }, { width: 1920, height: 1080, fps: 30 });
+		// SAFETY: test uses minimal path vertex stub for lane rendering; full ShapePathVertex contract not needed.
+		const pathItem = makeItem({
+			id: 'shape1',
+			type: 'shape',
+			shapeType: 'path',
+			pathVertices: [
+				{ x: 0, y: 0 },
+				{ x: 10, y: 10 }
+			] as any
+		});
+		// SAFETY: test uses minimal mask stub for lane rendering; full TimelineItem mask contract not required.
+		const maskItem = makeItem({
+			id: 'mask1',
+			isMask: true,
+			maskType: 'alpha',
+			maskFeather: 5
+		} as any);
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [pathItem, maskItem] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		await screen.getByTestId('layer-expand-shape1').click();
@@ -522,66 +672,322 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 	});
 
 	it('ghost scrubs on ruler drag and commits on release, cancels on Escape', async () => {
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition()] }, { width: 1920, height: 1080, fps: 30 });
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		timelineStore._setCurrentFrame(0);
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		const ruler = screen.getByTestId('composition-ruler').element();
 		const rect = ruler.getBoundingClientRect();
-		await ruler.dispatchEvent(new PointerEvent('pointerdown', { button: 0, clientX: rect.left + 100, bubbles: true }));
-		window.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + 200, bubbles: true }));
+		await ruler.dispatchEvent(
+			new PointerEvent('pointerdown', { button: 0, clientX: rect.left + 100, bubbles: true })
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', { clientX: rect.left + 200, bubbles: true })
+		);
 		await vi.waitFor(() => expect(screen.getByTestId('composition-playhead-ghost')).toBeVisible());
 		expect(timelineStore.currentFrame).toBe(0);
+		expect(get(timelinePreviewScrub).frame).not.toBeNull();
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-		await vi.waitFor(() => expect(screen.queryByTestId('composition-playhead-ghost')).toBeNull());
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-testid="composition-playhead-ghost"]')).toBeNull()
+		);
 		expect(timelineStore.currentFrame).toBe(0);
-		await ruler.dispatchEvent(new PointerEvent('pointerdown', { button: 0, clientX: rect.left + 100, bubbles: true }));
-		window.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + 200, bubbles: true }));
+		expect(get(timelinePreviewScrub).frame).toBeNull();
+		await ruler.dispatchEvent(
+			new PointerEvent('pointerdown', { button: 0, clientX: rect.left + 100, bubbles: true })
+		);
+		window.dispatchEvent(
+			new PointerEvent('pointermove', { clientX: rect.left + 200, bubbles: true })
+		);
 		window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 		await vi.waitFor(() => expect(timelineStore.currentFrame).not.toBe(0));
+		expect(get(timelinePreviewScrub).frame).toBeNull();
 	});
 
 	it('wheel zooms anchored at pointer and pans', async () => {
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ durationInFrames: 300 })] }, { width: 1920, height: 1080, fps: 30 });
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ durationInFrames: 300 })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		const scroll = screen.getByTestId('composition-scroll').element();
 		scroll.scrollLeft = 100;
 		const beforeZoom = timelineStore.zoomLevel;
-		scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, clientX: 200 }));
+		scroll.dispatchEvent(
+			new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, clientX: 200 })
+		);
 		await vi.waitFor(() => expect(timelineStore.zoomLevel).not.toBe(beforeZoom));
 	});
 
-	it('shows validated drop ghost and inserts on track-aware drop', async () => {
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition()] }, { width: 1920, height: 1080, fps: 30 });
+	it('drops ready media on an exact free timeline lane with source metadata and one undo', async () => {
+		const media: MediaMetadata = {
+			id: 'media-1234567',
+			storageType: 'workspace',
+			fileName: 'insert.mp4',
+			fileSize: 1_024,
+			mimeType: 'video/mp4',
+			duration: 1,
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			codec: 'avc1',
+			bitrate: 1_000_000,
+			tags: ['video']
+		};
+		mediaPool.upsert(media, 'ready');
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [composition({ items: [makeItem({ id: 'one', durationInFrames: 30 })] })]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
-		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
 		const timeline = screen.getByTestId('composition-timeline').element();
+		const bars = screen.getByTestId('composition-layer-bars').element();
+		const barsRect = bars.getBoundingClientRect();
 		const dt = new DataTransfer();
-		dt.setData('text/plain', 'media-1234567');
-		timeline.dispatchEvent(new DragEvent('dragover', { bubbles: true, clientX: 350, clientY: 100 }));
-		// ghost may be valid or invalid depending on pointer, but handler should not throw
-		expect(timeline).toBeVisible();
+		writeMediaDragData(dt, mediaDragData('media', media.id, media.fileName));
+		const point = { clientX: barsRect.left + 60 * 4, clientY: barsRect.top + 10 };
+		timeline.dispatchEvent(
+			new DragEvent('dragover', { bubbles: true, dataTransfer: dt, ...point })
+		);
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-testid="composition-drop-ghost"]')).not.toBeNull()
+		);
+		await expect(screen.getByTestId('composition-drop-ghost')).toBeVisible();
+		timeline.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, ...point }));
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(2));
+		const inserted = timelineStore.items.find((item) => item.id !== 'one');
+		expect(inserted).toMatchObject({
+			trackId: track.id,
+			from: 60,
+			durationInFrames: 30,
+			mediaId: media.id,
+			sourceStart: 0,
+			sourceEnd: 30,
+			sourceDuration: 30,
+			sourceFps: 30
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		commandHistory.undo();
+		expect(timelineStore.items).toEqual([expect.objectContaining({ id: 'one' })]);
 	});
 
-	it('editable timing inputs move layer with undo', async () => {
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition()] }, { width: 1920, height: 1080, fps: 30 });
+	it('editable timing inputs trim media source bounds with one undo', async () => {
+		const mediaItem = makeItem({
+			id: 'one',
+			mediaId: 'media-one',
+			sourceStart: 100,
+			sourceEnd: 160,
+			sourceDuration: 300,
+			sourceFps: 30
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [mediaItem] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const onedit = vi.fn();
 		const screen = await render(CompositionTimeline, { onedit });
 		await screen.getByTestId('layer-expand-one').click();
-		const inInput = screen.getByTestId('timing-in-one').element() as HTMLInputElement;
+		const inInputEl = screen.getByTestId('timing-in-one').element();
+		if (!(inInputEl instanceof HTMLInputElement))
+			throw new Error('timing input should be HTMLInputElement');
+		const inInput = inInputEl;
 		inInput.value = '10';
 		inInput.dispatchEvent(new Event('change', { bubbles: true }));
-		await vi.waitFor(() => expect(timelineStore.itemById.get('one')?.from).toBe(10));
-		expect(commandHistory.undoStack.length).toBeGreaterThanOrEqual(1);
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get('one')).toMatchObject({
+				from: 10,
+				durationInFrames: 50,
+				sourceStart: 110,
+				sourceEnd: 160
+			})
+		);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
 		commandHistory.undo();
-		expect(timelineStore.itemById.get('one')?.from).toBe(0);
+		expect(timelineStore.itemById.get('one')).toMatchObject({
+			from: 0,
+			durationInFrames: 60,
+			sourceStart: 100,
+			sourceEnd: 160
+		});
+	});
+
+	it('adds generated layers only to an unlocked visual track', async () => {
+		const lockedTrack = { ...track, id: 'locked', locked: true, order: 0 };
+		const openTrack = { ...track, id: 'open', locked: false, order: 1 };
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [composition({ items: [], tracks: [lockedTrack, openTrack, audioTrack] })]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		await screen.getByTestId('add-layer-text').click();
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(1));
+		expect(timelineStore.items[0]).toMatchObject({ trackId: 'open', type: 'text', label: 'Text' });
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		timelineStore._setTracks(
+			timelineStore.tracks.map((candidate) => ({ ...candidate, locked: true }))
+		);
+		await screen.getByTestId('add-layer-solid').click();
+		expect(timelineStore.items).toHaveLength(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('offers every compositor blend mode, persists one exact choice, and disables locked edits', async () => {
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		await screen.getByTestId('layer-expand-one').click();
+		const selectElement = screen.getByTestId('blend-one').element();
+		if (!(selectElement instanceof HTMLSelectElement))
+			throw new Error('blend picker should be a select');
+		expect(selectElement.options).toHaveLength(25);
+		expect([...selectElement.options].map((option) => option.value)).not.toContain('add');
+		selectElement.value = 'color-burn';
+		selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+		await vi.waitFor(() => expect(timelineStore.itemById.get('one')?.blendMode).toBe('color-burn'));
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		timelineStore._setTracks(
+			timelineStore.tracks.map((candidate) =>
+				candidate.id === track.id ? { ...candidate, locked: true } : candidate
+			)
+		);
+		await vi.waitFor(() => expect(selectElement.disabled).toBe(true));
+		await expect(screen.getByTestId('timing-in-one')).toBeDisabled();
+		await expect(screen.getByTestId('timing-out-one')).toBeDisabled();
+	});
+
+	it('creates and removes a direct property link on the chosen target with one undo each', async () => {
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		await screen.getByTestId('layer-expand-one').click();
+		await screen.getByTestId('layer-expand-two').click();
+		await screen.getByTestId('link-pick-btn-one').click();
+		expect(screen.getByTestId('link-pick-btn-one')).toHaveAttribute('aria-pressed', 'true');
+		await screen.getByTestId('link-pick-btn-two').click();
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get('one')?.propertyLinks).toEqual([
+				{
+					type: 'link',
+					targetProperty: 'x',
+					sourceItemId: 'two',
+					sourceProperty: 'x',
+					enabled: true,
+					timeOffsetFrames: 0
+				}
+			])
+		);
+		expect(timelineStore.itemById.get('two')?.propertyLinks).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		await expect(screen.getByTestId('link-badge-one-x')).toHaveTextContent('x→two');
+
+		await screen.getByTestId('link-remove-one-x').click();
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get('one')?.propertyLinks).toBeUndefined()
+		);
+		expect(commandHistory.undoStack).toHaveLength(2);
+		expect(onedit).toHaveBeenCalledTimes(2);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('one')?.propertyLinks?.[0]?.sourceItemId).toBe('two');
+	});
+
+	it('reads published controls from the nested composition and stores only the instance override', async () => {
+		const childText = makeItem({
+			id: 'child-text',
+			type: 'text',
+			text: 'Original headline'
+		});
+		const child = composition({
+			id: 'child',
+			name: 'Child',
+			items: [childText],
+			compositionControls: {
+				version: 1,
+				controls: [
+					{
+						id: 'headline',
+						name: 'Headline',
+						targetItemId: childText.id,
+						property: 'text.text',
+						kind: 'text',
+						defaultValue: 'Fallback'
+					}
+				]
+			}
+		});
+		const wrapper = makeItem({
+			id: 'wrapper',
+			type: 'composition',
+			compositionId: child.id
+		});
+		const parent = composition({ items: [wrapper] });
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [parent, child] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo(parent.id);
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		await screen.getByTestId('layer-expand-wrapper').click();
+		const inputElement = screen.getByTestId('control-override-wrapper-headline').element();
+		if (!(inputElement instanceof HTMLInputElement)) throw new Error('control should be an input');
+		expect(inputElement.value).toBe('Original headline');
+		inputElement.value = 'Launch today';
+		inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+		await vi.waitFor(() =>
+			expect(timelineStore.itemById.get('wrapper')?.compositionControlOverrides).toEqual({
+				headline: 'Launch today'
+			})
+		);
+		expect(sequenceStore.compositionById.get(child.id)?.items[0]?.text).toBe('Original headline');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('wrapper')?.compositionControlOverrides).toBeUndefined();
 	});
 
 	it('easing picker and batch retime affect selected keyframes', async () => {
-		const item = makeItem({ id: 'one', keyframes: { x: { frames: [0, 20], values: [0, 100], ids: ['a', 'b'], easings: ['linear', 'linear'] } } as any });
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] }, { width: 1920, height: 1080, fps: 30 });
+		// SAFETY: test supplies minimal keyframe track for easing picker; full contract not needed.
+		const item = makeItem({
+			id: 'one',
+			keyframes: {
+				x: { frames: [0, 20], values: [0, 100], ids: ['a', 'b'], easings: ['linear', 'linear'] }
+			} as any
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		await screen.getByTestId('layer-expand-one').click();
@@ -589,19 +995,57 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		expect(screen.getByTestId('retime-batch-one')).toBeVisible();
 	});
 
-	it('snap guide appears during drag near snap target', async () => {
+	it('snaps a move near an edge, commits once, and honors disabled snapping', async () => {
 		const one = makeItem({ id: 'one', from: 0, durationInFrames: 30 });
-		const two = makeItem({ id: 'two', from: 30, durationInFrames: 30 });
-		sequenceStore.load({ ...createEmptyTimeline(), compositions: [composition({ items: [one, two] })] }, { width: 1920, height: 1080, fps: 30 });
+		const two = makeItem({ id: 'two', from: 60, durationInFrames: 30 });
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [one, two] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
 		sequenceStore.switchTo('comp-1');
-		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
 		const bar = screen.getByTestId('composition-bar-two').element();
-		const rect = bar.getBoundingClientRect();
-		await bar.dispatchEvent(new PointerEvent('pointerdown', { button: 0, clientX: rect.left + 5, bubbles: true }));
-		window.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left - 5, bubbles: true }));
-		// snap guide may appear if near edge
-		await new Promise((r) => setTimeout(r, 50));
-		window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+		async function dragNearPreviousEnd(): Promise<void> {
+			const rect = bar.getBoundingClientRect();
+			const startX = rect.left + rect.width / 2;
+			bar.dispatchEvent(
+				new PointerEvent('pointerdown', {
+					button: 0,
+					pointerId: 7,
+					clientX: startX,
+					bubbles: true
+				})
+			);
+			window.dispatchEvent(
+				new PointerEvent('pointermove', {
+					pointerId: 7,
+					clientX: startX - 116,
+					bubbles: true
+				})
+			);
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		}
+
+		await dragNearPreviousEnd();
+		await expect(screen.getByTestId('composition-snap-guide')).toBeVisible();
+		window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, bubbles: true }));
+		await vi.waitFor(() => expect(timelineStore.itemById.get('two')?.from).toBe(30));
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		await vi.waitFor(() => expect(timelineStore.itemById.get('two')?.from).toBe(60));
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		timelineStore._setSnapEnabled(false);
+		commandHistory.clearHistory();
+		await dragNearPreviousEnd();
+		expect(document.querySelector('[data-testid="composition-snap-guide"]')).toBeNull();
+		window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, bubbles: true }));
+		await vi.waitFor(() => expect(timelineStore.itemById.get('two')?.from).toBe(31));
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledTimes(2);
 	});
 
 	it('keeps text bands without overflow at 320px', async () => {
