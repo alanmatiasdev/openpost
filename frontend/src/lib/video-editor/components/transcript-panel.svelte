@@ -29,7 +29,10 @@
 	} from '$lib/video-editor/transcript/subtitle-cue-format';
 	import { collectTranscriptSourceWords } from '$lib/video-editor/transcript/speech-cleanup';
 	import { applyTranscriptTargetRangeRemoval } from '$lib/video-editor/transcript/speech-cleanup-actions';
+	import { buildTranscriptClipboardItems } from '$lib/video-editor/transcript/transcript-clipboard';
+	import { registerTranscriptCopyHandler } from '$lib/video-editor/transcript/transcript-copy-bridge';
 	import { transcriptIgnoreStore } from '$lib/video-editor/transcript/transcript-ignore-store.svelte';
+	import { itemClipboardStore } from '$lib/video-editor/timeline/stores/item-clipboard-store.svelte';
 	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
 	import { findTranscriptWordMatches } from '$lib/video-editor/transcript/fuzzy-search';
 	import {
@@ -46,6 +49,10 @@
 		type PointerGestureSessionHost
 	} from '$lib/video-editor/timeline/pointer-gesture-session';
 	import { formatTimelinePreviewTimecode } from '$lib/video-editor/preview/timeline-preview-scrub';
+	import { effectiveMediaTracks } from '$lib/video-editor/timeline/utils/track-groups';
+	import { snapshotTimelineState } from '$lib/video-editor/timeline/utils/state-snapshot.svelte';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import { eventMatchesShortcut } from '$lib/video-editor/settings/keyboard-shortcuts';
 
 	let { onedit, itemIds = [] }: { onedit: () => void; itemIds?: string[] } = $props();
 
@@ -60,7 +67,9 @@
 	let searchQuery = $state('');
 	let activeSearchMatch = $state(0);
 	let panelElement: HTMLDivElement | null = $state(null);
+	let clipboardStatus = $state('');
 	let pointerGestures: PointerGestureSessionHost | null = null;
+	let unregisterTranscriptCopy: (() => void) | null = null;
 
 	interface SearchToken {
 		key: string;
@@ -142,10 +151,16 @@
 	});
 	onMount(() => {
 		pointerGestures = createBrowserPointerGestureSessionHost();
+		unregisterTranscriptCopy = registerTranscriptCopyHandler({
+			isActive: () => editVideoMode && selectedSourceWords.length > 0,
+			copy: handleCopyWords
+		});
 	});
 	onDestroy(() => {
 		pointerGestures?.destroy();
 		pointerGestures = null;
+		unregisterTranscriptCopy?.();
+		unregisterTranscriptCopy = null;
 	});
 
 	function displayText(cue: SubtitleCue): string {
@@ -330,6 +345,18 @@
 			(target instanceof HTMLElement && target.isContentEditable)
 		)
 			return;
+		if (eventMatchesShortcut(event, keyboardShortcuts.bindings.COPY)) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			handleCopyWords(false);
+			return;
+		}
+		if (eventMatchesShortcut(event, keyboardShortcuts.bindings.CUT)) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			handleCopyWords(true);
+			return;
+		}
 		if (event.key === 'Delete' || event.key === 'Backspace') {
 			event.preventDefault();
 			event.stopPropagation();
@@ -364,6 +391,42 @@
 		transcriptIgnoreStore.clear();
 		clearWordSelection();
 		onedit();
+	}
+
+	function handleCopyWords(cut: boolean): void {
+		if (selectedSourceWords.length === 0) return;
+		const lockedTrackIds = cut
+			? new Set(
+					effectiveMediaTracks(timelineStore.tracks)
+						.filter((track) => track.locked)
+						.map((track) => track.id)
+				)
+			: new Set<string>();
+		const clones = buildTranscriptClipboardItems(
+			selectedSourceWords,
+			(cut
+				? timelineStore.items.filter((item) => !lockedTrackIds.has(item.trackId))
+				: timelineStore.items
+			).map((item) => snapshotTimelineState(item)),
+			timelineStore.fps
+		);
+		if (clones.length === 0) return;
+		if (cut) {
+			const result = applyTranscriptTargetRangeRemoval(
+				buildTranscriptSelectionRanges(selectedSourceWords),
+				selectedSourceWords
+			);
+			if (result.removedItemCount === 0) return;
+			onedit();
+		}
+		itemClipboardStore.copy(clones, cut ? 'cut' : 'copy');
+		void navigator.clipboard
+			?.writeText(selectedSourceWords.map((word) => word.text).join(' '))
+			.catch(() => undefined);
+		clipboardStatus = cut
+			? m.video_editor_transcript_cut_words({ count: selectedSourceWords.length })
+			: m.video_editor_transcript_copied_words({ count: selectedSourceWords.length });
+		clearWordSelection();
 	}
 
 	function ignoredDurationLabel(): string {
@@ -536,23 +599,50 @@
 			<p class="text-[10px] leading-4 text-[oklch(0.68_0.012_55)]">
 				{m.video_editor_transcript_selection_help()}
 			</p>
+			{#if clipboardStatus}
+				<p class="text-[10px] leading-4 text-[var(--video-editor-focus)]" aria-live="polite">
+					{clipboardStatus}
+				</p>
+			{/if}
 			<div class="flex items-center justify-between gap-2">
 				<span class="text-[10px] text-[oklch(0.68_0.012_55)]">
 					{m.video_editor_transcript_words_selected({
 						count: selectedSourceWords.length
 					})}
 				</span>
-				<Button
-					type="button"
-					size="sm"
-					class="min-h-7 px-2 text-[10px]"
-					disabled={selectedSourceWords.length === 0}
-					onclick={updateSelectedVideoWords}
-				>
-					{selectedWordsAreIgnored
-						? m.video_editor_restore_selected_words()
-						: m.video_editor_stage_selected_words()}
-				</Button>
+				<div class="flex flex-wrap justify-end gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="min-h-7 px-2 text-[10px]"
+						disabled={selectedSourceWords.length === 0}
+						onclick={() => handleCopyWords(false)}
+					>
+						{m.video_editor_shortcuts_command_copy()}
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="min-h-7 px-2 text-[10px]"
+						disabled={selectedSourceWords.length === 0}
+						onclick={() => handleCopyWords(true)}
+					>
+						{m.video_editor_shortcuts_command_cut()}
+					</Button>
+					<Button
+						type="button"
+						size="sm"
+						class="min-h-7 px-2 text-[10px]"
+						disabled={selectedSourceWords.length === 0}
+						onclick={updateSelectedVideoWords}
+					>
+						{selectedWordsAreIgnored
+							? m.video_editor_restore_selected_words()
+							: m.video_editor_stage_selected_words()}
+					</Button>
+				</div>
 			</div>
 			{#if ignoredSourceWords.length > 0}
 				<div

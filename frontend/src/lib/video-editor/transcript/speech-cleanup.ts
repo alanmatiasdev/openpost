@@ -226,10 +226,12 @@ export function collectTranscriptSourceWords(
 				for (const selectedItem of selectedItemsByMediaId.get(captionSource.mediaId) ?? []) {
 					const span = getItemSourceSpanSeconds(selectedItem, timelineFps);
 					if (!span || !overlapsSelectedSpan({ start, end }, [span])) continue;
-					const timelineStartFrame = sourceSecondsToTimelineFrame(selectedItem, start, timelineFps);
+					const firstBoundary = sourceSecondsToTimelineFrame(selectedItem, start, timelineFps);
+					const secondBoundary = sourceSecondsToTimelineFrame(selectedItem, end, timelineFps);
+					const timelineStartFrame = Math.min(firstBoundary, secondBoundary);
 					const timelineEndFrame = Math.max(
 						timelineStartFrame + 1,
-						sourceSecondsToTimelineFrame(selectedItem, end, timelineFps)
+						Math.max(firstBoundary, secondBoundary)
 					);
 					const key = `${captionSource.mediaId}:${timelineStartFrame}:${timelineEndFrame}:${normalizeWord(word.text)}`;
 					if (seen.has(key)) continue;

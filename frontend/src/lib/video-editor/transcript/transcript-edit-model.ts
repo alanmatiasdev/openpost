@@ -51,6 +51,7 @@ export function buildTranscriptSelectionRanges(
 	for (const word of words) {
 		if (!word.sourceItemId) continue;
 		if (runMediaId === word.mediaId && runSourceItemId === word.sourceItemId) {
+			runStart = Math.min(runStart, word.start);
 			runEnd = Math.max(runEnd, word.end);
 			continue;
 		}

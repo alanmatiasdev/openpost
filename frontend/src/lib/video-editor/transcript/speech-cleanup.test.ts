@@ -93,6 +93,28 @@ describe('speech cleanup transcript mapping', () => {
 			{ sourceItemId: 'repeat', timelineStartFrame: 315, timelineEndFrame: 324 }
 		]);
 	});
+
+	it('projects reversed source words onto ascending timeline spans', () => {
+		const reversed = {
+			...source,
+			from: 100,
+			durationInFrames: 90,
+			sourceStart: 300,
+			sourceEnd: 390,
+			speed: 1,
+			isReversed: true
+		};
+		const captions = transcript([{ id: 'backward', text: 'backward', start: 30, end: 60 }]);
+		captions.captionSource = {
+			type: 'transcript',
+			clipId: reversed.id,
+			mediaId: 'media',
+			sourceStartSeconds: 10,
+			playbackSpeed: 1
+		};
+		const words = collectTranscriptSourceWords([reversed, captions], [reversed.id], 30);
+		expect(words).toMatchObject([{ timelineStartFrame: 130, timelineEndFrame: 160 }]);
+	});
 });
 
 describe('filler detection', () => {

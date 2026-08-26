@@ -55,4 +55,14 @@ describe('transcript edit model', () => {
 			other: { mediaId: 'media', ranges: [{ start: 2, end: 3 }] }
 		});
 	});
+
+	it('covers the full descending source span of a reversed clip run', () => {
+		const reversed = [
+			{ ...word('later-source', 0, 10), start: 2, end: 3 },
+			{ ...word('earlier-source', 12, 20), start: 1, end: 2 }
+		];
+		expect(buildTranscriptSelectionRanges(reversed)).toEqual({
+			source: { mediaId: 'media', ranges: [{ start: 1, end: 3 }] }
+		});
+	});
 });

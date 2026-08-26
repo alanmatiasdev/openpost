@@ -101,6 +101,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		type EditorShortcutId
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import { itemClipboardStore } from '$lib/video-editor/timeline/stores/item-clipboard-store.svelte';
+	import { pasteTimelineItemClipboard } from '$lib/video-editor/timeline/actions/item-clipboard';
+	import { handleTranscriptClipboardCopy } from '$lib/video-editor/transcript/transcript-copy-bridge';
+	import { expandSelectionWithLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
+	import { snapshotTimelineState } from '$lib/video-editor/timeline/utils/state-snapshot.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { sourceHoverStore } from '$lib/video-editor/source-monitor/source-hover.svelte';
 	import { shuttleScrubResume } from '$lib/video-editor/preview/shuttle-scrub-resume.svelte';
@@ -734,8 +739,51 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		}
 	}
 
+	function copyTimelineSelection(cut: boolean): boolean {
+		if (handleTranscriptClipboardCopy(cut)) return true;
+		const selectedIds =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		const itemIds = timelineStore.linkedSelectionEnabled
+			? expandSelectionWithLinkedItems(timelineStore.items, selectedIds)
+			: selectedIds;
+		const items = timelineStore.items.filter((item) => itemIds.includes(item.id));
+		if (items.length === 0) return false;
+		let copiedItems = items.map((item) => snapshotTimelineState(item));
+		if (cut) {
+			const removed = removeItems(itemIds, false);
+			if (removed.length === 0) return false;
+			const removedIds = new Set(removed);
+			copiedItems = items.filter((item) => removedIds.has(item.id));
+			selectedItemId = null;
+			selectedItemIds = [];
+			editorSession.scheduleAutosave();
+		}
+		itemClipboardStore.copy(copiedItems, cut ? 'cut' : 'copy');
+		showToast(
+			cut
+				? m.video_editor_clipboard_cut_items({ count: copiedItems.length })
+				: m.video_editor_clipboard_copied_items({ count: copiedItems.length }),
+			'success'
+		);
+		return true;
+	}
+
+	function pasteTimelineClipboard(): boolean {
+		const activeTrackId = selectedItemId
+			? (timelineStore.itemById.get(selectedItemId)?.trackId ?? null)
+			: null;
+		const pastedIds = pasteTimelineItemClipboard(activeTrackId);
+		if (pastedIds.length === 0) return false;
+		selectedItemIds = pastedIds;
+		selectedItemId = pastedIds.at(-1) ?? null;
+		selectedTransitionId = null;
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_clipboard_pasted_items({ count: pastedIds.length }), 'success');
+		return true;
+	}
+
 	function onKeydown(event: KeyboardEvent): void {
-		if (event.repeat) return;
+		if (event.repeat || event.defaultPrevented) return;
 		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
@@ -794,6 +842,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			changeEditorWorkspace(
 				matches('WORKSPACE_EDIT') ? 'edit' : matches('WORKSPACE_COLOR') ? 'color' : 'motion'
 			);
+		} else if (matches('COPY', 'CUT')) {
+			if (copyTimelineSelection(matches('CUT'))) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+			}
+		} else if (matches('PASTE')) {
+			if (pasteTimelineClipboard()) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+			}
 		} else if (matches('UNDO')) {
 			event.preventDefault();
 			if (commandHistory.canUndo) {

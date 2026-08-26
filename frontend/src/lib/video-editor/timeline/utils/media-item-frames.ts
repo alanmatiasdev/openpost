@@ -45,7 +45,7 @@ export function sourceSecondsToTimelineFrame(
 			sourceStart +
 				timelineToSourceFrames(item.durationInFrames, getMediaSpeed(item), timelineFps, sourceFps))
 		: sourceStart;
-	const deltaSourceFrames = sourceFrame - sourceStart;
+	const deltaSourceFrames = item.isReversed ? sourceEnd - sourceFrame : sourceFrame - sourceStart;
 	const timelineDelta = sourceToTimelineFrames(
 		deltaSourceFrames,
 		getMediaSpeed(item),

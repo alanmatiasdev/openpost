@@ -5,6 +5,7 @@ import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { transcriptIgnoreStore } from '../transcript/transcript-ignore-store.svelte';
+import { itemClipboardStore } from '../timeline/stores/item-clipboard-store.svelte';
 import TranscriptPanel from './transcript-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -41,6 +42,7 @@ const item: TimelineItem = {
 beforeEach(() => {
 	commandHistory.clearHistory();
 	transcriptIgnoreStore.__resetForTesting();
+	itemClipboardStore.__resetForTesting();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({
 		tracks: [track],
@@ -216,6 +218,12 @@ describe('TranscriptPanel cue formatting', () => {
 			.toHaveAttribute('data-active', 'true');
 		await screen.getByRole('button', { name: 'Select "um"' }).click();
 		await expect.element(screen.getByText('Words selected: 1')).toBeVisible();
+		await screen.getByRole('button', { name: 'Copy', exact: true }).click();
+		await expect.element(screen.getByText('Words copied: 1')).toBeVisible();
+		expect(itemClipboardStore.items).toMatchObject([
+			{ from: 0, durationInFrames: 15, sourceStart: 30, sourceEnd: 45 }
+		]);
+		await screen.getByRole('button', { name: 'Select "um"' }).click();
 		await screen.getByRole('button', { name: 'Stage words' }).click();
 		await expect.element(screen.getByText('1 staged · 0.5s')).toBeVisible();
 		expect(screen.container.querySelector('[data-ignored="true"]')).not.toBeNull();

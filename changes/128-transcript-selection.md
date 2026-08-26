@@ -1,3 +1,4 @@
 ### Added
 
 - Edit by Transcript now supports Selection and Project scope, contiguous drag and Shift selection, active-word tracking, Backspace staging, and Ctrl or Command+Enter commit. Transcript tokens keep exact timeline ownership across repeated source uses and linked A/V pairs, while one undoable cut removes the selected phrase and its internal pauses without trimming another use of the same media.
+- Transcript Copy and Cut now carry source-trimmed media, linked audio, effects, and timing gaps into the shared timeline clipboard. Paste keeps multi-track alignment, shifts the group past collisions, creates independent links and origins, and lands as one undo step. Reversed clips map transcript ranges back to ascending timeline frames without losing their source span.
