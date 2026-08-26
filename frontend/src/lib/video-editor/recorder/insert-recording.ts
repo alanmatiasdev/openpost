@@ -113,6 +113,7 @@ export async function insertRecordingArtifacts(
 		return executeAtomic('INSERT_RECORDING', () => {
 			const itemIds: string[] = [];
 			const mediaIds = imported.map((entry) => entry.mediaId);
+			const linkedGroupId = artifacts.length > 1 ? crypto.randomUUID() : undefined;
 			artifacts.forEach((artifact, index) => {
 				const importedEntry = imported[index];
 				if (!importedEntry) return;
@@ -149,6 +150,7 @@ export async function insertRecordingArtifacts(
 					type: trackKind === 'audio' ? 'audio' : 'video',
 					mediaId: importedEntry.mediaId,
 					originId: crypto.randomUUID(),
+					linkedGroupId,
 					sourceStart: 0,
 					sourceEnd: sourceDuration,
 					sourceDuration,
