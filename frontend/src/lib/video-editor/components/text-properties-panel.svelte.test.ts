@@ -118,4 +118,25 @@ describe('TextPropertiesPanel', () => {
 			textSpans: [{ text: 'Launch' }, { text: 'Função ou subtítulo' }]
 		});
 	});
+
+	it('offers the full authored copy for linked speech generation', async () => {
+		timelineStore._updateItems([
+			{
+				id: 'text',
+				patch: {
+					textSpans: [{ text: 'Launch' }, { text: 'Built for small teams' }]
+				}
+			}
+		]);
+		const oncreatevoice = vi.fn();
+		const screen = await render(TextPropertiesPanel, {
+			item: timelineStore.itemById.get('text')!,
+			onedit: vi.fn(),
+			oncreatevoice
+		});
+
+		await screen.getByRole('button', { name: 'Create voice from text' }).click();
+		expect(oncreatevoice).toHaveBeenCalledOnce();
+		expect(oncreatevoice).toHaveBeenCalledWith('text', 'Launch\nBuilt for small teams');
+	});
 });

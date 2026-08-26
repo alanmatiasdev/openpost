@@ -37,7 +37,15 @@
 	} from '$lib/video-editor/audio/audio-pitch';
 	import AudioEqPanel from './audio-eq-panel.svelte';
 
-	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
+	let {
+		itemId,
+		onedit,
+		oncreatevoice
+	}: {
+		itemId: string | null;
+		onedit: () => void;
+		oncreatevoice?: (itemId: string, text: string) => void;
+	} = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const audioItem = $derived.by(() => {
 		if (!item || (item.type !== 'video' && item.type !== 'audio')) return undefined;
@@ -789,7 +797,7 @@
 				>
 					{m.video_editor_tool_text()}
 				</h3>
-				<TextPropertiesPanel {item} {onedit} />
+				<TextPropertiesPanel {item} {onedit} {oncreatevoice} />
 				<div class="mt-2 grid grid-cols-2 gap-1">
 					{#each textFields as field (field.property)}
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"

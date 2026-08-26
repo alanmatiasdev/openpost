@@ -23,7 +23,11 @@
 		commitGeneratedAudio,
 		type CommitGeneratedAudioOptions
 	} from '$lib/video-editor/local-ai/commit-generated-audio';
-	import type { GeneratedAudio, LocalGenerationProgress } from '$lib/video-editor/local-ai/types';
+	import type {
+		GeneratedAudio,
+		LocalGenerationProgress,
+		TextVoiceRequest
+	} from '$lib/video-editor/local-ai/types';
 	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 	import LocalMusicPanel from './local-music-panel.svelte';
 	import { transcriptionLanguageUiLabel } from '$lib/video-editor/transcript/engine/model-i18n';
@@ -36,13 +40,15 @@
 		oninserted,
 		generateSpeech = generateLocalSpeech,
 		commitAudio = commitGeneratedAudio,
-		supported
+		supported,
+		textVoiceRequest = null
 	}: {
 		projectId: string;
 		oninserted: (itemId: string) => void;
 		generateSpeech?: GenerateSpeech;
 		commitAudio?: CommitAudio;
 		supported?: boolean;
+		textVoiceRequest?: TextVoiceRequest | null;
 	} = $props();
 
 	interface Generation {
@@ -68,6 +74,8 @@
 	let voiceTab: HTMLButtonElement;
 	let musicTab: HTMLButtonElement;
 	let abortController: AbortController | null = null;
+	let sourceTextItemId = $state<string | null>(null);
+	let handledTextVoiceRequestId = $state<string | null>(null);
 	const voiceOptions = $derived(localTtsVoiceOptions(engine));
 	const speedRange = $derived(localTtsSpeedRange(engine));
 	const engineSupported = $derived(supported ?? isLocalTtsSupported(engine));
@@ -78,6 +86,14 @@
 				? m.video_editor_local_ai_moss_description()
 				: m.video_editor_local_ai_supertonic_description()
 	);
+
+	$effect(() => {
+		if (!textVoiceRequest || textVoiceRequest.id === handledTextVoiceRequestId) return;
+		handledTextVoiceRequestId = textVoiceRequest.id;
+		sourceTextItemId = textVoiceRequest.sourceTextItemId;
+		text = textVoiceRequest.text;
+		activeTab = 'voice';
+	});
 
 	function changeEngine(event: Event): void {
 		const target = event.currentTarget;
@@ -183,7 +199,8 @@
 				projectId,
 				tags: localTtsTags(generation.engine, generation.voice),
 				existingMediaId: generation.mediaId,
-				...(insert && { insertAtFrame: timelineStore.currentFrame })
+				...(insert &&
+					(sourceTextItemId ? { sourceTextItemId } : { insertAtFrame: timelineStore.currentFrame }))
 			};
 			const committed = await commitAudio(generation.result, options);
 			generation.mediaId = committed.media.id;
@@ -260,6 +277,21 @@
 			</div>
 
 			<div class="space-y-1.5 border-b border-[oklch(0.24_0.012_55)] p-2">
+				{#if sourceTextItemId}
+					<div
+						class="flex items-center justify-between gap-2 rounded border border-[oklch(0.38_0.07_45)] bg-[oklch(0.22_0.025_45)] px-2 py-1 text-[10px] text-[oklch(0.82_0.04_65)]"
+						role="status"
+					>
+						<span>{m.video_editor_local_ai_linked_text_hint()}</span>
+						<button
+							type="button"
+							class="shrink-0 rounded px-1 py-0.5 text-[9px] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							onclick={() => (sourceTextItemId = null)}
+						>
+							{m.video_editor_local_ai_unlink_text()}
+						</button>
+					</div>
+				{/if}
 				<label for="local-ai-script" class="block text-[10px] text-[oklch(0.66_0.015_55)]">
 					{m.video_editor_local_ai_script()}
 				</label>
@@ -459,7 +491,9 @@
 								onclick={() => void save(generation, true)}
 							>
 								<PlusIcon class="size-3" aria-hidden="true" />
-								{m.video_editor_local_ai_add_timeline()}
+								{sourceTextItemId
+									? m.video_editor_local_ai_add_and_link()
+									: m.video_editor_local_ai_add_timeline()}
 							</Button>
 						</div>
 					</article>

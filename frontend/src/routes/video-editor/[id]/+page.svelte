@@ -102,6 +102,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+	import type { TextVoiceRequest } from '$lib/video-editor/local-ai/types';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -116,8 +117,19 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let unsupportedAudioResolve: ((decision: 'import' | 'cancel') => void) | null = null;
 	let assetPanel = $state<'media' | 'assets' | 'scenes' | 'ai'>('media');
 	let mobileEditPane = $state<'assets' | 'program' | 'tools'>('program');
+	let textVoiceRequest = $state<TextVoiceRequest | null>(null);
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
+
+	function openTextVoice(itemId: string, text: string): void {
+		textVoiceRequest = {
+			id: crypto.randomUUID(),
+			sourceTextItemId: itemId,
+			text
+		};
+		assetPanel = 'ai';
+		mobileEditPane = 'assets';
+	}
 
 	$effect(() => {
 		if (!projectId) return;
@@ -1011,6 +1023,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											? [selectedItemId]
 											: []}
 									onautosave={() => editorSession.scheduleAutosave()}
+									{textVoiceRequest}
 								/>
 							{/if}
 							<MediaTaskProgress />
@@ -1153,6 +1166,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<ClipPropertiesPanel
 										itemId={selectedItemId}
 										onedit={() => editorSession.scheduleAutosave()}
+										oncreatevoice={openTextVoice}
 									/>
 								</div>
 							{/if}

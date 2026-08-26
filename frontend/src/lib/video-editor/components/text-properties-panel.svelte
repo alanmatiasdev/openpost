@@ -15,10 +15,20 @@
 	} from '../timeline/actions/text-layout';
 	import { getTextItemLayoutMode, type TextLayoutMode } from '../typography/text-layout-drafts';
 	import { buildTextItemLabelFromText } from '../typography/text-item-spans';
+	import { getTextItemPlainText } from '../typography/text-item-spans';
 	import { TEXT_STYLE_PRESETS, type TextStylePresetCopy } from '../typography/text-style-presets';
 
-	let { item, onedit }: { item: TimelineItem; onedit: () => void } = $props();
+	let {
+		item,
+		onedit,
+		oncreatevoice
+	}: {
+		item: TimelineItem;
+		onedit: () => void;
+		oncreatevoice?: (itemId: string, text: string) => void;
+	} = $props();
 	const activeItem = $derived(timelineStore.itemById.get(item.id) ?? item);
+	const speakableText = $derived(getTextItemPlainText(activeItem).trim());
 	const layout = $derived(getTextItemLayoutMode(activeItem));
 	const canvas = $derived({
 		width: editorSession.project?.metadata.width ?? 1920,
@@ -220,6 +230,18 @@
 </script>
 
 <div class="space-y-2">
+	{#if oncreatevoice}
+		<Button
+			type="button"
+			size="sm"
+			variant="outline"
+			class="w-full"
+			disabled={!speakableText}
+			onclick={() => oncreatevoice?.(activeItem.id, speakableText)}
+		>
+			{m.video_editor_text_create_voice()}
+		</Button>
+	{/if}
 	<div class="space-y-1">
 		<span class="field-label">{m.video_editor_text_layout()}</span>
 		<div class="layout-switch" role="group" aria-label={m.video_editor_text_layout()}>

@@ -113,6 +113,45 @@ describe('LocalAiPanel', () => {
 		expect(oninserted).toHaveBeenCalledWith('voice-item');
 	});
 
+	it('prefills selected text and inserts aligned linked speech instead of using the playhead', async () => {
+		const commitAudio = vi.fn().mockResolvedValue({ media, itemId: 'linked-voice' });
+		const oninserted = vi.fn();
+		const screen = await render(LocalAiPanel, {
+			projectId: 'project-1',
+			oninserted,
+			generateSpeech: vi.fn(async () => generated),
+			commitAudio,
+			supported: true,
+			textVoiceRequest: {
+				id: 'request-1',
+				sourceTextItemId: 'title-item',
+				text: 'A linked launch line.'
+			}
+		});
+
+		await expect
+			.element(screen.getByRole('textbox', { name: 'Script' }))
+			.toHaveValue('A linked launch line.');
+		await expect
+			.element(screen.getByText('Audio will start with and stay linked to this text item.'))
+			.toBeVisible();
+		await screen.getByRole('button', { name: 'Generate voiceover' }).click();
+		await screen.getByRole('button', { name: 'Add and link' }).click();
+
+		expect(commitAudio).toHaveBeenCalledWith(
+			generated,
+			expect.objectContaining({
+				projectId: 'project-1',
+				sourceTextItemId: 'title-item'
+			})
+		);
+		expect(commitAudio.mock.calls[0]?.[1]).not.toHaveProperty('insertAtFrame');
+		expect(oninserted).toHaveBeenCalledWith('linked-voice');
+
+		screen.container.style.width = '260px';
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	});
+
 	it('switches to Supertonic with its own voices and language selection', async () => {
 		const generateSpeech = vi.fn(async () => generated);
 		const screen = await render(LocalAiPanel, {
