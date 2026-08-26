@@ -17,23 +17,6 @@ import {
 	keyframeValueToHexColor
 } from '../timeline/color-keyframes';
 
-type NonAnimatableNumberParams = ReadonlyMap<string, ReadonlySet<string>>;
-
-const NON_ANIMATABLE_NUMBER_PARAMS: NonAnimatableNumberParams = new Map([
-	['gpu-gaussian-blur', new Set(['samples'])],
-	['gpu-motion-blur', new Set(['samples'])],
-	['gpu-radial-blur', new Set(['samples'])],
-	['gpu-zoom-blur', new Set(['samples'])],
-	['gpu-hue-shift', new Set(['flow'])],
-	['gpu-trigger-wave', new Set(['speed'])],
-	['gpu-grain', new Set(['speed'])],
-	['gpu-glow', new Set(['rings', 'samplesPerRing'])],
-	['gpu-scanlines', new Set(['speed'])],
-	['gpu-color-glitch', new Set(['speed'])],
-	['gpu-block-glitch', new Set(['speed'])],
-	['gpu-vhs', new Set(['speed'])]
-]);
-
 export interface ParsedEffectKeyframeProperty {
 	effectType: string;
 	effectId: string;
@@ -70,10 +53,12 @@ export function isAnimatableEffectParam(effect: GpuEffect, paramName: string): b
 	const schema = effectParamSchema(effect, paramName);
 	if (!schema || schema.visibleWhen?.(effect.params) === false) return false;
 	if (!schema.type || schema.type === 'number') {
-		return !NON_ANIMATABLE_NUMBER_PARAMS.get(effect.effectId)?.has(paramName);
+		return schema.animatable !== false;
 	}
 	return (
-		schema.type === 'color' && colorStringToKeyframeValue(String(effect.params[paramName])) !== null
+		schema.type === 'color' &&
+		schema.animatable !== false &&
+		colorStringToKeyframeValue(String(effect.params[paramName])) !== null
 	);
 }
 
