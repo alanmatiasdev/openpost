@@ -5,6 +5,7 @@
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { nearestColorFamily } from '$lib/video-editor/media/scene-search/color-boost';
+	import { isSceneAnalyzableMedia } from '$lib/video-editor/media/scene-search/scene-analysis-client';
 	import { sceneBrowser } from '$lib/video-editor/media/scene-search/scene-browser.svelte';
 	import { insertSceneAtPlayhead } from '$lib/video-editor/media/scene-search/scene-insert';
 	import {
@@ -28,11 +29,7 @@
 	let batchBusy = $state(false);
 	let queryTimer: ReturnType<typeof setTimeout> | null = null;
 	const scenes = $derived(sceneBrowser.rankedScenes());
-	const videos = $derived(
-		mediaPool.mediaList.filter(
-			(media) => media.tags.includes('video') || media.mimeType.startsWith('video/')
-		)
-	);
+	const analyzableMedia = $derived(mediaPool.mediaList.filter(isSceneAnalyzableMedia));
 	const activeProgress = $derived.by(() => {
 		const id = sceneBrowser.analyzingMediaIds[0];
 		if (!id) return null;
@@ -43,7 +40,7 @@
 	);
 
 	$effect(() => {
-		for (const media of videos) void sceneBrowser.load(media.id);
+		for (const media of analyzableMedia) void sceneBrowser.load(media.id);
 	});
 
 	$effect(() => {
@@ -69,7 +66,7 @@
 	}
 
 	async function analyze(force: boolean): Promise<void> {
-		if (batchBusy || videos.length === 0) return;
+		if (batchBusy || analyzableMedia.length === 0) return;
 		batchBusy = true;
 		try {
 			await sceneBrowser.analyzeBatch(force);
@@ -154,7 +151,7 @@
 			<button
 				type="button"
 				class="flex h-7 items-center gap-1 rounded-md border border-[oklch(0.3_0.015_55)] px-2 text-[11px] hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-50"
-				disabled={batchBusy || videos.length === 0}
+				disabled={batchBusy || analyzableMedia.length === 0}
 				title={m.video_editor_scene_analyze()}
 				onclick={() => analyze(false)}
 			>
