@@ -10,12 +10,24 @@ export interface StreamingOutputTarget {
 	discard(): Promise<void>;
 }
 
+export interface StreamingFileWritable {
+	write(data: FileSystemWriteChunkType): Promise<void>;
+	close(): Promise<void>;
+	abort(reason?: Error): Promise<void>;
+}
+
+export interface StreamingWritableLifecycle {
+	writable: WritableStream<StreamTargetChunk>;
+	file(name: string, mimeType: string): Promise<File>;
+	discard(): Promise<void>;
+}
+
 export async function createFileSystemAccessOutputTarget(
 	handle: FileSystemFileHandle,
 	signal?: AbortSignal
 ): Promise<StreamingOutputTarget> {
 	const fileWritable = await handle.createWritable();
-	return outputTargetFromWritable(
+	return createWritableOutputTarget(
 		fileWritable,
 		async () => await handle.getFile(),
 		async () => {
@@ -39,7 +51,7 @@ export async function createStreamingOutputTarget(
 	const fileName = `render-${Date.now()}-${crypto.randomUUID()}.partial`;
 	const handle = await directory.getFileHandle(fileName, { create: true });
 	const fileWritable = await handle.createWritable();
-	return outputTargetFromWritable(
+	return createWritableOutputTarget(
 		fileWritable,
 		async () => await handle.getFile(),
 		async () => await directory.removeEntry(fileName).catch(() => undefined),
@@ -47,74 +59,145 @@ export async function createStreamingOutputTarget(
 	);
 }
 
-function outputTargetFromWritable(
-	fileWritable: FileSystemWritableFileStream,
+export function createWritableOutputTarget(
+	fileWritable: StreamingFileWritable,
 	readFile: () => Promise<File>,
 	removeFile: () => Promise<void>,
 	signal?: AbortSignal
 ): StreamingOutputTarget {
-	let closed = false;
-	let failed: unknown;
-	let resolveClosed!: () => void;
-	const closedPromise = new Promise<void>((resolve) => {
-		resolveClosed = resolve;
+	const lifecycle = createStreamingWritableLifecycle(fileWritable, readFile, removeFile, signal);
+	return {
+		target: new StreamTarget(lifecycle.writable, { chunked: true, chunkSize: 4 * 1024 * 1024 }),
+		file: lifecycle.file,
+		discard: lifecycle.discard
+	};
+}
+
+export function createStreamingWritableLifecycle(
+	fileWritable: StreamingFileWritable,
+	readFile: () => Promise<File>,
+	removeFile: () => Promise<void>,
+	signal?: AbortSignal
+): StreamingWritableLifecycle {
+	type TerminalState = 'open' | 'closing' | 'closed' | 'aborting' | 'failed';
+	let state: TerminalState = 'open';
+	let hasFailure = false;
+	let failure: Error;
+	let terminalPromise: Promise<void> | null = null;
+	let resolveTerminal!: () => void;
+	const terminal = new Promise<void>((resolve) => {
+		resolveTerminal = resolve;
 	});
+
+	const toFailure = (cause: unknown): Error => {
+		if (cause instanceof Error) return cause;
+		return new Error(String(cause ?? 'Streaming output failed.'));
+	};
+
+	const rememberFailure = (reason: Error): void => {
+		if (hasFailure) return;
+		hasFailure = true;
+		failure = reason;
+	};
+
+	const finishTerminal = (): void => {
+		signal?.removeEventListener('abort', onSignalAbort);
+		resolveTerminal();
+	};
+
+	const abortWritable = (reason: Error): Promise<void> => {
+		rememberFailure(reason);
+		if (terminalPromise) return terminalPromise;
+		if (state === 'closed') {
+			finishTerminal();
+			return Promise.resolve();
+		}
+		state = 'aborting';
+		terminalPromise = fileWritable
+			.abort(reason)
+			.catch((cause: unknown) => rememberFailure(toFailure(cause)))
+			.then(() => {
+				state = 'failed';
+				finishTerminal();
+			});
+		return terminalPromise;
+	};
+
+	function onSignalAbort(): void {
+		void abortWritable(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+	}
+
 	const writable = new WritableStream<StreamTargetChunk>({
 		async write(chunk) {
-			signal?.throwIfAborted();
+			if (state !== 'open') {
+				throw hasFailure ? failure : new Error('The output is no longer writable.');
+			}
 			try {
+				signal?.throwIfAborted();
 				await fileWritable.write({ type: 'write', position: chunk.position, data: chunk.data });
 			} catch (cause) {
-				failed ??= cause;
-				throw cause;
+				const failure = toFailure(cause);
+				await abortWritable(failure);
+				throw failure;
 			}
 		},
 		async close() {
-			try {
-				await fileWritable.close();
-				closed = true;
-				resolveClosed();
-			} catch (cause) {
-				failed ??= cause;
-				resolveClosed();
-				// Mediabunny may close a target while its writable is already errored.
-				// Keep the original failure available through file(), but do not turn
-				// cancellation cleanup into an unhandled rejection.
+			if (terminalPromise) {
+				await terminalPromise;
+				if (hasFailure) throw failure;
+				return;
 			}
+			try {
+				signal?.throwIfAborted();
+			} catch (cause) {
+				const failure = toFailure(cause);
+				await abortWritable(failure);
+				throw failure;
+			}
+			state = 'closing';
+			terminalPromise = fileWritable
+				.close()
+				.then(() => {
+					state = 'closed';
+				})
+				.catch((cause: unknown) => {
+					rememberFailure(toFailure(cause));
+					state = 'failed';
+				})
+				.then(finishTerminal);
+			await terminalPromise;
+			if (hasFailure) throw failure;
 		},
 		async abort(reason) {
-			failed ??= reason;
-			try {
-				await fileWritable.abort(reason);
-			} finally {
-				resolveClosed();
-			}
+			await abortWritable(toFailure(reason));
 		}
 	});
-	const abort = () => void fileWritable.abort(signal?.reason);
-	signal?.addEventListener('abort', abort, { once: true });
+	signal?.addEventListener('abort', onSignalAbort, { once: true });
+	if (signal?.aborted) onSignalAbort();
+
+	let removalPromise: Promise<void> | null = null;
+	const removeOnce = (): Promise<void> => {
+		removalPromise ??= removeFile();
+		return removalPromise;
+	};
 
 	return {
-		target: new StreamTarget(writable, { chunked: true, chunkSize: 4 * 1024 * 1024 }),
+		writable,
 		async file(name, mimeType) {
-			if (!closed && !failed) await closedPromise;
-			if (failed) throw failed;
+			await terminal;
+			if (hasFailure) throw failure;
 			const stored = await readFile();
 			if (stored.size === 0) throw new Error('The video renderer produced an empty file.');
-			signal?.removeEventListener('abort', abort);
 			if (stored.name === name && stored.type === mimeType) return stored;
 			return new File([stored], name, { type: mimeType, lastModified: Date.now() });
 		},
 		async discard() {
-			signal?.removeEventListener('abort', abort);
-			if (!closed) {
-				try {
-					await fileWritable.abort(new DOMException('Discarded', 'AbortError'));
-				} catch {
-					// The output may already have been cancelled by Mediabunny.
-				}
+			if (state === 'open') {
+				await abortWritable(new DOMException('Discarded', 'AbortError'));
+			} else if (terminalPromise) {
+				await terminalPromise;
 			}
-			await removeFile();
+			await removeOnce();
 		}
 	};
 }
