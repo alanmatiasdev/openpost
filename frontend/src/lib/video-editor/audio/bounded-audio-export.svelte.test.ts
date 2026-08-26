@@ -4,6 +4,7 @@ import { mediaPool } from '../media/pool.svelte';
 import { renderTimelineAudioArtifact } from '../media/render-export';
 
 function linkedFileHandle(file: File): FileSystemFileHandle {
+	// SAFETY: test helper only uses name, kind and getFile for resolveMediaBlob
 	return { kind: 'file', name: file.name, getFile: async () => file } as FileSystemFileHandle;
 }
 
@@ -442,11 +443,6 @@ describe('bounded audio export product path', () => {
 			metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000' },
 			timeline: { tracks: [track], items: [item] }
 		};
-		// Instrument: count concurrent windows by spying on mixAudioWindows iteration
-		let peakWindows = 0;
-		let active = 0;
-		const orig = (await import('../media/render-export')).renderTimelineAudioArtifact;
-		// Just verify artifact length is bounded and not O(duration) allocation spike beyond window
 		const artifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
 		const ctx = new AudioContext();
 		const decoded = await ctx.decodeAudioData(await artifact.blob.arrayBuffer());

@@ -1,7 +1,7 @@
 import type { MixEntry } from '../media/render-plan';
 import { mediaPool } from '../media/pool.svelte';
 import { resolveMediaBlob } from '../media/resolve-media-blob';
-import { reverseAudioWindow } from './reverse-audio';
+import { reverseAudioWindow, type DecodedAudioWindowSource } from './reverse-audio';
 import { processAudioChannels } from './process-audio';
 import { downmixToOutputChannels, resampleChannelLinear } from './sample-rate-converter';
 import { buildTransitionGainCurve } from './transition-crossfade';
@@ -101,7 +101,9 @@ async function decodeSourceSlice(
 	} finally {
 		try {
 			sink?.close?.();
-		} catch {}
+		} catch {
+			// Sink already closed or not yet opened - ignore.
+		}
 		input.dispose?.();
 	}
 }
@@ -171,20 +173,14 @@ export async function* mixAudioWindows(
 			if (decoded.channels.length === 0 || decoded.channels[0]!.length === 0) continue;
 			let channels = decoded.channels;
 			if (entry.reversed) {
-				const tmp = { channels, sampleRate: decoded.sampleRate } as unknown as {
-					length: number;
-					numberOfChannels: number;
-					sampleRate: number;
-					getChannelData: (c: number) => Float32Array;
+				const source: DecodedAudioWindowSource = {
+					length: channels[0]!.length,
+					numberOfChannels: channels.length,
+					sampleRate: decoded.sampleRate,
+					getChannelData: (c: number) => channels[c]!
 				};
-				// Use reverse helper via temporary AudioBuffer-like object
 				const reversed = reverseAudioWindow(
-					{
-						length: channels[0]!.length,
-						numberOfChannels: channels.length,
-						sampleRate: decoded.sampleRate,
-						getChannelData: (c: number) => channels[c]!
-					} as unknown as import('./reverse-audio').DecodedAudioWindowSource,
+					source,
 					channels[0]!.length / decoded.sampleRate,
 					channels[0]!.length / decoded.sampleRate
 				);
