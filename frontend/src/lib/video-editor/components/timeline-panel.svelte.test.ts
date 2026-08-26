@@ -185,6 +185,77 @@ describe('TimelinePanel Bento layout entry', () => {
 		}
 	});
 
+	it('edits clip gain from the selected waveform with cancel, one-step undo, and keys', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const clip = screen.getByRole('button', { name: /Music/ }).element();
+		dispatchPointer(clip, 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointerup', 300, false, 100);
+
+		const volume = screen.getByRole('slider', { name: /^Volume:/ });
+		await expect.element(volume).toBeVisible();
+		expect(volume.element().getAttribute('aria-valuetext')).toBe('0.0 dB');
+
+		dispatchPointer(volume.element(), 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointermove', 300, false, 80);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('music-bed')?.volume).toBeGreaterThan(1);
+		await expect.element(screen.getByText(/\+\d+\.\d dB/)).toBeVisible();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		dispatchPointer(volume.element(), 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointermove', 300, false, 80);
+		dispatchPointer(window, 'pointerup', 300, false, 80);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('music-bed')?.volume).toBeGreaterThan(1);
+		expect(commandHistory.getLastCommandType()).toBe('ADJUST_CLIP_VOLUME');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
+		volume
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true })
+			);
+		expect(timelineStore.itemById.get('music-bed')?.volume).toBeLessThan(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('drops an active gain draft on lost capture or unmount without leaking listeners', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const clip = screen.getByRole('button', { name: /Music/ }).element();
+		dispatchPointer(clip, 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointerup', 300, false, 100);
+		const volumeLocator = screen.getByRole('slider', { name: /^Volume:/ });
+		await expect.element(volumeLocator).toBeVisible();
+		const volume = volumeLocator.element();
+
+		dispatchPointer(volume, 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointermove', 300, false, 80);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('music-bed')?.volume).toBeGreaterThan(1);
+		volume.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true, pointerId: 7 }));
+		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(0);
+
+		dispatchPointer(volume, 'pointerdown', 300, false, 100);
+		dispatchPointer(window, 'pointermove', 300, false, 80);
+		await nextAnimationFrame();
+		expect(timelineStore.itemById.get('music-bed')?.volume).toBeGreaterThan(1);
+		await screen.unmount();
+		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
+		dispatchPointer(window, 'pointermove', 300, false, 60);
+		dispatchPointer(window, 'pointerup', 300, false, 60);
+		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(0);
+		expect(onedit).not.toHaveBeenCalled();
+	});
+
 	it('fills a long visible clip with sparse tiles and refines only the viewport', async () => {
 		const longMedia: MediaMetadata = {
 			...sceneMedia,

@@ -38,6 +38,16 @@
 	} from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
+	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
+	import {
+		AUDIO_VOLUME_DB_MAX,
+		AUDIO_VOLUME_DB_MIN,
+		audioVolumeDbFromDrag,
+		audioVolumeLinePercent,
+		audioVolumeWaveformScale,
+		clampAudioVolumeDb,
+		formatAudioVolumeDb
+	} from '$lib/video-editor/timeline/audio-volume-line';
 	import { filmstripCache, type FilmstripFrame } from '$lib/video-editor/media/filmstrip-client';
 	import {
 		animatedImageCache,
@@ -350,6 +360,18 @@
 		bodyCursor: string;
 		bodyUserSelect: string;
 	} | null = null;
+	let audioVolumeDrag = $state.raw<{
+		pointerId: number;
+		itemId: string;
+		startClientY: number;
+		latestClientY: number;
+		startDb: number;
+		rowHeight: number;
+		beforeSnapshot: TimelineSnapshot;
+		target: HTMLButtonElement;
+		animationFrame: number | null;
+		activated: boolean;
+	} | null>(null);
 	let markerLabelDraft = $state('');
 	let markerLabelDraftId = '';
 	const selectedMarker = $derived(
@@ -2290,6 +2312,156 @@
 		return kind === 'rate-stretch' || kind === 'rate-stretch-start' || kind === 'rate-stretch-end';
 	}
 
+	function audioVolumeDb(item: TimelineItem): number {
+		return linearGainToDb(item.volume ?? 1);
+	}
+
+	function applyAudioVolumeFrame(clientY: number): void {
+		if (!audioVolumeDrag) return;
+		const pointerDeltaY = clientY - audioVolumeDrag.startClientY;
+		if (!audioVolumeDrag.activated && Math.abs(pointerDeltaY) < 4) return;
+		audioVolumeDrag.activated = true;
+		const nextDb = audioVolumeDbFromDrag({
+			startDb: audioVolumeDrag.startDb,
+			pointerDeltaY,
+			height: audioVolumeDrag.rowHeight
+		});
+		timelineStore._updateItems([
+			{ id: audioVolumeDrag.itemId, patch: { volume: dbToLinearGain(nextDb) } }
+		]);
+	}
+
+	function removeAudioVolumeListeners(completed: NonNullable<typeof audioVolumeDrag>): void {
+		window.removeEventListener('pointermove', onAudioVolumePointerMove);
+		window.removeEventListener('pointerup', onAudioVolumePointerUp);
+		window.removeEventListener('pointercancel', onAudioVolumePointerCancel);
+		window.removeEventListener('keydown', onAudioVolumeKeydown);
+		completed.target.removeEventListener('lostpointercapture', onAudioVolumeLostPointerCapture);
+	}
+
+	function finishAudioVolumeDrag(cancelled: boolean): void {
+		if (!audioVolumeDrag) return;
+		const completed = audioVolumeDrag;
+		if (completed.animationFrame !== null) cancelAnimationFrame(completed.animationFrame);
+		if (!cancelled) applyAudioVolumeFrame(completed.latestClientY);
+		audioVolumeDrag = null;
+		removeAudioVolumeListeners(completed);
+		if (completed.target.hasPointerCapture(completed.pointerId)) {
+			completed.target.releasePointerCapture(completed.pointerId);
+		}
+		if (cancelled) {
+			restoreSnapshot(completed.beforeSnapshot);
+			return;
+		}
+		if (!snapshotsEqual(completed.beforeSnapshot, captureSnapshot())) {
+			commandHistory.addUndoEntry({ type: 'ADJUST_CLIP_VOLUME' }, completed.beforeSnapshot);
+			onedit();
+		}
+	}
+
+	function onAudioVolumePointerMove(event: PointerEvent): void {
+		if (!audioVolumeDrag || event.pointerId !== audioVolumeDrag.pointerId) return;
+		audioVolumeDrag.latestClientY = event.clientY;
+		if (audioVolumeDrag.animationFrame !== null) return;
+		audioVolumeDrag.animationFrame = requestAnimationFrame(() => {
+			if (!audioVolumeDrag) return;
+			audioVolumeDrag.animationFrame = null;
+			applyAudioVolumeFrame(audioVolumeDrag.latestClientY);
+		});
+	}
+
+	function onAudioVolumePointerUp(event: PointerEvent): void {
+		if (!audioVolumeDrag || event.pointerId !== audioVolumeDrag.pointerId) return;
+		audioVolumeDrag.latestClientY = event.clientY;
+		finishAudioVolumeDrag(false);
+	}
+
+	function onAudioVolumePointerCancel(event: PointerEvent): void {
+		if (audioVolumeDrag?.pointerId === event.pointerId) finishAudioVolumeDrag(true);
+	}
+
+	function onAudioVolumeLostPointerCapture(event: PointerEvent): void {
+		if (audioVolumeDrag?.pointerId === event.pointerId) finishAudioVolumeDrag(true);
+	}
+
+	function onAudioVolumeKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape' || !audioVolumeDrag) return;
+		event.preventDefault();
+		finishAudioVolumeDrag(true);
+	}
+
+	function startAudioVolumeDrag(
+		event: PointerEvent & { currentTarget: HTMLButtonElement },
+		item: TimelineItem
+	): void {
+		if (
+			event.button !== 0 ||
+			item.type !== 'audio' ||
+			activeEditTool !== null ||
+			isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)
+		)
+			return;
+		event.preventDefault();
+		event.stopPropagation();
+		const target = event.currentTarget;
+		const rowHeight = target.parentElement?.getBoundingClientRect().height ?? 56;
+		audioVolumeDrag = {
+			pointerId: event.pointerId,
+			itemId: item.id,
+			startClientY: event.clientY,
+			latestClientY: event.clientY,
+			startDb: audioVolumeDb(item),
+			rowHeight,
+			beforeSnapshot: captureSnapshot(),
+			target,
+			animationFrame: null,
+			activated: false
+		};
+		try {
+			target.setPointerCapture(event.pointerId);
+		} catch {
+			// Synthetic pointer events and older browsers may not own an active capture.
+			// Window listeners still preserve the complete gesture lifecycle.
+		}
+		target.addEventListener('lostpointercapture', onAudioVolumeLostPointerCapture);
+		window.addEventListener('pointermove', onAudioVolumePointerMove);
+		window.addEventListener('pointerup', onAudioVolumePointerUp);
+		window.addEventListener('pointercancel', onAudioVolumePointerCancel);
+		window.addEventListener('keydown', onAudioVolumeKeydown);
+	}
+
+	function setAudioVolumeFromTimeline(item: TimelineItem, nextDb: number): void {
+		const before = captureSnapshot();
+		const nextGain = dbToLinearGain(clampAudioVolumeDb(nextDb));
+		timelineStore._updateItems([{ id: item.id, patch: { volume: nextGain } }]);
+		if (!snapshotsEqual(before, captureSnapshot())) {
+			commandHistory.addUndoEntry({ type: 'ADJUST_CLIP_VOLUME' }, before);
+			onedit();
+		}
+	}
+
+	function adjustAudioVolumeWithKeyboard(event: KeyboardEvent, item: TimelineItem): void {
+		const current = timelineStore.itemById.get(item.id);
+		if (!current || current.type !== 'audio') return;
+		if (event.key === 'Home') {
+			event.preventDefault();
+			setAudioVolumeFromTimeline(current, AUDIO_VOLUME_DB_MIN);
+			return;
+		}
+		if (event.key === 'End') {
+			event.preventDefault();
+			setAudioVolumeFromTimeline(current, AUDIO_VOLUME_DB_MAX);
+			return;
+		}
+		if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+		event.preventDefault();
+		const step = event.shiftKey ? 3 : 0.5;
+		setAudioVolumeFromTimeline(
+			current,
+			audioVolumeDb(current) + (event.key === 'ArrowUp' ? step : -step)
+		);
+	}
+
 	function rateStretchHandle(kind: TimelineDragKind): 'start' | 'end' {
 		return kind === 'rate-stretch-start' ? 'start' : 'end';
 	}
@@ -2967,6 +3139,7 @@
 		clearActiveMediaDrag();
 		clearHoverPreview();
 		if (drag) finishDrag(true);
+		if (audioVolumeDrag) finishAudioVolumeDrag(true);
 		if (transitionResize) finishTransitionResize(true);
 		if (marquee) finishMarquee();
 		if (rulerScrub) cancelRulerScrub();
@@ -4434,7 +4607,10 @@
 									{@const waveformPoints = waveformSvgPoints(displayItem)}
 									{#if waveformPoints}
 										<svg
-											class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
+											class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full origin-center"
+											style="transform:scaleY({displayItem.type === 'audio'
+												? audioVolumeWaveformScale(audioVolumeDb(displayItem))
+												: 1})"
 											viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"
 											preserveAspectRatio="none"
 										>
@@ -4459,6 +4635,39 @@
 									</span>
 								{/if}
 							</button>
+							{#if displayItem.type === 'audio' && selectedItemIds.includes(item.id) && activeEditTool === null}
+								{@const volumeDb = audioVolumeDb(displayItem)}
+								<button
+									type="button"
+									role="slider"
+									class="absolute inset-x-0 z-30 h-3 -translate-y-1/2 cursor-ns-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white"
+									style="top:{audioVolumeLinePercent(volumeDb)}%"
+									aria-label={`${m.video_editor_clip_volume()}: ${formatAudioVolumeDb(volumeDb)}`}
+									aria-valuemin={AUDIO_VOLUME_DB_MIN}
+									aria-valuemax={AUDIO_VOLUME_DB_MAX}
+									aria-valuenow={volumeDb}
+									aria-valuetext={formatAudioVolumeDb(volumeDb)}
+									onpointerdown={(event) => startAudioVolumeDrag(event, item)}
+									onkeydown={(event) => adjustAudioVolumeWithKeyboard(event, item)}
+									ondblclick={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+										setAudioVolumeFromTimeline(item, 0);
+									}}
+								>
+									<span
+										class="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/75 shadow-[0_0_0_1px_rgb(0_0_0_/_0.25)]"
+									></span>
+									{#if audioVolumeDrag?.itemId === item.id}
+										<span
+											class="pointer-events-none absolute right-1 bottom-full mb-1 rounded bg-black/90 px-1.5 py-0.5 font-mono text-[10px] text-white shadow-lg"
+											data-audio-volume-readout
+										>
+											{formatAudioVolumeDb(volumeDb)}
+										</span>
+									{/if}
+								</button>
+							{/if}
 							<button
 								type="button"
 								class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white {activeEditTool ===
