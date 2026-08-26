@@ -32,6 +32,7 @@ import { get } from 'svelte/store';
 import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 import { editorSession } from '$lib/video-editor/editor.svelte';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 
 const FILMSTRIP_TILE_WIDTH = 96;
 import TimelinePanel from './timeline-panel.svelte';
@@ -82,6 +83,27 @@ const sceneMedia: MediaMetadata = {
 	tags: ['video']
 };
 
+function pendingFileHandle(name: string, file: Promise<File>, onRead: () => void) {
+	const handle: FileSystemFileHandle = {
+		kind: 'file',
+		name,
+		getFile: async () => {
+			onRead();
+			return file;
+		},
+		async createWritable() {
+			throw new Error('This test handle is read-only.');
+		},
+		async createSyncAccessHandle() {
+			throw new Error('This test handle cannot open a sync access handle.');
+		},
+		async isSameEntry(other) {
+			return other === handle;
+		}
+	};
+	return handle;
+}
+
 function dispatchPointer(
 	target: EventTarget,
 	type: 'pointerdown' | 'pointermove' | 'pointerup',
@@ -110,6 +132,7 @@ async function nextAnimationFrame(): Promise<void> {
 
 beforeEach(() => {
 	timelinePreviewScrub.__resetForTesting();
+	mediaTasks.reset();
 	clearSceneDragData();
 	clearActiveMediaDrag();
 	mediaPlacement.cancel();
@@ -243,6 +266,85 @@ describe('TimelinePanel Bento layout entry', () => {
 		} finally {
 			await clearWaveformCache(mediaId);
 		}
+	});
+
+	it('starts waveform work only for visible and approaching clips', async () => {
+		await page.viewport(800, 720);
+		const nearId = `waveform-near-${crypto.randomUUID()}`;
+		const farId = `waveform-far-${crypto.randomUUID()}`;
+		const source = new File(['not-decoded'], 'pending.wav', { type: 'audio/wav' });
+		let releaseNear: ((file: File) => void) | undefined;
+		let releaseFar: ((file: File) => void) | undefined;
+		const nearFile = new Promise<File>((resolve) => (releaseNear = resolve));
+		const farFile = new Promise<File>((resolve) => (releaseFar = resolve));
+		let nearReads = 0;
+		let farReads = 0;
+		const audioMedia = (
+			id: string,
+			fileHandle: FileSystemFileHandle,
+			fileName: string
+		): MediaMetadata => ({
+			id,
+			storageType: 'handle',
+			fileHandle,
+			fileName,
+			fileSize: source.size,
+			mimeType: source.type,
+			duration: 4,
+			width: 0,
+			height: 0,
+			fps: 0,
+			codec: 'pcm_s16le',
+			bitrate: 128_000,
+			tags: ['audio']
+		});
+		mediaPool.loadAll([
+			audioMedia(
+				nearId,
+				pendingFileHandle('near.wav', nearFile, () => (nearReads += 1)),
+				'near.wav'
+			),
+			audioMedia(
+				farId,
+				pendingFileHandle('far.wav', farFile, () => (farReads += 1)),
+				'far.wav'
+			)
+		]);
+		timelineStore._setItems([
+			item({
+				id: 'near-clip',
+				trackId: 'audio-track',
+				label: 'Near audio',
+				type: 'audio',
+				mediaId: nearId,
+				durationInFrames: 120
+			}),
+			item({
+				id: 'far-clip',
+				trackId: 'audio-track',
+				label: 'Far audio',
+				type: 'audio',
+				mediaId: farId,
+				from: 10_000,
+				durationInFrames: 120
+			})
+		]);
+
+		await render(TimelinePanel, { onedit: vi.fn() });
+		const nearTaskId = mediaTaskId('waveform', nearId);
+		const farTaskId = mediaTaskId('waveform', farId);
+		await vi.waitFor(() => expect(nearReads).toBe(1));
+		await new Promise((resolve) => setTimeout(resolve, 180));
+		expect(mediaTasks.get(nearTaskId)?.status).toBe('running');
+		expect(mediaTasks.get(farTaskId)).toBeUndefined();
+		expect(farReads).toBe(0);
+
+		expect(mediaTasks.cancel(nearTaskId)).toBe(true);
+		releaseNear?.(source);
+		releaseFar?.(source);
+		await vi.waitFor(() => expect(mediaTasks.get(nearTaskId)).toBeUndefined());
+		await clearWaveformCache(nearId);
+		await clearWaveformCache(farId);
 	});
 
 	it('edits clip gain from the selected waveform with cancel, one-step undo, and keys', async () => {

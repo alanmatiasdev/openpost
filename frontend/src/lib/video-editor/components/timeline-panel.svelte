@@ -37,6 +37,7 @@
 		subscribeWaveform
 	} from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
+	import { planTimelineWaveformDemand } from '$lib/video-editor/timeline/waveform-demand';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
 	import {
@@ -386,6 +387,55 @@
 	);
 	const waveforms = $state<Record<string, { data: WaveformData | null; failed: boolean }>>({});
 	const waveformUnsubscribers = new Map<string, () => void>();
+	let waveformDemandTimer: ReturnType<typeof setTimeout> | null = null;
+	let previousWaveformScrollLeft = 0;
+	const WAVEFORM_DEMAND_DELAY_MS = 90;
+
+	function clearWaveformDemandTimer(): void {
+		if (waveformDemandTimer === null) return;
+		clearTimeout(waveformDemandTimer);
+		waveformDemandTimer = null;
+	}
+
+	function clearWaveformSubscriptions(): void {
+		for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
+		waveformUnsubscribers.clear();
+		for (const mediaId of Object.keys(waveforms)) delete waveforms[mediaId];
+	}
+
+	function reconcileWaveformDemand(mediaIds: readonly string[]): void {
+		const neededMediaIds = new Set(mediaIds);
+		for (const [mediaId, unsubscribe] of waveformUnsubscribers) {
+			if (neededMediaIds.has(mediaId)) continue;
+			unsubscribe();
+			waveformUnsubscribers.delete(mediaId);
+			delete waveforms[mediaId];
+		}
+
+		for (const mediaId of mediaIds) {
+			const media = mediaPool.get(mediaId);
+			const hasAudio =
+				media?.audioCodecSupported !== false &&
+				(media?.tags.includes('audio') || Boolean(media?.audioCodec));
+			if (!media || !hasAudio || waveformUnsubscribers.has(mediaId)) continue;
+			waveforms[mediaId] = { data: null, failed: false };
+			waveformUnsubscribers.set(
+				mediaId,
+				subscribeWaveform(mediaId, (data) => {
+					waveforms[mediaId] = { data, failed: false };
+				})
+			);
+			void getWaveform(media)
+				.then((data) => {
+					if (!waveformUnsubscribers.has(mediaId)) return;
+					waveforms[mediaId] = { data, failed: false };
+				})
+				.catch(() => {
+					if (!waveformUnsubscribers.has(mediaId)) return;
+					waveforms[mediaId] = { data: null, failed: true };
+				});
+		}
+	}
 
 	$effect(() => {
 		const marker = selectedMarker;
@@ -435,44 +485,27 @@
 	});
 
 	$effect(() => {
+		clearWaveformDemandTimer();
 		if (!editorSettings.showWaveforms) {
-			for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
-			waveformUnsubscribers.clear();
-			for (const mediaId of Object.keys(waveforms)) delete waveforms[mediaId];
+			clearWaveformSubscriptions();
 			return;
 		}
-		const neededMediaIds = new Set<string>();
-		for (const item of timelineStore.items) {
-			const mediaId = item.mediaId;
-			if ((item.type !== 'video' && item.type !== 'audio') || !mediaId) continue;
-			const media = mediaPool.get(mediaId);
-			const hasAudio =
-				media?.audioCodecSupported !== false &&
-				(media?.tags.includes('audio') || Boolean(media?.audioCodec));
-			if (!media || !hasAudio) continue;
-			neededMediaIds.add(mediaId);
-			if (waveforms[mediaId]) continue;
-			waveforms[mediaId] = { data: null, failed: false };
-			waveformUnsubscribers.set(
-				mediaId,
-				subscribeWaveform(mediaId, (data) => {
-					waveforms[mediaId] = { data, failed: false };
-				})
-			);
-			getWaveform(media)
-				.then((data) => {
-					waveforms[mediaId] = { data, failed: false };
-				})
-				.catch(() => {
-					waveforms[mediaId] = { data: null, failed: true };
-				});
-		}
-		for (const [mediaId, unsubscribe] of waveformUnsubscribers) {
-			if (neededMediaIds.has(mediaId)) continue;
-			unsubscribe();
-			waveformUnsubscribers.delete(mediaId);
-			delete waveforms[mediaId];
-		}
+		const currentScrollLeft = timelineViewport.scrollLeft;
+		const mediaIds = planTimelineWaveformDemand({
+			items: timelineStore.items,
+			scrollLeft: currentScrollLeft,
+			previousScrollLeft: previousWaveformScrollLeft,
+			viewportWidth: timelineViewport.width,
+			headerWidth: TRACK_HEADER_WIDTH,
+			pixelsPerFrame: pxPerFrame
+		});
+		previousWaveformScrollLeft = currentScrollLeft;
+		if (timelineViewport.width <= TRACK_HEADER_WIDTH) return;
+		waveformDemandTimer = setTimeout(() => {
+			waveformDemandTimer = null;
+			reconcileWaveformDemand(mediaIds);
+		}, WAVEFORM_DEMAND_DELAY_MS);
+		return clearWaveformDemandTimer;
 	});
 
 	function waveformSvgPoints(item: {
@@ -3265,7 +3298,8 @@
 		clearEffectDropPreview();
 		clearEffectDragData();
 		for (const unsubscribe of filmstripUnsubscribers.values()) unsubscribe();
-		for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
+		clearWaveformDemandTimer();
+		clearWaveformSubscriptions();
 		timelineItemObserver?.disconnect();
 		timelineItemObserver = null;
 	});
