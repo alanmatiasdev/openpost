@@ -750,10 +750,13 @@ export function setItemSpeed(id: string, speed: number): boolean {
 	return true;
 }
 
-export function setItemsSpeed(
-	itemIds: string[],
-	speed: number
-): { changed: number; locked: number; noop: number } {
+export interface SetItemsSpeedResult {
+	changed: number;
+	locked: number;
+	noop: number;
+}
+
+export function setItemsSpeed(itemIds: string[], speed: number): SetItemsSpeedResult {
 	const clamped = clampSpeed(speed);
 	if (!Number.isFinite(clamped)) return { changed: 0, locked: 0, noop: 0 };
 	const expanded = new Map<string, TimelineItem>();
@@ -828,10 +831,12 @@ export function setItemsSpeed(
 	return { changed: toUpdate.length, locked, noop };
 }
 
-export function setItemsVolume(
-	itemIds: string[],
-	volume: number
-): { changed: number; locked: number } {
+export interface SetItemsVolumeResult {
+	changed: number;
+	locked: number;
+}
+
+export function setItemsVolume(itemIds: string[], volume: number): SetItemsVolumeResult {
 	const clamped = Math.max(0, Math.min(1, volume));
 	if (!Number.isFinite(clamped)) return { changed: 0, locked: 0 };
 	const expanded = new Map<string, TimelineItem>();
