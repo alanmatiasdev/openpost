@@ -20,7 +20,13 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SkipBackIcon from '@lucide/svelte/icons/skip-back';
+	import SkipForwardIcon from '@lucide/svelte/icons/skip-forward';
 	import XIcon from '@lucide/svelte/icons/x';
+	import {
+		eventMatchesShortcut,
+		formatShortcutBinding
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
 	import {
 		decodedPreviewAudio,
@@ -449,28 +455,37 @@
 			if (monitorElement?.contains(target)) event.stopImmediatePropagation();
 			return;
 		}
-		const isGlobalEditShortcut = event.key === ',' || event.key === '.';
+		const bindings = keyboardShortcuts.bindings;
+		const isInsertEdit = eventMatchesShortcut(event, bindings.INSERT_EDIT);
+		const isOverwriteEdit = eventMatchesShortcut(event, bindings.OVERWRITE_EDIT);
+		const isGlobalEditShortcut = isInsertEdit || isOverwriteEdit;
 		const isLocal =
 			!!monitorElement && (monitorElement.contains(target) || monitorElement.matches(':hover'));
 		if (!isGlobalEditShortcut && !isLocal) return;
-		if (event.altKey && event.key.toLowerCase() === 'x') {
+		if (eventMatchesShortcut(event, bindings.CLEAR_IN_OUT)) {
 			clearMarks();
-		} else if (event.key === ' ') {
+		} else if (eventMatchesShortcut(event, bindings.PLAY_PAUSE)) {
 			void togglePlayback();
-		} else if (event.key.toLowerCase() === 'i') {
+		} else if (eventMatchesShortcut(event, bindings.MARK_IN)) {
 			markIn();
-		} else if (event.key.toLowerCase() === 'o') {
+		} else if (eventMatchesShortcut(event, bindings.MARK_OUT)) {
 			markOut();
-		} else if (event.key === ',') {
+		} else if (isInsertEdit) {
 			edit('insert');
-		} else if (event.key === '.') {
+		} else if (isOverwriteEdit) {
 			edit('overwrite');
-		} else if (event.key === 'ArrowLeft') {
+		} else if (eventMatchesShortcut(event, bindings.PREVIOUS_FRAME)) {
 			pause();
 			seek(currentFrame - 1);
-		} else if (event.key === 'ArrowRight') {
+		} else if (eventMatchesShortcut(event, bindings.NEXT_FRAME)) {
 			pause();
 			seek(currentFrame + 1);
+		} else if (eventMatchesShortcut(event, bindings.GO_TO_START)) {
+			pause();
+			seek(0);
+		} else if (eventMatchesShortcut(event, bindings.GO_TO_END)) {
+			pause();
+			seek(durationFrames - 1);
 		} else {
 			return;
 		}
@@ -649,6 +664,7 @@
 				class="transport-button"
 				type="button"
 				aria-label={m.video_editor_go_to_start()}
+				title={formatShortcutBinding(keyboardShortcuts.bindings.GO_TO_START)}
 				onclick={() => seek(0)}
 			>
 				<SkipBackIcon class="size-3.5" aria-hidden="true" />
@@ -657,6 +673,7 @@
 				class="transport-button"
 				type="button"
 				aria-label={m.video_editor_step_back()}
+				title={formatShortcutBinding(keyboardShortcuts.bindings.PREVIOUS_FRAME)}
 				onclick={() => seek(currentFrame - 1)}
 			>
 				<ChevronLeftIcon class="size-3.5" aria-hidden="true" />
@@ -665,6 +682,7 @@
 				class="transport-button primary"
 				type="button"
 				aria-label={playing ? m.video_editor_pause() : m.video_editor_play()}
+				title={formatShortcutBinding(keyboardShortcuts.bindings.PLAY_PAUSE)}
 				onclick={() => void togglePlayback()}
 			>
 				{#if playing}<PauseIcon class="size-3.5" aria-hidden="true" />{:else}<PlayIcon
@@ -676,16 +694,37 @@
 				class="transport-button"
 				type="button"
 				aria-label={m.video_editor_step_forward()}
+				title={formatShortcutBinding(keyboardShortcuts.bindings.NEXT_FRAME)}
 				onclick={() => seek(currentFrame + 1)}
 			>
 				<ChevronRightIcon class="size-3.5" aria-hidden="true" />
 			</button>
-			<button class="mark-button" type="button" onclick={markIn}>{m.video_editor_mark_in()}</button>
-			<button class="mark-button" type="button" onclick={markOut}
-				>{m.video_editor_mark_out()}</button
+			<button
+				class="transport-button"
+				type="button"
+				aria-label={m.video_editor_shortcuts_command_go_to_end()}
+				title={formatShortcutBinding(keyboardShortcuts.bindings.GO_TO_END)}
+				onclick={() => seek(durationFrames - 1)}
 			>
-			<button class="mark-button" type="button" onclick={clearMarks}
-				>{m.video_editor_source_clear_marks()}</button
+				<SkipForwardIcon class="size-3.5" aria-hidden="true" />
+			</button>
+			<button
+				class="mark-button"
+				type="button"
+				title={formatShortcutBinding(keyboardShortcuts.bindings.MARK_IN)}
+				onclick={markIn}>{m.video_editor_mark_in()}</button
+			>
+			<button
+				class="mark-button"
+				type="button"
+				title={formatShortcutBinding(keyboardShortcuts.bindings.MARK_OUT)}
+				onclick={markOut}>{m.video_editor_mark_out()}</button
+			>
+			<button
+				class="mark-button"
+				type="button"
+				title={formatShortcutBinding(keyboardShortcuts.bindings.CLEAR_IN_OUT)}
+				onclick={clearMarks}>{m.video_editor_source_clear_marks()}</button
 			>
 		</div>
 
@@ -727,7 +766,9 @@
 				disabled={!videoEnabled && !audioEnabled}
 				onclick={() => edit('insert')}
 			>
-				<span>{m.video_editor_source_insert()}</span><kbd>,</kbd>
+				<span>{m.video_editor_source_insert()}</span><kbd
+					>{formatShortcutBinding(keyboardShortcuts.bindings.INSERT_EDIT)}</kbd
+				>
 			</button>
 			<button
 				class="edit-button"
@@ -735,7 +776,9 @@
 				disabled={!videoEnabled && !audioEnabled}
 				onclick={() => edit('overwrite')}
 			>
-				<span>{m.video_editor_source_overwrite()}</span><kbd>.</kbd>
+				<span>{m.video_editor_source_overwrite()}</span><kbd
+					>{formatShortcutBinding(keyboardShortcuts.bindings.OVERWRITE_EDIT)}</kbd
+				>
 			</button>
 		</div>
 	</div>

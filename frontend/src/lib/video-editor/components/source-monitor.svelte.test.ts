@@ -11,6 +11,7 @@ import SourceMonitor from './source-monitor.svelte';
 import proResFixtureUrl from '../media/fixtures/prores-proxy.mov?url';
 import { clearWaveformCache } from '$lib/video-editor/media/waveform-client';
 import { saveWaveform } from '$lib/video-editor/media/waveform-persistence';
+import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 
 const videoTrack: TimelineTrack = {
 	id: 'video',
@@ -77,6 +78,7 @@ function linkedFileHandle(name: string, getFile: () => Promise<File>): FileSyste
 }
 
 beforeEach(() => {
+	keyboardShortcuts.resetAll();
 	commandHistory.clearHistory();
 	mediaPool.clear();
 	timelineStore.__resetForTesting();
@@ -106,6 +108,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	keyboardShortcuts.resetAll();
 	mediaPool.clear();
 	setWorkspaceRoot(null);
 });
@@ -163,9 +166,9 @@ describe('SourceMonitor', () => {
 		if (!(position instanceof HTMLInputElement))
 			throw new Error('Source position is not a slider.');
 		setRange(position, 30);
-		await screen.getByRole('button', { name: 'Mark in (I)' }).click();
+		await screen.getByRole('button', { name: 'Mark in' }).click();
 		setRange(position, 59);
-		await screen.getByRole('button', { name: 'Mark out (O)' }).click();
+		await screen.getByRole('button', { name: 'Mark out' }).click();
 		await screen.getByRole('button', { name: 'Insert edit ,' }).click();
 
 		expect(timelineStore.currentFrame).toBe(50);
@@ -193,6 +196,45 @@ describe('SourceMonitor', () => {
 		const monitor = screen.getByRole('region', { name: 'Source' }).element();
 		if (!(monitor instanceof HTMLElement)) throw new Error('Source monitor region is missing.');
 		expect(monitor.scrollWidth).toBeLessThanOrEqual(monitor.clientWidth);
+	});
+
+	it('goes to the last source frame and honors remapped source edit shortcuts', async () => {
+		keyboardShortcuts.setBinding('MARK_IN', 'alt+9');
+		keyboardShortcuts.setBinding('MARK_OUT', 'alt+0');
+		keyboardShortcuts.setBinding('INSERT_EDIT', 'alt+7');
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit: vi.fn()
+		});
+		const monitor = screen.getByRole('region', { name: 'Source' }).element();
+		const position = screen.getByLabelText('Source position').element();
+		if (!(monitor instanceof HTMLElement) || !(position instanceof HTMLInputElement)) {
+			throw new Error('Source monitor controls are missing.');
+		}
+
+		await screen.getByRole('button', { name: 'Go to end' }).click();
+		expect(position.value).toBe('299');
+
+		setRange(position, 30);
+		monitor.dispatchEvent(
+			new KeyboardEvent('keydown', { code: 'Digit9', key: '9', altKey: true, bubbles: true })
+		);
+		setRange(position, 59);
+		monitor.dispatchEvent(
+			new KeyboardEvent('keydown', { code: 'Digit0', key: '0', altKey: true, bubbles: true })
+		);
+		monitor.dispatchEvent(
+			new KeyboardEvent('keydown', { code: 'Digit7', key: '7', altKey: true, bubbles: true })
+		);
+
+		expect(
+			timelineStore.items.map((item) => [item.type, item.sourceStart, item.sourceEnd])
+		).toEqual([
+			['video', 30, 60],
+			['audio', 30, 60]
+		]);
+		expect(screen.getByRole('button', { name: 'Insert edit Alt+7' })).toBeDefined();
 	});
 
 	it('shows a seekable overview and detail waveform for audio sources', async () => {
