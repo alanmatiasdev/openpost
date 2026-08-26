@@ -8,6 +8,7 @@ export interface StreamingOutputTarget {
 	target: StreamTarget;
 	file(name: string, mimeType: string): Promise<File>;
 	discard(): Promise<void>;
+	storageKey: string | null;
 }
 
 export interface StreamingFileWritable {
@@ -34,7 +35,8 @@ export async function createFileSystemAccessOutputTarget(
 			// A user-selected file cannot be removed through File System Access. Aborting
 			// leaves the previous file contents intact and discards staged changes.
 		},
-		signal
+		signal,
+		null
 	);
 }
 
@@ -55,7 +57,8 @@ export async function createStreamingOutputTarget(
 		fileWritable,
 		async () => await handle.getFile(),
 		async () => await directory.removeEntry(fileName).catch(() => undefined),
-		signal
+		signal,
+		fileName
 	);
 }
 
@@ -63,11 +66,13 @@ export function createWritableOutputTarget(
 	fileWritable: StreamingFileWritable,
 	readFile: () => Promise<File>,
 	removeFile: () => Promise<void>,
-	signal?: AbortSignal
+	signal: AbortSignal | undefined,
+	storageKey: string | null
 ): StreamingOutputTarget {
 	const lifecycle = createStreamingWritableLifecycle(fileWritable, readFile, removeFile, signal);
 	return {
 		target: new StreamTarget(lifecycle.writable, { chunked: true, chunkSize: 4 * 1024 * 1024 }),
+		storageKey,
 		file: lifecycle.file,
 		discard: lifecycle.discard
 	};
