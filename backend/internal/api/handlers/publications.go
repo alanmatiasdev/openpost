@@ -3413,55 +3413,74 @@ func (h *PublicationHandler) requirePublicationReadinessWithDB(
 		return err
 	}
 	for _, rendition := range renditions {
-		account := accounts[rendition.SocialAccountID]
-		connectorCapabilities, connectorBacked, connectorErr := h.connectorCapabilitiesWithDB(ctx, db, account)
-		if connectorErr != nil {
-			return connectorErr
-		}
-		if connectorBacked {
-			found := false
-			for _, capability := range connectorCapabilities {
-				if capability.OutputProfile == rendition.OutputProfile ||
-					(rendition.OutputProfile == "" && capability.Profile == rendition.Profile) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("connector does not support output profile %q", rendition.OutputProfile)
-			}
-			continue
-		}
-		if h.readiness == nil {
-			return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
-		}
-		readiness := h.readiness.WithLedger(providerreadiness.NewRepository(db))
-		capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
-		if !found {
-			capability, found = capabilities.Find(account.Platform, rendition.Profile)
-		}
-		if !found {
-			capability = capabilities.Capability{
-				Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
-			}
-		}
-		settings := map[string]any{}
-		if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
-			return fmt.Errorf("decode rendition provider policy settings: %w", err)
-		}
-		decision := readiness.DecideAccountPublication(
-			ctx,
-			account,
-			capability,
-			operation,
-			intent,
-			providerreadiness.PublicationPolicyMode(account, capability, settings),
-		)
-		if !decision.Publishable {
-			return &providerreadiness.NotReadyError{Decision: decision}
+		if err := h.requireRenditionReadinessWithDB(ctx, db, accounts[rendition.SocialAccountID], rendition, operation, intent); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (h *PublicationHandler) requireRenditionReadinessWithDB(
+	ctx context.Context,
+	db bun.IDB,
+	account models.SocialAccount,
+	rendition models.Rendition,
+	operation providerreadiness.Operation,
+	intent providerreadiness.ExecutionIntent,
+) error {
+	connectorCapabilities, connectorBacked, err := h.connectorCapabilitiesWithDB(ctx, db, account)
+	if err != nil {
+		return err
+	}
+	if connectorBacked {
+		if !supportsRendition(connectorCapabilities, rendition) {
+			return fmt.Errorf("connector does not support output profile %q", rendition.OutputProfile)
+		}
+		return nil
+	}
+	if h.readiness == nil {
+		return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
+	}
+	capability := renditionCapability(account, rendition)
+	settings := map[string]any{}
+	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+		return fmt.Errorf("decode rendition provider policy settings: %w", err)
+	}
+	readiness := h.readiness.WithLedger(providerreadiness.NewRepository(db))
+	decision := readiness.DecideAccountPublication(
+		ctx,
+		account,
+		capability,
+		operation,
+		intent,
+		providerreadiness.PublicationPolicyMode(account, capability, settings),
+	)
+	if !decision.Publishable {
+		return &providerreadiness.NotReadyError{Decision: decision}
+	}
+	return nil
+}
+
+func supportsRendition(catalog []capabilities.Capability, rendition models.Rendition) bool {
+	for _, capability := range catalog {
+		if capability.OutputProfile == rendition.OutputProfile ||
+			(rendition.OutputProfile == "" && capability.Profile == rendition.Profile) {
+			return true
+		}
+	}
+	return false
+}
+
+func renditionCapability(account models.SocialAccount, rendition models.Rendition) capabilities.Capability {
+	if capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile); found {
+		return capability
+	}
+	if capability, found := capabilities.Find(account.Platform, rendition.Profile); found {
+		return capability
+	}
+	return capabilities.Capability{
+		Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
+	}
 }
 
 func loadReadinessAccountsWithDB(

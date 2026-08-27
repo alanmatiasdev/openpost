@@ -1563,30 +1563,14 @@ func (s *Service) requireRenditionReadiness(
 		return connectorErr
 	}
 	if connectorBacked {
-		settings := map[string]any{}
-		if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
-			return fmt.Errorf("decode rendition connector settings: %w", err)
-		}
-		providerPolicyMode := providerreadiness.PublicationPolicyMode(*account, connectorCapability, settings)
-		if authorization != nil && authorization.ProviderPolicyMode != providerPolicyMode {
-			return fmt.Errorf("publication authorization validation failed: provider policy mode changed")
-		}
-		return nil
+		return validateRenditionPolicyMode(account, rendition, authorization, connectorCapability, "connector")
 	}
 	if s == nil || s.readiness == nil {
 		return &providerreadiness.NotReadyError{
 			Decision: providerreadiness.UnavailableDecision(providerreadiness.OperationPublishImmediate),
 		}
 	}
-	capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
-	if !found {
-		capability, found = capabilities.Find(account.Platform, rendition.Profile)
-	}
-	if !found {
-		capability = capabilities.Capability{
-			Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
-		}
-	}
+	capability := publisherRenditionCapability(account, rendition)
 	settings := map[string]any{}
 	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
 		return fmt.Errorf("decode rendition provider policy settings: %w", err)
@@ -1611,6 +1595,36 @@ func (s *Service) requireRenditionReadiness(
 		return &providerreadiness.NotReadyError{Decision: decision}
 	}
 	return nil
+}
+
+func validateRenditionPolicyMode(
+	account *models.SocialAccount,
+	rendition *models.Rendition,
+	authorization *models.PublicationAuthorization,
+	capability capabilities.Capability,
+	settingsKind string,
+) error {
+	settings := map[string]any{}
+	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+		return fmt.Errorf("decode rendition %s settings: %w", settingsKind, err)
+	}
+	providerPolicyMode := providerreadiness.PublicationPolicyMode(*account, capability, settings)
+	if authorization != nil && authorization.ProviderPolicyMode != providerPolicyMode {
+		return fmt.Errorf("publication authorization validation failed: provider policy mode changed")
+	}
+	return nil
+}
+
+func publisherRenditionCapability(account *models.SocialAccount, rendition *models.Rendition) capabilities.Capability {
+	if capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile); found {
+		return capability
+	}
+	if capability, found := capabilities.Find(account.Platform, rendition.Profile); found {
+		return capability
+	}
+	return capabilities.Capability{
+		Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
+	}
 }
 
 func (s *Service) connectorCapabilityForAccount(
