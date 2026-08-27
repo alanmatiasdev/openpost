@@ -19,7 +19,7 @@ export default defineConfig({
 						enabled: true,
 						provider: playwright({
 							launchOptions: {
-								...(chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : {}),
+								executablePath: chromiumExecutablePath,
 								args: ['--enable-unsafe-webgpu']
 							}
 						}),
