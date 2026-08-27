@@ -26,6 +26,7 @@ const (
 	ProviderX         = "x"
 	ProviderYouTube   = "youtube"
 
+	capabilityRevision   = "2026-08-27.1"
 	xMinVideoAspectRatio = "1:3"
 	xMaxVideoAspectRatio = "3:1"
 )
@@ -348,7 +349,7 @@ func All() []Capability {
 		c.MediaShapes = mediaShapesFor(c.Profile, c.Media)
 		c.Settings = normalizeSettingDefinitions(c)
 		c.ValidationCategories = validationCategories(c)
-		c.CapabilityRevision = "2026-08-27.1"
+		c.CapabilityRevision = capabilityRevision
 		return c
 	}
 
@@ -661,7 +662,7 @@ func ResolveCatalog(provider string, catalog []Capability, input ResolveInput) R
 				Provider:           provider,
 				Intents:            []string{preset},
 				MediaShapes:        []string{shape},
-				CapabilityRevision: "2026-08-27.1",
+				CapabilityRevision: capabilityRevision,
 			},
 			Compatible:       false,
 			SegmentStrategy:  "preserve",
@@ -1876,12 +1877,21 @@ func validateMediaItem(capability Capability, item MediaItem) []ValidationIssue 
 	if len(capability.Media.AspectRatios) > 0 && item.Width > 0 && item.Height > 0 && !ratioAllowed(item.Width, item.Height, capability.Media.AspectRatios) {
 		issues = append(issues, ValidationIssue{Severity: "warning", Code: "media_aspect", Message: "Media should be vertical or square for this profile", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
 	}
-	if strings.HasPrefix(item.MimeType, "video/") && item.Width > 0 && item.Height > 0 && !videoAspectRatioAllowed(item.Width, item.Height, capability.Media) {
-		issues = append(issues, ValidationIssue{
-			Severity: "error", Code: "media_video_aspect_range",
-			Message:  videoAspectRatioMessage(capability.Media),
-			Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID,
-		})
+	if strings.HasPrefix(item.MimeType, "video/") && videoAspectRatioConstrained(capability.Media) {
+		switch {
+		case item.Width <= 0 || item.Height <= 0:
+			issues = append(issues, ValidationIssue{
+				Severity: "error", Code: "media_video_dimensions_missing",
+				Message:  "Video dimensions are required to validate the aspect ratio",
+				Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID,
+			})
+		case !videoAspectRatioAllowed(item.Width, item.Height, capability.Media):
+			issues = append(issues, ValidationIssue{
+				Severity: "error", Code: "media_video_aspect_range",
+				Message:  videoAspectRatioMessage(capability.Media),
+				Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID,
+			})
+		}
 	}
 	if capability.Media.RequiresPublicURL && !item.PublicURLReady {
 		issues = append(issues, ValidationIssue{Severity: "error", Code: "public_url_unreachable", Message: firstNonEmpty(item.PublicURLError, "Media publishing to this account requires a public HTTPS media URL. Ask an OpenPost administrator to configure OPENPOST_MEDIA_URL."), Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
@@ -1991,6 +2001,10 @@ func videoAspectRatioAllowed(width, height int, constraint MediaConstraint) bool
 		return false
 	}
 	return true
+}
+
+func videoAspectRatioConstrained(constraint MediaConstraint) bool {
+	return constraint.MinVideoAspectRatio != "" || constraint.MaxVideoAspectRatio != ""
 }
 
 func parseAspectRatio(value string) (float64, bool) {

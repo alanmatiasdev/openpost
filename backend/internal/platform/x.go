@@ -597,12 +597,20 @@ func (x *XAdapter) uploadMediaChunked(ctx context.Context, accessToken, mimeType
 }
 
 type xMediaProcessingInfo struct {
-	State           string `json:"state"`
-	CheckAfterSecs  int    `json:"check_after_secs"`
-	ProgressPercent int    `json:"progress_percent"`
+	State           string                 `json:"state"`
+	CheckAfterSecs  int                    `json:"check_after_secs"`
+	ProgressPercent int                    `json:"progress_percent"`
+	Error           *xMediaProcessingError `json:"error,omitempty"`
+}
+
+type xMediaProcessingError struct {
+	Message string `json:"message"`
 }
 
 func (x *XAdapter) waitForMediaProcessing(ctx context.Context, accessToken, mediaID string, info *xMediaProcessingInfo) error {
+	if info.State == "failed" {
+		return xTerminalMediaProcessingError(info)
+	}
 	for info.State == "pending" || info.State == "in_progress" {
 		if info.CheckAfterSecs > 0 {
 			select {
@@ -631,7 +639,7 @@ func (x *XAdapter) waitForMediaProcessing(ctx context.Context, accessToken, medi
 		*info = *statusResp.ProcessingInfo
 
 		if info.State == "failed" {
-			return fmt.Errorf("x media processing failed")
+			return xTerminalMediaProcessingError(info)
 		}
 	}
 
@@ -639,6 +647,17 @@ func (x *XAdapter) waitForMediaProcessing(ctx context.Context, accessToken, medi
 		return nil
 	}
 	return fmt.Errorf("x media processing unexpected state: %s", info.State)
+}
+
+func xTerminalMediaProcessingError(info *xMediaProcessingInfo) error {
+	message := "provider rejected the media"
+	if info != nil && info.Error != nil && strings.TrimSpace(info.Error.Message) != "" {
+		message = strings.TrimSpace(info.Error.Message)
+	}
+	return &MediaUploadError{
+		RetryClassification: MediaRetryTerminal,
+		Err:                 fmt.Errorf("x media processing failed: %s", message),
+	}
 }
 
 func (x *XAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (PublishResult, error) {

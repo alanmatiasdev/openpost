@@ -319,3 +319,28 @@ func TestXChunkedUploadStreamsBoundedSegments(t *testing.T) {
 		t.Fatalf("unexpected APPEND sizes: got %v want %v", appendSizes, want)
 	}
 }
+
+func TestXMediaProcessingFailureIsTerminal(t *testing.T) {
+	adapter := NewXAdapter("consumer-key", "consumer-secret", "")
+	defer close(adapter.cleanupDone)
+
+	err := adapter.waitForMediaProcessing(
+		t.Context(),
+		"access-token|access-secret",
+		"media-1",
+		&xMediaProcessingInfo{
+			State: "failed",
+			Error: &xMediaProcessingError{Message: "unsupported resolution"},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected failed X processing to return an error")
+	}
+	if !strings.Contains(err.Error(), "unsupported resolution") {
+		t.Fatalf("expected provider processing error, got %v", err)
+	}
+	classification, ok := MediaRetryClassificationForError(err)
+	if !ok || classification != MediaRetryTerminal {
+		t.Fatalf("expected terminal media failure, got %q, %v", classification, ok)
+	}
+}

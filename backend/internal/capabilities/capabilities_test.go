@@ -365,6 +365,8 @@ func TestApplyAccountConstraintsRevalidatesXTextAndVideo(t *testing.T) {
 			ID:             "video-1",
 			MimeType:       "video/mp4",
 			Size:           600 * 1024 * 1024,
+			Width:          1920,
+			Height:         1080,
 			DurationMS:     180_000,
 			AnalysisStatus: "ready",
 		}},
@@ -447,6 +449,22 @@ func TestXVideoValidationAcceptsProviderAspectRatioBoundaries(t *testing.T) {
 			requireNoIssueCode(t, issues, "media_video_aspect_range")
 		})
 	}
+}
+
+func TestXVideoValidationRequiresDimensionsForAspectRatioPreflight(t *testing.T) {
+	issues := Validate(
+		ProviderX,
+		models.ContentProfileShortVideo,
+		"Caption",
+		"",
+		"",
+		[]MediaItem{{
+			ID: "video-1", MimeType: "video/mp4", Size: 1024,
+			DurationMS: 30_000, AnalysisStatus: "ready",
+		}},
+		map[string]any{},
+	)
+	requireIssueCode(t, issues, "media_video_dimensions_missing")
 }
 
 func TestVideoCapabilitiesUseSafeProviderSpecificLimits(t *testing.T) {
