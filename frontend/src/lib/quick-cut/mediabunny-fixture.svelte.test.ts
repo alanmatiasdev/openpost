@@ -75,7 +75,7 @@ async function createToneWebM(frequency: number, durationSec = 1): Promise<File>
 	return new File([target.buffer], `tone-${frequency}.webm`, { type: 'audio/webm' });
 }
 
-async function createColorToneMp4(
+async function createColorToneWebM(
 	color: string,
 	frequency: number,
 	durationSec = 1
@@ -85,25 +85,22 @@ async function createColorToneMp4(
 	canvas.height = 72;
 	const context = canvas.getContext('2d')!;
 	const target = new BufferTarget();
-	const output = new Output({ format: new Mp4OutputFormat(), target });
-	const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 1_000_000 });
-	const audio = new AudioSampleSource({ codec: 'aac', bitrate: 96_000 });
+	const output = new Output({ format: new WebMOutputFormat(), target });
+	const video = new CanvasSource(canvas, { codec: 'vp9', bitrate: 1_000_000 });
+	const audio = new AudioSampleSource({ codec: 'opus', bitrate: 96_000 });
 	output.addVideoTrack(video);
 	output.addAudioTrack(audio);
 	await output.start();
 
 	const sampleRate = 48_000;
-	const frames = Math.round(durationSec * sampleRate);
-	const pcm = new Float32Array(frames * 2);
-	for (let frame = 0; frame < frames; frame++) {
-		const value = Math.sin((2 * Math.PI * frequency * frame) / sampleRate) * 0.4;
-		pcm[frame * 2] = value;
-		pcm[frame * 2 + 1] = value;
+	const pcm = new Float32Array(Math.round(durationSec * sampleRate));
+	for (let frame = 0; frame < pcm.length; frame++) {
+		pcm[frame] = Math.sin((2 * Math.PI * frequency * frame) / sampleRate) * 0.4;
 	}
 	const sample = new AudioSample({
 		data: pcm,
 		format: 'f32',
-		numberOfChannels: 2,
+		numberOfChannels: 1,
 		sampleRate,
 		timestamp: 0
 	});
@@ -120,7 +117,7 @@ async function createColorToneMp4(
 	audio.close();
 	await output.finalize();
 	if (!target.buffer) throw new Error('No A/V fixture bytes.');
-	return new File([target.buffer], `${color}-${frequency}.mp4`, { type: 'video/mp4' });
+	return new File([target.buffer], `${color}-${frequency}.webm`, { type: 'video/webm' });
 }
 
 async function decodedMono(blob: Blob): Promise<{ samples: Float32Array; sampleRate: number }> {
@@ -281,8 +278,8 @@ describe('quick-cut mediabunny fixture', () => {
 	}, 30000);
 
 	it('keeps merged A/V packet-copy audio aligned across A/B/A boundaries', async () => {
-		const fileA = await createColorToneMp4('red', 220);
-		const fileB = await createColorToneMp4('blue', 440);
+		const fileA = await createColorToneWebM('red', 220);
+		const fileB = await createColorToneWebM('blue', 440);
 		const sourceA = await probeSourceFile(fileA);
 		const sourceB = await probeSourceFile(fileB);
 		const segments = [
