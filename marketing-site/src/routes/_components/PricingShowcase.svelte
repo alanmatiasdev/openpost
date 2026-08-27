@@ -48,7 +48,7 @@
 <div class:pricing-compact={compact} class="pricing-showcase">
 	<div class="pricing-toolbar">
 		<p class="trial-copy">
-			<strong>{purchaseTerms.trial_days} days free.</strong>
+			<strong>{purchaseTerms.trial_days}-day free trial.</strong>
 			{managedCardRequirement}.
 		</p>
 		<div class="billing-toggle" aria-label="Billing period">

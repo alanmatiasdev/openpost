@@ -45,6 +45,9 @@
 		<p>
 			Every plan includes the full product. Pick the accounts, posts, storage, and seats you need.
 		</p>
+		<p class="text-sm font-medium text-muted-foreground">
+			For founders, teams, and agencies choosing a Hosted service plan.
+		</p>
 	</div>
 </section>
 

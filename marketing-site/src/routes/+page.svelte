@@ -48,6 +48,11 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
+		<p
+			class="hero-enter hero-enter-1 mx-auto mb-5 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase"
+		>
+			For solo founders evaluating one workspace for social publishing.
+		</p>
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
 			Your socials, <span>on steroids.</span>
 		</h1>
@@ -77,6 +82,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 				</a>
 			{/each}
 		</div>
+		<p class="mt-3 text-xs text-muted-foreground">
+			Provider formats, permissions, and limits still vary by network.
+		</p>
 	</div>
 </section>
 
