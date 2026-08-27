@@ -4323,13 +4323,13 @@
 						scheduleLabel={formatScheduledDisplay()}
 						quickScheduleLabel={selectedDate && selectedTime
 							? m.compose_schedule_selected_time({ schedule: formatScheduledDisplay() })
-							: m.compose_schedule_next_slot()}
+							: m.compose_queue_next_slot()}
 						publishLabel={m.compose_publish_now()}
+						moreLabel={m.sidebar_more()}
 						deleteLabel={m.common_delete()}
 						busy={isSubmitting || isSaving || deliveryFeedback.length > 0}
 						deleting={isDeleting}
 						quickScheduleBusy={suggestingSlot}
-						scheduleSelected={Boolean(selectedDate && selectedTime)}
 						canOpenSchedule={selectedWorkspaceSettingsReady}
 						canQuickSchedule={canSchedulePublication && selectedWorkspaceSettingsReady}
 						canPublish={canPublishNow}
@@ -4442,13 +4442,13 @@
 						scheduleLabel={formatScheduledDisplay()}
 						quickScheduleLabel={selectedDate && selectedTime
 							? m.compose_schedule_selected_time({ schedule: formatScheduledDisplay() })
-							: m.compose_schedule_next_slot()}
+							: m.compose_queue_next_slot()}
 						publishLabel={m.compose_publish_now()}
+						moreLabel={m.sidebar_more()}
 						deleteLabel={m.common_delete()}
 						busy={isSubmitting || isSaving || deliveryFeedback.length > 0}
 						deleting={isDeleting}
 						quickScheduleBusy={suggestingSlot}
-						scheduleSelected={Boolean(selectedDate && selectedTime)}
 						canOpenSchedule={selectedWorkspaceSettingsReady}
 						canQuickSchedule={canSchedulePublication && selectedWorkspaceSettingsReady}
 						canPublish={canPublishNow}

@@ -1859,6 +1859,7 @@
 	"compose_ai_idea_required": "Jot down an idea first.",
 	"compose_ai_destinations_required": "Choose a Social Set or destination first.",
 	"compose_ai_build_failed": "OpenPost could not build this post. Try again.",
+	"compose_queue_next_slot": "Queue next slot",
 	"compose_fill_next_slot": "Fill next available time slot",
 	"compose_suggest": "Suggest",
 	"compose_schedule": "Schedule",
