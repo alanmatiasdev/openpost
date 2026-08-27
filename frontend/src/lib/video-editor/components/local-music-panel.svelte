@@ -443,7 +443,9 @@
 			</p>
 		{/if}
 		{#each generations as generation (generation.id)}
-			<article class="rounded border border-[oklch(0.26_0.012_55)] bg-[oklch(0.18_0.008_55)] p-1.5">
+			<article
+				class="min-w-0 rounded border border-[oklch(0.26_0.012_55)] bg-[oklch(0.18_0.008_55)] p-1.5"
+			>
 				<div class="mb-1 flex items-start justify-between gap-1">
 					<div class="min-w-0">
 						<p class="line-clamp-2 text-[10px] leading-tight text-[oklch(0.76_0.012_55)]">
@@ -464,7 +466,12 @@
 						<TrashIcon class="size-3" aria-hidden="true" />
 					</button>
 				</div>
-				<audio class="h-7 w-full" controls preload="metadata" src={generation.url}></audio>
+				<audio
+					class="h-7 w-full max-w-full min-w-0"
+					controls
+					preload="metadata"
+					src={generation.url}
+				></audio>
 				<div class="mt-1 grid grid-cols-2 gap-1">
 					<Button
 						size="xs"
