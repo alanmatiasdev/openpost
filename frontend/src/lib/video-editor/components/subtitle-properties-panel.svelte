@@ -74,6 +74,25 @@
 			'APPLY_CAPTION_STYLE_PRESET'
 		);
 	}
+
+	const karaokeMode = $derived(
+		activeItem.captionHighlightMode === 'karaoke' ? 'karaoke' : 'normal'
+	);
+
+	function commitKaraokeMode(mode: 'normal' | 'karaoke'): void {
+		commit(
+			{
+				captionHighlightMode: mode,
+				...(mode === 'karaoke'
+					? {
+							karaokeActiveColor: activeItem.karaokeActiveColor ?? '#FFD400',
+							karaokeActiveBackground: activeItem.karaokeActiveBackground ?? undefined
+						}
+					: {})
+			},
+			'UPDATE_CAPTION_HIGHLIGHT_MODE'
+		);
+	}
 </script>
 
 <section class="video-editor-theme space-y-2" aria-labelledby={`caption-style-${activeItem.id}`}>
@@ -180,6 +199,92 @@
 				onchange={(event) => commit({ lineHeight: event.currentTarget.valueAsNumber })}
 			/>
 		</label>
+	</div>
+
+	<!-- Karaoke word highlight: deliberate mode with active-word colors; fallback stays normal. -->
+	<div class="space-y-1">
+		<span id={`caption-highlight-${activeItem.id}`} class="field-label">
+			{m.video_editor_caption_highlight_mode()}
+		</span>
+		<div
+			class="grid grid-cols-2 gap-1"
+			role="group"
+			aria-labelledby={`caption-highlight-${activeItem.id}`}
+		>
+			<Button
+				type="button"
+				size="sm"
+				variant={karaokeMode === 'normal' ? 'secondary' : 'ghost'}
+				aria-pressed={karaokeMode === 'normal'}
+				onclick={() => commitKaraokeMode('normal')}
+			>
+				{m.video_editor_caption_highlight_normal()}
+			</Button>
+			<Button
+				type="button"
+				size="sm"
+				variant={karaokeMode === 'karaoke' ? 'secondary' : 'ghost'}
+				aria-pressed={karaokeMode === 'karaoke'}
+				onclick={() => commitKaraokeMode('karaoke')}
+			>
+				{m.video_editor_caption_highlight_karaoke()}
+			</Button>
+		</div>
+		<p class="text-[10px] leading-snug text-[var(--video-editor-muted)]">
+			{m.video_editor_caption_highlight_karaoke_hint()}
+		</p>
+		{#if karaokeMode === 'karaoke'}
+			<div class="grid grid-cols-2 gap-1.5">
+				<label class="field-label">
+					{m.video_editor_caption_karaoke_active_color()}
+					<Input
+						class="mt-0.5 h-8 w-full bg-transparent"
+						type="color"
+						value={activeItem.karaokeActiveColor ?? '#FFD400'}
+						onchange={(event) =>
+							commit(
+								{ karaokeActiveColor: event.currentTarget.value },
+								'UPDATE_KARAOKE_ACTIVE_COLOR'
+							)}
+					/>
+				</label>
+				<label class="field-label">
+					{m.video_editor_caption_karaoke_active_background()}
+					<div class="mt-0.5 flex items-center gap-1">
+						<Input
+							class="h-8 w-full bg-transparent"
+							type="color"
+							value={activeItem.karaokeActiveBackground ?? '#FFD400'}
+							disabled={!activeItem.karaokeActiveBackground}
+							onchange={(event) =>
+								commit(
+									{ karaokeActiveBackground: event.currentTarget.value },
+									'UPDATE_KARAOKE_ACTIVE_BACKGROUND'
+								)}
+						/>
+						<Button
+							type="button"
+							size="sm"
+							variant={activeItem.karaokeActiveBackground ? 'ghost' : 'secondary'}
+							class="h-8 px-2 text-[10px]"
+							onclick={() =>
+								commit(
+									{
+										karaokeActiveBackground: activeItem.karaokeActiveBackground
+											? undefined
+											: (activeItem.karaokeActiveBackground ?? '#FFD400')
+									},
+									'UPDATE_KARAOKE_ACTIVE_BACKGROUND'
+								)}
+						>
+							{activeItem.karaokeActiveBackground
+								? m.video_editor_caption_karaoke_active_background_none()
+								: m.video_editor_caption_karaoke_active_background()}
+						</Button>
+					</div>
+				</label>
+			</div>
+		{/if}
 	</div>
 
 	<div class="grid grid-cols-3 gap-1" role="group" aria-label={m.video_editor_caption_style()}>
