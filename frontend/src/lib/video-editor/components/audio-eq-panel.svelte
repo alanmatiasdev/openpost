@@ -23,21 +23,33 @@
 		AUDIO_EQ_BAND6_FILTER_OPTIONS,
 		AUDIO_EQ_INNER_FILTER_OPTIONS,
 		AUDIO_EQ_SLOPE_OPTIONS,
-		buildTimelineEqPatchFromResolvedSettings
+		buildTimelineEqPatchFromSettings
 	} from '$lib/video-editor/audio/audio-eq-ui';
-	import type { ResolvedAudioEqSettings } from '$lib/video-editor/audio/types';
+	import type { AudioEqSettings, ResolvedAudioEqSettings } from '$lib/video-editor/audio/types';
 
-	let { item, onedit }: { item: TimelineItem; onedit: () => void } = $props();
+	let {
+		item,
+		settings = {},
+		onsettingschange,
+		onedit = () => {},
+		title
+	}: {
+		item?: TimelineItem;
+		settings?: AudioEqSettings;
+		onsettingschange?: (settings: AudioEqSettings) => void;
+		onedit?: () => void;
+		title?: string;
+	} = $props();
 
 	interface BandDefinition {
 		key: 'band1' | 'low' | 'lowMid' | 'highMid' | 'high' | 'band6';
 		label: () => string;
-		enabledField: keyof TimelineItem;
-		typeField: keyof TimelineItem;
-		frequencyField: keyof TimelineItem;
-		gainField: keyof TimelineItem;
-		qField: keyof TimelineItem;
-		slopeField?: keyof TimelineItem;
+		enabledField: keyof AudioEqSettings;
+		typeField: keyof AudioEqSettings;
+		frequencyField: keyof AudioEqSettings;
+		gainField: keyof AudioEqSettings;
+		qField: keyof AudioEqSettings;
+		slopeField?: keyof AudioEqSettings;
 		enabledKey: keyof ResolvedAudioEqSettings;
 		typeKey: keyof ResolvedAudioEqSettings;
 		frequencyKey: keyof ResolvedAudioEqSettings;
@@ -51,12 +63,12 @@
 		{
 			key: 'band1',
 			label: m.video_editor_audio_eq_band_1,
-			enabledField: 'audioEqBand1Enabled',
-			typeField: 'audioEqBand1Type',
-			frequencyField: 'audioEqBand1FrequencyHz',
-			gainField: 'audioEqBand1GainDb',
-			qField: 'audioEqBand1Q',
-			slopeField: 'audioEqBand1SlopeDbPerOct',
+			enabledField: 'band1Enabled',
+			typeField: 'band1Type',
+			frequencyField: 'band1FrequencyHz',
+			gainField: 'band1GainDb',
+			qField: 'band1Q',
+			slopeField: 'band1SlopeDbPerOct',
 			enabledKey: 'band1Enabled',
 			typeKey: 'band1Type',
 			frequencyKey: 'band1FrequencyHz',
@@ -68,11 +80,11 @@
 		{
 			key: 'low',
 			label: m.video_editor_audio_eq_low,
-			enabledField: 'audioEqLowEnabled',
-			typeField: 'audioEqLowType',
-			frequencyField: 'audioEqLowFrequencyHz',
-			gainField: 'audioEqLowGainDb',
-			qField: 'audioEqLowQ',
+			enabledField: 'lowEnabled',
+			typeField: 'lowType',
+			frequencyField: 'lowFrequencyHz',
+			gainField: 'lowGainDb',
+			qField: 'lowQ',
 			enabledKey: 'lowEnabled',
 			typeKey: 'lowType',
 			frequencyKey: 'lowFrequencyHz',
@@ -83,11 +95,11 @@
 		{
 			key: 'lowMid',
 			label: m.video_editor_audio_eq_low_mid,
-			enabledField: 'audioEqLowMidEnabled',
-			typeField: 'audioEqLowMidType',
-			frequencyField: 'audioEqLowMidFrequencyHz',
-			gainField: 'audioEqLowMidGainDb',
-			qField: 'audioEqLowMidQ',
+			enabledField: 'lowMidEnabled',
+			typeField: 'lowMidType',
+			frequencyField: 'lowMidFrequencyHz',
+			gainField: 'lowMidGainDb',
+			qField: 'lowMidQ',
 			enabledKey: 'lowMidEnabled',
 			typeKey: 'lowMidType',
 			frequencyKey: 'lowMidFrequencyHz',
@@ -98,11 +110,11 @@
 		{
 			key: 'highMid',
 			label: m.video_editor_audio_eq_high_mid,
-			enabledField: 'audioEqHighMidEnabled',
-			typeField: 'audioEqHighMidType',
-			frequencyField: 'audioEqHighMidFrequencyHz',
-			gainField: 'audioEqHighMidGainDb',
-			qField: 'audioEqHighMidQ',
+			enabledField: 'highMidEnabled',
+			typeField: 'highMidType',
+			frequencyField: 'highMidFrequencyHz',
+			gainField: 'highMidGainDb',
+			qField: 'highMidQ',
 			enabledKey: 'highMidEnabled',
 			typeKey: 'highMidType',
 			frequencyKey: 'highMidFrequencyHz',
@@ -113,11 +125,11 @@
 		{
 			key: 'high',
 			label: m.video_editor_audio_eq_high,
-			enabledField: 'audioEqHighEnabled',
-			typeField: 'audioEqHighType',
-			frequencyField: 'audioEqHighFrequencyHz',
-			gainField: 'audioEqHighGainDb',
-			qField: 'audioEqHighQ',
+			enabledField: 'highEnabled',
+			typeField: 'highType',
+			frequencyField: 'highFrequencyHz',
+			gainField: 'highGainDb',
+			qField: 'highQ',
 			enabledKey: 'highEnabled',
 			typeKey: 'highType',
 			frequencyKey: 'highFrequencyHz',
@@ -128,12 +140,12 @@
 		{
 			key: 'band6',
 			label: m.video_editor_audio_eq_band_6,
-			enabledField: 'audioEqBand6Enabled',
-			typeField: 'audioEqBand6Type',
-			frequencyField: 'audioEqBand6FrequencyHz',
-			gainField: 'audioEqBand6GainDb',
-			qField: 'audioEqBand6Q',
-			slopeField: 'audioEqBand6SlopeDbPerOct',
+			enabledField: 'band6Enabled',
+			typeField: 'band6Type',
+			frequencyField: 'band6FrequencyHz',
+			gainField: 'band6GainDb',
+			qField: 'band6Q',
+			slopeField: 'band6SlopeDbPerOct',
 			enabledKey: 'band6Enabled',
 			typeKey: 'band6Type',
 			frequencyKey: 'band6FrequencyHz',
@@ -202,7 +214,9 @@
 		label: `${slope} dB/oct`
 	}));
 
-	const resolved = $derived(resolveAudioEqSettings(item));
+	const source = $derived<AudioEqSettings | TimelineItem>(item ?? settings);
+	const resolved = $derived(resolveAudioEqSettings(source));
+	const bypassed = $derived(item ? item.audioEqEnabled === false : settings.enabled === false);
 	const selectedPreset = $derived(findAudioEqPresetId(resolved) ?? 'custom');
 	const curve = $derived(sampleAudioEqResponseCurve(resolved, { sampleCount: 72 }));
 	const curvePath = $derived(
@@ -215,23 +229,30 @@
 			.join(' ')
 	);
 
-	function commit(patch: Partial<TimelineItem>): void {
-		updateItemProperties(item.id, patch, 'UPDATE_CLIP_AUDIO_EQ');
+	function commit(patch: Partial<AudioEqSettings>): void {
+		if (item) {
+			updateItemProperties(
+				item.id,
+				buildTimelineEqPatchFromSettings(patch),
+				'UPDATE_CLIP_AUDIO_EQ'
+			);
+		} else {
+			const enabled = patch.enabled ?? settings.enabled;
+			const next = resolveAudioEqSettings({ ...settings, ...patch });
+			onsettingschange?.({ enabled, ...next });
+		}
 		onedit();
 	}
 
-	function setField(field: keyof TimelineItem, value: unknown): void {
-		commit({ [field]: value } as Partial<TimelineItem>);
+	function setField(field: keyof AudioEqSettings, value: unknown): void {
+		commit({ [field]: value } as Partial<AudioEqSettings>);
 	}
 
 	function applyPreset(id: string): void {
 		if (id === 'custom') return;
 		const preset = getAudioEqPresetById(id as AudioEqPresetId);
 		if (!preset) return;
-		commit({
-			audioEqEnabled: true,
-			...buildTimelineEqPatchFromResolvedSettings(preset.settings)
-		});
+		commit({ enabled: true, ...preset.settings });
 	}
 
 	function enabled(band: BandDefinition): boolean {
@@ -255,9 +276,9 @@
 	<summary
 		class="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-2 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 	>
-		<span class="font-medium text-white/85">{m.video_editor_audio_eq_title()}</span>
+		<span class="font-medium text-white/85">{title ?? m.video_editor_audio_eq_title()}</span>
 		<span class="text-[10px] text-white/45"
-			>{item.audioEqEnabled === false
+			>{bypassed
 				? m.video_editor_audio_eq_bypassed()
 				: selectedPreset === 'custom'
 					? m.video_editor_audio_eq_custom()
@@ -279,14 +300,12 @@
 			<Button
 				type="button"
 				size="sm"
-				variant={item.audioEqEnabled === false ? 'outline' : 'secondary'}
+				variant={bypassed ? 'outline' : 'secondary'}
 				class="h-8 px-2 text-[10px]"
-				aria-pressed={item.audioEqEnabled !== false}
-				onclick={() => commit({ audioEqEnabled: item.audioEqEnabled === false })}
+				aria-pressed={!bypassed}
+				onclick={() => commit({ enabled: bypassed })}
 			>
-				{item.audioEqEnabled === false
-					? m.video_editor_audio_eq_enable()
-					: m.video_editor_audio_eq_bypass()}
+				{bypassed ? m.video_editor_audio_eq_enable() : m.video_editor_audio_eq_bypass()}
 			</Button>
 		</div>
 
@@ -320,7 +339,7 @@
 				max={AUDIO_EQ_GAIN_DB_MAX}
 				step="0.1"
 				value={resolved.outputGainDb}
-				onchange={(event) => commit({ audioEqOutputGainDb: event.currentTarget.valueAsNumber })}
+				onchange={(event) => commit({ outputGainDb: event.currentTarget.valueAsNumber })}
 			/>
 		</label>
 
