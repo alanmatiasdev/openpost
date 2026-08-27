@@ -145,6 +145,7 @@
 		if (!publication || copying) return;
 		copying = true;
 		copyError = '';
+		// Reuse this key after an ambiguous response so a retry cannot create a second draft.
 		copyRequestKey ||= crypto.randomUUID();
 		try {
 			const { data, error: createError } = await client.POST('/publications', {
@@ -185,6 +186,23 @@
 	>
 </svelte:head>
 
+{#snippet copyAsDraftButton(compact: boolean)}
+	<Button
+		variant="outline"
+		size={compact ? 'sm' : 'default'}
+		onclick={copyAsDraft}
+		disabled={copying}
+	>
+		{#if copying}
+			<LoaderCircleIcon class="mr-1.5 size-4 animate-spin" />
+			{m.publication_copying()}
+		{:else}
+			<CopyIcon class="mr-1.5 size-4" />
+			{m.publication_copy_as_draft()}
+		{/if}
+	</Button>
+{/snippet}
+
 {#if !hasLoaded}
 	<div class="flex flex-1 flex-col" aria-busy="true">
 		<PageLoading layout="composer" label={m.publication_edit_loading()} />
@@ -215,15 +233,7 @@
 						: m.activity_dismiss_failed()}
 				</Button>
 			{/if}
-			<Button variant="outline" onclick={copyAsDraft} disabled={copying}>
-				{#if copying}
-					<LoaderCircleIcon class="mr-1.5 size-4 animate-spin" />
-					{m.publication_copying()}
-				{:else}
-					<CopyIcon class="mr-1.5 size-4" />
-					{m.publication_copy_as_draft()}
-				{/if}
-			</Button>
+			{@render copyAsDraftButton(false)}
 			<Button variant="outline" onclick={() => history.back()}>
 				<ArrowLeftIcon class="mr-1.5 size-4" />
 				{m.common_back()}
@@ -290,15 +300,7 @@
 	<div class="flex flex-1 flex-col overflow-hidden">
 		<div class="flex shrink-0 justify-end gap-2 border-b px-3 py-2 sm:px-4">
 			{#if publication.status === 'scheduled'}
-				<Button variant="outline" size="sm" onclick={copyAsDraft} disabled={copying}>
-					{#if copying}
-						<LoaderCircleIcon class="mr-1.5 size-4 animate-spin" />
-						{m.publication_copying()}
-					{:else}
-						<CopyIcon class="mr-1.5 size-4" />
-						{m.publication_copy_as_draft()}
-					{/if}
-				</Button>
+				{@render copyAsDraftButton(true)}
 			{/if}
 			<Button variant="ghost" size="sm" onclick={() => (historyOpen = true)}>
 				<HistoryIcon class="mr-1.5 size-4" />

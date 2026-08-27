@@ -133,6 +133,8 @@ export function publicationDraftCopy(publication: Publication): CreatePublicatio
 	delete draft.scheduled_at;
 	delete draft.random_delay_minutes;
 
+	// Canonical segment IDs are client references on create. The server replaces
+	// them with fresh IDs and remaps rendition segment references in one transaction.
 	return {
 		...draft,
 		workspace_id: publication.workspace_id,
