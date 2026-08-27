@@ -669,6 +669,7 @@ export function createBackgroundGpuRenderer(): BackgroundGpuAdapter | null {
 			patternProgram = null;
 			meshLocs = null;
 			patternLocs = null;
+			gl.getExtension('WEBGL_lose_context')?.loseContext();
 		}
 	};
 }

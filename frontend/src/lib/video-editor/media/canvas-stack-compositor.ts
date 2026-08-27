@@ -187,6 +187,7 @@ export class CanvasStackCompositor {
 	private backgroundCanvas: StackCanvas;
 	private backgroundContext: StackContext;
 	private backgroundGpu: BackgroundGpuAdapter | null = null;
+	private readonly createBackgroundGpuOnDemand: boolean;
 	private lastBackgroundKey: string | null = null;
 	private gpuCallCount = 0;
 	private cpuFallbackCount = 0;
@@ -236,8 +237,9 @@ export class CanvasStackCompositor {
 		this.backgroundContext.imageSmoothingQuality = 'high';
 		if (options && 'backgroundAdapter' in options) {
 			this.backgroundGpu = options.backgroundAdapter ?? null;
+			this.createBackgroundGpuOnDemand = false;
 		} else {
-			this.backgroundGpu = createBackgroundGpuRenderer();
+			this.createBackgroundGpuOnDemand = true;
 		}
 		this.sharedGpu = acquireSharedGpuCompositor();
 		if (withTransitionBranches) {
@@ -378,6 +380,13 @@ export class CanvasStackCompositor {
 		this.backgroundCanvas = next.canvas;
 		this.backgroundContext = next.context;
 		this.backgroundContext.clearRect(0, 0, width, height);
+		if (
+			!this.backgroundGpu &&
+			this.createBackgroundGpuOnDemand &&
+			width * height >= GPU_BACKGROUND_PIXEL_THRESHOLD
+		) {
+			this.backgroundGpu = createBackgroundGpuRenderer();
+		}
 		if (this.backgroundGpu && width * height >= GPU_BACKGROUND_PIXEL_THRESHOLD) {
 			const ok = this.backgroundGpu.render(bg, width, height);
 			if (ok) {

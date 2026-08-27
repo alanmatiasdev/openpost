@@ -242,11 +242,6 @@ describe('background CPU vs GPU - real parity at multiple sizes', () => {
 		const afterDisposeOk = renderer.render(bg, 320, 180);
 		expect(afterDisposeOk).toBe(false);
 		expect(renderer.failureReason()).toMatch(/disposed/);
-
-		const stack = new CanvasStackCompositor(document.createElement('canvas'));
-		expect(stack.getBackgroundAdapterForTest()).not.toBeNull();
-		stack.dispose();
-		expect(stack.getBackgroundAdapterForTest()).toBeNull();
 	});
 
 	it('one-shot GPU failure falls back to exact CPU pixels and next GPU success clears sticky failure', () => {
@@ -270,14 +265,11 @@ describe('background CPU vs GPU - real parity at multiple sizes', () => {
 			background: bg,
 			transform: { width: 640, height: 360 }
 		};
-		const originalAdapter = stack.getBackgroundAdapterForTest();
-		if (!originalAdapter) throw new Error('Missing background adapter');
-		const originalCanvas = originalAdapter.canvas;
 		const freshReal = createBackgroundGpuRenderer();
 		if (!freshReal) throw new Error('Missing fresh adapter');
 		let firstCall = true;
 		const mockGpu: BackgroundGpuAdapter = {
-			canvas: originalCanvas,
+			canvas: freshReal.canvas,
 			failureReason: () => (firstCall ? 'injected one-shot failure' : null),
 			render: (b, w, h) => {
 				if (firstCall) {
@@ -338,8 +330,10 @@ describe('background CPU vs GPU - real parity at multiple sizes', () => {
 			background: bg,
 			transform: { width: 1920, height: 1080 }
 		};
+		expect(stack.getBackgroundAdapterForTest()).toBeNull();
 		stack.beginFrame(1920, 1080, '#000000');
 		stack.compositeLayer(null, item, 1, 0);
+		expect(stack.getBackgroundAdapterForTest()).not.toBeNull();
 		expect(stack.exactRenderFailureReason()).toBeNull();
 		expect(stack.failureReason()).toBeNull();
 		let diag = stack.getBackgroundDiagnostics();
