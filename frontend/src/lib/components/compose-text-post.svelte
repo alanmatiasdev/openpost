@@ -4291,7 +4291,7 @@
 					size="icon"
 					class="size-11 text-muted-foreground"
 					onclick={() => (composerSettingsOpen = true)}
-					aria-label={m.compose_post_settings()}
+					aria-label={m.composer_repost_settings()}
 				>
 					<SettingsIcon class="size-4" />
 				</Button>
@@ -4406,13 +4406,13 @@
 								size="icon"
 								class="text-muted-foreground"
 								onclick={() => (composerSettingsOpen = true)}
-								aria-label={m.compose_post_settings()}
+								aria-label={m.composer_repost_settings()}
 							>
 								<SettingsIcon class="size-4" />
 							</Button>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content><p class="text-sm">{m.compose_post_settings()}</p></Tooltip.Content>
+					<Tooltip.Content><p class="text-sm">{m.composer_repost_settings()}</p></Tooltip.Content>
 				</Tooltip.Root>
 
 				{#if isEditMode && !autoSavesDraft}
@@ -5327,27 +5327,19 @@
 		data-testid="composer-settings-sheet"
 	>
 		<Sheet.Header class="border-b px-5 py-5 pr-16 text-left">
-			<Sheet.Title>{m.compose_post_settings()}</Sheet.Title>
-			<Sheet.Description>{m.compose_post_settings_body()}</Sheet.Description>
+			<Sheet.Title>{m.composer_repost_settings()}</Sheet.Title>
+			<Sheet.Description>{m.composer_repost_settings_body()}</Sheet.Description>
 		</Sheet.Header>
 		<div class="p-5">
-			<section class="rounded-xl border border-border/70 bg-muted/15 p-4">
-				<div class="mb-3">
-					<h3 class="text-sm font-semibold">{m.composer_repost_settings()}</h3>
-					<p class="mt-1 text-sm text-muted-foreground">
-						{m.composer_repost_settings_body()}
-					</p>
-				</div>
-				<ComposerRepostControl
-					workspaceID={selectedWorkspaceId}
-					sourcePlatforms={[
-						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
-					]}
-					bind:value={repostOverride}
-					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
-					onChange={scheduleAutoSave}
-				/>
-			</section>
+			<ComposerRepostControl
+				workspaceID={selectedWorkspaceId}
+				sourcePlatforms={[
+					...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+				]}
+				bind:value={repostOverride}
+				disabled={!selectedWorkspaceId || isSaving || isSubmitting}
+				onChange={scheduleAutoSave}
+			/>
 		</div>
 	</Sheet.Content>
 </Sheet.Root>
@@ -5363,6 +5355,7 @@
 	multiple={composerMediaLimit > 1}
 	purpose={isThread ? 'thread_segment' : 'post_media'}
 	enableMeme
+	compactNavigation
 	autoConfirmUploads
 	initialMode="upload"
 	initialFiles={mediaPickerInitialFiles}
