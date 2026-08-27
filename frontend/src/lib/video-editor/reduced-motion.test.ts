@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = join(currentDir, '../../..');
-const srcRoot = join(frontendRoot, 'src');
 
 const SCANNED_ROOTS = [
 	'src/lib/video-editor',
@@ -21,35 +20,6 @@ const TARGET_ANIMATIONS = [
 	'animate-ping',
 	'animate-bounce'
 ] as const;
-
-// Files owned by parallel work; they are intentionally excluded from the strict
-// guard until their dedicated fix lands. Each entry must have a reason.
-const DEFERRED_FILES = new Map<string, string>([
-	[
-		'src/routes/video-editor/[id]/+page.svelte',
-		'deferred: timeline and canvas are owned by parallel work (timeline-panel, on-canvas-tools, editor-workspace-switcher, export-dialog)'
-	],
-	[
-		'src/lib/video-editor/components/timeline-panel.svelte',
-		'deferred: dense timeline gestures owned by parallel work'
-	],
-	[
-		'src/lib/video-editor/components/export-dialog.svelte',
-		'deferred: export flow owned by parallel work'
-	],
-	[
-		'src/lib/video-editor/components/on-canvas-tools.svelte',
-		'deferred: on-canvas tools owned by parallel work'
-	],
-	[
-		'src/lib/video-editor/components/group-on-canvas-tools.svelte',
-		'deferred: group canvas tools owned by parallel work'
-	],
-	[
-		'src/lib/video-editor/components/editor-workspace-switcher.svelte',
-		'deferred: workspace switcher owned by parallel work'
-	]
-]);
 
 // If an animation is truly essential and must remain motionful even under
 // reduced motion, add its file+line with a clear reason and a settled fallback
@@ -93,14 +63,9 @@ describe('reduced-motion policy', () => {
 		}
 
 		const violations: Array<{ file: string; line: number; snippet: string; token: string }> = [];
-		const seenDeferred = new Set<string>();
 
 		for (const abs of allFiles) {
 			const rel = abs.replace(`${frontendRoot}/`, '');
-			if (DEFERRED_FILES.has(rel)) {
-				seenDeferred.add(rel);
-				continue;
-			}
 			const content = readFileSync(abs, 'utf8');
 			const lines = content.split('\n');
 			lines.forEach((line, idx) => {
@@ -110,8 +75,6 @@ describe('reduced-motion policy', () => {
 						if (isGuardedLine(line)) continue;
 						const key = `${rel}:${idx + 1}`;
 						if (ESSENTIAL_ALLOWLIST.has(key)) continue;
-						// Also check if the same quoted class attribute spans multiple lines? For now,
-						// require the guard to be co-located on the same line.
 						violations.push({
 							file: rel,
 							line: idx + 1,
@@ -123,15 +86,6 @@ describe('reduced-motion policy', () => {
 			});
 		}
 
-		// Ensure deferred entries actually exist, so the allowlist stays honest
-		for (const [rel, reason] of DEFERRED_FILES) {
-			expect(reason.length, `${rel} deferred reason must not be empty`).toBeGreaterThan(10);
-		}
-		expect(
-			[...seenDeferred].sort(),
-			'deferred file set drifted - update DEFERRED_FILES map'
-		).toEqual([...DEFERRED_FILES.keys()].sort());
-
 		expect(
 			violations,
 			violations.length
@@ -141,12 +95,9 @@ describe('reduced-motion policy', () => {
 	});
 
 	it('requires a reason for every allowed essential animation', () => {
-		for (const [key, reason] of ESSENTIAL_ALLOWLIST) {
-			expect(reason.trim().length, `${key} essential reason must be explicit`).toBeGreaterThan(15);
-			expect(
-				reason.toLowerCase(),
-				`${key} reason must explain why motion is essential and what the settled fallback is`
-			).toMatch(/essential/);
-		}
+		const invalidEntries = [...ESSENTIAL_ALLOWLIST].filter(
+			([, reason]) => reason.trim().length <= 15 || !reason.toLowerCase().includes('essential')
+		);
+		expect(invalidEntries).toEqual([]);
 	});
 });
