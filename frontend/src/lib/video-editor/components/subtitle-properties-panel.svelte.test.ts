@@ -65,8 +65,11 @@ describe('SubtitlePropertiesPanel', () => {
 		expect(commandHistory.undoStack).toHaveLength(1);
 		// Change active word color
 		const colorInputs = screen.container.querySelectorAll('input[type="color"]');
-		// Base color, stroke color, then karaoke active color
-		const activeColorInput = colorInputs[2] as HTMLInputElement;
+		const candidate = colorInputs[2];
+		if (!(candidate instanceof HTMLInputElement))
+			throw new Error('expected karaoke active color input');
+		// SAFETY: runtime instance check above guarantees HTMLInputElement
+		const activeColorInput = candidate as HTMLInputElement;
 		expect(activeColorInput).toBeDefined();
 		activeColorInput.value = '#ff0000';
 		activeColorInput.dispatchEvent(new Event('change', { bubbles: true }));

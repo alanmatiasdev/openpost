@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { LaidOutLine } from '../typography/text-block-layout';
 import type { SubtitleCue, TimelineItem } from '../project/types';
 import {
 	activeWordIndexAtFrame,
@@ -7,7 +8,6 @@ import {
 } from '../transcript/karaoke';
 import { layoutTextBlock } from '../typography/text-block-layout';
 import type { TextMeasurer } from '../typography/text-measurer';
-import { createCanvasTextMeasurer } from '../typography/text-measurer';
 import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
 import {
 	clearSubtitleLayoutCacheForTests,
@@ -15,6 +15,7 @@ import {
 	getKaraokeTokenRangesForLine,
 	renderSubtitleCueRaster
 } from './text-raster';
+import type { TextRasterContext } from './text-raster';
 
 function makeItem(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
@@ -43,6 +44,75 @@ function cue(): SubtitleCue {
 	};
 }
 
+function fontSizeAwareMeasurer(): TextMeasurer {
+	return {
+		measure: (text: string, cssFont: string, letterSpacing: number) => {
+			const m = /(\d+)px/.exec(cssFont);
+			const size = m ? Number(m[1]) : 20;
+			return text.length * size * 0.5 + Math.max(0, text.length - 1) * letterSpacing;
+		},
+		fontMetrics: (cssFont: string) => {
+			const m = /(\d+)px/.exec(cssFont);
+			const size = m ? Number(m[1]) : 20;
+			return { ascent: size * 0.8, descent: size * 0.2 };
+		}
+	};
+}
+
+function simpleMeasurer(): TextMeasurer {
+	return {
+		measure: (text: string) => text.length * 8,
+		fontMetrics: () => ({ ascent: 10, descent: 3 })
+	};
+}
+
+function createMockTextRasterContext(capturedFillStyles: string[]): TextRasterContext {
+	let currentFont = '600 20px "Inter"';
+	let fillStyleValue = '#ffffff';
+	const ctx = {
+		clearRect: () => {},
+		save: () => {},
+		restore: () => {},
+		fillRect: () => {},
+		fillText: () => {},
+		strokeText: () => {},
+		beginPath: () => {},
+		rect: () => {},
+		roundRect: () => {},
+		fill: () => {},
+		get font() {
+			return currentFont;
+		},
+		set font(v: string) {
+			currentFont = v;
+		},
+		get fillStyle() {
+			return fillStyleValue;
+		},
+		set fillStyle(v: string) {
+			fillStyleValue = v;
+			capturedFillStyles.push(v);
+		},
+		strokeStyle: '',
+		lineWidth: 0,
+		lineJoin: 'round',
+		shadowColor: '',
+		shadowBlur: 0,
+		shadowOffsetX: 0,
+		shadowOffsetY: 0,
+		textAlign: 'left',
+		textBaseline: 'alphabetic',
+		globalAlpha: 1,
+		filter: 'none',
+		measureText: (text: string) => {
+			// SAFETY: karaoke highlight only reads width from TextMetrics
+			return { width: text.length * 8 } as TextMetrics;
+		}
+	};
+	// SAFETY: mock satisfies TextRasterContext surface used by renderSubtitleCueRaster
+	return ctx as TextRasterContext;
+}
+
 describe('karaoke line wrapping preservation', () => {
 	it('uses identical layout for normal and karaoke rendering so highlight does not reflow words', () => {
 		const item = makeItem({
@@ -62,22 +132,9 @@ describe('karaoke line wrapping preservation', () => {
 			textSpans: parsed.spans,
 			spanLayout: 'inline' as const
 		};
-		const stubMeasurer = {
-			measure: (text: string) => text.length * 8,
-			fontMetrics: () => ({ ascent: 10, descent: 3 })
-		};
-		const baseLayout = layoutTextBlock(
-			styled,
-			400,
-			200,
-			stubMeasurer as unknown as ReturnType<typeof createCanvasTextMeasurer>
-		);
-		const karaokeLayout = layoutTextBlock(
-			styled,
-			400,
-			200,
-			stubMeasurer as unknown as ReturnType<typeof createCanvasTextMeasurer>
-		);
+		const stubMeasurer = simpleMeasurer();
+		const baseLayout = layoutTextBlock(styled, 400, 200, stubMeasurer);
+		const karaokeLayout = layoutTextBlock(styled, 400, 200, stubMeasurer);
 		expect(karaokeLayout.lines.map((l) => l.text)).toEqual(baseLayout.lines.map((l) => l.text));
 		expect(karaokeLayout.lines.map((l) => l.width)).toEqual(baseLayout.lines.map((l) => l.width));
 	});
@@ -115,21 +172,19 @@ describe('karaoke active word is deterministic across realms', () => {
 
 describe('karaoke reduced-motion retains highlight', () => {
 	afterEach(() => {
-		// @ts-expect-error cleanup
-		delete (globalThis as unknown as { window?: unknown }).window;
+		vi.unstubAllGlobals();
 		clearSubtitleLayoutCacheForTests();
 	});
 
 	it('highlights active word even when matchMedia reports reduce', () => {
-		// @ts-expect-error stub
-		globalThis.window = {
+		vi.stubGlobal('window', {
 			matchMedia: (query: string) => ({
 				matches: query === '(prefers-reduced-motion: reduce)',
 				media: query,
 				addEventListener: () => {},
 				removeEventListener: () => {}
 			})
-		} as unknown as Window;
+		});
 		clearSubtitleLayoutCacheForTests();
 		const activeCue: SubtitleCue = {
 			id: 'c',
@@ -147,61 +202,16 @@ describe('karaoke reduced-motion retains highlight', () => {
 			color: '#ffffff'
 		});
 		expect(karaokeStateAtFrame(item, activeCue, 'hello world', 5)?.activeIndex).toBe(0);
-		const calls: string[] = [];
-		const ctx = {
-			clearRect: () => {},
-			save: () => {},
-			restore: () => {},
-			fillRect: () => {},
-			fillText: (_t: string) => {},
-			strokeText: () => {},
-			measureText: (t: string) => ({ width: t.length * 8 }) as unknown as TextMetrics,
-			get font() {
-				return '600 20px \"Inter\"';
-			},
-			set font(_v: string) {},
-			textAlign: 'left' as CanvasTextAlign,
-			textBaseline: 'alphabetic' as CanvasTextBaseline,
-			shadowColor: '',
-			shadowBlur: 0,
-			shadowOffsetX: 0,
-			shadowOffsetY: 0,
-			get fillStyle() {
-				return (this as unknown as { _v: string })._v;
-			},
-			set fillStyle(v: string) {
-				(this as unknown as { _v: string })._v = v;
-				calls.push(v);
-			},
-			strokeStyle: '',
-			lineWidth: 0,
-			lineJoin: 'round' as CanvasLineJoin,
-			beginPath: () => {},
-			rect: () => {},
-			roundRect: () => {},
-			fill: () => {},
-			globalAlpha: 1,
-			filter: 'none'
-		} as unknown as CanvasRenderingContext2D;
-		renderSubtitleCueRaster(ctx as never, activeCue, item, 400, 200, 5);
-		expect(calls).toContain('#ff0000');
+		const captured: string[] = [];
+		const ctx = createMockTextRasterContext(captured);
+		renderSubtitleCueRaster(ctx, activeCue, item, 400, 200, 5);
+		expect(captured).toContain('#ff0000');
 	});
 });
 
 describe('karaoke highlight geometry uses exact run metrics', () => {
 	it('token in later differently styled run aligns with run offset', () => {
-		const stubMeasurer: TextMeasurer = {
-			measure: (text: string, cssFont: string, letterSpacing: number) => {
-				const m = /(\d+)px/.exec(cssFont);
-				const size = m ? Number(m[1]) : 20;
-				return text.length * size * 0.5 + Math.max(0, text.length - 1) * letterSpacing;
-			},
-			fontMetrics: (cssFont: string) => {
-				const m = /(\d+)px/.exec(cssFont);
-				const size = m ? Number(m[1]) : 20;
-				return { ascent: size * 0.8, descent: size * 0.2 };
-			}
-		};
+		const stubMeasurer = fontSizeAwareMeasurer();
 		const item = makeItem({
 			fontFamily: 'Inter',
 			fontSize: 20,
@@ -245,18 +255,7 @@ describe('karaoke highlight geometry uses exact run metrics', () => {
 	});
 
 	it('token spanning differently styled runs produces multiple pieces with correct widths', () => {
-		const stubMeasurer: TextMeasurer = {
-			measure: (text: string, cssFont: string, letterSpacing: number) => {
-				const m = /(\d+)px/.exec(cssFont);
-				const size = m ? Number(m[1]) : 20;
-				return text.length * size * 0.5 + Math.max(0, text.length - 1) * letterSpacing;
-			},
-			fontMetrics: (cssFont: string) => {
-				const m = /(\d+)px/.exec(cssFont);
-				const size = m ? Number(m[1]) : 20;
-				return { ascent: size * 0.8, descent: size * 0.2 };
-			}
-		};
+		const stubMeasurer = fontSizeAwareMeasurer();
 		const item = makeItem({
 			fontFamily: 'Inter',
 			fontSize: 20,
@@ -307,7 +306,7 @@ describe('karaoke highlight geometry uses exact run metrics', () => {
 	});
 
 	it('handles tabs and mixed whitespace like split/\\s+/', () => {
-		const line = {
+		const line: LaidOutLine = {
 			text: 'hello\tworld  test',
 			cssFont: '20px Inter',
 			fontSize: 20,
@@ -320,7 +319,7 @@ describe('karaoke highlight geometry uses exact run metrics', () => {
 			color: '#fff',
 			underline: false,
 			runs: undefined
-		} as unknown as import('../typography/text-block-layout').LaidOutLine;
+		};
 		const ranges = getKaraokeTokenRangesForLine(line);
 		expect(ranges).toHaveLength(3);
 		expect(line.text.slice(ranges[0]!.start, ranges[0]!.end)).toBe('hello');

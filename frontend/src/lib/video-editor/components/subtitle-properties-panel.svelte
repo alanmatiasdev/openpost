@@ -80,18 +80,12 @@
 	);
 
 	function commitKaraokeMode(mode: 'normal' | 'karaoke'): void {
-		commit(
-			{
-				captionHighlightMode: mode,
-				...(mode === 'karaoke'
-					? {
-							karaokeActiveColor: activeItem.karaokeActiveColor ?? '#FFD400',
-							karaokeActiveBackground: activeItem.karaokeActiveBackground ?? undefined
-						}
-					: {})
-			},
-			'UPDATE_CAPTION_HIGHLIGHT_MODE'
-		);
+		const patch: Partial<TimelineItem> = { captionHighlightMode: mode };
+		if (mode === 'karaoke') {
+			patch.karaokeActiveColor = activeItem.karaokeActiveColor ?? '#FFD400';
+			patch.karaokeActiveBackground = activeItem.karaokeActiveBackground;
+		}
+		commit(patch, 'UPDATE_CAPTION_HIGHLIGHT_MODE');
 	}
 </script>
 
