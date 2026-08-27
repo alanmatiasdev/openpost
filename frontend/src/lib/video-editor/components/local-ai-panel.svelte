@@ -9,6 +9,7 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
 		LOCAL_TTS_ENGINE_OPTIONS,
+		LOCAL_TTS_EXPRESSIVE_TAG_OPTIONS,
 		LOCAL_TTS_LANGUAGE_OPTIONS,
 		defaultLocalTtsVoice,
 		generateLocalSpeech,
@@ -19,6 +20,10 @@
 		type LocalTtsEngine,
 		type LocalTtsGenerateOptions
 	} from '$lib/video-editor/local-ai/tts/registry';
+	import {
+		getStoredLocalTtsEngine,
+		setStoredLocalTtsEngine
+	} from '$lib/video-editor/local-ai/tts/preferences';
 	import {
 		commitGeneratedAudio,
 		type CommitGeneratedAudioOptions
@@ -57,13 +62,15 @@
 		url: string;
 		engine: LocalTtsEngine;
 		voice: string;
+		sourceTextItemId?: string;
 		mediaId?: string;
 		saving: boolean;
 	}
 
+	const initialEngine = getStoredLocalTtsEngine();
 	let text = $state('');
-	let engine = $state<LocalTtsEngine>('kokoro');
-	let voice = $state(defaultLocalTtsVoice('kokoro'));
+	let engine = $state<LocalTtsEngine>(initialEngine);
+	let voice = $state(defaultLocalTtsVoice(initialEngine));
 	let language = $state('auto');
 	let speed = $state(1);
 	let generating = $state(false);
@@ -73,6 +80,7 @@
 	let activeTab = $state<'voice' | 'music'>('voice');
 	let voiceTab: HTMLButtonElement;
 	let musicTab: HTMLButtonElement;
+	let scriptTextarea = $state<HTMLTextAreaElement>();
 	let abortController: AbortController | null = null;
 	let sourceTextItemId = $state<string | null>(null);
 	let handledTextVoiceRequestId = $state<string | null>(null);
@@ -103,6 +111,7 @@
 		)?.value;
 		if (!nextEngine) return;
 		engine = nextEngine;
+		setStoredLocalTtsEngine(engine);
 		voice = defaultLocalTtsVoice(engine);
 		const range = localTtsSpeedRange(engine);
 		speed = Math.min(range.max, Math.max(range.min, speed));
@@ -113,6 +122,24 @@
 		if (stage === 'preparing') return m.video_editor_local_ai_preparing();
 		if (stage === 'finalizing') return m.video_editor_local_ai_finalizing();
 		return m.video_editor_local_ai_generating();
+	}
+
+	function expressiveTagLabel(tag: string): string {
+		if (tag === '<laugh>') return m.video_editor_local_ai_expressive_laugh();
+		if (tag === '<breath>') return m.video_editor_local_ai_expressive_breath();
+		return m.video_editor_local_ai_expressive_sigh();
+	}
+
+	function insertExpressiveTag(tag: string): void {
+		if (!scriptTextarea) return;
+		const start = scriptTextarea.selectionStart ?? text.length;
+		const end = scriptTextarea.selectionEnd ?? start;
+		text = `${text.slice(0, start)}${tag}${text.slice(end)}`;
+		queueMicrotask(() => {
+			const nextPosition = start + tag.length;
+			scriptTextarea.focus();
+			scriptTextarea.setSelectionRange(nextPosition, nextPosition);
+		});
 	}
 
 	function handleTabKeydown(event: KeyboardEvent): void {
@@ -142,6 +169,7 @@
 		try {
 			const requestedEngine = engine;
 			const requestedVoice = voice;
+			const requestedSourceTextItemId = sourceTextItemId ?? undefined;
 			const result = await generateSpeech({
 				engine: requestedEngine,
 				text,
@@ -170,6 +198,7 @@
 					url: URL.createObjectURL(result.blob),
 					engine: requestedEngine,
 					voice: requestedVoice,
+					sourceTextItemId: requestedSourceTextItemId,
 					saving: false
 				},
 				...generations
@@ -200,7 +229,9 @@
 				tags: localTtsTags(generation.engine, generation.voice),
 				existingMediaId: generation.mediaId,
 				...(insert &&
-					(sourceTextItemId ? { sourceTextItemId } : { insertAtFrame: timelineStore.currentFrame }))
+					(generation.sourceTextItemId
+						? { sourceTextItemId: generation.sourceTextItemId }
+						: { insertAtFrame: timelineStore.currentFrame }))
 			};
 			const committed = await commitAudio(generation.result, options);
 			generation.mediaId = committed.media.id;
@@ -296,12 +327,36 @@
 					{m.video_editor_local_ai_script()}
 				</label>
 				<textarea
+					bind:this={scriptTextarea}
 					id="local-ai-script"
 					class="mt-0.5 min-h-24 w-full resize-y rounded border border-[oklch(0.29_0.015_55)] bg-[oklch(0.18_0.008_55)] px-2 py-1.5 text-[11px] leading-relaxed text-white placeholder:text-[oklch(0.45_0.01_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 					bind:value={text}
 					disabled={generating}
 					placeholder={m.video_editor_local_ai_script_placeholder()}
 					maxlength="5000"></textarea>
+				{#if engine === 'supertonic'}
+					<div
+						role="group"
+						class="flex flex-wrap items-center gap-1"
+						aria-label={m.video_editor_local_ai_expressive_tags()}
+					>
+						<span class="text-[9px] text-[oklch(0.58_0.012_55)]">
+							{m.video_editor_local_ai_expressive_tags()}
+						</span>
+						{#each LOCAL_TTS_EXPRESSIVE_TAG_OPTIONS as tag}
+							<Button
+								type="button"
+								size="xs"
+								variant="outline"
+								class="min-h-6 px-2 text-[9px] [@media(pointer:coarse)]:min-h-11"
+								disabled={generating}
+								onclick={() => insertExpressiveTag(tag.value)}
+							>
+								{expressiveTagLabel(tag.value)}
+							</Button>
+						{/each}
+					</div>
+				{/if}
 
 				<div>
 					<label for="local-ai-engine" class="block text-[10px] text-[oklch(0.66_0.015_55)]">
@@ -491,7 +546,7 @@
 								onclick={() => void save(generation, true)}
 							>
 								<PlusIcon class="size-3" aria-hidden="true" />
-								{sourceTextItemId
+								{generation.sourceTextItemId
 									? m.video_editor_local_ai_add_and_link()
 									: m.video_editor_local_ai_add_timeline()}
 							</Button>

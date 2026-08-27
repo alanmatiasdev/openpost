@@ -6,6 +6,7 @@ import type { GeneratedAudio } from '$lib/video-editor/local-ai/types';
 import type { LocalTtsGenerateOptions } from '$lib/video-editor/local-ai/tts/registry';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+import { LOCAL_TTS_ENGINE_STORAGE_KEY } from '$lib/video-editor/local-ai/tts/preferences';
 import LocalAiPanel from './local-ai-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -32,6 +33,7 @@ const media: MediaMetadata = {
 };
 
 beforeEach(() => {
+	localStorage.removeItem(LOCAL_TTS_ENGINE_STORAGE_KEY);
 	mediaTasks.reset();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ fps: 30, currentFrame: 91 });
@@ -162,6 +164,21 @@ describe('LocalAiPanel', () => {
 			supported: true
 		});
 		await screen.getByRole('combobox', { name: 'Engine', exact: true }).selectOptions('supertonic');
+		expect(localStorage.getItem(LOCAL_TTS_ENGINE_STORAGE_KEY)).toBe('supertonic');
+		await expect.element(screen.getByRole('group', { name: 'Expressive tags' })).toBeVisible();
+		const script = screen.getByRole('textbox', { name: 'Script' });
+		await script.fill('A warm welcome.');
+		// SAFETY: The Script role resolves the component's textarea.
+		const textarea = script.element() as HTMLTextAreaElement;
+		textarea.setSelectionRange(2, 2);
+		await screen.getByRole('button', { name: 'Laugh', exact: true }).click();
+		await expect.element(script).toHaveValue('A <laugh>warm welcome.');
+		screen.container.style.width = '260px';
+		await page.screenshot({
+			element: screen.container,
+			path: '../../../../.svelte-kit/openpost-supertonic-expressive-tags.png'
+		});
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
 		await screen.getByRole('combobox', { name: 'Voice', exact: true }).selectOptions('F2');
 		await screen.getByRole('combobox', { name: 'Language', exact: true }).selectOptions('pt');
 		await screen.getByRole('textbox', { name: 'Script' }).fill('Uma locução local.');
@@ -175,6 +192,42 @@ describe('LocalAiPanel', () => {
 				language: 'pt',
 				speed: 1
 			})
+		);
+	});
+
+	it('keeps each generated preview linked to the text item that requested it', async () => {
+		const commitAudio = vi.fn().mockResolvedValue({ media, itemId: 'linked-voice' });
+		const screen = await render(LocalAiPanel, {
+			projectId: 'project-1',
+			oninserted: vi.fn(),
+			generateSpeech: vi.fn(async () => generated),
+			commitAudio,
+			supported: true,
+			textVoiceRequest: {
+				id: 'request-1',
+				sourceTextItemId: 'first-title',
+				text: 'The first line.'
+			}
+		});
+
+		await screen.getByRole('button', { name: 'Generate voiceover' }).click();
+		await screen.rerender({
+			projectId: 'project-1',
+			oninserted: vi.fn(),
+			generateSpeech: vi.fn(async () => generated),
+			commitAudio,
+			supported: true,
+			textVoiceRequest: {
+				id: 'request-2',
+				sourceTextItemId: 'second-title',
+				text: 'The second line.'
+			}
+		});
+		await screen.getByRole('button', { name: 'Add and link' }).click();
+
+		expect(commitAudio).toHaveBeenCalledWith(
+			generated,
+			expect.objectContaining({ sourceTextItemId: 'first-title' })
 		);
 	});
 
