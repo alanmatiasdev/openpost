@@ -25,13 +25,14 @@ import {
   useColors,
 } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
+import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
 import { formatDateTime, platformLabel, statusColor } from "@/lib/format";
 
 export default function PostScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [showPicker, setShowPicker] = useState(false);
+  const [pickerStep, setPickerStep] = useState<PickerStep | null>(null);
   const [newDate, setNewDate] = useState<Date | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -92,7 +93,7 @@ export default function PostScreen() {
       if (error) throw new Error(await errorMessage(response, "Could not schedule"));
     },
     onSuccess: () => {
-      setShowPicker(false);
+      setPickerStep(null);
       setNewDate(null);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidate();
@@ -238,7 +239,11 @@ export default function PostScreen() {
               <Button
                 title="Reschedule"
                 variant="tinted"
-                onPress={() => setShowPicker(!showPicker)}
+                onPress={() =>
+                  setPickerStep((current) =>
+                    current ? null : firstPickerStep(Platform.OS === "android" ? "android" : "ios"),
+                  )
+                }
               />
               <Button
                 title="Cancel schedule"
@@ -257,18 +262,44 @@ export default function PostScreen() {
           ) : null}
 
           {status === "failed" ? (
-            <Button
-              title="Retry failed destinations"
-              variant="filled"
-              onPress={() =>
-                run(async () => {
-                  const { error, response } = await api().POST("/publications/{id}/retry-failed", {
-                    params: { path: { id } },
-                  });
-                  if (error) throw new Error(await errorMessage(response, "Could not retry"));
-                }, true)
-              }
-            />
+            <>
+              <Button
+                title="Retry failed destinations"
+                variant="filled"
+                onPress={() =>
+                  run(async () => {
+                    const { error, response } = await api().POST(
+                      "/publications/{id}/retry-failed",
+                      {
+                        params: { path: { id } },
+                      },
+                    );
+                    if (error) throw new Error(await errorMessage(response, "Could not retry"));
+                  }, true)
+                }
+              />
+              <Button
+                title={
+                  pub.failure_dismissed_at ? "Restore in failed posts" : "Dismiss from failed posts"
+                }
+                variant="plain"
+                onPress={() =>
+                  run(async () => {
+                    const result = pub.failure_dismissed_at
+                      ? await api().DELETE("/publications/{id}/failure-dismissal", {
+                          params: { path: { id } },
+                        })
+                      : await api().POST("/publications/{id}/failure-dismissal", {
+                          params: { path: { id } },
+                        });
+                    if (result.error)
+                      throw new Error(
+                        await errorMessage(result.response, "Could not update failed post"),
+                      );
+                  }, true)
+                }
+              />
+            </>
           ) : null}
 
           {(status === "failed" || status === "scheduled") && pub.revision !== undefined ? (
@@ -312,16 +343,25 @@ export default function PostScreen() {
           ) : null}
         </View>
 
-        {showPicker && status === "scheduled" ? (
+        {pickerStep && status === "scheduled" ? (
           <Card style={{ marginTop: 12, gap: 10 }}>
             <DateTimePicker
-              value={pub.scheduled_at ? new Date(pub.scheduled_at) : nextHour()}
-              mode="datetime"
+              value={newDate ?? (pub.scheduled_at ? new Date(pub.scheduled_at) : nextHour())}
+              mode={pickerStep}
               onChange={(event, date) => {
-                if (Platform.OS === "android") setShowPicker(false);
-                if (event.type === "set" && date) {
-                  setNewDate(date);
-                  reschedule.mutate(date);
+                if (event.type !== "set" || !date) {
+                  setPickerStep(null);
+                  return;
+                }
+                const result = applyPickerValue(
+                  newDate ?? (pub.scheduled_at ? new Date(pub.scheduled_at) : nextHour()),
+                  date,
+                  pickerStep,
+                );
+                setNewDate(result.value);
+                setPickerStep(result.nextStep);
+                if (!result.nextStep) {
+                  reschedule.mutate(result.value);
                 }
               }}
             />

@@ -5,7 +5,7 @@ import { SymbolView } from "expo-symbols";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,6 +28,7 @@ import {
   TextField,
   useColors,
 } from "@/components/ui";
+import { BottomDrawer } from "@/components/bottom-drawer";
 import { api, errorMessage } from "@/lib/api/client";
 import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
 import { formatDateTime, platformLabel } from "@/lib/format";
@@ -68,7 +69,7 @@ async function fetchPublication(id: string) {
 
 export default function ComposeScreen() {
   const colors = useColors();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, build } = useLocalSearchParams<{ id: string; build?: string }>();
 
   const publication = useQuery({
     queryKey: ["publication", id],
@@ -96,14 +97,21 @@ export default function ComposeScreen() {
     );
   }
 
-  return <Composer key={String(id)} id={id} pub={publication.data} />;
+  return <Composer key={String(id)} buildOnOpen={build === "1"} id={id} pub={publication.data} />;
 }
 
-function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
+function Composer({
+  id,
+  pub,
+  buildOnOpen,
+}: {
+  id: string;
+  pub: PublicationDetail;
+  buildOnOpen: boolean;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
 
-  const [title, setTitle] = useState(pub.title ?? "");
   const [body, setBody] = useState(
     pub.source_text ?? pub.renditions?.find((rendition) => rendition.body)?.body ?? "",
   );
@@ -112,6 +120,10 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     pub.scheduled_at ? new Date(pub.scheduled_at) : null,
   );
   const [pickerStep, setPickerStep] = useState<PickerStep | null>(null);
+  const [destinationDrawerOpen, setDestinationDrawerOpen] = useState(false);
+  const [scheduleDrawerOpen, setScheduleDrawerOpen] = useState(false);
+  const [selectedSocialSetId, setSelectedSocialSetId] = useState(pub.social_set_id ?? "");
+  const [selectionTouched, setSelectionTouched] = useState((pub.renditions?.length ?? 0) > 0);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(
     () =>
       new Set(
@@ -146,9 +158,19 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     })),
   ]);
   const initialMediaIds = pub.media?.map((media) => media.id) ?? [];
+  const autoBuildStarted = useRef(false);
 
   const accounts = useAccounts();
   const socialSets = useSocialSets();
+  const defaultSocialSet = socialSets.data?.find((set) => set.is_default) ?? socialSets.data?.[0];
+  const defaultAccountIDs =
+    defaultSocialSet?.accounts?.map((account) => account.social_account_id) ??
+    accounts.data?.map((account) => account.id) ??
+    [];
+  const activeAccounts = selectionTouched ? selectedAccounts : new Set(defaultAccountIDs);
+  const activeSocialSetId = selectionTouched
+    ? selectedSocialSetId
+    : (defaultSocialSet?.id ?? selectedSocialSetId);
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ["publications"] });
@@ -199,13 +221,13 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
             item.localId === attachment.localId ? { ...item, status: "error" as const } : item,
           ),
         );
-        throw err instanceof Error ? err : new Error("Could not upload photo");
+        throw err instanceof Error ? err : new Error("Could not upload attachment");
       }
     }
     return mediaIds;
   }
 
-  async function persist(): Promise<number> {
+  async function persist(scheduleOverride?: Date): Promise<number> {
     let mediaChanged = false;
     for (const attachment of attachments) {
       if (!attachment.mediaId || !initialMediaIds.includes(attachment.mediaId)) {
@@ -216,14 +238,15 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     if (attachments.length !== initialMediaIds.length) mediaChanged = true;
 
     const media = await resolveAttachments();
-    const desired = [...selectedAccounts];
+    const desired = [...activeAccounts];
     const removed = (pub.renditions ?? []).filter(
       (rendition) =>
-        rendition.social_account_id && !selectedAccounts.has(rendition.social_account_id),
+        rendition.social_account_id && !activeAccounts.has(rendition.social_account_id),
     );
 
     const initialScheduled = pub.scheduled_at ? new Date(pub.scheduled_at).getTime() : 0;
-    const scheduledChanged = (scheduledAt?.getTime() ?? 0) !== initialScheduled;
+    const effectiveScheduledAt = scheduleOverride ?? scheduledAt;
+    const scheduledChanged = (effectiveScheduledAt?.getTime() ?? 0) !== initialScheduled;
 
     const {
       data: updated,
@@ -233,12 +256,12 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
       params: { path: { id } },
       body: {
         expected_revision: revision,
-        title,
         source_text: body,
+        ...(activeSocialSetId ? { social_set_id: activeSocialSetId } : {}),
         ...(mediaChanged ? { media: media.map((mediaId) => ({ media_id: mediaId })) } : {}),
         ...(scheduledChanged
-          ? scheduledAt
-            ? { scheduled_at: scheduledAt.toISOString() }
+          ? effectiveScheduledAt
+            ? { scheduled_at: effectiveScheduledAt.toISOString() }
             : { clear_schedule: true }
           : {}),
       },
@@ -285,7 +308,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
   }
 
   const saveAndClose = useMutation({
-    mutationFn: persist,
+    mutationFn: () => persist(),
     onSuccess: () => {
       invalidate();
       router.back();
@@ -361,10 +384,74 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     onError: handleError,
   });
 
+  const queueNextSlot = useMutation({
+    mutationFn: async () => {
+      if (activeAccounts.size === 0) throw new Error("Choose at least one destination");
+      const { data, error, response } = await api().GET("/posting-schedules/next-slot", {
+        params: { query: { workspace_id: currentWorkspaceId() } },
+      });
+      if (error || !data) throw new Error(await errorMessage(response, "No slot found"));
+      const slot = new Date(data.slot_time);
+      setScheduledAt(slot);
+      const nextRevision = await persist(slot);
+      const scheduled = await api().POST("/publications/{id}/schedule", {
+        params: { path: { id } },
+        body: { expected_revision: nextRevision },
+      });
+      if (scheduled.error) throw await httpError(scheduled.response, "Could not queue post");
+      return slot;
+    },
+    onSuccess: () => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidate();
+      router.back();
+    },
+    onError: handleError,
+  });
+
+  const generatePost = useMutation({
+    mutationFn: async () => {
+      const idea = body.trim();
+      if (!idea) throw new Error("Jot down an idea first");
+      if (activeAccounts.size === 0) throw new Error("Choose at least one destination");
+      const { data, error, response } = await api().POST("/post-builder/generate", {
+        body: {
+          workspace_id: currentWorkspaceId(),
+          idea,
+          social_account_ids: [...activeAccounts],
+        },
+      });
+      if (error || !data)
+        throw new Error(await errorMessage(response, "Could not build this post"));
+      return data;
+    },
+    onSuccess: (generated) => {
+      setBody(generated.source_text);
+      setRenditionBodies(
+        Object.fromEntries(
+          (generated.renditions ?? []).map((rendition) => [
+            rendition.social_account_id,
+            rendition.body,
+          ]),
+        ),
+      );
+      setStatusMessage("AI draft ready. Review it before you queue it.");
+      setActionError(null);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: handleError,
+  });
+
+  useEffect(() => {
+    if (!buildOnOpen || autoBuildStarted.current || activeAccounts.size === 0) return;
+    autoBuildStarted.current = true;
+    generatePost.mutate();
+  }, [activeAccounts.size, buildOnOpen, generatePost]);
+
   function toggleAccount(accountId: string) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedAccounts((current) => {
-      const next = new Set(current);
+    setSelectedAccounts(() => {
+      const next = new Set(activeAccounts);
       if (next.has(accountId)) {
         next.delete(accountId);
       } else {
@@ -372,11 +459,15 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
       }
       return next;
     });
+    setSelectedSocialSetId("");
+    setSelectionTouched(true);
   }
 
-  function applySocialSet(accountIds: string[]) {
+  function applySocialSet(setId: string, accountIds: string[]) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedAccounts(new Set(accountIds));
+    setSelectedSocialSetId(setId);
+    setSelectionTouched(true);
   }
 
   function addAttachment(asset: ImagePicker.ImagePickerAsset) {
@@ -396,7 +487,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
 
   async function pickFromLibrary() {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       allowsMultipleSelection: true,
       selectionLimit: 10,
       quality: 0.9,
@@ -484,14 +575,20 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           </BodyText>
         ) : null}
 
-        <TextField
-          value={title}
-          onChangeText={setTitle}
-          accessibilityLabel="Post title"
-          placeholder="Title"
-          style={{ fontSize: 17, fontWeight: "600" }}
-        />
-
+        <View style={styles.editorHeading}>
+          <View>
+            <Text style={[styles.editorTitle, { color: colors.text }]}>Post</Text>
+            <BodyText>One idea, adapted for every destination</BodyText>
+          </View>
+          <Button
+            title={generatePost.isPending ? "Building..." : "Build with AI"}
+            variant="tinted"
+            onPress={() => generatePost.mutate()}
+            disabled={generatePost.isPending || activeAccounts.size === 0 || !body.trim()}
+            loading={generatePost.isPending}
+            style={styles.aiButton}
+          />
+        </View>
         <TextField
           value={body}
           onChangeText={setBody}
@@ -499,7 +596,10 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           placeholder="What do you want to say?"
           multiline
           textAlignVertical="top"
-          style={{ lineHeight: 22, minHeight: 140 }}
+          style={[
+            styles.writingField,
+            { backgroundColor: colors.card, borderColor: colors.separator },
+          ]}
         />
 
         <View style={styles.attachmentList}>
@@ -512,12 +612,16 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               ]}
             >
               <View style={styles.thumbWrap}>
-                {attachment.uri ? (
+                {attachment.uri && attachment.mimeType.startsWith("image/") ? (
                   <Image source={{ uri: attachment.uri }} style={styles.thumb} contentFit="cover" />
                 ) : (
                   <View style={[styles.thumb, styles.thumbPlaceholder]}>
                     <SymbolView
-                      name={{ ios: "photo", android: "image" }}
+                      name={
+                        attachment.mimeType.startsWith("video/")
+                          ? { ios: "play.rectangle", android: "video_library" }
+                          : { ios: "photo", android: "image" }
+                      }
                       size={24}
                       tintColor={colors.textSecondary}
                     />
@@ -574,7 +678,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
         <View style={styles.attachRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add photos from library"
+            accessibilityLabel="Add photos or videos from library"
             onPress={() => void pickFromLibrary()}
             style={({ pressed }) => [
               styles.addTile,
@@ -606,197 +710,65 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           </Pressable>
         </View>
 
-        <SectionHeader label="Destinations" />
-        {(socialSets.data?.length ?? 0) > 0 ? (
-          <View style={styles.chipRow}>
-            {[...(socialSets.data ?? [])]
-              .sort((a, b) => Number(b.is_default === true) - Number(a.is_default === true))
-              .map((set) => (
-                <Chip
-                  key={set.id}
-                  label={set.name}
-                  active={
-                    (set.accounts?.length ?? 0) > 0 &&
-                    (set.accounts ?? []).every((account) =>
-                      selectedAccounts.has(account.social_account_id),
-                    )
-                  }
-                  onPress={() =>
-                    applySocialSet((set.accounts ?? []).map((account) => account.social_account_id))
-                  }
+        <SectionHeader label="Publishing" />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Choose Social Set and destinations"
+          onPress={() => setDestinationDrawerOpen(true)}
+        >
+          {({ pressed }) => (
+            <Card style={[styles.settingCard, pressed && { opacity: 0.65 }]}>
+              <View style={styles.settingIcon}>
+                <SymbolView
+                  name={{ ios: "person.2", android: "group" }}
+                  size={22}
+                  tintColor={colors.tint}
                 />
-              ))}
-          </View>
-        ) : null}
-
-        {accounts.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
-        {(accounts.data?.length ?? 0) === 0 && !accounts.isLoading ? (
-          <Card>
-            <BodyText>No connected accounts. Connect them in the web app first.</BodyText>
-          </Card>
-        ) : (
-          <View style={styles.accountList}>
-            {(accounts.data ?? []).map((account) => {
-              const accountId = account.id;
-              const selected = selectedAccounts.has(accountId);
-              return (
-                <View key={accountId}>
-                  <Pressable
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected }}
-                    onPress={() => toggleAccount(accountId)}
-                    style={({ pressed }) => [
-                      styles.accountRow,
-                      { backgroundColor: colors.card },
-                      selected && {
-                        borderColor: colors.tint,
-                        borderWidth: 1.5,
-                      },
-                      pressed && { opacity: 0.6 },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        selected && {
-                          backgroundColor: colors.tint,
-                          borderColor: colors.tint,
-                        },
-                        { borderColor: colors.separator },
-                      ]}
-                    >
-                      {selected ? (
-                        <SymbolView
-                          name={{ ios: "checkmark", android: "check" }}
-                          size={15}
-                          tintColor={colors.onTint}
-                        />
-                      ) : null}
-                    </View>
-                    <View style={{ flex: 1, gap: 1 }}>
-                      <Text
-                        style={{
-                          color: colors.text,
-                          fontSize: 15,
-                          fontWeight: "500",
-                        }}
-                        numberOfLines={1}
-                      >
-                        {account.account_username ? `@${account.account_username}` : account.slug}
-                      </Text>
-                      <BodyText>{platformLabel(account.platform)}</BodyText>
-                    </View>
-                  </Pressable>
-                  {selected ? (
-                    <>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          expanded: expandedAccount === accountId,
-                        }}
-                        onPress={() =>
-                          setExpandedAccount(expandedAccount === accountId ? null : accountId)
-                        }
-                        style={styles.customizeToggle}
-                      >
-                        <Text
-                          style={{
-                            color: colors.tint,
-                            fontSize: 14,
-                            fontWeight: "500",
-                          }}
-                        >
-                          {expandedAccount === accountId
-                            ? "Hide customization"
-                            : "Customize for this platform"}
-                        </Text>
-                      </Pressable>
-                      {expandedAccount === accountId ? (
-                        <TextField
-                          value={renditionBodies[accountId] ?? ""}
-                          accessibilityLabel={`Custom text for ${platformLabel(account.platform)}`}
-                          onChangeText={(text) =>
-                            setRenditionBodies((current) => ({
-                              ...current,
-                              [accountId]: text,
-                            }))
-                          }
-                          placeholder="Leave empty to use the main text..."
-                          multiline
-                          textAlignVertical="top"
-                          style={[styles.overrideField, { minHeight: 80 }]}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        <SectionHeader label="Schedule" />
-        <Card style={styles.scheduleCard}>
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: "500" }}>
-            {scheduledAt ? formatDateTime(scheduledAt.toISOString()) : "Not scheduled"}
-          </Text>
-          <View style={styles.scheduleActions}>
-            <Button
-              title={pickerStep ? "Hide picker" : "Pick time"}
-              variant="tinted"
-              onPress={() =>
-                setPickerStep((current) =>
-                  current ? null : firstPickerStep(Platform.OS === "android" ? "android" : "ios"),
-                )
-              }
-              style={styles.scheduleButton}
-            />
-            <Button
-              title="Next slot"
-              variant="tinted"
-              onPress={() => nextSlot.mutate()}
-              disabled={nextSlot.isPending}
-              style={styles.scheduleButton}
-            />
-            {scheduledAt ? (
-              <Button
-                title="Clear"
-                variant="plain"
-                onPress={() => setScheduledAt(null)}
-                style={styles.scheduleButton}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Social Set</Text>
+                <BodyText numberOfLines={1}>
+                  {selectedSetLabel(socialSets.data ?? [], activeSocialSetId, activeAccounts.size)}
+                </BodyText>
+              </View>
+              <SymbolView
+                name={{ ios: "chevron.right", android: "chevron_right" }}
+                size={20}
+                tintColor={colors.textSecondary}
               />
-            ) : null}
-          </View>
-          {pickerStep ? (
-            <DateTimePicker
-              value={scheduledAt ?? nextHour()}
-              mode={pickerStep}
-              onChange={(event, date) => {
-                if (event.type !== "set" || !date) {
-                  setPickerStep(null);
-                  return;
-                }
-                const result = applyPickerValue(scheduledAt ?? nextHour(), date, pickerStep);
-                setScheduledAt(result.value);
-                setPickerStep(result.nextStep);
-              }}
-            />
-          ) : null}
-          {!isScheduled && scheduledAt ? (
-            <Button
-              title="Schedule & queue"
-              variant="filled"
-              onPress={() => scheduleMutation.mutate()}
-              disabled={scheduleMutation.isPending || selectedAccounts.size === 0}
-              style={{ marginTop: 8 }}
-            />
-          ) : null}
-          {isScheduled ? (
-            <BodyText style={{ marginTop: 6 }}>
-              Already queued. Manage it from the Queue tab.
-            </BodyText>
-          ) : null}
-        </Card>
+            </Card>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Choose a custom publishing time"
+          onPress={() => setScheduleDrawerOpen(true)}
+        >
+          {({ pressed }) => (
+            <Card style={[styles.settingCard, pressed && { opacity: 0.65 }]}>
+              <View style={styles.settingIcon}>
+                <SymbolView
+                  name={{ ios: "calendar", android: "calendar_month" }}
+                  size={22}
+                  tintColor={colors.tint}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Publish time</Text>
+                <BodyText>
+                  {scheduledAt
+                    ? formatDateTime(scheduledAt.toISOString())
+                    : "Use the next open slot"}
+                </BodyText>
+              </View>
+              <SymbolView
+                name={{ ios: "chevron.right", android: "chevron_right" }}
+                size={20}
+                tintColor={colors.textSecondary}
+              />
+            </Card>
+          )}
+        </Pressable>
 
         <View style={styles.footer}>
           {pub.status !== "published" && pub.status !== "publishing" ? (
@@ -804,7 +776,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               title="Publish now"
               variant="tinted"
               onPress={() => publishNow.mutate()}
-              disabled={publishNow.isPending || selectedAccounts.size === 0}
+              disabled={publishNow.isPending || activeAccounts.size === 0}
             />
           ) : null}
           <Button
@@ -824,6 +796,184 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           />
         </View>
       </ScrollView>
+      {!isScheduled ? (
+        <View
+          style={[
+            styles.stickyFooter,
+            { backgroundColor: colors.bg, borderTopColor: colors.separator },
+          ]}
+        >
+          <Button
+            title="Queue next slot"
+            onPress={() => queueNextSlot.mutate()}
+            disabled={queueNextSlot.isPending || activeAccounts.size === 0 || !body.trim()}
+            loading={queueNextSlot.isPending}
+            style={{ flex: 1 }}
+          />
+          <IconButton
+            label="Choose publishing time"
+            name={{ ios: "calendar", android: "calendar_month" }}
+            onPress={() => setScheduleDrawerOpen(true)}
+          />
+        </View>
+      ) : null}
+
+      {destinationDrawerOpen ? (
+        <BottomDrawer open title="Social Set" onDismiss={() => setDestinationDrawerOpen(false)}>
+          {(socialSets.data?.length ?? 0) > 0 ? (
+            <View style={styles.chipRow}>
+              {[...(socialSets.data ?? [])]
+                .sort((a, b) => Number(b.is_default === true) - Number(a.is_default === true))
+                .map((set) => (
+                  <Chip
+                    key={set.id}
+                    label={set.name ?? "Social Set"}
+                    active={activeSocialSetId === set.id}
+                    onPress={() =>
+                      applySocialSet(
+                        set.id,
+                        (set.accounts ?? []).map((account) => account.social_account_id),
+                      )
+                    }
+                  />
+                ))}
+            </View>
+          ) : null}
+          <BodyText>Choose a saved set or fine-tune the accounts below.</BodyText>
+          {accounts.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
+          {(accounts.data?.length ?? 0) === 0 && !accounts.isLoading ? (
+            <Card>
+              <BodyText>No connected accounts. Connect them in the web app first.</BodyText>
+            </Card>
+          ) : (
+            <View style={styles.accountList}>
+              {(accounts.data ?? []).map((account) => {
+                const selected = activeAccounts.has(account.id);
+                return (
+                  <View key={account.id}>
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => toggleAccount(account.id)}
+                      style={({ pressed }) => [
+                        styles.accountRow,
+                        {
+                          backgroundColor: colors.bg,
+                          borderColor: selected ? colors.tint : colors.separator,
+                        },
+                        pressed && { opacity: 0.65 },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.checkbox,
+                          {
+                            borderColor: selected ? colors.tint : colors.separator,
+                            backgroundColor: selected ? colors.tint : "transparent",
+                          },
+                        ]}
+                      >
+                        {selected ? (
+                          <SymbolView
+                            name={{ ios: "checkmark", android: "check" }}
+                            size={15}
+                            tintColor={colors.onTint}
+                          />
+                        ) : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>
+                          {account.account_username ? `@${account.account_username}` : account.slug}
+                        </Text>
+                        <BodyText>{platformLabel(account.platform)}</BodyText>
+                      </View>
+                      {selected ? (
+                        <Button
+                          title={expandedAccount === account.id ? "Hide" : "Customize"}
+                          variant="plain"
+                          onPress={() =>
+                            setExpandedAccount(expandedAccount === account.id ? null : account.id)
+                          }
+                          style={styles.customizeButton}
+                        />
+                      ) : null}
+                    </Pressable>
+                    {selected && expandedAccount === account.id ? (
+                      <TextField
+                        value={renditionBodies[account.id] ?? ""}
+                        accessibilityLabel={`Custom text for ${platformLabel(account.platform)}`}
+                        onChangeText={(text) =>
+                          setRenditionBodies((current) => ({ ...current, [account.id]: text }))
+                        }
+                        placeholder="Leave empty to use the main post"
+                        multiline
+                        textAlignVertical="top"
+                        style={styles.overrideField}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+          <Button
+            title="Done"
+            onPress={() => setDestinationDrawerOpen(false)}
+            disabled={activeAccounts.size === 0}
+          />
+        </BottomDrawer>
+      ) : null}
+
+      {scheduleDrawerOpen ? (
+        <BottomDrawer open title="Publish time" onDismiss={() => setScheduleDrawerOpen(false)}>
+          <Card style={styles.scheduleCard}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>
+              {scheduledAt ? formatDateTime(scheduledAt.toISOString()) : "Not scheduled"}
+            </Text>
+            <View style={styles.scheduleActions}>
+              <Button
+                title={pickerStep ? "Hide picker" : "Pick date and time"}
+                variant="tinted"
+                onPress={() =>
+                  setPickerStep((current) =>
+                    current ? null : firstPickerStep(Platform.OS === "android" ? "android" : "ios"),
+                  )
+                }
+              />
+              <Button
+                title="Use next slot"
+                variant="tinted"
+                onPress={() => nextSlot.mutate()}
+                loading={nextSlot.isPending}
+              />
+              {scheduledAt ? (
+                <Button title="Clear" variant="plain" onPress={() => setScheduledAt(null)} />
+              ) : null}
+            </View>
+            {pickerStep ? (
+              <DateTimePicker
+                value={scheduledAt ?? nextHour()}
+                mode={pickerStep}
+                onChange={(event, date) => {
+                  if (event.type !== "set" || !date) {
+                    setPickerStep(null);
+                    return;
+                  }
+                  const result = applyPickerValue(scheduledAt ?? nextHour(), date, pickerStep);
+                  setScheduledAt(result.value);
+                  setPickerStep(result.nextStep);
+                }}
+              />
+            ) : null}
+          </Card>
+          <Button
+            title="Schedule and queue"
+            onPress={() => scheduleMutation.mutate()}
+            disabled={!scheduledAt || scheduleMutation.isPending || activeAccounts.size === 0}
+            loading={scheduleMutation.isPending}
+          />
+        </BottomDrawer>
+      ) : null}
     </Screen>
   );
 }
@@ -863,6 +1013,16 @@ function nextHour(): Date {
   return date;
 }
 
+function selectedSetLabel(
+  sets: { id: string; name?: string | null }[],
+  selectedSetId: string,
+  accountCount: number,
+): string {
+  const selectedSet = sets.find((set) => set.id === selectedSetId);
+  if (selectedSet?.name) return `${selectedSet.name} · ${accountCount} destinations`;
+  return `${accountCount} ${accountCount === 1 ? "destination" : "destinations"}`;
+}
+
 const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: "row",
@@ -882,7 +1042,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     gap: 12,
-    paddingBottom: 60,
+    paddingBottom: 120,
+  },
+  editorHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  editorTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+  },
+  aiButton: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+  },
+  writingField: {
+    fontSize: 18,
+    lineHeight: 28,
+    minHeight: 260,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   attachRow: {
     flexDirection: "row",
@@ -966,7 +1148,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     paddingHorizontal: 12,
     minHeight: 52,
   },
@@ -985,6 +1167,28 @@ const styles = StyleSheet.create({
   },
   overrideField: {
     marginTop: 4,
+    minHeight: 112,
+    paddingTop: 12,
+  },
+  customizeButton: {
+    minHeight: 44,
+    paddingHorizontal: 8,
+  },
+  settingCard: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 68,
+  },
+  settingIcon: {
+    alignItems: "center",
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  settingTitle: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   scheduleCard: {
     gap: 10,
@@ -1001,5 +1205,18 @@ const styles = StyleSheet.create({
   footer: {
     gap: 10,
     marginTop: 8,
+  },
+  stickyFooter: {
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    bottom: 0,
+    flexDirection: "row",
+    gap: 10,
+    left: 0,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    position: "absolute",
+    right: 0,
   },
 });

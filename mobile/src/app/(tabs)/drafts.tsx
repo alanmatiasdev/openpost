@@ -59,7 +59,7 @@ export default function DraftsScreen() {
     },
   });
 
-  async function quickCapture() {
+  async function quickCapture(buildWithAI = false) {
     const text = idea.trim();
     if (!text) return;
     setCaptureError(null);
@@ -67,7 +67,10 @@ export default function DraftsScreen() {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const draft = await createDraft.mutateAsync(text);
       setIdea("");
-      router.push({ pathname: "/compose/[id]", params: { id: draft.id } });
+      router.push({
+        pathname: "/compose/[id]",
+        params: { id: draft.id, ...(buildWithAI ? { build: "1" } : {}) },
+      });
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "Could not save draft");
     }
@@ -115,28 +118,41 @@ export default function DraftsScreen() {
           ) : null}
         </View>
         <MenuButton onOpen={() => setMenuOpen(true)} />
-        <Button
-          title="New draft"
-          variant="tinted"
-          onPress={() => void quickCapture()}
-          disabled={createDraft.isPending || idea.trim().length === 0}
-        />
       </View>
 
-      <View style={styles.capture}>
+      <View
+        style={[styles.capture, { backgroundColor: colors.card, borderColor: colors.separator }]}
+      >
+        <Text style={[styles.captureTitle, { color: colors.text }]}>Jot an idea</Text>
         <TextField
           value={idea}
           onChangeText={setIdea}
           accessibilityLabel="Draft idea"
-          placeholder="Jot an idea"
+          placeholder="What are you building, learning, or launching?"
           multiline
-          onSubmitEditing={() => void quickCapture()}
+          textAlignVertical="top"
+          style={[styles.ideaField, { backgroundColor: colors.card, borderColor: "transparent" }]}
         />
         {captureError ? (
           <BodyText accessibilityRole="alert" style={{ color: colors.danger, marginTop: 6 }}>
             {captureError}
           </BodyText>
         ) : null}
+        <View style={styles.captureActions}>
+          <Button
+            title="Build with AI"
+            onPress={() => void quickCapture(true)}
+            disabled={createDraft.isPending || idea.trim().length === 0}
+            loading={createDraft.isPending}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Write it myself"
+            variant="plain"
+            onPress={() => void quickCapture(false)}
+            disabled={createDraft.isPending || idea.trim().length === 0}
+          />
+        </View>
       </View>
 
       <ScrollView
@@ -294,8 +310,28 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   capture: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 20,
+    marginTop: 8,
+    padding: 14,
+  },
+  captureTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  ideaField: {
+    fontSize: 17,
+    lineHeight: 25,
+    minHeight: 104,
+    paddingHorizontal: 0,
+    paddingTop: 10,
+  },
+  captureActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   list: {
     padding: 20,
