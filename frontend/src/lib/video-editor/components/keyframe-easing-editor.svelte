@@ -420,8 +420,9 @@
 <style>
 	@media (pointer: coarse) {
 		[data-segment-menu] :global(button),
-		[data-segment-menu] input {
+		[data-segment-menu] :global([role='slider']) {
 			min-height: 44px;
+			min-width: 44px;
 		}
 	}
 </style>

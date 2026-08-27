@@ -164,7 +164,7 @@ describe('LocalAiPanel', () => {
 			supported: true
 		});
 		await screen.getByRole('button', { name: 'Engine', exact: true }).click();
-		await page.getByRole('option', { name: 'Supertonic' }).click();
+		await screen.getByRole('option', { name: 'Supertonic' }).click();
 		expect(localStorage.getItem(LOCAL_TTS_ENGINE_STORAGE_KEY)).toBe('supertonic');
 		await expect.element(screen.getByRole('group', { name: 'Expressive tags' })).toBeVisible();
 		const script = screen.getByRole('textbox', { name: 'Script' });
@@ -181,9 +181,9 @@ describe('LocalAiPanel', () => {
 		});
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
 		await screen.getByRole('button', { name: 'Voice', exact: true }).click();
-		await page.getByRole('option', { name: /Lily/ }).click();
+		await screen.getByRole('option', { name: /Lily/ }).click();
 		await screen.getByRole('button', { name: 'Language', exact: true }).click();
-		await page.getByRole('option', { name: 'Portuguese' }).click();
+		await screen.getByRole('option', { name: 'Portuguese' }).click();
 		await screen.getByRole('textbox', { name: 'Script' }).fill('Uma locução local.');
 		await screen.getByRole('button', { name: 'Generate voiceover' }).click();
 
@@ -244,22 +244,14 @@ describe('LocalAiPanel', () => {
 			supported: true
 		});
 		await screen.getByRole('button', { name: 'Engine', exact: true }).click();
-		await page.getByRole('option', { name: 'MOSS' }).click();
+		await screen.getByRole('option', { name: 'MOSS' }).click();
 		await screen.getByRole('button', { name: 'Voice', exact: true }).click();
-		await page.getByRole('option', { name: 'Ava' }).click();
-		const speedSlider = document.querySelector(
-			'[role="slider"][aria-label="Speed"]'
-		) as HTMLElement | null;
-		speedSlider?.focus();
-		// Slider uses Home/End and Arrow keys; set to 1.7 via keyboard or direct dispatch for test stability
-		// Dispatch a synthetic input via the Slider's onValueChange by firing a pointer event is complex, so update via evaluate
-		// For now, directly set via component state is not exposed, so we simulate by setting the underlying value through the slider's value prop via dispatch
-		// As a fallback, we use the fact that the test can set speed via the slider's aria-valuenow by pressing Arrow keys repeatedly from 1.0
+		await screen.getByRole('option', { name: 'Ava' }).click();
+		const speedSlider = screen.getByRole('slider', { name: 'Speed' }).element();
+		speedSlider.focus();
 		for (let i = 0; i < 14; i++) {
-			speedSlider?.dispatchEvent(
-				new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-			);
-			speedSlider?.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
+			speedSlider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+			speedSlider.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
 		}
 		await new Promise((r) => setTimeout(r, 50));
 		await screen.getByRole('textbox', { name: 'Script' }).fill('A local multilingual voice.');

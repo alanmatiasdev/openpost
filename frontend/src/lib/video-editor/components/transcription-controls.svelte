@@ -77,10 +77,12 @@
 <div
 	class="grid grid-cols-2 gap-1 rounded-md border border-[oklch(0.25_0.015_55)] bg-[oklch(0.17_0.008_55)] p-1.5"
 >
-	<label class="col-span-2 text-[10px] text-[oklch(0.66_0.015_55)]">
-		{m.video_editor_transcribe_model()}
+	<div class="col-span-2 text-[10px] text-[oklch(0.66_0.015_55)]">
+		<label for="transcription-model">{m.video_editor_transcribe_model()}</label>
 		<Select.Root type="single" bind:value={model} disabled={busy}>
 			<Select.Trigger
+				id="transcription-model"
+				aria-label={m.video_editor_transcribe_model()}
 				class="mt-0.5 h-8 w-full justify-between rounded border border-[oklch(0.29_0.015_55)] bg-[oklch(0.21_0.01_55)] px-2 text-[11px] text-white shadow-none"
 			>
 				<span class="truncate">{transcriptionModelUiLabel(model)}</span>
@@ -91,11 +93,13 @@
 				{/each}
 			</Select.Content>
 		</Select.Root>
-	</label>
-	<label class="text-[10px] text-[oklch(0.66_0.015_55)]">
-		{m.video_editor_transcribe_language()}
+	</div>
+	<div class="text-[10px] text-[oklch(0.66_0.015_55)]">
+		<label for="transcription-language">{m.video_editor_transcribe_language()}</label>
 		<Select.Root type="single" bind:value={language} disabled={busy}>
 			<Select.Trigger
+				id="transcription-language"
+				aria-label={m.video_editor_transcribe_language()}
 				class="mt-0.5 h-8 w-full justify-between rounded border border-[oklch(0.29_0.015_55)] bg-[oklch(0.21_0.01_55)] px-2 text-[11px] text-white shadow-none"
 			>
 				<span class="truncate">{transcriptionLanguageUiLabel(language)}</span>
@@ -108,15 +112,17 @@
 				{/each}
 			</Select.Content>
 		</Select.Root>
-	</label>
-	<label class="text-[10px] text-[oklch(0.66_0.015_55)]">
-		{m.video_editor_transcribe_quality()}
+	</div>
+	<div class="text-[10px] text-[oklch(0.66_0.015_55)]">
+		<label for="transcription-quality">{m.video_editor_transcribe_quality()}</label>
 		<Select.Root
 			type="single"
 			bind:value={quantization}
 			disabled={busy || model === 'parakeet-tdt-v3'}
 		>
 			<Select.Trigger
+				id="transcription-quality"
+				aria-label={m.video_editor_transcribe_quality()}
 				class="mt-0.5 h-8 w-full justify-between rounded border border-[oklch(0.29_0.015_55)] bg-[oklch(0.21_0.01_55)] px-2 text-[11px] text-white shadow-none"
 			>
 				<span class="truncate">{transcriptionQuantizationUiLabel(quantization)}</span>
@@ -129,7 +135,7 @@
 				{/each}
 			</Select.Content>
 		</Select.Root>
-	</label>
+	</div>
 	<p class="col-span-2 text-[9px] leading-tight text-[oklch(0.58_0.012_55)]">
 		{transcriptionModelUiDescription(model)}
 	</p>

@@ -15,12 +15,12 @@ describe('TranscriptionControls', () => {
 			onstart,
 			oncancel: vi.fn()
 		});
-		await screen.getByRole('button', { name: /Model/ }).click();
+		await screen.getByRole('button', { name: 'Speech model' }).click();
 		await screen.getByRole('option', { name: /Whisper Small/ }).click();
-		await screen.getByRole('button', { name: /Language/ }).click();
+		await screen.getByRole('button', { name: 'Language', exact: true }).click();
 		await screen.getByRole('option', { name: /Portuguese|PT|Português/ }).click();
-		await screen.getByRole('combobox', { name: /Quality|Precision/ }).click();
-		await screen.getByRole('option', { name: /8-bit|q8/ }).click();
+		await screen.getByRole('button', { name: 'Model quality' }).click();
+		await screen.getByRole('option', { name: 'Q8' }).click();
 		await screen.getByRole('button', { name: 'Auto-captions' }).click();
 		expect(onstart).toHaveBeenCalledWith({
 			model: 'whisper-small',

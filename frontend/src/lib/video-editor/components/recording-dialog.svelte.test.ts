@@ -12,6 +12,22 @@ import '../../../routes/layout.css';
 let recorder: ScreenCaptureRecorder;
 let preferences: RecorderPreferencesStore;
 
+function dialogProps(open = true) {
+	return {
+		open,
+		projectId: 'project',
+		recorder,
+		preferences,
+		onopenchange: vi.fn(),
+		oninserted: vi.fn()
+	};
+}
+
+async function closeDialog(screen: Awaited<ReturnType<typeof render>>): Promise<void> {
+	await screen.rerender(dialogProps(false));
+	await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+}
+
 beforeEach(async () => {
 	recorder = new ScreenCaptureRecorder();
 	preferences = createRecorderPreferencesStore(null);
@@ -25,14 +41,7 @@ afterEach(() => {
 describe('RecordingDialog', () => {
 	it('keeps the complete preflight clear and usable at 320 pixels', async () => {
 		await page.viewport(320, 760);
-		const screen = await render(RecordingDialog, {
-			open: true,
-			projectId: 'project',
-			recorder,
-			preferences,
-			onopenchange: vi.fn(),
-			oninserted: vi.fn()
-		});
+		const screen = await render(RecordingDialog, dialogProps());
 		const dialog = screen.getByRole('dialog');
 
 		await expect.element(screen.getByRole('heading', { name: 'Record screen' })).toBeVisible();
@@ -76,36 +85,24 @@ describe('RecordingDialog', () => {
 		});
 		await screen.getByRole('checkbox', { name: 'Screen' }).click();
 		await screen.getByRole('checkbox', { name: 'Microphone' }).click();
+		await closeDialog(screen);
 	});
 
 	it('shows the live microphone level beside its durable byte counter', async () => {
 		recorder.status = 'recording';
 		recorder.micLevel = 0.42;
 		recorder.counters.microphone = { chunks: 3, bytes: 2_048 };
-		const screen = await render(RecordingDialog, {
-			open: true,
-			projectId: 'project',
-			recorder,
-			preferences,
-			onopenchange: vi.fn(),
-			oninserted: vi.fn()
-		});
+		const screen = await render(RecordingDialog, dialogProps());
 
 		await expect
 			.element(screen.getByRole('meter', { name: 'Input level' }))
 			.toHaveAttribute('aria-valuenow', '42');
 		await expect.element(screen.getByText(/3 chunks · 2\.0 KB/)).toBeVisible();
+		await closeDialog(screen);
 	});
 
 	it('replaces start controls with a single cancel path while permission is pending', async () => {
-		const screen = await render(RecordingDialog, {
-			open: true,
-			projectId: 'project',
-			recorder,
-			preferences,
-			onopenchange: vi.fn(),
-			oninserted: vi.fn()
-		});
+		const screen = await render(RecordingDialog, dialogProps());
 		recorder.status = 'requesting';
 
 		await expect
@@ -116,6 +113,7 @@ describe('RecordingDialog', () => {
 			.not.toBeInTheDocument();
 		await screen.getByRole('button', { name: 'Cancel' }).click();
 		expect(recorder.status).toBe('idle');
+		await closeDialog(screen);
 	});
 
 	it('offers recovered capture tracks for download, insertion, or explicit removal', async () => {
@@ -140,14 +138,7 @@ describe('RecordingDialog', () => {
 			recorder.lastArtifacts = [];
 		});
 
-		const screen = await render(RecordingDialog, {
-			open: true,
-			projectId: 'project',
-			recorder,
-			preferences,
-			onopenchange: vi.fn(),
-			oninserted: vi.fn()
-		});
+		const screen = await render(RecordingDialog, dialogProps());
 
 		await expect
 			.element(screen.getByText(/A recording stopped before it was finalized/))
@@ -174,5 +165,6 @@ describe('RecordingDialog', () => {
 		await expect
 			.element(screen.getByRole('button', { name: 'Recover recording' }))
 			.not.toBeInTheDocument();
+		await closeDialog(screen);
 	});
 });

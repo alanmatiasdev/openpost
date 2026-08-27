@@ -258,8 +258,7 @@
 		line-height: 1.4;
 		color: oklch(0.64 0.018 65);
 	}
-	button,
-	input {
+	button {
 		font: inherit;
 	}
 	button {
@@ -274,8 +273,7 @@
 		cursor: not-allowed;
 		opacity: 0.4;
 	}
-	button:focus-visible,
-	input:focus-visible {
+	button:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -316,25 +314,11 @@
 		font-size: 0.5625rem;
 		color: oklch(0.68 0.018 65);
 	}
-	.save-form input,
-	.library-controls input[type='search'] {
-		width: 100%;
-		min-height: 1.8rem;
-		border: 1px solid oklch(0.31 0.018 55);
-		border-radius: 0.3rem;
-		padding: 0.25rem 0.4rem;
-		background: oklch(0.135 0.01 55);
-		color: oklch(0.9 0.012 65);
-		font-size: 0.6rem;
-	}
 	.library-controls .retime-toggle {
 		display: flex;
 		min-height: 1.5rem;
 		align-items: center;
 		gap: 0.35rem;
-	}
-	.retime-toggle input {
-		accent-color: oklch(0.62 0.14 45);
 	}
 	.preset-list {
 		display: grid;

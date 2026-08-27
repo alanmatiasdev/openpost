@@ -92,12 +92,10 @@ describe('LocalMusicPanel', () => {
 
 		await expect.element(screen.getByText(/First use downloads up to 5.42 GB/)).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'Generate music' })).toBeEnabled();
-		const sliderEl = document.querySelector(
-			'[role="slider"][aria-label="Length"]'
-		) as HTMLElement | null;
-		sliderEl?.focus();
-		sliderEl?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-		sliderEl?.dispatchEvent(new KeyboardEvent('keyup', { key: 'Home', bubbles: true }));
+		const sliderEl = screen.getByRole('slider', { name: 'Length' }).element();
+		sliderEl.focus();
+		sliderEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+		sliderEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Home', bubbles: true }));
 		await new Promise((r) => setTimeout(r, 50));
 		await screen.getByRole('button', { name: 'Generate music' }).click();
 		expect(generateMusic).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 2 }));

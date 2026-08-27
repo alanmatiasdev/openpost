@@ -80,22 +80,24 @@ describe('EditorSettingsDialog', () => {
 	it('offers the supported languages and renders the active locale', async () => {
 		setLocale('pt', { reload: false });
 		const screen = await render(EditorSettingsDialog, { open: true });
-		const language = screen.getByRole('combobox', { name: 'Idioma' });
-		await expect.element(language).toHaveValue('pt');
-		await expect.element(language.getByRole('option', { name: 'English' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: 'Español' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: 'Français' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: 'Deutsch' })).toBeInTheDocument();
+		const language = screen.getByRole('button', { name: 'Idioma' });
+		await expect.element(language).toHaveTextContent('Português');
+		await language.click();
+		await expect.element(screen.getByRole('option', { name: 'English' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: 'Español' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: 'Français' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: 'Deutsch' })).toBeInTheDocument();
 		await expect
-			.element(language.getByRole('option', { name: 'Português', exact: true }))
+			.element(screen.getByRole('option', { name: 'Português', exact: true }))
 			.toBeInTheDocument();
 		await expect
-			.element(language.getByRole('option', { name: 'Português do Brasil', exact: true }))
+			.element(screen.getByRole('option', { name: 'Português do Brasil', exact: true }))
 			.toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: 'Türkçe' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: '日本語' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: '한국어' })).toBeInTheDocument();
-		await expect.element(language.getByRole('option', { name: '简体中文' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: 'Türkçe' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: '日本語' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: '한국어' })).toBeInTheDocument();
+		await expect.element(screen.getByRole('option', { name: '简体中文' })).toBeInTheDocument();
+		await userEvent.keyboard('{Escape}');
 		await expect
 			.element(screen.getByRole('heading', { name: 'Definições do editor' }))
 			.toBeVisible();
@@ -108,7 +110,7 @@ describe('EditorSettingsDialog', () => {
 		const dialog = screen.getByRole('dialog');
 
 		await expect.element(screen.getByRole('heading', { name: 'エディタ設定' })).toBeVisible();
-		await expect.element(screen.getByRole('combobox', { name: '言語' })).toHaveValue('ja');
+		await expect.element(screen.getByRole('button', { name: '言語' })).toHaveTextContent('日本語');
 		await expect.element(screen.getByRole('button', { name: '一般' })).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'タイムライン' })).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'ローカル AI' })).toBeVisible();
@@ -135,7 +137,8 @@ describe('EditorSettingsDialog', () => {
 		await userEvent.click(interfaceSounds.element());
 		expect(soundPreferences.enabled).toBe(true);
 		await expect.element(screen.getByRole('slider', { name: 'Sound volume' })).toBeVisible();
-		await screen.getByRole('combobox', { name: 'Sound theme' }).selectOptions('crisp');
+		await screen.getByRole('button', { name: 'Sound theme' }).click();
+		await screen.getByRole('option', { name: 'Crisp' }).click();
 		expect(soundPreferences.theme).toBe('crisp');
 		await expect
 			.element(screen.getByRole('button', { name: 'Preview sound' }))
@@ -168,7 +171,8 @@ describe('EditorSettingsDialog', () => {
 		expect(editorSettings.showWaveforms).toBe(false);
 
 		await screen.getByRole('button', { name: 'Local AI' }).click();
-		await screen.getByRole('combobox', { name: /Speech model/ }).selectOptions('whisper-small');
+		await screen.getByRole('button', { name: 'Speech model' }).click();
+		await screen.getByRole('option', { name: 'Whisper Small' }).click();
 		expect(editorSettings.defaultTranscriptionModel).toBe('whisper-small');
 
 		await screen.getByRole('button', { name: 'Storage' }).click();

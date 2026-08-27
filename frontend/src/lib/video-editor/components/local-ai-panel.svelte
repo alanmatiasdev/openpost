@@ -408,7 +408,7 @@
 							</Select.Trigger>
 							<Select.Content class="video-editor-theme bg-[oklch(0.18_0.008_55)] text-white">
 								{#each voiceOptions as option}
-									<option value={option.value}>{option.label}</option>
+									<Select.Item value={option.value}>{option.label}</Select.Item>
 								{/each}
 							</Select.Content>
 						</Select.Root>

@@ -343,9 +343,11 @@
 										/>
 									</div>
 									<div class="flex flex-wrap items-end justify-between gap-3">
-										<label class="min-w-40 flex-1 text-xs text-[var(--video-editor-muted)]">
-											{m.video_editor_settings_sound_theme()}
+										<div class="min-w-40 flex-1 text-xs text-[var(--video-editor-muted)]">
+											<label for="editor-sound-theme">{m.video_editor_settings_sound_theme()}</label
+											>
 											<AppSelect
+												id="editor-sound-theme"
 												value={soundPreferences.theme}
 												ariaLabel={m.video_editor_settings_sound_theme()}
 												options={INTERFACE_SOUND_THEMES.map((theme) => ({
@@ -355,7 +357,7 @@
 												onValueChange={(value) => setSoundTheme(value as InterfaceSoundTheme)}
 												class="mt-1 h-9 w-full"
 											/>
-										</label>
+										</div>
 										<Button
 											type="button"
 											variant="outline"
@@ -438,9 +440,10 @@
 							</p>
 						</div>
 						<div class="grid gap-3 sm:grid-cols-2">
-							<label class="text-xs text-[var(--video-editor-muted)] sm:col-span-2">
-								{m.video_editor_transcribe_model()}
+							<div class="text-xs text-[var(--video-editor-muted)] sm:col-span-2">
+								<label for="editor-transcription-model">{m.video_editor_transcribe_model()}</label>
 								<AppSelect
+									id="editor-transcription-model"
 									value={editorSettings.defaultTranscriptionModel}
 									ariaLabel={m.video_editor_transcribe_model()}
 									options={TRANSCRIPTION_MODEL_OPTIONS.map((option) => ({
@@ -451,10 +454,13 @@
 										editorSettings.set('defaultTranscriptionModel', value as TranscriptionModel)}
 									class="mt-1 h-9 w-full"
 								/>
-							</label>
-							<label class="text-xs text-[var(--video-editor-muted)]">
-								{m.video_editor_transcribe_language()}
+							</div>
+							<div class="text-xs text-[var(--video-editor-muted)]">
+								<label for="editor-transcription-language"
+									>{m.video_editor_transcribe_language()}</label
+								>
 								<AppSelect
+									id="editor-transcription-language"
 									value={editorSettings.defaultTranscriptionLanguage}
 									ariaLabel={m.video_editor_transcribe_language()}
 									options={TRANSCRIPTION_LANGUAGE_OPTIONS.map((option) => ({
@@ -465,10 +471,13 @@
 										editorSettings.set('defaultTranscriptionLanguage', value)}
 									class="mt-1 h-9 w-full"
 								/>
-							</label>
-							<label class="text-xs text-[var(--video-editor-muted)]">
-								{m.video_editor_transcribe_quality()}
+							</div>
+							<div class="text-xs text-[var(--video-editor-muted)]">
+								<label for="editor-transcription-quality"
+									>{m.video_editor_transcribe_quality()}</label
+								>
 								<AppSelect
+									id="editor-transcription-quality"
 									value={editorSettings.defaultTranscriptionQuantization}
 									ariaLabel={m.video_editor_transcribe_quality()}
 									options={TRANSCRIPTION_QUANTIZATION_OPTIONS.map((option) => ({
@@ -483,7 +492,7 @@
 										)}
 									class="mt-1 h-9 w-full"
 								/>
-							</label>
+							</div>
 						</div>
 					</section>
 				{:else}

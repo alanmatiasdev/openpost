@@ -889,14 +889,17 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 						<div class="mt-3 flex flex-wrap items-center gap-2">
 							<Label class="flex items-center gap-2 text-xs font-normal">
 								<Checkbox
-									bind:checked={merge}
-									onCheckedChange={() => syncProject()}
+									checked={merge}
+									onCheckedChange={(checked) => {
+										merge = checked === true;
+										syncProject();
+									}}
 									aria-label={m.quick_cut_merge_label()}
 								/>
 								{m.quick_cut_merge_label()}
 							</Label>
 							<RadioGroup.Root
-								bind:value={cutMode as unknown as string}
+								value={cutMode}
 								onValueChange={(value) => changeDefaultCutMode(value as CutMode)}
 								class="flex flex-wrap items-center gap-2"
 							>

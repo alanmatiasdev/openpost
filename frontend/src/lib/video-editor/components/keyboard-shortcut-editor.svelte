@@ -31,7 +31,7 @@
 	let draftBinding = $state('');
 	let feedback = $state<Feedback | null>(null);
 	let confirmReset = $state(false);
-	let importInput: HTMLInputElement | null = null;
+	let importInput = $state<HTMLInputElement | null>(null);
 
 	const commandLabels = {
 		PLAY_PAUSE: m.video_editor_shortcuts_command_play_pause,
@@ -64,6 +64,16 @@
 		PASTE: m.video_editor_shortcuts_command_paste,
 		UNDO: m.video_editor_shortcuts_command_undo,
 		REDO: m.video_editor_shortcuts_command_redo,
+		GRAPH_SELECT_ALL: m.video_editor_shortcuts_command_graph_select_all,
+		GRAPH_CLEAR_SELECTION: m.video_editor_shortcuts_command_graph_clear_selection,
+		GRAPH_NUDGE_LEFT: m.video_editor_shortcuts_command_graph_nudge_left,
+		GRAPH_NUDGE_RIGHT: m.video_editor_shortcuts_command_graph_nudge_right,
+		GRAPH_NUDGE_UP: m.video_editor_shortcuts_command_graph_nudge_up,
+		GRAPH_NUDGE_DOWN: m.video_editor_shortcuts_command_graph_nudge_down,
+		GRAPH_NUDGE_LEFT_FAST: m.video_editor_shortcuts_command_graph_nudge_left_fast,
+		GRAPH_NUDGE_RIGHT_FAST: m.video_editor_shortcuts_command_graph_nudge_right_fast,
+		GRAPH_NUDGE_UP_FAST: m.video_editor_shortcuts_command_graph_nudge_up_fast,
+		GRAPH_NUDGE_DOWN_FAST: m.video_editor_shortcuts_command_graph_nudge_down_fast,
 		ZOOM_IN: m.video_editor_shortcuts_command_zoom_in,
 		ZOOM_OUT: m.video_editor_shortcuts_command_zoom_out,
 		ZOOM_TO_FIT: m.video_editor_shortcuts_command_zoom_fit,

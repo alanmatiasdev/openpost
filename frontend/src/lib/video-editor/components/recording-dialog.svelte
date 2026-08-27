@@ -343,7 +343,8 @@
 
 				<div class="grid gap-3 sm:grid-cols-3">
 					<label
-						class="flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 has-[[data-checked=true]]:border-[oklch(0.66_0.14_45)] has-[[data-checked=true]]:bg-[oklch(0.27_0.02_45)]"
+						data-state={includeScreen ? 'checked' : 'unchecked'}
+						class="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 data-[state=checked]:border-[oklch(0.66_0.14_45)] data-[state=checked]:bg-[oklch(0.27_0.02_45)]"
 					>
 						<Checkbox
 							bind:checked={includeScreen}
@@ -352,7 +353,8 @@
 						<span class="text-sm">{m.record_source_screen()}</span>
 					</label>
 					<label
-						class="flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 has-[[data-checked=true]]:border-[oklch(0.66_0.14_45)] has-[[data-checked=true]]:bg-[oklch(0.27_0.02_45)]"
+						data-state={includeCamera ? 'checked' : 'unchecked'}
+						class="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 data-[state=checked]:border-[oklch(0.66_0.14_45)] data-[state=checked]:bg-[oklch(0.27_0.02_45)]"
 					>
 						<Checkbox
 							bind:checked={includeCamera}
@@ -361,7 +363,8 @@
 						<span class="text-sm">{m.record_source_camera()}</span>
 					</label>
 					<label
-						class="flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 has-[[data-checked=true]]:border-[oklch(0.66_0.14_45)] has-[[data-checked=true]]:bg-[oklch(0.27_0.02_45)]"
+						data-state={includeMic ? 'checked' : 'unchecked'}
+						class="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 data-[state=checked]:border-[oklch(0.66_0.14_45)] data-[state=checked]:bg-[oklch(0.27_0.02_45)]"
 					>
 						<Checkbox
 							bind:checked={includeMic}
@@ -373,7 +376,7 @@
 
 				<div class="flex flex-wrap gap-3">
 					{#if includeCamera}
-						<label class="flex min-w-40 flex-1 flex-col gap-1 text-xs">
+						<div class="flex min-w-40 flex-1 flex-col gap-1 text-xs">
 							<span>{m.record_camera()}</span>
 							<AppSelect
 								value={cameraId}
@@ -391,10 +394,10 @@
 								}}
 								class="h-11"
 							/>
-						</label>
+						</div>
 					{/if}
 					{#if includeMic}
-						<label class="flex min-w-40 flex-1 flex-col gap-1 text-xs">
+						<div class="flex min-w-40 flex-1 flex-col gap-1 text-xs">
 							<span>{m.record_microphone()}</span>
 							<AppSelect
 								value={micId}
@@ -412,13 +415,13 @@
 								}}
 								class="h-11"
 							/>
-						</label>
+						</div>
 					{/if}
 				</div>
 
 				{#if includeScreen || includeCamera}
 					<div class="grid gap-3 sm:grid-cols-3">
-						<label class="flex flex-col gap-1 text-xs">
+						<div class="flex flex-col gap-1 text-xs">
 							<span>{m.video_editor_export_resolution()}</span>
 							<AppSelect
 								value={videoResolution}
@@ -431,8 +434,8 @@
 								onValueChange={setVideoResolution}
 								class="h-11"
 							/>
-						</label>
-						<label class="flex flex-col gap-1 text-xs">
+						</div>
+						<div class="flex flex-col gap-1 text-xs">
 							<span>{m.video_editor_media_info_frame_rate()}</span>
 							<AppSelect
 								value={videoFrameRate}
@@ -448,9 +451,9 @@
 								}}
 								class="h-11"
 							/>
-						</label>
+						</div>
 						{#if includeCamera}
-							<label class="flex flex-col gap-1 text-xs">
+							<div class="flex flex-col gap-1 text-xs">
 								<span>{m.video_editor_record_camera_facing()}</span>
 								<AppSelect
 									value={cameraFacingMode}
@@ -463,7 +466,7 @@
 									onValueChange={setCameraFacingMode}
 									class="h-11"
 								/>
-							</label>
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -501,7 +504,7 @@
 				{/if}
 
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="flex flex-col gap-1 text-xs">
+					<div class="flex flex-col gap-1 text-xs">
 						<span>{m.video_editor_record_countdown()}</span>
 						<AppSelect
 							value={countdown}
@@ -530,8 +533,8 @@
 							}}
 							class="h-11"
 						/>
-					</label>
-					<label class="flex flex-col gap-1 text-xs">
+					</div>
+					<div class="flex flex-col gap-1 text-xs">
 						<span>{m.video_editor_record_planned()}</span>
 						<AppSelect
 							value={plannedMinutes}
@@ -563,7 +566,7 @@
 							}}
 							class="h-11"
 						/>
-					</label>
+					</div>
 				</div>
 
 				{#if estimate}
