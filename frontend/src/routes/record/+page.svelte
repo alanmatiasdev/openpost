@@ -28,8 +28,11 @@
 	let screenPreviewEl = $state<HTMLVideoElement | null>(null);
 	let cameraPreviewEl = $state<HTMLVideoElement | null>(null);
 	let lastDownloads = $state<
-		Array<{ url: string; name: string; kind: RecorderKind; size: number }>
+		Array<{ url: string; name: string; kind: RecorderKind; size: number; scratchId?: string }>
 	>([]);
+	const hasRecoverableDownloads = $derived(
+		lastDownloads.some((download) => download.scratchId !== undefined)
+	);
 
 	const hasSelection = $derived(includeScreen || includeCamera || includeMic);
 	const elapsed = $derived.by(() => {
@@ -74,12 +77,27 @@
 	}
 
 	onMount(() => {
+		let mounted = true;
 		void refreshDevices();
+		void recorder
+			.loadRecoverableArtifacts()
+			.then((artifacts) => {
+				if (!mounted) return;
+				lastDownloads = artifacts.map((artifact) => ({
+					url: URL.createObjectURL(artifact.blob),
+					name: `recording-${artifact.kind}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.webm`,
+					kind: artifact.kind,
+					size: artifact.sizeBytes,
+					scratchId: artifact.scratchId
+				}));
+			})
+			.catch(() => undefined);
 		const handler = () => void refreshDevices();
 		navigator.mediaDevices?.addEventListener?.('devicechange', handler);
 		return () => {
+			mounted = false;
 			navigator.mediaDevices?.removeEventListener?.('devicechange', handler);
-			void recorder.cancel().then(() => recorder.clearRecoverableAndDiscard());
+			void recorder.cancel();
 			for (const d of lastDownloads) URL.revokeObjectURL(d.url);
 		};
 	});
@@ -102,8 +120,6 @@
 			showToast(m.video_editor_recording_select_source(), 'error');
 			return;
 		}
-		for (const d of lastDownloads) URL.revokeObjectURL(d.url);
-		lastDownloads = [];
 		try {
 			await recorder.startWithSelection(
 				{
@@ -142,8 +158,8 @@
 				anchor.click();
 				return { url, name, kind: a.kind, size: a.blob.size };
 			});
-			lastDownloads = downloads;
-			await recorder.clearRecoverableAndDiscard();
+			lastDownloads = [...lastDownloads, ...downloads];
+			await recorder.discardArtifacts(artifacts);
 			showToast(m.record_saved(), 'success');
 		} catch {
 			showToast(localizedRecorderError(), 'error');
@@ -152,8 +168,15 @@
 
 	async function handleCancel(): Promise<void> {
 		await recorder.cancel();
-		await recorder.clearRecoverableAndDiscard();
 		showToast(m.record_discarded(), 'info');
+	}
+
+	async function handleDiscardRecovery(): Promise<void> {
+		await recorder.clearRecoverableAndDiscard();
+		for (const download of lastDownloads) {
+			if (download.scratchId) URL.revokeObjectURL(download.url);
+		}
+		lastDownloads = lastDownloads.filter((download) => !download.scratchId);
 	}
 
 	const isRequesting = $derived(recorder.status === 'requesting');
@@ -223,6 +246,9 @@
 				{/if}
 			{:else if lastDownloads.length > 0}
 				<div class="p-4 text-center text-sm">
+					{#if hasRecoverableDownloads}
+						<p class="mb-2 text-amber-200">{m.video_editor_recovery_available()}</p>
+					{/if}
 					<p class="font-medium">
 						{m.video_editor_recording_files_saved({
 							count: lastDownloads.length
@@ -241,6 +267,11 @@
 							</a>
 						{/each}
 					</div>
+					{#if hasRecoverableDownloads}
+						<Button variant="ghost" class="mt-3 min-h-11" onclick={handleDiscardRecovery}>
+							{m.video_editor_discard_recording()}
+						</Button>
+					{/if}
 				</div>
 			{:else if isRequesting}
 				<div role="status" aria-live="polite" class="text-center">

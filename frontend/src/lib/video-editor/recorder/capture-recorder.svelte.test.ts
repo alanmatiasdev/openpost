@@ -266,6 +266,30 @@ describe('ScreenCaptureRecorder', () => {
 		expect(recorder.cameraStream).toBeNull();
 	});
 
+	it('keeps a replacement capture alive when an older permission prompt resolves late', async () => {
+		let resolveCamera!: (stream: MediaStream) => void;
+		const pendingCamera = new Promise<MediaStream>((resolve) => {
+			resolveCamera = resolve;
+		});
+		getUserMedia.mockImplementationOnce(() => pendingCamera);
+		const recorder = new ScreenCaptureRecorder();
+		const staleStart = recorder.startWithSelection({ screen: true, camera: true }, {});
+		await vi.waitFor(() => expect(recorder.status).toBe('requesting'));
+		await recorder.cancel();
+
+		await recorder.startWithSelection({ screen: false, camera: false, microphone: true }, {});
+		expect(recorder.status).toBe('recording');
+		expect(microphoneStream.getTracks()[0]?.stop).not.toHaveBeenCalled();
+
+		resolveCamera(mediaStream(cameraStream));
+		await staleStart;
+
+		expect(cameraStream.getTracks()[0]?.stop).toHaveBeenCalledOnce();
+		expect(microphoneStream.getTracks()[0]?.stop).not.toHaveBeenCalled();
+		expect(recorder.status).toBe('recording');
+		await recorder.cancel();
+	});
+
 	it('maps browser and storage failures to stable error codes', () => {
 		expect(mapRecorderError(new DOMException('', 'NotAllowedError'))).toBe('permission-denied');
 		expect(mapRecorderError(new DOMException('', 'NotFoundError'))).toBe('no-device');

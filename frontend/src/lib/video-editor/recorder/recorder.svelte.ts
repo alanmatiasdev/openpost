@@ -22,7 +22,12 @@ import {
 import {
 	createScratchSink,
 	discardScratchById,
+	discardScratchRecoverySession,
+	holdScratchRecoveryLock,
+	loadRecoverableScratchSessions,
+	writeScratchRecoveryManifest,
 	type ScratchKind,
+	type ScratchRecoveryManifest,
 	type ScratchSink
 } from './recorder-scratch';
 
@@ -66,6 +71,7 @@ export interface CaptureArtifact {
 	startOffsetMs: number;
 	sizeBytes: number;
 	scratchId: string;
+	recoverySessionId?: string;
 }
 
 const COUNTDOWN_TICK_MS = 1000;
@@ -104,6 +110,13 @@ function isMediaRecorderAvailable(): boolean {
 function isNavigatorAvailable(): boolean {
 	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- browser global check
 	return typeof navigator !== 'undefined';
+}
+
+function stopMediaStreams(streams: MediaStream[]): void {
+	for (const stream of streams) {
+		for (const track of stream.getTracks()) track.stop();
+	}
+	streams.length = 0;
 }
 
 export async function listRecorderDevices(): Promise<RecorderDeviceLists> {
@@ -166,6 +179,10 @@ export class ScreenCaptureRecorder {
 	private stopGeneration = 0;
 	private stopPromise: Promise<CaptureArtifact[]> | null = null;
 	private pendingWriteBytes = 0;
+	private activeRecoverySessionId: string | null = null;
+	private activeRecoveryCreatedAt = 0;
+	private recoveryManifestQueue: Promise<void> = Promise.resolve();
+	private releaseRecoveryLock: (() => void) | null = null;
 
 	async startWithSelection(
 		selection: RecorderSelection,
@@ -193,7 +210,8 @@ export class ScreenCaptureRecorder {
 		this.selection = selection;
 		this.elapsedMs = 0;
 		this.countdownRemaining = null;
-		this.acquiredStreams = [];
+		const acquiredStreams: MediaStream[] = [];
+		this.acquiredStreams = acquiredStreams;
 		this.stopPromise = null;
 		this.pendingWriteBytes = 0;
 
@@ -202,7 +220,11 @@ export class ScreenCaptureRecorder {
 		let micStream: MediaStream | null = null;
 
 		const trackAcquired = (stream: MediaStream | null) => {
-			if (stream) this.acquiredStreams.push(stream);
+			if (stream) acquiredStreams.push(stream);
+		};
+		const cleanupStartStreams = () => {
+			stopMediaStreams(acquiredStreams);
+			if (this.acquiredStreams === acquiredStreams) this.acquiredStreams = [];
 		};
 
 		try {
@@ -215,7 +237,7 @@ export class ScreenCaptureRecorder {
 				screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
 				trackAcquired(screenStream);
 				if (generation !== this.generation) {
-					this.cleanupAcquiredStreams();
+					cleanupStartStreams();
 					return;
 				}
 				screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
@@ -232,7 +254,7 @@ export class ScreenCaptureRecorder {
 				});
 				trackAcquired(cameraStream);
 				if (generation !== this.generation) {
-					this.cleanupAcquiredStreams();
+					cleanupStartStreams();
 					return;
 				}
 			}
@@ -244,12 +266,12 @@ export class ScreenCaptureRecorder {
 				});
 				trackAcquired(micStream);
 				if (generation !== this.generation) {
-					this.cleanupAcquiredStreams();
+					cleanupStartStreams();
 					return;
 				}
 			}
 		} catch (error) {
-			this.cleanupAcquiredStreams();
+			cleanupStartStreams();
 			if (generation === this.generation) {
 				const code = mapRecorderError(error);
 				this.setError(code);
@@ -259,7 +281,7 @@ export class ScreenCaptureRecorder {
 		}
 
 		if (generation !== this.generation) {
-			this.cleanupAcquiredStreams();
+			cleanupStartStreams();
 			throw new Error('Cancelled');
 		}
 
@@ -274,7 +296,7 @@ export class ScreenCaptureRecorder {
 			try {
 				await this.runCountdown(countdown, generation);
 			} catch (error) {
-				this.cleanupAcquiredStreams();
+				cleanupStartStreams();
 				this.clearPreview();
 				if (generation === this.generation) {
 					this.status = 'idle';
@@ -285,24 +307,51 @@ export class ScreenCaptureRecorder {
 				throw error;
 			}
 			if (generation !== this.generation) {
-				this.cleanupAcquiredStreams();
+				cleanupStartStreams();
 				this.clearPreview();
 				throw new Error('Cancelled');
 			}
 		}
 
-		const toCreate: Array<{ kind: ScratchKind; stream: MediaStream; mime: string }> = [];
+		const recoverySessionId = crypto.randomUUID();
+		const recoveryCreatedAt = Date.now();
+		const releaseRecoveryLock = await holdScratchRecoveryLock(recoverySessionId);
+		if (generation !== this.generation) {
+			releaseRecoveryLock();
+			return;
+		}
+		this.activeRecoverySessionId = recoverySessionId;
+		this.activeRecoveryCreatedAt = recoveryCreatedAt;
+		this.recoveryManifestQueue = Promise.resolve();
+		this.releaseRecoveryLock = releaseRecoveryLock;
+		const toCreate: Array<{
+			kind: ScratchKind;
+			stream: MediaStream;
+			mime: string;
+		}> = [];
 		if (screenStream)
-			toCreate.push({ kind: 'screen', stream: screenStream, mime: pickVideoMimeType() });
+			toCreate.push({
+				kind: 'screen',
+				stream: screenStream,
+				mime: pickVideoMimeType()
+			});
 		if (cameraStream)
-			toCreate.push({ kind: 'camera', stream: cameraStream, mime: pickVideoMimeType() });
+			toCreate.push({
+				kind: 'camera',
+				stream: cameraStream,
+				mime: pickVideoMimeType()
+			});
 		if (micStream)
-			toCreate.push({ kind: 'microphone', stream: micStream, mime: pickAudioMimeType() });
+			toCreate.push({
+				kind: 'microphone',
+				stream: micStream,
+				mime: pickAudioMimeType()
+			});
 
 		const newInternal: InternalRecorder[] = [];
 		try {
 			for (const { kind, stream, mime } of toCreate) {
-				const sink = await createScratchSink(kind, mime);
+				const sink = await createScratchSink(kind, mime, recoverySessionId);
 				let recorder: MediaRecorder;
 				try {
 					recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -326,7 +375,10 @@ export class ScreenCaptureRecorder {
 					const chunk = event.data;
 					entry.chunkCount += 1;
 					entry.byteCount += chunk.size;
-					this.counters[kind] = { chunks: entry.chunkCount, bytes: entry.byteCount };
+					this.counters[kind] = {
+						chunks: entry.chunkCount,
+						bytes: entry.byteCount
+					};
 					this.pendingWriteBytes += chunk.size;
 					const backlogExceeded = this.pendingWriteBytes > MAX_PENDING_WRITE_BYTES;
 					void entry.sink
@@ -360,8 +412,16 @@ export class ScreenCaptureRecorder {
 					// ignore
 				}
 			}
-			this.cleanupAcquiredStreams();
+			if (generation !== this.generation) {
+				await discardScratchRecoverySession(
+					recoverySessionId,
+					newInternal.map((entry) => entry.sink.id)
+				);
+				throw new Error('Cancelled', { cause: error });
+			}
+			cleanupStartStreams();
 			this.clearPreview();
+			await this.discardActiveRecoverySession(recoverySessionId);
 			if (generation === this.generation) {
 				const code = mapRecorderError(error);
 				this.setError(code);
@@ -369,10 +429,45 @@ export class ScreenCaptureRecorder {
 			}
 			throw error;
 		}
+		if (generation !== this.generation) {
+			for (const entry of newInternal) await entry.sink.discard().catch(() => undefined);
+			await discardScratchRecoverySession(
+				recoverySessionId,
+				newInternal.map((entry) => entry.sink.id)
+			);
+			return;
+		}
 
 		this.internal = newInternal;
+		try {
+			await this.writeActiveRecoveryManifest('recording');
+		} catch (error) {
+			for (const entry of newInternal) await entry.sink.discard().catch(() => undefined);
+			if (this.activeRecoverySessionId === recoverySessionId) {
+				this.internal = [];
+				cleanupStartStreams();
+				this.clearPreview();
+				await this.discardActiveRecoverySession(recoverySessionId);
+				this.setError(mapRecorderError(error));
+				this.status = 'error';
+			} else {
+				await discardScratchRecoverySession(
+					recoverySessionId,
+					newInternal.map((entry) => entry.sink.id)
+				);
+			}
+			throw error;
+		}
+		if (generation !== this.generation) {
+			for (const entry of newInternal) await entry.sink.discard().catch(() => undefined);
+			await discardScratchRecoverySession(
+				recoverySessionId,
+				newInternal.map((entry) => entry.sink.id)
+			);
+			return;
+		}
 
-		const startPromises = this.internal.map(
+		const startPromises = newInternal.map(
 			(entry) =>
 				new Promise<void>((resolve, reject) => {
 					const onStart = () => {
@@ -400,7 +495,7 @@ export class ScreenCaptureRecorder {
 		try {
 			await Promise.all(startPromises);
 		} catch (error) {
-			for (const entry of this.internal) {
+			for (const entry of newInternal) {
 				await this.stopRecorderForDiscard(entry.recorder);
 				try {
 					await entry.sink.discard();
@@ -408,9 +503,17 @@ export class ScreenCaptureRecorder {
 					// ignore
 				}
 			}
-			this.internal = [];
-			this.clearPreview();
-			this.cleanupAcquiredStreams();
+			if (this.activeRecoverySessionId === recoverySessionId) {
+				this.internal = [];
+				this.clearPreview();
+				cleanupStartStreams();
+				await this.discardActiveRecoverySession(recoverySessionId);
+			} else {
+				await discardScratchRecoverySession(
+					recoverySessionId,
+					newInternal.map((entry) => entry.sink.id)
+				);
+			}
 			if (generation === this.generation) {
 				const code = mapRecorderError(error);
 				this.setError(code);
@@ -420,7 +523,7 @@ export class ScreenCaptureRecorder {
 		}
 
 		if (generation !== this.generation) {
-			for (const entry of this.internal) {
+			for (const entry of newInternal) {
 				await this.stopRecorderForDiscard(entry.recorder);
 				try {
 					await entry.sink.discard();
@@ -428,9 +531,17 @@ export class ScreenCaptureRecorder {
 					// ignore
 				}
 			}
-			this.internal = [];
-			this.clearPreview();
-			this.cleanupAcquiredStreams();
+			if (this.activeRecoverySessionId === recoverySessionId) {
+				this.internal = [];
+				this.clearPreview();
+				cleanupStartStreams();
+				await this.discardActiveRecoverySession(recoverySessionId);
+			} else {
+				await discardScratchRecoverySession(
+					recoverySessionId,
+					newInternal.map((entry) => entry.sink.id)
+				);
+			}
 			return;
 		}
 
@@ -441,7 +552,78 @@ export class ScreenCaptureRecorder {
 			.filter((v): v is number => isNumberValue(v) && Number.isFinite(v));
 		this.startMonotonic =
 			startTimesForMonotonic.length > 0 ? Math.min(...startTimesForMonotonic) : performance.now();
+		try {
+			await this.writeActiveRecoveryManifest('recording');
+		} catch (error) {
+			logger.warn('Could not persist recorder recovery offsets', error);
+			if (this.activeRecoverySessionId === recoverySessionId) {
+				await this.cancel();
+				this.setError(mapRecorderError(error));
+				this.status = 'error';
+			}
+			throw error;
+		}
+		if (generation !== this.generation) return;
 		this.startElapsedTimer();
+	}
+
+	private buildRecoveryManifest(
+		status: ScratchRecoveryManifest['status'],
+		artifacts: CaptureArtifact[] = []
+	): ScratchRecoveryManifest | null {
+		const sessionId = this.activeRecoverySessionId;
+		if (!sessionId) return null;
+		const byScratchId = new Map(artifacts.map((artifact) => [artifact.scratchId, artifact]));
+		const startTimes = this.internal
+			.map((entry) => entry.startTimeMs)
+			.filter((value): value is number => isNumberValue(value) && Number.isFinite(value));
+		const baseTime = startTimes.length > 0 ? Math.min(...startTimes) : null;
+		const durableEntries = this.internal.filter((entry) => entry.sink.durable);
+		if (durableEntries.length === 0) return null;
+		return {
+			version: 1,
+			sessionId,
+			createdAt: this.activeRecoveryCreatedAt,
+			status,
+			artifacts: durableEntries.map((entry) => {
+				const complete = byScratchId.get(entry.sink.id);
+				const startOffsetMs =
+					entry.startTimeMs !== null && baseTime !== null
+						? Math.max(0, Math.round(entry.startTimeMs - baseTime))
+						: 0;
+				return {
+					scratchId: entry.sink.id,
+					kind: entry.kind,
+					mimeType: entry.mimeType,
+					startOffsetMs: complete?.startOffsetMs ?? startOffsetMs,
+					durationMs: complete?.durationMs ?? 0,
+					sizeBytes: complete?.sizeBytes ?? entry.sink.bytes
+				};
+			})
+		};
+	}
+
+	private async writeActiveRecoveryManifest(
+		status: ScratchRecoveryManifest['status'],
+		artifacts: CaptureArtifact[] = []
+	): Promise<void> {
+		const manifest = this.buildRecoveryManifest(status, artifacts);
+		if (!manifest) return;
+		const write = this.recoveryManifestQueue.then(() => writeScratchRecoveryManifest(manifest));
+		this.recoveryManifestQueue = write.catch(() => undefined);
+		await write;
+	}
+
+	private async discardActiveRecoverySession(expectedSessionId?: string): Promise<void> {
+		if (expectedSessionId && this.activeRecoverySessionId !== expectedSessionId) return;
+		const sessionId = this.activeRecoverySessionId;
+		this.activeRecoverySessionId = null;
+		this.activeRecoveryCreatedAt = 0;
+		await this.recoveryManifestQueue.catch(() => undefined);
+		this.recoveryManifestQueue = Promise.resolve();
+		this.releaseRecoveryLock?.();
+		this.releaseRecoveryLock = null;
+		if (sessionId) await discardScratchRecoverySession(sessionId);
 	}
 
 	private runCountdown(seconds: number, generation: number): Promise<void> {
@@ -512,10 +694,9 @@ export class ScreenCaptureRecorder {
 	}
 
 	private cleanupAcquiredStreams(): void {
-		for (const s of this.acquiredStreams) {
-			for (const t of s.getTracks()) t.stop();
-		}
+		const streams = this.acquiredStreams;
 		this.acquiredStreams = [];
+		stopMediaStreams(streams);
 	}
 
 	private stopRecorderForDiscard(recorder: MediaRecorder): Promise<void> {
@@ -573,12 +754,14 @@ export class ScreenCaptureRecorder {
 
 		const internal = [...this.internal];
 		if (internal.length === 0) {
+			await this.discardActiveRecoverySession();
 			this.clearPreview();
 			this.status = 'idle';
 			this.stopPromise = null;
 			return [];
 		}
 
+		const recoverySessionId = this.activeRecoverySessionId ?? undefined;
 		const promise = (async (): Promise<CaptureArtifact[]> => {
 			const stopPromises = internal.map(
 				(entry) =>
@@ -672,8 +855,17 @@ export class ScreenCaptureRecorder {
 					durationMs: Math.max(0, elapsedAtStop - startOffsetMs),
 					startOffsetMs,
 					sizeBytes,
-					scratchId: entry.sink.id
+					scratchId: entry.sink.id,
+					recoverySessionId
 				});
+			}
+
+			if (artifacts.length > 0) {
+				try {
+					await this.writeActiveRecoveryManifest('complete', artifacts);
+				} catch (error) {
+					logger.warn('Could not finalize recorder recovery manifest', error);
+				}
 			}
 
 			for (const entry of internal) {
@@ -684,9 +876,17 @@ export class ScreenCaptureRecorder {
 			this.clearPreview();
 			this.startMonotonic = null;
 			this.pendingWriteBytes = 0;
+			this.releaseRecoveryLock?.();
+			this.releaseRecoveryLock = null;
+			this.activeRecoverySessionId = null;
+			this.activeRecoveryCreatedAt = 0;
 
 			if (artifacts.length > 0) {
-				this.lastArtifacts = artifacts;
+				const scratchIds = new Set(artifacts.map((artifact) => artifact.scratchId));
+				this.lastArtifacts = [
+					...this.lastArtifacts.filter((artifact) => !scratchIds.has(artifact.scratchId)),
+					...artifacts
+				];
 			}
 
 			this.status = 'idle';
@@ -694,6 +894,12 @@ export class ScreenCaptureRecorder {
 			this.countdownRemaining = null;
 
 			if (artifacts.length === 0 && internal.length > 0) {
+				if (recoverySessionId) {
+					await discardScratchRecoverySession(
+						recoverySessionId,
+						internal.map((entry) => entry.sink.id)
+					);
+				}
 				this.setError('start-failed');
 			}
 
@@ -727,6 +933,7 @@ export class ScreenCaptureRecorder {
 				// ignore
 			}
 		}
+		await this.discardActiveRecoverySession();
 		this.cleanupAcquiredStreams();
 		this.clearPreview();
 		this.startMonotonic = null;
@@ -743,16 +950,69 @@ export class ScreenCaptureRecorder {
 		this.lastArtifacts = this.lastArtifacts.filter((a) => a.scratchId !== scratchId);
 	}
 
+	async discardArtifacts(artifacts: CaptureArtifact[]): Promise<void> {
+		const scratchIds = new Set(artifacts.map((artifact) => artifact.scratchId));
+		const bySession = new Map<string, string[]>();
+		for (const artifact of artifacts) {
+			if (!artifact.recoverySessionId) continue;
+			const ids = bySession.get(artifact.recoverySessionId) ?? [];
+			ids.push(artifact.scratchId);
+			bySession.set(artifact.recoverySessionId, ids);
+		}
+		for (const [sessionId, ids] of bySession) {
+			await discardScratchRecoverySession(sessionId, ids);
+		}
+		for (const artifact of artifacts) {
+			if (!artifact.recoverySessionId) await discardScratchById(artifact.scratchId);
+		}
+		this.lastArtifacts = this.lastArtifacts.filter(
+			(artifact) => !scratchIds.has(artifact.scratchId)
+		);
+	}
+
 	async discardAllScratches(): Promise<void> {
-		const ids = this.lastArtifacts.map((a) => a.scratchId);
-		for (const id of ids) {
+		const bySession = new Map<string, string[]>();
+		const ungroupedIds: string[] = [];
+		for (const artifact of this.lastArtifacts) {
+			if (artifact.recoverySessionId) {
+				const ids = bySession.get(artifact.recoverySessionId) ?? [];
+				ids.push(artifact.scratchId);
+				bySession.set(artifact.recoverySessionId, ids);
+			} else {
+				ungroupedIds.push(artifact.scratchId);
+			}
+		}
+		for (const [sessionId, ids] of bySession) {
 			try {
-				await discardScratchById(id);
+				await discardScratchRecoverySession(sessionId, ids);
 			} catch {
 				// ignore
 			}
 		}
+		for (const id of ungroupedIds) await discardScratchById(id).catch(() => undefined);
 		this.lastArtifacts = [];
+	}
+
+	async loadRecoverableArtifacts(): Promise<CaptureArtifact[]> {
+		const sessions = await loadRecoverableScratchSessions();
+		const artifacts = sessions.flatMap((session) =>
+			session.artifacts.map((artifact) => ({
+				kind: artifact.kind,
+				blob: artifact.blob,
+				mimeType: artifact.mimeType,
+				durationMs: artifact.durationMs,
+				startOffsetMs: artifact.startOffsetMs,
+				sizeBytes: artifact.sizeBytes,
+				scratchId: artifact.scratchId,
+				recoverySessionId: session.manifest.sessionId
+			}))
+		);
+		const merged = new Map(
+			this.lastArtifacts.map((artifact) => [artifact.scratchId, artifact] as const)
+		);
+		for (const artifact of artifacts) merged.set(artifact.scratchId, artifact);
+		this.lastArtifacts = [...merged.values()];
+		return this.lastArtifacts;
 	}
 
 	async clearRecoverableAndDiscard(): Promise<void> {

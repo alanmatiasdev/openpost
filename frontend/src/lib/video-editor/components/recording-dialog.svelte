@@ -41,7 +41,8 @@
 	let countdown = $state<string>('0');
 	let plannedMinutes = $state<string>('5');
 	let inserting = $state(false);
-	let recoveryUrls = $state<Array<{ kind: RecorderKind; url: string; name: string }>>([]);
+	type RecoveryUrl = { kind: RecorderKind; url: string; name: string; scratchId: string };
+	let recoveryUrls = $state<RecoveryUrl[]>([]);
 	let availableBytes = $state<number | null>(null);
 
 	const selection: RecorderSelection = $derived({
@@ -125,15 +126,34 @@
 		return m.record_source_audio();
 	}
 
+	function recoveryUrl(artifact: (typeof recorder.lastArtifacts)[number]): RecoveryUrl {
+		return {
+			kind: artifact.kind,
+			url: URL.createObjectURL(artifact.blob),
+			name: `recording-${artifact.kind}-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.webm`,
+			scratchId: artifact.scratchId
+		};
+	}
+
 	onMount(() => {
+		let mounted = true;
 		void refreshDevices();
 		void refreshQuota();
+		void recorder
+			.loadRecoverableArtifacts()
+			.then((artifacts) => {
+				if (!mounted) return;
+				recoveryUrls.forEach((recovery) => URL.revokeObjectURL(recovery.url));
+				recoveryUrls = artifacts.map(recoveryUrl);
+			})
+			.catch(() => undefined);
 		const handler = () => void refreshDevices();
 		navigator.mediaDevices?.addEventListener?.('devicechange', handler);
 		return () => {
+			mounted = false;
 			navigator.mediaDevices?.removeEventListener?.('devicechange', handler);
 			recoveryUrls.forEach((recovery) => URL.revokeObjectURL(recovery.url));
-			void recorder.cancel().then(() => recorder.clearRecoverableAndDiscard());
+			void recorder.cancel();
 		};
 	});
 
@@ -154,9 +174,6 @@
 			showToast(m.video_editor_recording_failed(), 'error');
 			return;
 		}
-		recoveryUrls.forEach((r) => URL.revokeObjectURL(r.url));
-		recoveryUrls = [];
-		await recorder.clearRecoverableAndDiscard();
 		const countdownSeconds = Number(countdown) || 0;
 		try {
 			await recorder.startWithSelection(selection, {
@@ -179,22 +196,18 @@
 				showToast(m.video_editor_recording_cancelled(), 'info');
 				return;
 			}
-			// Preserve recoverable URLs for download if timeline insert later fails
-			recoveryUrls = artifacts.map((a) => ({
-				kind: a.kind,
-				url: URL.createObjectURL(a.blob),
-				name: `recording-${a.kind}-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.${a.mimeType.includes('audio') ? 'webm' : 'webm'}`
-			}));
+			const capturedUrls = artifacts.map(recoveryUrl);
+			recoveryUrls = [...recoveryUrls, ...capturedUrls];
 			try {
 				const anchor = timelineStore.currentFrame;
 				const result = await insertRecordingArtifacts(projectId, artifacts, anchor);
 				editorSession.scheduleAutosave();
 				result.itemIds.forEach((id) => oninserted(id));
 				showToast(m.video_editor_recording_inserted(), 'success');
-				// clear recovery after successful insert
-				recoveryUrls.forEach((r) => URL.revokeObjectURL(r.url));
-				recoveryUrls = [];
-				await recorder.clearRecoverableAndDiscard();
+				const capturedIds = new Set(artifacts.map((artifact) => artifact.scratchId));
+				capturedUrls.forEach((recovery) => URL.revokeObjectURL(recovery.url));
+				recoveryUrls = recoveryUrls.filter((recovery) => !capturedIds.has(recovery.scratchId));
+				await recorder.discardArtifacts(artifacts);
 				onopenchange(false);
 			} catch (error) {
 				showToast(m.video_editor_recording_failed(), 'error');
@@ -209,10 +222,45 @@
 
 	async function handleCancel(): Promise<void> {
 		await recorder.cancel();
-		await recorder.clearRecoverableAndDiscard();
-		recoveryUrls.forEach((r) => URL.revokeObjectURL(r.url));
-		recoveryUrls = [];
 		showToast(m.video_editor_recording_cancelled(), 'info');
+	}
+
+	async function handleRecover(): Promise<void> {
+		if (captureBusy || inserting || recorder.lastArtifacts.length === 0) return;
+		inserting = true;
+		const insertedScratchIds = new Set<string>();
+		try {
+			const grouped = new Map<string, typeof recorder.lastArtifacts>();
+			for (const artifact of recorder.lastArtifacts) {
+				const key = artifact.recoverySessionId ?? artifact.scratchId;
+				const group = grouped.get(key) ?? [];
+				group.push(artifact);
+				grouped.set(key, group);
+			}
+			const anchor = timelineStore.currentFrame;
+			for (const artifacts of grouped.values()) {
+				const result = await insertRecordingArtifacts(projectId, artifacts, anchor);
+				result.itemIds.forEach((id) => oninserted(id));
+				artifacts.forEach((artifact) => insertedScratchIds.add(artifact.scratchId));
+				await recorder.discardArtifacts(artifacts);
+				editorSession.scheduleAutosave();
+			}
+			showToast(m.video_editor_recording_inserted(), 'success');
+		} catch {
+			showToast(m.video_editor_recording_failed(), 'error');
+		} finally {
+			for (const recovery of recoveryUrls) {
+				if (insertedScratchIds.has(recovery.scratchId)) URL.revokeObjectURL(recovery.url);
+			}
+			recoveryUrls = recoveryUrls.filter((recovery) => !insertedScratchIds.has(recovery.scratchId));
+			inserting = false;
+		}
+	}
+
+	async function handleDiscardRecovery(): Promise<void> {
+		await recorder.clearRecoverableAndDiscard();
+		recoveryUrls.forEach((recovery) => URL.revokeObjectURL(recovery.url));
+		recoveryUrls = [];
 	}
 
 	function handleDialogOpen(v: boolean): void {
@@ -504,7 +552,7 @@
 					class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
 				>
 					<p class="font-medium text-amber-100">
-						{m.video_editor_recording_storage_stopped()}
+						{m.video_editor_recovery_available()}
 					</p>
 					<div class="mt-2 flex flex-wrap gap-2">
 						{#each recoveryUrls as r (r.url)}
@@ -518,6 +566,19 @@
 								})}
 							</a>
 						{/each}
+					</div>
+					<div class="mt-3 flex flex-wrap gap-2">
+						<Button class="min-h-11" disabled={captureBusy || inserting} onclick={handleRecover}>
+							{m.video_editor_recover_recording()}
+						</Button>
+						<Button
+							variant="outline"
+							class="min-h-11 border-amber-300/50! bg-black/20! text-amber-50! shadow-none! hover:bg-black/30! hover:text-white!"
+							disabled={inserting}
+							onclick={handleDiscardRecovery}
+						>
+							{m.video_editor_discard_recording()}
+						</Button>
 					</div>
 				</div>
 			{/if}
