@@ -20,12 +20,12 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page).toHaveTitle("OpenPost - The all-in-one content team for solo founders");
   await expect(
     page.getByRole("heading", {
-      name: "Write it once. Publish it everywhere.",
+      name: "Your socials, on steroids.",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "OpenPost turns one idea into the right version for every platform, schedules it, and shows you exactly what published.",
+      "Create once. OpenPost adapts your post for each platform, then publishes it on schedule.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -39,12 +39,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(resultPreviews).toBeVisible();
   await expect(page.getByText("Illustrative campaign results")).toHaveCount(0);
   await expect(resultPreviews.getByRole("button", { name: "Show Audience growth" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: "How people put OpenPost to work.",
-    }),
-  ).toBeVisible();
-  await expect(page.getByText(/Fictional stories showing how launches/)).toBeVisible();
+  await expect(page.getByText(/Fictional stories showing how launches/)).toHaveCount(0);
   await expect(
     page.getByRole("heading", {
       name: "See OpenPost in four minutes.",
@@ -84,21 +79,10 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     "src",
     "/assets/screenshots/accounts-dark.png",
   );
-  await expect(
-    page.getByRole("heading", {
-      name: "How people put OpenPost to work.",
-    }),
-  ).toBeVisible();
-  await expect(page.getByText("Fictional examples")).toBeVisible();
-  const creatorMosaic = page.getByRole("region", {
-    name: "How people put OpenPost to work.",
-  });
-  await expect(creatorMosaic.getByRole("button", { name: "Show more stories" })).toBeVisible();
-  await creatorMosaic.getByRole("button", { name: "Show more stories" }).click();
-  await expect(creatorMosaic.getByRole("heading", { name: "Sana Qureshi" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "See what consistency can build." }),
-  ).toBeVisible();
+  await expect(page.getByText("Fictional examples")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "See what consistency can build." })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("link", { name: "Self-host", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "User docs" }).first()).toHaveAttribute(
     "href",
@@ -123,9 +107,6 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
 });
 
 test("pricing makes every plan selectable for monthly and annual billing", async ({ page }) => {
-  const cardRequirement = purchaseTerms.card_required
-    ? "A card is required"
-    : "No card is required";
   const planCases = [
     { id: "starter", name: "Starter", monthly: "$15", annual: "$150" },
     { id: "founder", name: "Founder", monthly: "$25", annual: "$250" },
@@ -148,6 +129,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
     "/self-hosted",
   );
 
+  await page.getByText("Trial and billing details").click();
   await expect(page.getByText("Paddle is the Merchant of Record")).toBeVisible();
   await expect(page.getByRole("link", { name: "Refund policy" })).toHaveAttribute(
     "href",
@@ -169,9 +151,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=monthly`,
     );
-    await expect(card).toContainText(
-      `${cardRequirement}. After ${purchaseTerms.trial_days} days: ${plan.monthly} per month until canceled.`,
-    );
+    await expect(card).toContainText(`Then ${plan.monthly} per month until canceled.`);
   }
 
   const yearly = page.getByRole("button", { name: /^Yearly/ });
@@ -190,9 +170,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=annual`,
     );
-    await expect(card).toContainText(
-      `${cardRequirement}. After ${purchaseTerms.trial_days} days: ${plan.annual} per year until canceled.`,
-    );
+    await expect(card).toContainText(`Then ${plan.annual} per year until canceled.`);
   }
 
   if ((page.viewportSize()?.width ?? 0) >= 1024) {

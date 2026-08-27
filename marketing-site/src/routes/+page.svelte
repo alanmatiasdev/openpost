@@ -9,10 +9,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	import { resolve } from '$app/paths';
 	import { ArrowRight, CalendarRange, Layers3, LockKeyhole } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
-	import CreatorStories from './_components/CreatorStories.svelte';
 	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
 	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
-	import FollowerGrowthPlanner from './_components/FollowerGrowthPlanner.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
 	import PostizSocialLogo from './_components/PostizSocialLogo.svelte';
@@ -22,28 +20,23 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 	const productStories = [
 		{
-			eyebrow: 'One workspace',
 			title: 'Create in one place.',
 			description:
-				'Posts, threads, Stories, short videos, and full videos each get their own editor. Write them, schedule them, and see what actually went out.',
+				'Write posts, threads, stories, and videos. Schedule them and see what published.',
 			image: '/assets/screenshots/main-dark.png',
 			alt: 'OpenPost publication composer with destination-specific versions',
 			icon: Layers3
 		},
 		{
-			eyebrow: 'Every platform',
 			title: 'Adapt every post.',
-			description:
-				'The same publication can carry different copy, media, and settings per account. Change what each network needs before anything publishes.',
+			description: 'Edit the copy, media, and settings for each account before it goes live.',
 			image: '/assets/screenshots/accounts-dark.png',
 			alt: 'OpenPost connected social accounts page',
 			icon: LockKeyhole
 		},
 		{
-			eyebrow: 'Media workspace',
 			title: 'Reuse your media.',
-			description:
-				'Images, video, captions, and alt text stay in one library, ready for the next post. Edit stills and clips without opening another app.',
+			description: 'Keep images, videos, captions, and alt text ready for your next post.',
 			image: '/assets/screenshots/media-dark.png',
 			alt: 'OpenPost media library with reusable assets',
 			icon: CalendarRange
@@ -55,22 +48,11 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
-		<p
-			class="hero-enter hero-enter-1 mx-auto mb-5 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase"
-		>
-			For solo founders evaluating one workspace for social publishing.
-		</p>
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
-			Write it once. <span>Publish it everywhere.</span>
+			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			OpenPost turns one idea into the right version for every platform,<br
-				class="hidden sm:block"
-			/>
-			schedules it, and shows you exactly what published.
-		</p>
-		<p class="hero-enter hero-enter-2 mx-auto mt-4 max-w-2xl text-sm text-muted-foreground">
-			Ten networks supported, including X, LinkedIn, Instagram, TikTok, YouTube, and Bluesky.
+			Create once. OpenPost adapts your post for each platform, then publishes it on schedule.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
@@ -107,11 +89,10 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 >
 	<div class="marketing-shell">
 		<ScrollReveal class="max-w-3xl">
-			<p class="section-label">The workspace</p>
 			<h2 id="product-title" class="marketing-heading">Everything you need to publish.</h2>
 			<p class="marketing-copy mt-5">
-				Write once. Adjust each version for its platform, preview it, and schedule it without
-				leaving the page.
+				Write the idea once. Edit the copy, media, and settings for each account before you schedule
+				it.
 			</p>
 		</ScrollReveal>
 
@@ -129,9 +110,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 						>
 							<Icon class="size-5" aria-hidden="true" />
 						</div>
-						<p class="section-label mt-6">{story.eyebrow}</p>
 						<h3
-							class="mt-4 max-w-lg text-3xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
+							class="mt-6 max-w-lg text-3xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
 						>
 							{story.title}
 						</h3>
@@ -155,20 +135,15 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	</div>
 </section>
 
-<CreatorStories />
-
-<FollowerGrowthPlanner />
-
 <section class="section-pad marketing-rule border-t bg-muted/18" aria-labelledby="pricing-title">
 	<div class="marketing-shell">
 		<ScrollReveal class="mx-auto max-w-3xl text-center">
-			<p class="section-label">Hosted service plans</p>
-			<h2 id="pricing-title" class="marketing-heading mx-auto mt-4">Pick your plan.</h2>
+			<h2 id="pricing-title" class="marketing-heading mx-auto">Start with the limits you need.</h2>
 		</ScrollReveal>
 
 		<div class="mt-12"><PricingShowcase compact /></div>
 		<div class="mt-7 text-center">
-			<Button href="/pricing" variant="outline">Compare all Hosted service plans</Button>
+			<Button href="/pricing" variant="outline">See all plans</Button>
 		</div>
 	</div>
 </section>
@@ -176,8 +151,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 <section class="section-pad marketing-rule border-t bg-muted/18" aria-labelledby="faq-title">
 	<div class="marketing-shell grid gap-12 lg:grid-cols-[0.65fr_1.35fr]">
 		<ScrollReveal>
-			<p class="section-label">Questions</p>
-			<h2 id="faq-title" class="marketing-heading mt-4">Before you start.</h2>
+			<h2 id="faq-title" class="marketing-heading">Before you start.</h2>
 		</ScrollReveal>
 		<div class="marketing-rule border-t">
 			{#each shortFaqs as item, index (item.question)}
@@ -214,15 +188,14 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 >
 	<div class="closing-cells" aria-hidden="true"></div>
 	<ScrollReveal class="marketing-shell relative py-24 sm:py-32">
-		<p class="font-mono text-xs font-semibold tracking-[0.16em] text-primary uppercase">OpenPost</p>
 		<h2
 			id="closing-title"
-			class="mx-auto mt-5 max-w-4xl text-4xl leading-[0.98] font-semibold tracking-[-0.045em] text-balance sm:text-6xl"
+			class="mx-auto max-w-4xl text-4xl leading-[0.98] font-semibold tracking-[-0.045em] text-balance sm:text-6xl"
 		>
 			Start publishing.
 		</h2>
 		<p class="mx-auto mt-6 max-w-xl leading-7 text-white/62">
-			One idea in, the right post on every platform. Your first 14 days are free.
+			One idea. Every platform. Your first 14 days are free.
 		</p>
 		<div class="mt-8 flex flex-wrap justify-center gap-3">
 			<Button href={managedSignupUrl} size="lg">

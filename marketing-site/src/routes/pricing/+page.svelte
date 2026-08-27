@@ -41,18 +41,9 @@
 
 <section class="pricing-hero">
 	<div class="marketing-shell text-center">
-		<p class="section-label">Simple pricing</p>
-		<h1>Every feature on every plan. Pick your limits.</h1>
+		<h1>Choose your limits.</h1>
 		<p>
-			The full publishing workflow ships on all plans: composer, calendar, media library, analytics,
-			API, CLI, and MCP.
-		</p>
-		<p>
-			Plans differ only in their caps: workspaces, social accounts, scheduled posts, media storage,
-			and seats. The exact numbers are below.
-		</p>
-		<p class="text-sm font-medium text-muted-foreground">
-			For founders, teams, and agencies choosing a Hosted service plan.
+			Every plan includes the full product. Pick the accounts, posts, storage, and seats you need.
 		</p>
 	</div>
 </section>

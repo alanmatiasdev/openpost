@@ -11,18 +11,58 @@
 		appUrl,
 		discordCommunityUrl,
 		docsUrl,
+		githubUrl,
 		managedSignupUrl,
 		navItems,
-		platforms,
-		resourceItems
+		platforms
 	} from '../_marketing';
+
+	type NavigationItem = { label: string; href: string };
+	type ResourceGroup = { label: string; items: readonly NavigationItem[] };
 
 	let mobileOpen = $state(false);
 	const currentPath = $derived(page.url.pathname);
-	const navigationResourceItems = [
+	const primaryNavItems = navItems.filter((item) => item.href !== '/tools');
+	const resourceGroups: readonly ResourceGroup[] = [
+		{
+			label: 'Learn',
+			items: [
+				{ label: 'Free tools', href: '/tools' },
+				{ label: 'FAQ', href: '/faq' },
+				{ label: 'Compare', href: '/compare' },
+				{ label: 'Changelog', href: '/changelog' }
+			]
+		},
+		{
+			label: 'Build',
+			items: [
+				{ label: 'User docs', href: docsUrl },
+				{ label: 'Developers', href: '/developers' },
+				{ label: 'Self-hosted', href: '/self-hosted' },
+				{ label: 'GitHub source', href: githubUrl }
+			]
+		},
+		{
+			label: 'OpenPost',
+			items: [
+				{ label: 'About', href: '/about' },
+				{ label: 'Contact', href: '/contact' },
+				{ label: 'Security', href: '/security' },
+				{ label: 'Trust register', href: '/trust' },
+				{ label: 'Discord community', href: discordCommunityUrl }
+			]
+		}
+	];
+	const navigationResourceItems = resourceGroups.flatMap((group) => group.items);
+	const mobileResourceItems = [
+		{ label: 'Free tools', href: '/tools' },
 		{ label: 'User docs', href: docsUrl },
-		...resourceItems.filter((item) => item.href !== '/platforms'),
-		{ label: 'Discord community', href: discordCommunityUrl }
+		{ label: 'Developers', href: '/developers' },
+		{ label: 'Self-hosted', href: '/self-hosted' },
+		{ label: 'Security', href: '/security' },
+		{ label: 'Changelog', href: '/changelog' },
+		{ label: 'Discord community', href: discordCommunityUrl },
+		{ label: 'Contact', href: '/contact' }
 	] as const;
 
 	function isActive(href: string): boolean {
@@ -58,7 +98,7 @@
 			aria-label="Primary navigation"
 		>
 			<NavigationMenu.List>
-				{#each navItems as item (item.href)}
+				{#each primaryNavItems as item (item.href)}
 					{#if item.href === '/platforms'}
 						<NavigationMenu.Item>
 							<NavigationMenu.Trigger
@@ -140,21 +180,28 @@
 					>
 						Resources
 					</NavigationMenu.Trigger>
-					<NavigationMenu.Content class="w-56">
-						<ul class="grid gap-1">
-							{#each navigationResourceItems as item (item.href)}
-								<li>
-									<NavigationMenu.Link
-										href={item.href}
-										active={isActive(item.href)}
-										aria-current={isActive(item.href) ? 'page' : undefined}
-										class="focus-ring min-h-11 w-full rounded-md px-3 text-sm text-muted-foreground hover:text-foreground data-[active=true]:text-foreground"
-									>
-										{item.label}
-									</NavigationMenu.Link>
-								</li>
+					<NavigationMenu.Content class="resource-menu p-3">
+						<div class="grid grid-cols-3 gap-3">
+							{#each resourceGroups as group (group.label)}
+								<div>
+									<p class="px-3 pb-1.5 text-xs font-semibold text-foreground">{group.label}</p>
+									<ul class="grid gap-0.5">
+										{#each group.items as item (item.href)}
+											<li>
+												<NavigationMenu.Link
+													{...navigationHref(item.href)}
+													active={isActive(item.href)}
+													aria-current={isActive(item.href) ? 'page' : undefined}
+													class="focus-ring min-h-10 w-full rounded-md px-3 text-sm text-muted-foreground hover:text-foreground data-[active=true]:text-foreground"
+												>
+													{item.label}
+												</NavigationMenu.Link>
+											</li>
+										{/each}
+									</ul>
+								</div>
 							{/each}
-						</ul>
+						</div>
 					</NavigationMenu.Content>
 				</NavigationMenu.Item>
 			</NavigationMenu.List>
@@ -198,61 +245,32 @@
 			aria-label="Mobile navigation"
 		>
 			<div class="marketing-shell grid gap-1 py-4">
-				{#each navItems as item (item.href)}
-					{#if item.href !== '/platforms'}
-						<a
-							href={resolve(item.href as '/')}
-							aria-current={isActive(item.href) ? 'page' : undefined}
-							class={[
-								'focus-ring flex min-h-11 items-center rounded-md px-3 text-sm font-medium',
-								isActive(item.href) ? 'bg-muted text-foreground' : 'text-muted-foreground'
-							]}
-							onclick={() => (mobileOpen = false)}
-						>
-							{item.label}
-						</a>
-					{/if}
-				{/each}
-
-				<div class="mt-3 flex min-h-11 items-center justify-between px-3">
-					<p class="text-xs font-semibold text-muted-foreground">Platforms</p>
+				{#each primaryNavItems as item (item.href)}
 					<a
-						href={resolve('/platforms')}
-						class="focus-ring inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs font-semibold"
-						onclick={() => (mobileOpen = false)}
-					>
-						View all <ArrowRight class="size-3.5" aria-hidden="true" />
-					</a>
-				</div>
-				<div class="grid grid-cols-2 gap-1">
-					{#each platforms as platform (platform.slug)}
-						<a
-							href={resolve(`/platforms/${platform.slug}`)}
-							aria-current={isActive(`/platforms/${platform.slug}`) ? 'page' : undefined}
-							class={[
-								'focus-ring flex min-h-11 min-w-0 items-center gap-2 rounded-md px-3 text-sm',
-								isActive(`/platforms/${platform.slug}`)
-									? 'bg-muted text-foreground'
-									: 'text-muted-foreground'
-							]}
-							onclick={() => (mobileOpen = false)}
-						>
-							<PlatformIcon platform={platform.slug} class="size-4 shrink-0" />
-							<span class="truncate">{platform.name}</span>
-						</a>
-					{/each}
-				</div>
-
-				<p class="mt-4 px-3 text-xs font-semibold text-muted-foreground">Resources</p>
-				{#each navigationResourceItems as item (item.href)}
-					<a
-						{...navigationHref(item.href)}
-						class="focus-ring flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground"
+						href={resolve(item.href as '/')}
+						aria-current={isActive(item.href) ? 'page' : undefined}
+						class={[
+							'focus-ring flex min-h-11 items-center rounded-md px-3 text-sm font-medium',
+							isActive(item.href) ? 'bg-muted text-foreground' : 'text-muted-foreground'
+						]}
 						onclick={() => (mobileOpen = false)}
 					>
 						{item.label}
 					</a>
 				{/each}
+
+				<p class="mt-3 px-3 pt-3 text-xs font-semibold text-muted-foreground">Resources</p>
+				<div class="grid grid-cols-2 gap-1">
+					{#each mobileResourceItems as item (item.href)}
+						<a
+							{...navigationHref(item.href)}
+							class="focus-ring flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground"
+							onclick={() => (mobileOpen = false)}
+						>
+							{item.label}
+						</a>
+					{/each}
+				</div>
 				<div class="mt-4 grid grid-cols-[auto_1fr] gap-2 border-t pt-4">
 					<Button
 						type="button"
@@ -281,5 +299,9 @@
 	/* The shadcn Content ships md:w-auto; the destinations panel needs a real width. */
 	:global(.platform-menu.platform-menu) {
 		width: min(46rem, calc(100vw - 2rem));
+	}
+
+	:global(.resource-menu.resource-menu) {
+		width: min(42rem, calc(100vw - 2rem));
 	}
 </style>
