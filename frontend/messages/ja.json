@@ -7254,14 +7254,13 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
-	"video_editor_audio_noise_title": "Noise reduction",
-	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
-	"video_editor_audio_noise_enable": "Enable",
-	"video_editor_audio_noise_amount": "Strength",
-	"video_editor_audio_noise_amount_hint": "{amount}% — higher removes more noise but may soften voice",
-	"video_editor_audio_noise_bypassed": "Off",
-	"video_editor_audio_noise_applied": "On — {amount}%",
-	"video_editor_audio_noise_aria": "Noise reduction strength"
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
+	"video_editor_audio_noise_title": "ノイズ低減",
+	"video_editor_audio_noise_description": "一定の背景ノイズやハムをローカルで低減します。アップロードなし。",
+	"video_editor_audio_noise_enable": "有効にする",
+	"video_editor_audio_noise_amount": "強さ",
+	"video_editor_audio_noise_amount_hint": "{amount}% — 高くするほどノイズを多く除去しますが、声が柔らかくなる場合があります",
+	"video_editor_audio_noise_bypassed": "オフ",
+	"video_editor_audio_noise_applied": "オン — {amount}%",
+	"video_editor_audio_noise_aria": "ノイズ低減の強さ"
 }

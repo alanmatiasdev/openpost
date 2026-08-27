@@ -7254,14 +7254,13 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
-	"video_editor_audio_noise_title": "Noise reduction",
-	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
-	"video_editor_audio_noise_enable": "Enable",
-	"video_editor_audio_noise_amount": "Strength",
-	"video_editor_audio_noise_amount_hint": "{amount}% — higher removes more noise but may soften voice",
-	"video_editor_audio_noise_bypassed": "Off",
-	"video_editor_audio_noise_applied": "On — {amount}%",
-	"video_editor_audio_noise_aria": "Noise reduction strength"
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
+	"video_editor_audio_noise_title": "降噪",
+	"video_editor_audio_noise_description": "在本地降低稳定的背景嘶嘶声和嗡嗡声。无需上传。",
+	"video_editor_audio_noise_enable": "启用",
+	"video_editor_audio_noise_amount": "强度",
+	"video_editor_audio_noise_amount_hint": "{amount}% — 数值越高降噪越多，但可能会让声音变柔和",
+	"video_editor_audio_noise_bypassed": "关闭",
+	"video_editor_audio_noise_applied": "开启 — {amount}%",
+	"video_editor_audio_noise_aria": "降噪强度"
 }

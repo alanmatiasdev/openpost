@@ -7254,14 +7254,13 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
-	"video_editor_audio_noise_title": "Noise reduction",
-	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
-	"video_editor_audio_noise_enable": "Enable",
-	"video_editor_audio_noise_amount": "Strength",
-	"video_editor_audio_noise_amount_hint": "{amount}% — higher removes more noise but may soften voice",
-	"video_editor_audio_noise_bypassed": "Off",
-	"video_editor_audio_noise_applied": "On — {amount}%",
-	"video_editor_audio_noise_aria": "Noise reduction strength"
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
+	"video_editor_audio_noise_title": "노이즈 감소",
+	"video_editor_audio_noise_description": "지속적인 배경 히스와 험을 로컬에서 감소시킵니다. 업로드 없음.",
+	"video_editor_audio_noise_enable": "활성화",
+	"video_editor_audio_noise_amount": "강도",
+	"video_editor_audio_noise_amount_hint": "{amount}% — 높을수록 노이즈를 더 많이 제거하지만 목소리가 부드러워질 수 있습니다",
+	"video_editor_audio_noise_bypassed": "끔",
+	"video_editor_audio_noise_applied": "켬 — {amount}%",
+	"video_editor_audio_noise_aria": "노이즈 감소 강도"
 }

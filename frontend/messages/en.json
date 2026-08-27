@@ -7254,8 +7254,7 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
 	"video_editor_audio_noise_title": "Noise reduction",
 	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
 	"video_editor_audio_noise_enable": "Enable",

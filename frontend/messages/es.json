@@ -7254,14 +7254,13 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
-	"video_editor_audio_noise_title": "Noise reduction",
-	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
-	"video_editor_audio_noise_enable": "Enable",
-	"video_editor_audio_noise_amount": "Strength",
-	"video_editor_audio_noise_amount_hint": "{amount}% — higher removes more noise but may soften voice",
-	"video_editor_audio_noise_bypassed": "Off",
-	"video_editor_audio_noise_applied": "On — {amount}%",
-	"video_editor_audio_noise_aria": "Noise reduction strength"
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
+	"video_editor_audio_noise_title": "Reducción de ruido",
+	"video_editor_audio_noise_description": "Reduce el zumbido y el siseo de fondo constante de forma local. Sin subidas.",
+	"video_editor_audio_noise_enable": "Activar",
+	"video_editor_audio_noise_amount": "Intensidad",
+	"video_editor_audio_noise_amount_hint": "{amount}% — más alto elimina más ruido pero puede suavizar la voz",
+	"video_editor_audio_noise_bypassed": "Desactivado",
+	"video_editor_audio_noise_applied": "Activado — {amount}%",
+	"video_editor_audio_noise_aria": "Intensidad de reducción de ruido"
 }

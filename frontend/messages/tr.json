@@ -7254,14 +7254,13 @@
 	"video_editor_preflight_image_encode_checking": "Checking WebP support on this device...",
 	"video_editor_preflight_image_encode_unavailable": "WebP encoding is not supported in this browser. Choose PNG or JPEG.",
 	"video_editor_export_sequence_webp_hint": "WebP keeps alpha with lossy compression. Quality controls compression.",
-	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression."
-,
-	"video_editor_audio_noise_title": "Noise reduction",
-	"video_editor_audio_noise_description": "Reduce steady background hiss and hum locally. No upload.",
-	"video_editor_audio_noise_enable": "Enable",
-	"video_editor_audio_noise_amount": "Strength",
-	"video_editor_audio_noise_amount_hint": "{amount}% — higher removes more noise but may soften voice",
-	"video_editor_audio_noise_bypassed": "Off",
-	"video_editor_audio_noise_applied": "On — {amount}%",
-	"video_editor_audio_noise_aria": "Noise reduction strength"
+	"video_editor_preflight_webp_sequence": "WebP sequence keeps alpha with lossy compression.",
+	"video_editor_audio_noise_title": "Gürültü azaltma",
+	"video_editor_audio_noise_description": "Sabit arka plan tıslaması ve uğultuyu yerel olarak azaltır. Yükleme yok.",
+	"video_editor_audio_noise_enable": "Etkinleştir",
+	"video_editor_audio_noise_amount": "Şiddet",
+	"video_editor_audio_noise_amount_hint": "{amount}% — daha yüksek daha fazla gürültü kaldırır ama sesi yumuşatabilir",
+	"video_editor_audio_noise_bypassed": "Kapalı",
+	"video_editor_audio_noise_applied": "Açık — {amount}%",
+	"video_editor_audio_noise_aria": "Gürültü azaltma şiddeti"
 }
