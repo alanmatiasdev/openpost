@@ -9,6 +9,33 @@ import type {
 	RenderExportWorkerResponse
 } from './render-export-worker.types';
 
+function asWritableStream(
+	stub: Partial<FileSystemWritableFileStream>
+): FileSystemWritableFileStream {
+	// SAFETY: tests only call the write, close, and abort methods supplied by this in-memory stub.
+	return stub as FileSystemWritableFileStream;
+}
+
+function asFileHandle(stub: Partial<FileSystemFileHandle>): FileSystemFileHandle {
+	// SAFETY: tests only call the file-handle methods supplied by this in-memory stub.
+	return stub as FileSystemFileHandle;
+}
+
+function asDirectoryHandle(stub: Partial<FileSystemDirectoryHandle>): FileSystemDirectoryHandle {
+	// SAFETY: tests only call the directory-handle methods supplied by this in-memory stub.
+	return stub as FileSystemDirectoryHandle;
+}
+
+function asFileSystemHandle(stub: Pick<FileSystemHandle, 'kind' | 'name'>): FileSystemHandle {
+	// SAFETY: directory listings in these tests only inspect kind and name.
+	return stub as FileSystemHandle;
+}
+
+function asWorkerPort(worker: FakeWorker): RenderWorkerPort {
+	// SAFETY: FakeWorker implements the EventTarget, postMessage, and terminate worker-port contract.
+	return worker as RenderWorkerPort;
+}
+
 const project: Project = {
 	id: 'seq-proj',
 	name: 'Seq Project',
@@ -87,41 +114,38 @@ function createSyncRoot(): FileSystemDirectoryHandle {
 	): Promise<FileSystemFileHandle> => {
 		if (!files.has(name) && !opts?.create) throw new DOMException('Not found', 'NotFoundError');
 		if (!files.has(name) && opts?.create) files.set(name, new Blob([]));
-		return {
+		return asFileHandle({
 			kind: 'file',
 			name,
 			getFile: async () => new File([files.get(name)!], name),
 			createWritable: async () => {
 				let blob = files.get(name) ?? new Blob([]);
-				return {
+				return asWritableStream({
 					write: async (data: Blob | string | ArrayBuffer | Uint8Array) => {
 						if (data instanceof Blob) blob = data;
-						else if (typeof data === 'string') blob = new Blob([data]);
-						else if (data instanceof ArrayBuffer) blob = new Blob([data]);
-						else blob = new Blob([data as Uint8Array<ArrayBuffer>]);
+						else blob = new Blob([data]);
 						files.set(name, blob);
 					},
 					close: async () => {
 						files.set(name, blob);
 					},
 					abort: async () => {}
-				} as unknown as FileSystemWritableFileStream;
+				});
 			}
-		} as unknown as FileSystemFileHandle;
+		});
 	};
 	async function* entries(): AsyncIterableIterator<[string, FileSystemHandle]> {
-		for (const [n, h] of dirs.entries()) yield [n, h as unknown as FileSystemHandle];
+		for (const [n, h] of dirs.entries()) yield [n, h];
 		for (const [n, b] of files.entries())
 			yield [
 				n,
-				{
+				asFileSystemHandle({
 					kind: 'file',
-					name: n,
-					getFile: async () => new File([b], n)
-				} as unknown as FileSystemHandle
+					name: n
+				})
 			];
 	}
-	return {
+	return asDirectoryHandle({
 		kind: 'directory',
 		name: 'root',
 		getDirectoryHandle,
@@ -134,7 +158,7 @@ function createSyncRoot(): FileSystemDirectoryHandle {
 		values: async function* () {
 			for await (const [, h] of entries()) yield h;
 		}
-	} as unknown as FileSystemDirectoryHandle;
+	});
 }
 
 function deps(
@@ -144,11 +168,11 @@ function deps(
 	const root = createSyncRoot();
 	return {
 		workerAvailable: () => true,
-		createWorker: () => worker as unknown as RenderWorkerPort,
+		createWorker: () => asWorkerPort(worker),
 		workspaceRoot: () => root,
 		media: () => [],
-		renderVideoMain: vi.fn(async () => ({ fileName: 'x', blob: new Blob([]) }) as never),
-		renderAudioMain: vi.fn(async () => ({ fileName: 'x', blob: new Blob([]) }) as never),
+		renderVideoMain: vi.fn(async () => ({ fileName: 'x', blob: new Blob([]) })),
+		renderAudioMain: vi.fn(async () => ({ fileName: 'x', blob: new Blob([]) })),
 		renderImageSequenceMain: vi.fn(async () => ({
 			kind: 'workspace-directory',
 			directoryName: 'Seq Project',
@@ -171,33 +195,40 @@ describe('image sequence worker/main ownership', () => {
 		{ timeout: 10000 },
 		async () => {
 			const worker = new FakeWorker((w, msg) => {
-				if (msg.type !== 'start') return;
-				queueMicrotask(() => {
-					w.send({
-						type: 'sequence-batch',
-						requestId: msg.requestId,
-						frames: [
-							{
-								index: 0,
-								frameNumber: 0,
-								fileName: 'Seq Project_00001.png',
-								blob: new Blob(['a'], { type: 'image/png' })
-							},
-							{
-								index: 1,
-								frameNumber: 1,
-								fileName: 'Seq Project_00002.png',
-								blob: new Blob(['b'], { type: 'image/png' })
-							}
-						]
-					});
-					w.send({
-						type: 'sequence-complete',
-						requestId: msg.requestId,
-						frameCount: 2,
-						totalBytes: 2
-					});
-				});
+				if (msg.type === 'start') {
+					queueMicrotask(() =>
+						w.send({
+							type: 'sequence-batch',
+							requestId: msg.requestId,
+							batchId: 0,
+							frames: [
+								{
+									index: 0,
+									frameNumber: 0,
+									fileName: 'Seq Project_00001.png',
+									blob: new Blob(['a'], { type: 'image/png' })
+								},
+								{
+									index: 1,
+									frameNumber: 1,
+									fileName: 'Seq Project_00002.png',
+									blob: new Blob(['b'], { type: 'image/png' })
+								}
+							]
+						})
+					);
+					return;
+				}
+				if (msg.type === 'sequence-batch-ack') {
+					queueMicrotask(() =>
+						w.send({
+							type: 'sequence-complete',
+							requestId: msg.requestId,
+							frameCount: 2,
+							totalBytes: 2
+						})
+					);
+				}
 			});
 			const d = deps(worker);
 			const outcome = await renderImageSequenceExport(
@@ -210,6 +241,7 @@ describe('image sequence worker/main ownership', () => {
 			expect(outcome.renderPath).toBe('worker');
 			expect(outcome.result.kind).toBe('workspace-directory');
 			expect(d.renderImageSequenceMain).not.toHaveBeenCalled();
+			expect(worker.messages.some((message) => message.type === 'sequence-batch-ack')).toBe(true);
 			expect(worker.terminated).toBe(true);
 		}
 	);
@@ -271,6 +303,81 @@ describe('image sequence worker/main ownership', () => {
 		controller.abort();
 		await expect(pending).rejects.toThrow(/Abort|Cancelled|Render cancelled/);
 		expect(worker.terminated).toBe(true);
+	});
+
+	it('rejects an oversized worker batch without falling back to a second render', async () => {
+		const worker = new FakeWorker((current, message) => {
+			if (message.type !== 'start') return;
+			queueMicrotask(() =>
+				current.send({
+					type: 'sequence-batch',
+					requestId: message.requestId,
+					batchId: 0,
+					frames: Array.from({ length: 9 }, (_, index) => ({
+						index,
+						frameNumber: index,
+						fileName: `frame-${index}.png`,
+						blob: new Blob([String(index)], { type: 'image/png' })
+					}))
+				})
+			);
+		});
+		const d = deps(worker);
+		await expect(
+			renderImageSequenceExport({ project, options: { format: 'png', width: 16, height: 16 } }, d)
+		).rejects.toThrow('Invalid image-sequence batch size: 9');
+		expect(d.renderImageSequenceMain).not.toHaveBeenCalled();
+		expect(worker.messages.some((message) => message.type === 'cancel')).toBe(true);
+		expect(worker.terminated).toBe(true);
+	});
+
+	it('rejects a second batch before acknowledging the active write', async () => {
+		const worker = new FakeWorker((current, message) => {
+			if (message.type !== 'start') return;
+			queueMicrotask(() => {
+				const frame = {
+					index: 0,
+					frameNumber: 0,
+					fileName: 'frame-0.png',
+					blob: new Blob(['frame'], { type: 'image/png' })
+				};
+				current.send({
+					type: 'sequence-batch',
+					requestId: message.requestId,
+					batchId: 0,
+					frames: [frame]
+				});
+				current.send({
+					type: 'sequence-batch',
+					requestId: message.requestId,
+					batchId: 1,
+					frames: [{ ...frame, index: 1, frameNumber: 1, fileName: 'frame-1.png' }]
+				});
+			});
+		});
+		const d = deps(worker);
+		await expect(
+			renderImageSequenceExport({ project, options: { format: 'png', width: 16, height: 16 } }, d)
+		).rejects.toThrow('Image-sequence worker sent an out-of-order batch.');
+		expect(d.renderImageSequenceMain).not.toHaveBeenCalled();
+		expect(worker.terminated).toBe(true);
+	});
+
+	it('terminates the worker and rejects when output allocation fails', async () => {
+		const worker = new FakeWorker();
+		const deniedRoot = asDirectoryHandle({
+			kind: 'directory',
+			name: 'denied',
+			getDirectoryHandle: vi.fn(async () => {
+				throw new DOMException('Denied', 'NotAllowedError');
+			})
+		});
+		const d = deps(worker, { workspaceRoot: () => deniedRoot });
+		await expect(
+			renderImageSequenceExport({ project, options: { format: 'png', width: 16, height: 16 } }, d)
+		).rejects.toMatchObject({ name: 'NotAllowedError' });
+		expect(worker.terminated).toBe(true);
+		expect(d.renderImageSequenceMain).not.toHaveBeenCalled();
 	});
 
 	it('WebP worker parity and honest error when unsupported', async () => {

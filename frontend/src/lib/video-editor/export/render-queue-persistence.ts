@@ -33,6 +33,7 @@ export function renderQueuePersistenceSignature(
 			framesDone: job.framesDone,
 			totalFrames: job.totalFrames,
 			savedPath: job.savedPath,
+			outputLabel: job.outputLabel,
 			fileSize: job.fileSize,
 			error: job.error,
 			startedAt: job.startedAt,

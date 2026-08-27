@@ -42,6 +42,12 @@ export interface ImageSequenceExecutionJob {
 	onProgress?: (progress: RenderExportProgress) => void;
 }
 
+function isDirectoryDestination(
+	destination: ImageSequenceExecutionJob['destination']
+): destination is FileSystemDirectoryHandle {
+	return destination !== undefined && destination !== 'workspace' && destination !== 'zip';
+}
+
 export interface RenderWorkerPort extends EventTarget {
 	postMessage(message: RenderExportWorkerRequest): void;
 	terminate(): void;
@@ -292,27 +298,51 @@ async function renderImageSequenceInWorker(
 		throw new Error('WORKER_UNAVAILABLE:workspace-root');
 	}
 	if (job.signal?.aborted) throw abortError();
-	const isDirectoryHandle =
-		typeof FileSystemDirectoryHandle !== 'undefined' &&
-		job.destination instanceof FileSystemDirectoryHandle;
+	const directoryDestination = isDirectoryDestination(job.destination) ? job.destination : null;
+	const isDirectoryHandle = directoryDestination !== null;
 	const useWorkspace = !isDirectoryHandle && job.destination !== 'zip';
+	let worker: RenderWorkerPort;
+	try {
+		worker = dependencies.createWorker();
+	} catch (error) {
+		throw new Error(`WORKER_UNAVAILABLE:create:${String(error)}`);
+	}
+	const imageSequence = await import('./image-sequence-export');
+	let workspaceAllocation: { dirName: string; dirSegments: string[] } | null = null;
+	let externalAllocation: {
+		directoryName: string;
+		directoryHandle: FileSystemDirectoryHandle;
+	} | null = null;
+	try {
+		const baseName = imageSequence.sanitizeSequenceBaseName(job.project.name);
+		if (useWorkspace) {
+			workspaceAllocation = await imageSequence.allocateUniqueWorkspaceSequenceDirectory(
+				workspaceRoot,
+				job.project.id,
+				baseName
+			);
+		} else if (isDirectoryHandle) {
+			externalAllocation = await imageSequence.allocateUniqueSequenceSubdirectory(
+				directoryDestination,
+				baseName
+			);
+		}
+	} catch (error) {
+		worker.terminate();
+		throw error;
+	}
 
 	return await new Promise<ImageSequenceResult>((resolve, reject) => {
-		let worker: RenderWorkerPort;
-		try {
-			worker = dependencies.createWorker();
-		} catch (error) {
-			reject(new Error(`WORKER_UNAVAILABLE:create:${String(error)}`));
-			return;
-		}
 		const requestId = crypto.randomUUID();
 		let settled = false;
-		const pendingWrites: Promise<void>[] = [];
-		let writeError: Error | null = null;
-		let sequenceMeta: { frameCount: number; totalBytes: number } | null = null;
-		let directoryName = '';
+		let finalizing = false;
+		let activeWrite = Promise.resolve();
+		let batchInFlight = false;
+		let expectedBatchId = 0;
+		const writtenFiles: string[] = [];
 		let totalBytes = 0;
 		let frameCount = 0;
+		const directoryName = workspaceAllocation?.dirName ?? externalAllocation?.directoryName ?? '';
 		const cleanup = (): void => {
 			job.signal?.removeEventListener('abort', onAbort);
 			worker.removeEventListener('message', onMessage);
@@ -321,77 +351,106 @@ async function renderImageSequenceInWorker(
 			worker.terminate();
 		};
 		const finish = (fn: () => void): void => {
-			if (settled) return;
+			if (settled || finalizing) return;
 			settled = true;
 			cleanup();
 			fn();
 		};
-		const onAbort = (): void => {
+		const cleanupOwnedOutput = async (): Promise<void> => {
+			await activeWrite.catch(() => undefined);
+			if (workspaceAllocation) {
+				const root = dependencies.workspaceRoot();
+				if (!root) return;
+				const { listDirectory, removeEntry } = await import('../workspace-fs/fs-primitives');
+				for (const fileName of writtenFiles) {
+					try {
+						await removeEntry(root, [...workspaceAllocation.dirSegments, fileName]);
+					} catch {
+						// The export owns this unique directory; cleanup remains best-effort.
+					}
+				}
+				try {
+					if ((await listDirectory(root, workspaceAllocation.dirSegments)).length === 0) {
+						await removeEntry(root, workspaceAllocation.dirSegments);
+					}
+				} catch {
+					// Preserve the render error when empty-directory cleanup fails.
+				}
+				return;
+			}
+			if (externalAllocation && directoryDestination) {
+				for (const fileName of writtenFiles) {
+					try {
+						await externalAllocation.directoryHandle.removeEntry(fileName);
+					} catch {
+						// The export owns this unique directory; cleanup remains best-effort.
+					}
+				}
+				try {
+					await directoryDestination.removeEntry(externalAllocation.directoryName);
+				} catch {
+					// Preserve the render error when empty-directory cleanup fails.
+				}
+			}
+		};
+		const failWithCleanup = (error: Error): void => {
+			if (settled || finalizing) return;
+			finalizing = true;
 			try {
 				worker.postMessage({ type: 'cancel', requestId } satisfies RenderExportWorkerRequest);
 			} catch {
-				// termination is authoritative
-			} finally {
-				finish(() => reject(abortError()));
+				// Termination after cleanup is the authoritative cancellation path.
 			}
+			void cleanupOwnedOutput().finally(() => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				reject(error);
+			});
 		};
+		const onAbort = (): void => failWithCleanup(abortError());
 		const handleBatch = async (
 			frames: import('./render-export-worker.types').WorkerSequenceBatchFrame[]
 		): Promise<void> => {
-			if (writeError) return;
-			try {
-				if (isDirectoryHandle) {
-					const dir = job.destination as unknown as FileSystemDirectoryHandle;
-					if (!directoryName) directoryName = dir.name;
-					for (const frame of frames) {
-						throwIfAborted(job.signal);
-						const fileHandle = await dir.getFileHandle(frame.fileName, { create: true });
-						const writable = await fileHandle.createWritable();
-						try {
-							await writable.write(frame.blob);
-							await writable.close();
-						} catch (error) {
-							try {
-								await writable.abort();
-							} catch {
-								/* ignore */
-							}
-							throw error;
+			if (frames.length === 0 || frames.length > imageSequence.IMAGE_SEQUENCE_BATCH_SIZE) {
+				throw new Error(`Invalid image-sequence batch size: ${frames.length}`);
+			}
+			for (const frame of frames) {
+				throwIfAborted(job.signal);
+				writtenFiles.push(frame.fileName);
+				if (externalAllocation) {
+					const fileHandle = await externalAllocation.directoryHandle.getFileHandle(
+						frame.fileName,
+						{
+							create: true
 						}
-						totalBytes += frame.blob.size;
-						frameCount += 1;
+					);
+					const writable = await fileHandle.createWritable();
+					try {
+						await writable.write(frame.blob);
+						await writable.close();
+					} catch (error) {
+						try {
+							await writable.abort();
+						} catch {
+							// The original write error is more useful than an abort failure.
+						}
+						throw error;
 					}
-				} else if (useWorkspace) {
-					const { sanitizeSequenceBaseName } = await import('./image-sequence-export');
-					const baseName = sanitizeSequenceBaseName(job.project.name);
-					if (!directoryName) directoryName = baseName;
+				} else if (workspaceAllocation) {
 					const { writeBlob } = await import('../workspace-fs/fs-primitives');
-					const { projectExportsDir } = await import('../workspace-fs/paths');
 					const root = dependencies.workspaceRoot();
 					if (!root) throw new Error('Workspace root lost during sequence write.');
-					for (const frame of frames) {
-						throwIfAborted(job.signal);
-						await writeBlob(
-							root,
-							[...projectExportsDir(job.project.id), baseName, frame.fileName],
-							frame.blob
-						);
-						totalBytes += frame.blob.size;
-						frameCount += 1;
-					}
+					await writeBlob(root, [...workspaceAllocation.dirSegments, frame.fileName], frame.blob);
 				} else {
-					// ZIP destination is handled on main thread fallback path; worker batches are not used for ZIP.
-					for (const frame of frames) {
-						totalBytes += frame.blob.size;
-						frameCount += 1;
-					}
+					throw new Error('Image-sequence worker has no writable destination.');
 				}
-			} catch (error) {
-				writeError = error instanceof Error ? error : new Error(String(error));
+				totalBytes += frame.blob.size;
+				frameCount += 1;
 			}
 		};
 		const onMessage = (event: Event): void => {
-			if (!(event instanceof MessageEvent)) return;
+			if (!(event instanceof MessageEvent) || settled || finalizing) return;
 			const response: RenderExportWorkerResponse = event.data;
 			if (response.requestId !== requestId) return;
 			switch (response.type) {
@@ -399,88 +458,98 @@ async function renderImageSequenceInWorker(
 					job.onProgress?.(response.progress);
 					break;
 				case 'sequence-batch': {
-					const p = handleBatch(response.frames);
-					pendingWrites.push(p);
-					p.catch((error) => {
-						writeError = error instanceof Error ? error : new Error(String(error));
-						try {
-							worker.postMessage({ type: 'cancel', requestId } satisfies RenderExportWorkerRequest);
-						} catch {
-							/* ignore */
-						}
-						finish(() => reject(writeError!));
-					});
+					if (batchInFlight || response.batchId !== expectedBatchId) {
+						failWithCleanup(new Error('Image-sequence worker sent an out-of-order batch.'));
+						break;
+					}
+					batchInFlight = true;
+					activeWrite = handleBatch(response.frames);
+					void activeWrite
+						.then(() => {
+							if (settled || finalizing) return;
+							batchInFlight = false;
+							expectedBatchId += 1;
+							worker.postMessage({
+								type: 'sequence-batch-ack',
+								requestId,
+								batchId: response.batchId
+							} satisfies RenderExportWorkerRequest);
+						})
+						.catch((error) => {
+							failWithCleanup(error instanceof Error ? error : new Error(String(error)));
+						});
 					break;
 				}
 				case 'sequence-complete':
-					sequenceMeta = { frameCount: response.frameCount, totalBytes: response.totalBytes };
-					Promise.all(pendingWrites).then(() => {
-						if (writeError) {
-							finish(() => reject(writeError!));
-							return;
-						}
-						if (isDirectoryHandle) {
+					void activeWrite
+						.then(() => {
+							if (frameCount !== response.frameCount || totalBytes !== response.totalBytes) {
+								throw new Error('Image-sequence worker output count did not match written output.');
+							}
+							if (workspaceAllocation) {
+								finish(() =>
+									resolve({
+										kind: 'workspace-directory',
+										directoryName,
+										relPath: `projects/${job.project.id}/exports/${directoryName}`,
+										frameCount,
+										totalBytes
+									})
+								);
+								return;
+							}
 							finish(() =>
 								resolve({
 									kind: 'directory-handle',
 									directoryName,
-									frameCount: sequenceMeta!.frameCount,
-									totalBytes: sequenceMeta!.totalBytes
+									frameCount,
+									totalBytes
 								})
 							);
-						} else if (useWorkspace) {
-							finish(() =>
-								resolve({
-									kind: 'workspace-directory',
-									directoryName,
-									relPath: `projects/${job.project.id}/exports/${directoryName}`,
-									frameCount: sequenceMeta!.frameCount,
-									totalBytes: sequenceMeta!.totalBytes
-								})
-							);
-						} else {
-							finish(() => reject(new Error('WORKER_REQUIRES_MAIN_THREAD:zip-unhandled')));
-						}
-					});
+						})
+						.catch((error) => {
+							failWithCleanup(error instanceof Error ? error : new Error(String(error)));
+						});
 					break;
 				case 'complete':
-					finish(() => reject(new Error('Unexpected complete for image sequence')));
+					failWithCleanup(new Error('Unexpected complete for image sequence'));
 					break;
 				case 'cancelled':
-					finish(() => reject(abortError()));
+					failWithCleanup(abortError());
 					break;
 				case 'error':
-					finish(() => reject(new Error(response.error)));
+					failWithCleanup(new Error(response.error));
 					break;
 			}
 		};
 		const onError = (event: Event): void => {
 			const message = event instanceof ErrorEvent ? event.message : 'unknown worker error';
-			finish(() => reject(new Error(`WORKER_RUNTIME_ERROR:${message}`)));
+			failWithCleanup(new Error(`WORKER_RUNTIME_ERROR:${message}`));
 		};
 		const onMessageError = (): void => {
-			finish(() => reject(new Error('WORKER_RUNTIME_ERROR:message-deserialization')));
+			failWithCleanup(new Error('WORKER_RUNTIME_ERROR:message-deserialization'));
 		};
 		worker.addEventListener('message', onMessage);
 		worker.addEventListener('messageerror', onMessageError);
 		worker.addEventListener('error', onError);
 		job.signal?.addEventListener('abort', onAbort, { once: true });
-		const common = {
-			type: 'start' as const,
+		const request: RenderExportWorkerRequest = {
+			type: 'start',
 			requestId,
+			mode: 'image-sequence',
 			project: job.project,
 			media: dependencies.media().map(cloneMedia),
-			workspaceRoot: workspaceRoot!
-		};
-		const request: RenderExportWorkerRequest = {
-			...common,
-			mode: 'image-sequence',
+			workspaceRoot,
 			options: job.options
 		};
+		if (job.signal?.aborted) {
+			onAbort();
+			return;
+		}
 		try {
 			worker.postMessage(request);
 		} catch (error) {
-			finish(() => reject(new Error(`WORKER_MESSAGE_ERROR:${String(error)}`)));
+			failWithCleanup(new Error(`WORKER_MESSAGE_ERROR:${String(error)}`));
 		}
 	});
 }
@@ -512,20 +581,13 @@ export async function renderImageSequenceExport(
 		const reason = fallbackReason(error);
 		if (!reason) throw error;
 		if (job.signal?.aborted) throw abortError();
-		if (
-			typeof FileSystemDirectoryHandle !== 'undefined' &&
-			job.destination instanceof FileSystemDirectoryHandle
-		) {
+		if (isDirectoryDestination(job.destination)) {
 			const { renderImageSequenceToDirectoryHandle } = await import('./image-sequence-export');
-			const dirResult = await renderImageSequenceToDirectoryHandle(
-				job.destination as unknown as FileSystemDirectoryHandle,
-				job.project,
-				{
-					...job.options,
-					signal: job.signal,
-					onProgress: job.onProgress
-				}
-			);
+			const dirResult = await renderImageSequenceToDirectoryHandle(job.destination, job.project, {
+				...job.options,
+				signal: job.signal,
+				onProgress: job.onProgress
+			});
 			return { result: dirResult, renderPath: 'main-thread', fallbackReason: reason };
 		}
 		const result = await dependencies.renderImageSequenceMain(job.project, {

@@ -12,9 +12,10 @@ import type { Project } from '../project/types';
 import type { RenderExportProgress } from './render-export';
 import { outputDurationFrames } from './render-plan';
 import { sanitizeWorkspaceFileName } from '../workspace-fs/paths';
-import { writeBlob, removeEntry, exists } from '../workspace-fs/fs-primitives';
+import { writeBlob, removeEntry, exists, listDirectory } from '../workspace-fs/fs-primitives';
 import { projectExportsDir } from '../workspace-fs/paths';
 import { requireWorkspaceRoot, getWorkspaceRoot } from '../workspace-fs/root';
+import { withKeyLock } from '../workspace-fs/with-key-lock';
 
 export type ImageSequenceFormat = 'png' | 'jpeg' | 'webp';
 
@@ -58,10 +59,11 @@ export interface ImageSequenceWorkspaceResult {
 export interface ImageSequenceZipResult {
 	kind: 'zip';
 	fileName: string;
-	relPath: string;
+	relPath: string | null;
 	blob: Blob;
 	frameCount: number;
 	totalBytes: number;
+	savedToWorkspace: boolean;
 }
 
 export interface ImageSequenceDirectoryHandleResult {
@@ -126,10 +128,7 @@ export function estimateSequenceBytes(
 	return Math.ceil(width * height * bytesPerPixel * frameCount);
 }
 
-export function resolveSequenceRange(
-	project: Project,
-	range: ImageSequenceExportOptions['range']
-): { startFrame: number; endFrame: number; totalFrames: number } {
+export function resolveSequenceRange(project: Project, range: ImageSequenceExportOptions['range']) {
 	const full = outputDurationFrames(project.timeline?.items ?? []);
 	const startFrame = Math.max(0, Math.floor(range?.startFrame ?? 0));
 	const endFrame = Math.min(full, Math.ceil(range?.endFrame ?? full));
@@ -145,6 +144,56 @@ export function isZipFallbackSafe(
 ): boolean {
 	if (frameCount > ZIP_MAX_FRAMES) return false;
 	return estimateSequenceBytes(format, width, height, frameCount) <= ZIP_MAX_ESTIMATED_BYTES;
+}
+
+/** Allocate a unique owned directory for one export, never colliding with prior exports. */
+export async function allocateUniqueWorkspaceSequenceDirectory(
+	root: FileSystemDirectoryHandle,
+	projectId: string,
+	baseName: string
+): Promise<{ dirName: string; dirSegments: string[] }> {
+	const lockKey = `sequence-dir:${projectId}:${baseName}`;
+	return withKeyLock(lockKey, async () => {
+		const baseSegments = projectExportsDir(projectId);
+		const candidate = `${baseName}__${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+		const dirSegments = [...baseSegments, candidate];
+		let dir: FileSystemDirectoryHandle = root;
+		for (const seg of dirSegments) {
+			dir = await dir.getDirectoryHandle(seg, { create: true });
+		}
+		return { dirName: candidate, dirSegments };
+	});
+}
+
+export async function allocateUniqueSequenceSubdirectory(
+	parent: FileSystemDirectoryHandle,
+	baseName: string
+): Promise<{ directoryName: string; directoryHandle: FileSystemDirectoryHandle }> {
+	return withKeyLock(`sequence-picked-dir:${parent.name}:${baseName}`, async () => {
+		const directoryName = `${baseName}__${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+		const directoryHandle = await parent.getDirectoryHandle(directoryName, { create: true });
+		return { directoryName, directoryHandle };
+	});
+}
+
+async function writeUniqueWorkspaceSequenceZip(
+	root: FileSystemDirectoryHandle,
+	projectId: string,
+	baseName: string,
+	blob: Blob
+): Promise<{ fileName: string; relPath: string }> {
+	return withKeyLock(`sequence-zip:${projectId}:${baseName}`, async () => {
+		const exportSegments = projectExportsDir(projectId);
+		let fileName = `${baseName}.zip`;
+		while (await exists(root, [...exportSegments, fileName])) {
+			fileName = `${baseName}__${Date.now()}-${crypto.randomUUID().slice(0, 8)}.zip`;
+		}
+		await writeBlob(root, [...exportSegments, fileName], blob);
+		return {
+			fileName,
+			relPath: `projects/${projectId}/exports/${fileName}`
+		};
+	});
 }
 
 /** Explicit WebP encoding capability probe. Never silent-falls back. */
@@ -247,7 +296,11 @@ export async function renderImageSequenceToWorkspace(
 	if (totalFrames === 0) throw new Error('The selected export range is empty.');
 	const baseName = sanitizeSequenceBaseName(project.name);
 	const root = requireWorkspaceRoot();
-	const dirSegments = [...projectExportsDir(project.id), baseName];
+	const { dirName, dirSegments } = await allocateUniqueWorkspaceSequenceDirectory(
+		root,
+		project.id,
+		baseName
+	);
 	let written = 0;
 	let totalBytes = 0;
 	const writtenFiles: string[] = [];
@@ -260,35 +313,27 @@ export async function renderImageSequenceToWorkspace(
 			written += 1;
 			totalBytes += frame.blob.size;
 		}
-		const relPath = `projects/${project.id}/exports/${baseName}`;
+		const relPath = `projects/${project.id}/exports/${dirName}`;
 		return {
 			kind: 'workspace-directory',
-			directoryName: baseName,
+			directoryName: dirName,
 			relPath,
 			frameCount: written,
 			totalBytes
 		};
 	} catch (error) {
-		if (error instanceof DOMException && error.name === 'AbortError') {
-			for (const fileName of writtenFiles) {
-				try {
-					await removeEntry(root, [...dirSegments, fileName]);
-				} catch {
-					// Cleanup best-effort
-				}
-			}
+		for (const fileName of writtenFiles) {
 			try {
-				if (!(await exists(root, dirSegments))) {
-					// Already cleaned
-				} else {
-					const remaining = await exists(root, dirSegments);
-					if (remaining && writtenFiles.length > 0) {
-						// Leave directory if other files existed previously; don't remove entire dir blindly.
-					}
-				}
+				await removeEntry(root, [...dirSegments, fileName]);
 			} catch {
-				// Cleanup best-effort
+				// Cleanup is best-effort; the unique directory cannot contain an older export.
 			}
+		}
+		try {
+			const entries = await listDirectory(root, dirSegments);
+			if (entries.length === 0) await removeEntry(root, dirSegments);
+		} catch {
+			// A failed empty-directory cleanup does not hide the original render error.
 		}
 		throw error;
 	}
@@ -296,12 +341,17 @@ export async function renderImageSequenceToWorkspace(
 
 /** Directory-handle writer when File System Access is available */
 export async function renderImageSequenceToDirectoryHandle(
-	directoryHandle: FileSystemDirectoryHandle,
+	destinationHandle: FileSystemDirectoryHandle,
 	project: Project,
 	options: ImageSequenceExportOptions
 ): Promise<ImageSequenceDirectoryHandleResult> {
 	const { totalFrames } = resolveSequenceRange(project, options.range);
 	if (totalFrames === 0) throw new Error('The selected export range is empty.');
+	const allocated = await allocateUniqueSequenceSubdirectory(
+		destinationHandle,
+		sanitizeSequenceBaseName(project.name)
+	);
+	const directoryHandle = allocated.directoryHandle;
 	let written = 0;
 	let totalBytes = 0;
 	const createdFiles: string[] = [];
@@ -327,19 +377,22 @@ export async function renderImageSequenceToDirectoryHandle(
 		}
 		return {
 			kind: 'directory-handle',
-			directoryName: directoryHandle.name,
+			directoryName: allocated.directoryName,
 			frameCount: written,
 			totalBytes
 		};
 	} catch (error) {
-		if (error instanceof DOMException && error.name === 'AbortError') {
-			for (const fileName of createdFiles) {
-				try {
-					await directoryHandle.removeEntry(fileName);
-				} catch {
-					// best-effort cleanup
-				}
+		for (const fileName of createdFiles) {
+			try {
+				await directoryHandle.removeEntry(fileName);
+			} catch {
+				// Cleanup is best-effort; the unique directory cannot contain older output.
 			}
+		}
+		try {
+			await destinationHandle.removeEntry(allocated.directoryName);
+		} catch {
+			// Keep the original render error when the empty directory cannot be removed.
 		}
 		throw error;
 	}
@@ -365,7 +418,6 @@ export async function renderImageSequenceZip(
 		throwIfAborted(options.signal);
 		entries[frame.fileName] = new Uint8Array(await frame.blob.arrayBuffer());
 		totalBytes += entries[frame.fileName]!.length;
-		// Report encoding phase while collecting
 		report(options, 'encoding', frame.index + 1, totalFrames);
 		if (totalBytes > ZIP_MAX_ESTIMATED_BYTES) {
 			throw new Error('ZIP fallback exceeds safe size during collection.');
@@ -373,23 +425,35 @@ export async function renderImageSequenceZip(
 	}
 	report(options, 'finalizing', totalFrames, totalFrames);
 	const { zipSync } = await import('fflate');
-	// SAFETY: zipSync with level 0 (store) for already-compressed images is most efficient and lossless.
 	const zipped = zipSync(entries, { level: 0 });
-	const blob = new Blob([zipped as BlobPart], { type: 'application/zip' });
-	const fileName = `${baseName}.zip`;
-	// Only the main thread writes workspace files
+	const blob = new Blob([zipped.buffer], { type: 'application/zip' });
+	let fileName = `${baseName}.zip`;
+	let savedToWorkspace = false;
+	let relPath: string | null = null;
 	const root = getWorkspaceRoot();
 	if (root) {
-		const segments = [...projectExportsDir(project.id), fileName];
-		// Write via main-thread workspace if available; otherwise return blob for download.
 		try {
-			await writeBlob(root, segments, blob);
+			const saved = await writeUniqueWorkspaceSequenceZip(root, project.id, baseName, blob);
+			fileName = saved.fileName;
+			savedToWorkspace = true;
+			relPath = saved.relPath;
 		} catch {
-			// Workspace write is best-effort for ZIP fallback; download remains available.
+			savedToWorkspace = false;
+			relPath = null;
 		}
+	} else {
+		savedToWorkspace = false;
+		relPath = null;
 	}
-	const relPath = `projects/${project.id}/exports/${fileName}`;
-	return { kind: 'zip', fileName, relPath, blob, frameCount: totalFrames, totalBytes: blob.size };
+	return {
+		kind: 'zip',
+		fileName,
+		relPath,
+		blob,
+		frameCount: totalFrames,
+		totalBytes: blob.size,
+		savedToWorkspace
+	};
 }
 
 export function getDirectoryPickerAvailable(): boolean {
@@ -399,11 +463,7 @@ export function getDirectoryPickerAvailable(): boolean {
 export async function pickSequenceDirectory(): Promise<FileSystemDirectoryHandle | null> {
 	if (!getDirectoryPickerAvailable()) return null;
 	try {
-		// SAFETY: showDirectoryPicker is feature-detected above.
-		const handle = await (
-			window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }
-		).showDirectoryPicker();
-		return handle;
+		return await window.showDirectoryPicker();
 	} catch (error) {
 		if (error instanceof DOMException && error.name === 'AbortError') throw error;
 		return null;

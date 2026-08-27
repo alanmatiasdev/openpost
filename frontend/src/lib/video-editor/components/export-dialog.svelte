@@ -49,8 +49,34 @@
 	import {
 		sanitizeSequenceBaseName,
 		getDirectoryPickerAvailable,
-		canEncodeWebP
+		canEncodeWebP,
+		pickSequenceDirectory
 	} from '$lib/video-editor/media/image-sequence-export';
+
+	type ExportFormat =
+		| NonNullable<RenderExportOptions['format']>
+		| 'mp3'
+		| 'aac'
+		| 'wav'
+		| 'png-sequence'
+		| 'jpeg-sequence'
+		| 'webp-sequence';
+	type AudioExportFormat = 'mp3' | 'aac' | 'wav';
+	type SequenceExportFormat = 'png-sequence' | 'jpeg-sequence' | 'webp-sequence';
+
+	function isAudioExportFormat(value: ExportFormat): value is AudioExportFormat {
+		return value === 'mp3' || value === 'aac' || value === 'wav';
+	}
+
+	function isSequenceExportFormat(value: ExportFormat): value is SequenceExportFormat {
+		return value === 'png-sequence' || value === 'jpeg-sequence' || value === 'webp-sequence';
+	}
+
+	function isVideoExportFormat(
+		value: ExportFormat
+	): value is NonNullable<RenderExportOptions['format']> {
+		return !isAudioExportFormat(value) && !isSequenceExportFormat(value);
+	}
 
 	let {
 		project,
@@ -74,15 +100,7 @@
 
 	let open = $state(false);
 	let rendering = $state(false);
-	let format = $state<
-		| NonNullable<RenderExportOptions['format']>
-		| 'mp3'
-		| 'aac'
-		| 'wav'
-		| 'png-sequence'
-		| 'jpeg-sequence'
-		| 'webp-sequence'
-	>('webm');
+	let format = $state<ExportFormat>('webm');
 	let quality = $state<NonNullable<RenderExportOptions['quality']>>('standard');
 	let codec = $state<VideoCodec>('vp9');
 	let codecSupport = $state<Partial<Record<VideoCodec, boolean>>>({});
@@ -97,16 +115,10 @@
 	let controller: AbortController | null = null;
 	let codecProbeVersion = 0;
 	let destroyed = false;
-	const isAudioFormat = $derived(format === 'mp3' || format === 'aac' || format === 'wav');
-	const isSequenceFormat = $derived(
-		format === 'png-sequence' || format === 'jpeg-sequence' || format === 'webp-sequence'
-	);
+	const isAudioFormat = $derived(isAudioExportFormat(format));
+	const isSequenceFormat = $derived(isSequenceExportFormat(format));
 	let webpSupported = $state<boolean | undefined>(undefined);
-	const videoFormat = $derived(
-		!isAudioFormat && !isSequenceFormat
-			? (format as NonNullable<RenderExportOptions['format']>)
-			: null
-	);
+	const videoFormat = $derived(isVideoExportFormat(format) ? format : null);
 	const codecs = $derived(videoFormat ? supportedExportVideoCodecs(videoFormat) : []);
 	const formatOptions = $derived([
 		{ value: 'mp4', label: 'MP4' },
@@ -178,17 +190,7 @@
 	const preflight = $derived.by(() =>
 		assessExportPreflight({
 			settings: {
-				format: format as
-					| 'webm'
-					| 'mp4'
-					| 'mov'
-					| 'mkv'
-					| 'mp3'
-					| 'aac'
-					| 'wav'
-					| 'png-sequence'
-					| 'jpeg-sequence'
-					| 'webp-sequence',
+				format,
 				codec: videoFormat ? codec : undefined,
 				quality,
 				width: outputDimensions.width,
@@ -309,7 +311,7 @@
 			case 'mp3':
 			case 'aac':
 			case 'wav':
-				format = value as typeof format;
+				format = value;
 		}
 	}
 
@@ -476,12 +478,7 @@
 				if (sequenceDestination === 'directory') {
 					if (getDirectoryPickerAvailable()) {
 						try {
-							const handle = await (
-								window as unknown as {
-									showDirectoryPicker: () => Promise<FileSystemDirectoryHandle>;
-								}
-							).showDirectoryPicker();
-							destination = handle;
+							destination = (await pickSequenceDirectory()) ?? 'zip';
 						} catch (error) {
 							if (error instanceof DOMException && error.name === 'AbortError') {
 								rendering = false;
@@ -511,35 +508,37 @@
 					signal: abortController.signal,
 					onProgress: (value) => (progress = value)
 				});
-				let relPath = '';
-				let blob: Blob | undefined;
-				let fileName = '';
 				if (result.kind === 'workspace-directory') {
-					relPath = result.relPath;
-					fileName = result.directoryName;
-					blob = new Blob([], { type: 'application/octet-stream' });
+					ondone({
+						relPath: result.relPath,
+						fileName: result.directoryName,
+						blob: new Blob([], { type: 'application/octet-stream' })
+					});
 				} else if (result.kind === 'zip') {
-					relPath = result.relPath;
-					fileName = result.fileName;
-					blob = result.blob;
+					ondone({
+						relPath: result.relPath ?? `download:${result.fileName}`,
+						fileName: result.fileName,
+						blob: result.blob
+					});
 				} else {
-					relPath = `directory:${result.directoryName}`;
-					fileName = result.directoryName;
-					blob = new Blob([], { type: 'application/octet-stream' });
+					ondone({
+						relPath: `directory:${result.directoryName}`,
+						fileName: result.directoryName,
+						blob: new Blob([], { type: 'application/octet-stream' })
+					});
 				}
-				ondone({ relPath, blob: blob!, fileName } as RenderExportResult);
 				open = false;
 				return;
 			}
-			const result = isAudioFormat
+			const result = isAudioExportFormat(format)
 				? await renderAudio(renderProject, {
-						format: format as 'mp3' | 'aac' | 'wav',
+						format,
 						range,
 						signal: abortController.signal,
 						onProgress: (value) => (progress = value)
 					})
 				: await renderVideo(renderProject, {
-						format: format as 'webm' | 'mp4' | 'mov' | 'mkv',
+						format: isVideoExportFormat(format) ? format : 'webm',
 						codec,
 						quality,
 						width,

@@ -53,12 +53,17 @@ describe('render queue store', () => {
 			framesDone: 150,
 			totalFrames: 300
 		});
-		queue.markCompleted('a', { savedPath: 'exports/a.mp4', fileSize: 42 });
+		queue.markCompleted('a', {
+			savedPath: 'exports/a.mp4',
+			outputLabel: 'a.mp4',
+			fileSize: 42
+		});
 
 		expect(get(queue).jobs[0]).toMatchObject({
 			status: 'completed',
 			progress: 1,
 			savedPath: 'exports/a.mp4',
+			outputLabel: 'a.mp4',
 			fileSize: 42
 		});
 		expect(queue.next()?.id).toBe('b');

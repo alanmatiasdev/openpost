@@ -164,8 +164,11 @@
 												/>
 											{/if}
 											{#if job.error}<p class="mt-1 text-xs text-red-200">{job.error}</p>{/if}
-											{#if job.savedPath}<p class="mt-1 truncate text-xs text-emerald-200">
-													{job.savedPath}
+											{#if job.status === 'completed' && job.outputLabel}<p
+													class="mt-1 truncate text-xs text-emerald-200"
+													title={job.savedPath ?? job.outputLabel}
+												>
+													{job.savedPath ?? job.outputLabel}
 												</p>{/if}
 										</div>
 										<div class="flex shrink-0 gap-0.5">

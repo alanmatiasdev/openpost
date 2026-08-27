@@ -43,11 +43,18 @@ export interface WorkerRenderCancel {
 	requestId: string;
 }
 
+export interface WorkerSequenceBatchAck {
+	type: 'sequence-batch-ack';
+	requestId: string;
+	batchId: number;
+}
+
 export type RenderExportWorkerRequest =
 	| WorkerVideoRenderStart
 	| WorkerAudioRenderStart
 	| WorkerImageSequenceRenderStart
-	| WorkerRenderCancel;
+	| WorkerRenderCancel
+	| WorkerSequenceBatchAck;
 
 export interface WorkerSequenceBatchFrame {
 	index: number;
@@ -65,6 +72,7 @@ export type RenderExportWorkerResponse =
 	| {
 			type: 'sequence-batch';
 			requestId: string;
+			batchId: number;
 			frames: WorkerSequenceBatchFrame[];
 	  }
 	| {
