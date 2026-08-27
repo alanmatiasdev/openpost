@@ -106,6 +106,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { shuttleScrubResume } from '$lib/video-editor/preview/shuttle-scrub-resume.svelte';
 	import { mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 	import type { TextVoiceRequest } from '$lib/video-editor/local-ai/types';
+	import EditInspectorTabs from '$lib/video-editor/components/edit-inspector-tabs.svelte';
+	import {
+		resolveEditInspectorTabs,
+		type EditInspectorTab
+	} from '$lib/video-editor/components/edit-inspector-tabs';
 
 	const projectId = $derived(page.params.id ?? '');
 	let selectedItemId = $state<string | null>(null);
@@ -592,8 +597,20 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			? transitionsStore.list.find((transition) => transition.id === selectedTransitionId)
 			: undefined
 	);
+	let editInspectorTab = $state<EditInspectorTab>('properties');
+	const editInspectorTabs = $derived(
+		resolveEditInspectorTabs({
+			hasSelection: selectedItemId !== null,
+			supportsMotion: selectedSupportsMotion,
+			supportsEffects: selectedSupportsEffects,
+			isMedia: selectedIsMedia
+		})
+	);
 
-	let showTranscript = $state(false);
+	$effect(() => {
+		if (editInspectorTabs.includes(editInspectorTab)) return;
+		editInspectorTab = editInspectorTabs[0] ?? 'properties';
+	});
 
 	function handleAddCrossfade(): void {
 		if (!selectedItemId) return;
@@ -1174,114 +1191,142 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<!-- Tools -->
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="min-h-0 w-full flex-1 flex-col gap-1 overflow-y-auto border-t border-[oklch(0.25_0.015_55)] p-2 lg:flex lg:w-64 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
+							class="min-h-0 w-full flex-1 flex-col border-t border-[oklch(0.25_0.015_55)] lg:flex lg:w-80 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
 							'tools'
 								? 'flex'
 								: 'hidden'}"
+							aria-label={m.video_editor_tools()}
 						>
-							<h2
-								class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase"
+							<div class="flex h-9 shrink-0 items-center px-3">
+								<h2 class="text-xs font-medium text-[oklch(0.72_0.015_55)]">
+									{selectedTransition
+										? m.video_editor_transition()
+										: selectedItemId
+											? m.video_editor_inspector()
+											: m.video_editor_tools()}
+								</h2>
+							</div>
+							<div
+								class="grid shrink-0 grid-cols-2 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
 							>
-								{m.video_editor_tools()}
-							</h2>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={!selectedItemId}
-								data-cuelume-toggle={undefined}
-								onclick={handleSplit}
-							>
-								{m.video_editor_split()}
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={!selectedItemId}
-								title={m.video_editor_delete_leave_gap_hint()}
-								data-cuelume-toggle={undefined}
-								onclick={() => handleDelete(false)}
-							>
-								{m.video_editor_delete_leave_gap()}
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={!selectedItemId}
-								title={m.video_editor_ripple_delete_hint()}
-								data-cuelume-toggle={undefined}
-								onclick={() => handleDelete(true)}
-							>
-								{m.video_editor_ripple_delete()}
-							</Button>
-							{#if selectedIsCompound}
-								<Button size="sm" variant="outline" onclick={handleDissolveCompound}>
-									{m.video_editor_dissolve_compound()}
-								</Button>
-							{:else}
 								<Button
 									size="sm"
 									variant="outline"
-									disabled={selectedItemIds.length === 0 && !selectedItemId}
-									onclick={handleCreateCompound}
+									class="min-h-11 px-2 text-xs lg:min-h-8"
+									onclick={handleAddText}
 								>
-									{m.video_editor_create_compound()}
+									{m.video_editor_add_text()}
 								</Button>
-							{/if}
-							{#if selectedTransition}
-								<Button size="sm" variant="outline" onclick={handleRemoveTransition}>
-									{m.video_editor_break_transition()}
-								</Button>
-							{:else}
 								<Button
 									size="sm"
 									variant="outline"
-									disabled={!selectedItemId}
-									onclick={handleAddCrossfade}
+									class="min-h-11 px-2 text-xs lg:min-h-8"
+									onclick={handleAddAdjustmentLayer}
 								>
-									{m.video_editor_crossfade()}
+									{m.video_editor_add_adjustment_layer()}
 								</Button>
+							</div>
+
+							{#if selectedItemId || selectedTransition}
+								<div
+									class="grid shrink-0 grid-cols-3 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
+								>
+									{#if selectedTransition}
+										<Button
+											size="sm"
+											variant="outline"
+											class="col-span-3 min-h-11 lg:min-h-8"
+											onclick={handleRemoveTransition}
+										>
+											{m.video_editor_break_transition()}
+										</Button>
+									{:else}
+										<Button
+											size="sm"
+											variant="outline"
+											class="min-h-11 lg:min-h-8"
+											data-cuelume-toggle={undefined}
+											onclick={handleSplit}
+										>
+											{m.video_editor_split()}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											class="min-h-11 lg:min-h-8"
+											title={m.video_editor_delete_leave_gap_hint()}
+											data-cuelume-toggle={undefined}
+											onclick={() => handleDelete(false)}
+										>
+											{m.video_editor_delete_leave_gap()}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											class="min-h-11 lg:min-h-8"
+											title={m.video_editor_ripple_delete_hint()}
+											data-cuelume-toggle={undefined}
+											onclick={() => handleDelete(true)}
+										>
+											{m.video_editor_ripple_delete()}
+										</Button>
+										<Button
+											size="sm"
+											variant="ghost"
+											class="min-h-11 lg:min-h-8"
+											onclick={selectedIsCompound ? handleDissolveCompound : handleCreateCompound}
+										>
+											{selectedIsCompound
+												? m.video_editor_dissolve_compound()
+												: m.video_editor_create_compound()}
+										</Button>
+										<Button
+											size="sm"
+											variant="ghost"
+											class="col-span-2 min-h-11 lg:min-h-8"
+											onclick={handleAddCrossfade}
+										>
+											{m.video_editor_crossfade()}
+										</Button>
+									{/if}
+								</div>
 							{/if}
-							<Button size="sm" variant="outline" onclick={handleAddText}>
-								{m.video_editor_add_text()}
-							</Button>
-							<Button size="sm" variant="outline" onclick={handleAddAdjustmentLayer}>
-								{m.video_editor_add_adjustment_layer()}
-							</Button>
-							{#if selectedTransition}
-								<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+
+							{#if editInspectorTabs.length > 0}
+								<EditInspectorTabs tabs={editInspectorTabs} bind:value={editInspectorTab} />
+							{/if}
+
+							<div class="min-h-0 flex-1 overflow-y-auto p-2">
+								{#if selectedTransition}
 									<TransitionPropertiesPanel
 										transitionId={selectedTransition.id}
 										onedit={() => editorSession.scheduleAutosave()}
 										onremove={() => (selectedTransitionId = null)}
 									/>
-								</div>
-							{:else if selectedItemId}
-								<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
+								{:else if selectedItemId && editInspectorTab === 'properties'}
 									<ClipPropertiesPanel
 										itemId={selectedItemId}
 										onedit={() => editorSession.scheduleAutosave()}
 										oncreatevoice={openTextVoice}
 									/>
-								</div>
-							{/if}
-							{#if selectedIsVideo}
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={scanningScenes}
-									onclick={handleAutoSplitScenes}
-								>
-									{#if scanningScenes}
-										<LoaderIcon
-											class="size-3.5 animate-spin motion-reduce:animate-none"
-											aria-hidden="true"
-										/>
+									{#if selectedIsVideo}
+										<Button
+											size="sm"
+											variant="outline"
+											class="mt-3 min-h-11 w-full lg:min-h-8"
+											disabled={scanningScenes}
+											onclick={handleAutoSplitScenes}
+										>
+											{#if scanningScenes}
+												<LoaderIcon
+													class="size-3.5 animate-spin motion-reduce:animate-none"
+													aria-hidden="true"
+												/>
+											{/if}
+											{m.video_editor_scene_split()}
+										</Button>
 									{/if}
-									{m.video_editor_scene_split()}
-								</Button>
-							{/if}
-							{#if selectedSupportsEffects}
-								{#if selectedSupportsMotion}
+								{:else if selectedItemId && editInspectorTab === 'motion' && selectedSupportsMotion}
 									<MotionPresetsPanel
 										itemId={selectedItemId}
 										itemIds={selectedItemIds}
@@ -1300,26 +1345,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											onedit={() => editorSession.scheduleAutosave()}
 										/>
 									{/if}
-								{/if}
-								<EffectsPanel
-									itemId={selectedItemId}
-									itemIds={selectedItemIds}
-									onedit={() => editorSession.scheduleAutosave()}
-								/>
-							{/if}
-							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-								<Button
-									size="sm"
-									variant="outline"
-									class="w-full"
-									aria-expanded={showTranscript}
-									onclick={() => (showTranscript = !showTranscript)}
-								>
-									{showTranscript
-										? m.video_editor_transcript_hide()
-										: m.video_editor_transcript_show()}
-								</Button>
-								{#if showTranscript}
+								{:else if selectedItemId && editInspectorTab === 'effects' && selectedSupportsEffects}
+									<EffectsPanel
+										itemId={selectedItemId}
+										itemIds={selectedItemIds}
+										onedit={() => editorSession.scheduleAutosave()}
+									/>
+								{:else if selectedItemId && editInspectorTab === 'transcript' && selectedIsMedia}
 									<TranscriptionControls
 										canTranscribe={selectedIsMedia}
 										busy={selectedTranscriptionJob !== undefined}
@@ -1357,64 +1389,69 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											onedit={() => editorSession.scheduleAutosave()}
 										/>
 									</div>
+									<div
+										class="mt-3 grid grid-cols-2 gap-1 border-t border-[oklch(0.25_0.015_55)] pt-3"
+									>
+										<Button
+											size="sm"
+											variant="outline"
+											class="min-h-11 lg:min-h-8"
+											disabled={speechCleanupItemIds.length === 0}
+											aria-label={m.video_editor_filler_review()}
+											onclick={() => openSpeechCleanup('fillers')}
+										>
+											{m.video_editor_cleanup_fillers_short()}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											class="min-h-11 lg:min-h-8"
+											disabled={speechCleanupItemIds.length === 0}
+											aria-label={m.video_editor_silence_review()}
+											onclick={() => openSpeechCleanup('silence')}
+										>
+											{m.video_editor_cleanup_silence_short()}
+										</Button>
+									</div>
+								{:else}
+									<p class="px-1 py-3 text-sm text-[oklch(0.62_0.01_55)]">
+										{m.video_editor_select_clip()}
+									</p>
 								{/if}
 							</div>
-							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-								<p
-									class="mb-1.5 text-[10px] font-medium tracking-wide text-[oklch(0.62_0.01_55)] uppercase"
-								>
-									{m.video_editor_cleanup_title()}
-								</p>
+
+							<div class="shrink-0 border-t border-[oklch(0.25_0.015_55)] p-2">
 								<div class="grid grid-cols-2 gap-1">
 									<Button
 										size="sm"
-										variant="outline"
-										disabled={speechCleanupItemIds.length === 0}
-										aria-label={m.video_editor_filler_review()}
-										onclick={() => openSpeechCleanup('fillers')}
+										class="min-h-11 lg:min-h-8"
+										disabled={exporting || timelineStore.items.length === 0}
+										onclick={handleExport}
 									>
-										{m.video_editor_cleanup_fillers_short()}
+										{m.video_editor_export()}
 									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={speechCleanupItemIds.length === 0}
-										aria-label={m.video_editor_silence_review()}
-										onclick={() => openSpeechCleanup('silence')}
-									>
-										{m.video_editor_cleanup_silence_short()}
-									</Button>
-								</div>
-							</div>
-							<div class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2">
-								<Button
-									size="sm"
-									disabled={exporting || timelineStore.items.length === 0}
-									onclick={handleExport}
-								>
-									{m.video_editor_export()}
-								</Button>
-								<div class="mt-1">
-									{#if renderProject}
-										{#key renderProject.id}
-											<RenderQueueController
-												projectId={renderProject.id}
-												onerror={(error) => showToast(error.message, 'error')}
-											/>
-										{/key}
-									{/if}
-									<ExportDialog
-										project={renderProject}
-										disabled={timelineStore.items.length === 0}
-										ondone={(result) =>
-											showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
-										onerror={(error) => showToast(error.message, 'error')}
-									/>
+									<div>
+										{#if renderProject}
+											{#key renderProject.id}
+												<RenderQueueController
+													projectId={renderProject.id}
+													onerror={(error) => showToast(error.message, 'error')}
+												/>
+											{/key}
+										{/if}
+										<ExportDialog
+											project={renderProject}
+											disabled={timelineStore.items.length === 0}
+											ondone={(result) =>
+												showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
+											onerror={(error) => showToast(error.message, 'error')}
+										/>
+									</div>
 								</div>
 								<Button
 									size="sm"
 									variant="secondary"
-									class="mt-1 w-full"
+									class="mt-1 min-h-11 w-full lg:min-h-8"
 									disabled={sending ||
 										timelineStore.items.length === 0 ||
 										!workspaceCtx.currentWorkspace}
