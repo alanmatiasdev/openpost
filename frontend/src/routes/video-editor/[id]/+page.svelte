@@ -82,6 +82,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
+	import VideoIcon from '@lucide/svelte/icons/video';
 	import {
 		editorWorkspace,
 		type EditorWorkspaceId
@@ -893,7 +894,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	class="video-editor-theme flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
 >
 	<header
-		class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-[oklch(0.25_0.015_55)] px-2 py-2 sm:px-3"
+		class="grid grid-cols-[auto_1fr_auto] items-center border-b border-[oklch(0.25_0.015_55)] px-2 py-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:px-3"
 	>
 		<div class="flex min-w-0 items-center gap-2">
 			<a
@@ -908,7 +909,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			</span>
 		</div>
 		<EditorWorkspaceSwitcher value={activeWorkspace} onchange={changeEditorWorkspace} />
-		<div class="flex min-w-24 items-center justify-end gap-2 text-xs text-[oklch(0.65_0.015_55)]">
+		<div class="flex min-w-0 items-center justify-end gap-2 text-xs text-[oklch(0.65_0.015_55)]">
 			{#if editorSession.saving}
 				<span class="hidden sm:inline">{m.video_editor_saving()}</span>
 			{:else if editorSession.saveError}
@@ -921,13 +922,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			<Button
 				type="button"
 				variant="outline"
-				size="sm"
+				size="icon-sm"
+				class="lg:w-auto lg:px-2.5"
 				aria-label={m.video_editor_record_screen()}
+				title={m.video_editor_record_screen()}
 				onclick={() => (recordingOpen = true)}
 			>
-				{m.video_editor_record()}
+				<VideoIcon class="size-3.5" aria-hidden="true" />
+				<span class="hidden lg:inline">{m.video_editor_record()}</span>
 			</Button>
-			<PreviewDiagnosticsPanel />
+			<div class="hidden sm:block"><PreviewDiagnosticsPanel /></div>
 			<Button
 				type="button"
 				variant="ghost"

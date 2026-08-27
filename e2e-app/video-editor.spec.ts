@@ -36,6 +36,25 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
     .toEqual({ body: 0, document: 0 });
 }
 
+async function expectMinimumTargets(
+  locator: ReturnType<Page["getByRole"]>,
+  minimum = 44,
+): Promise<void> {
+  await expect
+    .poll(() =>
+      locator.evaluateAll(
+        (elements, min) =>
+          elements.length > 0 &&
+          elements.every((element) => {
+            const bounds = element.getBoundingClientRect();
+            return bounds.width >= min && bounds.height >= min;
+          }),
+        minimum,
+      ),
+    )
+    .toBe(true);
+}
+
 test("Video Editor project shell stays usable at phone and desktop widths", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleFailures: string[] = [];
@@ -60,6 +79,9 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
+    await expectMinimumTargets(
+      page.getByRole("tablist", { name: "Editor workspaces" }).getByRole("tab"),
+    );
     await page.getByRole("tab", { name: "Color" }).click();
     const colorDock = page.getByRole("region", { name: "Color grading" });
     await expect(colorDock).toBeVisible();
@@ -70,6 +92,7 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     await page.getByRole("tab", { name: "Edit" }).click();
     const mobilePanels = page.getByRole("navigation", { name: "Editor panels" });
     await expect(mobilePanels).toBeVisible();
+    await expectMinimumTargets(mobilePanels.getByRole("button"));
     await mobilePanels.getByRole("button", { name: "Edit", exact: true }).click();
     const tools = page.getByRole("heading", { name: "Edit", exact: true }).locator("..");
     await expect(tools).toBeVisible();
@@ -82,6 +105,10 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
       )
       .toMatchObject({ clientWidth: viewport.width, scrollWidth: viewport.width });
     await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `frontend/.svelte-kit/openpost-video-editor-${viewport.width}.png`,
+      fullPage: true,
+    });
   }
 
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -94,5 +121,9 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-1280.png",
+    fullPage: true,
+  });
   expect(consoleFailures).toEqual([]);
 });
