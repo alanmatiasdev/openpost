@@ -232,6 +232,8 @@ describe('MediaPicker meme source', () => {
 		expect(dialogBox.width).toBeGreaterThanOrEqual(1100);
 		expect(dialogBox.height).toBeGreaterThanOrEqual(800);
 		expect(generatorBox.height).toBeGreaterThanOrEqual(700);
+		await screen.getByRole('button', { name: 'Close' }).click();
+		await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
 	});
 
 	it('expands compact source navigation when the dialog has desktop space', async () => {
@@ -241,6 +243,8 @@ describe('MediaPicker meme source', () => {
 		await expect.element(screen.getByRole('tab', { name: 'Stock media' })).toBeVisible();
 		await expect.element(screen.getByRole('tab', { name: 'Meme' })).toBeVisible();
 		await expect.element(screen.getByRole('button', { name: 'More' })).not.toBeInTheDocument();
+		await screen.getByRole('button', { name: 'Close' }).click();
+		await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
 	});
 
 	it('keeps a degraded Meme path usable and recovers an overlay picker at 320px', async () => {
