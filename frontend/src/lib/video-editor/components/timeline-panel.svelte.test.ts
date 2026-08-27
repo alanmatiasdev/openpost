@@ -160,6 +160,22 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel Bento layout entry', () => {
+	it('keeps marker, trim, and track-resize targets usable at phone width', async () => {
+		await page.viewport(320, 720);
+		timelineStore._setMarkers([{ id: 'phone-marker', frame: 10, color: '#d97746' }]);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const marker = screen.getByRole('button', { name: 'Marker 1, Frame 10' }).element();
+		const trimStart = screen.getByRole('button', { name: 'Trim clip start' }).first().element();
+		const trackResize = screen
+			.getByRole('slider', { name: 'Resize video-track track height' })
+			.element();
+		expect(marker.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
+		expect(marker.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		expect(trimStart.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
+		expect(trackResize.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+	});
+
 	it('shows exact linked A/V drift without crowding short clips', async () => {
 		await page.viewport(320, 720);
 		timelineStore._setItems([

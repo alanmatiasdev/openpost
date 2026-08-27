@@ -943,7 +943,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	{#if editorSession.loading}
 		<main class="flex flex-1 items-center justify-center">
-			<LoaderIcon class="size-5 animate-spin" aria-hidden="true" />
+			<LoaderIcon class="size-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
 			<span class="sr-only">{m.editors_loading()}</span>
 		</main>
 	{:else if editorSession.loadError}
@@ -967,7 +967,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<button
 						type="button"
 						class:active={mobileEditPane === 'assets'}
-						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 						aria-pressed={mobileEditPane === 'assets'}
 						onclick={() => (mobileEditPane = 'assets')}
 					>
@@ -976,7 +976,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<button
 						type="button"
 						class:active={mobileEditPane === 'program'}
-						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 						aria-pressed={mobileEditPane === 'program'}
 						onclick={() => (mobileEditPane = 'program')}
 					>
@@ -985,7 +985,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<button
 						type="button"
 						class:active={mobileEditPane === 'tools'}
-						class="rounded px-2 py-1.5 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 						aria-pressed={mobileEditPane === 'tools'}
 						onclick={() => (mobileEditPane = 'tools')}
 					>
@@ -1014,7 +1014,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<button
 										type="button"
 										class:active={assetPanel === 'assets'}
-										class="rounded px-1 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 										onclick={() => (assetPanel = 'assets')}
 									>
 										{m.video_editor_assets()}
@@ -1022,7 +1022,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<button
 										type="button"
 										class:active={assetPanel === 'media'}
-										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 										onclick={() => (assetPanel = 'media')}
 									>
 										{m.video_editor_media_tab()}
@@ -1030,7 +1030,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<button
 										type="button"
 										class:active={assetPanel === 'scenes'}
-										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 										onclick={() => (assetPanel = 'scenes')}
 									>
 										{m.video_editor_scenes()}
@@ -1038,7 +1038,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									<button
 										type="button"
 										class:active={assetPanel === 'ai'}
-										class="rounded px-2 py-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
 										onclick={() => (assetPanel = 'ai')}
 									>
 										{m.video_editor_local_ai()}
@@ -1238,7 +1238,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									onclick={handleAutoSplitScenes}
 								>
 									{#if scanningScenes}
-										<LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" />
+										<LoaderIcon
+											class="size-3.5 animate-spin motion-reduce:animate-none"
+											aria-hidden="true"
+										/>
 									{/if}
 									{m.video_editor_scene_split()}
 								</Button>
