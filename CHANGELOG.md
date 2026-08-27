@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-08-27
+
+### Fixed
+
+- The official n8n package now passes current npm and n8n publication checks while keeping write-capable OpenPost actions unavailable to AI tools.
+
 ## [4.3.0] - 2026-08-27
 
 ### Added
