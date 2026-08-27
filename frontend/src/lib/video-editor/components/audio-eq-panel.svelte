@@ -32,13 +32,15 @@
 		settings = {},
 		onsettingschange,
 		onedit = () => {},
-		title
+		title,
+		open = false
 	}: {
 		item?: TimelineItem;
 		settings?: AudioEqSettings;
 		onsettingschange?: (settings: AudioEqSettings) => void;
 		onedit?: () => void;
 		title?: string;
+		open?: boolean;
 	} = $props();
 
 	interface BandDefinition {
@@ -272,7 +274,7 @@
 	}
 </script>
 
-<details class="group rounded-md border border-white/10 bg-black/10">
+<details {open} class="group rounded-md border border-white/10 bg-black/10">
 	<summary
 		class="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-2 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 	>

@@ -209,7 +209,7 @@ export const timelineStore = {
 			);
 		}
 		if (next.masterMuted !== undefined) state.masterMuted = Boolean(next.masterMuted);
-		if (next.busAudioEq !== undefined)
+		if ('busAudioEq' in next)
 			state.busAudioEq = next.busAudioEq ? { ...next.busAudioEq } : undefined;
 		reindex();
 	},

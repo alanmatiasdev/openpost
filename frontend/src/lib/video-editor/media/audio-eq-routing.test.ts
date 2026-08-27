@@ -13,6 +13,10 @@ import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { transitionsStore } from '../timeline/actions/transitions.svelte';
 import type { Project } from '../project/types';
 import { isAudioEqStageActive, resolveAudioEqSettings } from '../audio/audio-eq';
+import {
+	previewAudioEqStagesForTimeline,
+	requiresProcessedPreviewAudioForTimeline
+} from '../audio/preview-processing';
 
 function track(id: string, extra: Partial<TimelineTrack> = {}): TimelineTrack {
 	return {
@@ -43,6 +47,29 @@ function item(extra: Partial<TimelineItem> = {}): TimelineItem {
 }
 
 describe('audio EQ data plumbing', () => {
+	it('uses bus -> track -> clip stages to select processed live preview audio', () => {
+		const bus = { lowGainDb: 1 };
+		const trk = track('track-audio', { audioEq: { highGainDb: 2 } });
+		const clip = item({ trackId: trk.id, audioEqLowMidGainDb: 3 });
+
+		const stages = previewAudioEqStagesForTimeline(clip, [trk], bus);
+		expect(stages).toHaveLength(3);
+		expect(stages[0]?.lowGainDb).toBe(1);
+		expect(stages[1]?.highGainDb).toBe(2);
+		expect(stages[2]?.lowMidGainDb).toBe(3);
+		expect(requiresProcessedPreviewAudioForTimeline(clip, [trk], bus)).toBe(true);
+
+		const disabledTrack = track('track-audio', {
+			audioEq: { enabled: false, highGainDb: 8 }
+		});
+		expect(
+			requiresProcessedPreviewAudioForTimeline(item(), [disabledTrack], {
+				enabled: false,
+				lowGainDb: 8
+			})
+		).toBe(false);
+	});
+
 	it('orders mix stages as bus -> track -> clip for root', () => {
 		const bus = { lowGainDb: 3 };
 		const trk = track('track-audio', { audioEq: { highGainDb: 4 } });
@@ -242,6 +269,19 @@ describe('audio EQ data plumbing', () => {
 		restoreSnapshot(before);
 		expect(timelineStore.busAudioEq?.highGainDb).toBe(3);
 		expect(timelineStore.tracks[0]?.audioEq?.lowGainDb).toBe(2);
+	});
+
+	it('snapshot undo clears a bus EQ created from an empty project', () => {
+		timelineStore.__resetForTesting();
+		sequenceStore.reset();
+		transitionsStore.setAll([]);
+		timelineStore.setAll({ items: [item()], tracks: [track('track-audio')] });
+		const before = captureSnapshot();
+
+		timelineStore._setBusAudioEq({ lowGainDb: 4 });
+		expect(timelineStore.busAudioEq?.lowGainDb).toBe(4);
+		restoreSnapshot(before);
+		expect(timelineStore.busAudioEq).toBeUndefined();
 	});
 
 	it('planMixdown includes bus stage in export even when muted tracks excluded', () => {

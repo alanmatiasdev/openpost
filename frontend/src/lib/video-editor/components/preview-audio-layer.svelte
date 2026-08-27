@@ -23,8 +23,8 @@
 		reversedPreviewAudio
 	} from '$lib/video-editor/audio/reverse-preview-audio';
 	import {
-		previewAudioEqStages,
-		requiresProcessedPreviewAudio
+		previewAudioEqStagesForTimeline,
+		requiresProcessedPreviewAudioForTimeline
 	} from '$lib/video-editor/audio/preview-processing';
 	import {
 		createPreviewClipAudioGraph,
@@ -83,13 +83,21 @@
 		item.mediaId ? mediaPool.get(item.mediaId)?.audioCodecSupported === false : false
 	);
 	const needsProcessing = $derived(
-		requiresProcessedPreviewAudio(item) || isAc3AudioCodec(audioCodec)
+		requiresProcessedPreviewAudioForTimeline(
+			item,
+			timelineStore.tracks,
+			timelineStore.busAudioEq
+		) || isAc3AudioCodec(audioCodec)
 	);
 	const processingSignature = $derived(
 		JSON.stringify({
 			speed: item.speed ?? 1,
 			pitch: getAudioPitchShiftSemitones(item),
-			eqStages: previewAudioEqStages(item)
+			eqStages: previewAudioEqStagesForTimeline(
+				item,
+				timelineStore.tracks,
+				timelineStore.busAudioEq
+			)
 		})
 	);
 	const baseVolume = $derived(

@@ -78,7 +78,9 @@ describe('cube LUT', () => {
 		const encoded65 = encodeCubeLut(lines65.join('\n'));
 		expect(encoded65.size).toBe(65);
 		// 129 limit is accepted (header parsed) - truncated data throws count proving limit is 129 not 64
-		expect(() => parseCubeLut('LUT_3D_SIZE 129\n' + Array(10).fill('0 0 0').join('\n'))).toThrow(/2146689/);
+		expect(() => parseCubeLut('LUT_3D_SIZE 129\n' + Array(10).fill('0 0 0').join('\n'))).toThrow(
+			/2146689/
+		);
 	});
 
 	it('preserves distinct samples that a 33 resample would collapse', () => {

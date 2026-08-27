@@ -43,7 +43,7 @@
 		hasLinkedAudioCompanion
 	} from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
-	import { requiresProcessedPreviewAudio } from '$lib/video-editor/audio/preview-processing';
+	import { requiresProcessedPreviewAudioForTimeline } from '$lib/video-editor/audio/preview-processing';
 	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
 	import { isTextMotionActive } from '$lib/video-editor/timeline/text-motion-eval';
 	import { renderShapeItemRaster } from '$lib/video-editor/shapes/render';
@@ -287,7 +287,10 @@
 			!item.isReversed &&
 			Boolean(previewMediaUrl && audioUrl && previewMediaUrl !== audioUrl)
 	);
-	const usesProcessedAudio = $derived(item.type === 'video' && requiresProcessedPreviewAudio(item));
+	const usesProcessedAudio = $derived(
+		item.type === 'video' &&
+			requiresProcessedPreviewAudioForTimeline(item, timelineStore.tracks, timelineStore.busAudioEq)
+	);
 
 	const transportRate = $derived(editorSession.playbackRate);
 	const isShuttleReverse = $derived(isReverseShuttleRate(transportRate) && editorSession.isPlaying);

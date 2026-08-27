@@ -68,7 +68,7 @@
 		hasLinkedAudioCompanion,
 		isAudioTransitionParticipantAtFrame
 	} from '$lib/video-editor/audio/transition-crossfade';
-	import { requiresProcessedPreviewAudio } from '$lib/video-editor/audio/preview-processing';
+	import { requiresProcessedPreviewAudioForTimeline } from '$lib/video-editor/audio/preview-processing';
 	import { resolveAudioOwner } from '$lib/video-editor/preview/audio-owner';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { shapeMasksForTrack } from '$lib/video-editor/shapes/masks';
@@ -1373,7 +1373,7 @@
 	</div>
 	{#each timelineStore.items.filter((item) => {
 		const mediaEntry = item.mediaId ? mediaPool.entry(item.mediaId) : null;
-		const owner = resolveAudioOwner( { item, tracks: timelineStore.tracks, allItems: timelineStore.items, mediaEntry, usesSeparateProxyAudio: false, usesProcessedAudio: requiresProcessedPreviewAudio(item) } );
+		const owner = resolveAudioOwner( { item, tracks: timelineStore.tracks, allItems: timelineStore.items, mediaEntry, usesSeparateProxyAudio: false, usesProcessedAudio: requiresProcessedPreviewAudioForTimeline(item, timelineStore.tracks, timelineStore.busAudioEq) } );
 		return (owner === 'processed' || (owner === 'embedded' && item.type === 'audio')) && isAudioTransitionParticipantAtFrame(item, timelineStore.currentFrame, transitionsStore.list, timelineStore.itemById, editorSession.fps);
 	}) as item (item.id)}
 		<PreviewAudioLayer {item} url={urls[item.mediaId ?? '']} />

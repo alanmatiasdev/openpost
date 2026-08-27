@@ -43,3 +43,11 @@ export function requiresProcessedPreviewAudio(
 		previewAudioEqStages(item, trackAudioEq, busAudioEq).some(isAudioEqStageActive)
 	);
 }
+
+export function requiresProcessedPreviewAudioForTimeline(
+	item: TimelineItem,
+	tracks: readonly TimelineTrack[],
+	busAudioEq?: AudioEqSettings | null
+): boolean {
+	return requiresProcessedPreviewAudio(item, trackAudioEqForItem(item, tracks), busAudioEq);
+}
