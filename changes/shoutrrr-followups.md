@@ -1,3 +1,7 @@
+### Added
+
+- Added Copy as draft for reusing a sent Publication without carrying over its delivery or schedule state.
+
 ### Fixed
 
 - Kept connected accounts healthy when OAuth refresh fails because of a provider rate limit, server error, or timeout.
