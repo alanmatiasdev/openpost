@@ -123,6 +123,8 @@
 	} from '$lib/video-editor/timeline/actions/property-runtime';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import * as Select from '$lib/components/ui/select';
 	import type {
 		MotionTimelineGroupRow,
 		MotionTimelineLayerRow,
@@ -2020,21 +2022,25 @@
 				<label class="header-label" for="composition-picker"
 					>{m.video_editor_composition_timeline_picker()}</label
 				>
-				<select
-					id="composition-picker"
-					class="composition-picker"
+				<Select.Root
+					type="single"
 					value={composition.id}
-					aria-label={m.video_editor_composition_timeline_picker()}
-					onchange={(e) => {
-						const v = (e.currentTarget as HTMLSelectElement).value;
-						if (v) sequenceStore.switchTo(v);
-					}}
-					data-testid="composition-picker"
+					onValueChange={(value) => value && sequenceStore.switchTo(value)}
 				>
-					{#each compositions as comp (comp.id)}
-						<option value={comp.id}>{comp.name}</option>
-					{/each}
-				</select>
+					<Select.Trigger
+						id="composition-picker"
+						class="composition-picker"
+						aria-label={m.video_editor_composition_timeline_picker()}
+						data-testid="composition-picker"
+					>
+						<span class="truncate">{composition.name}</span>
+					</Select.Trigger>
+					<Select.Content>
+						{#each compositions as comp (comp.id)}
+							<Select.Item value={comp.id}>{comp.name}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
 				<Button
 					size="sm"
 					variant="ghost"
@@ -2055,7 +2061,7 @@
 				<h2 class="composition-title">{composition.name}</h2>
 				<span class="composition-meta" aria-label={m.video_editor_composition_timeline_meta()}>
 					{composition.width}×{composition.height} ·
-					<input
+					<Input
 						aria-label={m.video_editor_composition_timeline_fps()}
 						class="meta-input"
 						type="number"
@@ -2072,7 +2078,7 @@
 						data-testid="composition-fps"
 					/>
 					{m.video_editor_composition_timeline_fps_suffix()} ·
-					<input
+					<Input
 						aria-label={m.video_editor_composition_timeline_duration()}
 						class="meta-input"
 						type="number"
@@ -2161,7 +2167,7 @@
 			>
 			<label class="toolbar-search">
 				<span class="sr-only">{m.video_editor_composition_timeline_filter()}</span>
-				<input
+				<Input
 					class="filter-input"
 					placeholder={m.video_editor_composition_timeline_filter_placeholder()}
 					value={filterText}
@@ -2304,7 +2310,7 @@
 										/>{/if}
 								</span>
 								{#if editingNameId === row.track.id}
-									<input
+									<Input
 										id="rename-{row.track.id}"
 										class="rename-input"
 										value={editingNameValue}
@@ -2484,7 +2490,7 @@
 											/>{/if}
 									</button>
 									{#if editingNameId === item.id}
-										<input
+										<Input
 											id="rename-{item.id}"
 											class="rename-input"
 											value={editingNameValue}
@@ -2618,26 +2624,35 @@
 									</div>
 									<label class="blend-cell">
 										<span class="sr-only">{m.video_editor_composition_timeline_blend_mode()}</span>
-										<select
-											aria-label={m.video_editor_composition_timeline_blend_mode()}
+										<Select.Root
+											type="single"
 											value={item.blendMode ?? 'normal'}
-											onchange={(e) =>
-												setBlendMode(item.id, (e.currentTarget as HTMLSelectElement).value)}
+											onValueChange={(value) => setBlendMode(item.id, value)}
 											disabled={isLocked(item)}
-											data-testid={`blend-${item.id}`}
-											class="blend-select"
 										>
-											{#each BLEND_MODE_GROUPS as group (group.label)}
-												<optgroup label={blendGroupLabels[group.label] ?? group.label}>
-													{#each group.modes as mode (mode)}
-														<option value={mode}>{blendModeLabels[mode]}</option>
-													{/each}
-												</optgroup>
-											{/each}
-										</select>
+											<Select.Trigger
+												aria-label={m.video_editor_composition_timeline_blend_mode()}
+												data-testid={`blend-${item.id}`}
+												class="blend-select"
+											>
+												<span class="truncate">{blendModeLabels[item.blendMode ?? 'normal']}</span>
+											</Select.Trigger>
+											<Select.Content>
+												{#each BLEND_MODE_GROUPS as group (group.label)}
+													<Select.Group>
+														<Select.GroupHeading
+															>{blendGroupLabels[group.label] ?? group.label}</Select.GroupHeading
+														>
+														{#each group.modes as mode (mode)}
+															<Select.Item value={mode}>{blendModeLabels[mode]}</Select.Item>
+														{/each}
+													</Select.Group>
+												{/each}
+											</Select.Content>
+										</Select.Root>
 									</label>
 									<span class="timing-cell" data-testid={`timing-${item.id}`}>
-										<input
+										<Input
 											class="timing-input"
 											type="number"
 											min="0"
@@ -2649,7 +2664,7 @@
 											data-testid={`timing-in-${item.id}`}
 										/>
 										<span>–</span>
-										<input
+										<Input
 											class="timing-input"
 											type="number"
 											min="1"
@@ -2719,11 +2734,12 @@
 												data-testid={`mode-graph-${item.id}`}
 												>{m.video_editor_composition_timeline_graph()}</button
 											>
-											<label class="easing-picker" data-testid={`easing-picker-${item.id}`}
-												><span>{m.video_editor_keyframe_easing()}</span><select
+											<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
+												<span>{m.video_editor_keyframe_easing()}</span>
+												<Select.Root
+													type="single"
 													value={selectedEasing}
-													onchange={(e) => {
-														const v = e.currentTarget.value;
+													onValueChange={(v) => {
 														if (!isEasingType(v)) return;
 														selectedEasing = v;
 														const sel = keyframeSelectionStore.forItem(item.id);
@@ -2742,15 +2758,38 @@
 														}
 														if (setKeyframeEasings(item.id, updates)) onedit();
 													}}
-													data-testid={`easing-select-${item.id}`}
-													><option value="linear">{m.video_editor_keyframe_easing_linear()}</option
-													><option value="ease-in">{m.video_editor_keyframe_easing_in()}</option
-													><option value="ease-out">{m.video_editor_keyframe_easing_out()}</option
-													><option value="ease-in-out"
-														>{m.video_editor_keyframe_easing_in_out()}</option
-													></select
-												></label
-											>
+												>
+													<Select.Trigger
+														class="h-7 min-w-24 px-2"
+														aria-label={m.video_editor_keyframe_easing()}
+														data-testid={`easing-select-${item.id}`}
+													>
+														<span class="truncate">
+															{selectedEasing === 'linear'
+																? m.video_editor_keyframe_easing_linear()
+																: selectedEasing === 'ease-in'
+																	? m.video_editor_keyframe_easing_in()
+																	: selectedEasing === 'ease-out'
+																		? m.video_editor_keyframe_easing_out()
+																		: m.video_editor_keyframe_easing_in_out()}
+														</span>
+													</Select.Trigger>
+													<Select.Content>
+														<Select.Item value="linear"
+															>{m.video_editor_keyframe_easing_linear()}</Select.Item
+														>
+														<Select.Item value="ease-in"
+															>{m.video_editor_keyframe_easing_in()}</Select.Item
+														>
+														<Select.Item value="ease-out"
+															>{m.video_editor_keyframe_easing_out()}</Select.Item
+														>
+														<Select.Item value="ease-in-out"
+															>{m.video_editor_keyframe_easing_in_out()}</Select.Item
+														>
+													</Select.Content>
+												</Select.Root>
+											</div>
 											<button
 												type="button"
 												class="retime-btn"
@@ -2905,7 +2944,7 @@
 											<span class="band-label">{m.video_editor_motion_overrides_title()}</span>
 											{#each publishedControls(item) as control (control.id)}
 												<label class="control-row"
-													><span>{control.name}</span><input
+													><span>{control.name}</span><Input
 														type={control.kind === 'color' ? 'color' : 'text'}
 														value={compositionControlValue(item, control)}
 														placeholder={control.defaultValue}
@@ -3273,14 +3312,14 @@
 			>
 				<h3>{m.video_editor_motion_create_composition()}</h3>
 				<label
-					>{m.video_editor_composition_timeline_name()}<input
+					>{m.video_editor_composition_timeline_name()}<Input
 						value={newName}
 						oninput={(e) => (newName = (e.currentTarget as HTMLInputElement).value)}
 						data-testid="new-composition-name"
 					/></label
 				>
 				<label
-					>{m.video_editor_composition_timeline_fps()}<input
+					>{m.video_editor_composition_timeline_fps()}<Input
 						type="number"
 						min="1"
 						max="120"
@@ -3290,7 +3329,7 @@
 					/></label
 				>
 				<label
-					>{m.video_editor_composition_timeline_duration()}<input
+					>{m.video_editor_composition_timeline_duration()}<Input
 						type="number"
 						min="1"
 						value={newDuration}
@@ -3318,17 +3357,20 @@
 		{#if compositions.length > 0}
 			<div class="empty-picker">
 				<label for="empty-picker-select">{m.video_editor_composition_timeline_picker()}</label>
-				<select
-					id="empty-picker-select"
-					onchange={(e) => {
-						const v = (e.currentTarget as HTMLSelectElement).value;
-						if (v) sequenceStore.switchTo(v);
-					}}
-					data-testid="empty-composition-picker"
+				<Select.Root
+					type="single"
+					value=""
+					onValueChange={(value) => value && sequenceStore.switchTo(value)}
 				>
-					<option value="">{m.video_editor_composition_timeline_choose()}</option>
-					{#each compositions as comp (comp.id)}<option value={comp.id}>{comp.name}</option>{/each}
-				</select>
+					<Select.Trigger id="empty-picker-select" data-testid="empty-composition-picker">
+						<span class="truncate">{m.video_editor_composition_timeline_choose()}</span>
+					</Select.Trigger>
+					<Select.Content>
+						{#each compositions as comp (comp.id)}
+							<Select.Item value={comp.id}>{comp.name}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
 			</div>
 		{/if}
 		<Button
@@ -3355,14 +3397,14 @@
 			>
 				<h3>{m.video_editor_motion_create_composition()}</h3>
 				<label
-					>{m.video_editor_composition_timeline_name()}<input
+					>{m.video_editor_composition_timeline_name()}<Input
 						value={newName}
 						oninput={(e) => (newName = (e.currentTarget as HTMLInputElement).value)}
 						data-testid="new-composition-name-empty"
 					/></label
 				>
 				<label
-					>{m.video_editor_composition_timeline_fps()}<input
+					>{m.video_editor_composition_timeline_fps()}<Input
 						type="number"
 						min="1"
 						max="120"
@@ -3371,7 +3413,7 @@
 					/></label
 				>
 				<label
-					>{m.video_editor_composition_timeline_duration()}<input
+					>{m.video_editor_composition_timeline_duration()}<Input
 						type="number"
 						min="1"
 						value={newDuration}
@@ -3428,7 +3470,7 @@
 		font-size: 0.62rem;
 		color: oklch(0.72 0.015 65);
 	}
-	.composition-picker {
+	.composition-timeline :global(.composition-picker) {
 		min-width: 160px;
 		height: 32px;
 		border-radius: 0.32rem;
@@ -3438,7 +3480,7 @@
 		padding: 0 0.4rem;
 		font-size: 0.72rem;
 	}
-	.composition-picker:focus-visible {
+	.composition-timeline :global(.composition-picker:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -3456,7 +3498,7 @@
 		align-items: center;
 		gap: 0.25rem;
 	}
-	.meta-input {
+	.composition-timeline :global(.meta-input) {
 		width: 56px;
 		height: 24px;
 		border-radius: 0.25rem;
@@ -3466,7 +3508,7 @@
 		text-align: center;
 		font-size: 0.62rem;
 	}
-	.meta-input:focus-visible {
+	.composition-timeline :global(.meta-input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -3499,7 +3541,7 @@
 	.toolbar-search {
 		margin-left: auto;
 	}
-	.filter-input {
+	.composition-timeline :global(.filter-input) {
 		box-sizing: border-box;
 		width: 180px;
 		height: 32px;
@@ -3510,7 +3552,7 @@
 		padding: 0 0.5rem;
 		font-size: 0.72rem;
 	}
-	.filter-input:focus-visible {
+	.composition-timeline :global(.filter-input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -3591,8 +3633,8 @@
 		.toolbar-search {
 			width: 100%;
 		}
-		.composition-picker,
-		.filter-input {
+		.composition-timeline :global(.composition-picker),
+		.composition-timeline :global(.filter-input) {
 			min-width: 0;
 			width: 100%;
 		}
@@ -3813,7 +3855,7 @@
 	.blend-cell {
 		display: flex;
 	}
-	.blend-select {
+	.composition-timeline :global(.blend-select) {
 		width: 100%;
 		height: 24px;
 		border-radius: 0.25rem;
@@ -3823,7 +3865,7 @@
 		font-size: 0.62rem;
 		padding: 0 0.2rem;
 	}
-	.blend-select:focus-visible {
+	.composition-timeline :global(.blend-select:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -3850,7 +3892,7 @@
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
-	.rename-input {
+	.composition-timeline :global(.rename-input) {
 		flex: 1;
 		height: 28px;
 		border-radius: 0.25rem;
@@ -3861,7 +3903,7 @@
 		font-size: 0.72rem;
 		min-width: 0;
 	}
-	.rename-input:focus-visible {
+	.composition-timeline :global(.rename-input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -4155,7 +4197,7 @@
 		width: 1px;
 		border-left: 1px dashed oklch(0.66 0.14 45);
 	}
-	.timing-input {
+	.composition-timeline :global(.timing-input) {
 		width: 48px;
 		height: 22px;
 		border-radius: 0.2rem;
@@ -4166,7 +4208,7 @@
 		text-align: center;
 		padding: 0 0.2rem;
 	}
-	.timing-input:focus-visible {
+	.composition-timeline :global(.timing-input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -4253,7 +4295,7 @@
 		gap: 0.4rem;
 		font-size: 0.58rem;
 	}
-	.control-row input {
+	.control-row :global(input) {
 		flex: 1;
 		height: 22px;
 		border-radius: 0.2rem;
@@ -4262,7 +4304,7 @@
 		color: inherit;
 		padding: 0 0.3rem;
 	}
-	.control-row input:focus-visible {
+	.control-row :global(input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -4371,7 +4413,7 @@
 		gap: 0.25rem;
 		font-size: 0.72rem;
 	}
-	.dialog input {
+	.dialog :global(input) {
 		height: 32px;
 		border-radius: 0.32rem;
 		border: 1px solid oklch(0.26 0.016 55);
@@ -4379,7 +4421,7 @@
 		color: inherit;
 		padding: 0 0.5rem;
 	}
-	.dialog input:focus-visible {
+	.dialog :global(input:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -4407,7 +4449,7 @@
 		gap: 0.5rem;
 		font-size: 0.72rem;
 	}
-	.empty-picker select {
+	.empty-picker :global(button[data-slot='select-trigger']) {
 		height: 32px;
 		border-radius: 0.32rem;
 		border: 1px solid oklch(0.26 0.016 55);
@@ -4415,7 +4457,7 @@
 		color: inherit;
 		padding: 0 0.4rem;
 	}
-	.empty-picker select:focus-visible {
+	.empty-picker :global(button[data-slot='select-trigger']:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}

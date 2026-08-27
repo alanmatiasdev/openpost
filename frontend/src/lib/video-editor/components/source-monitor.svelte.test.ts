@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { MediaMetadata } from '$lib/video-editor/media/types';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -54,9 +55,13 @@ const source: MediaMetadata = {
 	tags: ['video']
 };
 
-function setRange(input: HTMLInputElement, value: number): void {
-	input.value = String(value);
-	input.dispatchEvent(new Event('input', { bubbles: true }));
+async function setSlider(slider: Element, value: number): Promise<void> {
+	if (!(slider instanceof HTMLElement)) throw new Error('Slider control is missing.');
+	slider.focus();
+	await userEvent.keyboard('{Home}');
+	for (let step = 0; step < value; step += 1) {
+		await userEvent.keyboard('{ArrowRight}');
+	}
 }
 
 function linkedFileHandle(name: string, getFile: () => Promise<File>): FileSystemFileHandle {
@@ -163,12 +168,10 @@ describe('SourceMonitor', () => {
 		});
 
 		await expect.element(screen.getByText(source.fileName)).toBeVisible();
-		const position = screen.getByLabelText('Source position').element();
-		if (!(position instanceof HTMLInputElement))
-			throw new Error('Source position is not a slider.');
-		setRange(position, 30);
+		const position = screen.getByRole('slider', { name: 'Source position' });
+		await setSlider(position.element(), 30);
 		await screen.getByRole('button', { name: 'Mark in' }).click();
-		setRange(position, 59);
+		await setSlider(position.element(), 59);
 		await screen.getByRole('button', { name: 'Mark out' }).click();
 		await screen.getByRole('button', { name: 'Insert edit ,' }).click();
 
@@ -232,20 +235,17 @@ describe('SourceMonitor', () => {
 			onclose: vi.fn(),
 			onedit: vi.fn()
 		});
-		const position = screen.getByLabelText('Source position').element();
-		if (!(position instanceof HTMLInputElement)) {
-			throw new Error('Source position is not a slider.');
-		}
+		const position = screen.getByRole('slider', { name: 'Source position' });
 		const replay = screen.getByRole('button', { name: 'Play in to out' });
 		expect(replay.element()).toBeDisabled();
-		setRange(position, 30);
+		await setSlider(position.element(), 30);
 		await screen.getByRole('button', { name: 'Mark in' }).click();
-		setRange(position, 59);
+		await setSlider(position.element(), 59);
 		await screen.getByRole('button', { name: 'Mark out' }).click();
 
 		await replay.click();
 
-		expect(position.value).toBe('30');
+		await expect.element(position).toHaveAttribute('aria-valuenow', '30');
 		expect(replay.element()).toBeEnabled();
 	});
 
@@ -259,19 +259,19 @@ describe('SourceMonitor', () => {
 			onedit: vi.fn()
 		});
 		const monitor = screen.getByRole('region', { name: 'Source' }).element();
-		const position = screen.getByLabelText('Source position').element();
-		if (!(monitor instanceof HTMLElement) || !(position instanceof HTMLInputElement)) {
+		const position = screen.getByRole('slider', { name: 'Source position' });
+		if (!(monitor instanceof HTMLElement)) {
 			throw new Error('Source monitor controls are missing.');
 		}
 
 		await screen.getByRole('button', { name: 'Go to end' }).click();
-		expect(position.value).toBe('299');
+		await expect.element(position).toHaveAttribute('aria-valuenow', '299');
 
-		setRange(position, 30);
+		await setSlider(position.element(), 30);
 		monitor.dispatchEvent(
 			new KeyboardEvent('keydown', { code: 'Digit9', key: '9', altKey: true, bubbles: true })
 		);
-		setRange(position, 59);
+		await setSlider(position.element(), 59);
 		monitor.dispatchEvent(
 			new KeyboardEvent('keydown', { code: 'Digit0', key: '0', altKey: true, bubbles: true })
 		);
@@ -337,10 +337,8 @@ describe('SourceMonitor', () => {
 			waveformSlider
 				.element()
 				.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-			const position = screen.getByLabelText('Source position').element();
-			if (!(position instanceof HTMLInputElement))
-				throw new Error('Source position is not a slider.');
-			await vi.waitFor(() => expect(position.value).toBe('299'));
+			const position = screen.getByRole('slider', { name: 'Source position' });
+			await expect.element(position).toHaveAttribute('aria-valuenow', '299');
 			expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
 		} finally {
 			await clearWaveformCache(mediaId);

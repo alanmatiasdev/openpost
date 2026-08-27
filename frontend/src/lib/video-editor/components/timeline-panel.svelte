@@ -4403,7 +4403,7 @@
 		<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>
 		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
 			{m.video_editor_marker_label()}
-			<input
+			<Input
 				class="h-7 w-44 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
 				value={markerLabelDraft}
 				oninput={(event) => (markerLabelDraft = event.currentTarget.value)}
@@ -4419,7 +4419,7 @@
 		</label>
 		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
 			{m.video_editor_marker_frame()}
-			<input
+			<Input
 				class="h-7 w-20 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 font-mono text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
 				type="number"
 				min="0"
@@ -4437,7 +4437,7 @@
 		</label>
 		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
 			{m.video_editor_marker_color()}
-			<input
+			<Input
 				class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
 				type="color"
 				value={markerColorForInput(selectedMarker.color)}

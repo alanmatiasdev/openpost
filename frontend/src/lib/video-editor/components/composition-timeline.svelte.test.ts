@@ -860,13 +860,12 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		const onedit = vi.fn();
 		const screen = await render(CompositionTimeline, { onedit });
 		await screen.getByTestId('layer-expand-one').click();
-		const selectElement = screen.getByTestId('blend-one').element();
-		if (!(selectElement instanceof HTMLSelectElement))
-			throw new Error('blend picker should be a select');
-		expect(selectElement.options).toHaveLength(25);
-		expect([...selectElement.options].map((option) => option.value)).not.toContain('add');
-		selectElement.value = 'color-burn';
-		selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+		const blendPicker = screen.getByTestId('blend-one');
+		await blendPicker.click();
+		const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+		expect(options).toHaveLength(25);
+		expect(options.map((option) => option.textContent?.trim())).not.toContain('Add');
+		await screen.getByRole('option', { name: 'Color burn' }).click();
 		await vi.waitFor(() => expect(timelineStore.itemById.get('one')?.blendMode).toBe('color-burn'));
 		expect(commandHistory.undoStack).toHaveLength(1);
 		expect(onedit).toHaveBeenCalledOnce();
@@ -876,7 +875,7 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 				candidate.id === track.id ? { ...candidate, locked: true } : candidate
 			)
 		);
-		await vi.waitFor(() => expect(selectElement.disabled).toBe(true));
+		await expect.element(blendPicker).toBeDisabled();
 		await expect(screen.getByTestId('timing-in-one')).toBeDisabled();
 		await expect(screen.getByTestId('timing-out-one')).toBeDisabled();
 	});

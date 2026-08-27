@@ -44,6 +44,9 @@
 		previewAudioContext
 	} from '$lib/video-editor/audio/reverse-preview-audio';
 	import SourceAudioWaveform from './source-audio-waveform.svelte';
+	import { Slider } from '$lib/components/ui/slider';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import AppSelect from '$lib/components/app-select.svelte';
 
 	let {
 		mediaId,
@@ -90,6 +93,16 @@
 			(track) => track.kind === 'audio' && !track.locked
 		)
 	);
+	const videoTargetOptions = $derived([
+		{ value: 'auto', label: m.video_editor_source_target_auto() },
+		...videoTracks.map((track) => ({ value: track.id, label: track.name })),
+		{ value: 'create', label: m.video_editor_source_target_create() }
+	]);
+	const audioTargetOptions = $derived([
+		{ value: 'auto', label: m.video_editor_source_target_auto() },
+		...audioTracks.map((track) => ({ value: track.id, label: track.name })),
+		{ value: 'create', label: m.video_editor_source_target_create() }
+	]);
 
 	let sourceUrl = $state('');
 	let sourceAudioUrl = $state('');
@@ -837,16 +850,17 @@
 					onkeydown={handleRangeKeydown}
 				></button>
 			{/if}
-			<input
+			<Slider
 				class="source-scrubber absolute inset-0 z-10 w-full"
-				type="range"
-				min="0"
+				min={0}
 				max={durationFrames - 1}
 				value={currentFrame}
-				aria-label={m.video_editor_source_position()}
-				oninput={(event) => {
+				ariaLabel={m.video_editor_source_position()}
+				trackClass="bg-transparent"
+				rangeClass="bg-transparent"
+				onValueChange={(value) => {
 					pause();
-					seek(Number(event.currentTarget.value));
+					seek(value);
 				}}
 			/>
 		</div>
@@ -854,15 +868,14 @@
 		<div class="grid grid-cols-2 gap-2 text-[10px]">
 			<label class="flex items-center gap-1.5 text-[oklch(0.68_0.015_55)]">
 				<span class="w-4 font-semibold text-[oklch(0.82_0.012_55)]">I</span>
-				<input
+				<Slider
 					class="min-w-0 flex-1 accent-[oklch(0.66_0.14_45)]"
-					type="range"
-					min="0"
+					min={0}
 					max={Math.max(0, outPoint - 1)}
 					value={inPoint}
-					aria-label={m.video_editor_source_in_point()}
-					oninput={(event) => {
-						inPoint = Number(event.currentTarget.value);
+					ariaLabel={m.video_editor_source_in_point()}
+					onValueChange={(value) => {
+						inPoint = value;
 						marksActive = true;
 					}}
 				/>
@@ -870,15 +883,14 @@
 			</label>
 			<label class="flex items-center gap-1.5 text-[oklch(0.68_0.015_55)]">
 				<span class="w-4 font-semibold text-[oklch(0.82_0.012_55)]">O</span>
-				<input
+				<Slider
 					class="min-w-0 flex-1 accent-[oklch(0.66_0.14_45)]"
-					type="range"
 					min={inPoint + 1}
 					max={durationFrames}
 					value={outPoint}
-					aria-label={m.video_editor_source_out_point()}
-					oninput={(event) => {
-						outPoint = Number(event.currentTarget.value);
+					ariaLabel={m.video_editor_source_out_point()}
+					onValueChange={(value) => {
+						outPoint = value;
 						marksActive = true;
 					}}
 				/>
@@ -965,34 +977,36 @@
 		</div>
 
 		<div class="grid grid-cols-2 gap-2">
-			<label class:disabled={!hasVideo} class="patch-row">
-				<input type="checkbox" bind:checked={videoEnabled} disabled={!hasVideo} />
+			<div class:disabled={!hasVideo} class="patch-row">
+				<Checkbox
+					bind:checked={videoEnabled}
+					disabled={!hasVideo}
+					aria-label={m.video_editor_source_video()}
+				/>
 				<span class="patch-badge">V</span>
-				<select
+				<AppSelect
 					bind:value={videoTarget}
+					options={videoTargetOptions}
 					disabled={!videoEnabled || !hasVideo}
-					aria-label={m.video_editor_source_video_target()}
-				>
-					<option value="auto">{m.video_editor_source_target_auto()}</option>
-					{#each videoTracks as track (track.id)}<option value={track.id}>{track.name}</option
-						>{/each}
-					<option value="create">{m.video_editor_source_target_create()}</option>
-				</select>
-			</label>
-			<label class:disabled={!hasAudio} class="patch-row">
-				<input type="checkbox" bind:checked={audioEnabled} disabled={!hasAudio} />
+					ariaLabel={m.video_editor_source_video_target()}
+					class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-[10px] shadow-none"
+				/>
+			</div>
+			<div class:disabled={!hasAudio} class="patch-row">
+				<Checkbox
+					bind:checked={audioEnabled}
+					disabled={!hasAudio}
+					aria-label={m.video_editor_source_audio()}
+				/>
 				<span class="patch-badge">A</span>
-				<select
+				<AppSelect
 					bind:value={audioTarget}
+					options={audioTargetOptions}
 					disabled={!audioEnabled || !hasAudio}
-					aria-label={m.video_editor_source_audio_target()}
-				>
-					<option value="auto">{m.video_editor_source_target_auto()}</option>
-					{#each audioTracks as track (track.id)}<option value={track.id}>{track.name}</option
-						>{/each}
-					<option value="create">{m.video_editor_source_target_create()}</option>
-				</select>
-			</label>
+					ariaLabel={m.video_editor_source_audio_target()}
+					class="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-[10px] shadow-none"
+				/>
+			</div>
 		</div>
 
 		<div class="grid grid-cols-2 gap-2">
@@ -1021,14 +1035,10 @@
 </section>
 
 <style>
-	.source-scrubber {
-		appearance: none;
-		background: transparent;
-	}
-	.source-scrubber::-webkit-slider-thumb {
-		appearance: none;
+	:global(.source-scrubber [data-slot='slider-thumb']) {
 		width: 2px;
 		height: 18px;
+		border: 0;
 		border-radius: 1px;
 		background: oklch(0.9 0.02 45);
 		box-shadow: 0 0 0 1px oklch(0.1 0 0);
@@ -1067,7 +1077,7 @@
 	.transport-button:focus-visible,
 	.mark-button:focus-visible,
 	.edit-button:focus-visible,
-	.patch-row select:focus-visible {
+	.patch-row :global(button:focus-visible) {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 1px;
 	}
@@ -1083,21 +1093,10 @@
 	.patch-row.disabled {
 		opacity: 0.45;
 	}
-	.patch-row input {
-		accent-color: oklch(0.66 0.14 45);
-	}
 	.patch-badge {
 		font-size: 0.625rem;
 		font-weight: 700;
 		color: oklch(0.86 0.012 55);
-	}
-	.patch-row select {
-		min-width: 0;
-		flex: 1;
-		border: 0;
-		background: transparent;
-		font-size: 0.625rem;
-		color: oklch(0.72 0.012 55);
 	}
 	.edit-button {
 		display: flex;
