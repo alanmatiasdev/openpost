@@ -1,11 +1,9 @@
 /* Deterministic local noise reduction for recorded clips.
- * No cloud, no ML model download. Uses a short-time spectral gate
- * (Hann-windowed STFT, per-bin noise floor estimate, Wiener-like gain)
- * that is fully deterministic and identical in preview and export.
- * Bounded memory (frameSize 1024, hop 512) and cancellable via AbortSignal.
+ * No cloud, no ML. Single stateful STFT pipeline shared by preview and export.
+ * Preview preparation runs off the UI thread via a small worker.
  */
 
-/* oxlint-disable anti-slop/no-magic-numbers, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-unsafe-dictionary-type -- DSP constants and typed array math. */
+/* oxlint-disable anti-slop/no-magic-numbers, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-unsafe-dictionary-type -- DSP constants. */
 
 export interface AudioNoiseReductionFieldSource {
 	audioNoiseReductionEnabled?: boolean;
@@ -29,8 +27,10 @@ export const NOISE_REDUCTION_DEFAULT_AMOUNT = 50;
 const FRAME_SIZE = 1024;
 const HOP_SIZE = 512;
 const FFT_SIZE = FRAME_SIZE;
+const BIN_COUNT = FFT_SIZE / 2 + 1;
 const NOISE_PERCENTILE = 0.25;
-const MIN_MAG_EPS = 1e-10;
+const MIN_MAG_EPS = 1e-12;
+const MAX_FRAMES = 48_000 * 60 * 30; // guard
 
 export function clampNoiseReductionAmount(value: number): number {
 	if (!Number.isFinite(value)) return NOISE_REDUCTION_DEFAULT_AMOUNT;
@@ -52,10 +52,7 @@ export function resolveNoiseReductionSettings(
 		(source as AudioNoiseReductionFieldSource).audioNoiseReductionAmount ??
 		(source as AudioNoiseReductionSettings).amount ??
 		NOISE_REDUCTION_DEFAULT_AMOUNT;
-	return {
-		enabled: !!enabled,
-		amount: clampNoiseReductionAmount(rawAmount)
-	};
+	return { enabled: !!enabled, amount: clampNoiseReductionAmount(rawAmount) };
 }
 
 export function isNoiseReductionActive(
@@ -98,7 +95,6 @@ function fftInPlace(real: Float64Array, imag: Float64Array, invert: boolean): vo
 	const n = real.length;
 	const bits = Math.log2(n);
 	if (!Number.isInteger(bits)) throw new Error('FFT size must be power of two');
-	// bit-reversal
 	for (let i = 0; i < n; i++) {
 		const j = reverseBits(i, bits);
 		if (j > i) {
@@ -163,148 +159,29 @@ function quantile(sorted: Float64Array, q: number): number {
 	return sorted[lo]! * (1 - frac) + sorted[hi]! * frac;
 }
 
-function processSingleChannel(
-	input: Float32Array,
-	amount: number,
-	sampleRate = 48000,
-	signal?: AbortSignal
-): Float32Array {
-	const len = input.length;
-	if (len === 0) return new Float32Array(0);
-	// Map amount 0-100 to oversubtraction and floor
-	const normalized = amount / 100;
-	const overSubtraction = 1 + normalized * 2; // 1 .. 3
-	const floorGain = 0.02 + (1 - normalized) * 0.12; // 0.14 .. 0.02
-	const smoothing = 0.65;
+// ---------------------------------------------------------------------------
+// Stateful bounded STFT processor. One instance is the single source of truth
+// for both preview (via worker) and export. Memory is O(FRAME) plus small
+// gain/noise state, not O(duration). Offline processing feeds chunks through
+// this same processor.
+// ---------------------------------------------------------------------------
 
-	const frameCount = Math.max(1, Math.ceil((len - FRAME_SIZE) / HOP_SIZE) + 1);
-	const totalPadded = (frameCount - 1) * HOP_SIZE + FRAME_SIZE;
-
-	// collect complex spectra and magnitudes
-	const spectraReal: Float64Array[] = [];
-	const spectraImag: Float64Array[] = [];
-	const mags: Float64Array[] = [];
-
-	for (let f = 0; f < frameCount; f++) {
-		throwIfAborted(signal);
-		const real = new Float64Array(FFT_SIZE);
-		const imag = new Float64Array(FFT_SIZE);
-		const offset = f * HOP_SIZE;
-		for (let i = 0; i < FRAME_SIZE; i++) {
-			const sample = offset + i < len ? (input[offset + i] ?? 0) : 0;
-			real[i] = sample * (HANN[i] ?? 0);
-		}
-		fftInPlace(real, imag, false);
-		spectraReal.push(real);
-		spectraImag.push(imag);
-		const mag = new Float64Array(FFT_SIZE / 2 + 1);
-		for (let k = 0; k <= FFT_SIZE / 2; k++) {
-			mag[k] = Math.hypot(real[k] ?? 0, imag[k] ?? 0);
-		}
-		mags.push(mag);
-	}
-
-	// Estimate a scalar broadband noise floor from the lower tail across all bins/frames.
-	// Using a scalar avoids classifying a continuous tone bin as noise (its per-bin
-	// percentile would equal the tone level and cause over-suppression).
-	const binCount = FFT_SIZE / 2 + 1;
-	const totalMags = frameCount * binCount;
-	const allMags = new Float64Array(totalMags);
-	let idx = 0;
-	for (let f = 0; f < frameCount; f++)
-		for (let k = 0; k < binCount; k++) allMags[idx++] = mags[f]![k] ?? 0;
-	const sortedAll = Float64Array.from(allMags).sort();
-	const scalarFloor = quantile(sortedAll, NOISE_PERCENTILE) * (0.9 + normalized * 0.6);
-	// Per-bin floor is scalar, with slight emphasis on high bins where hiss lives.
-	const noiseMag = new Float64Array(binCount);
-	for (let k = 0; k < binCount; k++) {
-		const freqHz = (k * sampleRate) / FFT_SIZE;
-		const hissBias = freqHz > 4000 ? 1.2 : freqHz < 200 ? 0.7 : 1;
-		noiseMag[k] = scalarFloor * hissBias;
-	}
-
-	// second pass: apply gain, IFFT, overlap-add
-	const output = new Float64Array(totalPadded);
-	const windowSum = new Float64Array(totalPadded);
-	const prevGain = new Float64Array(binCount);
-	for (let k = 0; k < binCount; k++) prevGain[k] = 1;
-
-	for (let f = 0; f < frameCount; f++) {
-		throwIfAborted(signal);
-		const real = spectraReal[f]!;
-		const imag = spectraImag[f]!;
-		// compute gain per bin
-		const gain = new Float64Array(binCount);
-		for (let k = 0; k < binCount; k++) {
-			const mag = mags[f]![k] ?? MIN_MAG_EPS;
-			const nMag = noiseMag[k] ?? 0;
-			let g = 1 - (overSubtraction * nMag) / (mag + MIN_MAG_EPS);
-			if (!Number.isFinite(g)) g = floorGain;
-			g = Math.max(floorGain, Math.min(1, g));
-			// temporal smoothing
-			const smoothed = prevGain[k]! * smoothing + g * (1 - smoothing);
-			prevGain[k] = smoothed;
-			gain[k] = smoothed;
-		}
-		// apply gain to full spectrum (mirror)
-		for (let k = 0; k <= FFT_SIZE / 2; k++) {
-			const g = gain[k] ?? 1;
-			real[k]! *= g;
-			imag[k]! *= g;
-			if (k > 0 && k < FFT_SIZE / 2) {
-				const mirror = FFT_SIZE - k;
-				real[mirror]! *= g;
-				imag[mirror]! *= g;
-			}
-		}
-		fftInPlace(real, imag, true);
-		const offset = f * HOP_SIZE;
-		for (let i = 0; i < FRAME_SIZE; i++) {
-			const w = HANN[i] ?? 0;
-			output[offset + i]! += (real[i] ?? 0) * w;
-			windowSum[offset + i]! += w * w;
-		}
-	}
-
-	// normalize by window sum and trim to original length
-	const result = new Float32Array(len);
-	for (let i = 0; i < len; i++) {
-		const denom = windowSum[i] ?? 0;
-		const val = denom > 1e-8 ? output[i]! / denom : (output[i] ?? 0);
-		// hard clip to [-1,1] to avoid overshoot then preserve energy roughly
-		result[i] = Math.max(-1, Math.min(1, val));
-	}
-	return result;
-}
-
-export function applyNoiseReduction(
-	channels: Float32Array[],
-	sampleRate: number,
-	settings: ResolvedAudioNoiseReductionSettings,
-	signal?: AbortSignal
-): Float32Array[] {
-	if (!isNoiseReductionActive(settings)) return channels.map((c) => c.slice());
-	if (sampleRate <= 0 || channels.length === 0 || (channels[0]?.length ?? 0) === 0)
-		return channels.map((c) => c.slice());
-	// Upper bound: refuse absurd buffers (> 30 min at 48k) to keep bounded CPU
-	const maxFrames = 48_000 * 60 * 30;
-	for (const ch of channels)
-		if (ch.length > maxFrames) throw new Error('Noise reduction input too long');
-	return channels.map((ch) => processSingleChannel(ch, settings.amount, sampleRate, signal));
-}
-
-/**
- * Streaming variant that keeps overlap tail and persistent noise estimate.
- * Each process() call returns output exactly matching input length (no drift).
- */
 export class StreamingNoiseReduction {
 	private readonly amount: number;
 	private readonly sampleRate: number;
 	private readonly channelCount: number;
-	private tails: Float32Array[];
-	private noiseMags: Float64Array[] | null = null;
-	private prevGains: Float64Array[] | null = null;
-	private pendingFrames: number[] = [];
+	private readonly floorGain: number;
+	private readonly overSubtraction: number;
+	private persistentFloor: number | null = null;
+	private prevGain: Float64Array;
+	// per-channel queues
+	private inQueues: Float32Array[];
+	private outQueues: Float32Array[];
+	private overlap: Float32Array[];
+	private totalInput = 0;
+	private totalEmitted = 0;
+	private maxTempBytes = 0;
+	private emittedLength = 0;
 
 	constructor(
 		channelCount: number,
@@ -314,52 +191,262 @@ export class StreamingNoiseReduction {
 		this.channelCount = Math.max(1, channelCount);
 		this.sampleRate = sampleRate;
 		this.amount = settings.amount;
-		this.tails = Array.from({ length: this.channelCount }, () => new Float32Array(0));
-		this.pendingFrames = Array.from({ length: this.channelCount }, () => 0);
+		const normalized = settings.amount / 100;
+		this.overSubtraction = 1 + normalized * 2;
+		this.floorGain = 0.02 + (1 - normalized) * 0.12;
+		this.prevGain = new Float64Array(BIN_COUNT);
+		this.prevGain.fill(1);
+		this.inQueues = Array.from({ length: this.channelCount }, () => new Float32Array(0));
+		this.outQueues = Array.from({ length: this.channelCount }, () => new Float32Array(0));
+		this.overlap = Array.from(
+			{ length: this.channelCount },
+			() => new Float32Array(FRAME_SIZE - HOP_SIZE)
+		);
 	}
 
-	process(channels: Float32Array[], _isLast = false, signal?: AbortSignal): Float32Array[] {
-		if (channels.length === 0) return [];
-		// For streaming we simply apply per-channel offline processing with tail stitching:
-		// Concatenate tail + input, process, then keep last FRAME_SIZE overlap as new tail
-		// and return trimmed output matching input length.
-		// To keep parity with offline, we reuse applyNoiseReduction on concatenated buffer
-		// but only for the newly available frames, using a simpler approach:
-		// Process tail+input as one block, then slice.
-		// This ensures no drift and handles chunk boundaries without clicks
-		// (tail overlap is short, so artifact minimal and bounded).
-		const normalized = this.amount / 100;
-		const overSub = 1 + normalized * 2;
-		const floor = 0.02 + (1 - normalized) * 0.12;
-		// If tail is empty, just process directly for first chunk to avoid double windowing seam.
-		// For subsequent chunks, prepend tail and process, then emit only the new portion.
-		return channels.map((ch, idx) => {
-			throwIfAborted(signal);
-			const tail = this.tails[idx] ?? new Float32Array(0);
-			if (tail.length === 0) {
-				const out = processSingleChannel(ch, this.amount, this.sampleRate, signal);
-				// keep last HOP_SIZE*2 as tail for next boundary smoothing
-				const keep = Math.min(ch.length, FRAME_SIZE);
-				this.tails[idx] = ch.slice(Math.max(0, ch.length - keep));
-				// avoid holding large tail beyond one frame
-				if (this.tails[idx]!.length > FRAME_SIZE)
-					this.tails[idx] = this.tails[idx]!.slice(-FRAME_SIZE);
-				return out;
-			}
-			const concat = new Float32Array(tail.length + ch.length);
-			concat.set(tail, 0);
-			concat.set(ch, tail.length);
-			const processed = processSingleChannel(concat, this.amount, this.sampleRate, signal);
-			// output for this chunk = last ch.length samples of processed
-			const out = processed.slice(tail.length, tail.length + ch.length);
-			// smooth seam: crossfade first HOP_SIZE samples with previous tail's processed tail?
-			// For now just update tail
-			const keep = Math.min(concat.length, FRAME_SIZE);
-			this.tails[idx] = concat.slice(Math.max(0, concat.length - keep));
-			// silence unused variable warnings for computed constants (kept for future temporal smoothing)
-			void overSub;
-			void floor;
-			return out;
-		});
+	private trackTemp(bytes: number): void {
+		if (bytes > this.maxTempBytes) this.maxTempBytes = bytes;
 	}
+
+	getPeakTempBytes(): number {
+		return this.maxTempBytes;
+	}
+
+	// Append chunk to per-channel input queues
+	private appendInput(channels: Float32Array[]): void {
+		for (let c = 0; c < this.channelCount; c++) {
+			const chunk = channels[c] ?? channels[0] ?? new Float32Array(0);
+			if (chunk.length === 0) continue;
+			const prev = this.inQueues[c]!;
+			const next = new Float32Array(prev.length + chunk.length);
+			next.set(prev, 0);
+			next.set(chunk, prev.length);
+			this.inQueues[c] = next;
+			this.trackTemp(next.byteLength + chunk.byteLength);
+		}
+		this.totalInput += channels[0]?.length ?? 0;
+	}
+
+	// Process as many frames as possible using current inQueues.
+	// Returns true if at least one frame was processed.
+	private processFrames(signal?: AbortSignal): boolean {
+		let progressed = false;
+		while (this.inQueues[0]!.length >= FRAME_SIZE) {
+			throwIfAborted(signal);
+			// Gather frame windows for all channels
+			const framesReal: Float64Array[] = [];
+			const framesImag: Float64Array[] = [];
+			const mags: Float64Array[] = [];
+			for (let c = 0; c < this.channelCount; c++) {
+				const real = new Float64Array(FFT_SIZE);
+				const imag = new Float64Array(FFT_SIZE);
+				const q = this.inQueues[c]!;
+				for (let i = 0; i < FRAME_SIZE; i++) real[i] = (q[i] ?? 0) * (HANN[i] ?? 0);
+				fftInPlace(real, imag, false);
+				framesReal.push(real);
+				framesImag.push(imag);
+				const mag = new Float64Array(BIN_COUNT);
+				for (let k = 0; k < BIN_COUNT; k++) mag[k] = Math.hypot(real[k] ?? 0, imag[k] ?? 0);
+				mags.push(mag);
+			}
+			this.trackTemp(FRAME_SIZE * 8 * this.channelCount * 2);
+
+			// Linked magnitude for stereo coherence: average across channels
+			const linkedMag = new Float64Array(BIN_COUNT);
+			for (let k = 0; k < BIN_COUNT; k++) {
+				let sum = 0;
+				for (let c = 0; c < this.channelCount; c++) sum += mags[c]![k] ?? 0;
+				linkedMag[k] = sum / this.channelCount;
+			}
+
+			// Candidate scalar floor as low quantile across bins of linked mag
+			const sorted = Float64Array.from(linkedMag).sort();
+			const candidate = quantile(sorted, NOISE_PERCENTILE);
+			if (this.persistentFloor === null) this.persistentFloor = candidate;
+			else {
+				if (candidate < this.persistentFloor) {
+					this.persistentFloor = this.persistentFloor * 0.85 + candidate * 0.15;
+				} else {
+					this.persistentFloor = this.persistentFloor * 0.995 + candidate * 0.005;
+				}
+			}
+			const floor = this.persistentFloor ?? candidate;
+			const normalized = this.amount / 100;
+			const scalarFloor = floor * (0.9 + normalized * 0.6);
+
+			// Per-bin gain using linked mag and shared floor (with hiss bias)
+			const gain = new Float64Array(BIN_COUNT);
+			for (let k = 0; k < BIN_COUNT; k++) {
+				const freqHz = (k * this.sampleRate) / FFT_SIZE;
+				const hissBias = freqHz > 4000 ? 1.2 : freqHz < 200 ? 0.7 : 1;
+				const noise = scalarFloor * hissBias;
+				const mag = linkedMag[k] ?? MIN_MAG_EPS;
+				let g = 1 - (this.overSubtraction * noise) / (mag + MIN_MAG_EPS);
+				if (!Number.isFinite(g)) g = this.floorGain;
+				g = Math.max(this.floorGain, Math.min(1, g));
+				const smoothed = this.prevGain[k]! * 0.65 + g * 0.35;
+				this.prevGain[k] = smoothed;
+				gain[k] = smoothed;
+			}
+
+			// Apply gain to each channel's spectrum (same gain for linked coherence)
+			for (let c = 0; c < this.channelCount; c++) {
+				const real = framesReal[c]!;
+				const imag = framesImag[c]!;
+				for (let k = 0; k < BIN_COUNT; k++) {
+					const g = gain[k] ?? 1;
+					real[k]! *= g;
+					imag[k]! *= g;
+					if (k > 0 && k < BIN_COUNT - 1) {
+						const mirror = FFT_SIZE - k;
+						real[mirror]! *= g;
+						imag[mirror]! *= g;
+					}
+				}
+				fftInPlace(real, imag, true);
+			}
+
+			// Overlap-add with per-channel overlap buffers, emit HOP samples
+			for (let c = 0; c < this.channelCount; c++) {
+				const real = framesReal[c]!;
+				const outQ = this.outQueues[c]!;
+				const ov = this.overlap[c]!;
+				// frameOut is real (time domain) length FRAME_SIZE
+				// Add overlap to first HOP
+				for (let i = 0; i < HOP_SIZE; i++) {
+					real[i]! += ov[i] ?? 0;
+				}
+				// Emit first HOP as finalized
+				const nextOut = new Float32Array(outQ.length + HOP_SIZE);
+				nextOut.set(outQ, 0);
+				for (let i = 0; i < HOP_SIZE; i++) nextOut[outQ.length + i] = real[i] ?? 0;
+				this.outQueues[c] = nextOut;
+				// New overlap = second half of frame
+				const newOv = new Float32Array(FRAME_SIZE - HOP_SIZE);
+				for (let i = 0; i < FRAME_SIZE - HOP_SIZE; i++) newOv[i] = real[HOP_SIZE + i] ?? 0;
+				this.overlap[c] = newOv;
+			}
+
+			// Consume HOP input samples from each queue
+			for (let c = 0; c < this.channelCount; c++) {
+				const q = this.inQueues[c]!;
+				this.inQueues[c] = q.slice(HOP_SIZE);
+			}
+			progressed = true;
+		}
+		return progressed;
+	}
+
+	process(channels: Float32Array[], isLast = false, signal?: AbortSignal): Float32Array[] {
+		if (channels.length === 0) return [];
+		throwIfAborted(signal);
+		const inputLen = channels[0]?.length ?? 0;
+		if (inputLen === 0 && !isLast) return channels.map(() => new Float32Array(0));
+
+		if (inputLen > 0) this.appendInput(channels);
+		this.processFrames(signal);
+
+		if (isLast) {
+			// Flush remaining: pad with zeros until all input emitted
+			// We need to emit exactly totalInput samples. Currently emitted is sum of outQueues lengths.
+			// We have overlap tail of 512 samples not yet emitted, and possibly partial input < FRAME_SIZE
+			// Pad inQueues with zeros to make final frames.
+			while (this.emittedLength + this.outQueues[0]!.length < this.totalInput) {
+				throwIfAborted(signal);
+				// Pad each inQueue with zeros up to FRAME_SIZE if needed
+				for (let c = 0; c < this.channelCount; c++) {
+					const q = this.inQueues[c]!;
+					if (q.length < FRAME_SIZE) {
+						const padded = new Float32Array(FRAME_SIZE);
+						padded.set(q, 0);
+						this.inQueues[c] = padded;
+					}
+				}
+				// Process one more frame (will consume HOP)
+				const did = this.processFrames(signal);
+				if (!did) break;
+				// If still not enough emitted, continue
+				if (this.outQueues[0]!.length >= this.totalInput - this.emittedLength) break;
+			}
+			// If still short due to very short input, pad outQueues with zeros
+			for (let c = 0; c < this.channelCount; c++) {
+				const out = this.outQueues[c]!;
+				const needed = this.totalInput - this.emittedLength;
+				if (out.length < needed) {
+					const padded = new Float32Array(needed);
+					padded.set(out, 0);
+					this.outQueues[c] = padded;
+				}
+			}
+		}
+
+		// Drain outQueues up to inputLen (or all if isLast)
+		const want = isLast
+			? this.totalInput - this.emittedLength
+			: Math.min(inputLen, this.outQueues[0]!.length);
+		const result: Float32Array[] = [];
+		for (let c = 0; c < this.channelCount; c++) {
+			const out = this.outQueues[c]!;
+			const take = Math.min(want, out.length);
+			const chunk = out.slice(0, take);
+			this.outQueues[c] = out.slice(take);
+			result.push(Float32Array.from(chunk, (v) => Math.max(-1, Math.min(1, v))));
+		}
+		this.emittedLength += want;
+		return result;
+	}
+
+	// Convenience for exact-length retrieval
+	flush(signal?: AbortSignal): Float32Array[] {
+		return this.process([], true, signal);
+	}
+}
+
+// Offline is thin feeder into same processor
+export function applyNoiseReduction(
+	channels: Float32Array[],
+	sampleRate: number,
+	settings: ResolvedAudioNoiseReductionSettings,
+	signal?: AbortSignal
+): Float32Array[] {
+	if (!isNoiseReductionActive(settings)) return channels.map((c) => c.slice());
+	if (sampleRate <= 0 || channels.length === 0 || (channels[0]?.length ?? 0) === 0)
+		return channels.map((c) => c.slice());
+	const total = channels[0]!.length;
+	if (total > MAX_FRAMES) throw new Error('Noise reduction input too long');
+	const proc = new StreamingNoiseReduction(channels.length, sampleRate, settings);
+	// Feed in bounded windows to prove chunk independence; single call also works
+	const chunkSize = 24000; // ~0.5 sec windows for offline feeder
+	const outChannels: Float32Array[][] = [];
+	let offset = 0;
+	while (offset < total) {
+		throwIfAborted(signal);
+		const len = Math.min(chunkSize, total - offset);
+		const chunk = channels.map((ch) => ch.slice(offset, offset + len));
+		const isLast = offset + len >= total;
+		const out = proc.process(chunk, isLast, signal);
+		if (out[0]?.length) outChannels.push(out);
+		offset += len;
+	}
+	// Concatenate
+	const result: Float32Array[] = Array.from(
+		{ length: channels.length },
+		() => new Float32Array(total)
+	);
+	for (let c = 0; c < channels.length; c++) {
+		let pos = 0;
+		for (const part of outChannels) {
+			const p = part[c]!;
+			result[c]!.set(p, pos);
+			pos += p.length;
+		}
+		// Trim/pad to exact total (should already be exact)
+		if (pos !== total) {
+			const trimmed = result[c]!.slice(0, pos);
+			const padded = new Float32Array(total);
+			padded.set(trimmed, 0);
+			result[c] = padded;
+		}
+	}
+	return result;
 }

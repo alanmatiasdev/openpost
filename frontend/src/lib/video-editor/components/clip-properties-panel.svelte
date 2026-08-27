@@ -42,6 +42,9 @@
 		resolveNoiseReductionSettings
 	} from '$lib/video-editor/audio/audio-noise-reduction';
 	import AudioEqPanel from './audio-eq-panel.svelte';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Slider } from '$lib/components/ui/slider';
+	import { Label } from '$lib/components/ui/label';
 
 	let {
 		itemId,
@@ -809,55 +812,49 @@
 						{#if audioItem}
 							{@const nr = resolveNoiseReductionSettings(audioItem)}
 							<div class="mt-2 flex items-center gap-2">
-								<label class="flex items-center gap-1.5 text-[11px] text-white/80">
-									<Input
-										type="checkbox"
+								<div class="flex items-center gap-2">
+									<Checkbox
 										checked={nr.enabled}
 										aria-label={m.video_editor_audio_noise_enable()}
-										onchange={(e) =>
+										onCheckedChange={(checked) =>
 											commitAudioPatch({
-												audioNoiseReductionEnabled: e.currentTarget.checked,
+												audioNoiseReductionEnabled: checked === true,
 												audioNoiseReductionAmount: nr.amount
 											})}
-										class="h-3.5 w-3.5 rounded border-white/20 bg-transparent"
 									/>
-									{m.video_editor_audio_noise_enable()}
-								</label>
+									<Label class="text-[11px] text-white/80"
+										>{m.video_editor_audio_noise_enable()}</Label
+									>
+								</div>
 								<span class="ml-auto text-[10px] text-white/50" aria-live="polite">
 									{nr.enabled
 										? m.video_editor_audio_noise_applied({ amount: String(nr.amount) })
 										: m.video_editor_audio_noise_bypassed()}
 								</span>
 							</div>
-							<div class="mt-2">
-								<label for={`nr-${audioItem.id}`} class="text-[10px] text-white/60"
-									>{m.video_editor_audio_noise_amount()}</label
+							<div class="mt-2 space-y-1">
+								<Label for={`nr-${audioItem.id}`} class="text-[10px] text-white/60"
+									>{m.video_editor_audio_noise_amount()}</Label
 								>
-								<input
-									id={`nr-${audioItem.id}`}
-									type="range"
-									min="0"
-									max="100"
-									step="1"
+								<Slider
 									value={nr.amount}
+									min={0}
+									max={100}
+									step={1}
 									disabled={!nr.enabled}
-									aria-label={m.video_editor_audio_noise_aria()}
-									oninput={(e) => {
-										const v = clampNoiseReductionAmount(e.currentTarget.valueAsNumber);
-										// live preview without history spam: use direct patch but debounced via updateItemProperties still undoable per change event
+									ariaLabel={m.video_editor_audio_noise_aria()}
+									onValueChange={(v) => {
+										const clamped = clampNoiseReductionAmount(v);
 										commitAudioPatch({
-											audioNoiseReductionAmount: v,
+											audioNoiseReductionAmount: clamped,
 											audioNoiseReductionEnabled: true
 										});
 									}}
-									onchange={(e) =>
+									onValueCommit={(v) =>
 										commitAudioPatch({
-											audioNoiseReductionAmount: clampNoiseReductionAmount(
-												e.currentTarget.valueAsNumber
-											),
+											audioNoiseReductionAmount: clampNoiseReductionAmount(v),
 											audioNoiseReductionEnabled: true
 										})}
-									class="mt-1 w-full accent-[oklch(0.66_0.14_45)] disabled:opacity-40"
 								/>
 								<p class="mt-1 text-[10px] leading-snug text-white/40">
 									{m.video_editor_audio_noise_amount_hint({ amount: String(nr.amount) })}

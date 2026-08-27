@@ -19,8 +19,11 @@ export interface AudioProcessOptions {
 }
 
 /**
- * Apply clip tempo, independent pitch, then EQ to all channels as one stereo
- * SoundTouch stream. Sharing the overlap search keeps left and right in phase.
+ * Clip stage order: noise reduction -> retime (tempo/pitch) -> clip EQ/effects.
+ * Track/bus EQ and sidechain duck gain run after this in the mixer.
+ * Rebase seam: this branch predates the integrated audio rack/ducking work;
+ * keep both clip noiseReduction and ducking fields and preserve the order above.
+ * Sharing the overlap search keeps left and right in phase.
  */
 export async function processAudioChannels(
 	channels: Float32Array[],

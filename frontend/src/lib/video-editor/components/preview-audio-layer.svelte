@@ -27,10 +27,10 @@
 		requiresProcessedPreviewAudioForTimeline
 	} from '$lib/video-editor/audio/preview-processing';
 	import {
-		applyNoiseReduction,
 		isNoiseReductionActive,
 		resolveNoiseReductionSettings
 	} from '$lib/video-editor/audio/audio-noise-reduction';
+	import { processPreviewNoiseReduction } from '$lib/video-editor/audio/audio-noise-reduction-preview';
 	import {
 		createPreviewClipAudioGraph,
 		rampPreviewClipGain,
@@ -379,11 +379,12 @@
 		setPreviewClipEq(graph, settings.eqStages);
 		setPreviewAudioEffects(graph, settings.effects);
 		rampPreviewClipGain(graph, volume, context.currentTime, 0);
+		const previewAbort = new AbortController();
 		void Promise.all([
 			ensureSoundTouchPreviewWorkletLoaded(context),
 			decodedPreviewAudio(sourceUrl, audioCodec)
 		]).then(async ([loaded, decoded]) => {
-			if (!loaded || stale) return;
+			if (!loaded || stale || previewAbort.signal.aborted) return;
 			let bufferForPreview = decoded;
 			if (isNoiseReductionActive(settings.noiseReduction)) {
 				try {
@@ -391,11 +392,13 @@
 					for (let c = 0; c < decoded.numberOfChannels; c++) {
 						channels.push(new Float32Array(decoded.getChannelData(c)));
 					}
-					const processed = applyNoiseReduction(
+					const processed = await processPreviewNoiseReduction(
 						channels,
 						decoded.sampleRate,
-						settings.noiseReduction
+						settings.noiseReduction,
+						previewAbort.signal
 					);
+					if (stale || previewAbort.signal.aborted) return;
 					const nrBuffer = new AudioBuffer({
 						length: processed[0]?.length ?? decoded.length,
 						numberOfChannels: decoded.numberOfChannels,
@@ -406,6 +409,7 @@
 					}
 					bufferForPreview = nrBuffer;
 				} catch {
+					if (previewAbort.signal.aborted) return;
 					bufferForPreview = decoded;
 				}
 			}
@@ -450,6 +454,7 @@
 		});
 		return () => {
 			stale = true;
+			previewAbort.abort();
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
 			processedNode?.disconnect();
 			detachProcessedFromMixer?.();
