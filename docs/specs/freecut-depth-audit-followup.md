@@ -231,13 +231,13 @@ also keeps production code outside `src/features` (`infrastructure`,
 | Media library & local AI                 | 32,131 (`features/media-library` + storage infra)                                 | ~24,669 (`media` 18,931 + `local-ai` 2,912 + `workspace-fs` 2,826)                            |
 | Effects/color/scopes/shapes/transitions  | ~14,700 (`features/effects` 6,385 + `infrastructure/gpu-*` ~13,900 minus overlap) | ~19,000 (`effects` 9,580 + `transitions` 5,781 + `shapes` 1,308 + typography/lottie/stickers) |
 | Cross-cutting runtime/composition engine | 20,066 (`runtime/composition-runtime`) + `shared` 26,283                          | distributed across stores/actions (no single counterpart)                                     |
-| **Total production**                     | **369,361**                                                                       | **118,192** (incl. page + `$lib/media` helpers)                                               |
-| Tests (reference)                        | 133,763                                                                           | 44,289                                                                                        |
+| **Total production**                     | **369,361**                                                                       | **118,615** (incl. page + `$lib/media` helpers)                                               |
+| Tests (reference)                        | 133,763                                                                           | 44,394                                                                                        |
 
 Reading: OpenPost is not a shallow port - effects, transitions, local AI, and
 persistence areas meet or exceed FreeCut depth, and several gaps above were
 closed in prior passes (waveforms, scopes, transitions catalog). But overall
-production LoC remains 32.0% of FreeCut's. The twelve source-audit gaps are now
+production LoC remains 32.1% of FreeCut's. The twelve source-audit gaps are now
 closed. The size difference remains concentrated in React component and state
 plumbing plus FreeCut's separate preview, export, and shared runtime stacks,
 where OpenPost reuses Svelte stores, actions, and one compositor.
