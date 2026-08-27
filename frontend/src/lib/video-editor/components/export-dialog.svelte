@@ -438,7 +438,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="video-editor-theme !block block max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] p-4 text-[var(--video-editor-text)] shadow-2xl sm:max-w-md"
+		class="video-editor-theme !block max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] p-4 text-[var(--video-editor-text)] shadow-2xl sm:max-w-md"
 		overlayProps={{ class: 'bg-black/70' }}
 		showCloseButton={!rendering}
 		onInteractOutside={(event) => {
@@ -516,7 +516,7 @@
 			<div class="flex items-start gap-2">
 				{#if preflight.pending}
 					<LoaderIcon
-						class="mt-0.5 size-4 shrink-0 animate-spin text-[var(--video-editor-muted)]"
+						class="mt-0.5 size-4 shrink-0 animate-spin text-[var(--video-editor-muted)] motion-reduce:animate-none"
 						aria-hidden="true"
 					/>
 				{:else if summarizePreflightSeverity(preflight.checks) === 'error'}

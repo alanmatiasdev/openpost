@@ -289,11 +289,9 @@ describe('ExportDialog', () => {
 		await trigger.click();
 		const dialog = screen.getByRole('dialog');
 		await expect.element(dialog).toBeVisible();
-		// initial focus should be inside dialog
-		await expect.element(dialog).toBeVisible();
-		// give focus scope time to move focus
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(dialog.element().contains(document.activeElement)).toBe(true);
+		await vi.waitFor(() => {
+			expect(dialog.element().contains(document.activeElement)).toBe(true);
+		});
 
 		// Tab should keep focus inside dialog
 		await userEvent.keyboard('{Tab}');
@@ -412,7 +410,9 @@ describe('ExportDialog', () => {
 		overlay!.dispatchEvent(
 			new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' })
 		);
-		await new Promise((r) => setTimeout(r, 30));
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
+		});
 		await expect.element(dialog).not.toBeInTheDocument();
 		expect(document.activeElement).toBe(trigger.element());
 
@@ -427,7 +427,7 @@ describe('ExportDialog', () => {
 		overlay!.dispatchEvent(
 			new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' })
 		);
-		await new Promise((r) => setTimeout(r, 30));
+		await Promise.resolve();
 		await expect.element(dialog).toBeVisible();
 		expect(renderSignal?.aborted).toBe(false);
 
