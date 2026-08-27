@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 
+import { parseNpmViewResult } from "./npm-view-result.mjs";
+
 function option(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
@@ -53,7 +55,7 @@ try {
   const registryIntegrity = execFileSync("npm", ["view", packageSpec, "dist.integrity", "--json"], {
     encoding: "utf8",
   }).trim();
-  if (JSON.parse(registryIntegrity) !== expectedIntegrity) {
+  if (parseNpmViewResult(registryIntegrity, `${packageSpec} integrity`) !== expectedIntegrity) {
     throw new Error("The registry integrity changed between publication and clean install.");
   }
   process.stdout.write(`Clean-installed and loaded ${packageSpec} with n8n ${n8nVersion}.\n`);

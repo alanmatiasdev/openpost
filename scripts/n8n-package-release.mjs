@@ -7,6 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseNpmPackResult } from "./npm-pack-result.mjs";
+import { parseNpmViewResult } from "./npm-view-result.mjs";
+
+export { parseNpmViewResult } from "./npm-view-result.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageDirectory = "packages/n8n-nodes-openpost";
@@ -54,15 +57,6 @@ export function assessRegistryVersion({ localIntegrity, metadata }) {
   if (!metadata) return { state: "absent" };
   if (metadata.integrity === localIntegrity) return { state: "matching" };
   return { state: "conflict", publishedIntegrity: metadata.integrity ?? null };
-}
-
-export function parseNpmViewResult(output, packageName) {
-  const value = JSON.parse(output);
-  const metadata = Array.isArray(value) ? value[0] : value;
-  if (!metadata || typeof metadata !== "object") {
-    throw new Error(`npm view did not return metadata for ${packageName}.`);
-  }
-  return metadata;
 }
 
 function parseStableVersion(version) {
@@ -136,6 +130,9 @@ function registryMetadata(name, version) {
   const result = npm(["view", `${name}@${version}`, "name", "version", "dist.integrity", "--json"]);
   if (result.status === 0) {
     const value = parseNpmViewResult(result.stdout, name);
+    if (typeof value !== "object") {
+      throw new Error(`npm view did not return metadata for ${name}.`);
+    }
     if (value.name !== name || value.version !== version) {
       throw new Error(`npm returned ${value.name}@${value.version} for ${name}@${version}.`);
     }

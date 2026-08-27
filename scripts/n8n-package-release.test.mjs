@@ -5,9 +5,9 @@ import {
   assessPackageVersionChange,
   assessRegistryVersion,
   compareVersions,
-  parseNpmViewResult,
 } from "./n8n-package-release.mjs";
 import { parseNpmPackResult } from "./npm-pack-result.mjs";
+import { parseNpmViewResult } from "./npm-view-result.mjs";
 
 const packageFile = "packages/n8n-nodes-openpost/package.json";
 
@@ -39,6 +39,17 @@ test("npm view metadata accepts npm 11 and npm 12 output", () => {
   assert.deepEqual(parseNpmViewResult(JSON.stringify(metadata), metadata.name), metadata);
   assert.deepEqual(parseNpmViewResult(JSON.stringify([metadata]), metadata.name), metadata);
   assert.throws(() => parseNpmViewResult("[]", metadata.name), /did not return metadata/u);
+});
+
+test("npm view scalar fields accept npm 11 and npm 12 output", () => {
+  assert.equal(
+    parseNpmViewResult(JSON.stringify("sha512-local"), "package integrity"),
+    "sha512-local",
+  );
+  assert.equal(
+    parseNpmViewResult(JSON.stringify(["sha512-local"]), "package integrity"),
+    "sha512-local",
+  );
 });
 
 test("the first package version can be added", () => {
