@@ -1,14 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { SubtitleCue, TimelineItem } from '../project/types';
 import {
 	activeWordIndexAtFrame,
-	karaokeStateAtFrame,
-	hasUsableKaraokeTimings
+	hasUsableKaraokeTimings,
+	karaokeStateAtFrame
 } from '../transcript/karaoke';
 import { layoutTextBlock } from '../typography/text-block-layout';
+import type { TextMeasurer } from '../typography/text-measurer';
 import { createCanvasTextMeasurer } from '../typography/text-measurer';
 import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
-import { clearSubtitleLayoutCacheForTests, renderSubtitleCueRaster } from './text-raster';
+import {
+	clearSubtitleLayoutCacheForTests,
+	getKaraokeHighlightGeometryForToken,
+	getKaraokeTokenRangesForLine,
+	renderSubtitleCueRaster
+} from './text-raster';
 
 function makeItem(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
@@ -76,12 +82,11 @@ describe('karaoke line wrapping preservation', () => {
 		expect(karaokeLayout.lines.map((l) => l.width)).toEqual(baseLayout.lines.map((l) => l.width));
 	});
 
-	it('untimed cues render exactly as normal captions (no highlight state)', () => {
+	it('untimed cues render exactly as normal captions', () => {
 		const item = makeItem({ captionHighlightMode: 'karaoke' });
 		const untimed: SubtitleCue = { id: 'c', startFrame: 0, endFrame: 30, text: 'hello world' };
 		expect(hasUsableKaraokeTimings(untimed, 'hello world')).toBe(false);
 		expect(karaokeStateAtFrame(item, untimed, 'hello world', 5)).toBeNull();
-		// Also with mismatched timings
 		const mismatched: SubtitleCue = {
 			id: 'c',
 			startFrame: 0,
@@ -108,16 +113,15 @@ describe('karaoke active word is deterministic across realms', () => {
 	});
 });
 
-describe('karaoke reduced-motion', () => {
+describe('karaoke reduced-motion retains highlight', () => {
 	afterEach(() => {
-		// @ts-expect-error test cleanup
+		// @ts-expect-error cleanup
 		delete (globalThis as unknown as { window?: unknown }).window;
+		clearSubtitleLayoutCacheForTests();
 	});
 
-	it('retains active-word highlight even when prefers-reduced-motion is reduce', () => {
-		// Old code suppressed karaokeState when matchMedia reported reduce, which would
-		// make preview and export lose functional caption state inconsistently.
-		// @ts-expect-error stub window for server test
+	it('highlights active word even when matchMedia reports reduce', () => {
+		// @ts-expect-error stub
 		globalThis.window = {
 			matchMedia: (query: string) => ({
 				matches: query === '(prefers-reduced-motion: reduce)',
@@ -127,66 +131,6 @@ describe('karaoke reduced-motion', () => {
 			})
 		} as unknown as Window;
 		clearSubtitleLayoutCacheForTests();
-		const calls: Array<{ type: string; style?: string; text?: string }> = [];
-		let currentFont = '600 24px "Inter Variable", sans-serif';
-		let currentLetterSpacing = 0;
-		const ctx = {
-			get font() {
-				return currentFont;
-			},
-			set font(value: string) {
-				currentFont = value;
-			},
-			clearRect: () => {},
-			save: () => {},
-			restore: () => {},
-			fillRect: () => {},
-			fillText: (text: string) => {
-				// Capture fillStyle at call time via getter below; simplified here
-				calls.push({
-					type: 'fillText',
-					text,
-					style: (ctx as unknown as { _fillStyle: string })._fillStyle
-				});
-			},
-			strokeText: () => {},
-			measureText: (text: string) => ({ width: text.length * 8 }) as unknown as TextMetrics,
-			get fillStyle() {
-				return (this as unknown as { _fillStyle: string })._fillStyle;
-			},
-			set fillStyle(value: string) {
-				(this as unknown as { _fillStyle: string })._fillStyle = value;
-			},
-			strokeStyle: '',
-			lineWidth: 0,
-			lineJoin: 'round' as CanvasLineJoin,
-			shadowColor: '',
-			shadowBlur: 0,
-			shadowOffsetX: 0,
-			shadowOffsetY: 0,
-			textAlign: 'left' as CanvasTextAlign,
-			textBaseline: 'alphabetic' as CanvasTextBaseline,
-			globalAlpha: 1,
-			filter: 'none' as string,
-			beginPath: () => {},
-			rect: () => {},
-			roundRect: () => {},
-			fill: () => {},
-			clip: () => {},
-			translate: () => {},
-			rotate: () => {},
-			scale: () => {}
-		} as unknown as CanvasRenderingContext2D;
-		// Patch measureText to be font-aware would not matter here; just ensure highlight is drawn
-		const anyCtx = ctx as unknown as { _fillStyle: string; applyLetterSpacing?: number };
-		anyCtx._fillStyle = '#ffffff';
-		// Spy on fillStyle assignment via proxy would be complex; instead check that render does not bail
-		// to normal caption: we assert karaokeState would have been null on old code, now not null.
-		const item = makeItem({
-			captionHighlightMode: 'karaoke',
-			karaokeActiveColor: '#ff0000',
-			color: '#ffffff'
-		});
 		const activeCue: SubtitleCue = {
 			id: 'c',
 			startFrame: 0,
@@ -197,38 +141,78 @@ describe('karaoke reduced-motion', () => {
 				{ id: 'w2', startFrame: 10, endFrame: 20, text: 'world' }
 			]
 		};
-		// Direct pure helper still returns active word even under reduced motion
+		const item = makeItem({
+			captionHighlightMode: 'karaoke',
+			karaokeActiveColor: '#ff0000',
+			color: '#ffffff'
+		});
 		expect(karaokeStateAtFrame(item, activeCue, 'hello world', 5)?.activeIndex).toBe(0);
-		// And the raster path must also produce a highlight fill with active color
-		renderSubtitleCueRaster(ctx as unknown as never, activeCue, item, 400, 200, 5);
-		const hadActiveFill = calls.some((c) => c.text === 'hello' && c.style === '#ff0000');
-		expect(hadActiveFill).toBe(true);
+		const calls: string[] = [];
+		const ctx = {
+			clearRect: () => {},
+			save: () => {},
+			restore: () => {},
+			fillRect: () => {},
+			fillText: (_t: string) => {},
+			strokeText: () => {},
+			measureText: (t: string) => ({ width: t.length * 8 }) as unknown as TextMetrics,
+			get font() {
+				return '600 20px \"Inter\"';
+			},
+			set font(_v: string) {},
+			textAlign: 'left' as CanvasTextAlign,
+			textBaseline: 'alphabetic' as CanvasTextBaseline,
+			shadowColor: '',
+			shadowBlur: 0,
+			shadowOffsetX: 0,
+			shadowOffsetY: 0,
+			get fillStyle() {
+				return (this as unknown as { _v: string })._v;
+			},
+			set fillStyle(v: string) {
+				(this as unknown as { _v: string })._v = v;
+				calls.push(v);
+			},
+			strokeStyle: '',
+			lineWidth: 0,
+			lineJoin: 'round' as CanvasLineJoin,
+			beginPath: () => {},
+			rect: () => {},
+			roundRect: () => {},
+			fill: () => {},
+			globalAlpha: 1,
+			filter: 'none'
+		} as unknown as CanvasRenderingContext2D;
+		renderSubtitleCueRaster(ctx as never, activeCue, item, 400, 200, 5);
+		expect(calls).toContain('#ff0000');
 	});
 });
 
-describe('karaoke mixed inline spans geometry', () => {
-	it('uses exact run offsets and fonts for highlight geometry, not whole-line font', () => {
-		clearSubtitleLayoutCacheForTests();
-		// Build a subtitle item where inline spans have different sizes/letterSpacing.
-		// Layout will produce two runs on the first line: "hello " (small) and "world" (large).
+describe('karaoke highlight geometry uses exact run metrics', () => {
+	it('token in later differently styled run aligns with run offset', () => {
+		const stubMeasurer: TextMeasurer = {
+			measure: (text: string, cssFont: string, letterSpacing: number) => {
+				const m = /(\d+)px/.exec(cssFont);
+				const size = m ? Number(m[1]) : 20;
+				return text.length * size * 0.5 + Math.max(0, text.length - 1) * letterSpacing;
+			},
+			fontMetrics: (cssFont: string) => {
+				const m = /(\d+)px/.exec(cssFont);
+				const size = m ? Number(m[1]) : 20;
+				return { ascent: size * 0.8, descent: size * 0.2 };
+			}
+		};
 		const item = makeItem({
 			fontFamily: 'Inter',
 			fontSize: 20,
-			fontWeight: 600,
 			color: '#ffffff',
 			letterSpacing: 0,
 			textAlign: 'left',
 			verticalAlign: 'top',
 			lineHeight: 1.2,
 			paddingX: 4,
-			paddingY: 4,
-			captionHighlightMode: 'karaoke',
-			karaokeActiveColor: '#ff0000'
+			paddingY: 4
 		});
-		// Cue text with inline formatting that creates mixed runs: first word plain, second word bold.
-		// The parser will split into spans; to get mixed sizes we also vary letterSpacing via item-level override is insufficient.
-		// Instead we directly construct a layout with mixed spans and verify highlight uses run offsets.
-		// Use layoutTextBlock directly with explicit textSpans.
 		const mixedItem: TimelineItem = {
 			...item,
 			text: 'hello world',
@@ -238,39 +222,51 @@ describe('karaoke mixed inline spans geometry', () => {
 			],
 			spanLayout: 'inline'
 		};
-		// Stub measurer where width depends on fontSize so mixed sizes are observable
-		const stubMeasurer = {
+		const layout = layoutTextBlock(mixedItem, 300, 100, stubMeasurer);
+		const line = layout.lines[0]!;
+		expect(line.runs && line.runs.length >= 2).toBe(true);
+		const tokenRanges = getKaraokeTokenRangesForLine(line);
+		expect(tokenRanges).toHaveLength(2);
+		const worldRange = tokenRanges[1]!;
+		const geometry = getKaraokeHighlightGeometryForToken(
+			line,
+			worldRange.start,
+			worldRange.end,
+			stubMeasurer
+		)!;
+		expect(geometry).not.toBeNull();
+		const secondRun = line.runs![1]!;
+		const expectedX = line.startX + secondRun.offsetX;
+		expect(geometry.bounds.x).toBe(expectedX);
+		expect(geometry.pieces).toHaveLength(1);
+		expect(geometry.pieces[0]!.cssFont).toBe(secondRun.cssFont);
+		const expectedWidth = stubMeasurer.measure('world', secondRun.cssFont, secondRun.letterSpacing);
+		expect(geometry.bounds.width).toBe(expectedWidth);
+	});
+
+	it('token spanning differently styled runs produces multiple pieces with correct widths', () => {
+		const stubMeasurer: TextMeasurer = {
 			measure: (text: string, cssFont: string, letterSpacing: number) => {
-				const sizeMatch = /(\d+)px/.exec(cssFont);
-				const size = sizeMatch ? Number(sizeMatch[1]) : 20;
-				// width = chars * (size * 0.5) + gaps for letterSpacing
+				const m = /(\d+)px/.exec(cssFont);
+				const size = m ? Number(m[1]) : 20;
 				return text.length * size * 0.5 + Math.max(0, text.length - 1) * letterSpacing;
 			},
 			fontMetrics: (cssFont: string) => {
-				const sizeMatch = /(\d+)px/.exec(cssFont);
-				const size = sizeMatch ? Number(sizeMatch[1]) : 20;
+				const m = /(\d+)px/.exec(cssFont);
+				const size = m ? Number(m[1]) : 20;
 				return { ascent: size * 0.8, descent: size * 0.2 };
 			}
 		};
-		const layout = layoutTextBlock(
-			mixedItem,
-			300,
-			100,
-			stubMeasurer as unknown as ReturnType<typeof createCanvasTextMeasurer>
-		);
-		// First line should contain both words in one line with two runs
-		expect(layout.lines.length).toBeGreaterThanOrEqual(1);
-		const line = layout.lines[0]!;
-		expect(line.runs && line.runs.length >= 2).toBe(true);
-		const secondRun = line.runs![1]!;
-		// Token "world" is the second token (index 1) and lives entirely in the second run
-		const activeIndex = 1;
-		// Compute expected highlight X via run offset, not via whole-line font
-		const expectedX = line.startX + secondRun.offsetX;
-		// Naive whole-line measurement would be: measure "hello " with base font (20px)
-		// Run-aware measurement for prefix "hello " uses first run's style (20px) which matches naive here,
-		// but to make the test fail on old code we need a case where token spans runs.
-		// Add a case where token crosses runs: word "hel" + "lo" split across sizes.
+		const item = makeItem({
+			fontFamily: 'Inter',
+			fontSize: 20,
+			color: '#ffffff',
+			textAlign: 'left',
+			verticalAlign: 'top',
+			lineHeight: 1.2,
+			paddingX: 4,
+			paddingY: 4
+		});
 		const crossItem: TimelineItem = {
 			...item,
 			text: 'hello',
@@ -280,90 +276,69 @@ describe('karaoke mixed inline spans geometry', () => {
 			],
 			spanLayout: 'inline'
 		};
-		const crossLayout = layoutTextBlock(
-			crossItem,
-			200,
-			100,
-			stubMeasurer as unknown as ReturnType<typeof createCanvasTextMeasurer>
+		const layout = layoutTextBlock(crossItem, 200, 100, stubMeasurer);
+		const line = layout.lines[0]!;
+		expect(line.runs?.length).toBe(2);
+		const ranges = getKaraokeTokenRangesForLine(line);
+		expect(ranges).toHaveLength(1);
+		const geometry = getKaraokeHighlightGeometryForToken(
+			line,
+			ranges[0]!.start,
+			ranges[0]!.end,
+			stubMeasurer
+		)!;
+		expect(geometry.pieces).toHaveLength(2);
+		const firstWidth = stubMeasurer.measure(
+			'hel',
+			line.runs![0]!.cssFont,
+			line.runs![0]!.letterSpacing
 		);
-		const crossLine = crossLayout.lines[0]!;
-		expect(crossLine.runs && crossLine.runs.length === 2).toBe(true);
-		// Old code would measure token "hello" as one run with line.cssFont (20px) -> width 5*10=50
-		// New code splits across runs: "hel" 3*10=30 + "lo" 2*20 (+ letterSpacing) = 40+5=45 => total 75, plus correct piece Xs
+		const secondWidth = stubMeasurer.measure(
+			'lo',
+			line.runs![1]!.cssFont,
+			line.runs![1]!.letterSpacing
+		);
+		expect(geometry.pieces[0]!.width).toBe(firstWidth);
+		expect(geometry.pieces[1]!.width).toBe(secondWidth);
+		expect(geometry.bounds.width).toBe(firstWidth + secondWidth);
+		expect(geometry.pieces[1]!.x).toBe(line.startX + line.runs![1]!.offsetX);
 		const naiveWidth = stubMeasurer.measure('hello', line.cssFont, line.letterSpacing);
-		const runAwareWidth =
-			stubMeasurer.measure('hel', crossLine.runs![0]!.cssFont, crossLine.runs![0]!.letterSpacing) +
-			stubMeasurer.measure('lo', crossLine.runs![1]!.cssFont, crossLine.runs![1]!.letterSpacing);
-		expect(naiveWidth).not.toBe(runAwareWidth);
-		// Now verify that the actual renderer uses run-aware geometry by spying on fillRect
-		const calls: Array<{ x: number; width: number }> = [];
-		let currentFont = crossLine.runs![0]!.cssFont;
-		let currentLetterSpacing = crossLine.runs![0]!.letterSpacing;
-		const ctx = {
-			clearRect: () => {},
-			save: () => {},
-			restore: () => {
-				currentFont = crossLine.runs![0]!.cssFont;
-				currentLetterSpacing = crossLine.runs![0]!.letterSpacing;
-			},
-			fillRect: (x: number, y: number, w: number) => calls.push({ x, width: w }),
-			fillText: () => {},
-			strokeText: () => {},
-			measureText: (text: string) => {
-				const sizeMatch = /(\d+)px/.exec(currentFont);
-				const size = sizeMatch ? Number(sizeMatch[1]) : 20;
-				return {
-					width: text.length * size * 0.5 + Math.max(0, text.length - 1) * currentLetterSpacing
-				} as unknown as TextMetrics;
-			},
-			get font() {
-				return currentFont;
-			},
-			set font(v: string) {
-				currentFont = v;
-			},
-			textAlign: 'left' as CanvasTextAlign,
-			textBaseline: 'alphabetic' as CanvasTextBaseline,
-			shadowColor: '',
-			shadowBlur: 0,
-			shadowOffsetX: 0,
-			shadowOffsetY: 0,
-			fillStyle: '',
-			strokeStyle: '',
-			lineWidth: 0,
-			lineJoin: 'round' as CanvasLineJoin,
-			beginPath: () => {},
-			rect: () => {},
-			roundRect: () => {},
-			fill: () => {},
-			globalAlpha: 1,
-			filter: 'none' as string,
-			translate: () => {},
-			rotate: () => {},
-			scale: () => {},
-			clip: () => {}
-		} as unknown as CanvasRenderingContext2D;
-		// Use a cue where word matches the line text so highlight is triggered
-		const cue: SubtitleCue = {
-			id: 'c',
-			startFrame: 0,
-			endFrame: 10,
-			text: 'hello',
-			words: [{ id: 'w', startFrame: 0, endFrame: 10, text: 'hello' }]
+		expect(naiveWidth).not.toBe(geometry.bounds.width);
+	});
+
+	it('handles tabs and mixed whitespace like split/\\s+/', () => {
+		const line = {
+			text: 'hello\tworld  test',
+			cssFont: '20px Inter',
+			fontSize: 20,
+			letterSpacing: 0,
+			startX: 10,
+			top: 0,
+			baselineY: 10,
+			lineHeightPx: 20,
+			width: 100,
+			color: '#fff',
+			underline: false,
+			runs: undefined
+		} as unknown as import('../typography/text-block-layout').LaidOutLine;
+		const ranges = getKaraokeTokenRangesForLine(line);
+		expect(ranges).toHaveLength(3);
+		expect(line.text.slice(ranges[0]!.start, ranges[0]!.end)).toBe('hello');
+		expect(line.text.slice(ranges[1]!.start, ranges[1]!.end)).toBe('world');
+		expect(line.text.slice(ranges[2]!.start, ranges[2]!.end)).toBe('test');
+		const stubMeasurer: TextMeasurer = {
+			measure: (t: string) => t.length * 8,
+			fontMetrics: () => ({ ascent: 8, descent: 2 })
 		};
-		const cueItem = {
-			...crossItem,
-			captionHighlightMode: 'karaoke' as const,
-			karaokeActiveColor: '#ff0000',
-			karaokeActiveBackground: '#00ff00'
-		};
-		// We need to exercise the exact run splitting logic – call the low-level highlight via render path
-		// For this we can directly call renderSubtitleCueRaster which will build its own layout from cue text,
-		// but cue text "hello" without span formatting will not produce mixed runs. So we instead validate
-		// the geometry helper idea: the expected token width for "hello" crossing runs should be 75, not 50.
-		expect(runAwareWidth).toBe(75);
-		expect(naiveWidth).toBe(50);
-		// Also verify secondRun offset is used for token "world" earlier
-		expect(expectedX).toBe(line.startX + secondRun.offsetX);
+		const geometry = getKaraokeHighlightGeometryForToken(
+			line,
+			ranges[1]!.start,
+			ranges[1]!.end,
+			stubMeasurer
+		)!;
+		const expectedX =
+			line.startX +
+			stubMeasurer.measure(line.text.slice(0, ranges[1]!.start), line.cssFont, line.letterSpacing);
+		expect(geometry.bounds.x).toBe(expectedX);
 	});
 });
