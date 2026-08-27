@@ -27,6 +27,38 @@
 		trackClass?: string;
 		rangeClass?: string;
 	} = $props();
+
+	let keyboardGestureActive = false;
+	let pendingKeyboardCommit: number | null = null;
+
+	function isSliderKey(key: string): boolean {
+		return (
+			key === 'ArrowLeft' ||
+			key === 'ArrowRight' ||
+			key === 'ArrowUp' ||
+			key === 'ArrowDown' ||
+			key === 'PageUp' ||
+			key === 'PageDown' ||
+			key === 'Home' ||
+			key === 'End'
+		);
+	}
+
+	function handleValueCommit(nextValue: number): void {
+		if (keyboardGestureActive) {
+			pendingKeyboardCommit = nextValue;
+			return;
+		}
+		onValueCommit?.(nextValue);
+	}
+
+	function flushKeyboardCommit(): void {
+		keyboardGestureActive = false;
+		if (pendingKeyboardCommit === null) return;
+		const nextValue = pendingKeyboardCommit;
+		pendingKeyboardCommit = null;
+		onValueCommit?.(nextValue);
+	}
 </script>
 
 <SliderPrimitive.Root
@@ -37,7 +69,16 @@
 	{step}
 	{disabled}
 	{onValueChange}
-	{onValueCommit}
+	onValueCommit={handleValueCommit}
+	onkeydowncapture={(event) => {
+		if (isSliderKey(event.key)) keyboardGestureActive = true;
+	}}
+	onkeyup={(event) => {
+		if (isSliderKey(event.key)) flushKeyboardCommit();
+	}}
+	onfocusout={(event) => {
+		if (!event.currentTarget.contains(event.relatedTarget as Node | null)) flushKeyboardCommit();
+	}}
 	class={cn(
 		'relative flex h-5 w-full touch-none items-center select-none data-disabled:cursor-not-allowed data-disabled:opacity-50',
 		className

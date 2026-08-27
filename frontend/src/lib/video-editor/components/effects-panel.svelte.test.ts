@@ -447,10 +447,9 @@ describe('EffectsPanel typed GPU controls', () => {
 		});
 		const onedit = vi.fn();
 		const screen = await render(EffectsPanel, { itemId: 'video', onedit });
-		screen
-			.getByRole('slider', { name: 'Contrast: Amount' })
-			.element()
-			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		const amountSlider = screen.getByRole('slider', { name: 'Contrast: Amount' }).element();
+		amountSlider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		amountSlider.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
 
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get('video')?.effects?.[0]).toMatchObject({
@@ -508,10 +507,9 @@ describe('EffectsPanel typed GPU controls', () => {
 			.element(screen.getByRole('button', { name: 'Disable auto-key for Contrast: Amount' }))
 			.toHaveAttribute('aria-pressed', 'true');
 		timelineStore._setCurrentFrame(15);
-		screen
-			.getByRole('slider', { name: 'Contrast: Amount' })
-			.element()
-			.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		const amountSlider = screen.getByRole('slider', { name: 'Contrast: Amount' }).element();
+		amountSlider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		amountSlider.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get('video')?.keyframes?.[property]).toMatchObject({
 				frames: [15],

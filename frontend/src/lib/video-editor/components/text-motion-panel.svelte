@@ -326,28 +326,12 @@
 		color: oklch(0.9 0.02 70);
 		font-variant-numeric: tabular-nums;
 	}
-	input[type='range'] {
-		width: 100%;
-		accent-color: oklch(0.66 0.14 45);
-	}
 	.select-row {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 0.4rem;
 	}
-	select {
-		width: 100%;
-		min-height: 1.75rem;
-		border: 1px solid oklch(0.3 0.018 58);
-		border-radius: 0.3rem;
-		padding: 0 0.3rem;
-		background: oklch(0.18 0.012 55);
-		color: oklch(0.9 0.012 70);
-		font: inherit;
-	}
-	button:focus-visible,
-	input:focus-visible,
-	select:focus-visible {
+	button:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}

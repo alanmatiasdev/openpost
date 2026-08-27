@@ -352,7 +352,10 @@
 						value={draft[field.key]}
 						ariaLabel={field.label}
 						onValueChange={(value) => previewSpring(field.key, value)}
-						onValueCommit={(value) => { previewSpring(field.key, value); commitSpring(); }}
+						onValueCommit={(value) => {
+							previewSpring(field.key, value);
+							commitSpring();
+						}}
 					/>
 					<span class="font-mono text-[9px]">{draft[field.key]}</span>
 				</label>

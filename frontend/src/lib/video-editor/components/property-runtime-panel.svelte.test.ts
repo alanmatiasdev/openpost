@@ -58,11 +58,9 @@ describe('PropertyRuntimePanel', () => {
 	it('links through the accessible layer and property controls', async () => {
 		const input = props();
 		const screen = await render(PropertyRuntimePanel, input);
-		await vi.waitFor(() => {
-			expect(
-				document.querySelector<HTMLSelectElement>('select[aria-label="Source layer"]')?.value
-			).toBe('two');
-		});
+		await expect
+			.element(screen.getByRole('button', { name: 'Source layer' }))
+			.toHaveTextContent('Driver');
 		await screen.getByRole('button', { name: 'Apply link' }).click();
 		expect(timelineStore.itemById.get('one')?.propertyLinks).toMatchObject([
 			{ targetProperty: 'x', sourceItemId: 'two', sourceProperty: 'x' }

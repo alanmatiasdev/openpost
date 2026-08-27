@@ -416,17 +416,35 @@
 		<label>
 			<span>{m.video_editor_motion_duration()}</span>
 			<output>{Math.round(durationScale * 100)}%</output>
-			<Slider min={0.25} max={3} step={0.05} bind:value={durationScale} ariaLabel={m.video_editor_motion_duration()} />
+			<Slider
+				min={0.25}
+				max={3}
+				step={0.05}
+				bind:value={durationScale}
+				ariaLabel={m.video_editor_motion_duration()}
+			/>
 		</label>
 		<label>
 			<span>{m.video_editor_motion_intensity()}</span>
 			<output>{Math.round(intensityScale * 100)}%</output>
-			<Slider min={0} max={2} step={0.05} bind:value={intensityScale} ariaLabel={m.video_editor_motion_intensity()} />
+			<Slider
+				min={0}
+				max={2}
+				step={0.05}
+				bind:value={intensityScale}
+				ariaLabel={m.video_editor_motion_intensity()}
+			/>
 		</label>
 		<label>
 			<span>{m.video_editor_motion_stagger()}</span>
 			<output>{staggerFrames}</output>
-			<Slider min={0} max={30} step={1} bind:value={staggerFrames} ariaLabel={m.video_editor_motion_stagger()} />
+			<Slider
+				min={0}
+				max={30}
+				step={1}
+				bind:value={staggerFrames}
+				ariaLabel={m.video_editor_motion_stagger()}
+			/>
 		</label>
 	</div>
 
@@ -577,7 +595,8 @@
 								value={settings.intensityScale}
 								ariaLabel={m.video_editor_motion_intensity()}
 								onValueChange={(value) => liveModifierEdit(modulator.id, { intensityScale: value })}
-								onValueCommit={(value) => commitModifierEdit(modulator.id, { intensityScale: value })}
+								onValueCommit={(value) =>
+									commitModifierEdit(modulator.id, { intensityScale: value })}
 							/>
 						</label>
 						<label>
@@ -590,7 +609,8 @@
 								value={settings.durationScale}
 								ariaLabel={m.video_editor_motion_duration()}
 								onValueChange={(value) => liveModifierEdit(modulator.id, { durationScale: value })}
-								onValueCommit={(value) => commitModifierEdit(modulator.id, { durationScale: value })}
+								onValueCommit={(value) =>
+									commitModifierEdit(modulator.id, { durationScale: value })}
 							/>
 						</label>
 						{#each modulator.properties as channel}
@@ -603,8 +623,10 @@
 									step={0.05}
 									value={settings.channelGains[channel] ?? 1}
 									ariaLabel={channelLabels[channel]}
-									onValueChange={(value) => liveModifierEdit(modulator.id, { channelGains: { [channel]: value } })}
-									onValueCommit={(value) => commitModifierEdit(modulator.id, { channelGains: { [channel]: value } })}
+									onValueChange={(value) =>
+										liveModifierEdit(modulator.id, { channelGains: { [channel]: value } })}
+									onValueCommit={(value) =>
+										commitModifierEdit(modulator.id, { channelGains: { [channel]: value } })}
 								/>
 							</label>
 						{/each}
@@ -737,8 +759,7 @@
 		box-shadow: 0 1px 2px oklch(0.08 0.01 55 / 0.45);
 	}
 	.mode-control button:focus-visible,
-	.preset-tile:focus-visible,
-	.generator-controls input:focus-visible {
+	.preset-tile:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}
@@ -765,12 +786,8 @@
 		text-align: right;
 		color: oklch(0.68 0.11 45);
 	}
-	.generator-controls input {
+	.generator-controls label :global([data-orientation='horizontal']) {
 		grid-column: 1 / -1;
-		width: 100%;
-		height: 1rem;
-		accent-color: oklch(0.66 0.14 45);
-		cursor: pointer;
 	}
 	.preset-library {
 		display: grid;
@@ -1146,10 +1163,6 @@
 		color: oklch(0.9 0.015 65);
 		cursor: pointer;
 	}
-	.layer-toggle input {
-		flex: none;
-		accent-color: oklch(0.66 0.14 45);
-	}
 	.layer-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1181,8 +1194,7 @@
 		background: oklch(0.27 0.02 28);
 		color: oklch(0.92 0.06 28);
 	}
-	.layer-remove:focus-visible,
-	.layer-toggle input:focus-visible {
+	.layer-remove:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}

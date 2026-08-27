@@ -65,7 +65,8 @@ describe('ShapePropertiesPanel masks', () => {
 			.element(screen.getByText('Masks every visible clip on the tracks below.'))
 			.toBeVisible();
 
-		await screen.getByRole('combobox', { name: 'Mask type' }).selectOptions('alpha');
+		await screen.getByRole('button', { name: 'Mask type' }).click();
+		await screen.getByRole('option', { name: 'Alpha' }).click();
 		item = timelineStore.itemById.get('shape');
 		expect(item?.maskType).toBe('alpha');
 		expect(item?.maskFeather).toBe(10);

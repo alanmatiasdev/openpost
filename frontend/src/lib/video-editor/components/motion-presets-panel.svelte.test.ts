@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -42,6 +43,17 @@ function props(itemId = 'one', itemIds = ['one']) {
 	};
 }
 
+async function setSlider(slider: Element, value: number, step: number): Promise<void> {
+	if (!(slider instanceof HTMLElement)) throw new Error('Slider control is missing.');
+	const current = Number(slider.getAttribute('aria-valuenow'));
+	if (!Number.isFinite(current)) throw new Error('Slider value is missing.');
+	const steps = Math.round(Math.abs(value - current) / step);
+	if (steps === 0) return;
+	const key = value > current ? 'ArrowRight' : 'ArrowLeft';
+	slider.focus();
+	await userEvent.keyboard(steps === 1 ? `{${key}}` : `{${key}>${steps}/}`);
+}
+
 beforeEach(() => {
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
@@ -70,13 +82,12 @@ describe('MotionPresetsPanel', () => {
 		});
 		const input = props('one', ['one', 'two']);
 		const screen = await render(MotionPresetsPanel, input);
-		const ranges = document.querySelectorAll<HTMLInputElement>('.generator-controls input');
-		ranges[0]!.value = '2';
-		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[1]!.value = '0.5';
-		ranges[1]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[2]!.value = '4';
-		ranges[2]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		const generator = screen.container.querySelector('.generator-controls');
+		if (!generator) throw new Error('Motion tuning controls are missing.');
+		const sliders = generator.querySelectorAll('[role="slider"]');
+		await setSlider(sliders[0]!, 2, 0.05);
+		await setSlider(sliders[1]!, 0.5, 0.05);
+		await setSlider(sliders[2]!, 4, 1);
 		await screen.getByRole('button', { name: 'Apply live Float drift' }).click();
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get('one')?.motionModifiers?.[0]).toMatchObject({
@@ -101,13 +112,9 @@ describe('MotionPresetsPanel', () => {
 		const screen = await render(MotionPresetsPanel, input);
 		await screen.getByRole('button', { name: 'Apply live Float drift' }).click();
 		commandHistory.clearHistory();
-		const ranges = document.querySelectorAll<HTMLInputElement>('.live-controls input');
-		expect(ranges).toHaveLength(5);
-		ranges[0]!.value = '0.8';
-		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[0]!.value = '0.35';
-		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[0]!.dispatchEvent(new Event('change', { bubbles: true }));
+		const sliders = document.querySelectorAll('.live-controls [role="slider"]');
+		expect(sliders).toHaveLength(5);
+		await setSlider(sliders[0]!, 0.35, 0.05);
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get('one')?.motionModifiers?.[0]?.amplitude).toBe(0.35);
 		});
@@ -171,14 +178,11 @@ describe('MotionPresetsPanel', () => {
 		});
 		const input = props('one', ['one', 'two']);
 		const screen = await render(MotionPresetsPanel, input);
-		const ranges = document.querySelectorAll<HTMLInputElement>('input[type="range"]');
-		expect(ranges).toHaveLength(3);
-		ranges[0]!.value = '2';
-		ranges[0]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[1]!.value = '0.5';
-		ranges[1]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
-		ranges[2]!.value = '3';
-		ranges[2]!.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		const sliders = screen.container.querySelectorAll('.generator-controls [role="slider"]');
+		expect(sliders).toHaveLength(3);
+		await setSlider(sliders[0]!, 2, 0.05);
+		await setSlider(sliders[1]!, 0.5, 0.05);
+		await setSlider(sliders[2]!, 3, 1);
 
 		await screen.getByRole('button', { name: 'Replace Fade in' }).click();
 		await vi.waitFor(() => {

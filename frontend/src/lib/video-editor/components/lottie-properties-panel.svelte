@@ -223,7 +223,10 @@
 					<AppSelect
 						class="mt-0.5 h-8 w-full text-xs"
 						value={item.lottieThemeId ?? ''}
-						options={[{ value: '', label: m.video_editor_lottie_theme_none() }, ...themes.map((theme) => ({ value: theme, label: theme })) ]}
+						options={[
+							{ value: '', label: m.video_editor_lottie_theme_none() },
+							...themes.map((theme) => ({ value: theme, label: theme }))
+						]}
 						ariaLabel={m.video_editor_lottie_theme()}
 						onValueChange={(value) => commit({ lottieThemeId: value || undefined })}
 					/>
@@ -249,7 +252,10 @@
 			<AppSelect
 				class="mt-0.5 h-8 w-full text-xs"
 				value={item.lottieLoopMode ?? 'loop'}
-				options={[{ value: 'loop', label: m.video_editor_lottie_loop() }, { value: 'pingpong', label: m.video_editor_lottie_ping_pong() }]}
+				options={[
+					{ value: 'loop', label: m.video_editor_lottie_loop() },
+					{ value: 'pingpong', label: m.video_editor_lottie_ping_pong() }
+				]}
 				ariaLabel={m.video_editor_lottie_repeat_mode()}
 				onValueChange={(value) => commit({ lottieLoopMode: value as 'loop' | 'pingpong' })}
 			/>
@@ -261,7 +267,13 @@
 			<AppSelect
 				class="mt-0.5 h-8 w-full text-xs"
 				bind:value={markerPick}
-				options={[{ value: '', label: m.video_editor_lottie_marker_choose() }, ...(item.lottieMarkers ?? []).map((marker) => ({ value: marker.name, label: marker.name })) ]}
+				options={[
+					{ value: '', label: m.video_editor_lottie_marker_choose() },
+					...(item.lottieMarkers ?? []).map((marker) => ({
+						value: marker.name,
+						label: marker.name
+					}))
+				]}
 				ariaLabel={m.video_editor_lottie_marker()}
 				onValueChange={(value) => useMarker(value)}
 			/>

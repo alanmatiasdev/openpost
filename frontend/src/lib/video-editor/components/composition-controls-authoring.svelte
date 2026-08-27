@@ -126,7 +126,13 @@
 			</label>
 			<AppSelect
 				bind:value={selectedCandidate}
-				options={[{ value: '', label: m.video_editor_motion_published_property() }, ...candidates.map((candidate) => ({ value: candidateKey(candidate), label: `${candidate.targetLabel} - ${propertyLabel(candidate.property)}` })) ]}
+				options={[
+					{ value: '', label: m.video_editor_motion_published_property() },
+					...candidates.map((candidate) => ({
+						value: candidateKey(candidate),
+						label: `${candidate.targetLabel} - ${propertyLabel(candidate.property)}`
+					}))
+				]}
 				ariaLabel={m.video_editor_motion_published_property()}
 				class="mt-1 h-9 w-full text-sm"
 			/>

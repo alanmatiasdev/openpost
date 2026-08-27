@@ -386,14 +386,20 @@
 					<AppSelect
 						ariaLabel={m.video_editor_expression_source_layer()}
 						bind:value={sourceItemId}
-						options={[{ value: '', label: m.video_editor_expression_choose_layer() }, ...sourceItems.map((source) => ({ value: source.id, label: source.label })) ]}
-						class="min-w-0 flex-1 text-xs h-7"
+						options={[
+							{ value: '', label: m.video_editor_expression_choose_layer() },
+							...sourceItems.map((source) => ({ value: source.id, label: source.label }))
+						]}
+						class="h-7 min-w-0 flex-1 text-xs"
 					/>
 					<AppSelect
 						ariaLabel={m.video_editor_expression_source_property()}
 						bind:value={sourceProperty}
-						options={sourceProperties.map((property) => ({ value: property, label: label(property) }))}
-						class="min-w-0 flex-1 text-xs h-7"
+						options={sourceProperties.map((property) => ({
+							value: property,
+							label: label(property)
+						}))}
+						class="h-7 min-w-0 flex-1 text-xs"
 					/>
 				</div>
 				<label class="offset"
@@ -446,7 +452,10 @@
 				</div>
 				{#if draftError}<p class="error" role="alert">{draftError}</p>{/if}
 				<label class="enabled"
-					><Checkbox bind:checked={expressionEnabled} aria-label={m.video_editor_expression_enabled()} />
+					><Checkbox
+						bind:checked={expressionEnabled}
+						aria-label={m.video_editor_expression_enabled()}
+					/>
 					{m.video_editor_expression_enabled()}</label
 				>
 				<div class="actions">
@@ -574,9 +583,6 @@
 		color: oklch(0.62 0.015 60);
 		font-size: 0.5625rem;
 	}
-	select,
-	input,
-	textarea,
 	button {
 		border: 1px solid oklch(0.3 0.016 55);
 		border-radius: 0.3rem;
@@ -584,8 +590,6 @@
 		color: oklch(0.88 0.015 70);
 		font: inherit;
 	}
-	select,
-	input,
 	button {
 		min-height: 1.75rem;
 		padding: 0 0.4rem;
@@ -652,17 +656,6 @@
 		margin-top: 0.35rem;
 		color: oklch(0.65 0.015 60);
 	}
-	.offset input {
-		width: 5rem;
-	}
-	textarea {
-		width: 100%;
-		min-height: 4rem;
-		resize: vertical;
-		padding: 0.4rem;
-		font-family: ui-monospace, monospace;
-		line-height: 1.4;
-	}
 	.preview-values {
 		margin-top: 0.3rem;
 		color: oklch(0.62 0.015 60);
@@ -681,9 +674,6 @@
 		align-items: center;
 		gap: 0.35rem;
 		margin-top: 0.3rem;
-	}
-	.enabled input {
-		min-height: auto;
 	}
 	.actions {
 		display: flex;
@@ -772,10 +762,7 @@
 		stroke-width: 2;
 		stroke-dasharray: 5 4;
 	}
-	button:focus-visible,
-	select:focus-visible,
-	input:focus-visible,
-	textarea:focus-visible {
+	button:focus-visible {
 		outline: 2px solid oklch(0.66 0.14 45);
 		outline-offset: 2px;
 	}

@@ -176,7 +176,10 @@
 					<AppSelect
 						class="mt-0.5 h-8 w-full text-xs"
 						value={item.fillType ?? 'solid'}
-						options={[{ value: 'solid', label: m.video_editor_shape_fill_solid() }, { value: 'linear', label: m.video_editor_shape_fill_linear() }]}
+						options={[
+							{ value: 'solid', label: m.video_editor_shape_fill_solid() },
+							{ value: 'linear', label: m.video_editor_shape_fill_linear() }
+						]}
 						ariaLabel={m.video_editor_shape_fill_style()}
 						onValueChange={(value) => commit({ fillType: value as 'solid' | 'linear' })}
 					/>
@@ -257,9 +260,14 @@
 					<AppSelect
 						class="mt-0.5 h-8 w-full text-xs"
 						value={item.strokeLineCap ?? 'butt'}
-						options={[{ value: 'butt', label: m.video_editor_shape_line_cap_butt() }, { value: 'round', label: m.video_editor_shape_line_cap_round() }, { value: 'square', label: m.video_editor_shape_line_cap_square() }]}
+						options={[
+							{ value: 'butt', label: m.video_editor_shape_line_cap_butt() },
+							{ value: 'round', label: m.video_editor_shape_line_cap_round() },
+							{ value: 'square', label: m.video_editor_shape_line_cap_square() }
+						]}
 						ariaLabel={m.video_editor_shape_line_cap()}
-						onValueChange={(value) => commit({ strokeLineCap: value as NonNullable<TimelineItem['strokeLineCap']> })}
+						onValueChange={(value) =>
+							commit({ strokeLineCap: value as NonNullable<TimelineItem['strokeLineCap']> })}
 					/>
 				</label>
 				<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
@@ -267,9 +275,14 @@
 					<AppSelect
 						class="mt-0.5 h-8 w-full text-xs"
 						value={item.strokeLineJoin ?? 'miter'}
-						options={[{ value: 'miter', label: m.video_editor_shape_line_join_miter() }, { value: 'round', label: m.video_editor_shape_line_join_round() }, { value: 'bevel', label: m.video_editor_shape_line_join_bevel() }]}
+						options={[
+							{ value: 'miter', label: m.video_editor_shape_line_join_miter() },
+							{ value: 'round', label: m.video_editor_shape_line_join_round() },
+							{ value: 'bevel', label: m.video_editor_shape_line_join_bevel() }
+						]}
 						ariaLabel={m.video_editor_shape_line_join()}
-						onValueChange={(value) => commit({ strokeLineJoin: value as NonNullable<TimelineItem['strokeLineJoin']> })}
+						onValueChange={(value) =>
+							commit({ strokeLineJoin: value as NonNullable<TimelineItem['strokeLineJoin']> })}
 					/>
 				</label>
 			</div>
@@ -360,9 +373,15 @@
 				<AppSelect
 					class="mt-0.5 h-8 w-full text-xs"
 					value={item.shapeDirection ?? 'up'}
-					options={[{ value: 'up', label: m.video_editor_shape_direction_up() }, { value: 'down', label: m.video_editor_shape_direction_down() }, { value: 'left', label: m.video_editor_shape_direction_left() }, { value: 'right', label: m.video_editor_shape_direction_right() }]}
+					options={[
+						{ value: 'up', label: m.video_editor_shape_direction_up() },
+						{ value: 'down', label: m.video_editor_shape_direction_down() },
+						{ value: 'left', label: m.video_editor_shape_direction_left() },
+						{ value: 'right', label: m.video_editor_shape_direction_right() }
+					]}
 					ariaLabel={m.video_editor_shape_direction()}
-					onValueChange={(value) => commit({ shapeDirection: value as NonNullable<TimelineItem['shapeDirection']> })}
+					onValueChange={(value) =>
+						commit({ shapeDirection: value as NonNullable<TimelineItem['shapeDirection']> })}
 				/>
 			</label>
 		{/if}
@@ -421,7 +440,10 @@
 			<AppSelect
 				class="mt-0.5 h-8 w-full text-xs"
 				value={item.maskType ?? 'clip'}
-				options={[{ value: 'clip', label: m.video_editor_shape_mask_clip() }, { value: 'alpha', label: m.video_editor_shape_mask_alpha() }]}
+				options={[
+					{ value: 'clip', label: m.video_editor_shape_mask_clip() },
+					{ value: 'alpha', label: m.video_editor_shape_mask_alpha() }
+				]}
 				ariaLabel={m.video_editor_shape_mask_type()}
 				onValueChange={(value) => setMaskType(value as 'clip' | 'alpha')}
 			/>
