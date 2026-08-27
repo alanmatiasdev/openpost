@@ -156,6 +156,37 @@ describe('ClipPropertiesPanel reverse playback', () => {
 	});
 });
 
+describe('ClipPropertiesPanel noise reduction draft/commit', () => {
+	it('keeps slider drags as draft and commits exactly one undoable action on release', async () => {
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, { itemId: 'audio-item', onedit });
+		const panel = screen.getByTestId('noise-reduction-panel');
+		await expect.element(panel).toBeInTheDocument();
+		// SAFETY: checkbox is bits-ui primitive rendered as button
+		const enableCheckbox = panel
+			.query()
+			.querySelector('button[role="checkbox"]') as HTMLElement | null;
+		if (!enableCheckbox) throw new Error('Enable checkbox did not render');
+		await enableCheckbox.click();
+		expect(timelineStore.itemById.get('audio-item')?.audioNoiseReductionEnabled).toBe(true);
+		expect(commandHistory.undoStack.length).toBe(1);
+		commandHistory.clearHistory();
+		const slider = screen.getByRole('slider', { name: 'Noise reduction strength' });
+		await expect.element(slider).toBeInTheDocument();
+		await expect.element(slider).toBeEnabled();
+		slider.element().focus();
+		const { userEvent } = await import('vitest/browser');
+		await userEvent.keyboard('{ArrowRight>4/}');
+		await expect.element(slider).toHaveAttribute('aria-valuenow', '54');
+		// Exactly one undoable action after the gesture, not four
+		expect(commandHistory.undoStack.length).toBe(1);
+		expect(commandHistory.getLastCommandType()).toBe('UPDATE_CLIP_AUDIO');
+		expect(timelineStore.itemById.get('audio-item')?.audioNoiseReductionAmount).toBe(54);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('audio-item')?.audioNoiseReductionAmount).toBe(50);
+	});
+});
+
 describe('ClipPropertiesPanel text styling', () => {
 	it('edits complete block typography without losing related shadow values', async () => {
 		const onedit = vi.fn();

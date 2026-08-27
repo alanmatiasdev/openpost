@@ -3,6 +3,7 @@ import {
 	applyNoiseReduction,
 	applyNoiseReductionSync,
 	clampNoiseReductionAmount,
+	hannReconstructWithGainOne,
 	isNoiseReductionActive,
 	resolveNoiseReductionSettings,
 	StreamingNoiseReduction
@@ -187,23 +188,25 @@ describe('audio noise reduction - signal truth', () => {
 		}
 	});
 
-	it('gain=1 reconstruction max error <=1e-4 including tail', () => {
+	it('gain=1 periodic-Hann reconstruction max error <=1e-4 including tail', () => {
 		const sr = 48000;
-		const len = 48000; // 1 sec
+		const len = 48000;
 		const sig = sine(440, len, sr, 0.5);
-		// Use amount 0 with enabled false bypass would be exact, but test amount 0 with enabled true gives floorGain ~0.14, not 1
-		// Instead test disabled bypass and also test with amount 0 via our processor's floor not applied? For gain=1 we need amount 0 but floorGain 0.14 still attenuates slightly.
-		// Test reconstruction with our periodic Hann and no gain (simulate by disabling NR)
-		const out = applyNoiseReductionSync([sig], sr, { enabled: false, amount: 0 })[0]!;
-		expect(maxAbsDiff(sig, out)).toBeLessThan(1e-6);
-		// Now test with enabled but amount 0 via streaming with gain=1 path: our floorGain 0.14 would still affect, so not 1
-		// Instead test that our Hann COLA with no processing reconstructs within 1e-4 for streaming
-		const proc = new StreamingNoiseReduction(1, sr, { enabled: true, amount: 0 });
-		// amount 0 => floorGain 0.14, but with our logic gain will be ~0.9 for noise floor, still not 1. So not perfect.
-		// For true gain=1 test, we need to directly test Hann COLA without noise reduction
-		// With amount 1, floor still causes mild attenuation; check it stays within reasonable bound
-		const out2 = applyNoiseReductionSync([sig], sr, { enabled: true, amount: 1 })[0]!;
-		expect(maxAbsDiff(sig, out2)).toBeLessThan(0.6);
+		// Isolated STFT seam with gain=1 must reconstruct within 1e-4 for interior and tail
+		const out = hannReconstructWithGainOne([sig], sr)[0]!;
+		expect(out.length).toBe(len);
+		// Check interior (exclude first/last HOP where windowing causes edge attenuation)
+		const HOP = 512;
+		let maxErr = 0;
+		for (let i = HOP; i < len - HOP; i++)
+			maxErr = Math.max(maxErr, Math.abs((sig[i] ?? 0) - (out[i] ?? 0)));
+		expect(maxErr).toBeLessThan(1e-4);
+		// Tail after flush should also be within 1e-4 for the last HOP interior
+		let tailErr = 0;
+		for (let i = len - HOP; i < len; i++)
+			tailErr = Math.max(tailErr, Math.abs((sig[i] ?? 0) - (out[i] ?? 0)));
+		// Tail may have slightly larger error due to flush padding, allow 1e-4 as well with proper handling
+		expect(tailErr).toBeLessThan(1e-4);
 	});
 
 	it('identical preview and export pipeline: nr before pitch/eq preserves duration', async () => {
@@ -390,13 +393,11 @@ describe('audio noise reduction - streaming correctness and bounds', () => {
 		const len = 48000;
 		const sig = sine(200, len, sr, 0.5);
 		const out = applyNoiseReductionSync([sig], sr, { enabled: true, amount: 50 })[0]!;
-		// Check last 100 samples have no discontinuity vs expected sine continuation
 		const tail = out.slice(len - 200, len);
 		let maxJump = 0;
 		for (let i = 1; i < tail.length; i++)
 			maxJump = Math.max(maxJump, Math.abs((tail[i] ?? 0) - (tail[i - 1] ?? 0)));
-		expect(maxJump).toBeLessThan(0.1);
-		// Also check chunk boundary at 24000
+		expect(maxJump).toBeLessThan(0.02);
 		const proc = new StreamingNoiseReduction(1, sr, { enabled: true, amount: 50 });
 		const a = proc.process([sig.slice(0, 24000)], false)[0]!;
 		const b = proc.process([sig.slice(24000)], true)[0]!;
@@ -405,7 +406,14 @@ describe('audio noise reduction - streaming correctness and bounds', () => {
 		chunked.set(b, a.length);
 		const boundary = 24000;
 		const jump = Math.abs((chunked[boundary] ?? 0) - (chunked[boundary - 1] ?? 0));
-		expect(jump).toBeLessThan(0.05);
+		expect(jump).toBeLessThan(0.02);
+		// After final flush, queues must be zero
+		const inv = proc.getQueueInvariants();
+		expect(inv.inPending).toBe(0);
+		expect(inv.outPending).toBe(0);
+		expect(inv.overlap).toBe(0);
+		expect(inv.totalInput).toBe(len);
+		expect(inv.totalEmitted).toBe(len);
 	});
 
 	it('worker abort is race-safe and cleans up listeners', async () => {
@@ -428,35 +436,5 @@ describe('audio noise reduction - streaming correctness and bounds', () => {
 		// No retained listeners: we can check by ensuring a third call also works
 		const p3 = await processPreviewNoiseReduction([ch], sr, { enabled: true, amount: 60 });
 		expect(p3[0]!.length).toBe(len);
-	});
-});
-
-describe('noise reduction slider draft behavior', () => {
-	it('draft does not commit until release (single undo)', async () => {
-		const commits: number[] = [];
-		const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-		let draft: number | null = null;
-		const onValueChange = (v: number) => {
-			draft = clamp(v);
-		};
-		const onValueCommit = (v: number) => {
-			draft = null;
-			commits.push(clamp(v));
-		};
-		// Simulate pointer drag: multiple changes, one commit
-		onValueChange(30);
-		expect(draft).toBe(30);
-		expect(commits.length).toBe(0);
-		onValueChange(45);
-		expect(draft).toBe(45);
-		onValueChange(60);
-		expect(draft).toBe(60);
-		onValueCommit(60);
-		expect(draft).toBe(null);
-		expect(commits).toEqual([60]);
-		// Keyboard: ArrowUp should also go through draft then commit
-		onValueChange(61);
-		onValueCommit(61);
-		expect(commits).toEqual([60, 61]);
 	});
 });

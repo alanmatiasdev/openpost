@@ -13,7 +13,7 @@
  * bounded FIFO chunk lists, not repeated full-array copies.
  */
 
-/* oxlint-disable anti-slop/no-magic-numbers, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-unsafe-dictionary-type, eslint/prefer-const, anti-slop/no-known-value-widening -- DSP constants and bounded queues. */
+/* oxlint-disable anti-slop/no-magic-numbers, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-unsafe-dictionary-type, anti-slop/no-chained-type-assertions, eslint/prefer-const, anti-slop/no-known-value-widening -- DSP constants and bounded queues. */
 
 export interface AudioNoiseReductionFieldSource {
 	audioNoiseReductionEnabled?: boolean;
@@ -34,8 +34,10 @@ export const NOISE_REDUCTION_AMOUNT_MIN = 0;
 export const NOISE_REDUCTION_AMOUNT_MAX = 100;
 export const NOISE_REDUCTION_DEFAULT_AMOUNT = 50;
 
-const FRAME_SIZE = 1024;
-const HOP_SIZE = 512;
+export const NOISE_REDUCTION_FRAME_SIZE = 1024;
+export const NOISE_REDUCTION_HOP_SIZE = 512;
+const FRAME_SIZE = NOISE_REDUCTION_FRAME_SIZE;
+const HOP_SIZE = NOISE_REDUCTION_HOP_SIZE;
 const FFT_SIZE = FRAME_SIZE;
 const BIN_COUNT = FFT_SIZE / 2 + 1;
 const NOISE_PERCENTILE = 0.25;
@@ -155,6 +157,34 @@ function hannWindowPeriodic(size: number): Float64Array {
 }
 
 const HANN = hannWindowPeriodic(FRAME_SIZE);
+export const NOISE_REDUCTION_HANN = HANN;
+
+export function hannReconstructWithGainOne(
+	channels: Float32Array[],
+	sampleRate: number
+): Float32Array[] {
+	// Isolated STFT overlap-add seam with periodic Hann and gain=1, for independent
+	// reconstruction testing. Uses same single-window 50% overlap as the processor.
+	if (channels.length === 0 || (channels[0]?.length ?? 0) === 0)
+		return channels.map((c) => c.slice());
+	const proc = new StreamingNoiseReduction(channels.length, sampleRate, {
+		enabled: true,
+		amount: 0
+	});
+	// Force gain=1 by overriding internal gain state after construction
+	// SAFETY: test-only override of private gain state
+	(
+		proc as unknown as { floorGain: number; overSubtraction: number; prevGain: Float64Array }
+	).floorGain = 1;
+	(proc as unknown as { floorGain: number; overSubtraction: number }).overSubtraction = 0;
+	const g = (proc as unknown as { prevGain: Float64Array }).prevGain;
+	for (let i = 0; i < g.length; i++) g[i] = 1;
+	// Feed as one shot with flush to include tail (process with isLast already flushes)
+	return proc.process(
+		channels.map((c) => c.slice()),
+		true
+	);
+}
 
 function throwIfAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) throw new DOMException('Noise reduction cancelled.', 'AbortError');
@@ -218,6 +248,7 @@ export class StreamingNoiseReduction {
 		);
 	}
 
+	// oxlint-disable-next-line anti-slop/no-known-value-widening -- test helper returns named invariants
 	getQueueInvariants(): {
 		inPending: number;
 		outPending: number;
@@ -250,6 +281,7 @@ export class StreamingNoiseReduction {
 		if ((this.inLengths[c] ?? 0) < FRAME_SIZE) return false;
 		let pos = 0;
 		let chunkIdx = 0;
+		// oxlint-disable-next-line eslint/prefer-const -- off is advanced per chunk
 		let off = this.inOffsets[c] ?? 0;
 		// Find starting chunk
 		// We maintain inOffsets as offset within first chunk, so we can iterate
@@ -348,6 +380,7 @@ export class StreamingNoiseReduction {
 				// Peek frame
 				let p = 0;
 				let chunkIdx = 0;
+				// oxlint-disable-next-line eslint/prefer-const -- off advances per chunk
 				let off = this.inOffsets[c] ?? 0;
 				while (p < FRAME_SIZE) {
 					const chunk = this.inChunks[c]![chunkIdx];
@@ -472,6 +505,8 @@ export class StreamingNoiseReduction {
 			// Also need to handle case where we had already emitted some via processFrames before isLast short check
 			// But for short, processFrames would not have run (since < FRAME), so no out yet.
 			this.totalEmitted = this.totalInput;
+			// Clear overlap to avoid tail click on next use
+			for (let c = 0; c < this.channelCount; c++) this.overlap[c] = new Float32Array(0);
 			return result;
 		}
 
@@ -506,7 +541,14 @@ export class StreamingNoiseReduction {
 			// Now drain exactly remaining
 			const want = this.totalInput - this.totalEmitted;
 			if (want <= 0) {
-				// Also need to handle overlap tail click avoidance: apply fade on final hop if needed
+				for (let c = 0; c < this.channelCount; c++) {
+					this.inChunks[c] = [];
+					this.inOffsets[c] = 0;
+					this.inLengths[c] = 0;
+					this.outChunks[c] = [];
+					this.outLengths[c] = 0;
+					this.overlap[c] = new Float32Array(0);
+				}
 				return this.channelCount === 1
 					? [new Float32Array(0)]
 					: Array.from({ length: this.channelCount }, () => new Float32Array(0));
@@ -534,6 +576,17 @@ export class StreamingNoiseReduction {
 				result.push(Float32Array.from(buf, (v) => Math.max(-1, Math.min(1, v))));
 			}
 			this.totalEmitted += want;
+			// Clear residual queues and overlap after final flush to avoid tail click and ensure invariants zero
+			if (this.totalEmitted >= this.totalInput) {
+				for (let c = 0; c < this.channelCount; c++) {
+					this.inChunks[c] = [];
+					this.inOffsets[c] = 0;
+					this.inLengths[c] = 0;
+					this.outChunks[c] = [];
+					this.outLengths[c] = 0;
+					this.overlap[c] = new Float32Array(0);
+				}
+			}
 			return result;
 		}
 
