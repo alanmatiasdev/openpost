@@ -674,6 +674,12 @@ export interface TimelineItem extends TextStyleFields, AudioEqFieldSource, Audio
 	captionSource?: CaptionSource;
 	cues?: SubtitleCue[];
 	subtitleStyleScale?: number;
+	/** Caption highlight mode for word-level karaoke highlighting. */
+	captionHighlightMode?: 'normal' | 'karaoke';
+	/** Active karaoke word foreground color. */
+	karaokeActiveColor?: string;
+	/** Optional active karaoke word background/accent. */
+	karaokeActiveBackground?: string;
 
 	// Source dimensions (video/image)
 	sourceWidth?: number;
