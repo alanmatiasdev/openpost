@@ -309,6 +309,7 @@ export class TimelineFrameRenderer {
 				item.type === 'lottie' ||
 				item.type === 'text' ||
 				item.type === 'shape' ||
+				item.type === 'background' ||
 				item.type === 'composition' ||
 				(this.burnSubtitles && item.type === 'subtitle')
 		);
@@ -480,6 +481,7 @@ export class TimelineFrameRenderer {
 		originalItem: TimelineItem,
 		frame: number
 	): Promise<StackLayerSource | null> {
+		if (resolvedItem.type === 'background') return null;
 		if (resolvedItem.type === 'subtitle') {
 			const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
 			if (!cue) return null;
@@ -646,20 +648,18 @@ export class TimelineFrameRenderer {
 				frame
 			);
 			const source = await this.sourceForItem(resolvedItem, item, frame);
-			return source
-				? {
-						source,
-						item: resolvedItem,
-						alpha:
-							itemOpacity(resolvedItem) *
-							visualClipFadeOpacityAtFrame(resolvedItem, frame, this.fps),
-						masks: shapeMasksForTrack(
-							activeMasks,
-							this.trackOrderById.get(item.trackId) ?? 0,
-							this.trackOrderById
-						)
-					}
-				: null;
+			if (!source && resolvedItem.type !== 'background') return null;
+			return {
+				source,
+				item: resolvedItem,
+				alpha:
+					itemOpacity(resolvedItem) * visualClipFadeOpacityAtFrame(resolvedItem, frame, this.fps),
+				masks: shapeMasksForTrack(
+					activeMasks,
+					this.trackOrderById.get(item.trackId) ?? 0,
+					this.trackOrderById
+				)
+			};
 		};
 		let transitionRendered = false;
 		for (const item of this.orderedItems) {

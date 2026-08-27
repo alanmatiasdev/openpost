@@ -92,6 +92,16 @@ const SHAPE_STROKE_PROPERTIES: KeyframeProperty[] = [
 	'taperEndLength'
 ];
 
+const BACKGROUND_PROPERTIES: KeyframeProperty[] = [
+	'backgroundRotation',
+	'backgroundScale',
+	'backgroundOffsetX',
+	'backgroundOffsetY',
+	'backgroundSmoothness',
+	'backgroundDensity',
+	'backgroundForegroundOpacity'
+];
+
 export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProperty[] {
 	let builtIn: KeyframeProperty[];
 	switch (item.type) {
@@ -121,6 +131,9 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			break;
 		case 'adjustment':
 			builtIn = [];
+			break;
+		case 'background':
+			builtIn = [...VISUAL_PROPERTIES, ...BACKGROUND_PROPERTIES];
 			break;
 	}
 	return [...builtIn, ...getAnimatableEffectPropertiesForItem(item)];
@@ -226,6 +239,7 @@ export function resolvePreExpressionItemAt(
 		transform: item.transform ? { ...item.transform } : undefined,
 		crop: item.crop ? { ...item.crop } : undefined,
 		textShadow: item.textShadow ? { ...item.textShadow } : undefined,
+		background: item.background ? { ...item.background } : undefined,
 		effects: resolveAnimatedEffectsAt(item, absoluteFrame)
 	};
 	const activeVectors = new Set<VectorKeyframeProperty>();
@@ -315,6 +329,34 @@ function applyResolvedValue(
 				...item,
 				textShadow: { ...shadowOrDefault(item), blur: Math.max(0, value) }
 			};
+		case 'backgroundRotation': {
+			if (!item.background) return item;
+			return { ...item, background: { ...item.background, rotation: value } };
+		}
+		case 'backgroundScale': {
+			if (!item.background) return item;
+			return { ...item, background: { ...item.background, scale: value } };
+		}
+		case 'backgroundOffsetX': {
+			if (!item.background) return item;
+			return { ...item, background: { ...item.background, offsetX: value } };
+		}
+		case 'backgroundOffsetY': {
+			if (!item.background) return item;
+			return { ...item, background: { ...item.background, offsetY: value } };
+		}
+		case 'backgroundSmoothness':
+			return item.background?.kind === 'mesh-gradient'
+				? { ...item, background: { ...item.background, smoothness: value } }
+				: item;
+		case 'backgroundDensity':
+			return item.background?.kind === 'pattern'
+				? { ...item, background: { ...item.background, density: value } }
+				: item;
+		case 'backgroundForegroundOpacity':
+			return item.background?.kind === 'pattern'
+				? { ...item, background: { ...item.background, foregroundOpacity: value } }
+				: item;
 	}
 	return item;
 }

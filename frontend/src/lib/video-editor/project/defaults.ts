@@ -13,6 +13,7 @@ import type {
 	TimelineTrack
 } from './types';
 import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
+import { clampBackground } from '../backgrounds/types';
 import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-groups';
 import { m } from '$lib/paraglide/messages';
 import { normalizeAudioEffects } from '../audio/audio-effects';
@@ -107,6 +108,27 @@ export interface NormalizedProject {
 	warnings: ProjectWarning[];
 }
 
+function normalizeBackground(item: TimelineItem): TimelineItem {
+	if (item.type !== 'background') return item;
+	if (!item.background) {
+		return {
+			...item,
+			background: {
+				kind: 'mesh-gradient',
+				colors: ['#ff7a18', '#af002d', '#319197', '#1a1a2e'],
+				smoothness: 0.55,
+				rotation: 0,
+				scale: 1,
+				offsetX: 0,
+				offsetY: 0
+			}
+		};
+	}
+	const clamped = clampBackground(item.background);
+	if (JSON.stringify(clamped) === JSON.stringify(item.background)) return item;
+	return { ...item, background: clamped };
+}
+
 function normalizeAudioEffectsForItem(item: TimelineItem): TimelineItem {
 	if (!item.audioEffects || !Array.isArray(item.audioEffects)) return item;
 	const normalized = normalizeAudioEffects(item.audioEffects);
@@ -157,6 +179,11 @@ export function normalizeProject(project: Project): NormalizedProject {
 	const normalizeItems = (items: TimelineItem[]): TimelineItem[] =>
 		items.map((item) => {
 			let normalized = normalizeShapeStrokeStyle(item);
+			const bgNormalized = normalizeBackground(normalized);
+			if (bgNormalized !== normalized) {
+				normalized = bgNormalized;
+				shapeStylesRepaired = true;
+			}
 			const withEffects = normalizeAudioEffectsForItem(normalized);
 			if (withEffects !== normalized) {
 				normalized = withEffects;

@@ -4,7 +4,7 @@ import { CURRENT_SCHEMA_VERSION, getMigrationsToApply } from './migrations';
 describe('project migration registry', () => {
 	it('returns an ordered contiguous migration plan', () => {
 		expect(getMigrationsToApply(1, CURRENT_SCHEMA_VERSION).map((entry) => entry.version)).toEqual([
-			2, 3
+			2, 3, 4
 		]);
 		expect(getMigrationsToApply(CURRENT_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION)).toEqual([]);
 	});

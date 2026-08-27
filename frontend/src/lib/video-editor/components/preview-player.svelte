@@ -177,9 +177,16 @@
 	const activeItems = $derived.by(() =>
 		paintOrder(timelineStore.items, timelineStore.tracks).filter(
 			(item) =>
-				['video', 'image', 'lottie', 'text', 'subtitle', 'shape', 'composition'].includes(
-					item.type
-				) &&
+				[
+					'video',
+					'image',
+					'lottie',
+					'text',
+					'subtitle',
+					'shape',
+					'composition',
+					'background'
+				].includes(item.type) &&
 				((displayFrame >= item.from && displayFrame < item.from + item.durationInFrames) ||
 					item.id === activeTransition?.outgoing ||
 					item.id === activeTransition?.incoming)
@@ -213,6 +220,7 @@
 			colorPreviewStore.activePicker !== null ||
 			colorPreviewStore.frameCaptureItemId !== null ||
 			draftCornerPin !== null ||
+			activeItems.some((item) => item.type === 'background') ||
 			activeItems.some((item) => item.type === 'shape' && item.isMask === true) ||
 			activeItems.some((item) => hasCornerPin(item.cornerPin)) ||
 			activeItems.some(
@@ -548,8 +556,8 @@
 			.map((item) => resolveVisualItem(item, false));
 		const resolveParticipant = (item: TimelineItem, beforeColor: boolean) => {
 			if (item.type === 'shape' && item.isMask === true) return null;
-			const source = sourceProviders.get(item.id)?.();
-			if (!source) return null;
+			const source = sourceProviders.get(item.id)?.() ?? null;
+			if (!source && item.type !== 'background') return null;
 			const resolved = resolveVisualItem(item, beforeColor);
 			return {
 				source,

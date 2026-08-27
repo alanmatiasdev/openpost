@@ -40,7 +40,8 @@ export const TIMELINE_ITEM_KINDS = [
 	'shape',
 	'adjustment',
 	'controller',
-	'composition'
+	'composition',
+	'background'
 ] as const;
 
 export type TimelineItemKind = (typeof TIMELINE_ITEM_KINDS)[number];
@@ -299,6 +300,13 @@ export type BuiltInKeyframeProperty =
 	| 'rotation'
 	| 'opacity'
 	| 'cornerRadius'
+	| 'backgroundRotation'
+	| 'backgroundScale'
+	| 'backgroundOffsetX'
+	| 'backgroundOffsetY'
+	| 'backgroundSmoothness'
+	| 'backgroundDensity'
+	| 'backgroundForegroundOpacity'
 	| 'cropLeft'
 	| 'cropRight'
 	| 'cropTop'
@@ -583,6 +591,34 @@ export interface SubtitleWord {
 	text: string;
 }
 
+export type BackgroundKind = 'mesh-gradient' | 'pattern';
+export type BackgroundPatternKind = 'dots' | 'grid' | 'stripes' | 'checker';
+
+export interface BackgroundMeshBackground {
+	kind: 'mesh-gradient';
+	colors: [string, string, string, string];
+	smoothness: number;
+	rotation: number;
+	scale: number;
+	offsetX: number;
+	offsetY: number;
+}
+
+export interface BackgroundPatternBackground {
+	kind: 'pattern';
+	pattern: BackgroundPatternKind;
+	foreground: string;
+	background: string;
+	scale: number;
+	rotation: number;
+	offsetX: number;
+	offsetY: number;
+	density: number;
+	foregroundOpacity: number;
+}
+
+export type ProceduralBackground = BackgroundMeshBackground | BackgroundPatternBackground;
+
 export interface TimelineItem
 	extends
 		TextStyleFields,
@@ -737,6 +773,9 @@ export interface TimelineItem
 
 	// Ordered audio effect rack after EQ and fades, shared by preview and export
 	audioEffects?: import('../audio/audio-effects').AudioEffect[];
+
+	// Procedural background (mesh gradient / repeatable pattern). Only for `background` items.
+	background?: ProceduralBackground;
 
 	// Per-clip compositing blend mode for the GPU pipeline (25 modes; see
 	// effects/gpu/blend-modes.ts). Absent/'normal' keeps opacity-only blending.

@@ -1,6 +1,6 @@
 import type { Project, ProjectTimeline, TimelineItem, TimelineTrack } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export interface ProjectMigration {
 	version: number;
@@ -65,6 +65,44 @@ const PROJECT_MIGRATIONS: ReadonlyMap<number, ProjectMigration> = new Map([
 				project.timeline
 					? { ...project, timeline: migrateTimelineIdentity(project.timeline) }
 					: project
+		}
+	],
+	[
+		4,
+		{
+			version: 4,
+			description: 'Add procedural background items with clone-safe defaults',
+			migrate: (project) => {
+				if (!project.timeline) return project;
+				const patchItems = (items: TimelineItem[]): TimelineItem[] =>
+					items.map((item) =>
+						item.type === 'background' && !item.background
+							? {
+									...item,
+									background: {
+										kind: 'mesh-gradient',
+										colors: ['#ff7a18', '#af002d', '#319197', '#1a1a2e'],
+										smoothness: 0.55,
+										rotation: 0,
+										scale: 1,
+										offsetX: 0,
+										offsetY: 0
+									}
+								}
+							: item
+					);
+				return {
+					...project,
+					timeline: {
+						...project.timeline,
+						items: patchItems(project.timeline.items),
+						compositions: project.timeline.compositions?.map((c) => ({
+							...c,
+							items: patchItems(c.items)
+						}))
+					}
+				};
+			}
 		}
 	]
 ]);

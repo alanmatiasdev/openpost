@@ -22,6 +22,7 @@
 	} from '$lib/video-editor/media/reverse-conform-service';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
+	import BackgroundPropertiesPanel from './background-properties-panel.svelte';
 	import CornerPinPropertiesPanel from './corner-pin-properties-panel.svelte';
 	import LottiePropertiesPanel from './lottie-properties-panel.svelte';
 	import TextPropertiesPanel from './text-properties-panel.svelte';
@@ -567,6 +568,10 @@
 
 		{#if item.type === 'shape'}
 			<ShapePropertiesPanel {item} {onedit} />
+		{/if}
+
+		{#if item.type === 'background'}
+			<BackgroundPropertiesPanel {item} {onedit} />
 		{/if}
 
 		{#if item.type === 'lottie'}
