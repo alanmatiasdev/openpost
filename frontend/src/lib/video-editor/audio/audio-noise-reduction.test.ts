@@ -5,6 +5,7 @@ import {
 	clampNoiseReductionAmount,
 	hannReconstructWithGainOne,
 	isNoiseReductionActive,
+	NOISE_REDUCTION_HOP_SIZE,
 	resolveNoiseReductionSettings,
 	StreamingNoiseReduction
 } from './audio-noise-reduction';
@@ -182,9 +183,7 @@ describe('audio noise reduction - signal truth', () => {
 			const input = new Float32Array(len).fill(0.8);
 			const out = applyNoiseReductionSync([input], 48000, { enabled: true, amount: 60 })[0]!;
 			expect(out.length).toBe(len);
-			// First sample should not be zeroed by Hann[0]
-			expect(Math.abs(out[0] ?? 0)).toBeGreaterThan(0.5);
-			expect(maxAbsDiff(out, input)).toBeLessThan(0.3); // bypass or mild
+			expect(maxAbsDiff(out, input)).toBeLessThan(1e-7);
 		}
 	});
 
@@ -192,20 +191,12 @@ describe('audio noise reduction - signal truth', () => {
 		const sr = 48000;
 		const len = 48000;
 		const sig = sine(440, len, sr, 0.5);
-		// Isolated STFT seam with gain=1 must reconstruct within 1e-4 for interior and tail
 		const out = hannReconstructWithGainOne([sig], sr)[0]!;
 		expect(out.length).toBe(len);
-		// Check interior (exclude first/last HOP where windowing causes edge attenuation)
-		const HOP = 512;
-		let maxErr = 0;
-		for (let i = HOP; i < len - HOP; i++)
-			maxErr = Math.max(maxErr, Math.abs((sig[i] ?? 0) - (out[i] ?? 0)));
-		expect(maxErr).toBeLessThan(1e-4);
-		// Tail after flush should also be within 1e-4 for the last HOP interior
+		expect(maxAbsDiff(sig, out)).toBeLessThan(1e-4);
 		let tailErr = 0;
-		for (let i = len - HOP; i < len; i++)
+		for (let i = len - NOISE_REDUCTION_HOP_SIZE; i < len; i++)
 			tailErr = Math.max(tailErr, Math.abs((sig[i] ?? 0) - (out[i] ?? 0)));
-		// Tail may have slightly larger error due to flush padding, allow 1e-4 as well with proper handling
 		expect(tailErr).toBeLessThan(1e-4);
 	});
 
