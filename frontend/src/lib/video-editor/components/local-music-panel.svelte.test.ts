@@ -105,8 +105,16 @@ describe('LocalMusicPanel', () => {
 		);
 		finishGeneration();
 		await expect.element(screen.getByRole('article').getByText('Cinematic pulse')).toBeVisible();
-		expect(screen.container.querySelector('audio')).not.toBeNull();
-		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth + 2);
+		const article = screen.container.querySelector('article');
+		const audio = screen.container.querySelector('audio');
+		if (!article || !audio) throw new Error('Expected a generated music preview.');
+		const containerBounds = screen.container.getBoundingClientRect();
+		for (const element of [article, audio]) {
+			const bounds = element.getBoundingClientRect();
+			expect(bounds.left).toBeGreaterThanOrEqual(containerBounds.left - 0.5);
+			expect(bounds.right).toBeLessThanOrEqual(containerBounds.right + 0.5);
+		}
+		expect(getComputedStyle(article).overflowX).toBe('hidden');
 		await page.screenshot({
 			element: screen.container,
 			path: '../../../../.svelte-kit/openpost-local-music-panel.png'
