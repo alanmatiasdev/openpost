@@ -1,6 +1,12 @@
-/* oxlint-disable anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-chained-type-assertions -- worker message narrowing and transferables are owned. */
 import type { ResolvedAudioNoiseReductionSettings } from './audio-noise-reduction';
 import { applyNoiseReduction } from './audio-noise-reduction';
+import type {
+	NoiseReductionAbort,
+	NoiseReductionCompleteResponse,
+	NoiseReductionErrorResponse,
+	NoiseReductionProgressResponse,
+	NoiseReductionRequest
+} from './audio-noise-reduction.worker';
 
 let worker: Worker | null = null;
 
@@ -25,6 +31,15 @@ export function disposeNoiseReductionPreviewWorker(): void {
 	}
 }
 
+function previewTransferOptions(buffers: ArrayBuffer[]): StructuredSerializeOptions {
+	return { transfer: buffers };
+}
+
+type WorkerResponse =
+	| NoiseReductionProgressResponse
+	| NoiseReductionCompleteResponse
+	| NoiseReductionErrorResponse;
+
 export async function processPreviewNoiseReduction(
 	channels: Float32Array[],
 	sampleRate: number,
@@ -41,7 +56,7 @@ export async function processPreviewNoiseReduction(
 	const requestId = crypto.randomUUID();
 	const channelBuffers = channels.map((ch) => {
 		const copy = new Float32Array(ch);
-		return copy.buffer as ArrayBuffer;
+		return copy.buffer.slice(copy.byteOffset, copy.byteOffset + copy.byteLength);
 	});
 	const channelLengths = channels.map((ch) => ch.length);
 
@@ -52,19 +67,15 @@ export async function processPreviewNoiseReduction(
 			w.postMessage({
 				type: 'abort',
 				requestId
-			} satisfies import('./audio-noise-reduction.worker').NoiseReductionAbort);
+			} satisfies NoiseReductionAbort);
 			reject(new DOMException('Aborted', 'AbortError'));
 		};
 		signal?.addEventListener('abort', handleAbort, { once: true });
 
 		const onMessage = (event: MessageEvent): void => {
 			// SAFETY: messages are from the owned worker module; narrow by discriminant.
-			const data = event.data as
-				| import('./audio-noise-reduction.worker').NoiseReductionProgressResponse
-				| import('./audio-noise-reduction.worker').NoiseReductionCompleteResponse
-				| import('./audio-noise-reduction.worker').NoiseReductionErrorResponse;
-			// oxlint-disable-next-line anti-slop/require-safety-comment-for-type-assertion -- narrow to requestId for stale filtering
-			if (!data || (data as { requestId?: string }).requestId !== requestId) return;
+			const data = event.data as WorkerResponse;
+			if (!data || data.requestId !== requestId) return;
 			if (data.type === 'progress') {
 				onProgress?.(data.progress);
 				return;
@@ -72,7 +83,7 @@ export async function processPreviewNoiseReduction(
 			if (data.type === 'complete') {
 				cleanup();
 				const out = data.channelBuffers.map((ab, i) =>
-					// oxlint-disable-next-line anti-slop/require-safety-comment-for-type-assertion -- lengths are 1:1 with buffers by contract
+					// SAFETY: lengths are 1:1 with buffers by worker contract.
 					new Float32Array(ab).slice(0, data.channelLengths[i]!)
 				);
 				resolve(out);
@@ -106,9 +117,8 @@ export async function processPreviewNoiseReduction(
 				amount: settings.amount,
 				channelBuffers,
 				channelLengths
-			} satisfies import('./audio-noise-reduction.worker').NoiseReductionRequest,
-			// oxlint-disable-next-line anti-slop/no-chained-type-assertions, anti-slop/require-safety-comment-for-type-assertion -- transfer list is typed by contract and owned
-			{ transfer: channelBuffers } as unknown as StructuredSerializeOptions
+			} satisfies NoiseReductionRequest,
+			previewTransferOptions(channelBuffers)
 		);
 	});
 }

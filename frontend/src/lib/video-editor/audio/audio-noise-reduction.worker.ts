@@ -1,5 +1,3 @@
-/* Worker for preview noise reduction. Small, owned, cancellable. */
-/* oxlint-disable anti-slop/no-chained-type-assertions, anti-slop/require-safety-comment-for-type-assertion -- worker transferables are typed by contract. */
 import { StreamingNoiseReduction } from './audio-noise-reduction';
 
 export interface NoiseReductionRequest {
@@ -39,6 +37,10 @@ type WorkerRequest = NoiseReductionRequest | NoiseReductionAbort;
 
 const active = new Map<string, AbortController>();
 
+function completeTransferOptions(buffers: ArrayBuffer[]): StructuredSerializeOptions {
+	return { transfer: buffers };
+}
+
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 	const data = event.data;
 	if (data.type === 'abort') {
@@ -58,7 +60,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 			amount
 		});
 		const total = channels[0]?.length ?? 0;
-		const windowSize = 120_000; // 2.5 sec windows for bounded transfer
+		const windowSize = 120_000;
 		let offset = 0;
 		const outChannels = channels.map(() => new Float32Array(total));
 		while (offset < total) {
@@ -78,7 +80,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 				progress
 			} satisfies NoiseReductionProgressResponse);
 		}
-		const finalBuffers = outChannels.map((ch) => ch.buffer as ArrayBuffer);
+		const finalBuffers = outChannels.map((ch) => ch.buffer.slice(0));
 		const lengths = outChannels.map((ch) => ch.length);
 		self.postMessage(
 			{
@@ -87,10 +89,10 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 				channelBuffers: finalBuffers,
 				channelLengths: lengths
 			} satisfies NoiseReductionCompleteResponse,
-			{ transfer: finalBuffers } as unknown as StructuredSerializeOptions
+			completeTransferOptions(finalBuffers)
 		);
 	} catch (error) {
-		if ((error as DOMException)?.name === 'AbortError') return;
+		if (error instanceof DOMException && error.name === 'AbortError') return;
 		self.postMessage({
 			type: 'error',
 			requestId,

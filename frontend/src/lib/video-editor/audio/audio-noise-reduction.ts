@@ -1,19 +1,4 @@
-/* Deterministic local noise reduction for recorded clips.
- * No cloud, no ML. Single stateful STFT pipeline shared by preview and export.
- * Preview preparation runs off the UI thread via a small worker.
- *
- * Latency contract: StreamingNoiseReduction is stateful and may return fewer
- * samples than the input chunk; the caller must concatenate every `process`
- * return plus the final `flush()` (or `process(..., true)`) to obtain exactly
- * `totalInput` samples. Chunk sizes are arbitrary; output is deterministic
- * regardless of how input is split. Do not assume 1:1 chunk correspondence.
- *
- * Memory: internal DSP temp is O(FRAME) (≈ a few KB) plus small gain/noise
- * state. Output buffers are caller-owned O(total). Input/output queues are
- * bounded FIFO chunk lists, not repeated full-array copies.
- */
-
-/* oxlint-disable anti-slop/no-magic-numbers, anti-slop/require-safety-comment-for-type-assertion, anti-slop/no-unsafe-dictionary-type, anti-slop/no-chained-type-assertions, eslint/prefer-const, anti-slop/no-known-value-widening -- DSP constants and bounded queues. */
+import type { TimelineItem } from '../project/types';
 
 export interface AudioNoiseReductionFieldSource {
 	audioNoiseReductionEnabled?: boolean;
@@ -57,12 +42,12 @@ export function resolveNoiseReductionSettings(
 ): ResolvedAudioNoiseReductionSettings {
 	if (!source) return { enabled: false, amount: NOISE_REDUCTION_DEFAULT_AMOUNT };
 	const enabled =
-		(source as AudioNoiseReductionFieldSource).audioNoiseReductionEnabled ??
-		(source as AudioNoiseReductionSettings).enabled ??
+		('audioNoiseReductionEnabled' in source ? source.audioNoiseReductionEnabled : undefined) ??
+		('enabled' in source ? source.enabled : undefined) ??
 		false;
 	const rawAmount =
-		(source as AudioNoiseReductionFieldSource).audioNoiseReductionAmount ??
-		(source as AudioNoiseReductionSettings).amount ??
+		('audioNoiseReductionAmount' in source ? source.audioNoiseReductionAmount : undefined) ??
+		('amount' in source ? source.amount : undefined) ??
 		NOISE_REDUCTION_DEFAULT_AMOUNT;
 	return { enabled: !!enabled, amount: clampNoiseReductionAmount(rawAmount) };
 }
@@ -84,15 +69,13 @@ export function hasNoiseReductionOverride(source?: AudioNoiseReductionFieldSourc
 
 export function buildNoiseReductionPatch(
 	settings: AudioNoiseReductionSettings
-): Partial<import('../project/types').TimelineItem> {
-	const patch: Record<string, unknown> = {};
+): Partial<TimelineItem> {
+	const patch: Partial<TimelineItem> = {};
 	if (settings.enabled !== undefined) patch.audioNoiseReductionEnabled = !!settings.enabled;
 	if (settings.amount !== undefined)
 		patch.audioNoiseReductionAmount = clampNoiseReductionAmount(settings.amount);
-	return patch as Partial<import('../project/types').TimelineItem>;
+	return patch;
 }
-
-// -- FFT --
 
 function reverseBits(value: number, bits: number): number {
 	let reversed = 0;
@@ -149,7 +132,6 @@ function fftInPlace(real: Float64Array, imag: Float64Array, invert: boolean): vo
 	}
 }
 
-// Periodic Hann (COLA-correct for 50% overlap, sum = 1 with single window).
 function hannWindowPeriodic(size: number): Float64Array {
 	const win = new Float64Array(size);
 	for (let i = 0; i < size; i++) win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / size));
@@ -163,23 +145,17 @@ export function hannReconstructWithGainOne(
 	channels: Float32Array[],
 	sampleRate: number
 ): Float32Array[] {
-	// Isolated STFT overlap-add seam with periodic Hann and gain=1, for independent
-	// reconstruction testing. Uses same single-window 50% overlap as the processor.
 	if (channels.length === 0 || (channels[0]?.length ?? 0) === 0)
 		return channels.map((c) => c.slice());
-	const proc = new StreamingNoiseReduction(channels.length, sampleRate, {
-		enabled: true,
-		amount: 0
-	});
-	// Force gain=1 by overriding internal gain state after construction
-	// SAFETY: test-only override of private gain state
-	(
-		proc as unknown as { floorGain: number; overSubtraction: number; prevGain: Float64Array }
-	).floorGain = 1;
-	(proc as unknown as { floorGain: number; overSubtraction: number }).overSubtraction = 0;
-	const g = (proc as unknown as { prevGain: Float64Array }).prevGain;
-	for (let i = 0; i < g.length; i++) g[i] = 1;
-	// Feed as one shot with flush to include tail (process with isLast already flushes)
+	const proc = new StreamingNoiseReduction(
+		channels.length,
+		sampleRate,
+		{
+			enabled: true,
+			amount: 0
+		},
+		{ unityGain: true }
+	);
 	return proc.process(
 		channels.map((c) => c.slice()),
 		true
@@ -188,6 +164,14 @@ export function hannReconstructWithGainOne(
 
 function throwIfAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) throw new DOMException('Noise reduction cancelled.', 'AbortError');
+}
+
+export interface QueueInvariants {
+	inPending: number;
+	outPending: number;
+	overlap: number;
+	totalInput: number;
+	totalEmitted: number;
 }
 
 function quantile(sorted: Float64Array, q: number): number {
@@ -200,12 +184,6 @@ function quantile(sorted: Float64Array, q: number): number {
 	return sorted[lo]! * (1 - frac) + sorted[hi]! * frac;
 }
 
-// ---------------------------------------------------------------------------
-// Stateful bounded STFT processor. Single source of truth for preview (via
-// worker) and export. Internal temp is O(FRAME) plus small state; output is
-// caller-owned O(total). Queues are bounded FIFO chunk lists.
-// ---------------------------------------------------------------------------
-
 export class StreamingNoiseReduction {
 	private readonly amount: number;
 	private readonly sampleRate: number;
@@ -214,11 +192,10 @@ export class StreamingNoiseReduction {
 	private readonly overSubtraction: number;
 	private persistentFloor: number | null = null;
 	private prevGain: Float64Array;
-	// Bounded FIFO queues: list of chunks plus read offset, not repeated concatenation
-	private inChunks: Float32Array[][]; // per channel list
-	private inOffsets: number[]; // per channel read offset within first chunk
-	private inLengths: number[]; // per channel total pending samples
-	private outChunks: Float32Array[][]; // per channel emitted chunks not yet drained
+	private inChunks: Float32Array[][];
+	private inOffsets: number[];
+	private inLengths: number[];
+	private outChunks: Float32Array[][];
 	private outLengths: number[];
 	private overlap: Float32Array[];
 	private totalInput = 0;
@@ -227,16 +204,24 @@ export class StreamingNoiseReduction {
 	constructor(
 		channelCount: number,
 		sampleRate: number,
-		settings: ResolvedAudioNoiseReductionSettings
+		settings: ResolvedAudioNoiseReductionSettings,
+		options?: { unityGain?: boolean }
 	) {
 		this.channelCount = Math.max(1, channelCount);
 		this.sampleRate = sampleRate;
 		this.amount = settings.amount;
-		const normalized = settings.amount / 100;
-		this.overSubtraction = 1 + normalized * 2;
-		this.floorGain = 0.02 + (1 - normalized) * 0.12;
-		this.prevGain = new Float64Array(BIN_COUNT);
-		this.prevGain.fill(1);
+		if (options?.unityGain) {
+			this.overSubtraction = 0;
+			this.floorGain = 1;
+			this.prevGain = new Float64Array(BIN_COUNT);
+			this.prevGain.fill(1);
+		} else {
+			const normalized = settings.amount / 100;
+			this.overSubtraction = 1 + normalized * 2;
+			this.floorGain = 0.02 + (1 - normalized) * 0.12;
+			this.prevGain = new Float64Array(BIN_COUNT);
+			this.prevGain.fill(1);
+		}
 		this.inChunks = Array.from({ length: this.channelCount }, () => []);
 		this.inOffsets = Array.from({ length: this.channelCount }, () => 0);
 		this.inLengths = Array.from({ length: this.channelCount }, () => 0);
@@ -248,14 +233,7 @@ export class StreamingNoiseReduction {
 		);
 	}
 
-	// oxlint-disable-next-line anti-slop/no-known-value-widening -- test helper returns named invariants
-	getQueueInvariants(): {
-		inPending: number;
-		outPending: number;
-		overlap: number;
-		totalInput: number;
-		totalEmitted: number;
-	} {
+	getQueueInvariants(): QueueInvariants {
 		return {
 			inPending: this.inLengths[0] ?? 0,
 			outPending: this.outLengths[0] ?? 0,
@@ -269,7 +247,6 @@ export class StreamingNoiseReduction {
 		for (let c = 0; c < this.channelCount; c++) {
 			const chunk = channels[c] ?? channels[0] ?? new Float32Array(0);
 			if (chunk.length === 0) continue;
-			// Store a copy to keep caller ownership; chunk is already a slice copy in caller
 			this.inChunks[c]!.push(chunk);
 			this.inLengths[c]! += chunk.length;
 		}
@@ -277,15 +254,11 @@ export class StreamingNoiseReduction {
 	}
 
 	private peekInputFrame(c: number, out: Float64Array): boolean {
-		// Fill out[0..FRAME_SIZE) from inChunks[c] starting at inOffsets[c]
 		if ((this.inLengths[c] ?? 0) < FRAME_SIZE) return false;
 		let pos = 0;
 		let chunkIdx = 0;
-		// oxlint-disable-next-line eslint/prefer-const -- off is advanced per chunk
+		// oxlint-disable-next-line eslint/prefer-const -- off advances per chunk
 		let off = this.inOffsets[c] ?? 0;
-		// Find starting chunk
-		// We maintain inOffsets as offset within first chunk, so we can iterate
-		// For simplicity, linear scan over chunks (at most few chunks, bounded)
 		while (pos < FRAME_SIZE) {
 			const chunk = this.inChunks[c]![chunkIdx];
 			if (!chunk) break;
@@ -337,9 +310,6 @@ export class StreamingNoiseReduction {
 			while (pos < want && this.outChunks[c]!.length > 0) {
 				const first = this.outChunks[c]![0]!;
 				const take = Math.min(first.length - 0, want - pos);
-				// first chunk may be larger than take; handle slice
-				// For simplicity we keep outChunks as whole HOP chunks (512), so take is either 512 or remainder
-				// But to be generic, handle partial
 				if (first.length === take) {
 					out.set(first, pos);
 					this.outChunks[c]!.shift();
@@ -349,11 +319,8 @@ export class StreamingNoiseReduction {
 				}
 				pos += take;
 			}
-			// Pad with zeros if underflow (should not happen except flush)
 			this.outLengths[c]! -= pos;
 			result.push(out.slice(0, pos));
-			// If we produced less than want due to not enough data, return what we have (caller will concatenate)
-			// For exact contract, caller expects want length; we pad zeros to want
 			if (pos < want) {
 				const padded = new Float32Array(want);
 				padded.set(result[c]!, 0);
@@ -368,16 +335,13 @@ export class StreamingNoiseReduction {
 		const tmpFrame = new Float64Array(FRAME_SIZE);
 		while ((this.inLengths[0] ?? 0) >= FRAME_SIZE) {
 			throwIfAborted(signal);
-			// Gather mags per channel for linked estimate
 			const framesReal: Float64Array[] = [];
 			const framesImag: Float64Array[] = [];
 			const mags: Float64Array[] = [];
 			for (let c = 0; c < this.channelCount; c++) {
 				const real = new Float64Array(FFT_SIZE);
 				const imag = new Float64Array(FFT_SIZE);
-				// Fill tmpFrame from input queue
 				for (let i = 0; i < FRAME_SIZE; i++) tmpFrame[i] = 0;
-				// Peek frame
 				let p = 0;
 				let chunkIdx = 0;
 				// oxlint-disable-next-line eslint/prefer-const -- off advances per chunk
@@ -455,7 +419,6 @@ export class StreamingNoiseReduction {
 				fftInPlace(real, imag, true);
 			}
 
-			// Overlap-add: add previous overlap to first HOP, emit HOP, keep tail
 			for (let c = 0; c < this.channelCount; c++) {
 				const real = framesReal[c]!;
 				const ov = this.overlap[c]!;
@@ -479,14 +442,13 @@ export class StreamingNoiseReduction {
 		if (channels.length === 0 && !isLast) return [];
 		if (inputLen === 0 && !isLast) return channels.map(() => new Float32Array(0));
 		if (inputLen > 0) this.appendInput(channels);
-		// Short-total bypass: preserve attack for inputs < FRAME_SIZE
 		if (isLast && this.totalInput > 0 && this.totalInput < FRAME_SIZE) {
 			const result: Float32Array[] = [];
 			for (let c = 0; c < this.channelCount; c++) {
 				const len = this.inLengths[c] ?? 0;
 				const buf = new Float32Array(len);
 				let pos = 0;
-				let off = this.inOffsets[c] ?? 0;
+				const off = this.inOffsets[c] ?? 0;
 				for (let idx = 0; idx < this.inChunks[c]!.length; idx++) {
 					const chunk = this.inChunks[c]![idx]!;
 					const avail = idx === 0 ? chunk.length - off : chunk.length;
@@ -494,7 +456,6 @@ export class StreamingNoiseReduction {
 					buf.set(chunk.subarray(start, start + avail), pos);
 					pos += avail;
 				}
-				// Clear queues
 				this.inChunks[c] = [];
 				this.inOffsets[c] = 0;
 				this.inLengths[c] = 0;
@@ -502,10 +463,7 @@ export class StreamingNoiseReduction {
 				this.outLengths[c] = 0;
 				result.push(buf);
 			}
-			// Also need to handle case where we had already emitted some via processFrames before isLast short check
-			// But for short, processFrames would not have run (since < FRAME), so no out yet.
 			this.totalEmitted = this.totalInput;
-			// Clear overlap to avoid tail click on next use
 			for (let c = 0; c < this.channelCount; c++) this.overlap[c] = new Float32Array(0);
 			return result;
 		}
@@ -513,11 +471,8 @@ export class StreamingNoiseReduction {
 		this.processFrames(signal);
 
 		if (isLast) {
-			// Flush remaining tail: need to emit exactly totalInput samples.
-			// Emit any pending out, then pad/process remaining in with zeros
 			while (this.totalEmitted + (this.outLengths[0] ?? 0) < this.totalInput) {
 				throwIfAborted(signal);
-				// Pad inQueues to FRAME_SIZE with zeros if needed
 				let needPad = false;
 				for (let c = 0; c < this.channelCount; c++) {
 					if ((this.inLengths[c] ?? 0) < FRAME_SIZE) needPad = true;
@@ -538,7 +493,6 @@ export class StreamingNoiseReduction {
 				if ((this.outLengths[0] ?? 0) === prevOut) break;
 				if (this.totalEmitted + (this.outLengths[0] ?? 0) >= this.totalInput) break;
 			}
-			// Now drain exactly remaining
 			const want = this.totalInput - this.totalEmitted;
 			if (want <= 0) {
 				for (let c = 0; c < this.channelCount; c++) {
@@ -576,7 +530,6 @@ export class StreamingNoiseReduction {
 				result.push(Float32Array.from(buf, (v) => Math.max(-1, Math.min(1, v))));
 			}
 			this.totalEmitted += want;
-			// Clear residual queues and overlap after final flush to avoid tail click and ensure invariants zero
 			if (this.totalEmitted >= this.totalInput) {
 				for (let c = 0; c < this.channelCount; c++) {
 					this.inChunks[c] = [];
@@ -590,8 +543,6 @@ export class StreamingNoiseReduction {
 			return result;
 		}
 
-		// Non-last: return up to inputLen samples that are ready, but caller must concatenate
-		// We return min(inputLen, available) to avoid unbounded growth; remaining stays queued
 		const want = Math.min(inputLen, this.outLengths[0] ?? 0);
 		if (want === 0) return channels.map(() => new Float32Array(0));
 		const result: Float32Array[] = [];
@@ -623,7 +574,6 @@ export class StreamingNoiseReduction {
 	}
 }
 
-// Offline is thin feeder into same processor - async cooperative
 export async function applyNoiseReduction(
 	channels: Float32Array[],
 	sampleRate: number,
@@ -636,7 +586,6 @@ export async function applyNoiseReduction(
 	const total = channels[0]!.length;
 	if (total > MAX_TOTAL_FRAMES) throw new Error('Noise reduction input too long');
 	if (total < FRAME_SIZE) {
-		// Short-input bypass to avoid HANN[0] attack loss
 		return channels.map((c) => c.slice());
 	}
 	const proc = new StreamingNoiseReduction(channels.length, sampleRate, settings);
@@ -653,7 +602,6 @@ export async function applyNoiseReduction(
 		if (out[0]?.length) outParts.push(out);
 		offset += len;
 		if (++yields % 8 === 0) {
-			// Cooperative yield for long clips
 			await new Promise<void>((r) => setTimeout(r, 0));
 			throwIfAborted(signal);
 		}
