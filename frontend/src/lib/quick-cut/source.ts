@@ -6,13 +6,17 @@ import { createHash } from './fingerprint';
 export async function probeSourceFile(
 	file: File,
 	handle?: FileSystemFileHandle,
-	existingId?: string
+	existingId?: string,
+	signal?: AbortSignal
 ): Promise<QuickCutSource> {
+	signal?.throwIfAborted();
 	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
 	try {
 		const duration = await input.computeDuration().catch(() => 0);
+		signal?.throwIfAborted();
 		const videoTrack = await input.getPrimaryVideoTrack().catch(() => null);
 		const audioTrack = await input.getPrimaryAudioTrack().catch(() => null);
+		signal?.throwIfAborted();
 		let width = 0;
 		let height = 0;
 		let videoCodec: string | null = null;
@@ -27,6 +31,7 @@ export async function probeSourceFile(
 			videoCodec = videoTrack.codec;
 			rotation = videoTrack.rotation;
 			const stats = await videoTrack.computePacketStats(180).catch(() => null);
+			signal?.throwIfAborted();
 			if (stats?.averagePacketRate) fps = Math.round(stats.averagePacketRate * 1000) / 1000;
 		}
 		if (audioTrack) {
@@ -44,11 +49,12 @@ export async function probeSourceFile(
 		let keyframeTimestamps: number[] = [];
 		let keyframeState: QuickCutSource['keyframeState'] = 'unknown';
 		try {
-			keyframeTimestamps = await extractKeyframeTimestamps(file);
+			keyframeTimestamps = await extractKeyframeTimestamps(file, signal);
 			if (!videoTrack) keyframeState = 'audio-only';
 			else if (keyframeTimestamps.length > 0) keyframeState = 'known';
 			else keyframeState = 'unknown';
-		} catch {
+		} catch (error) {
+			if (signal?.aborted) throw signal.reason ?? error;
 			keyframeTimestamps = [];
 			keyframeState = videoTrack ? 'unknown' : 'audio-only';
 		}
@@ -56,7 +62,9 @@ export async function probeSourceFile(
 		let contentFingerprint: string | undefined;
 		try {
 			contentFingerprint = await createHash(file);
-		} catch {
+			signal?.throwIfAborted();
+		} catch (error) {
+			if (signal?.aborted) throw signal.reason ?? error;
 			contentFingerprint = undefined;
 		}
 		return {
@@ -89,12 +97,19 @@ export async function probeSourceFile(
 	}
 }
 
-export async function resolveSourceFile(source: QuickCutSource): Promise<File> {
+export async function resolveSourceFile(
+	source: QuickCutSource,
+	signal?: AbortSignal
+): Promise<File> {
+	signal?.throwIfAborted();
 	if (source.file) return source.file;
 	if (source.handle) {
 		try {
-			return await source.handle.getFile();
-		} catch {
+			const file = await source.handle.getFile();
+			signal?.throwIfAborted();
+			return file;
+		} catch (error) {
+			if (signal?.aborted) throw signal.reason ?? error;
 			throw new Error(`Source ${source.name} is missing. Reconnect the file.`);
 		}
 	}

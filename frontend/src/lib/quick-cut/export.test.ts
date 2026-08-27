@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preflightExport } from './export';
+import { exportSegments, preflightExport } from './export';
 import { createSegment } from './model';
 import type { QuickCutSource } from './types';
 
@@ -88,6 +88,21 @@ describe('quick-cut preflight', () => {
 		expect(pre.requiresTranscode).toBe(true);
 	});
 
+	it('does not claim stream copy for codecs unsupported by the source container', async () => {
+		const source = makeSource('mislabeled', {
+			name: 'mislabeled.webm',
+			mimeType: 'video/webm',
+			videoCodec: 'avc',
+			audioCodec: 'aac'
+		});
+		const segment = createSegment(0, 1, { sourceId: source.id });
+		const preflight = await preflightExport([source], [segment], 'nearestKeyframe', false);
+		expect(preflight.perSegment[0]).toMatchObject({
+			requiresTranscode: true,
+			reason: expect.stringMatching(/container/i)
+		});
+	});
+
 	it('re-encodes an exact audio cut but keeps nearest packet copy lossless', async () => {
 		const source = makeSource('audio', {
 			name: 'audio.webm',
@@ -157,5 +172,27 @@ describe('quick-cut preflight', () => {
 		);
 		expect(preflight.eligible).toBe(false);
 		expect(preflight.reason).toMatch(/video and audio-only/i);
+	});
+
+	it('cancels while a source handle is still resolving', async () => {
+		let resolveFile!: (file: File) => void;
+		const pendingFile = new Promise<File>((resolve) => {
+			resolveFile = resolve;
+		});
+		// SAFETY: export only calls getFile on this focused FileSystemFileHandle test double.
+		const handle = { getFile: () => pendingFile } as FileSystemFileHandle;
+		const source = makeSource('slow', { handle });
+		const controller = new AbortController();
+		const exported = exportSegments({
+			sources: [source],
+			segments: [createSegment(0, 1, { sourceId: source.id })],
+			cutMode: 'nearestKeyframe',
+			merge: false,
+			signal: controller.signal
+		});
+
+		controller.abort(new DOMException('Export cancelled.', 'AbortError'));
+		resolveFile(new File(['not decoded'], 'slow.mp4', { type: 'video/mp4' }));
+		await expect(exported).rejects.toMatchObject({ name: 'AbortError' });
 	});
 });

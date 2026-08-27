@@ -66,6 +66,8 @@ export interface QuickCutExportOptions {
 	onProgress?: (p: QuickCutExportProgress) => void;
 }
 
+type LocalExportProgress = (fraction: number, bytesWritten: number) => void;
+
 export interface QuickCutScratchArtifact {
 	scratchPath: string;
 	fileName: string;
@@ -243,6 +245,23 @@ export async function preflightExport(
 		const src = sourceById.get(seg.sourceId)!;
 		const kfs = src.keyframeTimestamps;
 		const segmentCutMode = resolveSegmentCutMode(seg, cutMode);
+		const sourceFormat = outputFormatForSource(src);
+		// SAFETY: probeSourceFile reads codec names from Mediabunny's typed tracks.
+		const sourceVideoCodec = src.videoCodec as VideoCodec | null;
+		// SAFETY: probeSourceFile reads codec names from Mediabunny's typed tracks.
+		const sourceAudioCodec = src.audioCodec as AudioCodec | null;
+		if (
+			(sourceVideoCodec && !sourceFormat.getSupportedVideoCodecs().includes(sourceVideoCodec)) ||
+			(sourceAudioCodec && !sourceFormat.getSupportedAudioCodecs().includes(sourceAudioCodec))
+		) {
+			perSegment.push({
+				segmentId: seg.id,
+				requiresTranscode: true,
+				reason: 'Source codecs require re-encoding for the selected container',
+				snappedStart: null
+			});
+			continue;
+		}
 		if (src.keyframeState === 'audio-only') {
 			const exactAudio = segmentCutMode === 'exact';
 			perSegment.push({
@@ -435,10 +454,11 @@ async function exportSingleStreamCopy(
 	source: QuickCutSource,
 	segment: QuickCutSegment,
 	snappedStart: number | null,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onProgress?: LocalExportProgress
 ): Promise<QuickCutScratchArtifact> {
 	throwIfAborted(signal);
-	const file = await resolveSourceFile(source);
+	const file = await resolveSourceFile(source, signal);
 	const format = outputFormatForSource(source);
 	const ext = extensionForFormat(format);
 	const base = safeBaseName(source.name);
@@ -448,6 +468,23 @@ async function exportSingleStreamCopy(
 		input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
 		const trimStart = snappedStart ?? segment.start;
 		const trimEnd = segment.end;
+		if (source.videoCodec) {
+			const videoTrack = await input.getPrimaryVideoTrack();
+			if (!videoTrack) {
+				throw new UnsupportedStreamCopyError(`No video track for ${source.name}.`);
+			}
+			if (trimStart > KEYFRAME_TOLERANCE) {
+				const keyPacket = await new EncodedPacketSink(videoTrack).getKeyPacket(
+					trimStart + KEYFRAME_TOLERANCE,
+					{ verifyKeyPackets: true }
+				);
+				if (!keyPacket || Math.abs(keyPacket.timestamp - trimStart) > KEYFRAME_TOLERANCE) {
+					throw new UnsupportedStreamCopyError(
+						`Start ${trimStart.toFixed(3)}s is not an encoded keyframe for ${source.name}.`
+					);
+				}
+			}
+		}
 		const conversion = await Conversion.init({
 			input,
 			output: new Output({ format, target: streaming.target }),
@@ -459,6 +496,9 @@ async function exportSingleStreamCopy(
 			await streaming.discard();
 			throw new UnsupportedStreamCopyError('Stream copy not valid for this segment.');
 		}
+		conversion.onProgress = (fraction) =>
+			onProgress?.(Math.min(1, Math.max(0, fraction)), streaming.bytesWritten);
+		onProgress?.(0, streaming.bytesWritten);
 		if (signal) {
 			const abort = () => void conversion.cancel().catch(() => undefined);
 			signal.addEventListener('abort', abort, { once: true });
@@ -470,6 +510,7 @@ async function exportSingleStreamCopy(
 		} else {
 			await conversion.execute();
 		}
+		onProgress?.(1, streaming.bytesWritten);
 		const scratchFile = await streaming.file(
 			segmentFileName(base, segment, ext),
 			mimeForFormat(format)
@@ -502,10 +543,11 @@ async function exportSingleStreamCopy(
 async function exportSingleTranscode(
 	source: QuickCutSource,
 	segment: QuickCutSegment,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onProgress?: LocalExportProgress
 ): Promise<QuickCutScratchArtifact> {
 	throwIfAborted(signal);
-	const file = await resolveSourceFile(source);
+	const file = await resolveSourceFile(source, signal);
 	const format = outputFormatForSource(source);
 	const ext = extensionForFormat(format);
 	const base = safeBaseName(source.name);
@@ -525,6 +567,9 @@ async function exportSingleTranscode(
 			await streaming.discard();
 			throw new Error('Transcode conversion not valid.');
 		}
+		conversion.onProgress = (fraction) =>
+			onProgress?.(Math.min(1, Math.max(0, fraction)), streaming.bytesWritten);
+		onProgress?.(0, streaming.bytesWritten);
 		if (signal) {
 			const abort = () => void conversion.cancel().catch(() => undefined);
 			signal.addEventListener('abort', abort, { once: true });
@@ -536,6 +581,7 @@ async function exportSingleTranscode(
 		} else {
 			await conversion.execute();
 		}
+		onProgress?.(1, streaming.bytesWritten);
 		const scratchFile = await streaming.file(
 			segmentFileName(base, segment, ext),
 			mimeForFormat(format)
@@ -565,7 +611,8 @@ async function exportMergedAudioStreamCopy(
 	sources: QuickCutSource[],
 	segments: QuickCutSegment[],
 	preflight: PreflightResult,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onProgress?: LocalExportProgress
 ): Promise<QuickCutScratchArtifact> {
 	throwIfAborted(signal);
 	const sourceById = new Map(sources.map((source) => [source.id, source]));
@@ -577,12 +624,17 @@ async function exportMergedAudioStreamCopy(
 	let expectedCodec: AudioCodec | null = null;
 	let sequenceNumber = 0;
 	let outputTime = 0;
+	const totalDuration = segments.reduce(
+		(total, segment) => total + Math.max(0, segment.end - segment.start),
+		0
+	);
 	try {
+		onProgress?.(0, streaming.bytesWritten);
 		for (const segment of segments) {
 			throwIfAborted(signal);
 			const source = sourceById.get(segment.sourceId);
 			if (!source) throw new Error(`Source missing for segment ${segment.id}.`);
-			const file = await resolveSourceFile(source);
+			const file = await resolveSourceFile(source, signal);
 			const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
 			inputs.push(input);
 			const track = await input.getPrimaryAudioTrack();
@@ -625,6 +677,12 @@ async function exportMergedAudioStreamCopy(
 					{ decoderConfig: firstOutputPacket ? (decoderConfig ?? undefined) : undefined }
 				);
 				firstOutputPacket = false;
+				onProgress?.(
+					totalDuration > 0
+						? Math.min(1, (outputTime + timestamp + packetDuration) / totalDuration)
+						: 1,
+					streaming.bytesWritten
+				);
 			};
 			for await (const packet of sink.packets(first, afterLast ?? undefined)) {
 				throwIfAborted(signal);
@@ -648,6 +706,7 @@ async function exportMergedAudioStreamCopy(
 			mergedFileName(sources, extensionForFormat(format)),
 			mimeForFormat(format)
 		);
+		onProgress?.(1, scratchFile.size);
 		return {
 			scratchPath: streaming.storageKey ?? scratchFile.name,
 			fileName: scratchFile.name,
@@ -669,7 +728,8 @@ async function exportMergedStreamCopy(
 	sources: QuickCutSource[],
 	segments: QuickCutSegment[],
 	preflight: PreflightResult,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onProgress?: LocalExportProgress
 ): Promise<QuickCutScratchArtifact> {
 	throwIfAborted(signal);
 	const sourceById = new Map(sources.map((s) => [s.id, s]));
@@ -678,7 +738,7 @@ async function exportMergedStreamCopy(
 	const ext = extensionForFormat(format);
 	const streaming = await createStreamingOutputTarget(signal);
 	const output = new Output({ format, target: streaming.target });
-	const firstFile = await resolveSourceFile(firstSource);
+	const firstFile = await resolveSourceFile(firstSource, signal);
 	const firstInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(firstFile) });
 	const videoTrack = await firstInput.getPrimaryVideoTrack();
 	if (!videoTrack) {
@@ -737,9 +797,14 @@ async function exportMergedStreamCopy(
 	let muxedTime = 0;
 	let videoSeq = 0;
 	let audioSeq = 0;
+	const totalDuration = segments.reduce((total, segment) => {
+		const snappedStart = getSnapForSegment(preflight, segment.id) ?? segment.start;
+		return total + Math.max(0, segment.end - snappedStart);
+	}, 0);
 	const inputsToDispose: Input[] = [firstInput];
 	try {
 		await output.start();
+		onProgress?.(0, streaming.bytesWritten);
 		for (const seg of segments) {
 			throwIfAborted(signal);
 			const src = sourceById.get(seg.sourceId)!;
@@ -751,7 +816,7 @@ async function exportMergedStreamCopy(
 			let segVideoTrack = videoTrack;
 			let segAudioTrack = audioTrack;
 			if (src.id !== firstSource.id) {
-				const f = await resolveSourceFile(src);
+				const f = await resolveSourceFile(src, signal);
 				segInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(f) });
 				inputsToDispose.push(segInput);
 				segVideoTrack = await segInput.getPrimaryVideoTrack();
@@ -804,42 +869,44 @@ async function exportMergedStreamCopy(
 					}),
 					{ decoderConfig: maybeConfig ?? undefined }
 				);
+				onProgress?.(
+					totalDuration > 0 ? Math.min(1, (muxedTime + Math.max(0, ts) + pd) / totalDuration) : 1,
+					streaming.bytesWritten
+				);
 				firstPkt = false;
 				lastDuration = pd;
 			}
 			if (segAudioTrack && audioSource && audioCodec) {
 				const audioSink = new EncodedPacketSink(segAudioTrack);
-				const aBefore = await audioSink.getPacket(start);
-				const aAfter = aBefore
-					? await audioSink.getNextPacket(aBefore)
-					: await audioSink.getFirstPacket();
-				const aFirst =
-					aBefore && aAfter
-						? Math.abs(start - aBefore.timestamp) <= Math.abs(aAfter.timestamp - start)
-							? aBefore
-							: aAfter
-						: (aBefore ?? aAfter);
+				const aFirst = await audioSink.getPacket(start);
 				if (aFirst) {
+					const aLast = await audioSink.getPacket(
+						Math.max(aFirst.timestamp, start + duration - Number.EPSILON)
+					);
+					const aAfterLast = aLast ? await audioSink.getNextPacket(aLast) : undefined;
 					const aDecoder = await segAudioTrack.getDecoderConfig();
 					let aFirstPkt = true;
 					let pending: typeof aFirst | null = null;
-					const endTs = aFirst.timestamp + duration;
+					const endTs = start + duration;
 					const addAudio = async (pkt: typeof aFirst, nextTs: number) => {
-						const ts = pkt.timestamp - aFirst.timestamp;
-						if (ts < 0 || ts >= duration) return;
+						const ts = pkt.timestamp - start;
+						if (ts >= duration || pkt.timestamp >= endTs) return;
+						const outputTimestamp = Math.max(0, ts);
 						const dur = pkt.duration > 0 ? pkt.duration : Math.max(0, nextTs - pkt.timestamp);
-						const pd = Math.min(dur, Math.max(0, duration - ts));
+						const pd = Math.min(dur, Math.max(0, duration - outputTimestamp));
 						if (pd <= 0) return;
-						// Respect exact kept boundary: start at aFirst.timestamp which may be before start, but we offset by ts, so we respect start
 						await audioSource!.add(
-							pkt.clone({ timestamp: muxedTime + ts, duration: pd, sequenceNumber: audioSeq++ }),
+							pkt.clone({
+								timestamp: muxedTime + outputTimestamp,
+								duration: pd,
+								sequenceNumber: audioSeq++
+							}),
 							{ decoderConfig: aFirstPkt ? (aDecoder ?? undefined) : undefined }
 						);
 						aFirstPkt = false;
 					};
-					for await (const pkt of new EncodedPacketSink(segAudioTrack).packets()) {
+					for await (const pkt of audioSink.packets(aFirst, aAfterLast ?? undefined)) {
 						throwIfAborted(signal);
-						if (pkt.timestamp + tolerance < aFirst.timestamp) continue;
 						if (pending) await addAudio(pending, pkt.timestamp);
 						if (pkt.timestamp >= endTs) {
 							pending = null;
@@ -848,6 +915,15 @@ async function exportMergedStreamCopy(
 						pending = pkt;
 					}
 					if (pending) await addAudio(pending, endTs);
+					if (aFirstPkt) {
+						throw new UnsupportedStreamCopyError(
+							`No audio packets copied from ${src.name}; requires re-encoding.`
+						);
+					}
+				} else {
+					throw new UnsupportedStreamCopyError(
+						`No audio packet at ${start.toFixed(3)}s for ${src.name}; requires re-encoding.`
+					);
 				}
 			} else if (audioSource) {
 				// Audio expected but missing in this segment; insert silence by advancing muxedTime without audio packets (explicit silence)
@@ -859,6 +935,7 @@ async function exportMergedStreamCopy(
 		audioSource?.close();
 		await output.finalize();
 		const scratchFile = await streaming.file(mergedFileName(sources, ext), mimeForFormat(format));
+		onProgress?.(1, scratchFile.size);
 		return {
 			scratchPath: streaming.storageKey ?? scratchFile.name,
 			fileName: scratchFile.name,
@@ -908,7 +985,7 @@ async function exportMergedAudioTranscode(
 			const segment = segments[index]!;
 			const source = sourceById.get(segment.sourceId);
 			if (!source) throw new Error(`Source missing for segment ${segment.id}.`);
-			const sourceFile = await resolveSourceFile(source);
+			const sourceFile = await resolveSourceFile(source, signal);
 			const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(sourceFile) });
 			const stream = await createStreamingOutputTarget(signal);
 			try {
@@ -922,6 +999,23 @@ async function exportMergedAudioTranscode(
 				});
 				if (!conversion.isValid)
 					throw new Error(`Audio conversion is not valid for ${source.name}.`);
+				conversion.onProgress = (fraction) => {
+					const elapsed = Date.now() - startedAt;
+					const overallFraction = (index + Math.min(1, Math.max(0, fraction))) / segments.length;
+					onProgress?.({
+						phase: 'transcoding',
+						segmentIndex: index + 1,
+						totalSegments: segments.length,
+						bytesWritten:
+							temporary.reduce((total, item) => total + item.source.size, 0) + stream.bytesWritten,
+						elapsedMs: elapsed,
+						etaMs:
+							overallFraction > 0
+								? Math.round((elapsed / overallFraction) * (1 - overallFraction))
+								: null,
+						fraction: overallFraction
+					});
+				};
 				const onAbort = (): void => void conversion.cancel().catch(() => undefined);
 				signal?.addEventListener('abort', onAbort, { once: true });
 				try {
@@ -934,7 +1028,7 @@ async function exportMergedAudioTranscode(
 					`quick-cut-audio-${index}.${extension}`,
 					mimeForFormat(preflight.outputFormat)
 				);
-				const converted = await probeSourceFile(file);
+				const converted = await probeSourceFile(file, undefined, undefined, signal);
 				const duration = Math.min(segment.end - segment.start, converted.duration);
 				if (duration <= 0)
 					throw new Error(`Audio conversion produced no duration for ${source.name}.`);
@@ -1021,7 +1115,7 @@ async function exportMergedTranscode(
 			throwIfAborted(signal);
 			const seg = segments[idx]!;
 			const src = sourceById.get(seg.sourceId)!;
-			const file = await resolveSourceFile(src);
+			const file = await resolveSourceFile(src, signal);
 			await ensureAc3DecoderForCodec(src.audioCodec);
 			const tempStreaming = await createStreamingOutputTarget(signal);
 			const tempInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
@@ -1041,7 +1135,31 @@ async function exportMergedTranscode(
 				}
 				throw new Error(`Transcode not valid for segment ${seg.id.slice(0, 6)}`);
 			}
-			await tempConversion.execute();
+			tempConversion.onProgress = (fraction) => {
+				const elapsed = Date.now() - startTime;
+				const overallFraction = (idx + Math.min(1, Math.max(0, fraction))) / segments.length;
+				onProgress?.({
+					phase: 'transcoding',
+					segmentIndex: idx + 1,
+					totalSegments: segments.length,
+					bytesWritten:
+						tempScratches.reduce((total, item) => total + item.file.size, 0) +
+						tempStreaming.bytesWritten,
+					elapsedMs: elapsed,
+					etaMs:
+						overallFraction > 0
+							? Math.round((elapsed / overallFraction) * (1 - overallFraction))
+							: null,
+					fraction: overallFraction
+				});
+			};
+			const abortConversion = (): void => void tempConversion.cancel().catch(() => undefined);
+			signal?.addEventListener('abort', abortConversion, { once: true });
+			try {
+				await tempConversion.execute();
+			} finally {
+				signal?.removeEventListener('abort', abortConversion);
+			}
 			try {
 				tempInput.dispose?.();
 			} catch {
@@ -1155,29 +1273,115 @@ export async function exportSegments(
 	if (!preflight.eligible) throw new Error(preflight.reason);
 	const startTime = Date.now();
 	const artifacts: QuickCutScratchArtifact[] = [];
+	let lastReportedFraction = 0;
+	let lastReportedBytes = 0;
+	const reportProgress = (
+		phase: QuickCutExportProgress['phase'],
+		segmentIndex: number,
+		totalSegments: number,
+		fraction: number,
+		bytesWritten: number
+	): void => {
+		const boundedFraction = Math.min(1, Math.max(lastReportedFraction, fraction));
+		lastReportedFraction = boundedFraction;
+		lastReportedBytes = Math.max(lastReportedBytes, bytesWritten);
+		const elapsedMs = Date.now() - startTime;
+		onProgress?.({
+			phase,
+			segmentIndex,
+			totalSegments,
+			bytesWritten: lastReportedBytes,
+			elapsedMs,
+			etaMs:
+				boundedFraction > 0
+					? Math.max(0, Math.round((elapsedMs / boundedFraction) * (1 - boundedFraction)))
+					: null,
+			fraction: boundedFraction
+		});
+	};
 	try {
 		if (merge) {
+			const mergedProgress =
+				(phase: QuickCutExportProgress['phase']): LocalExportProgress =>
+				(fraction, bytesWritten) =>
+					reportProgress(
+						phase,
+						Math.min(enabled.length, Math.max(1, Math.ceil(fraction * enabled.length))),
+						enabled.length,
+						fraction,
+						bytesWritten
+					);
+			const detailedMergedProgress = (progress: QuickCutExportProgress): void =>
+				reportProgress(
+					progress.phase,
+					progress.segmentIndex,
+					progress.totalSegments,
+					progress.fraction,
+					progress.bytesWritten
+				);
 			if (preflight.requiresTranscode) {
-				const art = await exportMergedTranscode(sources, enabled, preflight, signal, onProgress);
+				const art = await exportMergedTranscode(
+					sources,
+					enabled,
+					preflight,
+					signal,
+					detailedMergedProgress
+				);
 				artifacts.push(art);
 			} else if (
 				sources.find((source) => source.id === enabled[0]!.sourceId)?.keyframeState === 'audio-only'
 			) {
-				const art = await exportMergedAudioStreamCopy(sources, enabled, preflight, signal);
-				artifacts.push(art);
+				try {
+					const art = await exportMergedAudioStreamCopy(
+						sources,
+						enabled,
+						preflight,
+						signal,
+						mergedProgress('copying')
+					);
+					artifacts.push(art);
+				} catch (error) {
+					if (!(error instanceof UnsupportedStreamCopyError)) throw error;
+					const art = await exportMergedTranscode(
+						sources,
+						enabled,
+						preflight,
+						signal,
+						detailedMergedProgress
+					);
+					art.reason = `Re-encoded after lossless copy was unavailable: ${error.message}`;
+					artifacts.push(art);
+				}
 			} else {
-				const art = await exportMergedStreamCopy(sources, enabled, preflight, signal);
-				artifacts.push(art);
+				try {
+					const art = await exportMergedStreamCopy(
+						sources,
+						enabled,
+						preflight,
+						signal,
+						mergedProgress('copying')
+					);
+					artifacts.push(art);
+				} catch (error) {
+					if (!(error instanceof UnsupportedStreamCopyError)) throw error;
+					const art = await exportMergedTranscode(
+						sources,
+						enabled,
+						preflight,
+						signal,
+						detailedMergedProgress
+					);
+					art.reason = `Re-encoded after lossless copy was unavailable: ${error.message}`;
+					artifacts.push(art);
+				}
 			}
-			onProgress?.({
-				phase: preflight.requiresTranscode ? 'transcoding' : 'copying',
-				segmentIndex: 1,
-				totalSegments: 1,
-				bytesWritten: artifacts[0]?.estimatedBytes ?? 0,
-				elapsedMs: Date.now() - startTime,
-				etaMs: 0,
-				fraction: 1
-			});
+			reportProgress(
+				artifacts.some((artifact) => !artifact.wasLossless) ? 'transcoding' : 'copying',
+				enabled.length,
+				enabled.length,
+				1,
+				artifacts[0]?.estimatedBytes ?? 0
+			);
 			return artifacts;
 		}
 		for (let i = 0; i < enabled.length; i++) {
@@ -1187,21 +1391,37 @@ export async function exportSegments(
 			const needsTranscode = per?.requiresTranscode ?? preflight.requiresTranscode;
 			const snap = preflight.snapInfo.find((s) => s.segmentId === seg.id)?.snappedStart ?? null;
 			const src = sources.find((s) => s.id === seg.sourceId)!;
-			const art = needsTranscode
-				? await exportSingleTranscode(src, seg, signal)
-				: await exportSingleStreamCopy(src, seg, snap, signal);
+			const completedBytes = artifacts.reduce((sum, artifact) => sum + artifact.estimatedBytes, 0);
+			const localProgress =
+				(phase: QuickCutExportProgress['phase']): LocalExportProgress =>
+				(fraction, bytesWritten) =>
+					reportProgress(
+						phase,
+						i + 1,
+						enabled.length,
+						(i + fraction) / enabled.length,
+						completedBytes + bytesWritten
+					);
+			let art: QuickCutScratchArtifact;
+			if (needsTranscode) {
+				art = await exportSingleTranscode(src, seg, signal, localProgress('transcoding'));
+			} else {
+				try {
+					art = await exportSingleStreamCopy(src, seg, snap, signal, localProgress('copying'));
+				} catch (error) {
+					if (!(error instanceof UnsupportedStreamCopyError)) throw error;
+					art = await exportSingleTranscode(src, seg, signal, localProgress('transcoding'));
+					art.reason = `Re-encoded after lossless copy was unavailable: ${error.message}`;
+				}
+			}
 			artifacts.push(art);
-			const elapsed = Date.now() - startTime;
-			const fraction = (i + 1) / enabled.length;
-			onProgress?.({
-				phase: needsTranscode ? 'transcoding' : 'copying',
-				segmentIndex: i + 1,
-				totalSegments: enabled.length,
-				bytesWritten: artifacts.reduce((a, b) => a + b.estimatedBytes, 0),
-				elapsedMs: elapsed,
-				etaMs: Math.round((elapsed / (i + 1)) * (enabled.length - (i + 1))),
-				fraction
-			});
+			reportProgress(
+				art.wasLossless ? 'copying' : 'transcoding',
+				i + 1,
+				enabled.length,
+				(i + 1) / enabled.length,
+				artifacts.reduce((sum, artifact) => sum + artifact.estimatedBytes, 0)
+			);
 		}
 		return artifacts;
 	} catch (e) {
