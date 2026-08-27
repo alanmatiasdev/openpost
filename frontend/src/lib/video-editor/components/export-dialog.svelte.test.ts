@@ -404,12 +404,26 @@ describe('ExportDialog', () => {
 		const getOverlay = () =>
 			// SAFETY: overlay has stable data-slot when dialog is open
 			document.querySelector('[data-slot="dialog-overlay"]') as HTMLElement | null;
+		const clickOverlay = async (overlay: HTMLElement) => {
+			await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			const pointer = {
+				bubbles: true,
+				composed: true,
+				pointerType: 'mouse',
+				pointerId: 1,
+				isPrimary: true,
+				button: 0,
+				clientX: 1,
+				clientY: 1
+			};
+			overlay.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, buttons: 1 }));
+			overlay.dispatchEvent(new PointerEvent('pointerup', { ...pointer, buttons: 0 }));
+			overlay.dispatchEvent(new MouseEvent('click', pointer));
+		};
 
 		let overlay = getOverlay();
 		expect(overlay).not.toBeNull();
-		overlay!.dispatchEvent(
-			new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' })
-		);
+		await clickOverlay(overlay!);
 		await vi.waitFor(() => {
 			expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
 		});
@@ -424,9 +438,7 @@ describe('ExportDialog', () => {
 		await expect.element(screen.getByText('Rendering frames')).toBeVisible();
 		overlay = getOverlay();
 		expect(overlay).not.toBeNull();
-		overlay!.dispatchEvent(
-			new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' })
-		);
+		await clickOverlay(overlay!);
 		await Promise.resolve();
 		await expect.element(dialog).toBeVisible();
 		expect(renderSignal?.aborted).toBe(false);
