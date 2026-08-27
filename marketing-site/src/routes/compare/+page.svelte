@@ -30,6 +30,9 @@
 					Other products are stronger for writing, customer care, social listening, or large-company
 					controls. These guides say so plainly, and every factual claim links to an official page.
 				</p>
+				<p class="mt-4 text-sm font-medium text-muted-foreground">
+					For founders and teams comparing social publishing tools.
+				</p>
 				<div class="mt-8 flex flex-wrap gap-3">
 					<Button href={managedSignupUrl} size="lg">Try OpenPost</Button>
 					<Button href={selfHostingDocsUrl} variant="outline" size="lg">Self-host OpenPost</Button>

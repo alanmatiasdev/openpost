@@ -51,6 +51,9 @@
 			Plans differ only in their caps: workspaces, social accounts, scheduled posts, media storage,
 			and seats. The exact numbers are below.
 		</p>
+		<p class="text-sm font-medium text-muted-foreground">
+			For founders, teams, and agencies choosing a Hosted service plan.
+		</p>
 	</div>
 </section>
 

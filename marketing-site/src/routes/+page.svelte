@@ -55,6 +55,11 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
+		<p
+			class="hero-enter hero-enter-1 mx-auto mb-5 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase"
+		>
+			For solo founders evaluating one workspace for social publishing.
+		</p>
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
 			Write it once. <span>Publish it everywhere.</span>
 		</h1>
@@ -64,7 +69,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			/>
 			schedules it, and shows you exactly what published.
 		</p>
-		<p class="hero-enter hero-enter-2 mx-auto mt-4 max-w-2xl text-sm text-white/70">
+		<p class="hero-enter hero-enter-2 mx-auto mt-4 max-w-2xl text-sm text-muted-foreground">
 			Ten networks supported, including X, LinkedIn, Instagram, TikTok, YouTube, and Bluesky.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">

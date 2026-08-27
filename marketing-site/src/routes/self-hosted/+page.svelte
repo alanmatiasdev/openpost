@@ -48,6 +48,9 @@
 				Run the complete AGPL-licensed product on infrastructure you control. You choose the data
 				location and deployment settings, and you own the operating work described below.
 			</p>
+			<p class="mt-4 text-sm font-medium text-muted-foreground">
+				For operators who want to run OpenPost on infrastructure they control.
+			</p>
 			<div class="mt-8 flex flex-wrap gap-3">
 				<Button href={selfHostedDeploymentSummary.docsUrl} size="lg">
 					Open the deployment guide <ArrowRight data-icon="inline-end" />

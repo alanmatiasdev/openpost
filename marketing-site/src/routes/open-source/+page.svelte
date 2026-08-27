@@ -84,6 +84,9 @@
 					Use the Hosted service or deploy the AGPL-licensed server yourself. Both use the same
 					posting tools, account settings, and status tracking.
 				</p>
+				<p class="mt-4 text-sm font-medium text-muted-foreground">
+					For operators and developers evaluating the open-source deployment path.
+				</p>
 				<div class="mt-8 flex flex-wrap gap-3">
 					<Button href={githubUrl} size="lg">
 						Browse the source
