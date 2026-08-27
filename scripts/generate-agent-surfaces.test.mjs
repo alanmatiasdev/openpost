@@ -48,7 +48,16 @@ async function fixtureDirectory() {
 
 function headerRuleHas(contents, pathname, header) {
   const lines = contents.split("\n");
-  const ruleIndex = lines.findIndex((line) => line === pathname);
+  const ruleIndex = lines.findIndex((line) => {
+    const [prefix, suffix, ...rest] = line.split("*");
+    if (rest.length > 0) return false;
+    if (suffix === undefined) return line === pathname;
+    return (
+      pathname.startsWith(prefix) &&
+      pathname.endsWith(suffix) &&
+      pathname.length >= prefix.length + suffix.length
+    );
+  });
   if (ruleIndex === -1) return false;
   for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
     if (lines[index].trim() === header) return true;
@@ -95,6 +104,18 @@ test("origin Vary headers cover only canonical HTML and explicit Markdown within
       ),
     /uses 102 rules; Free limit is 100/u,
   );
+});
+
+test("documentation discovery headers leave room for the canonical page catalogue", async () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const base = await readFile(path.join(root, "docs-site/public/_headers"), "utf8");
+  const pages = Array.from({ length: 97 }, (_, index) => ({
+    canonical: `https://docs.openpost.social/page-${index}`,
+  }));
+
+  assert.match(base, /^\/llms\*\.txt$/mu);
+  assert.doesNotMatch(base, /^\/llms(?:-full)?\.txt$/mu);
+  assert.doesNotThrow(() => renderOriginVaryHeaders(base, pages));
 });
 
 async function filesWithSuffix(directory, suffix, root = directory) {
@@ -1372,7 +1393,7 @@ test(
       );
       for (const pathname of plainTextPaths) {
         assert.ok(
-          headers.includes(`${pathname}\n  Content-Type: text/plain; charset=utf-8`),
+          headerRuleHas(headers, pathname, "Content-Type: text/plain; charset=utf-8"),
           `${surface} must keep ${pathname} plain text`,
         );
       }
