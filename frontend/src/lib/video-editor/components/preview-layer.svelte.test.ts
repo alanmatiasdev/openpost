@@ -742,31 +742,50 @@ describe('PreviewLayer GPU rendering', () => {
 		if (!source || !output) return;
 
 		await vi.waitFor(() => expect(output.hidden).toBe(false));
+		const sourceContext = source.getContext('2d', { willReadFrequently: true });
+		expect(sourceContext).not.toBeNull();
+		if (!sourceContext) return;
+		const maximumRed = (pixels: Uint8Array | Uint8ClampedArray): number => {
+			let maximum = 0;
+			for (let index = 0; index < pixels.length; index += 4) {
+				maximum = Math.max(maximum, pixels[index] ?? 0);
+			}
+			return maximum;
+		};
+		const sourceMaximum = maximumRed(sourceContext.getImageData(0, 0, WIDTH, HEIGHT).data);
+		expect(sourceMaximum).toBeGreaterThan(0);
+
 		const gl = output.getContext('webgl2');
 		expect(gl).not.toBeNull();
 		if (!gl) return;
 		const previewPixels = new Uint8Array(WIDTH * HEIGHT * 4);
 		gl.readPixels(0, 0, WIDTH, HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, previewPixels);
-		const previewMaximum = Math.max(
-			...Array.from({ length: WIDTH * HEIGHT }, (_, index) => previewPixels[index * 4] ?? 0)
-		);
-		expect(previewMaximum).toBeGreaterThan(100);
-		expect(previewMaximum).toBeLessThan(150);
+		const previewRatio = maximumRed(previewPixels) / sourceMaximum;
+		expect(previewRatio).toBeGreaterThan(0.35);
+		expect(previewRatio).toBeLessThan(0.65);
 
 		const renderer = new TimelineFrameRenderer(project(item));
+		const baselineRenderer = new TimelineFrameRenderer(project({ ...item, effects: [] }));
 		try {
-			const frame = await renderer.render(0);
+			const [frame, baselineFrame] = await Promise.all([
+				renderer.render(0),
+				baselineRenderer.render(0)
+			]);
 			const context = frame.getContext('2d', { willReadFrequently: true });
+			const baselineContext = baselineFrame.getContext('2d', { willReadFrequently: true });
 			expect(context).not.toBeNull();
-			if (!context) return;
-			const exportPixels = context.getImageData(0, 0, WIDTH, HEIGHT).data;
-			const exportMaximum = Math.max(
-				...Array.from({ length: WIDTH * HEIGHT }, (_, index) => exportPixels[index * 4] ?? 0)
-			);
-			expect(exportMaximum).toBeGreaterThan(100);
-			expect(exportMaximum).toBeLessThan(150);
+			expect(baselineContext).not.toBeNull();
+			if (!context || !baselineContext) return;
+			const exportMaximum = maximumRed(context.getImageData(0, 0, WIDTH, HEIGHT).data);
+			const baselineMaximum = maximumRed(baselineContext.getImageData(0, 0, WIDTH, HEIGHT).data);
+			expect(baselineMaximum).toBeGreaterThan(0);
+			const exportRatio = exportMaximum / baselineMaximum;
+			expect(exportRatio).toBeGreaterThan(0.35);
+			expect(exportRatio).toBeLessThan(0.65);
+			expect(exportRatio).toBeCloseTo(previewRatio, 1);
 		} finally {
 			renderer.dispose();
+			baselineRenderer.dispose();
 		}
 	});
 

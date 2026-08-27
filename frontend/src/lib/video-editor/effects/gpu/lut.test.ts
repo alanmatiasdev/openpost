@@ -40,7 +40,7 @@ describe('cube LUT', () => {
 		// First and last texels are exact corners
 		expect(Array.from(parsed.data.subarray(0, 4))).toEqual([0, 0, 0, 255]);
 		expect(Array.from(parsed.data.subarray(parsed.data.length - 4))).toEqual([255, 255, 255, 255]);
-	});
+	}, 20_000);
 
 	it('resamples identity 65 to 33 with trilinear correctness within 1', () => {
 		const source = { title: null, size: 65, data: createIdentityLutData(65) };

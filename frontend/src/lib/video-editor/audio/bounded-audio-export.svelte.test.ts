@@ -51,6 +51,75 @@ function wavBlobFromMono(samples: Float32Array, sampleRate: number): Blob {
 	}
 	return new Blob([buffer], { type: 'audio/wav' });
 }
+
+interface DecodedPcmWav {
+	sampleRate: number;
+	length: number;
+	channels: Float32Array[];
+}
+
+function fourCc(view: DataView, offset: number): string {
+	return String.fromCharCode(
+		view.getUint8(offset),
+		view.getUint8(offset + 1),
+		view.getUint8(offset + 2),
+		view.getUint8(offset + 3)
+	);
+}
+
+async function decodePcm16Wav(blob: Blob): Promise<DecodedPcmWav> {
+	const buffer = await blob.arrayBuffer();
+	const view = new DataView(buffer);
+	if (view.byteLength < 12 || fourCc(view, 0) !== 'RIFF' || fourCc(view, 8) !== 'WAVE') {
+		throw new Error('Expected a RIFF/WAVE artifact.');
+	}
+
+	let sampleRate = 0;
+	let channelCount = 0;
+	let bitsPerSample = 0;
+	let audioFormat = 0;
+	let dataOffset = -1;
+	let dataSize = 0;
+	for (let offset = 12; offset + 8 <= view.byteLength;) {
+		const chunk = fourCc(view, offset);
+		const chunkSize = view.getUint32(offset + 4, true);
+		const payloadOffset = offset + 8;
+		if (payloadOffset + chunkSize > view.byteLength) throw new Error('Truncated WAV chunk.');
+		if (chunk === 'fmt ') {
+			if (chunkSize < 16) throw new Error('Invalid WAV format chunk.');
+			audioFormat = view.getUint16(payloadOffset, true);
+			channelCount = view.getUint16(payloadOffset + 2, true);
+			sampleRate = view.getUint32(payloadOffset + 4, true);
+			bitsPerSample = view.getUint16(payloadOffset + 14, true);
+		} else if (chunk === 'data') {
+			dataOffset = payloadOffset;
+			dataSize = chunkSize;
+		}
+		offset = payloadOffset + chunkSize + (chunkSize % 2);
+	}
+	if (
+		audioFormat !== 1 ||
+		bitsPerSample !== 16 ||
+		channelCount < 1 ||
+		sampleRate < 1 ||
+		dataOffset < 0
+	) {
+		throw new Error('Expected 16-bit PCM WAV audio.');
+	}
+
+	const bytesPerFrame = channelCount * 2;
+	if (dataSize % bytesPerFrame !== 0) throw new Error('WAV data is not frame-aligned.');
+	const length = dataSize / bytesPerFrame;
+	const channels = Array.from({ length: channelCount }, () => new Float32Array(length));
+	for (let frame = 0; frame < length; frame++) {
+		for (let channel = 0; channel < channelCount; channel++) {
+			channels[channel]![frame] =
+				view.getInt16(dataOffset + (frame * channelCount + channel) * 2, true) / 0x8000;
+		}
+	}
+	return { sampleRate, length, channels };
+}
+
 function sine(samples: number, freq: number, rate: number): Float32Array {
 	return Float32Array.from({ length: samples }, (_, i) =>
 		Math.sin((2 * Math.PI * freq * i) / rate)
@@ -133,21 +202,19 @@ describe('bounded audio export product path', () => {
 		};
 		const artifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
 		expect(artifact.blob.type).toBe('audio/wav');
-		const ctx = new AudioContext();
-		const decoded = await ctx.decodeAudioData(await artifact.blob.arrayBuffer());
+		const decoded = await decodePcm16Wav(artifact.blob);
 		expect(decoded.sampleRate).toBe(48_000);
 		expect(decoded.length).toBeCloseTo(durationSec * 48_000, -2);
-		expect(decoded.numberOfChannels).toBe(2);
+		expect(decoded.channels).toHaveLength(2);
 		// Mono duplicated to stereo
-		const left = decoded.getChannelData(0);
-		const right = decoded.getChannelData(1);
+		const left = decoded.channels[0]!;
+		const right = decoded.channels[1]!;
 		expect(left[1000]).toBeCloseTo(right[1000], 4);
 		// Frequency approx via zero crossings
 		let crossings = 0;
 		for (let i = 1; i < left.length; i++) if (left[i - 1]! < 0 && left[i]! >= 0) crossings++;
 		const freq = crossings / durationSec;
 		expect(Math.abs(freq - 440)).toBeLessThan(5);
-		await ctx.close();
 	}, 30_000);
 
 	it('keeps impulse across 30s window boundary', async () => {
@@ -213,9 +280,8 @@ describe('bounded audio export product path', () => {
 			timeline: { tracks: [track], items: [item] }
 		};
 		const artifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
-		const ctx = new AudioContext();
-		const decoded = await ctx.decodeAudioData(await artifact.blob.arrayBuffer());
-		const ch = decoded.getChannelData(0);
+		const decoded = await decodePcm16Wav(artifact.blob);
+		const ch = decoded.channels[0]!;
 		let peakIdx = -1;
 		let peak = -Infinity;
 		for (let i = 0; i < ch.length; i++)
@@ -225,7 +291,6 @@ describe('bounded audio export product path', () => {
 			}
 		expect(Math.abs(peakIdx - impulseAt)).toBeLessThanOrEqual(2);
 		expect(peak).toBeGreaterThan(0.4);
-		await ctx.close();
 	}, 30_000);
 
 	it('respects exact trim boundaries', async () => {
@@ -291,10 +356,8 @@ describe('bounded audio export product path', () => {
 			format: 'wav',
 			range: { startFrame: 0, endFrame: 60 }
 		});
-		const ctx = new AudioContext();
-		const decoded = await ctx.decodeAudioData(await artifact.blob.arrayBuffer());
+		const decoded = await decodePcm16Wav(artifact.blob);
 		expect(decoded.length).toBeCloseTo(2 * 48_000, -2);
-		await ctx.close();
 	}, 20_000);
 
 	it('fails on decode failure for audio-only instead of silent', async () => {
@@ -467,12 +530,10 @@ describe('bounded audio export product path', () => {
 			timeline: { tracks: [track], items: [item] }
 		};
 		const artifact = await renderTimelineAudioArtifact(project, { format: 'wav' });
-		const ctx = new AudioContext();
-		const decoded = await ctx.decodeAudioData(await artifact.blob.arrayBuffer());
+		const decoded = await decodePcm16Wav(artifact.blob);
 		expect(decoded.length).toBeCloseTo(durationSec * 48_000, -2);
 		expect(decoded.length).toBeGreaterThan(0);
 		// The direct mixer diagnostics below prove the allocation bound. This product-path check proves output duration.
-		await ctx.close();
 	}, 30_000);
 
 	it('keeps speed, pitch, EQ, resampling and automation bounded and continuous', async () => {

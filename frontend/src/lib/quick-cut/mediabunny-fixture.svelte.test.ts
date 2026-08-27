@@ -93,14 +93,17 @@ async function createColorToneMp4(
 	await output.start();
 
 	const sampleRate = 48_000;
-	const pcm = new Float32Array(Math.round(durationSec * sampleRate));
-	for (let index = 0; index < pcm.length; index++) {
-		pcm[index] = Math.sin((2 * Math.PI * frequency * index) / sampleRate) * 0.4;
+	const frames = Math.round(durationSec * sampleRate);
+	const pcm = new Float32Array(frames * 2);
+	for (let frame = 0; frame < frames; frame++) {
+		const value = Math.sin((2 * Math.PI * frequency * frame) / sampleRate) * 0.4;
+		pcm[frame * 2] = value;
+		pcm[frame * 2 + 1] = value;
 	}
 	const sample = new AudioSample({
 		data: pcm,
 		format: 'f32',
-		numberOfChannels: 1,
+		numberOfChannels: 2,
 		sampleRate,
 		timestamp: 0
 	});
