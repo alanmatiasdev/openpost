@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaMetadata } from '../media/types';
 import { createBlankProject } from '../project/defaults';
-import type { Project } from '../project/types';
+import type { Project, TimelineTransition } from '../project/types';
 import { computeSnapshotChecksum } from './snapshot-utils';
 import { createSnapshotService, type SnapshotServiceRuntime } from './snapshot-service';
 
@@ -110,16 +110,21 @@ describe('project snapshot service', () => {
 		const snapshot = await testRuntime.service.exportProjectSnapshot(testRuntime.source.id);
 		delete snapshot.project.schemaFamily;
 		snapshot.project.schemaVersion = 15;
-		snapshot.project.timeline!.transitions = [
-			{
-				id: 'freecut-transition',
-				type: 'crossfade',
-				durationInFrames: 12,
-				leftClipId: 'clip',
-				rightClipId: 'clip',
-				trackId: 'track-video-main'
-			} as unknown as NonNullable<Project['timeline']>['transitions'][number]
-		];
+		const freeCutTransition: TimelineTransition = {
+			id: 'freecut-transition',
+			type: 'crossfade',
+			durationInFrames: 12,
+			fromItemId: 'clip',
+			toItemId: 'clip'
+		};
+		Object.assign(freeCutTransition, {
+			leftClipId: 'clip',
+			rightClipId: 'clip',
+			trackId: 'track-video-main'
+		});
+		Reflect.deleteProperty(freeCutTransition, 'fromItemId');
+		Reflect.deleteProperty(freeCutTransition, 'toItemId');
+		snapshot.project.timeline!.transitions = [freeCutTransition];
 		snapshot.checksum = await computeSnapshotChecksum(snapshot);
 
 		const result = await testRuntime.service.importProjectSnapshot(snapshot);

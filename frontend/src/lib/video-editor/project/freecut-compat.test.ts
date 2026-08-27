@@ -1,9 +1,141 @@
 import { describe, expect, it } from 'vitest';
 import { CURRENT_SCHEMA_VERSION, migrateProjectDocument } from './defaults';
 import { unsupportedProjectSchemaVersion } from './project-editability';
-import type { Project } from './types';
+import type { Project, ProjectTimeline, TimelineItem, TimelineTransition } from './types';
 
 function freeCutProject(): Project {
+	const star: TimelineItem = {
+		id: 'star',
+		trackId: 'visuals',
+		from: 0,
+		durationInFrames: 60,
+		label: 'Star',
+		type: 'shape',
+		shapeType: 'star',
+		volume: 0
+	};
+	Object.assign(star, {
+		direction: 'up',
+		points: 7,
+		innerRadius: 0.4,
+		effects: [
+			{
+				id: 'grade',
+				enabled: true,
+				effect: {
+					type: 'gpu-effect',
+					gpuEffectType: 'gpu-contrast',
+					params: { amount: 1.2 }
+				}
+			}
+		]
+	});
+
+	const lottie: TimelineItem = {
+		id: 'lottie',
+		trackId: 'visuals',
+		from: 60,
+		durationInFrames: 60,
+		label: 'Logo',
+		type: 'lottie'
+	};
+	Object.assign(lottie, {
+		frameRate: 30,
+		totalFrames: 90,
+		loop: false,
+		reversed: true,
+		segmentStart: 10,
+		segmentEnd: 70
+	});
+
+	const captions: TimelineItem = {
+		id: 'captions',
+		trackId: 'visuals',
+		from: 0,
+		durationInFrames: 120,
+		label: 'Captions',
+		type: 'subtitle'
+	};
+	Object.assign(captions, {
+		source: { type: 'transcript', mediaId: 'media', clipId: 'star' },
+		cues: [{ id: 'cue', startSeconds: 0.5, endSeconds: 1.25, text: 'Hello' }]
+	});
+
+	const transition: TimelineTransition = {
+		id: 'transition',
+		type: 'crossfade',
+		presentation: 'fade',
+		timing: 'linear',
+		fromItemId: 'star',
+		toItemId: 'lottie',
+		durationInFrames: 12
+	};
+	Object.assign(transition, {
+		leftClipId: 'star',
+		rightClipId: 'lottie',
+		trackId: 'visuals'
+	});
+	Reflect.deleteProperty(transition, 'fromItemId');
+	Reflect.deleteProperty(transition, 'toItemId');
+
+	const timeline: ProjectTimeline = {
+		tracks: [
+			{
+				id: 'visuals',
+				name: 'Visuals',
+				kind: 'video',
+				height: 80,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				volume: 0,
+				order: 0
+			}
+		],
+		items: [star, lottie, captions],
+		transitions: [transition],
+		compositions: [
+			{
+				id: 'motion',
+				name: 'Motion',
+				editorKind: 'composite-2d',
+				items: [],
+				tracks: [],
+				transitions: [],
+				fps: 60,
+				width: 1080,
+				height: 1080,
+				durationInFrames: 60
+			}
+		]
+	};
+	Object.assign(timeline, {
+		masterBusDb: -6,
+		keyframes: [
+			{
+				itemId: 'star',
+				animationVersion: 2,
+				properties: [
+					{
+						property: 'x',
+						keyframes: [
+							{ id: 'x0', frame: 0, value: 10, easing: 'linear' },
+							{ id: 'x1', frame: 30, value: 100, easing: 'ease-out' }
+						]
+					},
+					{
+						property: 'volume',
+						keyframes: [
+							{ id: 'v0', frame: 0, value: -6, easing: 'linear' },
+							{ id: 'v1', frame: 30, value: 0, easing: 'linear' }
+						]
+					}
+				]
+			}
+		]
+	});
+
 	return {
 		id: 'freecut-project',
 		name: 'FreeCut project',
@@ -13,122 +145,8 @@ function freeCutProject(): Project {
 		duration: 120,
 		schemaVersion: 15,
 		metadata: { width: 1920, height: 1080, fps: 60, backgroundColor: '#000000' },
-		timeline: {
-			masterBusDb: -6,
-			tracks: [
-				{
-					id: 'visuals',
-					name: 'Visuals',
-					kind: 'video',
-					height: 80,
-					locked: false,
-					visible: true,
-					muted: false,
-					solo: false,
-					volume: 0,
-					order: 0
-				}
-			],
-			items: [
-				{
-					id: 'star',
-					trackId: 'visuals',
-					from: 0,
-					durationInFrames: 60,
-					label: 'Star',
-					type: 'shape',
-					shapeType: 'star',
-					direction: 'up',
-					points: 7,
-					innerRadius: 0.4,
-					volume: 0,
-					effects: [
-						{
-							id: 'grade',
-							enabled: true,
-							effect: {
-								type: 'gpu-effect',
-								gpuEffectType: 'gpu-contrast',
-								params: { amount: 1.2 }
-							}
-						}
-					]
-				},
-				{
-					id: 'lottie',
-					trackId: 'visuals',
-					from: 60,
-					durationInFrames: 60,
-					label: 'Logo',
-					type: 'lottie',
-					frameRate: 30,
-					totalFrames: 90,
-					loop: false,
-					reversed: true,
-					segmentStart: 10,
-					segmentEnd: 70
-				},
-				{
-					id: 'captions',
-					trackId: 'visuals',
-					from: 0,
-					durationInFrames: 120,
-					label: 'Captions',
-					type: 'subtitle',
-					source: { type: 'transcript', mediaId: 'media', clipId: 'star' },
-					cues: [{ id: 'cue', startSeconds: 0.5, endSeconds: 1.25, text: 'Hello' }]
-				}
-			],
-			transitions: [
-				{
-					id: 'transition',
-					type: 'crossfade',
-					presentation: 'fade',
-					timing: 'linear',
-					leftClipId: 'star',
-					rightClipId: 'lottie',
-					trackId: 'visuals',
-					durationInFrames: 12
-				}
-			],
-			keyframes: [
-				{
-					itemId: 'star',
-					animationVersion: 2,
-					properties: [
-						{
-							property: 'x',
-							keyframes: [
-								{ id: 'x0', frame: 0, value: 10, easing: 'linear' },
-								{ id: 'x1', frame: 30, value: 100, easing: 'ease-out' }
-							]
-						},
-						{
-							property: 'volume',
-							keyframes: [
-								{ id: 'v0', frame: 0, value: -6, easing: 'linear' },
-								{ id: 'v1', frame: 30, value: 0, easing: 'linear' }
-							]
-						}
-					]
-				}
-			],
-			compositions: [
-				{
-					id: 'motion',
-					name: 'Motion',
-					editorKind: 'composite-2d',
-					items: [],
-					tracks: [],
-					transitions: [],
-					fps: 60,
-					width: 1080,
-					height: 1080,
-					durationInFrames: 60
-				}
-			]
-		}
-	} as unknown as Project;
+		timeline
+	};
 }
 
 describe('FreeCut project compatibility', () => {
@@ -140,7 +158,7 @@ describe('FreeCut project compatibility', () => {
 		const captions = timeline.items.find((item) => item.id === 'captions')!;
 
 		expect(result.project.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-		expect((result.project as Project & { schemaFamily?: string }).schemaFamily).toBe('openpost');
+		expect(result.project.schemaFamily).toBe('openpost');
 		expect(result.migrated).toBe(true);
 		expect(result.warnings.some((warning) => warning.code === 'FREECUT_SCHEMA_IMPORTED')).toBe(
 			true
