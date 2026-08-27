@@ -70,7 +70,7 @@
 		type VariantPost
 	} from './compose/draft-utils';
 	import {
-		minimumAccountCharacterLimit,
+		mostConstrainedCharacterUsage,
 		platformTextLength,
 		uniquePlatformLimits
 	} from './compose/platform-limits';
@@ -620,26 +620,14 @@
 		return uniquePlatformLimits(editorLimitAccounts, resolvedCapabilities);
 	});
 
-	const editorMaxChars = $derived.by(() => {
-		return minimumAccountCharacterLimit(editorLimitAccounts, resolvedCapabilities);
-	});
-
 	function editorCharacterUsage(value: string): { count: number; limit: number } {
-		let usage = {
-			count: platformTextLength('', value),
-			limit: editorMaxChars
-		};
-		let highestRatio = usage.count / usage.limit;
-		for (const platformLimit of editorPlatformLimits) {
-			const count = platformTextLength(platformLimit.key, value);
-			const ratio = count / platformLimit.limit;
-			if (ratio > highestRatio || (ratio === highestRatio && platformLimit.limit < usage.limit)) {
-				usage = { count, limit: platformLimit.limit };
-				highestRatio = ratio;
-			}
+		const usage = mostConstrainedCharacterUsage(value, editorPlatformLimits);
+		if (usage.limit === null) {
+			throw new Error('Editor character usage requires at least one destination limit');
 		}
 		return usage;
 	}
+
 	const effectiveRandomDelayMinutes = $derived.by(() => {
 		if (randomDelayOverride === 'default') return workspaceCtx.settings.random_delay_minutes;
 		const value = Number(randomDelayOverride);
@@ -5128,78 +5116,80 @@
 												<ImageIcon class="h-3.5 w-3.5" />
 											</button>
 
-											<Tooltip.Root>
-												<Tooltip.Trigger>
-													{#snippet child({ props })}
-														{@const editorUsage = editorCharacterUsage(
-															getEditorContentForPost(post)
-														)}
-														<div {...props} class="flex cursor-default items-center gap-1.5">
-															<svg
-																class="h-4 w-4 {getCharCounterColor(
-																	editorUsage.count,
-																	editorUsage.limit
-																)}"
-																viewBox="0 0 20 20"
-															>
-																<circle
-																	cx="10"
-																	cy="10"
-																	r="8"
-																	fill="none"
-																	stroke="currentColor"
-																	stroke-width="2.5"
-																	opacity="0.15"
-																/>
-																<circle
-																	cx="10"
-																	cy="10"
-																	r="8"
-																	fill="none"
-																	stroke={getCharCounterStrokeColor(
-																		editorUsage.count,
-																		editorUsage.limit
-																	)}
-																	stroke-width="2.5"
-																	stroke-linecap="round"
-																	stroke-dasharray={50.27}
-																	stroke-dashoffset={50.27 *
-																		Math.max(0, 1 - editorUsage.count / editorUsage.limit)}
-																	transform="rotate(-90 10 10)"
-																/>
-															</svg>
-															<span class="text-xs text-muted-foreground tabular-nums"
-																>{editorUsage.count}/{editorUsage.limit}</span
-															>
-														</div>
-													{/snippet}
-												</Tooltip.Trigger>
-												<Tooltip.Content>
-													<div class="space-y-1">
-														<p class="text-xs font-medium text-muted-foreground">
-															{m.compose_character_limits()}
-														</p>
-														{#each editorPlatformLimits as pl (pl.key)}
-															{@const platformCount = platformTextLength(
-																pl.key,
+											{#if editorPlatformLimits.length > 0}
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														{#snippet child({ props })}
+															{@const editorUsage = editorCharacterUsage(
 																getEditorContentForPost(post)
 															)}
-															<div class="flex items-center justify-between gap-2 text-xs">
-																<div class="flex items-center gap-1.5">
-																	<PlatformIcon platform={pl.key} class="h-3 w-3" /><span
-																		>{pl.platform}</span
-																	>
-																</div>
-																<span
-																	class="tabular-nums {platformCount > pl.limit
-																		? 'text-red-500'
-																		: 'text-muted-foreground'}">{platformCount}/{pl.limit}</span
+															<div {...props} class="flex cursor-default items-center gap-1.5">
+																<svg
+																	class="h-4 w-4 {getCharCounterColor(
+																		editorUsage.count,
+																		editorUsage.limit
+																	)}"
+																	viewBox="0 0 20 20"
+																>
+																	<circle
+																		cx="10"
+																		cy="10"
+																		r="8"
+																		fill="none"
+																		stroke="currentColor"
+																		stroke-width="2.5"
+																		opacity="0.15"
+																	/>
+																	<circle
+																		cx="10"
+																		cy="10"
+																		r="8"
+																		fill="none"
+																		stroke={getCharCounterStrokeColor(
+																			editorUsage.count,
+																			editorUsage.limit
+																		)}
+																		stroke-width="2.5"
+																		stroke-linecap="round"
+																		stroke-dasharray={50.27}
+																		stroke-dashoffset={50.27 *
+																			Math.max(0, 1 - editorUsage.count / editorUsage.limit)}
+																		transform="rotate(-90 10 10)"
+																	/>
+																</svg>
+																<span class="text-xs text-muted-foreground tabular-nums"
+																	>{editorUsage.count}/{editorUsage.limit}</span
 																>
 															</div>
-														{/each}
-													</div>
-												</Tooltip.Content>
-											</Tooltip.Root>
+														{/snippet}
+													</Tooltip.Trigger>
+													<Tooltip.Content>
+														<div class="space-y-1">
+															<p class="text-xs font-medium text-muted-foreground">
+																{m.compose_character_limits()}
+															</p>
+															{#each editorPlatformLimits as pl (pl.key)}
+																{@const platformCount = platformTextLength(
+																	pl.key,
+																	getEditorContentForPost(post)
+																)}
+																<div class="flex items-center justify-between gap-2 text-xs">
+																	<div class="flex items-center gap-1.5">
+																		<PlatformIcon platform={pl.key} class="h-3 w-3" /><span
+																			>{pl.platform}</span
+																		>
+																	</div>
+																	<span
+																		class="tabular-nums {platformCount > pl.limit
+																			? 'text-red-500'
+																			: 'text-muted-foreground'}">{platformCount}/{pl.limit}</span
+																	>
+																</div>
+															{/each}
+														</div>
+													</Tooltip.Content>
+												</Tooltip.Root>
+											{/if}
 
 											<button
 												type="button"
