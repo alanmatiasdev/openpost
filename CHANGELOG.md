@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-08-27
+
+### Fixed
+
+- Accept current npm metadata output when verifying a clean n8n community-node install.
+
 ## [4.3.1] - 2026-08-27
 
 ### Fixed
