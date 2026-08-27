@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -7,7 +7,8 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { showToast } from '$lib/toast';
 	import {
-		recorder,
+		recorder as defaultRecorder,
+		ScreenCaptureRecorder,
 		listRecorderDevices,
 		estimateBytesPerMinute,
 		formatBytes,
@@ -15,31 +16,45 @@
 		type RecorderSelection
 	} from '$lib/video-editor/recorder/recorder.svelte';
 	import { insertRecordingArtifacts } from '$lib/video-editor/recorder/insert-recording';
+	import {
+		recorderPreferences as defaultPreferences,
+		type RecorderPreferencesStore
+	} from '$lib/video-editor/recorder/recorder-preferences.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 
 	let {
 		open = false,
 		projectId,
+		recorder = defaultRecorder,
+		preferences = defaultPreferences,
 		onopenchange = () => {},
 		oninserted = () => {}
 	}: {
 		open: boolean;
 		projectId: string;
+		recorder?: ScreenCaptureRecorder;
+		preferences?: RecorderPreferencesStore;
 		onopenchange?: (v: boolean) => void;
 		oninserted?: (itemId: string) => void;
 	} = $props();
 
 	let cameras = $state<MediaDeviceInfo[]>([]);
 	let microphones = $state<MediaDeviceInfo[]>([]);
-	let includeScreen = $state(true);
-	let includeCamera = $state(false);
-	let includeMic = $state(true);
-	let includeSystemAudio = $state(true);
-	let cameraId = $state<string>('');
-	let micId = $state<string>('');
-	let countdown = $state<string>('0');
-	let plannedMinutes = $state<string>('5');
+	const savedPreferences = untrack(() => preferences.value);
+	let includeScreen = $state(savedPreferences.includeScreen);
+	let includeCamera = $state(savedPreferences.includeCamera);
+	let includeMic = $state(savedPreferences.includeMicrophone);
+	let includeSystemAudio = $state(savedPreferences.includeSystemAudio);
+	let cameraId = $state(savedPreferences.cameraDeviceId);
+	let micId = $state(savedPreferences.microphoneDeviceId);
+	let countdown = $state(String(savedPreferences.countdownSeconds));
+	let plannedMinutes = $state(String(savedPreferences.plannedMinutes));
+	let videoResolution = $state(savedPreferences.videoResolution);
+	let videoFrameRate = $state(String(savedPreferences.videoFrameRate));
+	let cameraFacingMode = $state(savedPreferences.cameraFacingMode);
+	let noiseSuppression = $state(savedPreferences.noiseSuppression);
+	let autoGainControl = $state(savedPreferences.autoGainControl);
 	let inserting = $state(false);
 	type RecoveryUrl = { kind: RecorderKind; url: string; name: string; scratchId: string };
 	let recoveryUrls = $state<RecoveryUrl[]>([]);
@@ -50,15 +65,24 @@
 		camera: includeCamera,
 		microphone: includeMic
 	});
+	const captureQuality = $derived({
+		videoResolution,
+		videoFrameRate: selectedFrameRate(),
+		includeSystemAudio
+	});
 	const hasSelection = $derived(includeScreen || includeCamera || includeMic);
-	const estimate = $derived(hasSelection ? formatBytes(estimateBytesPerMinute(selection)) : null);
+	const estimate = $derived(
+		hasSelection ? formatBytes(estimateBytesPerMinute(selection, captureQuality)) : null
+	);
 	const plannedEstimate = $derived(() => {
 		const minutes = Number(plannedMinutes) || 5;
-		const perMin = estimateBytesPerMinute(selection);
+		const perMin = estimateBytesPerMinute(selection, captureQuality);
 		return formatBytes(Math.ceil(perMin * minutes * 1.2));
 	});
 	const plannedBytes = $derived(
-		Math.ceil(estimateBytesPerMinute(selection) * (Number(plannedMinutes) || 5) * 1.2)
+		Math.ceil(
+			estimateBytesPerMinute(selection, captureQuality) * (Number(plannedMinutes) || 5) * 1.2
+		)
 	);
 	const sourceSummary = $derived.by(() => {
 		const sources: string[] = [];
@@ -71,6 +95,7 @@
 	const requestingActive = $derived(recorder.status === 'requesting');
 	const recordingActive = $derived(recorder.status === 'recording');
 	const stoppingActive = $derived(recorder.status === 'stopping');
+	const micMeterWidth = $derived(Math.round(recorder.micLevel * 100));
 	const captureBusy = $derived(
 		requestingActive || countdownActive || recordingActive || stoppingActive
 	);
@@ -84,8 +109,14 @@
 			const lists = await listRecorderDevices();
 			cameras = lists.cameras;
 			microphones = lists.microphones;
-			if (cameraId && !cameras.some((c) => c.deviceId === cameraId)) cameraId = '';
-			if (micId && !microphones.some((d) => d.deviceId === micId)) micId = '';
+			if (cameraId && !cameras.some((c) => c.deviceId === cameraId)) {
+				cameraId = '';
+				preferences.set('cameraDeviceId', '');
+			}
+			if (micId && !microphones.some((d) => d.deviceId === micId)) {
+				micId = '';
+				preferences.set('microphoneDeviceId', '');
+			}
 		} catch {
 			// ignore
 		}
@@ -126,6 +157,24 @@
 		return m.record_source_audio();
 	}
 
+	function selectedFrameRate(): 24 | 30 | 60 {
+		if (videoFrameRate === '24') return 24;
+		if (videoFrameRate === '60') return 60;
+		return 30;
+	}
+
+	function setVideoResolution(value: string): void {
+		if (value !== '720p' && value !== '1080p' && value !== '2160p') return;
+		videoResolution = value;
+		preferences.set('videoResolution', value);
+	}
+
+	function setCameraFacingMode(value: string): void {
+		if (value !== 'default' && value !== 'user' && value !== 'environment') return;
+		cameraFacingMode = value;
+		preferences.set('cameraFacingMode', value);
+	}
+
 	function recoveryUrl(artifact: (typeof recorder.lastArtifacts)[number]): RecoveryUrl {
 		return {
 			kind: artifact.kind,
@@ -153,7 +202,7 @@
 			mounted = false;
 			navigator.mediaDevices?.removeEventListener?.('devicechange', handler);
 			recoveryUrls.forEach((recovery) => URL.revokeObjectURL(recovery.url));
-			void recorder.cancel();
+			queueMicrotask(() => void recorder.cancel());
 		};
 	});
 
@@ -180,7 +229,12 @@
 				cameraDeviceId: cameraId || null,
 				microphoneDeviceId: micId || null,
 				includeSystemAudio,
-				countdownSeconds
+				countdownSeconds,
+				videoResolution,
+				videoFrameRate: selectedFrameRate(),
+				cameraFacingMode,
+				noiseSuppression,
+				autoGainControl
 			});
 		} catch {
 			showToast(localizedRecorderError(), 'error');
@@ -294,6 +348,7 @@
 						<input
 							type="checkbox"
 							bind:checked={includeScreen}
+							onchange={() => preferences.set('includeScreen', includeScreen)}
 							class="size-4 accent-[oklch(0.66_0.14_45)]"
 						/>
 						<span class="text-sm">{m.record_source_screen()}</span>
@@ -304,6 +359,7 @@
 						<input
 							type="checkbox"
 							bind:checked={includeCamera}
+							onchange={() => preferences.set('includeCamera', includeCamera)}
 							class="size-4 accent-[oklch(0.66_0.14_45)]"
 						/>
 						<span class="text-sm">{m.record_source_camera()}</span>
@@ -314,6 +370,7 @@
 						<input
 							type="checkbox"
 							bind:checked={includeMic}
+							onchange={() => preferences.set('includeMicrophone', includeMic)}
 							class="size-4 accent-[oklch(0.66_0.14_45)]"
 						/>
 						<span class="text-sm">{m.record_source_audio()}</span>
@@ -326,12 +383,18 @@
 							<span>{m.record_camera()}</span>
 							<AppSelect
 								value={cameraId}
-								options={cameras.map((c) => ({
-									value: c.deviceId,
-									label: c.label || m.record_device_default()
-								}))}
+								options={[
+									{ value: '', label: m.record_device_default() },
+									...cameras.map((c) => ({
+										value: c.deviceId,
+										label: c.label || m.record_device_default()
+									}))
+								]}
 								ariaLabel={m.record_camera()}
-								onValueChange={(v) => (cameraId = v)}
+								onValueChange={(v) => {
+									cameraId = v;
+									preferences.set('cameraDeviceId', v);
+								}}
 								class="h-11"
 							/>
 						</label>
@@ -349,21 +412,98 @@
 									}))
 								]}
 								ariaLabel={m.record_microphone()}
-								onValueChange={(v) => (micId = v)}
+								onValueChange={(v) => {
+									micId = v;
+									preferences.set('microphoneDeviceId', v);
+								}}
 								class="h-11"
 							/>
 						</label>
 					{/if}
 				</div>
 
+				{#if includeScreen || includeCamera}
+					<div class="grid gap-3 sm:grid-cols-3">
+						<label class="flex flex-col gap-1 text-xs">
+							<span>{m.video_editor_export_resolution()}</span>
+							<AppSelect
+								value={videoResolution}
+								options={[
+									{ value: '720p', label: '1280 × 720' },
+									{ value: '1080p', label: '1920 × 1080' },
+									{ value: '2160p', label: '3840 × 2160' }
+								]}
+								ariaLabel={m.video_editor_export_resolution()}
+								onValueChange={setVideoResolution}
+								class="h-11"
+							/>
+						</label>
+						<label class="flex flex-col gap-1 text-xs">
+							<span>{m.video_editor_media_info_frame_rate()}</span>
+							<AppSelect
+								value={videoFrameRate}
+								options={[
+									{ value: '24', label: '24 fps' },
+									{ value: '30', label: '30 fps' },
+									{ value: '60', label: '60 fps' }
+								]}
+								ariaLabel={m.video_editor_media_info_frame_rate()}
+								onValueChange={(value) => {
+									videoFrameRate = value;
+									preferences.set('videoFrameRate', selectedFrameRate());
+								}}
+								class="h-11"
+							/>
+						</label>
+						{#if includeCamera}
+							<label class="flex flex-col gap-1 text-xs">
+								<span>{m.video_editor_record_camera_facing()}</span>
+								<AppSelect
+									value={cameraFacingMode}
+									options={[
+										{ value: 'default', label: m.record_device_default() },
+										{ value: 'user', label: m.video_editor_record_camera_front() },
+										{ value: 'environment', label: m.video_editor_record_camera_back() }
+									]}
+									ariaLabel={m.video_editor_record_camera_facing()}
+									onValueChange={setCameraFacingMode}
+									class="h-11"
+								/>
+							</label>
+						{/if}
+					</div>
+				{/if}
+
 				{#if includeScreen}
 					<label class="flex min-h-11 items-center gap-2 text-sm">
-						<Checkbox bind:checked={includeSystemAudio} />
+						<Checkbox
+							bind:checked={includeSystemAudio}
+							onCheckedChange={(checked) => preferences.set('includeSystemAudio', checked === true)}
+						/>
 						<span>{m.record_system_audio()}</span>
 						<span class="text-xs text-muted-foreground"
 							>({m.video_editor_system_audio_caveat()})</span
 						>
 					</label>
+				{/if}
+
+				{#if includeMic}
+					<div class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+						<label class="flex min-h-11 items-center gap-2">
+							<Checkbox
+								bind:checked={noiseSuppression}
+								onCheckedChange={(checked) => preferences.set('noiseSuppression', checked === true)}
+							/>
+							<span>{m.video_editor_voiceover_noise_suppression()}</span>
+						</label>
+						<label class="flex min-h-11 items-center gap-2">
+							<Checkbox
+								bind:checked={autoGainControl}
+								onCheckedChange={(checked) => preferences.set('autoGainControl', checked === true)}
+							/>
+							<span>{m.video_editor_voiceover_auto_gain()}</span>
+						</label>
+					</div>
 				{/if}
 
 				<div class="grid gap-3 sm:grid-cols-2">
@@ -380,10 +520,20 @@
 								{
 									value: '5',
 									label: m.video_editor_record_seconds({ seconds: 5 })
+								},
+								{
+									value: '10',
+									label: m.video_editor_record_seconds({ seconds: 10 })
 								}
 							]}
 							ariaLabel={m.video_editor_record_countdown()}
-							onValueChange={(v) => (countdown = v)}
+							onValueChange={(value) => {
+								countdown = value;
+								preferences.set(
+									'countdownSeconds',
+									value === '10' ? 10 : value === '5' ? 5 : value === '3' ? 3 : 0
+								);
+							}}
 							class="h-11"
 						/>
 					</label>
@@ -410,7 +560,13 @@
 								}
 							]}
 							ariaLabel={m.video_editor_record_planned()}
-							onValueChange={(v) => (plannedMinutes = v)}
+							onValueChange={(value) => {
+								plannedMinutes = value;
+								preferences.set(
+									'plannedMinutes',
+									value === '30' ? 30 : value === '15' ? 15 : value === '2' ? 2 : 5
+								);
+							}}
 							class="h-11"
 						/>
 					</label>
@@ -514,12 +670,34 @@
 							</div>
 						{/if}
 						{#if includeMic}
-							<div class="flex justify-between rounded bg-[oklch(0.18_0.01_55)] px-2 py-1.5">
-								<span>{m.record_source_audio()}</span><span class="font-mono tabular-nums"
-									>{m.video_editor_recording_chunks({
-										count: recorder.counters.microphone.chunks
-									})} · {formatBytes(recorder.counters.microphone.bytes)}</span
-								>
+							<div
+								class="flex flex-wrap items-center justify-between gap-2 rounded bg-[oklch(0.18_0.01_55)] px-2 py-1.5"
+							>
+								<span>{m.record_source_audio()}</span>
+								<div class="flex items-center gap-2">
+									<div
+										role="meter"
+										aria-label={m.video_editor_voiceover_input_level()}
+										aria-valuemin="0"
+										aria-valuemax="100"
+										aria-valuenow={micMeterWidth}
+										aria-valuetext={`${micMeterWidth}%`}
+										class="h-1.5 w-20 overflow-hidden rounded-full bg-white/10"
+									>
+										<div
+											class="h-full rounded-full transition-[width,background-color] duration-75 {micMeterWidth >
+											85
+												? 'bg-red-400'
+												: 'bg-emerald-400'}"
+											style:width={`${micMeterWidth}%`}
+										></div>
+									</div>
+									<span class="font-mono tabular-nums"
+										>{m.video_editor_recording_chunks({
+											count: recorder.counters.microphone.chunks
+										})} · {formatBytes(recorder.counters.microphone.bytes)}</span
+									>
+								</div>
 							</div>
 						{/if}
 					</div>

@@ -48,6 +48,7 @@ class FakeMediaRecorder extends EventTarget {
 
 	mimeType: string;
 	state: RecordingState = 'inactive';
+	readonly options: MediaRecorderOptions | undefined;
 	requestData = vi.fn();
 	pause = vi.fn();
 	resume = vi.fn();
@@ -66,6 +67,7 @@ class FakeMediaRecorder extends EventTarget {
 
 	constructor(stream: MediaStream, options?: MediaRecorderOptions) {
 		super();
+		this.options = options;
 		this.kind = fakeStream(stream)
 			.getTracks()
 			.map((track) => track.kind)
@@ -136,6 +138,63 @@ describe('ScreenCaptureRecorder', () => {
 		).toBeGreaterThan(estimateBytesPerMinute({ screen: false, camera: false, microphone: true }));
 	});
 
+	it('applies persisted quality, facing, and microphone processing preferences', async () => {
+		const recorder = new ScreenCaptureRecorder();
+		await recorder.startWithSelection(
+			{ screen: true, camera: true, microphone: true },
+			{
+				videoResolution: '2160p',
+				videoFrameRate: 60,
+				cameraFacingMode: 'environment',
+				noiseSuppression: false,
+				autoGainControl: true
+			}
+		);
+
+		expect(getDisplayMedia).toHaveBeenCalledWith({
+			video: {
+				cursor: 'always',
+				width: { ideal: 3840 },
+				height: { ideal: 2160 },
+				frameRate: { ideal: 60 }
+			},
+			audio: true
+		});
+		expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+			video: {
+				width: { ideal: 3840 },
+				height: { ideal: 2160 },
+				frameRate: { ideal: 60 },
+				facingMode: { ideal: 'environment' }
+			},
+			audio: false
+		});
+		expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: false,
+				autoGainControl: true
+			},
+			video: false
+		});
+		expect(FakeMediaRecorder.instances.map((instance) => instance.options)).toEqual([
+			{
+				mimeType: 'video/webm;codecs=vp9,opus',
+				videoBitsPerSecond: 40_000_000,
+				audioBitsPerSecond: 128_000
+			},
+			{
+				mimeType: 'video/webm;codecs=vp9,opus',
+				videoBitsPerSecond: 40_000_000
+			},
+			{
+				mimeType: 'audio/webm;codecs=opus',
+				audioBitsPerSecond: 128_000
+			}
+		]);
+		await recorder.cancel();
+	});
+
 	it('records separate ordered artifacts on one monotonic timebase', async () => {
 		const recorder = new ScreenCaptureRecorder();
 		await recorder.startWithSelection(
@@ -143,7 +202,20 @@ describe('ScreenCaptureRecorder', () => {
 			{ includeSystemAudio: true }
 		);
 		expect(getDisplayMedia).toHaveBeenCalledOnce();
+		expect(getDisplayMedia).toHaveBeenCalledWith({
+			video: { cursor: 'always' },
+			audio: true
+		});
 		expect(getUserMedia).toHaveBeenCalledTimes(2);
+		expect(getUserMedia).toHaveBeenNthCalledWith(1, { video: {}, audio: false });
+		expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false
+			},
+			video: false
+		});
 		expect(FakeMediaRecorder.instances).toHaveLength(3);
 		for (const instance of FakeMediaRecorder.instances) {
 			expect(instance.start).toHaveBeenCalledWith(1000);

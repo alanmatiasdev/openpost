@@ -17,7 +17,12 @@ import {
 	pickAudioMimeType as pickAudioMimeTypePure,
 	pickVideoMimeType as pickVideoMimeTypePure,
 	recorderMimeType as recorderMimeTypePure,
-	type RecorderErrorCode as RecorderErrorCodePure
+	recorderVideoBitsPerSecond,
+	RECORDER_AUDIO_BITS_PER_SECOND,
+	type RecorderCameraFacingMode,
+	type RecorderErrorCode as RecorderErrorCodePure,
+	type RecorderVideoFrameRate,
+	type RecorderVideoResolution
 } from './record-mime';
 import {
 	createScratchSink,
@@ -30,6 +35,7 @@ import {
 	type ScratchRecoveryManifest,
 	type ScratchSink
 } from './recorder-scratch';
+import { microphoneConstraints, startMicLevelMeter } from './mic-recorder';
 
 const logger = createLogger('ScreenCaptureRecorder');
 
@@ -46,7 +52,18 @@ export interface RecorderStartOptions {
 	microphoneDeviceId?: string | null;
 	includeSystemAudio?: boolean;
 	countdownSeconds?: number;
+	videoResolution?: RecorderVideoResolution;
+	videoFrameRate?: RecorderVideoFrameRate;
+	cameraFacingMode?: RecorderCameraFacingMode;
+	noiseSuppression?: boolean;
+	autoGainControl?: boolean;
 }
+
+export type {
+	RecorderCameraFacingMode,
+	RecorderVideoFrameRate,
+	RecorderVideoResolution
+} from './record-mime';
 
 export interface RecorderDeviceLists {
 	cameras: MediaDeviceInfo[];
@@ -153,6 +170,44 @@ interface DisplayCaptureConstraints extends MediaTrackConstraints {
 	cursor: 'always';
 }
 
+const VIDEO_RESOLUTION_SIZE = {
+	'720p': { width: 1280, height: 720 },
+	'1080p': { width: 1920, height: 1080 },
+	'2160p': { width: 3840, height: 2160 }
+} as const satisfies Record<RecorderVideoResolution, { width: number; height: number }>;
+
+function preferredVideoConstraints(
+	options: RecorderStartOptions
+): Pick<MediaTrackConstraints, 'width' | 'height' | 'frameRate'> {
+	const resolution = options.videoResolution;
+	const result: Pick<MediaTrackConstraints, 'width' | 'height' | 'frameRate'> = {};
+	if (resolution) {
+		const size = VIDEO_RESOLUTION_SIZE[resolution];
+		result.width = { ideal: size.width };
+		result.height = { ideal: size.height };
+	}
+	if (options.videoFrameRate) result.frameRate = { ideal: options.videoFrameRate };
+	return result;
+}
+
+function mediaRecorderOptions(
+	kind: RecorderKind,
+	stream: MediaStream,
+	mimeType: string,
+	options: RecorderStartOptions
+): MediaRecorderOptions | undefined {
+	const result: MediaRecorderOptions = {};
+	if (mimeType) result.mimeType = mimeType;
+	if (kind !== 'microphone') {
+		const videoBitsPerSecond = recorderVideoBitsPerSecond(options);
+		if (videoBitsPerSecond) result.videoBitsPerSecond = videoBitsPerSecond;
+	}
+	if (stream.getAudioTracks().length > 0) {
+		result.audioBitsPerSecond = RECORDER_AUDIO_BITS_PER_SECOND;
+	}
+	return Object.keys(result).length > 0 ? result : undefined;
+}
+
 export class ScreenCaptureRecorder {
 	status = $state<RecorderStatus>('idle');
 	selection = $state<RecorderSelection | null>(null);
@@ -168,6 +223,7 @@ export class ScreenCaptureRecorder {
 	screenStream = $state<MediaStream | null>(null);
 	cameraStream = $state<MediaStream | null>(null);
 	micStream = $state<MediaStream | null>(null);
+	micLevel = $state(0);
 
 	private internal: InternalRecorder[] = [];
 	private acquiredStreams: MediaStream[] = [];
@@ -183,6 +239,8 @@ export class ScreenCaptureRecorder {
 	private activeRecoveryCreatedAt = 0;
 	private recoveryManifestQueue: Promise<void> = Promise.resolve();
 	private releaseRecoveryLock: (() => void) | null = null;
+	private stopMicMeter: (() => void) | null = null;
+	private lastMicLevelUpdate = Number.NEGATIVE_INFINITY;
 
 	async startWithSelection(
 		selection: RecorderSelection,
@@ -229,7 +287,10 @@ export class ScreenCaptureRecorder {
 
 		try {
 			if (selection.screen) {
-				const video: DisplayCaptureConstraints = { cursor: 'always' };
+				const video: DisplayCaptureConstraints = {
+					cursor: 'always',
+					...preferredVideoConstraints(options)
+				};
 				const constraints: DisplayMediaStreamOptions = {
 					video,
 					audio: options.includeSystemAudio !== false
@@ -248,8 +309,12 @@ export class ScreenCaptureRecorder {
 			}
 			if (selection.camera) {
 				const deviceId = options.cameraDeviceId ?? null;
+				const facingMode = options.cameraFacingMode ?? 'default';
+				const video: MediaTrackConstraints = preferredVideoConstraints(options);
+				if (deviceId) video.deviceId = { exact: deviceId };
+				else if (facingMode !== 'default') video.facingMode = { ideal: facingMode };
 				cameraStream = await navigator.mediaDevices.getUserMedia({
-					video: deviceId ? { deviceId: { exact: deviceId } } : true,
+					video,
 					audio: false
 				});
 				trackAcquired(cameraStream);
@@ -261,7 +326,11 @@ export class ScreenCaptureRecorder {
 			if (selection.microphone) {
 				const deviceId = options.microphoneDeviceId ?? null;
 				micStream = await navigator.mediaDevices.getUserMedia({
-					audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+					audio: microphoneConstraints({
+						deviceId: deviceId ?? undefined,
+						noiseSuppression: options.noiseSuppression,
+						autoGainControl: options.autoGainControl
+					}),
 					video: false
 				});
 				trackAcquired(micStream);
@@ -285,6 +354,14 @@ export class ScreenCaptureRecorder {
 			throw new Error('Cancelled');
 		}
 
+		if (micStream) {
+			this.stopMicMeter = startMicLevelMeter(micStream, (level) => {
+				const now = performance.now();
+				if (now - this.lastMicLevelUpdate < 40) return;
+				this.lastMicLevelUpdate = now;
+				this.micLevel = Math.max(0, Math.min(1, level));
+			});
+		}
 		this.screenStream = screenStream;
 		this.cameraStream = cameraStream;
 		this.micStream = micStream;
@@ -318,6 +395,8 @@ export class ScreenCaptureRecorder {
 		const releaseRecoveryLock = await holdScratchRecoveryLock(recoverySessionId);
 		if (generation !== this.generation) {
 			releaseRecoveryLock();
+			this.cleanupAcquiredStreams();
+			this.clearPreview();
 			return;
 		}
 		this.activeRecoverySessionId = recoverySessionId;
@@ -354,7 +433,7 @@ export class ScreenCaptureRecorder {
 				const sink = await createScratchSink(kind, mime, recoverySessionId);
 				let recorder: MediaRecorder;
 				try {
-					recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+					recorder = new MediaRecorder(stream, mediaRecorderOptions(kind, stream, mime, options));
 				} catch (error) {
 					await sink.discard();
 					throw error;
@@ -688,6 +767,10 @@ export class ScreenCaptureRecorder {
 	}
 
 	private clearPreview(): void {
+		this.stopMicMeter?.();
+		this.stopMicMeter = null;
+		this.lastMicLevelUpdate = Number.NEGATIVE_INFINITY;
+		this.micLevel = 0;
 		this.screenStream = null;
 		this.cameraStream = null;
 		this.micStream = null;

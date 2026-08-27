@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { recorder } from '../recorder/recorder.svelte';
+import { ScreenCaptureRecorder } from '../recorder/recorder.svelte';
+import {
+	createRecorderPreferencesStore,
+	type RecorderPreferencesStore
+} from '../recorder/recorder-preferences.svelte';
 import RecordingDialog from './recording-dialog.svelte';
 import '../../../routes/layout.css';
 
+let recorder: ScreenCaptureRecorder;
+let preferences: RecorderPreferencesStore;
+
 beforeEach(async () => {
-	await recorder.cancel();
+	recorder = new ScreenCaptureRecorder();
+	preferences = createRecorderPreferencesStore(null);
 	await recorder.clearRecoverableAndDiscard();
 });
 
@@ -20,6 +28,8 @@ describe('RecordingDialog', () => {
 		const screen = await render(RecordingDialog, {
 			open: true,
 			projectId: 'project',
+			recorder,
+			preferences,
 			onopenchange: vi.fn(),
 			oninserted: vi.fn()
 		});
@@ -30,9 +40,21 @@ describe('RecordingDialog', () => {
 		await expect.element(screen.getByRole('checkbox', { name: 'Camera' })).not.toBeChecked();
 		await expect.element(screen.getByRole('checkbox', { name: 'Microphone' })).toBeChecked();
 		await expect.element(screen.getByRole('checkbox', { name: /System audio/ })).toBeChecked();
+		await expect.element(screen.getByText('1920 × 1080')).toBeVisible();
+		await expect.element(screen.getByText('30 fps')).toBeVisible();
+		await expect
+			.element(screen.getByRole('checkbox', { name: 'Reduce background noise' }))
+			.toBeChecked();
+		await expect
+			.element(screen.getByRole('checkbox', { name: 'Keep voice level steady' }))
+			.not.toBeChecked();
 		await expect.element(screen.getByText('Planned length')).toBeVisible();
 		await expect.element(screen.getByText('5 minutes')).toBeVisible();
 		await expect.element(screen.getByText(/working headroom/)).toBeVisible();
+		screen.getByText('Resolution').element().scrollIntoView({ block: 'center' });
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-recording-quality-320.png'
+		});
 
 		await new Promise((resolve) => setTimeout(resolve, 150));
 		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
@@ -52,12 +74,35 @@ describe('RecordingDialog', () => {
 		await page.screenshot({
 			path: '../../../../.svelte-kit/openpost-recording-dialog-320.png'
 		});
+		await screen.getByRole('checkbox', { name: 'Screen' }).click();
+		await screen.getByRole('checkbox', { name: 'Microphone' }).click();
+	});
+
+	it('shows the live microphone level beside its durable byte counter', async () => {
+		recorder.status = 'recording';
+		recorder.micLevel = 0.42;
+		recorder.counters.microphone = { chunks: 3, bytes: 2_048 };
+		const screen = await render(RecordingDialog, {
+			open: true,
+			projectId: 'project',
+			recorder,
+			preferences,
+			onopenchange: vi.fn(),
+			oninserted: vi.fn()
+		});
+
+		await expect
+			.element(screen.getByRole('meter', { name: 'Input level' }))
+			.toHaveAttribute('aria-valuenow', '42');
+		await expect.element(screen.getByText(/3 chunks · 2\.0 KB/)).toBeVisible();
 	});
 
 	it('replaces start controls with a single cancel path while permission is pending', async () => {
 		const screen = await render(RecordingDialog, {
 			open: true,
 			projectId: 'project',
+			recorder,
+			preferences,
 			onopenchange: vi.fn(),
 			oninserted: vi.fn()
 		});
@@ -98,6 +143,8 @@ describe('RecordingDialog', () => {
 		const screen = await render(RecordingDialog, {
 			open: true,
 			projectId: 'project',
+			recorder,
+			preferences,
 			onopenchange: vi.fn(),
 			oninserted: vi.fn()
 		});
