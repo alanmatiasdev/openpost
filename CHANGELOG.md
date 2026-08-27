@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-08-27
+
+### Added
+
+- Added Copy as draft for reusing a sent Publication without carrying over its delivery or schedule state.
+
+### Fixed
+
+- Kept connected accounts healthy when OAuth refresh fails because of a provider rate limit, server error, or timeout.
+- Blocked X videos outside the provider's supported aspect-ratio range and stopped retrying media that X rejected during processing.
+
 ## [4.4.0] - 2026-08-27
 
 ### Added
