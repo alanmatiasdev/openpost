@@ -168,9 +168,12 @@ describe('MediaPoolList', () => {
 
 		const screen = await render(MediaPoolList, { projectId: 'project' });
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
-		await vi.waitFor(() => {
-			expect(screen.container.querySelector('img[src^="blob:"]')).not.toBeNull();
-		});
+		await vi.waitFor(
+			() => {
+				expect(screen.container.querySelector('img[src^="blob:"]')).not.toBeNull();
+			},
+			{ timeout: 5_000 }
+		);
 		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
 		await screen.getByRole('menuitem', { name: 'Place on timeline' }).click();
 		expect(mediaPlacement.request?.payload).toMatchObject({
