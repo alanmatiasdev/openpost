@@ -8078,6 +8078,9 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"max_video_aspect_ratio": {
+						"type": "string"
+					},
 					"max_width": {
 						"format": "int64",
 						"type": "integer"
@@ -8089,6 +8092,9 @@
 					"min_height": {
 						"format": "int64",
 						"type": "integer"
+					},
+					"min_video_aspect_ratio": {
+						"type": "string"
 					},
 					"min_width": {
 						"format": "int64",

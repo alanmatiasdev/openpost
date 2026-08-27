@@ -7697,12 +7697,14 @@ export interface components {
             max_height?: number;
             /** Format: int64 */
             max_size_bytes?: number;
+            max_video_aspect_ratio?: string;
             /** Format: int64 */
             max_width?: number;
             /** Format: int64 */
             min_count: number;
             /** Format: int64 */
             min_height?: number;
+            min_video_aspect_ratio?: string;
             /** Format: int64 */
             min_width?: number;
             requires_https_fetchable: boolean;

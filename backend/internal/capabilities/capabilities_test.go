@@ -399,6 +399,56 @@ func TestApplyAccountConstraintsRevalidatesXTextAndVideo(t *testing.T) {
 	require.True(t, resolved.Compatible)
 }
 
+func TestXVideoValidationBlocksAspectRatiosOutsideProviderRange(t *testing.T) {
+	invalidVideo := MediaItem{
+		ID: "video-1", MimeType: "video/mp4", Size: 1024,
+		Width: 4000, Height: 1000, DurationMS: 30_000, AnalysisStatus: "ready",
+	}
+
+	videoIssues := Validate(
+		ProviderX,
+		models.ContentProfileShortVideo,
+		"Caption",
+		"",
+		"",
+		[]MediaItem{invalidVideo},
+		map[string]any{},
+	)
+	requireIssueCode(t, videoIssues, "media_video_aspect_range")
+
+	thread := Resolve(ProviderX, ResolveInput{
+		CreationPreset: IntentPost,
+		Segments: []ResolveSegment{
+			{ID: "segment-1", Body: "First"},
+			{ID: "segment-2", Body: "Second", Media: []MediaItem{invalidVideo}},
+		},
+	})
+	requireIssueCode(t, thread.Issues, "media_video_aspect_range")
+}
+
+func TestXVideoValidationAcceptsProviderAspectRatioBoundaries(t *testing.T) {
+	for name, dimensions := range map[string][2]int{
+		"one to three": {1000, 3000},
+		"three to one": {3000, 1000},
+	} {
+		t.Run(name, func(t *testing.T) {
+			issues := Validate(
+				ProviderX,
+				models.ContentProfileShortVideo,
+				"Caption",
+				"",
+				"",
+				[]MediaItem{{
+					ID: "video-1", MimeType: "video/mp4", Size: 1024,
+					Width: dimensions[0], Height: dimensions[1], DurationMS: 30_000, AnalysisStatus: "ready",
+				}},
+				map[string]any{},
+			)
+			requireNoIssueCode(t, issues, "media_video_aspect_range")
+		})
+	}
+}
+
 func TestVideoCapabilitiesUseSafeProviderSpecificLimits(t *testing.T) {
 	tests := []struct {
 		provider     string
@@ -421,7 +471,7 @@ func TestVideoCapabilitiesUseSafeProviderSpecificLimits(t *testing.T) {
 			require.Equal(t, tt.maxBytes, capability.Media.MaxSizeBytes)
 			require.Equal(t, tt.maxDuration, capability.Media.MaxDurationSeconds)
 			require.ElementsMatch(t, tt.allowedMIMEs, capability.Media.AllowedMIMEs)
-			require.Equal(t, "2026-08-03.1", capability.CapabilityRevision)
+			require.Equal(t, "2026-08-27.1", capability.CapabilityRevision)
 		})
 	}
 }
