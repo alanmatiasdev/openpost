@@ -20,16 +20,16 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page).toHaveTitle("OpenPost - The all-in-one content team for solo founders");
   await expect(
     page.getByRole("heading", {
-      name: "Your socials, on steroids.",
+      name: "Write it once. Publish it everywhere.",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Create better content, adapt it for every platform, and publish it everywhere from one workspace.",
+      "OpenPost turns one idea into the right version for every platform, schedules it, and shows you exactly what published.",
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Hop on", exact: true }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Start free", exact: true }).first()).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
   );
@@ -41,10 +41,10 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(resultPreviews.getByRole("button", { name: "Show Audience growth" })).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Built around common publishing work.",
+      name: "How people put OpenPost to work.",
     }),
   ).toBeVisible();
-  await expect(page.getByText(/These fictional examples show how launches/)).toBeVisible();
+  await expect(page.getByText(/Fictional stories showing how launches/)).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "See OpenPost in four minutes.",
@@ -86,16 +86,16 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   );
   await expect(
     page.getByRole("heading", {
-      name: "Built around common publishing work.",
+      name: "How people put OpenPost to work.",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Illustrative workflows")).toBeVisible();
+  await expect(page.getByText("Fictional examples")).toBeVisible();
   const creatorMosaic = page.getByRole("region", {
-    name: "Built around common publishing work.",
+    name: "How people put OpenPost to work.",
   });
   await expect(creatorMosaic.getByRole("button", { name: "Show more stories" })).toBeVisible();
   await creatorMosaic.getByRole("button", { name: "Show more stories" }).click();
-  await expect(creatorMosaic.getByRole("heading", { name: "Developer" })).toBeVisible();
+  await expect(creatorMosaic.getByRole("heading", { name: "Sana Qureshi" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "See what consistency can build." }),
   ).toBeVisible();
@@ -142,7 +142,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
 
   const selfHosted = page.locator('section[aria-label="Self-hosted deployment"]');
   await expect(selfHosted).toContainText("no software fee");
-  await expect(selfHosted).toContainText("not a Hosted service plan");
+  await expect(selfHosted).toContainText("not a hosted plan and not a free tier of one");
   await expect(selfHosted.getByRole("link", { name: "Review self-hosting" })).toHaveAttribute(
     "href",
     "/self-hosted",
@@ -226,7 +226,9 @@ test("self-hosted path states the complete operator boundary without JavaScript"
 
   await page.goto("/self-hosted");
   await expect(
-    page.getByRole("heading", { name: "Operate OpenPost on your infrastructure." }),
+    page.getByRole("heading", {
+      name: "Your server. Your data. The same OpenPost.",
+    }),
   ).toBeVisible();
   await expect(page.getByText("No software fee", { exact: true })).toBeVisible();
   for (const heading of [
@@ -275,7 +277,7 @@ test("features and FAQ expose complete, qualified product guidance", async ({ pa
   await page.goto("/features");
   await expect(
     page.getByRole("heading", {
-      name: "One system for the whole publishing job.",
+      name: "The whole publishing job, one workspace.",
       level: 1,
     }),
   ).toBeVisible();
@@ -307,7 +309,7 @@ test("features and FAQ expose complete, qualified product guidance", async ({ pa
   await page.goto("/faq");
   await expect(
     page.getByRole("heading", {
-      name: "Know the boundary before you start.",
+      name: "Straight answers, including the limits.",
       level: 1,
     }),
   ).toBeVisible();
@@ -431,7 +433,7 @@ test("security page states AI tool access accurately @desktop", async ({ page })
 
   await expect(
     page.getByRole("heading", {
-      name: "Keep social credentials inside the publishing system.",
+      name: "Your social keys stay encrypted. Tools get scoped tokens instead.",
     }),
   ).toBeVisible();
   await expect(
@@ -499,7 +501,9 @@ test("hero and footer actions remain usable at 320 pixels", async ({ page }) => 
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/");
 
-  const heroLink = page.locator("section.hero").getByRole("link", { name: "Hop on", exact: true });
+  const heroLink = page
+    .locator("section.hero")
+    .getByRole("link", { name: "Start free", exact: true });
   await expect(heroLink).toBeVisible();
   await heroLink.focus();
   await expect(heroLink).toBeFocused();
@@ -524,6 +528,15 @@ test("hero and footer actions remain usable at 320 pixels", async ({ page }) => 
 
 test("marketing raised buttons synthesize tactile feedback @desktop", async ({ page }) => {
   await page.addInitScript(() => {
+    localStorage.setItem(
+      "openpost:interface-sounds",
+      JSON.stringify({
+        version: 1,
+        enabled: true,
+        volume: 0.6,
+        theme: "signature",
+      }),
+    );
     const parameter = () => ({
       value: 0,
       setValueAtTime() {},
@@ -601,14 +614,16 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
   });
 
   await page.goto("/");
-  const hopOn = page.getByRole("link", { name: "Hop on", exact: true });
-  await expect(hopOn).toHaveAttribute("data-cuelume-toggle", "release");
-  await expect(hopOn).not.toHaveAttribute("data-cuelume-press");
-  await expect(hopOn).not.toHaveAttribute("data-cuelume-release");
-  await hopOn.evaluate((element) => {
-    element.addEventListener("click", (event) => event.preventDefault(), { once: true });
+  const startFree = page.getByRole("link", { name: "Start free", exact: true });
+  await expect(startFree).toHaveAttribute("data-cuelume-toggle", "release");
+  await expect(startFree).not.toHaveAttribute("data-cuelume-press");
+  await expect(startFree).not.toHaveAttribute("data-cuelume-release");
+  await startFree.evaluate((element) => {
+    element.addEventListener("click", (event) => event.preventDefault(), {
+      once: true,
+    });
   });
-  await hopOn.click();
+  await startFree.click();
   await expect
     .poll(() =>
       page.evaluate(
