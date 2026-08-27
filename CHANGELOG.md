@@ -148,6 +148,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made clean frontend test runs generate SvelteKit's ignored configuration before Vitest starts, so fresh Linux release candidates no longer fail during dependency optimization.
 - Kept Android release builds reproducible by aligning the standalone app with the current Expo SDK 57 patch set and resolving one shared linking module across all native packages.
 - Updated ZIP extraction used by local AI model tooling to the patched release that rejects crafted archives with abusive memory sizes.
 - Edit comparison frame mapping is covered by pure tests for gaps, speed, reverse, sourceFps, linked companions, images/compositions, and timecodes, plus Chromium pointer tests that drive real timeline drags for rolling, ripple, slip, and slide, verify baseline-vs-dynamic distinction, audio-linked visual resolution, cancellation cleanup, single undo entries, absence of URL leaks, and 320 px layout.

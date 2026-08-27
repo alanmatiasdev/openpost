@@ -16,9 +16,9 @@
 		"check:watch": "bun run sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint:oxlint": "oxlint .",
 		"lint:svelte": "eslint 'src/**/*.svelte' 'src/**/*.svelte.{ts,js}'",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"test:server": "vitest run --project server",
+		"test": "bun run sync && vitest run",
+		"test:watch": "bun run sync && vitest",
+		"test:server": "bun run sync && vitest run --project server",
 		"generate:types": "openapi-typescript openapi.json -o src/lib/api/types.d.ts",
 		"sync": "svelte-kit sync"
 	},

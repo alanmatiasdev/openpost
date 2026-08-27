@@ -42,6 +42,15 @@ test("the marketing build prepares its shared frontend SvelteKit aliases", async
   );
 });
 
+test("frontend tests prepare the ignored SvelteKit configuration", async () => {
+  const frontendPackage = JSON.parse(
+    await readFile(path.join(root, "frontend", "package.json"), "utf8"),
+  );
+
+  assert.match(frontendPackage.scripts.test, /^bun run sync && vitest run$/u);
+  assert.match(frontendPackage.scripts["test:server"], /^bun run sync && vitest run/u);
+});
+
 test("public builds pass Cloudflare branch identity to the telemetry guard", async () => {
   for (const surface of ["docs-site", "marketing-site"]) {
     const turboJSON = JSON.parse(await readFile(path.join(root, surface, "turbo.json"), "utf8"));
