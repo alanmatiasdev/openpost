@@ -491,7 +491,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     )
     .click();
   await scheduleDialog.getByRole("button", { name: "10:30", exact: true }).click();
-  await scheduleDialog.getByRole("button", { name: "Done" }).click();
+  await scheduleDialog.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect(scheduleDialog).toBeHidden();
 
   const quickSchedule = page.getByRole("button", {
@@ -499,7 +499,6 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   });
   await expect(quickSchedule).toBeEnabled();
   await expect(quickSchedule.locator(".lucide-calendar-clock")).toBeVisible();
-  await quickSchedule.click();
 
   await expect(page.getByLabel("Post text").first()).toBeFocused();
   await expect(page.getByText("Fix the blocking issues before scheduling.")).toBeVisible();
