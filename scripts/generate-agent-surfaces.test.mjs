@@ -10,6 +10,7 @@ import { docsSocialEntries, marketingRouteManifest } from "../packages/social-im
 import { comparisonEvidenceRegister } from "../marketing-site/src/routes/_comparison-evidence.ts";
 import { comparisons, featureGroups, platforms } from "../marketing-site/src/routes/_marketing.ts";
 import {
+  discoveryDocument,
   generateAgentSurface,
   productionProjections,
   renderOriginVaryHeaders,
@@ -45,8 +46,21 @@ async function fixtureDirectory() {
   return mkdtemp(path.join(os.tmpdir(), "openpost-agent-surface-"));
 }
 
+function headerRuleHas(contents, pathname, header) {
+  const lines = contents.split("\n");
+  const ruleIndex = lines.findIndex((line) => line === pathname);
+  if (ruleIndex === -1) return false;
+  for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
+    if (lines[index].trim() === header) return true;
+  }
+  return false;
+}
+
 test("origin Vary headers cover only canonical HTML and explicit Markdown within Pages limits", () => {
   const base = [
+    "/",
+    '  Link: </.well-known/api-catalog>; rel="api-catalog"',
+    "  Vary: Accept",
     "/*.md",
     "  Content-Type: text/markdown; charset=utf-8",
     "  Vary: Accept",
@@ -64,7 +78,9 @@ test("origin Vary headers cover only canonical HTML and explicit Markdown within
     rendered,
     /\/\*\.md\n  Content-Type: text\/markdown; charset=utf-8\n  Vary: Accept/u,
   );
-  assert.match(rendered, /\n\/\n  Vary: Accept\n/u);
+  assert.match(rendered, /(?:^|\n)\/\n  Link: [^\n]+\n  Vary: Accept\n/u);
+  assert.match(rendered, /<\/\.well-known\/api-catalog>; rel="api-catalog"/u);
+  assert.equal((rendered.match(/^\/$/gmu) ?? []).length, 1);
   assert.match(rendered, /\n\/features\n  Vary: Accept\n/u);
   assert.doesNotMatch(rendered, /\/assets|\/unknown/u);
   assert.equal(renderOriginVaryHeaders(rendered, pages), rendered);
@@ -77,7 +93,7 @@ test("origin Vary headers cover only canonical HTML and explicit Markdown within
           canonical: `https://openpost.social/page-${index}`,
         })),
       ),
-    /uses 101 rules; Free limit is 100/u,
+    /uses 102 rules; Free limit is 100/u,
   );
 });
 
@@ -400,6 +416,8 @@ test("marketing production projection emits deterministic homepage Markdown and 
     discovery: {
       title: "OpenPost",
       description: "Create, adapt, and publish from one workspace.",
+      whenToUse: ["Use OpenPost for destination-specific publishing."],
+      whenNotToUse: ["Do not use OpenPost as a social network."],
       links: [
         {
           title: "OpenPost overview",
@@ -427,7 +445,24 @@ test("marketing production projection emits deterministic homepage Markdown and 
   assert.match(firstMarkdown, /\[See the features\]\(https:\/\/openpost\.social\/features\)/);
   assert.doesNotMatch(firstMarkdown, /Navigation noise|privateState/);
   assert.match(firstDiscovery, /^# OpenPost$/m);
+  assert.match(firstDiscovery, /^## When to use OpenPost$/m);
+  assert.match(firstDiscovery, /Use OpenPost for destination-specific publishing\./u);
+  assert.match(firstDiscovery, /^## When OpenPost is not a fit$/m);
+  assert.match(firstDiscovery, /Do not use OpenPost as a social network\./u);
   assert.match(firstDiscovery, /\[OpenPost overview\]\(https:\/\/openpost\.social\/index\.md\)/);
+});
+
+test("production discovery gives agents direct interface guidance", () => {
+  const marketing = discoveryDocument(productionProjections.marketing.discovery);
+  const documentation = discoveryDocument(productionProjections.documentation.discovery);
+
+  assert.match(marketing, /^## When to use OpenPost$/m);
+  assert.match(marketing, /^## When OpenPost is not a fit$/m);
+  assert.match(marketing, /https:\/\/docs\.openpost\.social\/openapi\.json/u);
+  assert.match(marketing, /https:\/\/docs\.openpost\.social\/cli\/index\.md/u);
+  assert.match(marketing, /https:\/\/docs\.openpost\.social\/mcp\/index\.md/u);
+  assert.match(marketing, /https:\/\/openpost\.social\/developers\.md/u);
+  assert.match(documentation, /private workspace data, tokens, connected accounts/u);
 });
 
 test("marketing production projection covers every eligible route from canonical metadata", () => {
@@ -1343,7 +1378,7 @@ test(
       }
       for (const pathname of canonicalPaths) {
         assert.ok(
-          headers.includes(`${pathname}\n  Vary: Accept`),
+          headerRuleHas(headers, pathname, "Vary: Accept"),
           `${surface} must vary canonical ${pathname} at the origin`,
         );
       }
@@ -1395,8 +1430,8 @@ test(
     );
     assert.deepEqual(
       await filesWithSuffix(marketingDirectory, ".md"),
-      expectedMarketingMarkdown.toSorted(),
-      "every manifest-owned marketing route must have one Markdown artifact and no stale alias",
+      ["auth.md", ...expectedMarketingMarkdown].toSorted(),
+      "every manifest-owned marketing route and the auth discovery file must have one Markdown artifact and no stale alias",
     );
     assert.deepEqual(
       await filesWithSuffix(marketingDirectory, ".html"),
@@ -1405,6 +1440,8 @@ test(
     );
     const firstMarketingSurface = await artifactSnapshot(marketingDirectory, [
       "_headers",
+      ".well-known/api-catalog",
+      "auth.md",
       "llms.txt",
       "sitemap.xml",
       ...expectedMarketingMarkdown,

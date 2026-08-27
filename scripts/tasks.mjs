@@ -25,6 +25,16 @@ const browserScopes = ["e2e", "e2e-app", "e2e-docs"];
 
 const checks = {
   contracts: stage("generated contracts", [bun("scripts/check-contracts.mjs")]),
+  "n8n-package": stage("n8n package", [
+    bunTest("scripts/n8n-package-release.test.mjs"),
+    bunTest("scripts/generate-selected-automation-contract.test.mjs"),
+    bun("scripts/generate-selected-automation-contract.mjs", "--check"),
+    commandStep("bun", "run", "check", { cwd: "packages/n8n-nodes-openpost" }),
+    commandStep("bun", "run", "test", { cwd: "packages/n8n-nodes-openpost" }),
+    commandStep("bun", "run", "lint", { cwd: "packages/n8n-nodes-openpost" }),
+    commandStep("bun", "run", "build", { cwd: "packages/n8n-nodes-openpost" }),
+    bun("scripts/check-n8n-package-build.mjs"),
+  ]),
   "build-graph": stage("build graph", [
     bunTest(
       "scripts/build-graph.test.mjs",
@@ -57,6 +67,7 @@ const checks = {
   "release-version": stage("release version", [
     bunTest(
       "scripts/next-release-version.test.mjs",
+      "scripts/n8n-package-release.test.mjs",
       "scripts/release-manifest.test.mjs",
       "scripts/release-assets.test.mjs",
       "scripts/release-lifecycle.test.mjs",
@@ -75,6 +86,7 @@ const checks = {
   "public-routes": stage("public routes", [
     bunTest("scripts/cloudflare-edge-plan.test.mjs"),
     bunTest("scripts/check-marketing-route-manifest.test.mjs"),
+    bunTest("scripts/marketing-agent-readiness.test.mjs"),
     bunTest("scripts/generate-agent-surfaces.test.mjs"),
     bunTest("scripts/public-deployment-proof.test.mjs"),
     bun("scripts/check-marketing-route-manifest.mjs"),
@@ -400,6 +412,7 @@ function testPlan(requestedScope, requestedOptions) {
   const marketing = stage("marketing tests", [
     bunTest(
       "scripts/check-marketing-route-manifest.test.mjs",
+      "scripts/marketing-agent-readiness.test.mjs",
       "scripts/marketing-claims.test.mjs",
       "scripts/legal-policy-manifest.test.mjs",
     ),
