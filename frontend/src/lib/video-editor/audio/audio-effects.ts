@@ -86,6 +86,12 @@ export type AudioEffect =
 	| FlangerEffect
 	| DistortionEffect;
 
+const AUDIO_EFFECT_TYPE_SET = new Set<string>(AUDIO_EFFECT_TYPES);
+
+export function isAudioEffectType(value: string): value is AudioEffectType {
+	return AUDIO_EFFECT_TYPE_SET.has(value);
+}
+
 export const COMPRESSOR_THRESHOLD_MIN = -60;
 export const COMPRESSOR_THRESHOLD_MAX = 0;
 export const COMPRESSOR_RATIO_MIN = 1;
@@ -203,26 +209,33 @@ export const DEFAULT_DISTORTION: Omit<DistortionEffect, 'id' | 'enabled'> = {
 	outputGainDb: -2
 };
 
+export function createDefaultAudioEffect(type: 'compressor', id?: string): CompressorEffect;
+export function createDefaultAudioEffect(type: 'pan', id?: string): PanEffect;
+export function createDefaultAudioEffect(type: 'reverb', id?: string): ReverbEffect;
+export function createDefaultAudioEffect(type: 'delay', id?: string): DelayEffect;
+export function createDefaultAudioEffect(type: 'chorus', id?: string): ChorusEffect;
+export function createDefaultAudioEffect(type: 'flanger', id?: string): FlangerEffect;
+export function createDefaultAudioEffect(type: 'distortion', id?: string): DistortionEffect;
 export function createDefaultAudioEffect(
 	type: AudioEffectType,
 	id = crypto.randomUUID()
 ): AudioEffect {
-	const base = { id, enabled: true } as const;
+	const base = { id, enabled: true };
 	switch (type) {
 		case 'compressor':
-			return { ...base, ...DEFAULT_COMPRESSOR } as CompressorEffect;
+			return { ...base, ...DEFAULT_COMPRESSOR };
 		case 'pan':
-			return { ...base, ...DEFAULT_PAN } as PanEffect;
+			return { ...base, ...DEFAULT_PAN };
 		case 'reverb':
-			return { ...base, ...DEFAULT_REVERB } as ReverbEffect;
+			return { ...base, ...DEFAULT_REVERB };
 		case 'delay':
-			return { ...base, ...DEFAULT_DELAY } as DelayEffect;
+			return { ...base, ...DEFAULT_DELAY };
 		case 'chorus':
-			return { ...base, ...DEFAULT_CHORUS } as ChorusEffect;
+			return { ...base, ...DEFAULT_CHORUS };
 		case 'flanger':
-			return { ...base, ...DEFAULT_FLANGER } as FlangerEffect;
+			return { ...base, ...DEFAULT_FLANGER };
 		case 'distortion':
-			return { ...base, ...DEFAULT_DISTORTION } as DistortionEffect;
+			return { ...base, ...DEFAULT_DISTORTION };
 	}
 }
 
@@ -230,71 +243,78 @@ export function normalizeAudioEffect(effect: AudioEffect): AudioEffect {
 	const enabled = effect.enabled !== false;
 	switch (effect.type) {
 		case 'compressor': {
-			const e = effect as CompressorEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'compressor',
 				enabled,
 				thresholdDb: clamp(
-					e.thresholdDb,
+					effect.thresholdDb,
 					COMPRESSOR_THRESHOLD_MIN,
 					COMPRESSOR_THRESHOLD_MAX,
 					DEFAULT_COMPRESSOR.thresholdDb
 				),
-				ratio: clamp(e.ratio, COMPRESSOR_RATIO_MIN, COMPRESSOR_RATIO_MAX, DEFAULT_COMPRESSOR.ratio),
+				ratio: clamp(
+					effect.ratio,
+					COMPRESSOR_RATIO_MIN,
+					COMPRESSOR_RATIO_MAX,
+					DEFAULT_COMPRESSOR.ratio
+				),
 				attackMs: clamp(
-					e.attackMs,
+					effect.attackMs,
 					COMPRESSOR_ATTACK_MIN,
 					COMPRESSOR_ATTACK_MAX,
 					DEFAULT_COMPRESSOR.attackMs
 				),
 				releaseMs: clamp(
-					e.releaseMs,
+					effect.releaseMs,
 					COMPRESSOR_RELEASE_MIN,
 					COMPRESSOR_RELEASE_MAX,
 					DEFAULT_COMPRESSOR.releaseMs
 				),
 				kneeDb: clamp(
-					e.kneeDb,
+					effect.kneeDb,
 					COMPRESSOR_KNEE_MIN,
 					COMPRESSOR_KNEE_MAX,
 					DEFAULT_COMPRESSOR.kneeDb
 				),
 				makeupGainDb: clamp(
-					e.makeupGainDb,
+					effect.makeupGainDb,
 					COMPRESSOR_MAKEUP_MIN,
 					COMPRESSOR_MAKEUP_MAX,
 					DEFAULT_COMPRESSOR.makeupGainDb
 				),
-				mix: clamp((e.mix ?? 1) as number, 0, 1, 1)
+				mix: clamp(effect.mix ?? 1, 0, 1, 1)
 			};
 		}
 		case 'pan': {
-			const e = effect as PanEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'pan',
 				enabled,
-				pan: clamp(e.pan, PAN_MIN, PAN_MAX, 0)
+				pan: clamp(effect.pan, PAN_MIN, PAN_MAX, 0)
 			};
 		}
 		case 'reverb': {
-			const e = effect as ReverbEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'reverb',
 				enabled,
-				roomSize: clamp(e.roomSize, REVERB_ROOM_MIN, REVERB_ROOM_MAX, DEFAULT_REVERB.roomSize),
+				roomSize: clamp(effect.roomSize, REVERB_ROOM_MIN, REVERB_ROOM_MAX, DEFAULT_REVERB.roomSize),
 				decaySeconds: clamp(
-					e.decaySeconds,
+					effect.decaySeconds,
 					REVERB_DECAY_MIN,
 					REVERB_DECAY_MAX,
 					DEFAULT_REVERB.decaySeconds
 				),
-				damping: clamp(e.damping, REVERB_DAMPING_MIN, REVERB_DAMPING_MAX, DEFAULT_REVERB.damping),
-				wet: clamp(e.wet, REVERB_WET_MIN, REVERB_WET_MAX, DEFAULT_REVERB.wet),
+				damping: clamp(
+					effect.damping,
+					REVERB_DAMPING_MIN,
+					REVERB_DAMPING_MAX,
+					DEFAULT_REVERB.damping
+				),
+				wet: clamp(effect.wet, REVERB_WET_MIN, REVERB_WET_MAX, DEFAULT_REVERB.wet),
 				preDelayMs: clamp(
-					e.preDelayMs,
+					effect.preDelayMs,
 					REVERB_PREDELAY_MIN,
 					REVERB_PREDELAY_MAX,
 					DEFAULT_REVERB.preDelayMs
@@ -302,17 +322,26 @@ export function normalizeAudioEffect(effect: AudioEffect): AudioEffect {
 			};
 		}
 		case 'delay': {
-			const e = effect as DelayEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'delay',
 				enabled,
-				timeMs: clamp(e.timeMs, DELAY_TIME_MIN, DELAY_TIME_MAX, DEFAULT_DELAY.timeMs),
-				feedback: clamp(e.feedback, DELAY_FEEDBACK_MIN, DELAY_FEEDBACK_MAX, DEFAULT_DELAY.feedback),
-				mix: clamp(e.mix, DELAY_MIX_MIN, DELAY_MIX_MAX, DEFAULT_DELAY.mix),
-				lowCutHz: clamp(e.lowCutHz ?? DEFAULT_DELAY.lowCutHz, 20, 2000, DEFAULT_DELAY.lowCutHz),
+				timeMs: clamp(effect.timeMs, DELAY_TIME_MIN, DELAY_TIME_MAX, DEFAULT_DELAY.timeMs),
+				feedback: clamp(
+					effect.feedback,
+					DELAY_FEEDBACK_MIN,
+					DELAY_FEEDBACK_MAX,
+					DEFAULT_DELAY.feedback
+				),
+				mix: clamp(effect.mix, DELAY_MIX_MIN, DELAY_MIX_MAX, DEFAULT_DELAY.mix),
+				lowCutHz: clamp(
+					effect.lowCutHz ?? DEFAULT_DELAY.lowCutHz,
+					20,
+					2000,
+					DEFAULT_DELAY.lowCutHz
+				),
 				highCutHz: clamp(
-					e.highCutHz ?? DEFAULT_DELAY.highCutHz,
+					effect.highCutHz ?? DEFAULT_DELAY.highCutHz,
 					1000,
 					20000,
 					DEFAULT_DELAY.highCutHz
@@ -320,63 +349,75 @@ export function normalizeAudioEffect(effect: AudioEffect): AudioEffect {
 			};
 		}
 		case 'chorus': {
-			const e = effect as ChorusEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'chorus',
 				enabled,
-				rateHz: clamp(e.rateHz, CHORUS_RATE_MIN, CHORUS_RATE_MAX, DEFAULT_CHORUS.rateHz),
-				depthMs: clamp(e.depthMs, CHORUS_DEPTH_MIN, CHORUS_DEPTH_MAX, DEFAULT_CHORUS.depthMs),
-				mix: clamp(e.mix, CHORUS_MIX_MIN, CHORUS_MIX_MAX, DEFAULT_CHORUS.mix),
-				delayMs: clamp(e.delayMs, CHORUS_DELAY_MIN, CHORUS_DELAY_MAX, DEFAULT_CHORUS.delayMs)
+				rateHz: clamp(effect.rateHz, CHORUS_RATE_MIN, CHORUS_RATE_MAX, DEFAULT_CHORUS.rateHz),
+				depthMs: clamp(effect.depthMs, CHORUS_DEPTH_MIN, CHORUS_DEPTH_MAX, DEFAULT_CHORUS.depthMs),
+				mix: clamp(effect.mix, CHORUS_MIX_MIN, CHORUS_MIX_MAX, DEFAULT_CHORUS.mix),
+				delayMs: clamp(effect.delayMs, CHORUS_DELAY_MIN, CHORUS_DELAY_MAX, DEFAULT_CHORUS.delayMs)
 			};
 		}
 		case 'flanger': {
-			const e = effect as FlangerEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'flanger',
 				enabled,
-				rateHz: clamp(e.rateHz, FLANGER_RATE_MIN, FLANGER_RATE_MAX, DEFAULT_FLANGER.rateHz),
-				depthMs: clamp(e.depthMs, FLANGER_DEPTH_MIN, FLANGER_DEPTH_MAX, DEFAULT_FLANGER.depthMs),
+				rateHz: clamp(effect.rateHz, FLANGER_RATE_MIN, FLANGER_RATE_MAX, DEFAULT_FLANGER.rateHz),
+				depthMs: clamp(
+					effect.depthMs,
+					FLANGER_DEPTH_MIN,
+					FLANGER_DEPTH_MAX,
+					DEFAULT_FLANGER.depthMs
+				),
 				feedback: clamp(
-					e.feedback,
+					effect.feedback,
 					FLANGER_FEEDBACK_MIN,
 					FLANGER_FEEDBACK_MAX,
 					DEFAULT_FLANGER.feedback
 				),
-				mix: clamp(e.mix, 0, 1, DEFAULT_FLANGER.mix),
-				delayMs: clamp(e.delayMs, 1, 15, DEFAULT_FLANGER.delayMs)
+				mix: clamp(effect.mix, 0, 1, DEFAULT_FLANGER.mix),
+				delayMs: clamp(effect.delayMs, 1, 15, DEFAULT_FLANGER.delayMs)
 			};
 		}
 		case 'distortion': {
-			const e = effect as DistortionEffect;
 			return {
-				id: String(e.id),
+				id: String(effect.id),
 				type: 'distortion',
 				enabled,
 				amount: clamp(
-					e.amount,
+					effect.amount,
 					DISTORTION_AMOUNT_MIN,
 					DISTORTION_AMOUNT_MAX,
 					DEFAULT_DISTORTION.amount
 				),
-				tone: clamp(e.tone, 0, 1, DEFAULT_DISTORTION.tone),
-				mix: clamp(e.mix, 0, 1, DEFAULT_DISTORTION.mix),
-				outputGainDb: clamp(e.outputGainDb, -24, 12, DEFAULT_DISTORTION.outputGainDb)
+				tone: clamp(effect.tone, 0, 1, DEFAULT_DISTORTION.tone),
+				mix: clamp(effect.mix, 0, 1, DEFAULT_DISTORTION.mix),
+				outputGainDb: clamp(effect.outputGainDb, -24, 12, DEFAULT_DISTORTION.outputGainDb)
 			};
 		}
 	}
 }
 
-export function normalizeAudioEffects(effects: unknown): AudioEffect[] {
+function isAudioEffect(value: unknown): value is AudioEffect {
+	if (!value || typeof value !== 'object') return false;
+	// SAFETY: typeof object guard passed, safe to probe optional type/id fields
+	const candidate = value as { type?: unknown; id?: unknown };
+	return (
+		typeof candidate.type === 'string' &&
+		typeof candidate.id === 'string' &&
+		AUDIO_EFFECT_TYPE_SET.has(candidate.type)
+	);
+}
+
+export function parseAudioEffects(effects: unknown): AudioEffect[] {
 	if (!Array.isArray(effects)) return [];
 	const out: AudioEffect[] = [];
 	const seen = new Set<string>();
 	for (const raw of effects) {
-		if (!raw || typeof raw !== 'object' || !('type' in raw) || !('id' in raw)) continue;
-		const typed = raw as AudioEffect;
-		if (!(AUDIO_EFFECT_TYPES as readonly string[]).includes(typed.type)) continue;
+		if (!isAudioEffect(raw)) continue;
+		const typed = raw;
 		const normalized = normalizeAudioEffect(typed);
 		if (seen.has(normalized.id)) normalized.id = crypto.randomUUID();
 		seen.add(normalized.id);
@@ -385,6 +426,8 @@ export function normalizeAudioEffects(effects: unknown): AudioEffect[] {
 	}
 	return out;
 }
+
+export const normalizeAudioEffects = parseAudioEffects;
 
 export function getAudioEffects(source?: TimelineItem | null): AudioEffect[] {
 	if (!source || !Array.isArray(source.audioEffects)) return [];
@@ -694,6 +737,7 @@ class OfflineModulatedDelay {
 		const depthMs = this.params.depthMs;
 		const baseMs = this.params.delayMs;
 		const mix = this.params.mix;
+		// SAFETY: constructor validates params type, FlangerEffect has feedback, ChorusEffect does not – fallback to 0
 		const feedback = (this.params as FlangerEffect).feedback ?? 0;
 		for (let i = 0; i < len; i++) {
 			const lfo = Math.sin(2 * Math.PI * this.phase);
@@ -786,7 +830,7 @@ export class StreamingAudioEffectChain {
 				case 'compressor':
 					entry = {
 						kind: 'compressor',
-						impl: new PerChannelCompressor(effect as CompressorEffect, sampleRate, channelCount)
+						impl: new PerChannelCompressor(effect, sampleRate, channelCount)
 					};
 					break;
 				case 'pan':
@@ -795,25 +839,25 @@ export class StreamingAudioEffectChain {
 				case 'reverb':
 					entry = {
 						kind: 'reverb',
-						impl: new OfflineReverb(effect as ReverbEffect, sampleRate, channelCount)
+						impl: new OfflineReverb(effect, sampleRate, channelCount)
 					};
 					break;
 				case 'delay':
 					entry = {
 						kind: 'delay',
-						impl: new OfflineDelay(effect as DelayEffect, sampleRate, channelCount)
+						impl: new OfflineDelay(effect, sampleRate, channelCount)
 					};
 					break;
 				case 'chorus':
 					entry = {
 						kind: 'chorus',
-						impl: new OfflineModulatedDelay(effect as ChorusEffect, sampleRate, channelCount)
+						impl: new OfflineModulatedDelay(effect, sampleRate, channelCount)
 					};
 					break;
 				case 'flanger':
 					entry = {
 						kind: 'flanger',
-						impl: new OfflineModulatedDelay(effect as FlangerEffect, sampleRate, channelCount)
+						impl: new OfflineModulatedDelay(effect, sampleRate, channelCount)
 					};
 					break;
 				case 'distortion':
@@ -834,6 +878,7 @@ export class StreamingAudioEffectChain {
 					out = entry.impl.process(out);
 					break;
 				case 'pan':
+					// SAFETY: chain entry kind 'pan' guarantees effect is PanEffect
 					out = applyPanOffline(out, (effect as PanEffect).pan);
 					break;
 				case 'reverb':
@@ -847,6 +892,7 @@ export class StreamingAudioEffectChain {
 					out = entry.impl.process(out);
 					break;
 				case 'distortion':
+					// SAFETY: chain entry kind 'distortion' guarantees effect is DistortionEffect
 					out = applyDistortionOffline(out, effect as DistortionEffect);
 					break;
 			}
@@ -888,8 +934,8 @@ export function getAudioEffectTailSeconds(effects: AudioEffect[] | undefined): n
 	let tail = 0;
 	for (const e of effects) {
 		if (!e.enabled) continue;
-		if (e.type === 'reverb') tail = Math.max(tail, (e as ReverbEffect).decaySeconds * 0.6);
-		if (e.type === 'delay') tail = Math.max(tail, ((e as DelayEffect).timeMs / 1000) * 2.2);
+		if (e.type === 'reverb') tail = Math.max(tail, e.decaySeconds * 0.6);
+		if (e.type === 'delay') tail = Math.max(tail, (e.timeMs / 1000) * 2.2);
 	}
 	return Math.min(2.5, tail);
 }

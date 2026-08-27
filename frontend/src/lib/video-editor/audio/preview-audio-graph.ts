@@ -371,13 +371,19 @@ function reconnectPreviewClipAudioGraph(graph: PreviewClipAudioGraph): void {
 	for (const fx of graph.effectNodes) {
 		try {
 			fx.input.disconnect();
-		} catch {}
+		} catch {
+			// best-effort: effect input may already be disconnected
+		}
 		try {
 			fx.output.disconnect();
-		} catch {}
+		} catch {
+			// best-effort: effect output may already be disconnected
+		}
 		try {
 			fx.bypass.disconnect();
-		} catch {}
+		} catch {
+			// best-effort: effect bypass may already be disconnected
+		}
 	}
 
 	let previousNode: AudioNode = graph.sourceInputNode;

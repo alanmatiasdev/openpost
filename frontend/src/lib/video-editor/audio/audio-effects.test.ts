@@ -108,7 +108,10 @@ describe('audio effects rack offline', () => {
 			createDefaultAudioEffect('reverb'),
 			createDefaultAudioEffect('chorus')
 		];
-		(chain[1] as import('./audio-effects').DelayEffect).timeMs = 120;
+		{
+			const effect = chain[1];
+			if (effect?.type === 'delay') effect.timeMs = 120;
+		}
 		const oneShot = applyAudioEffectStages([src.slice(), src.slice()], 48000, chain);
 		const streaming = new StreamingAudioEffectChain(chain, 48000, 2);
 		const a = [src.slice(0, src.length / 2), src.slice(0, src.length / 2)];
@@ -125,13 +128,13 @@ describe('audio effects rack offline', () => {
 
 	it('delay highCut/lowCut parameter response', () => {
 		const highSine = sine(6000, 48000, 0.3, 0.5);
-		const low = createDefaultAudioEffect('delay') as import('./audio-effects').DelayEffect;
+		const low = createDefaultAudioEffect('delay');
 		low.timeMs = 40;
 		low.feedback = 0.4;
 		low.mix = 1;
 		low.lowCutHz = 20;
 		low.highCutHz = 900;
-		const high = createDefaultAudioEffect('delay') as import('./audio-effects').DelayEffect;
+		const high = createDefaultAudioEffect('delay');
 		high.timeMs = 40;
 		high.feedback = 0.4;
 		high.mix = 1;
@@ -147,13 +150,13 @@ describe('audio effects rack offline', () => {
 
 	it('deterministic modulated effects', () => {
 		const src = sine(440, 48000, 0.5, 0.4);
-		const chorus = createDefaultAudioEffect('chorus') as import('./audio-effects').ChorusEffect;
+		const chorus = createDefaultAudioEffect('chorus');
 		chorus.rateHz = 1.5;
 		chorus.depthMs = 6;
 		const a = applyAudioEffectStages([src.slice(), src.slice()], 48000, [chorus]);
 		const b = applyAudioEffectStages([src.slice(), src.slice()], 48000, [chorus]);
 		expect(a[0]![1000]).toBeCloseTo(b[0]![1000], 6);
-		const flanger = createDefaultAudioEffect('flanger') as import('./audio-effects').FlangerEffect;
+		const flanger = createDefaultAudioEffect('flanger');
 		flanger.rateHz = 0.9;
 		const fa = applyAudioEffectStages([src.slice(), src.slice()], 48000, [flanger]);
 		const fb = applyAudioEffectStages([src.slice(), src.slice()], 48000, [flanger]);
@@ -163,7 +166,7 @@ describe('audio effects rack offline', () => {
 	it('tail flushing produces bounded energy after impulse', () => {
 		const impulse = new Float32Array(4800);
 		impulse[100] = 1;
-		const delay = createDefaultAudioEffect('delay') as import('./audio-effects').DelayEffect;
+		const delay = createDefaultAudioEffect('delay');
 		delay.timeMs = 100;
 		delay.feedback = 0.5;
 		delay.mix = 0.7;
@@ -178,9 +181,7 @@ describe('audio effects rack offline', () => {
 
 	it('distortion bounded and reverb deterministic', () => {
 		const src = sine(100, 48000, 0.2, 0.5);
-		const dist = createDefaultAudioEffect(
-			'distortion'
-		) as import('./audio-effects').DistortionEffect;
+		const dist = createDefaultAudioEffect('distortion');
 		dist.amount = 0.9;
 		dist.mix = 1;
 		const out = applyAudioEffectStages([src.slice()], 48000, [dist]);
@@ -188,7 +189,7 @@ describe('audio effects rack offline', () => {
 		expect(peak(out[0]!)).toBeGreaterThan(0.3);
 		const impulse = new Float32Array(48000 * 0.8);
 		impulse[200] = 1;
-		const rev = createDefaultAudioEffect('reverb') as import('./audio-effects').ReverbEffect;
+		const rev = createDefaultAudioEffect('reverb');
 		rev.decaySeconds = 1.2;
 		rev.wet = 0.5;
 		const r1 = applyAudioEffectStages([impulse.slice()], 48000, [rev]);

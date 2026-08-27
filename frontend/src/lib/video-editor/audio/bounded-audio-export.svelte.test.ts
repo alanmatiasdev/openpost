@@ -656,7 +656,7 @@ describe('bounded audio export product path', () => {
 			},
 			'ready'
 		);
-		const delay = createDefaultAudioEffect('delay') as DelayEffect;
+		const delay = createDefaultAudioEffect('delay');
 		delay.mix = 0.01;
 		const entry: MixEntry = {
 			itemId: 'reverse-item',

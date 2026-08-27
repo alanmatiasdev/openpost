@@ -180,8 +180,7 @@ export function planMixdown(
 		const endFrame = item.from + item.durationInFrames + afterFrames;
 		const previewGainPoints = volumeGainPoints(item, 1, fps, startFrame, endFrame);
 		const mixerTrackGain = track.volume ?? 1;
-		const rawDucking = (item as TimelineItem & { audioDucking?: AudioDuckingSettings })
-			.audioDucking;
+		const rawDucking = item.audioDucking;
 		const ducking = normalizeAudioDucking(rawDucking)
 			? { ...normalizeAudioDucking(rawDucking)! }
 			: undefined;
@@ -212,9 +211,7 @@ export function planMixdown(
 				track.audioEq,
 				getAudioEqSettings(item)
 			),
-			audioEffects: normalizeAudioEffects(
-				(item as unknown as { audioEffects?: unknown }).audioEffects
-			),
+			audioEffects: normalizeAudioEffects(item.audioEffects),
 			reversed: item.isReversed === true,
 			durationSeconds: (endFrame - startFrame) / fps,
 			gainPoints: previewGainPoints.map((point) => ({
@@ -345,9 +342,7 @@ export function planNestedMixdown(
 					getAudioEqSettings(wrapper)
 				),
 				audioEffects: (() => {
-					const outer = normalizeAudioEffects(
-						(wrapper as unknown as { audioEffects?: unknown }).audioEffects
-					);
+					const outer = normalizeAudioEffects(wrapper.audioEffects);
 					return outer.length > 0 ? [...outer, ...entry.audioEffects] : entry.audioEffects;
 				})(),
 				durationSeconds: entry.durationSeconds / wrapperSpeed,
@@ -418,7 +413,7 @@ export function sliceMixEntries(
 		let slicedDucking = entry.ducking;
 		let slicedDuckStart = entry.duckStartSeconds;
 		let slicedDuckEnd = entry.duckEndSeconds;
-		let slicedDuckAliases = entry.duckTrackAliases;
+		const slicedDuckAliases = entry.duckTrackAliases;
 		if (slicedDucking && slicedDuckStart !== undefined && slicedDuckEnd !== undefined) {
 			const release = slicedDucking.releaseSec ?? DUCKING_DEFAULT_RELEASE_SEC;
 			const duckStart = slicedDuckStart;

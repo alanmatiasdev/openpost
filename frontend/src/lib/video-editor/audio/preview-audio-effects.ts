@@ -15,7 +15,7 @@ export interface PreviewAudioEffectNodes {
 
 function createCompressorNodes(
 	context: AudioContext,
-	effect: AudioEffect
+	effect: import('./audio-effects').CompressorEffect
 ): PreviewAudioEffectNodes {
 	const compressor = context.createDynamicsCompressor();
 	const makeup = context.createGain();
@@ -24,15 +24,15 @@ function createCompressorNodes(
 	const input = context.createGain();
 	const output = context.createGain();
 	const bypass = context.createGain();
-	const c = effect as import('./audio-effects').CompressorEffect;
-	compressor.threshold.value = c.thresholdDb;
-	compressor.ratio.value = c.ratio;
-	compressor.attack.value = c.attackMs / 1000;
-	compressor.release.value = c.releaseMs / 1000;
-	compressor.knee.value = c.kneeDb;
-	makeup.gain.value = Math.pow(10, c.makeupGainDb / 20);
-	dry.gain.value = 1 - c.mix;
-	wet.gain.value = c.mix;
+
+	compressor.threshold.value = effect.thresholdDb;
+	compressor.ratio.value = effect.ratio;
+	compressor.attack.value = effect.attackMs / 1000;
+	compressor.release.value = effect.releaseMs / 1000;
+	compressor.knee.value = effect.kneeDb;
+	makeup.gain.value = Math.pow(10, effect.makeupGainDb / 20);
+	dry.gain.value = 1 - effect.mix;
+	wet.gain.value = effect.mix;
 	input.connect(compressor);
 	compressor.connect(makeup);
 	makeup.connect(wet);
@@ -48,6 +48,7 @@ function createCompressorNodes(
 		bypass,
 		nodes: [compressor, makeup, dry, wet, input, output, bypass],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (compressor)
 			const n = next as import('./audio-effects').CompressorEffect;
 			compressor.threshold.value = n.thresholdDb;
 			compressor.ratio.value = n.ratio;
@@ -65,13 +66,16 @@ function createCompressorNodes(
 	};
 }
 
-function createPanNodes(context: AudioContext, effect: AudioEffect): PreviewAudioEffectNodes {
+function createPanNodes(
+	context: AudioContext,
+	effect: import('./audio-effects').PanEffect
+): PreviewAudioEffectNodes {
 	const panner = context.createStereoPanner();
 	const input = context.createGain();
 	const output = context.createGain();
 	const bypass = context.createGain();
-	const p = effect as import('./audio-effects').PanEffect;
-	panner.pan.value = p.pan;
+
+	panner.pan.value = effect.pan;
 	input.connect(panner);
 	panner.connect(output);
 	return {
@@ -83,8 +87,9 @@ function createPanNodes(context: AudioContext, effect: AudioEffect): PreviewAudi
 		bypass,
 		nodes: [panner, input, output, bypass],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (pan)
 			const n = next as import('./audio-effects').PanEffect;
-			(panner.pan as AudioParam).value = n.pan;
+			panner.pan.value = n.pan;
 			this.enabled = n.enabled;
 		},
 		dispose() {
@@ -130,7 +135,10 @@ function generateReverbImpulse(
 	return impulse;
 }
 
-function createReverbNodes(context: AudioContext, effect: AudioEffect): PreviewAudioEffectNodes {
+function createReverbNodes(
+	context: AudioContext,
+	effect: import('./audio-effects').ReverbEffect
+): PreviewAudioEffectNodes {
 	const convolver = context.createConvolver();
 	const dry = context.createGain();
 	const wet = context.createGain();
@@ -138,15 +146,15 @@ function createReverbNodes(context: AudioContext, effect: AudioEffect): PreviewA
 	const output = context.createGain();
 	const bypass = context.createGain();
 	const delay = context.createDelay(0.12);
-	const r = effect as import('./audio-effects').ReverbEffect;
-	let currentDecay = r.decaySeconds;
-	let currentRoom = r.roomSize;
-	let currentDamp = r.damping;
+
+	let currentDecay = effect.decaySeconds;
+	let currentRoom = effect.roomSize;
+	let currentDamp = effect.damping;
 	convolver.buffer = generateReverbImpulse(context, currentDecay, currentRoom, currentDamp);
 	convolver.normalize = true;
-	delay.delayTime.value = r.preDelayMs / 1000;
-	dry.gain.value = 1 - r.wet;
-	wet.gain.value = r.wet;
+	delay.delayTime.value = effect.preDelayMs / 1000;
+	dry.gain.value = 1 - effect.wet;
+	wet.gain.value = effect.wet;
 	input.connect(dry);
 	dry.connect(output);
 	input.connect(delay);
@@ -162,6 +170,7 @@ function createReverbNodes(context: AudioContext, effect: AudioEffect): PreviewA
 		bypass,
 		nodes: [convolver, dry, wet, input, output, bypass, delay],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (reverb)
 			const n = next as import('./audio-effects').ReverbEffect;
 			if (
 				n.decaySeconds !== currentDecay ||
@@ -184,8 +193,10 @@ function createReverbNodes(context: AudioContext, effect: AudioEffect): PreviewA
 	};
 }
 
-function createDelayNodes(context: AudioContext, effect: AudioEffect): PreviewAudioEffectNodes {
-	const d = effect as import('./audio-effects').DelayEffect;
+function createDelayNodes(
+	context: AudioContext,
+	effect: import('./audio-effects').DelayEffect
+): PreviewAudioEffectNodes {
 	const delay = context.createDelay(2.05);
 	const feedback = context.createGain();
 	const dry = context.createGain();
@@ -195,14 +206,14 @@ function createDelayNodes(context: AudioContext, effect: AudioEffect): PreviewAu
 	const bypass = context.createGain();
 	const filterLow = context.createBiquadFilter();
 	const filterHigh = context.createBiquadFilter();
-	delay.delayTime.value = d.timeMs / 1000;
-	feedback.gain.value = d.feedback;
-	dry.gain.value = 1 - d.mix;
-	wet.gain.value = d.mix;
+	delay.delayTime.value = effect.timeMs / 1000;
+	feedback.gain.value = effect.feedback;
+	dry.gain.value = 1 - effect.mix;
+	wet.gain.value = effect.mix;
 	filterLow.type = 'highpass';
-	filterLow.frequency.value = d.lowCutHz;
+	filterLow.frequency.value = effect.lowCutHz;
 	filterHigh.type = 'lowpass';
-	filterHigh.frequency.value = d.highCutHz;
+	filterHigh.frequency.value = effect.highCutHz;
 	input.connect(dry);
 	dry.connect(output);
 	input.connect(delay);
@@ -221,6 +232,7 @@ function createDelayNodes(context: AudioContext, effect: AudioEffect): PreviewAu
 		bypass,
 		nodes: [delay, feedback, dry, wet, input, output, bypass, filterLow, filterHigh],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (delay)
 			const n = next as import('./audio-effects').DelayEffect;
 			delay.delayTime.value = n.timeMs / 1000;
 			feedback.gain.value = n.feedback;
@@ -239,7 +251,7 @@ function createDelayNodes(context: AudioContext, effect: AudioEffect): PreviewAu
 
 function createDistortionNodes(
 	context: AudioContext,
-	effect: AudioEffect
+	effect: import('./audio-effects').DistortionEffect
 ): PreviewAudioEffectNodes {
 	const shaper = context.createWaveShaper();
 	const dry = context.createGain();
@@ -249,8 +261,8 @@ function createDistortionNodes(
 	const bypass = context.createGain();
 	const toneFilter = context.createBiquadFilter();
 	const outGain = context.createGain();
-	const d = effect as import('./audio-effects').DistortionEffect;
-	const drive = 1 + d.amount * 18;
+
+	const drive = 1 + effect.amount * 18;
 	const curve = new Float32Array(441);
 	for (let i = 0; i < curve.length; i++) {
 		const x = (i / (curve.length - 1)) * 2 - 1;
@@ -258,11 +270,11 @@ function createDistortionNodes(
 	}
 	shaper.curve = curve;
 	shaper.oversample = '4x';
-	dry.gain.value = 1 - d.mix;
-	wet.gain.value = d.mix;
+	dry.gain.value = 1 - effect.mix;
+	wet.gain.value = effect.mix;
 	toneFilter.type = 'lowpass';
-	toneFilter.frequency.value = 600 + d.tone * 8000;
-	outGain.gain.value = Math.pow(10, d.outputGainDb / 20);
+	toneFilter.frequency.value = 600 + effect.tone * 8000;
+	outGain.gain.value = Math.pow(10, effect.outputGainDb / 20);
 	input.connect(dry);
 	dry.connect(output);
 	input.connect(shaper);
@@ -279,6 +291,7 @@ function createDistortionNodes(
 		bypass,
 		nodes: [shaper, dry, wet, input, output, bypass, toneFilter, outGain],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (distortion)
 			const n = next as import('./audio-effects').DistortionEffect;
 			const nd = 1 + n.amount * 18;
 			const nc = new Float32Array(441);
@@ -302,12 +315,10 @@ function createDistortionNodes(
 
 function createModulatedDelayNodes(
 	context: AudioContext,
-	effect: AudioEffect
+	effect: import('./audio-effects').ChorusEffect | import('./audio-effects').FlangerEffect
 ): PreviewAudioEffectNodes {
 	const isChorus = effect.type === 'chorus';
-	const params = effect as
-		| import('./audio-effects').ChorusEffect
-		| import('./audio-effects').FlangerEffect;
+	const params = effect;
 	const delay = context.createDelay(isChorus ? 0.05 : 0.02);
 	const dry = context.createGain();
 	const wet = context.createGain();
@@ -320,14 +331,18 @@ function createModulatedDelayNodes(
 	delay.delayTime.value = params.delayMs / 1000;
 	dry.gain.value = 1 - params.mix;
 	wet.gain.value = params.mix;
+	// SAFETY: params is ChorusEffect or FlangerEffect; Chorus has no feedback, fallback to 0
 	feedback.gain.value = (params as import('./audio-effects').FlangerEffect).feedback ?? 0;
 	lfo.frequency.value = params.rateHz;
 	lfoGain.gain.value = params.depthMs / 1000;
 	lfo.connect(lfoGain);
-	lfoGain.connect(delay.delayTime as unknown as AudioParam);
+	// SAFETY: delayTime is AudioParam in WebAudio; lib types may widen to unknown
+	lfoGain.connect(delay.delayTime as AudioParam);
 	try {
 		lfo.start();
-	} catch {}
+	} catch {
+		// best-effort: oscillator may already be started in some browsers
+	}
 	input.connect(dry);
 	dry.connect(output);
 	input.connect(delay);
@@ -346,6 +361,7 @@ function createModulatedDelayNodes(
 		bypass,
 		nodes: [delay, dry, wet, input, output, bypass, feedback, lfo, lfoGain],
 		update(next: AudioEffect) {
+			// SAFETY: update is only called with same type as creation (chorus or flanger)
 			const n = next as
 				| import('./audio-effects').ChorusEffect
 				| import('./audio-effects').FlangerEffect;
@@ -354,14 +370,19 @@ function createModulatedDelayNodes(
 			wet.gain.value = n.mix;
 			lfo.frequency.value = n.rateHz;
 			lfoGain.gain.value = n.depthMs / 1000;
-			if ('feedback' in n)
-				feedback.gain.value = (n as import('./audio-effects').FlangerEffect).feedback ?? 0;
+			if ('feedback' in n) {
+				// SAFETY: 'feedback' in check narrows modulated delay to FlangerEffect
+				const flangerEffect = n as import('./audio-effects').FlangerEffect;
+				feedback.gain.value = flangerEffect.feedback ?? 0;
+			}
 			this.enabled = n.enabled;
 		},
 		dispose() {
 			try {
 				lfo.stop();
-			} catch {}
+			} catch {
+				// best-effort: oscillator may already be stopped
+			}
 			for (const node of [delay, dry, wet, input, output, bypass, feedback, lfo, lfoGain])
 				node.disconnect();
 		}

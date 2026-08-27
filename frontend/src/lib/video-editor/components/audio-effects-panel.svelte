@@ -6,8 +6,8 @@
 	import type { TimelineItem } from '$lib/video-editor/project/types';
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import {
-		AUDIO_EFFECT_TYPES,
 		createDefaultAudioEffect,
+		isAudioEffectType,
 		normalizeAudioEffects,
 		reorderAudioEffects,
 		type AudioEffect,
@@ -40,8 +40,8 @@
 	}
 
 	function addEffect(type: string): void {
-		if (!(AUDIO_EFFECT_TYPES as readonly string[]).includes(type)) return;
-		const effect = createDefaultAudioEffect(type as AudioEffectType);
+		if (!isAudioEffectType(type)) return;
+		const effect = createDefaultAudioEffect(type);
 		commit([...effects, effect]);
 	}
 
