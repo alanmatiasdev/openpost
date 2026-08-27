@@ -27,6 +27,11 @@
 		requiresProcessedPreviewAudioForTimeline
 	} from '$lib/video-editor/audio/preview-processing';
 	import {
+		applyNoiseReduction,
+		isNoiseReductionActive,
+		resolveNoiseReductionSettings
+	} from '$lib/video-editor/audio/audio-noise-reduction';
+	import {
 		createPreviewClipAudioGraph,
 		rampPreviewClipGain,
 		setPreviewClipEq,
@@ -106,6 +111,7 @@
 		) || isAc3AudioCodec(audioCodec)
 	);
 	const audioEffectsForPreview = $derived(getAudioEffects(item));
+	const noiseReductionSettings = $derived(resolveNoiseReductionSettings(item));
 	const processingSignature = $derived(
 		JSON.stringify({
 			speed: item.speed ?? 1,
@@ -115,7 +121,8 @@
 				timelineStore.tracks,
 				timelineStore.busAudioEq
 			),
-			effects: audioEffectsForPreview
+			effects: audioEffectsForPreview,
+			noiseReduction: noiseReductionSettings
 		})
 	);
 	const baseVolume = $derived(
@@ -346,6 +353,7 @@
 			pitch: number;
 			eqStages: ResolvedAudioEqSettings[];
 			effects: AudioEffect[];
+			noiseReduction: import('$lib/video-editor/audio/audio-noise-reduction').ResolvedAudioNoiseReductionSettings;
 		};
 		if (!sourceUrl || !shouldProcess) {
 			processedNode?.port.postMessage({ type: 'set-playing', playing: false });
@@ -376,7 +384,35 @@
 			decodedPreviewAudio(sourceUrl, audioCodec)
 		]).then(async ([loaded, decoded]) => {
 			if (!loaded || stale) return;
-			const prepared = await prepareAudioBufferForSoundTouchPreview(decoded, context.sampleRate);
+			let bufferForPreview = decoded;
+			if (isNoiseReductionActive(settings.noiseReduction)) {
+				try {
+					const channels: Float32Array[] = [];
+					for (let c = 0; c < decoded.numberOfChannels; c++) {
+						channels.push(new Float32Array(decoded.getChannelData(c)));
+					}
+					const processed = applyNoiseReduction(
+						channels,
+						decoded.sampleRate,
+						settings.noiseReduction
+					);
+					const nrBuffer = new AudioBuffer({
+						length: processed[0]?.length ?? decoded.length,
+						numberOfChannels: decoded.numberOfChannels,
+						sampleRate: decoded.sampleRate
+					});
+					for (let c = 0; c < decoded.numberOfChannels; c++) {
+						nrBuffer.copyToChannel(processed[c] ?? processed[0]!, c);
+					}
+					bufferForPreview = nrBuffer;
+				} catch {
+					bufferForPreview = decoded;
+				}
+			}
+			const prepared = await prepareAudioBufferForSoundTouchPreview(
+				bufferForPreview,
+				context.sampleRate
+			);
 			if (stale) return;
 			const node = new AudioWorkletNode(context, SOUND_TOUCH_PREVIEW_PROCESSOR_NAME, {
 				numberOfInputs: 0,

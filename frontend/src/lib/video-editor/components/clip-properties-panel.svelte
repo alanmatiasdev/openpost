@@ -37,6 +37,10 @@
 	} from '$lib/video-editor/audio/audio-pitch';
 	import AudioDuckingPanel from './audio-ducking-panel.svelte';
 	import AudioEffectsPanel from './audio-effects-panel.svelte';
+	import {
+		clampNoiseReductionAmount,
+		resolveNoiseReductionSettings
+	} from '$lib/video-editor/audio/audio-noise-reduction';
 	import AudioEqPanel from './audio-eq-panel.svelte';
 
 	let {
@@ -789,6 +793,77 @@
 						<AudioEqPanel item={audioItem} {onedit} />
 						<AudioEffectsPanel item={audioItem} />
 						<AudioDuckingPanel item={audioItem} {onedit} />
+					</div>
+					<div
+						class="mt-2 rounded-md border border-white/10 bg-black/10 p-2"
+						data-testid="noise-reduction-panel"
+					>
+						<div class="flex items-center justify-between gap-2">
+							<h4 class="text-[10px] font-semibold tracking-wider text-white/70 uppercase">
+								{m.video_editor_audio_noise_title()}
+							</h4>
+							<span class="text-[10px] text-white/40"
+								>{m.video_editor_audio_noise_description()}</span
+							>
+						</div>
+						{#if audioItem}
+							{@const nr = resolveNoiseReductionSettings(audioItem)}
+							<div class="mt-2 flex items-center gap-2">
+								<label class="flex items-center gap-1.5 text-[11px] text-white/80">
+									<Input
+										type="checkbox"
+										checked={nr.enabled}
+										aria-label={m.video_editor_audio_noise_enable()}
+										onchange={(e) =>
+											commitAudioPatch({
+												audioNoiseReductionEnabled: e.currentTarget.checked,
+												audioNoiseReductionAmount: nr.amount
+											})}
+										class="h-3.5 w-3.5 rounded border-white/20 bg-transparent"
+									/>
+									{m.video_editor_audio_noise_enable()}
+								</label>
+								<span class="ml-auto text-[10px] text-white/50" aria-live="polite">
+									{nr.enabled
+										? m.video_editor_audio_noise_applied({ amount: String(nr.amount) })
+										: m.video_editor_audio_noise_bypassed()}
+								</span>
+							</div>
+							<div class="mt-2">
+								<label for={`nr-${audioItem.id}`} class="text-[10px] text-white/60"
+									>{m.video_editor_audio_noise_amount()}</label
+								>
+								<input
+									id={`nr-${audioItem.id}`}
+									type="range"
+									min="0"
+									max="100"
+									step="1"
+									value={nr.amount}
+									disabled={!nr.enabled}
+									aria-label={m.video_editor_audio_noise_aria()}
+									oninput={(e) => {
+										const v = clampNoiseReductionAmount(e.currentTarget.valueAsNumber);
+										// live preview without history spam: use direct patch but debounced via updateItemProperties still undoable per change event
+										commitAudioPatch({
+											audioNoiseReductionAmount: v,
+											audioNoiseReductionEnabled: true
+										});
+									}}
+									onchange={(e) =>
+										commitAudioPatch({
+											audioNoiseReductionAmount: clampNoiseReductionAmount(
+												e.currentTarget.valueAsNumber
+											),
+											audioNoiseReductionEnabled: true
+										})}
+									class="mt-1 w-full accent-[oklch(0.66_0.14_45)] disabled:opacity-40"
+								/>
+								<p class="mt-1 text-[10px] leading-snug text-white/40">
+									{m.video_editor_audio_noise_amount_hint({ amount: String(nr.amount) })}
+								</p>
+							</div>
+						{/if}
 					</div>
 				</section>
 			{/if}
