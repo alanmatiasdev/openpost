@@ -1,9 +1,9 @@
 /**
  * Project document model for the OpenPost Video Editor.
  *
- * Ported from FreeCut (MIT) - types/project.ts - trimmed to the v1 surface:
- * video / audio / image / Lottie / text / subtitle / shape / adjustment / composition
- * items and reusable nested sequences.
+ * Ported from FreeCut (MIT) - types/project.ts - adapted to the current surface:
+ * video / audio / image / Lottie / text / subtitle / shape / adjustment / controller /
+ * composition items and reusable nested sequences.
  */
 
 import type {

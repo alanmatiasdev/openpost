@@ -37,9 +37,9 @@ Ported from FreeCut (adapt React→Svelte 5 runes, Tailwind 4 + bits-ui `ui/` pr
 
 Dependencies in `frontend/package.json`: `mediabunny@^1.51.0`, `@mediabunny/prores@1.51.0`, `@huggingface/transformers@4.1.0`, `onnxruntime-web@1.26.0-dev.20260410-5e55544225`, and `fflate`.
 
-### Deliberate reductions vs FreeCut (v1)
+### Current parity scope
 
-- Item types: video, audio, image, text, subtitle-segment. No shape/lottie/gif/composition-nesting/adjustment/controller items.
+- The project model includes all ten FreeCut timeline item kinds: video, audio, image, Lottie, text, subtitle, shape, adjustment, controller, and composition. Reusable compositions support nested timelines and controller-based Motion parenting.
 - Local music generation, upscale, and frame interpolation are implemented. The packaged ACE-Step path passed a fixed-seed real-model WebGPU run with a valid, non-silent 10-second stereo WAV. Local scene captions, semantic and visual search, embeddings, and three-engine local voice generation are present.
 - Keyframes include the value graph, dope sheet, spatial curves, transition guards, and shared multi-key editing.
 - Projects support reusable top-level sequences and nested compound clips.
