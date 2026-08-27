@@ -159,6 +159,38 @@ beforeEach(() => {
 	});
 });
 
+describe('TimelinePanel progressive controls', () => {
+	it('keeps beat analysis and keyframe editing closed until requested', async () => {
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: 'video',
+			selectedItemIds: ['video']
+		});
+
+		expect(screen.container.querySelector('[aria-label="Keyframe dope sheet"]')).toBeNull();
+		expect(screen.container.querySelector('#beat-detection-heading')).toBeNull();
+
+		const keyframes = screen.getByRole('button', {
+			name: 'Keyframes',
+			exact: true
+		});
+		const beats = screen.getByRole('button', {
+			name: 'Beat markers',
+			exact: true
+		});
+		await expect.element(keyframes).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(beats).toHaveAttribute('aria-pressed', 'false');
+
+		await keyframes.click();
+		await beats.click();
+
+		await expect.element(screen.getByRole('region', { name: 'Keyframe dope sheet' })).toBeVisible();
+		await expect.element(screen.getByRole('heading', { name: 'Beat markers' })).toBeVisible();
+		await expect.element(keyframes).toHaveAttribute('aria-pressed', 'true');
+		await expect.element(beats).toHaveAttribute('aria-pressed', 'true');
+	});
+});
+
 describe('TimelinePanel Bento layout entry', () => {
 	it('keeps marker, trim, and track-resize targets usable at phone width', async () => {
 		await page.viewport(320, 720);

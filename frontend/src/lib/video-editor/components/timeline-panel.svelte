@@ -301,6 +301,7 @@
 	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
+	import MusicIcon from '@lucide/svelte/icons/music';
 
 	let {
 		onedit,
@@ -340,6 +341,8 @@
 	let bentoLayoutOpen = $state(false);
 	let clearKeyframesDialogOpen = $state(false);
 	let mixerOpen = $state(false);
+	let beatPanelOpen = $state(false);
+	let keyframesOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
 	let queuedTimelineZoom: { level: number; scrollLeft: number } | null = null;
 	let timelineZoomAnimationFrame: number | null = null;
@@ -4249,44 +4252,70 @@
 					? m.video_editor_items_selected({ count: selectedItemIds.length })
 					: selectedItem.label}
 			</span>
-			<AppSelect
-				class="h-7 w-36 text-xs"
-				value={pendingKeyframeProperty}
-				options={keyframePropertyOptions}
-				ariaLabel={m.video_editor_keyframe_property()}
-				onValueChange={setPendingKeyframeProperty}
-			/>
-			<button
-				type="button"
-				class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-				onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
-				><DiamondIcon class="size-2.5 fill-current" />
-				{m.video_editor_keyframe_add()}</button
-			>
-			<button
-				type="button"
-				class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40"
-				disabled={clearableKeyframeCount === 0}
-				aria-label={m.video_editor_clear_keyframes_toolbar()}
-				title={m.video_editor_clear_keyframes_toolbar_hint()}
-				onclick={openClearKeyframesDialog}
-			>
-				{m.video_editor_clear_keyframes_toolbar()}
-			</button>
 			<Button
 				variant="ghost"
 				size="icon"
 				class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-				data-active={showValueGraph}
-				aria-pressed={showValueGraph}
-				aria-label={m.video_editor_keyframe_graph_toggle()}
-				title={m.video_editor_keyframe_graph_toggle()}
-				disabled={pendingEditorKeyframes.length === 0}
-				onclick={toggleValueGraph}
+				data-active={keyframesOpen}
+				aria-pressed={keyframesOpen}
+				aria-label={m.video_editor_keyframes()}
+				title={m.video_editor_keyframes()}
+				onclick={() => (keyframesOpen = !keyframesOpen)}
 			>
-				<ChartSplineIcon class="size-3.5" />
+				<DiamondIcon class="size-3.5" />
 			</Button>
+			{#if keyframesOpen}
+				<AppSelect
+					class="h-7 w-36 text-xs"
+					value={pendingKeyframeProperty}
+					options={keyframePropertyOptions}
+					ariaLabel={m.video_editor_keyframe_property()}
+					onValueChange={setPendingKeyframeProperty}
+				/>
+				<button
+					type="button"
+					class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+					onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
+					><DiamondIcon class="size-2.5 fill-current" />
+					{m.video_editor_keyframe_add()}</button
+				>
+				<button
+					type="button"
+					class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40"
+					disabled={clearableKeyframeCount === 0}
+					aria-label={m.video_editor_clear_keyframes_toolbar()}
+					title={m.video_editor_clear_keyframes_toolbar_hint()}
+					onclick={openClearKeyframesDialog}
+				>
+					{m.video_editor_clear_keyframes_toolbar()}
+				</button>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+					data-active={showValueGraph}
+					aria-pressed={showValueGraph}
+					aria-label={m.video_editor_keyframe_graph_toggle()}
+					title={m.video_editor_keyframe_graph_toggle()}
+					disabled={pendingEditorKeyframes.length === 0}
+					onclick={toggleValueGraph}
+				>
+					<ChartSplineIcon class="size-3.5" />
+				</Button>
+			{/if}
 		{/if}
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+			data-active={beatPanelOpen}
+			aria-pressed={beatPanelOpen}
+			aria-label={m.video_editor_beat_panel_title()}
+			title={m.video_editor_beat_panel_title()}
+			onclick={() => (beatPanelOpen = !beatPanelOpen)}
+		>
+			<MusicIcon class="size-3.5" />
+		</Button>
 		<Button
 			variant="ghost"
 			size="icon"
@@ -4465,7 +4494,9 @@
 	<AudioMixerPanel />
 {/if}
 
-<BeatDetectionPanel bind:selectedItemId />
+{#if beatPanelOpen}
+	<BeatDetectionPanel bind:selectedItemId />
+{/if}
 
 <div
 	bind:this={scrollContainer}
@@ -5028,7 +5059,7 @@
 		{/each}
 
 		<!-- Keyframe dopesheet for the selected clip -->
-		{#if selectedItem}
+		{#if selectedItem && keyframesOpen}
 			<div class="relative bg-[oklch(0.145_0.008_55)]">
 				<KeyframeDopesheet
 					item={selectedItem}
