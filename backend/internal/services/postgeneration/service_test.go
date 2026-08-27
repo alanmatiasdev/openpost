@@ -46,6 +46,34 @@ func TestBuildReturnsCanonicalCopyAndEveryRequestedRendition(t *testing.T) {
 	require.Contains(t, request.UserPrompt, "target_1")
 	require.Contains(t, request.UserPrompt, "linkedin")
 	require.Contains(t, request.UserPrompt, `"max_characters":280`)
+	require.Contains(t, request.SystemPrompt, "Never use em dashes")
+	for _, rule := range []string{
+		"Use plain, active language",
+		"Cut puffery, promotional language, vague claims, filler, and generic conclusions",
+		"Do not force ideas into groups of three",
+		"Do not use decorative emoji",
+	} {
+		require.Contains(t, request.SystemPrompt, rule)
+	}
+}
+
+func TestBuildRemovesDashPunctuationFromGeneratedCopy(t *testing.T) {
+	service, err := New(generatorFunc(func(_ context.Context, _ ai.GenerateRequest) (ai.GenerateResult, error) {
+		return ai.GenerateResult{
+			Text: `{"source_text":"Build once—publish everywhere.","renditions":[{"target":"target_1","body":"Write once – adapt for each channel."}]}`,
+		}, nil
+	}), "openai/gpt-5.6-luna")
+	require.NoError(t, err)
+
+	result, err := service.Build(t.Context(), Input{
+		Idea:         "Build once and publish everywhere.",
+		Destinations: []Destination{{AccountID: "account-1", Platform: "linkedin"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Build once, publish everywhere.", result.SourceText)
+	require.Equal(t, "Write once, adapt for each channel.", result.Renditions[0].Body)
+	require.NotContains(t, result.SourceText, "—")
+	require.NotContains(t, result.Renditions[0].Body, "–")
 }
 
 func TestBuildFitsRenditionsToDestinationLimit(t *testing.T) {
