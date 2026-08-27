@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { Project, TimelineItem } from '$lib/video-editor/project/types';
+import type { Project, TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { TimelineFrameRenderer } from '$lib/video-editor/media/render-export';
+import { clearSubtitleLayoutCacheForTests } from '$lib/video-editor/media/text-raster';
 import { scopeSamples } from '$lib/video-editor/effects/scope-samples.svelte';
 import { editorSession } from '$lib/video-editor/editor.svelte';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
@@ -283,6 +284,34 @@ function subtitleItem(): TimelineItem {
 				params: { amount: -0.5 }
 			}
 		]
+	};
+}
+
+function karaokeSubtitleItem(): TimelineItem {
+	return {
+		id: 'captions',
+		trackId: 'captions',
+		from: 0,
+		durationInFrames: 30,
+		label: 'Captions',
+		type: 'subtitle',
+		transform: { width: WIDTH, height: HEIGHT },
+		captionHighlightMode: 'karaoke',
+		karaokeActiveColor: '#ff0000',
+		karaokeActiveBackground: '#00ff00',
+		cues: [
+			{
+				id: 'c',
+				startFrame: 0,
+				endFrame: 30,
+				text: 'hello world',
+				words: [
+					{ id: 'w1', startFrame: 0, endFrame: 10, text: 'hello' },
+					{ id: 'w2', startFrame: 10, endFrame: 20, text: 'world' }
+				]
+			}
+		],
+		effects: []
 	};
 }
 
@@ -811,6 +840,107 @@ describe('PreviewLayer GPU rendering', () => {
 			...Array.from({ length: WIDTH * HEIGHT }, (_, index) => pixels[index * 4 + 3] ?? 0)
 		);
 		expect(maximumAlpha).toBe(0);
+	});
+
+	it('keeps karaoke highlight in sync between preview and export at exact word boundary', async () => {
+		clearSubtitleLayoutCacheForTests();
+		const item = {
+			...karaokeSubtitleItem(),
+			transform: { width: 400, height: 200 }
+		};
+		const KW = 400;
+		const KH = 200;
+		const captionsTrack: TimelineTrack = {
+			id: 'captions',
+			name: 'Captions',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const karaokeProject = (it: TimelineItem): Project => ({
+			id: 'karaoke-proj',
+			name: 'karaoke',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 60,
+			metadata: { width: KW, height: KH, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [captionsTrack],
+				items: [it]
+			}
+		});
+		const leftmostActiveX = (
+			data: Uint8ClampedArray,
+			width: number,
+			height: number
+		): number | null => {
+			for (let x = 0; x < width; x += 1) {
+				for (let y = 0; y < height; y += 1) {
+					const i = (y * width + x) * 4;
+					const r = data[i]!;
+					const g = data[i + 1]!;
+					const b = data[i + 2]!;
+					const a = data[i + 3]!;
+					if (a > 10 && r < 80 && g > 150 && b < 80) return x;
+				}
+			}
+			return null;
+		};
+		const renderPreviewPixels = async (frame: number): Promise<Uint8ClampedArray> => {
+			timelineStore.setAll({
+				items: [item],
+				tracks: [captionsTrack],
+				currentFrame: frame,
+				fps: 30
+			});
+			const screen = await render(PreviewLayer, {
+				item,
+				url: null,
+				canvasWidth: KW,
+				canvasHeight: KH,
+				onselect: vi.fn()
+			});
+			const canvas = screen.container.querySelector<HTMLCanvasElement>('[role="img"] canvas');
+			expect(canvas).not.toBeNull();
+			if (!canvas) return new Uint8ClampedArray();
+			await vi.waitFor(() => {
+				const ctx = canvas.getContext('2d', { willReadFrequently: true });
+				expect(ctx).not.toBeNull();
+				if (!ctx) return;
+				const d = ctx.getImageData(0, 0, KW, KH).data;
+				expect(leftmostActiveX(d, KW, KH)).not.toBeNull();
+			});
+			const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+			return ctx.getImageData(0, 0, KW, KH).data;
+		};
+		const renderExportPixels = async (frame: number): Promise<Uint8ClampedArray> => {
+			const renderer = new TimelineFrameRenderer(karaokeProject(item));
+			try {
+				const off = await renderer.render(frame);
+				const ctx = off.getContext('2d', { willReadFrequently: true })!;
+				return ctx.getImageData(0, 0, KW, KH).data;
+			} finally {
+				renderer.dispose();
+			}
+		};
+		const preview9 = await renderPreviewPixels(9);
+		const export9 = await renderExportPixels(9);
+		const preview10 = await renderPreviewPixels(10);
+		const export10 = await renderExportPixels(10);
+		const p9x = leftmostActiveX(preview9, KW, KH);
+		const e9x = leftmostActiveX(export9, KW, KH);
+		const p10x = leftmostActiveX(preview10, KW, KH);
+		const e10x = leftmostActiveX(export10, KW, KH);
+		if (p9x === null || e9x === null || p10x === null || e10x === null)
+			throw new Error('missing karaoke highlight');
+		expect(Math.abs(p9x - e9x)).toBeLessThanOrEqual(2);
+		expect(Math.abs(p10x - e10x)).toBeLessThanOrEqual(2);
+		expect(p9x).not.toBe(p10x);
 	});
 
 	it('keeps burned subtitles in their track paint order', async () => {

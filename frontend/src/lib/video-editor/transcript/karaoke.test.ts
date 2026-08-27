@@ -38,43 +38,6 @@ describe('karaoke deterministic active-word boundaries', () => {
 		expect(activeWordIndexAtFrame(words, 11)).toBe(-1);
 		expect(activeWordIndexAtFrame(words, 12)).toBe(1);
 	});
-
-	it('is independent from renderer implementation', () => {
-		const cue = cueWithWords();
-		// Preview and export both call the same pure helper
-		const previewActive = activeWordIndexAtFrame(cue.words, 10);
-		const exportActive = activeWordIndexAtFrame(cue.words, 10);
-		expect(previewActive).toBe(exportActive);
-		expect(previewActive).toBe(1);
-	});
-});
-
-describe('preview/export parity at boundaries', () => {
-	it('resolves the identical active word for preview and export at before/start/middle/end', () => {
-		const cue = cueWithWords();
-		const itemKaraoke = { captionHighlightMode: 'karaoke' as const };
-		const parsed = 'hello world again';
-		const frames = [
-			{ frame: -1, expected: null },
-			{ frame: 0, expected: 0 },
-			{ frame: 5, expected: 0 },
-			{ frame: 10, expected: 1 },
-			{ frame: 15, expected: 1 },
-			{ frame: 29, expected: 2 },
-			{ frame: 30, expected: null }
-		] as const;
-		for (const { frame, expected } of frames) {
-			const preview = karaokeStateAtFrame(itemKaraoke, cue, parsed, frame);
-			const exported = karaokeStateAtFrame(itemKaraoke, cue, parsed, frame);
-			if (expected === null) {
-				expect(preview).toBeNull();
-				expect(exported).toBeNull();
-			} else {
-				expect(preview?.activeIndex).toBe(expected);
-				expect(exported?.activeIndex).toBe(expected);
-			}
-		}
-	});
 });
 
 describe('untimed fallback', () => {
@@ -133,7 +96,6 @@ describe('untimed fallback', () => {
 
 	it('falls back when no word is active at that frame yet still renders cue', () => {
 		const cue = cueWithWords();
-		// Before first word or after last word, no highlight but cue still visible as normal
 		expect(
 			karaokeStateAtFrame({ captionHighlightMode: 'karaoke' }, cue, 'hello world again', -1)
 		).toBeNull();

@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LaidOutLine } from '../typography/text-block-layout';
 import type { SubtitleCue, TimelineItem } from '../project/types';
-import {
-	activeWordIndexAtFrame,
-	hasUsableKaraokeTimings,
-	karaokeStateAtFrame
-} from '../transcript/karaoke';
+import { hasUsableKaraokeTimings, karaokeStateAtFrame } from '../transcript/karaoke';
 import { layoutTextBlock } from '../typography/text-block-layout';
 import type { TextMeasurer } from '../typography/text-measurer';
 import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
@@ -152,21 +148,6 @@ describe('karaoke line wrapping preservation', () => {
 			words: [{ id: 'w1', startFrame: 0, endFrame: 5, text: 'hello' }]
 		};
 		expect(karaokeStateAtFrame(item, mismatched, 'hello world', 2)).toBeNull();
-	});
-});
-
-describe('karaoke active word is deterministic across realms', () => {
-	it('preview and export helpers return the same index for every boundary frame', () => {
-		const item = makeItem({ captionHighlightMode: 'karaoke' });
-		const c = cue();
-		const plain = parseSubtitleCueText(c.text).plainText;
-		const frames = [0, 9, 10, 19, 20, 29, 30];
-		const previewIndices = frames.map((f) => activeWordIndexAtFrame(c.words, f));
-		const exportIndices = frames.map(
-			(f) => karaokeStateAtFrame(item, c, plain, f)?.activeIndex ?? -1
-		);
-		expect(previewIndices).toEqual(exportIndices);
-		expect(previewIndices).toEqual([0, 0, 1, 1, 2, 2, -1]);
 	});
 });
 
