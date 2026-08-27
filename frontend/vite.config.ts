@@ -32,6 +32,7 @@ const testMediaStubPlugin: Plugin = {
 };
 
 export default defineConfig({
+	publicDir: isVitest ? 'static' : undefined,
 	define: {
 		'import.meta.env.VITE_APP_MODE': JSON.stringify(process.env.VITE_APP_MODE || 'web')
 	},
