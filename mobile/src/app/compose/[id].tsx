@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
@@ -28,10 +27,12 @@ import {
   TextField,
   useColors,
 } from "@/components/ui";
+import { CelebrationBurst } from "@/components/celebration-burst";
 import { BottomDrawer } from "@/components/bottom-drawer";
 import { api, errorMessage } from "@/lib/api/client";
 import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
 import { accountHandle, formatDateTime, platformLabel } from "@/lib/format";
+import { errorHaptic, selectionHaptic, successHaptic } from "@/lib/haptics";
 import { uploadAttachment, type PendingAttachment } from "@/lib/media";
 import { takePendingAttachments } from "@/lib/share";
 import { currentWorkspaceId, useAccounts, useSocialSets } from "@/lib/queries";
@@ -69,7 +70,11 @@ async function fetchPublication(id: string) {
 
 export default function ComposeScreen() {
   const colors = useColors();
-  const { id, build } = useLocalSearchParams<{ id: string; build?: string }>();
+  const { id, build, celebrate } = useLocalSearchParams<{
+    id: string;
+    build?: string;
+    celebrate?: string;
+  }>();
 
   const publication = useQuery({
     queryKey: ["publication", id],
@@ -97,17 +102,27 @@ export default function ComposeScreen() {
     );
   }
 
-  return <Composer key={String(id)} buildOnOpen={build === "1"} id={id} pub={publication.data} />;
+  return (
+    <Composer
+      key={String(id)}
+      buildOnOpen={build === "1"}
+      celebrateOnOpen={celebrate === "1"}
+      id={id}
+      pub={publication.data}
+    />
+  );
 }
 
 function Composer({
   id,
   pub,
   buildOnOpen,
+  celebrateOnOpen,
 }: {
   id: string;
   pub: PublicationDetail;
   buildOnOpen: boolean;
+  celebrateOnOpen: boolean;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -146,6 +161,7 @@ function Composer({
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [celebrationTrigger, setCelebrationTrigger] = useState(celebrateOnOpen ? 1 : 0);
   const [attachments, setAttachments] = useState<Attachment[]>(() => [
     ...attachmentsFromPublication(pub),
     ...takePendingAttachments().map((pending) => ({
@@ -159,6 +175,7 @@ function Composer({
   ]);
   const initialMediaIds = pub.media?.map((media) => media.id) ?? [];
   const autoBuildStarted = useRef(false);
+  const celebratedIdea = useRef(celebrateOnOpen);
 
   const accounts = useAccounts();
   const socialSets = useSocialSets();
@@ -302,6 +319,7 @@ function Composer({
 
   function handleError(err: Error) {
     setActionError(err.message);
+    void errorHaptic();
     if (err.message.includes("changed elsewhere")) {
       invalidate();
     }
@@ -327,7 +345,7 @@ function Composer({
       if (error) throw await httpError(response, "Could not schedule");
     },
     onSuccess: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
       setStatusMessage("Queued for publishing");
       invalidate();
       setTimeout(() => router.back(), 700);
@@ -345,7 +363,7 @@ function Composer({
       if (error) throw await httpError(response, "Could not publish");
     },
     onSuccess: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
       invalidate();
       router.back();
     },
@@ -402,7 +420,7 @@ function Composer({
       return slot;
     },
     onSuccess: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
       invalidate();
       router.back();
     },
@@ -437,7 +455,11 @@ function Composer({
       );
       setStatusMessage("AI draft ready. Review it before you queue it.");
       setActionError(null);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
+      if (!celebratedIdea.current) {
+        celebratedIdea.current = true;
+        setCelebrationTrigger((current) => current + 1);
+      }
     },
     onError: handleError,
   });
@@ -449,7 +471,7 @@ function Composer({
   }, [activeAccounts.size, buildOnOpen, generatePost]);
 
   function toggleAccount(accountId: string) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void selectionHaptic();
     setSelectedAccounts(() => {
       const next = new Set(activeAccounts);
       if (next.has(accountId)) {
@@ -464,14 +486,14 @@ function Composer({
   }
 
   function applySocialSet(setId: string, accountIds: string[]) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void selectionHaptic();
     setSelectedAccounts(new Set(accountIds));
     setSelectedSocialSetId(setId);
     setSelectionTouched(true);
   }
 
   function addAttachment(asset: ImagePicker.ImagePickerAsset) {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void selectionHaptic();
     setAttachments((current) => [
       ...current,
       {
@@ -501,6 +523,7 @@ function Composer({
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       setActionError("Camera permission is needed to take photos.");
+      void errorHaptic();
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.9 });
@@ -882,7 +905,13 @@ function Composer({
                         ) : null}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>
+                        <Text
+                          style={{
+                            color: colors.text,
+                            fontSize: 16,
+                            fontWeight: "600",
+                          }}
+                        >
                           {accountHandle(account.account_username, account.slug)}
                         </Text>
                         <BodyText>{platformLabel(account.platform)}</BodyText>
@@ -903,7 +932,10 @@ function Composer({
                         value={renditionBodies[account.id] ?? ""}
                         accessibilityLabel={`Custom text for ${platformLabel(account.platform)}`}
                         onChangeText={(text) =>
-                          setRenditionBodies((current) => ({ ...current, [account.id]: text }))
+                          setRenditionBodies((current) => ({
+                            ...current,
+                            [account.id]: text,
+                          }))
                         }
                         placeholder="Leave empty to use the main post"
                         multiline
@@ -974,6 +1006,7 @@ function Composer({
           />
         </BottomDrawer>
       ) : null}
+      <CelebrationBurst trigger={celebrationTrigger} />
     </Screen>
   );
 }

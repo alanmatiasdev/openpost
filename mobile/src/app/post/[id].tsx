@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -27,6 +26,7 @@ import {
 import { api, errorMessage } from "@/lib/api/client";
 import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
 import { formatDateTime, platformLabel, statusColor } from "@/lib/format";
+import { errorHaptic, successHaptic } from "@/lib/haptics";
 
 export default function PostScreen() {
   const colors = useColors();
@@ -58,11 +58,11 @@ export default function PostScreen() {
     try {
       await action();
       if (hapticOnSuccess) {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void successHaptic();
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Action failed");
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      void errorHaptic();
       invalidate();
       return false;
     }
@@ -95,12 +95,13 @@ export default function PostScreen() {
     onSuccess: () => {
       setPickerStep(null);
       setNewDate(null);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
       invalidate();
     },
     onError: (err) => {
       setNewDate(null);
       setActionError(err.message);
+      void errorHaptic();
     },
   });
 

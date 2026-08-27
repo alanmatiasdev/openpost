@@ -15,7 +15,7 @@ import { BodyText, Button, Card, Screen, SectionHeader, useColors } from "@/comp
 import { Brand } from "@/components/brand";
 import { api, errorMessage } from "@/lib/api/client";
 import { getWorkspaceId, loadWorkspaceId, saveWorkspaceId } from "@/lib/api/token-store";
-import * as Haptics from "expo-haptics";
+import { selectionHaptic } from "@/lib/haptics";
 
 export default function WorkspaceScreen() {
   const colors = useColors();
@@ -112,7 +112,7 @@ export default function WorkspaceScreen() {
                   accessibilityState={{ busy: selected === workspace.id }}
                   disabled={selected !== null}
                   onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void selectionHaptic();
                     void finish(workspace.id);
                   }}
                   style={({ pressed }) => [

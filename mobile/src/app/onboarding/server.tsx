@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -21,6 +20,7 @@ import {
   useColors,
 } from "@/components/ui";
 import { Brand } from "@/components/brand";
+import { errorHaptic, successHaptic } from "@/lib/haptics";
 import { HOSTED_URL, probeServer, setServer } from "@/lib/server";
 
 export default function ServerScreen() {
@@ -38,10 +38,11 @@ export default function ServerScreen() {
     if (!result.ok) {
       setBusy(null);
       setError(result.error);
+      void errorHaptic();
       return;
     }
     await setServer(result.baseUrl);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void successHaptic();
     setBusy(null);
     router.replace(params.from === "settings" ? "/" : "/onboarding/login");
   }

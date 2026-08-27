@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +15,7 @@ import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { BodyText, Button, Card, Screen, StatusBadge, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { formatDateTime, platformLabel, relativeTime } from "@/lib/format";
+import { errorHaptic, selectionHaptic, successHaptic } from "@/lib/haptics";
 import { usePublications, type PublicationListItem } from "@/lib/queries";
 
 export default function QueueScreen() {
@@ -35,10 +35,13 @@ export default function QueueScreen() {
       if (error) throw new Error(await errorMessage(response, "Retry failed"));
     },
     onSuccess: () => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void successHaptic();
       void queryClient.invalidateQueries({ queryKey: ["publications"] });
     },
-    onError: (err) => setActionError(err.message),
+    onError: (err) => {
+      setActionError(err.message);
+      void errorHaptic();
+    },
   });
 
   const dismissFailed = useMutation({
@@ -52,10 +55,13 @@ export default function QueueScreen() {
     onSuccess: (publication) => {
       setDismissed(publication);
       setActionError(null);
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void selectionHaptic();
       void queryClient.invalidateQueries({ queryKey: ["publications"] });
     },
-    onError: (err) => setActionError(err.message),
+    onError: (err) => {
+      setActionError(err.message);
+      void errorHaptic();
+    },
   });
 
   const restoreFailed = useMutation({
@@ -69,7 +75,10 @@ export default function QueueScreen() {
       setDismissed(null);
       void queryClient.invalidateQueries({ queryKey: ["publications"] });
     },
-    onError: (err) => setActionError(err.message),
+    onError: (err) => {
+      setActionError(err.message);
+      void errorHaptic();
+    },
   });
 
   const refreshing = scheduled.isRefetching || failed.isRefetching;

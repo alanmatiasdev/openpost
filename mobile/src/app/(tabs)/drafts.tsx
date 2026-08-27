@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -18,6 +17,7 @@ import { BottomDrawer } from "@/components/bottom-drawer";
 import { BodyText, Button, Card, IconButton, Screen, TextField, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { relativeTime } from "@/lib/format";
+import { errorHaptic, successHaptic } from "@/lib/haptics";
 import { stashSharedFiles } from "@/lib/share";
 import {
   currentWorkspaceId,
@@ -64,15 +64,20 @@ export default function DraftsScreen() {
     if (!text) return;
     setCaptureError(null);
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const draft = await createDraft.mutateAsync(text);
       setIdea("");
+      void successHaptic();
       router.push({
         pathname: "/compose/[id]",
-        params: { id: draft.id, ...(buildWithAI ? { build: "1" } : {}) },
+        params: {
+          id: draft.id,
+          celebrate: "1",
+          ...(buildWithAI ? { build: "1" } : {}),
+        },
       });
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "Could not save draft");
+      void errorHaptic();
     }
   }
 
@@ -89,11 +94,15 @@ export default function DraftsScreen() {
     resetShareIntent();
     void (async () => {
       try {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const draft = await createDraft.mutateAsync(sharedText);
-        router.push({ pathname: "/compose/[id]", params: { id: draft.id } });
+        void successHaptic();
+        router.push({
+          pathname: "/compose/[id]",
+          params: { id: draft.id, celebrate: "1" },
+        });
       } catch {
         setCaptureError("Could not create a draft from the shared content");
+        void errorHaptic();
       }
     })();
   }, [hasShareIntent, shareIntent, resetShareIntent, workspaces.data, createDraft]);

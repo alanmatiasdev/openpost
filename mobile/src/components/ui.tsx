@@ -13,6 +13,7 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 
 import { STATUS_LABEL, statusColor } from "@/lib/format";
+import { pressHaptic } from "@/lib/haptics";
 
 export const LIGHT_COLORS = {
   dark: false,
@@ -24,6 +25,7 @@ export const LIGHT_COLORS = {
   tint: "#b74c05",
   onTint: "#ffffff",
   tintSoft: "#f7e9de",
+  buttonDepth: "#7e3300",
   danger: "#b3261e",
   inputBg: "#f3efeb",
   success: "#376b51",
@@ -39,6 +41,7 @@ export const DARK_COLORS = {
   tint: "#e9823a",
   onTint: "#21140c",
   tintSoft: "#3b281d",
+  buttonDepth: "#8f3a00",
   danger: "#ffb4ab",
   inputBg: "#2a2521",
   success: "#8fcfac",
@@ -124,18 +127,33 @@ export function Button({
   const color =
     variant === "filled" ? colors.onTint : variant === "destructive" ? colors.danger : colors.tint;
   const inactive = disabled || loading;
+  const hasDepth = variant === "filled" || variant === "tinted";
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
+      onPressIn={() => void pressHaptic()}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         {
           backgroundColor: background,
-          opacity: inactive ? 0.45 : pressed ? 0.72 : 1,
+          borderColor: hasDepth
+            ? variant === "filled"
+              ? colors.tint
+              : `${colors.tint}66`
+            : "transparent",
+          borderBottomColor: hasDepth
+            ? variant === "filled"
+              ? colors.buttonDepth
+              : colors.tint
+            : "transparent",
+          borderBottomWidth: hasDepth ? (pressed ? 1 : 3) : 0,
+          borderWidth: hasDepth ? 1 : 0,
+          opacity: inactive ? 0.45 : pressed && !hasDepth ? 0.68 : 1,
+          transform: pressed && hasDepth ? [{ translateY: 2 }] : undefined,
         },
         style,
       ]}
@@ -185,8 +203,15 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={4}
+      onPressIn={() => void pressHaptic()}
       onPress={onPress}
-      style={({ pressed }) => [styles.iconButton, pressed && { backgroundColor: colors.tintSoft }]}
+      style={({ pressed }) => [
+        styles.iconButton,
+        pressed && {
+          backgroundColor: colors.tintSoft,
+          transform: [{ translateY: 1 }],
+        },
+      ]}
     >
       <SymbolView name={name} size={24} tintColor={color ?? colors.text} />
     </Pressable>
