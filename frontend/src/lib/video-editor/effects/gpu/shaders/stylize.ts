@@ -1461,6 +1461,7 @@ vec4 pixelSortFragment(vec2 vUv) {
 			min: 2,
 			max: 400,
 			step: 1,
+			animatable: false,
 			quality: true
 		}
 	],

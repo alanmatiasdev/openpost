@@ -74,9 +74,7 @@ describe('effect keyframe properties', () => {
 		}
 
 		const pixelSort = gpuEffect('sort', 'gpu-pixel-sort');
-		expect(getGpuEffectKeyframeProperty(pixelSort, 'length')).toBe(
-			'effect:gpu-pixel-sort:sort:length'
-		);
+		expect(getGpuEffectKeyframeProperty(pixelSort, 'length')).toBeNull();
 	});
 
 	it('keeps FreeCut animation and quality metadata on the owning schemas', () => {
@@ -94,7 +92,7 @@ describe('effect keyframe properties', () => {
 			['gpu-color-glitch', 'speed', false, undefined],
 			['gpu-block-glitch', 'speed', false, undefined],
 			['gpu-vhs', 'speed', false, undefined],
-			['gpu-pixel-sort', 'length', undefined, true]
+			['gpu-pixel-sort', 'length', false, true]
 		] as const;
 
 		for (const [effectId, paramName, animatable, quality] of metadata) {
