@@ -23,7 +23,6 @@ import { listSearch } from "./methods/listSearch";
 import { openPostApiRequest } from "./transport/openPostApiRequest";
 import { normalizeOpenPostBaseUrl } from "./transport/url";
 
-// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- OpenPost write actions must not run as AI tools until confirmation and permissions are designed.
 export class OpenPostV1 implements INodeType {
   description: INodeTypeDescription = {
     displayName: "OpenPost",
@@ -31,6 +30,8 @@ export class OpenPostV1 implements INodeType {
     icon: { light: "file:openpost.svg", dark: "file:openpost.dark.svg" },
     group: ["output"],
     version: 1,
+    // n8n treats absence as opt-out, while its scanner requires an explicit declaration.
+    usableAsTool: undefined,
     subtitle: '={{$parameter["resource"] + ": " + $parameter["operation"]}}',
     description: "Publish, schedule, and inspect OpenPost Publications.",
     defaults: {

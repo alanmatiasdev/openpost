@@ -56,6 +56,15 @@ export function assessRegistryVersion({ localIntegrity, metadata }) {
   return { state: "conflict", publishedIntegrity: metadata.integrity ?? null };
 }
 
+export function parseNpmViewResult(output, packageName) {
+  const value = JSON.parse(output);
+  const metadata = Array.isArray(value) ? value[0] : value;
+  if (!metadata || typeof metadata !== "object") {
+    throw new Error(`npm view did not return metadata for ${packageName}.`);
+  }
+  return metadata;
+}
+
 function parseStableVersion(version) {
   const match = stableVersionPattern.exec(version ?? "");
   if (!match) {
@@ -126,7 +135,7 @@ function npm(args, options = {}) {
 function registryMetadata(name, version) {
   const result = npm(["view", `${name}@${version}`, "name", "version", "dist.integrity", "--json"]);
   if (result.status === 0) {
-    const value = JSON.parse(result.stdout);
+    const value = parseNpmViewResult(result.stdout, name);
     if (value.name !== name || value.version !== version) {
       throw new Error(`npm returned ${value.name}@${value.version} for ${name}@${version}.`);
     }
