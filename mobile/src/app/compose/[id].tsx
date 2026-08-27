@@ -29,6 +29,7 @@ import {
   useColors,
 } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
+import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
 import { formatDateTime, platformLabel } from "@/lib/format";
 import { uploadAttachment, type PendingAttachment } from "@/lib/media";
 import { takePendingAttachments } from "@/lib/share";
@@ -110,7 +111,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
   const [scheduledAt, setScheduledAt] = useState<Date | null>(
     pub.scheduled_at ? new Date(pub.scheduled_at) : null,
   );
-  const [showPicker, setShowPicker] = useState(false);
+  const [pickerStep, setPickerStep] = useState<PickerStep | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(
     () =>
       new Set(
@@ -355,7 +356,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
     },
     onSuccess: (date) => {
       setScheduledAt(date);
-      setShowPicker(false);
+      setPickerStep(null);
     },
     onError: handleError,
   });
@@ -741,9 +742,13 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           </Text>
           <View style={styles.scheduleActions}>
             <Button
-              title={showPicker ? "Hide picker" : "Pick time"}
+              title={pickerStep ? "Hide picker" : "Pick time"}
               variant="tinted"
-              onPress={() => setShowPicker(!showPicker)}
+              onPress={() =>
+                setPickerStep((current) =>
+                  current ? null : firstPickerStep(Platform.OS === "android" ? "android" : "ios"),
+                )
+              }
               style={styles.scheduleButton}
             />
             <Button
@@ -762,13 +767,18 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               />
             ) : null}
           </View>
-          {showPicker ? (
+          {pickerStep ? (
             <DateTimePicker
               value={scheduledAt ?? nextHour()}
-              mode="datetime"
+              mode={pickerStep}
               onChange={(event, date) => {
-                if (Platform.OS === "android") setShowPicker(false);
-                if (event.type === "set" && date) setScheduledAt(date);
+                if (event.type !== "set" || !date) {
+                  setPickerStep(null);
+                  return;
+                }
+                const result = applyPickerValue(scheduledAt ?? nextHour(), date, pickerStep);
+                setScheduledAt(result.value);
+                setPickerStep(result.nextStep);
               }}
             />
           ) : null}
