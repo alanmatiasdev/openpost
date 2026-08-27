@@ -1,6 +1,10 @@
 import { applyAudioEqStages } from './audio-eq';
 import { applyAudioEffectStages } from './audio-effects';
 import type { AudioEffect } from './audio-effects';
+import {
+	applyNoiseReduction,
+	type ResolvedAudioNoiseReductionSettings
+} from './audio-noise-reduction';
 import { getAudioPitchRatioFromSemitones, isAudioPitchShiftActive } from './audio-pitch';
 import type { ResolvedAudioEqSettings } from './types';
 
@@ -10,6 +14,8 @@ export interface AudioProcessOptions {
 	sampleRate: number;
 	eqStages?: ReadonlyArray<ResolvedAudioEqSettings>;
 	audioEffects?: AudioEffect[];
+	noiseReduction?: ResolvedAudioNoiseReductionSettings;
+	signal?: AbortSignal;
 }
 
 /**
@@ -22,13 +28,22 @@ export async function processAudioChannels(
 ): Promise<Float32Array[]> {
 	const speed = Number.isFinite(options.speed) && options.speed > 0 ? options.speed : 1;
 	let processed = channels;
+	// Noise reduction before time-stretch preserves temporal characteristics.
+	if (options.noiseReduction) {
+		processed = applyNoiseReduction(
+			processed,
+			options.sampleRate,
+			options.noiseReduction,
+			options.signal
+		);
+	}
 	if (
-		channels.length > 0 &&
-		(channels[0]?.length ?? 0) > 0 &&
+		processed.length > 0 &&
+		(processed[0]?.length ?? 0) > 0 &&
 		(Math.abs(speed - 1) > 0.0001 || isAudioPitchShiftActive(options.pitchShiftSemitones))
 	) {
 		processed = await timeStretchChannels(
-			channels,
+			processed,
 			speed,
 			getAudioPitchRatioFromSemitones(options.pitchShiftSemitones)
 		);

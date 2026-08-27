@@ -18,6 +18,8 @@ import type {
 	TimelineTransition
 } from '../project/types';
 import type { AudioEqSettings } from '../audio/types';
+import type { ResolvedAudioNoiseReductionSettings } from '../audio/audio-noise-reduction';
+import { resolveNoiseReductionSettings } from '../audio/audio-noise-reduction';
 import { activeValueAt } from '../timeline/keyframe-interpolation';
 import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import {
@@ -70,6 +72,8 @@ export interface MixEntry {
 	audioEqStages: ResolvedAudioEqSettings[];
 	/** Ordered audio effect rack shared by preview and export. */
 	audioEffects: AudioEffect[];
+	/** Per-clip noise reduction applied before time-stretch and EQ. */
+	noiseReduction?: ResolvedAudioNoiseReductionSettings;
 	/** Read the source window backward while keeping timeline time forward. */
 	reversed: boolean;
 	/** Real seconds this clip occupies in the mixdown. */
@@ -212,6 +216,7 @@ export function planMixdown(
 				getAudioEqSettings(item)
 			),
 			audioEffects: normalizeAudioEffects(item.audioEffects),
+			noiseReduction: resolveNoiseReductionSettings(item),
 			reversed: item.isReversed === true,
 			durationSeconds: (endFrame - startFrame) / fps,
 			gainPoints: previewGainPoints.map((point) => ({

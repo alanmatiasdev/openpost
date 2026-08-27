@@ -6,6 +6,7 @@ import { resolveMediaBlob } from '../media/resolve-media-blob';
 import { ensureAc3DecoderForCodec } from '../media/ac3-decoder';
 import { StreamingAudioEq } from './audio-eq';
 import { getAudioEffectTailSeconds, StreamingAudioEffectChain } from './audio-effects';
+import { isNoiseReductionActive, StreamingNoiseReduction } from './audio-noise-reduction';
 import { StreamingTimeStretch } from './process-audio';
 import { AbsolutePhaseResampler, downmixToOutputChannels } from './sample-rate-converter';
 import { transitionGainAtProgress } from './transition-crossfade';
@@ -299,6 +300,7 @@ async function* streamEntryAudio(
 	let timeStretch: StreamingTimeStretch | null = null;
 	let eq: StreamingAudioEq | null = null;
 	let effectChain: StreamingAudioEffectChain | null = null;
+	let noiseReduction: StreamingNoiseReduction | null = null;
 	let resamplers: AbsolutePhaseResampler[] | null = null;
 	let emittedFrames = 0;
 	const sourceWindowSeconds = SOURCE_WINDOW_SECONDS * Math.min(1, entry.playbackRate);
@@ -341,6 +343,13 @@ async function* streamEntryAudio(
 			}
 			eq = new StreamingAudioEq(channelCount, sampleRate, entry.audioEqStages);
 			effectChain = new StreamingAudioEffectChain(entry.audioEffects, sampleRate, channelCount);
+			if (isNoiseReductionActive(entry.noiseReduction)) {
+				noiseReduction = new StreamingNoiseReduction(
+					channelCount,
+					sampleRate,
+					entry.noiseReduction!
+				);
+			}
 			if (sampleRate !== MIX_SAMPLE_RATE) {
 				resamplers = Array.from(
 					{ length: channelCount },
@@ -352,6 +361,8 @@ async function* streamEntryAudio(
 		}
 
 		let channels = entry.reversed ? reverseChannels(decoded.channels) : decoded.channels;
+		if (noiseReduction) channels = noiseReduction.process(channels, sourceFinished, signal);
+		if (channels[0]?.length === 0) continue;
 		if (timeStretch) channels = timeStretch.process(channels, sourceFinished);
 		if (channels[0]?.length === 0) continue;
 		channels = eq!.process(channels);

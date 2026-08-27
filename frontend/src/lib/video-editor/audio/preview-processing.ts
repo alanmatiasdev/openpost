@@ -1,6 +1,7 @@
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import type { AudioEqSettings } from './types';
 import { appendResolvedAudioEqSources, getAudioEqSettings, isAudioEqStageActive } from './audio-eq';
+import { isNoiseReductionActive, resolveNoiseReductionSettings } from './audio-noise-reduction';
 import { getAudioPitchShiftSemitones, isAudioPitchShiftActive } from './audio-pitch';
 import { getAudioEffects, hasActiveAudioEffects } from './audio-effects';
 
@@ -42,7 +43,8 @@ export function requiresProcessedPreviewAudio(
 		Math.abs((item.speed ?? 1) - 1) > 0.0001 ||
 		isAudioPitchShiftActive(getAudioPitchShiftSemitones(item)) ||
 		previewAudioEqStages(item, trackAudioEq, busAudioEq).some(isAudioEqStageActive) ||
-		hasActiveAudioEffects(getAudioEffects(item))
+		hasActiveAudioEffects(getAudioEffects(item)) ||
+		isNoiseReductionActive(resolveNoiseReductionSettings(item))
 	);
 }
 

@@ -14,6 +14,7 @@ import type {
 } from '../transitions/types';
 import type { AudioEqFieldSource } from '../audio/audio-eq';
 import type { AudioEqSettings } from '../audio/types';
+import type { AudioNoiseReductionFieldSource } from '../audio/audio-noise-reduction';
 import type { AudioPitchFieldSource } from '../audio/audio-pitch';
 
 export type {
@@ -582,7 +583,12 @@ export interface SubtitleWord {
 	text: string;
 }
 
-export interface TimelineItem extends TextStyleFields, AudioEqFieldSource, AudioPitchFieldSource {
+export interface TimelineItem
+	extends
+		TextStyleFields,
+		AudioEqFieldSource,
+		AudioPitchFieldSource,
+		AudioNoiseReductionFieldSource {
 	id: string;
 	trackId: string;
 	from: number;
