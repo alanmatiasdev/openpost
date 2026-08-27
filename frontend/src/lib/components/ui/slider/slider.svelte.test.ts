@@ -25,4 +25,29 @@ describe('Slider', () => {
 		expect(onValueCommit).toHaveBeenCalledOnce();
 		expect(onValueCommit).toHaveBeenCalledWith(4);
 	});
+
+	it('cancels a pending keyboard gesture without a late commit', async () => {
+		const onValueChange = vi.fn();
+		const onValueCommit = vi.fn();
+		const onValueCancel = vi.fn();
+		const screen = await render(Slider, {
+			value: 3,
+			min: 0,
+			max: 10,
+			step: 1,
+			ariaLabel: 'Cancelable value',
+			onValueChange,
+			onValueCommit,
+			onValueCancel
+		});
+		const thumb = screen.getByRole('slider', { name: 'Cancelable value' }).element();
+		thumb.focus();
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		thumb.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
+
+		expect(onValueChange).toHaveBeenCalledWith(4);
+		expect(onValueCancel).toHaveBeenCalledOnce();
+		expect(onValueCommit).not.toHaveBeenCalled();
+	});
 });
