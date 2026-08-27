@@ -22,17 +22,20 @@ export type {
 	WipeDirection as TransitionDirection
 } from '../transitions/types';
 
-export type TimelineItemKind =
-	| 'video'
-	| 'audio'
-	| 'image'
-	| 'lottie'
-	| 'text'
-	| 'subtitle'
-	| 'shape'
-	| 'adjustment'
-	| 'controller'
-	| 'composition';
+export const TIMELINE_ITEM_KINDS = [
+	'video',
+	'audio',
+	'image',
+	'lottie',
+	'text',
+	'subtitle',
+	'shape',
+	'adjustment',
+	'controller',
+	'composition'
+] as const;
+
+export type TimelineItemKind = (typeof TIMELINE_ITEM_KINDS)[number];
 
 export type ShapeType =
 	| 'rectangle'

@@ -6,6 +6,7 @@ import {
 	type ProjectSnapshot,
 	type SnapshotValidationResult
 } from './snapshot-types';
+import { TIMELINE_ITEM_KINDS } from '../project/types';
 
 const nonNegativeNumber = z.number().finite().nonnegative();
 const positiveNumber = z.number().finite().positive();
@@ -31,17 +32,7 @@ const itemSchema = z.looseObject({
 	from: nonNegativeNumber,
 	durationInFrames: nonNegativeNumber,
 	label: shortText,
-	type: z.enum([
-		'video',
-		'audio',
-		'image',
-		'lottie',
-		'text',
-		'subtitle',
-		'shape',
-		'adjustment',
-		'composition'
-	])
+	type: z.enum(TIMELINE_ITEM_KINDS)
 });
 
 const transitionSchema = z.looseObject({
