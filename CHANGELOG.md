@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ## [4.4.0] - 2026-08-27
 
 ### Added
+
 - Video Editor audio ducking: per-clip sidechain settings (`duckOthersDb`, `attackSec`, `releaseSec`, `targetTrackIds`) lower other tracks while a clip plays. Inspector offers direct toggle, amount, attack/release, and scoped track selection with sensible copy. Preview and export share the same gain envelope, including attack/release ramps, deepest-duck overlap, muted/solo/visibility, speed and trim windows, nested sequences, and bus/master ordering. Changes are undoable.
 - Quick Cut now has per-source audio and video track selection with durable export semantics. Probing enumerates every video and audio track and stores the selected track indices per source. Project parsing remains backward compatible and validates impossible selections. Preflight, stream copy, transcode, and merged export honor the selection and can produce audio-only or video-only output.
 - Video Editor karaoke captions: per-word highlight mode for subtitle items using existing `SubtitleCue.words` timings with configurable active-word foreground and optional active-word background, exposed compactly in the subtitle properties panel.
@@ -24,10 +25,14 @@ All notable changes to this project are documented in this file.
 - Eight built-in presets (Sunset/Ocean/Forest/Neon mesh + Dots/Grid/Stripes/Checker) stored immutably and cloned on apply; no mutable shared preset state and no bespoke parallel renderer.
 - Compact responsive inspector and creation UI using shared primitives (`Button`, `Input`, `Slider`, `AppSelect`, `Label`, `Tabs`): preset grid, kind switch, color pickers, pattern selectors, density/opacity/rotation/scale/offset sliders. Honest alpha/blend via item `transform.opacity` and `blendMode` on the shared stack; accessible labels, keyboard focus, visible focus ring, and 320px layout verified in Chromium.
 - Native concise copy for all ten editor locales (`en`, `es`, `fr`, `de`, `pt`, `pt-BR`, `tr`, `ja`, `ko`, `zh`) for the new panel and controls.
+
 ### Changed
+
 - Preview and export audio graphs now apply the shared effect chain after EQ and before the mixer, preserving existing EQ, pitch, fades, and ducking and without creating extra AudioContexts.
 - Recording setup shows honest capability states for screen, cursor, and system audio and never claims an audio stream exists merely because requested. Cancellation and track teardown are clean and bounded.
+
 ### Fixed
+
 - Preview and export use actual captured tracks without duplicating or dropping audio; inactive system audio is reported as unavailable rather than presented as present.
 
 ## [4.3.2] - 2026-08-27
