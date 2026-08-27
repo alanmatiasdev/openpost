@@ -2,9 +2,12 @@ package postgeneration
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/openpost/backend/internal/ai"
+	"github.com/openpost/backend/internal/capabilities"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +45,26 @@ func TestBuildReturnsCanonicalCopyAndEveryRequestedRendition(t *testing.T) {
 	require.NotContains(t, request.UserPrompt, "account-secret")
 	require.Contains(t, request.UserPrompt, "target_1")
 	require.Contains(t, request.UserPrompt, "linkedin")
+	require.Contains(t, request.UserPrompt, `"max_characters":280`)
+}
+
+func TestBuildFitsRenditionsToDestinationLimit(t *testing.T) {
+	tooLong := strings.Repeat("a", 274) + " 日本語"
+	require.Less(t, utf8.RuneCountInString(tooLong), 280)
+	service, err := New(generatorFunc(func(_ context.Context, _ ai.GenerateRequest) (ai.GenerateResult, error) {
+		return ai.GenerateResult{
+			Text: `{"source_text":"Draft","renditions":[{"target":"target_1","body":"` + tooLong + `"}]}`,
+		}, nil
+	}), "openai/gpt-5.6-luna")
+	require.NoError(t, err)
+
+	result, err := service.Build(t.Context(), Input{
+		Idea:         "Draft",
+		Destinations: []Destination{{AccountID: "account-x", Platform: "x"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("a", 274), result.Renditions[0].Body)
+	require.LessOrEqual(t, capabilities.TextLength("x", result.Renditions[0].Body), 280)
 }
 
 func TestBuildRejectsMissingOrInventedDestinationOutput(t *testing.T) {
