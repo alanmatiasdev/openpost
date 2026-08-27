@@ -25,7 +25,8 @@ import {
 	findNearestKeyframe,
 	findSnapKeyframe,
 	estimateOutputBytes,
-	resolveSegmentCutMode
+	resolveSegmentCutMode,
+	KEYFRAME_TOLERANCE_SECONDS
 } from './model';
 import { createStreamingOutputTarget } from '$lib/video/stream-target';
 import { probeSourceFile, resolveSourceFile } from './source';
@@ -86,8 +87,6 @@ export async function discardScratchFile(scratchPath: string): Promise<void> {
 		// ignore
 	}
 }
-
-const KEYFRAME_TOLERANCE = 0.06;
 
 function throwIfAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) throw new DOMException('Export cancelled.', 'AbortError');
@@ -283,7 +282,7 @@ export async function preflightExport(
 			});
 			continue;
 		}
-		if (src.keyframeState === 'unknown' && seg.start > KEYFRAME_TOLERANCE) {
+		if (src.keyframeState === 'unknown' && seg.start > KEYFRAME_TOLERANCE_SECONDS) {
 			perSegment.push({
 				segmentId: seg.id,
 				requiresTranscode: true,
@@ -294,9 +293,9 @@ export async function preflightExport(
 		}
 		if (segmentCutMode === 'exact') {
 			const aligned =
-				seg.start <= KEYFRAME_TOLERANCE
+				seg.start <= KEYFRAME_TOLERANCE_SECONDS
 					? true
-					: findNearestKeyframe(seg.start, kfs, KEYFRAME_TOLERANCE).aligned;
+					: findNearestKeyframe(seg.start, kfs, KEYFRAME_TOLERANCE_SECONDS).aligned;
 			if (!aligned) {
 				perSegment.push({
 					segmentId: seg.id,
@@ -335,6 +334,7 @@ export async function preflightExport(
 		const firstAudioCodec = firstSource.audioCodec;
 		const firstW = firstSource.width;
 		const firstH = firstSource.height;
+		const firstFps = firstSource.fps;
 		const firstSR = firstSource.sampleRate;
 		const firstCh = firstSource.channels;
 		for (const seg of enabled) {
@@ -347,6 +347,14 @@ export async function preflightExport(
 			if (src.width !== firstW || src.height !== firstH) {
 				requiresTranscode = true;
 				reason = 'Selected segments have different dimensions and require re-encoding.';
+				break;
+			}
+			if (
+				(src.fps === null) !== (firstFps === null) ||
+				(src.fps !== null && firstFps !== null && Math.abs(src.fps - firstFps) > 0.001)
+			) {
+				requiresTranscode = true;
+				reason = 'Selected segments use different frame rates and require re-encoding.';
 				break;
 			}
 			if (src.sampleRate !== firstSR || src.channels !== firstCh) {
@@ -473,12 +481,12 @@ async function exportSingleStreamCopy(
 			if (!videoTrack) {
 				throw new UnsupportedStreamCopyError(`No video track for ${source.name}.`);
 			}
-			if (trimStart > KEYFRAME_TOLERANCE) {
+			if (trimStart > KEYFRAME_TOLERANCE_SECONDS) {
 				const keyPacket = await new EncodedPacketSink(videoTrack).getKeyPacket(
-					trimStart + KEYFRAME_TOLERANCE,
+					trimStart + KEYFRAME_TOLERANCE_SECONDS,
 					{ verifyKeyPackets: true }
 				);
-				if (!keyPacket || Math.abs(keyPacket.timestamp - trimStart) > KEYFRAME_TOLERANCE) {
+				if (!keyPacket || Math.abs(keyPacket.timestamp - trimStart) > KEYFRAME_TOLERANCE_SECONDS) {
 					throw new UnsupportedStreamCopyError(
 						`Start ${trimStart.toFixed(3)}s is not an encoded keyframe for ${source.name}.`
 					);
@@ -835,7 +843,7 @@ async function exportMergedStreamCopy(
 					);
 			}
 			const sink = new EncodedPacketSink(segVideoTrack!);
-			const tolerance = KEYFRAME_TOLERANCE;
+			const tolerance = KEYFRAME_TOLERANCE_SECONDS;
 			const firstPacket = await sink.getKeyPacket(start + tolerance, { verifyKeyPackets: true });
 			if (!firstPacket || Math.abs(firstPacket.timestamp - start) > tolerance) {
 				throw new UnsupportedStreamCopyError(

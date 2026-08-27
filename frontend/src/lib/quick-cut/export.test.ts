@@ -43,6 +43,16 @@ describe('quick-cut preflight', () => {
 		expect(pre.perSegment[1]?.requiresTranscode).toBe(false);
 	});
 
+	it('does not treat a nearby frame as an exact encoded keyframe', async () => {
+		const source = makeSource('strict', { keyframeTimestamps: [0, 2] });
+		const segment = createSegment(0.04, 1, { sourceId: source.id });
+		const preflight = await preflightExport([source], [segment], 'exact', false);
+		expect(preflight.perSegment[0]).toMatchObject({
+			requiresTranscode: true,
+			reason: expect.stringMatching(/not on keyframe/i)
+		});
+	});
+
 	it('honors mixed per-segment cut modes without transcoding the lossless ranges', async () => {
 		const src = makeSource('s1');
 		const exact = createSegment(0.5, 2, {
@@ -86,6 +96,18 @@ describe('quick-cut preflight', () => {
 		const segs = [createSegment(0, 2, { sourceId: 's1' }), createSegment(0, 2, { sourceId: 's2' })];
 		const pre = await preflightExport([s1, s2], segs, 'nearestKeyframe', true);
 		expect(pre.requiresTranscode).toBe(true);
+	});
+
+	it('re-encodes merged sources with different frame rates', async () => {
+		const sourceA = makeSource('a', { fps: 24 });
+		const sourceB = makeSource('b', { fps: 60 });
+		const segments = [
+			createSegment(0, 1, { sourceId: sourceA.id }),
+			createSegment(0, 1, { sourceId: sourceB.id })
+		];
+		const preflight = await preflightExport([sourceA, sourceB], segments, 'nearestKeyframe', true);
+		expect(preflight.requiresTranscode).toBe(true);
+		expect(preflight.reason).toMatch(/frame rates/i);
 	});
 
 	it('does not claim stream copy for codecs unsupported by the source container', async () => {

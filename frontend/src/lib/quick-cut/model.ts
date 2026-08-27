@@ -6,7 +6,7 @@ import type {
 	SegmentValidationError
 } from './types';
 
-const KEYFRAME_TOLERANCE = 0.05;
+export const KEYFRAME_TOLERANCE_SECONDS = 0.001;
 const MIN_SEGMENT_DURATION = 0.05;
 
 function isFiniteNumber(value: number): boolean {
@@ -262,7 +262,7 @@ export function moveSegmentBy(
 export function findNearestKeyframe(
 	time: number,
 	keyframes: number[],
-	tolerance = KEYFRAME_TOLERANCE
+	tolerance = KEYFRAME_TOLERANCE_SECONDS
 ) {
 	if (keyframes.length === 0) return { nearest: null, distance: null, aligned: false };
 	let nearest = keyframes[0]!;
@@ -339,7 +339,7 @@ export function assessExport(
 	sources?: QuickCutSource[] | QuickCutSourceMetadata[]
 ) {
 	if (segments.length === 0) return { wasLossless: false, reason: 'No segments selected.' };
-	const tolerance = 0.06;
+	const tolerance = KEYFRAME_TOLERANCE_SECONDS;
 	const getKfs = (sid: string): number[] => {
 		if (Array.isArray(keyframesBySource)) return keyframesBySource;
 		return keyframesBySource.get(sid) ?? [];

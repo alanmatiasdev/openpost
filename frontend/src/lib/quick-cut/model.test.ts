@@ -94,6 +94,8 @@ describe('quick-cut model', () => {
 	it('finds nearest and snap keyframe', () => {
 		const kfs = [0, 2.0, 4.0, 6.0];
 		expect(findNearestKeyframe(2.04, kfs, 0.06).aligned).toBe(true);
+		expect(findNearestKeyframe(2.04, kfs).aligned).toBe(false);
+		expect(findNearestKeyframe(2.0005, kfs).aligned).toBe(true);
 		expect(findSnapKeyframe(2.1, kfs).direction).toBe('before');
 		expect(findSnapKeyframe(3.9, kfs).direction).toBe('after');
 	});
