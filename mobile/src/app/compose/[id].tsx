@@ -31,7 +31,7 @@ import {
 import { BottomDrawer } from "@/components/bottom-drawer";
 import { api, errorMessage } from "@/lib/api/client";
 import { applyPickerValue, firstPickerStep, type PickerStep } from "@/lib/date-time-picker";
-import { formatDateTime, platformLabel } from "@/lib/format";
+import { accountHandle, formatDateTime, platformLabel } from "@/lib/format";
 import { uploadAttachment, type PendingAttachment } from "@/lib/media";
 import { takePendingAttachments } from "@/lib/share";
 import { currentWorkspaceId, useAccounts, useSocialSets } from "@/lib/queries";
@@ -576,7 +576,7 @@ function Composer({
         ) : null}
 
         <View style={styles.editorHeading}>
-          <View>
+          <View style={styles.editorHeadingCopy}>
             <Text style={[styles.editorTitle, { color: colors.text }]}>Post</Text>
             <BodyText>One idea, adapted for every destination</BodyText>
           </View>
@@ -883,7 +883,7 @@ function Composer({
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>
-                          {account.account_username ? `@${account.account_username}` : account.slug}
+                          {accountHandle(account.account_username, account.slug)}
                         </Text>
                         <BodyText>{platformLabel(account.platform)}</BodyText>
                       </View>
@@ -1045,10 +1045,14 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   editorHeading: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
+  },
+  editorHeadingCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   editorTitle: {
     fontSize: 24,

@@ -127,7 +127,7 @@ export default function PostScreen() {
   const body = pub.source_text || pub.renditions?.find((rendition) => rendition.body)?.body || "";
 
   return (
-    <Screen>
+    <Screen safeTop={false}>
       <Stack.Screen
         options={{
           title: "",
