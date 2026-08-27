@@ -444,7 +444,7 @@
 		{/if}
 		{#each generations as generation (generation.id)}
 			<article
-				class="min-w-0 rounded border border-[oklch(0.26_0.012_55)] bg-[oklch(0.18_0.008_55)] p-1.5"
+				class="min-w-0 overflow-hidden rounded border border-[oklch(0.26_0.012_55)] bg-[oklch(0.18_0.008_55)] p-1.5"
 			>
 				<div class="mb-1 flex items-start justify-between gap-1">
 					<div class="min-w-0">
