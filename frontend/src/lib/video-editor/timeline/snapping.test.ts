@@ -115,4 +115,30 @@ describe('timeline snapping', () => {
 	it('uses a strict threshold so an edge exactly on the boundary stays unsnapped', () => {
 		expect(findNearestSnapTarget(10, [{ frame: 12, type: 'playhead' }], 2)).toBeNull();
 	});
+
+	it('keeps indexed nearest-target lookup identical to the public linear path', () => {
+		const targets = buildSnapTargets({
+			items: Array.from({ length: 200 }, (_, index) =>
+				item(`clip-${index}`, 'visible', index * 11, 7)
+			),
+			tracks,
+			transitions: [],
+			markers: [
+				{ id: 'one', frame: 333, color: '#fff' },
+				{ id: 'two', frame: 777, color: '#fff' }
+			],
+			currentFrame: 555,
+			durationInFrames: 2_400,
+			fps: 30,
+			zoomLevel: 1
+		});
+		const linearTargets = [...targets];
+		for (const threshold of [1, 3, 17]) {
+			for (let frame = 0; frame <= 2_400; frame += 7) {
+				expect(findNearestSnapTarget(frame, targets, threshold)).toEqual(
+					findNearestSnapTarget(frame, linearTargets, threshold)
+				);
+			}
+		}
+	});
 });
