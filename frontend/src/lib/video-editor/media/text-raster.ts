@@ -19,8 +19,7 @@ import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
 import {
 	karaokeActiveBackgroundOf,
 	karaokeActiveColorOf,
-	karaokeStateAtFrame,
-	isKaraokeEnabled
+	karaokeStateAtFrame
 } from '../transcript/karaoke';
 import type { SubtitleCue } from '../project/types';
 
@@ -348,13 +347,9 @@ export function renderSubtitleCueRaster(
 ): void {
 	const parsed = parseSubtitleCueText(cue.text);
 	const styledCue = styledSubtitleItem(cue.text, parsed, item, width, height);
-	const prefersReducedMotion =
-		typeof window !== 'undefined' &&
-		typeof window.matchMedia === 'function' &&
-		window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	const karaokeState = prefersReducedMotion
-		? null
-		: karaokeStateAtFrame(item, cue, parsed.plainText, frame);
+	// Karaoke highlight is functional caption state, not decorative motion – keep
+	// identical active-word state for preview and export even under reduced motion.
+	const karaokeState = karaokeStateAtFrame(item, cue, parsed.plainText, frame);
 	if (!karaokeState) {
 		context.clearRect(0, 0, width, height);
 		context.save();
@@ -402,20 +397,41 @@ function paintKaraokeHighlight(
 ): void {
 	let globalTokenIndex = 0;
 	for (const line of layout.lines) {
-		if (!line.text.trim()) continue;
-		const lineTokens = line.text.trim().split(/\s+/);
-		for (let tokenPosition = 0; tokenPosition < lineTokens.length; tokenPosition += 1) {
-			if (globalTokenIndex === activeIndex) {
-				const prefix = lineTokens.slice(0, tokenPosition).join(' ');
-				const prefixWithSpace = prefix ? `${prefix} ` : '';
+		if (!line.text) continue;
+		// Collect tokens with exact char ranges, preserving single-space separators as laid out.
+		const tokens: Array<{ start: number; end: number }> = [];
+		let index = 0;
+		while (index < line.text.length) {
+			if (line.text[index] === ' ') {
+				index += 1;
+				continue;
+			}
+			const start = index;
+			while (index < line.text.length && line.text[index] !== ' ') index += 1;
+			const end = index;
+			tokens.push({ start, end });
+		}
+		if (tokens.length === 0) continue;
+		for (let tokenPosition = 0; tokenPosition < tokens.length; tokenPosition += 1) {
+			if (globalTokenIndex !== activeIndex) {
+				globalTokenIndex += 1;
+				continue;
+			}
+			const tokenRange = tokens[tokenPosition]!;
+			const tokenStart = tokenRange.start;
+			const tokenEnd = tokenRange.end;
+			// Build run char map for this line
+			if (!line.runs || line.runs.length === 0) {
+				// Non-inline fallback: line has a single style
 				context.save();
 				context.font = line.cssFont;
 				applyCanvasLetterSpacing(context, line.letterSpacing);
 				context.textAlign = 'left';
 				context.textBaseline = 'alphabetic';
-				const prefixWidth = prefixWithSpace ? context.measureText(prefixWithSpace).width : 0;
-				const token = lineTokens[tokenPosition] ?? '';
-				const tokenWidth = context.measureText(token).width;
+				const prefixText = line.text.slice(0, tokenStart);
+				const tokenText = line.text.slice(tokenStart, tokenEnd);
+				const prefixWidth = prefixText ? context.measureText(prefixText).width : 0;
+				const tokenWidth = context.measureText(tokenText).width;
 				const x = line.startX + prefixWidth;
 				if (activeBackground) {
 					context.shadowColor = 'transparent';
@@ -425,14 +441,12 @@ function paintKaraokeHighlight(
 					const padX = Math.max(2, line.fontSize * 0.08);
 					const padY = Math.max(1, line.fontSize * 0.06);
 					context.fillStyle = activeBackground;
-					// Draw background behind the active word without affecting surrounding text metrics
 					context.fillRect(
 						x - padX,
 						line.top + padY,
 						tokenWidth + padX * 2,
 						line.lineHeightPx - padY * 2
 					);
-					// Restore shadow for text
 					if (item.textShadow) {
 						context.shadowColor = item.textShadow.color;
 						context.shadowBlur = item.textShadow.blur;
@@ -444,14 +458,88 @@ function paintKaraokeHighlight(
 					context.strokeStyle = item.strokeColor ?? '#000000';
 					context.lineWidth = (item.strokeWidth ?? 0) * 2;
 					context.lineJoin = 'round';
-					context.strokeText(token, x, line.baselineY);
+					context.strokeText(tokenText, x, line.baselineY);
 				}
 				context.fillStyle = activeColor;
-				context.fillText(token, x, line.baselineY);
+				context.fillText(tokenText, x, line.baselineY);
 				context.restore();
 				return;
 			}
-			globalTokenIndex += 1;
+			// Inline path: honor exact laid-out runs, fonts, letter spacing, and offsets.
+			let runCharCursor = 0;
+			let tokenLeft = Number.POSITIVE_INFINITY;
+			let tokenRight = Number.NEGATIVE_INFINITY;
+			const pieces: Array<{
+				run: (typeof line.runs)[number];
+				pieceText: string;
+				x: number;
+				width: number;
+			}> = [];
+			for (const run of line.runs) {
+				const runStart = runCharCursor;
+				const runEnd = runStart + run.text.length;
+				runCharCursor = runEnd;
+				const overlapStart = Math.max(tokenStart, runStart);
+				const overlapEnd = Math.min(tokenEnd, runEnd);
+				if (overlapStart >= overlapEnd) continue;
+				const prefixInRun = overlapStart - runStart;
+				const pieceText = run.text.slice(prefixInRun, prefixInRun + (overlapEnd - overlapStart));
+				// Measure prefix within run and piece using the run's exact style
+				context.save();
+				context.font = run.cssFont;
+				applyCanvasLetterSpacing(context, run.letterSpacing);
+				const prefixInRunWidth =
+					prefixInRun > 0 ? context.measureText(run.text.slice(0, prefixInRun)).width : 0;
+				const pieceWidth = context.measureText(pieceText).width;
+				context.restore();
+				const pieceX = line.startX + run.offsetX + prefixInRunWidth;
+				pieces.push({ run, pieceText, x: pieceX, width: pieceWidth });
+				tokenLeft = Math.min(tokenLeft, pieceX);
+				tokenRight = Math.max(tokenRight, pieceX + pieceWidth);
+			}
+			if (pieces.length === 0) return;
+			const tokenWidth = tokenRight - tokenLeft;
+			if (activeBackground) {
+				context.save();
+				context.shadowColor = 'transparent';
+				context.shadowBlur = 0;
+				context.shadowOffsetX = 0;
+				context.shadowOffsetY = 0;
+				const padX = Math.max(2, line.fontSize * 0.08);
+				const padY = Math.max(1, line.fontSize * 0.06);
+				context.fillStyle = activeBackground;
+				context.fillRect(
+					tokenLeft - padX,
+					line.top + padY,
+					tokenWidth + padX * 2,
+					line.lineHeightPx - padY * 2
+				);
+				context.restore();
+			}
+			// Paint pieces with active foreground, preserving each run's font and metrics
+			for (const piece of pieces) {
+				context.save();
+				context.font = piece.run.cssFont;
+				applyCanvasLetterSpacing(context, piece.run.letterSpacing);
+				context.textAlign = 'left';
+				context.textBaseline = 'alphabetic';
+				if (item.textShadow) {
+					context.shadowColor = item.textShadow.color;
+					context.shadowBlur = item.textShadow.blur;
+					context.shadowOffsetX = item.textShadow.offsetX;
+					context.shadowOffsetY = item.textShadow.offsetY;
+				}
+				if ((item.strokeWidth ?? 0) > 0) {
+					context.strokeStyle = item.strokeColor ?? '#000000';
+					context.lineWidth = (item.strokeWidth ?? 0) * 2;
+					context.lineJoin = 'round';
+					context.strokeText(piece.pieceText, piece.x, line.baselineY);
+				}
+				context.fillStyle = activeColor;
+				context.fillText(piece.pieceText, piece.x, line.baselineY);
+				context.restore();
+			}
+			return;
 		}
 	}
 }
