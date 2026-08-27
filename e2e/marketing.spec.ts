@@ -630,6 +630,13 @@ test("marketing navigation uses the shared responsive menu patterns", async ({ p
         exact: true,
       }),
     ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
+    const resourceMenu = navigation.locator(".resource-menu");
+    const resourceMenuBox = await resourceMenu.boundingBox();
+    expect(resourceMenuBox).not.toBeNull();
+    expect(resourceMenuBox!.x).toBeGreaterThanOrEqual(0);
+    expect(resourceMenuBox!.x + resourceMenuBox!.width).toBeLessThanOrEqual(
+      page.viewportSize()!.width,
+    );
     await page.keyboard.press("Escape");
     return;
   }

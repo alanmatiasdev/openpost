@@ -180,7 +180,7 @@
 					>
 						Resources
 					</NavigationMenu.Trigger>
-					<NavigationMenu.Content class="resource-menu p-3">
+					<NavigationMenu.Content class="resource-menu left-1/2 -translate-x-1/2 p-3">
 						<div class="grid grid-cols-3 gap-3">
 							{#each resourceGroups as group (group.label)}
 								<div>
