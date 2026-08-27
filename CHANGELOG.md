@@ -148,6 +148,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated ZIP extraction used by local AI model tooling to the patched release that rejects crafted archives with abusive memory sizes.
 - Edit comparison frame mapping is covered by pure tests for gaps, speed, reverse, sourceFps, linked companions, images/compositions, and timecodes, plus Chromium pointer tests that drive real timeline drags for rolling, ripple, slip, and slide, verify baseline-vs-dynamic distinction, audio-linked visual resolution, cancellation cleanup, single undo entries, absence of URL leaks, and 320 px layout.
 - Composition fps header no longer hardcodes 30 due to missing parentheses.
 - Keyboard Delete/Arrow nudge now works from the focusable, correctly named timeline region (`role="region"` with `aria-label`) as well as the window, with proper focus and a single undo entry.
