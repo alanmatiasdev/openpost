@@ -80,9 +80,9 @@ test("workspace manifests keep implementation tasks without old public aliases",
     "test:server",
     "test:watch",
   ]);
-  assert.equal(frontend.scripts.test, "vitest run");
-  assert.equal(frontend.scripts["test:watch"], "vitest");
-  assert.equal(frontend.scripts["test:server"], "vitest run --project server");
+  assert.equal(frontend.scripts.test, "bun run sync && vitest run");
+  assert.equal(frontend.scripts["test:watch"], "bun run sync && vitest");
+  assert.equal(frontend.scripts["test:server"], "bun run sync && vitest run --project server");
   assert.match(frontend.scripts.build, /immutable-frontend-assets\.mjs web/u);
 
   const docs = manifest("docs-site/package.json");
