@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
-import { addGeneratedSubtitleItem } from './transcribe-action';
+import { addGeneratedSubtitleItem, captureTranscriptionSource } from './transcribe-action';
 import { addAiCaptionSubtitleItem, buildAiCaptionCues } from './ai-captions';
 import type { MediaScene } from '../media/scene-search/types';
 import { collectSubtitleCues, subtitleSidecarSrt } from './subtitle-export';
@@ -261,6 +261,18 @@ describe('addAiCaptionSubtitleItem', () => {
 				}
 			])
 		).toThrow();
+	});
+
+	it('rejects stale analysis when the source clip changes during generation', () => {
+		const snapshot = captureTranscriptionSource(source);
+		timelineStore._updateItems([
+			{ id: source.id, patch: { from: source.from + 12, isReversed: true, speed: 1.5 } }
+		]);
+
+		expect(() => addAiCaptionSubtitleItem(source.id, scenes, snapshot)).toThrow();
+		expect(timelineStore.items.some((item) => item.captionSource?.type === 'ai-captions')).toBe(
+			false
+		);
 	});
 
 	it('derives subtitle placement and width from the actual project canvas dimensions', () => {

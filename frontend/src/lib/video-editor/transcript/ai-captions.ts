@@ -16,6 +16,7 @@ import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import { sourceSecondsToTimelineFrame } from '../timeline/utils/media-item-frames';
 import {
+	captureTranscriptionSource,
 	transcriptionSourceWindow,
 	type TranscriptionSourceSnapshot,
 	type TranscriptionSourceWindow
@@ -82,9 +83,17 @@ function sourceStillMatches(
 	)
 		return false;
 	if (!('itemId' in expected)) return true;
+	const snapshot = captureTranscriptionSource(item);
 	return (
-		current.sourceStartSeconds === expected.sourceStartSeconds &&
-		current.sourceEndSeconds === expected.sourceEndSeconds
+		snapshot.itemId === expected.itemId &&
+		snapshot.mediaId === expected.mediaId &&
+		snapshot.from === expected.from &&
+		snapshot.durationInFrames === expected.durationInFrames &&
+		snapshot.sourceStart === expected.sourceStart &&
+		snapshot.sourceEnd === expected.sourceEnd &&
+		snapshot.sourceFps === expected.sourceFps &&
+		snapshot.speed === expected.speed &&
+		snapshot.isReversed === expected.isReversed
 	);
 }
 
