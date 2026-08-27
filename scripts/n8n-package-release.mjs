@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseNpmPackResult } from "./npm-pack-result.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageDirectory = "packages/n8n-nodes-openpost";
 const packageManifestPath = `${packageDirectory}/package.json`;
@@ -170,7 +172,7 @@ function publish() {
       { cwd: path.join(root, packageDirectory) },
     );
     if (packed.status !== 0) throw new Error(`npm pack failed:\n${packed.stderr || packed.stdout}`);
-    const [pack] = JSON.parse(packed.stdout);
+    const pack = parseNpmPackResult(packed.stdout, manifest.name);
     if (!pack?.filename || !pack?.integrity)
       throw new Error("npm pack did not return a tarball integrity.");
     const tarball = path.join(temporaryDirectory, pack.filename);

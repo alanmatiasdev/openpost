@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseNpmPackResult } from "./npm-pack-result.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageRoot = path.join(root, "packages/n8n-nodes-openpost");
 const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
@@ -35,11 +37,12 @@ for (const filename of ["list-workspaces.json", "create-draft.json"]) {
   );
 }
 
-const [pack] = JSON.parse(
+const pack = parseNpmPackResult(
   execFileSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], {
     cwd: packageRoot,
     encoding: "utf8",
   }),
+  manifest.name,
 );
 const allowedFiles = ["LICENSE", "README.md", "package.json"];
 const allowedPrefixes = ["dist/", "docs/", "examples/", "icons/"];

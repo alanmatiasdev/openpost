@@ -6,8 +6,28 @@ import {
   assessRegistryVersion,
   compareVersions,
 } from "./n8n-package-release.mjs";
+import { parseNpmPackResult } from "./npm-pack-result.mjs";
 
 const packageFile = "packages/n8n-nodes-openpost/package.json";
+
+test("npm pack metadata accepts npm 11 and npm 12 output", () => {
+  const pack = { filename: "openpost.tgz", integrity: "sha512-local" };
+  assert.deepEqual(
+    parseNpmPackResult(JSON.stringify([pack]), "@getopenpost/n8n-nodes-openpost"),
+    pack,
+  );
+  assert.deepEqual(
+    parseNpmPackResult(
+      JSON.stringify({ "@getopenpost/n8n-nodes-openpost": pack }),
+      "@getopenpost/n8n-nodes-openpost",
+    ),
+    pack,
+  );
+  assert.throws(
+    () => parseNpmPackResult("{}", "@getopenpost/n8n-nodes-openpost"),
+    /did not return metadata/u,
+  );
+});
 
 test("the first package version can be added", () => {
   assert.deepEqual(
