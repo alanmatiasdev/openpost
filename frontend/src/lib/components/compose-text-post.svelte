@@ -4766,25 +4766,7 @@
 										</div>
 									{/if}
 
-									<div
-										class="min-w-0 flex-1 {i === 0 && !activeVariantAccountId && !isThread
-											? 'rounded-xl border bg-card px-4 pt-4 md:px-5 md:pt-5'
-											: ''}"
-									>
-										{#if i === 0 && !activeVariantAccountId && !isThread}
-											<div class="mb-2 max-w-prose">
-												<h1 class="text-lg font-semibold tracking-[-0.02em]">
-													{generationUndo
-														? m.compose_ai_review_heading()
-														: m.compose_ai_idea_heading()}
-												</h1>
-												<p class="mt-1 text-sm leading-6 text-muted-foreground">
-													{generationUndo
-														? m.compose_ai_review_body({ count: selectedAccounts.length })
-														: m.compose_ai_idea_body()}
-												</p>
-											</div>
-										{/if}
+									<div class="min-w-0 flex-1">
 										<div class="relative">
 											<Textarea
 												id="post-textarea-{i}"
@@ -4815,11 +4797,7 @@
 															: m.compose_ai_idea_placeholder()
 														: m.compose_add_to_thread()}
 												class="relative z-10 w-full resize-none overflow-y-hidden border-0 bg-transparent py-2 pr-3 text-base leading-7 text-foreground placeholder:text-muted-foreground/70 focus:ring-0 focus:outline-none md:py-3 md:pr-4 md:text-lg md:leading-8"
-												style="min-height: {i === 0 && !isThread
-													? '176px'
-													: i === 0
-														? '120px'
-														: '56px'};"
+												style="min-height: {i === 0 ? '120px' : '56px'};"
 												disabled={isSubmitting ||
 													buildingPost ||
 													(!!activeVariantAccountId && !activeVariantIsUnsynced)}

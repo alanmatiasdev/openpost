@@ -244,7 +244,7 @@ test("a previous workspace next-slot response cannot replace the current schedul
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
   await expect(scheduleDialog.getByText("June 2030", { exact: true })).toBeVisible();
-  await expect(scheduleDialog.getByText("July 2030", { exact: true })).toBeVisible();
+  await expect(scheduleDialog.getByText("July 2030", { exact: true })).toHaveCount(0);
   await scheduleDialog.getByRole("button", { name: "Next free slot", exact: true }).click();
   await firstStarted.promise;
 

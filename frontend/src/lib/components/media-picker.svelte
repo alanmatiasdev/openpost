@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolveAppPath } from '$lib/app-path';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -132,6 +133,8 @@
 	const canUseMeme = $derived(
 		canProbeMeme && (memeAvailability === 'available' || memeAvailability === 'degraded')
 	);
+	const desktopNavigation = new MediaQuery('min-width: 64rem');
+	const useCompactNavigation = $derived(compactNavigation && !desktopNavigation.current);
 	const filteredOverlayMedia = $derived.by(() => {
 		const query = overlaySearch.trim().toLocaleLowerCase();
 		if (!query) return overlayMedia;
@@ -564,7 +567,7 @@
 				<UploadIcon />
 				{m.media_upload_device()}
 			</Button>
-			{#if !compactNavigation && canUseCamera}
+			{#if !useCompactNavigation && canUseCamera}
 				<Button
 					variant={pickerMode === 'camera' ? 'secondary' : 'ghost'}
 					size="sm"
@@ -578,7 +581,7 @@
 					{m.media_camera()}
 				</Button>
 			{/if}
-			{#if !compactNavigation && canUseStock}
+			{#if !useCompactNavigation && canUseStock}
 				<Button
 					variant={pickerMode === 'stock' ? 'secondary' : 'ghost'}
 					size="sm"
@@ -592,7 +595,7 @@
 					{m.stock_media()}
 				</Button>
 			{/if}
-			{#if !compactNavigation && canUseMeme}
+			{#if !useCompactNavigation && canUseMeme}
 				<Button
 					variant={pickerMode === 'meme' ? 'secondary' : 'ghost'}
 					size="sm"
@@ -607,7 +610,7 @@
 				</Button>
 			{/if}
 		</div>
-		{#if !compactNavigation && showCreate}
+		{#if !useCompactNavigation && showCreate}
 			<Button
 				variant="ghost"
 				size="sm"
@@ -619,7 +622,7 @@
 				{m.media_picker_create()}
 			</Button>
 		{/if}
-		{#if !compactNavigation && onCreateVideo}
+		{#if !useCompactNavigation && onCreateVideo}
 			<Button
 				variant="ghost"
 				size="sm"
@@ -631,7 +634,7 @@
 				{selectedVideoForEditing ? m.media_edit_video_editor() : m.media_picker_create_video()}
 			</Button>
 		{/if}
-		{#if compactNavigation}
+		{#if useCompactNavigation}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}

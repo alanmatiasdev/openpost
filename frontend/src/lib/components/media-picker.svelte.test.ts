@@ -96,7 +96,7 @@ function templateResult(configured = true): MemeTemplateListResult {
 	};
 }
 
-function renderPicker(enableMeme: boolean) {
+function renderPicker(enableMeme: boolean, compactNavigation = false) {
 	return render(MediaPicker, {
 		props: {
 			open: true,
@@ -106,6 +106,7 @@ function renderPicker(enableMeme: boolean) {
 			multiple: true,
 			showCreate: false,
 			enableMeme,
+			compactNavigation,
 			services,
 			onConfirm: vi.fn()
 		}
@@ -231,6 +232,15 @@ describe('MediaPicker meme source', () => {
 		expect(dialogBox.width).toBeGreaterThanOrEqual(1100);
 		expect(dialogBox.height).toBeGreaterThanOrEqual(800);
 		expect(generatorBox.height).toBeGreaterThanOrEqual(700);
+	});
+
+	it('expands compact source navigation when the dialog has desktop space', async () => {
+		await page.viewport(1280, 900);
+		const screen = await renderPicker(true, true);
+
+		await expect.element(screen.getByRole('tab', { name: 'Stock media' })).toBeVisible();
+		await expect.element(screen.getByRole('tab', { name: 'Meme' })).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'More' })).not.toBeInTheDocument();
 	});
 
 	it('keeps a degraded Meme path usable and recovers an overlay picker at 320px', async () => {
