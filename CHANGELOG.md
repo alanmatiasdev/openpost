@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-08-27
+
+### Changed
+
+- Video Editor beat analysis and keyframe controls now stay out of the timeline until opened.
+- The Video Editor inspector now shows only relevant Properties, Motion, Effects, or Transcript controls while keeping export actions fixed in place.
+- FreeCut schema 15 projects now open as backed-up, writable OpenPost projects with their effects, audio levels, transitions, keyframes, captions, Lottie settings, and Motion compositions preserved.
+- The writing canvas is open again, scheduling is shorter, and the desktop media picker shows every source.
+- Interface sounds now start enabled for visitors who have not saved a preference.
+- The landing page leads with the product, the navigation is shorter, and pricing is easier to scan.
+
 ## [4.5.0] - 2026-08-27
 
 ### Added
