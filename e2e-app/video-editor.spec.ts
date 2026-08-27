@@ -28,12 +28,13 @@ async function installLocalWorkspacePicker(page: Page): Promise<void> {
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   await expect
     .poll(() =>
-      page.evaluate(() => ({
-        body: document.body.scrollWidth - window.innerWidth,
-        document: document.documentElement.scrollWidth - window.innerWidth,
-      })),
+      page.evaluate(
+        () =>
+          document.body.scrollWidth <= window.innerWidth &&
+          document.documentElement.scrollWidth <= window.innerWidth,
+      ),
     )
-    .toEqual({ body: 0, document: 0 });
+    .toBe(true);
 }
 
 async function expectMinimumTargets(

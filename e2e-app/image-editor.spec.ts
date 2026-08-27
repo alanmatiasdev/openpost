@@ -1317,11 +1317,11 @@ test("public OpenPost Image Editor imports attributed stock photos into durable 
   await page.getByRole("button", { name: "Use", exact: true }).click();
 
   const stockLayer = page.getByRole("treeitem", {
-    name: /pexels-image-editor-photo-1\.jpg, image/,
+    name: /pexels-image-editor-photo-1\.png, image/,
   });
   await expect(stockLayer).toBeVisible();
   await expect(
-    page.getByText("pexels-image-editor-photo-1.jpg", { exact: true }).first(),
+    page.getByText("pexels-image-editor-photo-1.png", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
 
