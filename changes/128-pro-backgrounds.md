@@ -1,7 +1,0 @@
-### Added
-
-- Procedural backgrounds for the Video Editor with mesh gradients (4-corner bilinear with smoothness, rotation, scale and offset) and repeatable patterns (dots, grid, stripes, checker) rendered deterministically at any resolution and frame. GPU fragment path is used for large tiles with exact CPU canvas fallback; preview and export share the same `CanvasStackCompositor` path so pixels are identical.
-- Typed persisted `background` item model (`background` item kind, `ProceduralBackground` union) with migration 4, normalization/clamping, clone-safe deep copy and keyframe-compatible parameters (`backgroundRotation`, `backgroundScale`, `backgroundOffsetX/Y`, `backgroundSmoothness`, `backgroundDensity`, `backgroundForegroundOpacity`) resolved through the existing animated-properties seam and undo history.
-- Eight built-in presets (Sunset/Ocean/Forest/Neon mesh + Dots/Grid/Stripes/Checker) stored immutably and cloned on apply; no mutable shared preset state and no bespoke parallel renderer.
-- Compact responsive inspector and creation UI using shared primitives (`Button`, `Input`, `Slider`, `AppSelect`, `Label`, `Tabs`): preset grid, kind switch, color pickers, pattern selectors, density/opacity/rotation/scale/offset sliders. Honest alpha/blend via item `transform.opacity` and `blendMode` on the shared stack; accessible labels, keyboard focus, visible focus ring, and 320px layout verified in Chromium.
-- Native concise copy for all ten editor locales (`en`, `es`, `fr`, `de`, `pt`, `pt-BR`, `tr`, `ja`, `ko`, `zh`) for the new panel and controls.

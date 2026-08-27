@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-08-27
+
+### Added
+- Video Editor audio ducking: per-clip sidechain settings (`duckOthersDb`, `attackSec`, `releaseSec`, `targetTrackIds`) lower other tracks while a clip plays. Inspector offers direct toggle, amount, attack/release, and scoped track selection with sensible copy. Preview and export share the same gain envelope, including attack/release ramps, deepest-duck overlap, muted/solo/visibility, speed and trim windows, nested sequences, and bus/master ordering. Changes are undoable.
+- Quick Cut now has per-source audio and video track selection with durable export semantics. Probing enumerates every video and audio track and stores the selected track indices per source. Project parsing remains backward compatible and validates impossible selections. Preflight, stream copy, transcode, and merged export honor the selection and can produce audio-only or video-only output.
+- Video Editor karaoke captions: per-word highlight mode for subtitle items using existing `SubtitleCue.words` timings with configurable active-word foreground and optional active-word background, exposed compactly in the subtitle properties panel.
+- Shared deterministic karaoke word selection and cached subtitle layout so preview and export resolve the identical active word at exact frame boundaries, with untimed cues falling back to normal captions without flicker and with line wrapping preserved.
+- PNG, JPEG, and WebP image-sequence export for full project, in/out range, and marker batches with exact frame counts, deterministic zero-padded names, and preserved FPS, dimensions, and effects.
+- Alpha behavior: PNG and WebP preserve transparent backgrounds; JPEG flattens to the project background. WebP has explicit capability detection with honest fallback/error copy and no silent conversion.
+- Bounded directory output via File System Access and ZIP fallback, with streaming/batched worker artifacts and accurate progress, cancellation, and cleanup.
+- Worker and main-thread ownership with queue support for image sequences.
+- Video Editor audio effect rack: compressor, stereo pan, reverb, delay, chorus, flanger, and distortion share a deep typed effect-chain abstraction and run identically in realtime preview and offline export. The rack is ordered, bypassable, resettable, bounded for safety, persisted/migrated, clone-safe, and undoable as one gesture. Compact accessible UI uses shared controls with good defaults.
+- Video Editor beat detection: browser-local, cancellable analyzer for the selected audio or video clip that generates deterministic beat and downbeat markers at project frames with deduped labels and colors. Timeline insertion is atomic and undoable, the analyzer yields to the main thread on long clips, and the compact accessible panel uses shared controls and Paraglide copy.
+- Local post-capture noise reduction for recorded mic/webcam/audio clips: per-clip persisted `audioNoiseReductionEnabled`/`audioNoiseReductionAmount` (0-100), compact accessible controls in clip properties, deterministic spectral gate that runs entirely on-device with identical preview and export output, bounded CPU/memory and abort/cleanup, no cloud upload, and correct ordering with EQ, pitch/speed, ducking and mixer.
+- Video Editor recording now detects browser capabilities, exposes an explicit cursor mode where supported, and preserves honest system/tab audio truth from capture through workspace artifact, media metadata, timeline import, preview, and export. Adds stable persisted capture metadata with migration for legacy media.
+- Procedural backgrounds for the Video Editor with mesh gradients (4-corner bilinear with smoothness, rotation, scale and offset) and repeatable patterns (dots, grid, stripes, checker) rendered deterministically at any resolution and frame. GPU fragment path is used for large tiles with exact CPU canvas fallback; preview and export share the same `CanvasStackCompositor` path so pixels are identical.
+- Typed persisted `background` item model (`background` item kind, `ProceduralBackground` union) with migration 4, normalization/clamping, clone-safe deep copy and keyframe-compatible parameters (`backgroundRotation`, `backgroundScale`, `backgroundOffsetX/Y`, `backgroundSmoothness`, `backgroundDensity`, `backgroundForegroundOpacity`) resolved through the existing animated-properties seam and undo history.
+- Eight built-in presets (Sunset/Ocean/Forest/Neon mesh + Dots/Grid/Stripes/Checker) stored immutably and cloned on apply; no mutable shared preset state and no bespoke parallel renderer.
+- Compact responsive inspector and creation UI using shared primitives (`Button`, `Input`, `Slider`, `AppSelect`, `Label`, `Tabs`): preset grid, kind switch, color pickers, pattern selectors, density/opacity/rotation/scale/offset sliders. Honest alpha/blend via item `transform.opacity` and `blendMode` on the shared stack; accessible labels, keyboard focus, visible focus ring, and 320px layout verified in Chromium.
+- Native concise copy for all ten editor locales (`en`, `es`, `fr`, `de`, `pt`, `pt-BR`, `tr`, `ja`, `ko`, `zh`) for the new panel and controls.
+### Changed
+- Preview and export audio graphs now apply the shared effect chain after EQ and before the mixer, preserving existing EQ, pitch, fades, and ducking and without creating extra AudioContexts.
+- Recording setup shows honest capability states for screen, cursor, and system audio and never claims an audio stream exists merely because requested. Cancellation and track teardown are clean and bounded.
+### Fixed
+- Preview and export use actual captured tracks without duplicating or dropping audio; inactive system audio is reported as unavailable rather than presented as present.
+
 ## [4.3.2] - 2026-08-27
 
 ### Fixed
