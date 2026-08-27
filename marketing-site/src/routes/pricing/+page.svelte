@@ -34,7 +34,7 @@
 		{
 			label: 'Team roles',
 			value: (plan: (typeof plans)[number]) =>
-				plan.id === 'team' || plan.id === 'agency' ? 'Included' : '—'
+				plan.id === 'team' || plan.id === 'agency' ? 'Included' : 'Not included'
 		}
 	] as const;
 </script>
