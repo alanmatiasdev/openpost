@@ -189,7 +189,7 @@ func TestRunMigrationsPublicationsAreInsertable(t *testing.T) {
 		Audience:        "builders",
 		Status:          models.PublicationStatusDraft,
 		ReleasePlanJSON: "{}",
-	}).Exec(ctx)
+	}).ExcludeColumn("failure_dismissed_at").Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.PublicationAsset{
 		PublicationID: "pub-1",
@@ -241,7 +241,7 @@ func TestRunMigrationsPublicationAssetsCascadeWithPublication(t *testing.T) {
 		SourceContent:   "Delete me.",
 		Status:          models.PublicationStatusDraft,
 		ReleasePlanJSON: "{}",
-	}).Exec(ctx)
+	}).ExcludeColumn("failure_dismissed_at").Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.PublicationAsset{
 		PublicationID: "pub-cascade",
