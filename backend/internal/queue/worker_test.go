@@ -39,6 +39,25 @@ func TestGrowthDiscoveryFailureHonorsProviderRetryAfter(t *testing.T) {
 	require.Equal(t, jobregistry.RecoveryRequeue, definition.Recovery)
 }
 
+func TestRefreshTokenFailureUsesProviderRetryPolicy(t *testing.T) {
+	worker := &BackgroundWorker{}
+	job := &models.Job{Type: jobregistry.TypeRefreshToken}
+
+	rateLimited := worker.classifyJobFailure(t.Context(), job, &platform.HTTPError{
+		StatusCode: 429,
+		Code:       "rate_limited",
+		RetryAfter: 17 * time.Second,
+	})
+	require.True(t, rateLimited.retryable)
+	require.Equal(t, 17*time.Second, rateLimited.retryAfter)
+
+	invalidGrant := worker.classifyJobFailure(t.Context(), job, &platform.HTTPError{
+		StatusCode: 401,
+		Code:       "invalid_grant",
+	})
+	require.False(t, invalidGrant.retryable)
+}
+
 type stubStorage struct{}
 
 func (stubStorage) Driver() string                         { return "test" }

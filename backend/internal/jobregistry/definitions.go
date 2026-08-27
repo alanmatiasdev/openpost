@@ -93,7 +93,7 @@ type Definition struct {
 
 var definitions = map[string]Definition{
 	TypePublishPublication: definition(TypePublishPublication, 3, ExecutePublishPublication, FailurePublish, RecoveryReconcilePublication),
-	TypeRefreshToken:       definition(TypeRefreshToken, 5, ExecuteRefreshToken, FailureDefault, RecoveryRequeue),
+	TypeRefreshToken:       definition(TypeRefreshToken, 5, ExecuteRefreshToken, FailureProviderRead, RecoveryRequeue),
 	TypeMediaCleanup: {
 		Type: TypeMediaCleanup, DefaultMaxAttempts: 3, Recurrence: 24 * time.Hour,
 		Execution: ExecuteMediaCleanup, Failure: FailureMediaCleanup, Recovery: RecoveryRequeue,
