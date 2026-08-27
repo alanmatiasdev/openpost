@@ -698,7 +698,7 @@
 
 		<!-- Handles container: density-controlled -->
 		<div
-			class="pointer-events-none absolute inset-0 z-30 transition-opacity duration-150 {densityVisibilityClass}"
+			class="pointer-events-none absolute inset-0 z-[60] transition-opacity duration-150 {densityVisibilityClass}"
 			data-fade-handles-container
 		>
 			<!-- Fade-in handle -->

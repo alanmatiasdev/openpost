@@ -530,7 +530,14 @@ describe('timeline fade handles', () => {
 		expect(handleRect.height).toBe(44);
 		expect(handleRect.top).toBeLessThan(clipRect.top);
 		const hit = document.elementFromPoint(handleRect.left + 22, handleRect.top + 2);
-		expect(hit === handle || (hit instanceof Node && handle.contains(hit))).toBe(true);
+		const hitDescription =
+			hit instanceof HTMLElement
+				? `${hit.tagName.toLowerCase()}.${hit.className} ${hit.outerHTML.slice(0, 240)}`
+				: String(hit);
+		expect(
+			hit === handle || (hit instanceof Node && handle.contains(hit)),
+			`Fade target was covered by ${hitDescription}`
+		).toBe(true);
 	});
 	it('respects density thresholds via container queries', async () => {
 		timelineStore.setAll({
@@ -605,7 +612,12 @@ describe('timeline fade handles', () => {
 		expect(handleLocked.disabled).toBe(true);
 		expect(handleLocked.tabIndex).toBe(-1);
 		handleLocked.dispatchEvent(
-			new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, pointerId: 7 })
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				button: 0,
+				clientX: 10,
+				pointerId: 7
+			})
 		);
 		await nextFrame();
 		expect(timelineStore.itemById.get('audio-1')?.audioFadeIn).toBe(before);

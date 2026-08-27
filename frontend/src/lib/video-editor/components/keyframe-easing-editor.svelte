@@ -356,6 +356,7 @@
 							previewSpring(field.key, value);
 							commitSpring();
 						}}
+						onValueCancel={cancelSpring}
 					/>
 					<span class="font-mono text-[9px]">{draft[field.key]}</span>
 				</label>

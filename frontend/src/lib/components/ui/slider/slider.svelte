@@ -11,6 +11,7 @@
 		ariaLabel,
 		onValueChange,
 		onValueCommit,
+		onValueCancel,
 		class: className,
 		trackClass = '',
 		rangeClass = ''
@@ -23,6 +24,7 @@
 		ariaLabel?: string;
 		onValueChange?: (value: number) => void;
 		onValueCommit?: (value: number) => void;
+		onValueCancel?: () => void;
 		class?: string;
 		trackClass?: string;
 		rangeClass?: string;
@@ -59,6 +61,12 @@
 		pendingKeyboardCommit = null;
 		onValueCommit?.(nextValue);
 	}
+
+	function cancelGesture(): void {
+		keyboardGestureActive = false;
+		pendingKeyboardCommit = null;
+		onValueCancel?.();
+	}
 </script>
 
 <SliderPrimitive.Root
@@ -71,6 +79,10 @@
 	{onValueChange}
 	onValueCommit={handleValueCommit}
 	onkeydowncapture={(event) => {
+		if (event.key === 'Escape') {
+			cancelGesture();
+			return;
+		}
 		if (isSliderKey(event.key)) keyboardGestureActive = true;
 	}}
 	onkeyup={(event) => {
@@ -79,6 +91,7 @@
 	onfocusout={(event) => {
 		if (!event.currentTarget.contains(event.relatedTarget as Node | null)) flushKeyboardCommit();
 	}}
+	onpointercancel={cancelGesture}
 	class={cn(
 		'relative flex h-5 w-full touch-none items-center select-none data-disabled:cursor-not-allowed data-disabled:opacity-50',
 		className

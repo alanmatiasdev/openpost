@@ -77,7 +77,11 @@ beforeEach(() => {
 	commandHistory.clearHistory();
 	keyframeSelectionStore.clear();
 	transitionsStore.clear();
-	timelineStore.setAll({ tracks: [videoTrack], items: [structuredClone(animatedItem)], fps: 30 });
+	timelineStore.setAll({
+		tracks: [videoTrack],
+		items: [structuredClone(animatedItem)],
+		fps: 30
+	});
 });
 
 describe('KeyframeValueGraph', () => {
@@ -88,8 +92,18 @@ describe('KeyframeValueGraph', () => {
 			keyframes: {},
 			vectorKeyframes: {
 				scale: [
-					{ id: 'scale-a', frame: 0, value: { x: 100, y: 100 }, easing: 'linear' },
-					{ id: 'scale-b', frame: 30, value: { x: 200, y: 50 }, easing: 'linear' }
+					{
+						id: 'scale-a',
+						frame: 0,
+						value: { x: 100, y: 100 },
+						easing: 'linear'
+					},
+					{
+						id: 'scale-b',
+						frame: 30,
+						value: { x: 200, y: 50 },
+						easing: 'linear'
+					}
 				]
 			}
 		};
@@ -102,7 +116,11 @@ describe('KeyframeValueGraph', () => {
 		await screen.getByRole('button', { name: 'Scale X', exact: true }).click();
 		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
 		await expect
-			.element(screen.getByRole('application', { name: 'Keyframe value graph for Scale X' }))
+			.element(
+				screen.getByRole('application', {
+					name: 'Keyframe value graph for Scale X'
+				})
+			)
 			.toBeVisible();
 		expect(screen.container.textContent).toContain('%');
 	});
@@ -353,11 +371,18 @@ describe('KeyframeValueGraph', () => {
 		if (!smoothItem.keyframes?.opacity) throw new Error('Expected opacity keyframes');
 		smoothItem.keyframes.opacity.easings = ['cubic-bezier', 'cubic-bezier', 'linear'];
 		smoothItem.keyframes.opacity.easingConfigs = [
-			{ type: 'cubic-bezier', bezier: { x1: 0.25, y1: 0.2, x2: 0.72, y2: 0.8 } },
+			{
+				type: 'cubic-bezier',
+				bezier: { x1: 0.25, y1: 0.2, x2: 0.72, y2: 0.8 }
+			},
 			{ type: 'cubic-bezier', bezier: { x1: 0.2, y1: 0.8, x2: 0.4, y2: 1 } },
 			null
 		];
-		timelineStore.setAll({ tracks: [videoTrack], items: [smoothItem], fps: 30 });
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [smoothItem],
+			fps: 30
+		});
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, {
 			onedit,
@@ -461,7 +486,11 @@ describe('KeyframeValueGraph', () => {
 		const pill = screen.container.querySelector<SVGGElement>('[data-segment-easing="30"]');
 		expect(pill).not.toBeNull();
 		pill?.dispatchEvent(
-			new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 21 })
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				button: 0,
+				pointerId: 21
+			})
 		);
 		await vi.waitFor(() => {
 			expect(screen.container.querySelector('[data-bezier-gesture]')).not.toBeNull();
@@ -544,7 +573,11 @@ describe('KeyframeValueGraph', () => {
 		middle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 		const pill = screen.container.querySelector<SVGGElement>('[data-segment-easing="30"]');
 		pill?.dispatchEvent(
-			new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 22 })
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				button: 0,
+				pointerId: 22
+			})
 		);
 		await vi.waitFor(() => {
 			expect(screen.container.querySelector('[data-segment-menu]')).not.toBeNull();
@@ -752,7 +785,11 @@ describe('KeyframeValueGraph', () => {
 		// Re-enable and verify Ctrl bypass when snap is enabled
 		timelineStore._setSnapEnabled(true);
 		commandHistory.clearHistory();
-		timelineStore.setAll({ tracks: [videoTrack], items: [structuredClone(animatedItem)], fps: 30 });
+		timelineStore.setAll({
+			tracks: [videoTrack],
+			items: [structuredClone(animatedItem)],
+			fps: 30
+		});
 		await screen
 			.getByRole('button', { name: 'Toggle keyframe value graph' })
 			.click()
@@ -848,25 +885,22 @@ describe('KeyframeValueGraph', () => {
 		);
 		expect(commandHistory.undoStack).toHaveLength(1);
 		// Drag tension slider but cancel with Escape - should rollback to previous spring value
-		const slider = screen.container.querySelector<HTMLInputElement>('input[type="range"]');
-		expect(slider).not.toBeNull();
+		const slider = screen.getByRole('slider', { name: 'Tension' }).element();
 		const before = timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity
 			?.easingConfigs?.[0];
-		slider!.value = '300';
-		slider!.dispatchEvent(new Event('input', { bubbles: true }));
-		slider!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		expect(
 			timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.easingConfigs?.[0]
 		).toEqual(before);
 		// Now commit with change
-		slider!.value = '300';
-		slider!.dispatchEvent(new Event('input', { bubbles: true }));
-		slider!.dispatchEvent(new Event('change', { bubbles: true }));
+		slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+		slider.dispatchEvent(new KeyboardEvent('keyup', { key: 'End', bubbles: true }));
 		await vi.waitFor(() => {
 			expect(
 				timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.easingConfigs?.[0]?.spring
 					?.tension
-			).toBe(300);
+			).toBe(1000);
 		});
 		expect(commandHistory.undoStack).toHaveLength(2);
 		commandHistory.undo();
@@ -899,7 +933,11 @@ describe('KeyframeValueGraph', () => {
 			expect(screen.container.textContent).toContain('1 selected');
 		});
 		app?.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				code: 'ArrowRight',
+				bubbles: true
+			})
 		);
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(1);
@@ -953,7 +991,11 @@ describe('KeyframeValueGraph', () => {
 			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(0);
 		});
 		app.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'Escape',
+				code: 'Escape',
+				bubbles: true
+			})
 		);
 		await vi.waitFor(() => {
 			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(0);
@@ -1027,21 +1069,19 @@ describe('KeyframeValueGraph', () => {
 			expect(screen.container.querySelector('[data-spring-gesture]')).not.toBeNull();
 		});
 		commandHistory.clearHistory();
-		const slider = screen.container.querySelector<HTMLInputElement>('input[type="range"]');
-		expect(slider).not.toBeNull();
-		expect(slider?.max).toBe('1000');
-		// Live preview only: input should not create history
-		slider!.value = '1000';
-		slider!.dispatchEvent(new Event('input', { bubbles: true }));
+		const slider = screen.getByRole('slider', { name: 'Tension' }).element();
+		expect(slider.getAttribute('aria-valuemax')).toBe('1000');
+		// Keydown previews; the matching keyup commits the whole keyboard gesture once.
+		slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 		await vi.waitFor(() => {
 			expect(screen.container.textContent).toContain('1000');
 		});
 		expect(commandHistory.undoStack).toHaveLength(0);
 		// Pointerup should not commit (only change does)
-		slider!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+		slider.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 		expect(commandHistory.undoStack).toHaveLength(0);
-		// Change commits once
-		slider!.dispatchEvent(new Event('change', { bubbles: true }));
+		// Keyup commits once.
+		slider.dispatchEvent(new KeyboardEvent('keyup', { key: 'End', bubbles: true }));
 		await vi.waitFor(() => {
 			expect(
 				timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.easingConfigs?.[0]?.spring
@@ -1050,14 +1090,14 @@ describe('KeyframeValueGraph', () => {
 		});
 		expect(commandHistory.undoStack).toHaveLength(1);
 		// Lost capture after commit must be no-op and keep committed value
-		slider!.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true }));
+		slider.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true }));
 		expect(commandHistory.undoStack).toHaveLength(1);
 		expect(
 			timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.easingConfigs?.[0]?.spring
 				?.tension
 		).toBe(1000);
 		// Also pointercancel after commit is no-op
-		slider!.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+		slider.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
 		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });
