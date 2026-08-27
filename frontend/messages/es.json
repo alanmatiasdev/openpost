@@ -7262,5 +7262,19 @@
 	"video_editor_audio_noise_amount_hint": "{amount}% — más alto elimina más ruido pero puede suavizar la voz",
 	"video_editor_audio_noise_bypassed": "Desactivado",
 	"video_editor_audio_noise_applied": "Activado — {amount}%",
-	"video_editor_audio_noise_aria": "Intensidad de reducción de ruido"
+	"video_editor_audio_noise_aria": "Intensidad de reducción de ruido",
+	"video_editor_record_cursor_always": "Siempre visible",
+	"video_editor_record_cursor_mode": "Cursor",
+	"video_editor_record_cursor_motion": "Visible al mover",
+	"video_editor_record_cursor_never": "Oculto",
+	"video_editor_record_cursor_unknown": "No informado por el navegador",
+	"video_editor_record_cursor_unsupported": "No compatible",
+	"video_editor_record_cursor_unsupported_hint": "Este navegador siempre incluye el cursor.",
+	"video_editor_record_display_unsupported": "La grabación de pantalla no es compatible con este navegador.",
+	"video_editor_system_audio_active": "Audio del sistema activo — el navegador proporcionó la pista.",
+	"video_editor_system_audio_denied": "Audio del sistema denegado.",
+	"video_editor_system_audio_inactive": "Audio del sistema solicitado pero no proporcionado — revisa la casilla de audio del navegador.",
+	"video_editor_system_audio_not_requested": "Audio del sistema desactivado.",
+	"video_editor_system_audio_requested": "Audio del sistema solicitado.",
+	"video_editor_system_audio_unavailable": "Audio del sistema no disponible."
 }

@@ -36,8 +36,36 @@ import {
 	type ScratchSink
 } from './recorder-scratch';
 import { microphoneConstraints, startMicLevelMeter } from './mic-recorder';
+import {
+	deriveSystemAudioStatus,
+	detectRecordingCapabilities,
+	isSystemAudioActive,
+	readActualCursor,
+	resolveCursorConstraint,
+	type CursorActualMode,
+	type CursorMode,
+	type RecordingCapabilities,
+	type SystemAudioStatus
+} from './capture-capabilities';
 
 const logger = createLogger('ScreenCaptureRecorder');
+
+export type {
+	CursorMode,
+	CursorActualMode,
+	SystemAudioStatus,
+	RecordingCapabilities
+} from './capture-capabilities';
+
+export interface ScreenCaptureTruth {
+	capturedAt: string;
+	cursorSupported: boolean;
+	cursorRequested: CursorMode;
+	cursorActual: CursorActualMode;
+	systemAudioRequested: boolean;
+	systemAudioActive: boolean;
+	systemAudioStatus: SystemAudioStatus;
+}
 
 export type RecorderKind = 'screen' | 'camera' | 'microphone';
 
@@ -51,6 +79,7 @@ export interface RecorderStartOptions {
 	cameraDeviceId?: string | null;
 	microphoneDeviceId?: string | null;
 	includeSystemAudio?: boolean;
+	cursorMode?: CursorMode;
 	countdownSeconds?: number;
 	videoResolution?: RecorderVideoResolution;
 	videoFrameRate?: RecorderVideoFrameRate;
@@ -89,6 +118,7 @@ export interface CaptureArtifact {
 	sizeBytes: number;
 	scratchId: string;
 	recoverySessionId?: string;
+	capture?: ScreenCaptureTruth;
 }
 
 const COUNTDOWN_TICK_MS = 1000;
@@ -155,6 +185,14 @@ export function hasRecorderSupport(selection: RecorderSelection): boolean {
 	return false;
 }
 
+export function getRecordingCapabilities(): RecordingCapabilities {
+	return detectRecordingCapabilities();
+}
+
+export function refreshRecordingCapabilities(recorder: ScreenCaptureRecorder): void {
+	recorder.capabilities = detectRecordingCapabilities();
+}
+
 interface InternalRecorder {
 	kind: RecorderKind;
 	stream: MediaStream;
@@ -167,7 +205,7 @@ interface InternalRecorder {
 }
 
 interface DisplayCaptureConstraints extends MediaTrackConstraints {
-	cursor: 'always';
+	cursor?: CursorMode;
 }
 
 const VIDEO_RESOLUTION_SIZE = {
@@ -241,6 +279,13 @@ export class ScreenCaptureRecorder {
 	private releaseRecoveryLock: (() => void) | null = null;
 	private stopMicMeter: (() => void) | null = null;
 	private lastMicLevelUpdate = Number.NEGATIVE_INFINITY;
+	private activeCaptureTruth: ScreenCaptureTruth | null = null;
+	capabilities = $state<RecordingCapabilities>(detectRecordingCapabilities());
+	captureTruth = $state<ScreenCaptureTruth | null>(null);
+
+	refreshCapabilities(): void {
+		this.capabilities = detectRecordingCapabilities();
+	}
 
 	async startWithSelection(
 		selection: RecorderSelection,
@@ -272,6 +317,13 @@ export class ScreenCaptureRecorder {
 		this.acquiredStreams = acquiredStreams;
 		this.stopPromise = null;
 		this.pendingWriteBytes = 0;
+		this.activeCaptureTruth = null;
+		this.captureTruth = null;
+		const capabilities = detectRecordingCapabilities();
+		const cursorRequested: CursorMode = options.cursorMode ?? 'always';
+		const cursorResolved = resolveCursorConstraint(cursorRequested, capabilities);
+		const systemAudioRequested = options.includeSystemAudio !== false;
+		let captureTruth: ScreenCaptureTruth | null = null;
 
 		let screenStream: MediaStream | null = null;
 		let cameraStream: MediaStream | null = null;
@@ -287,13 +339,12 @@ export class ScreenCaptureRecorder {
 
 		try {
 			if (selection.screen) {
-				const video: DisplayCaptureConstraints = {
-					cursor: 'always',
-					...preferredVideoConstraints(options)
-				};
+				const baseVideo = preferredVideoConstraints(options);
+				const video: DisplayCaptureConstraints = { ...baseVideo };
+				if (cursorResolved) video.cursor = cursorResolved;
 				const constraints: DisplayMediaStreamOptions = {
 					video,
-					audio: options.includeSystemAudio !== false
+					audio: systemAudioRequested
 				};
 				screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
 				trackAcquired(screenStream);
@@ -345,6 +396,27 @@ export class ScreenCaptureRecorder {
 				const code = mapRecorderError(error);
 				this.setError(code);
 				this.status = 'error';
+				if (selection.screen) {
+					const honestStatus = deriveSystemAudioStatus({
+						requested: systemAudioRequested,
+						stream: screenStream,
+						error,
+						capabilities
+					});
+					const honestCursorActual = readActualCursor(screenStream, capabilities);
+					const honestTruth: ScreenCaptureTruth = {
+						capturedAt: new Date().toISOString(),
+						cursorSupported: capabilities.cursor.supported,
+						cursorRequested,
+						cursorActual: honestCursorActual,
+						systemAudioRequested,
+						systemAudioActive: false,
+						systemAudioStatus: honestStatus
+					};
+					this.activeCaptureTruth = honestTruth;
+					this.captureTruth = honestTruth;
+					this.capabilities = capabilities;
+				}
 			}
 			throw error;
 		}
@@ -352,6 +424,42 @@ export class ScreenCaptureRecorder {
 		if (generation !== this.generation) {
 			cleanupStartStreams();
 			throw new Error('Cancelled');
+		}
+
+		const capturedAt = new Date().toISOString();
+		if (selection.screen) {
+			const systemAudioActive = isSystemAudioActive(screenStream);
+			const systemAudioStatus = deriveSystemAudioStatus({
+				requested: systemAudioRequested,
+				stream: screenStream,
+				capabilities
+			});
+			const cursorActual = readActualCursor(screenStream, capabilities);
+			captureTruth = {
+				capturedAt,
+				cursorSupported: capabilities.cursor.supported,
+				cursorRequested: cursorRequested,
+				cursorActual,
+				systemAudioRequested,
+				systemAudioActive,
+				systemAudioStatus
+			};
+			this.activeCaptureTruth = captureTruth;
+			this.captureTruth = captureTruth;
+			this.capabilities = capabilities;
+		} else {
+			captureTruth = {
+				capturedAt,
+				cursorSupported: false,
+				cursorRequested,
+				cursorActual: 'unsupported',
+				systemAudioRequested: false,
+				systemAudioActive: false,
+				systemAudioStatus: 'not-requested'
+			};
+			this.activeCaptureTruth = captureTruth;
+			this.captureTruth = captureTruth;
+			this.capabilities = capabilities;
 		}
 
 		if (micStream) {
@@ -931,6 +1039,7 @@ export class ScreenCaptureRecorder {
 						? Math.max(0, Math.round(entry.startTimeMs - baseTime))
 						: 0;
 				if (sizeBytes === 0 && entry.sink.chunks === 0) continue;
+				const capture = this.activeCaptureTruth ?? undefined;
 				artifacts.push({
 					kind: entry.kind,
 					blob: file,
@@ -939,7 +1048,8 @@ export class ScreenCaptureRecorder {
 					startOffsetMs,
 					sizeBytes,
 					scratchId: entry.sink.id,
-					recoverySessionId
+					recoverySessionId,
+					capture: capture ?? undefined
 				});
 			}
 
@@ -1006,6 +1116,8 @@ export class ScreenCaptureRecorder {
 		this.stopCountdownTimer();
 		if (reject) reject(new Error('Cancelled'));
 		this.countdownRemaining = null;
+		this.activeCaptureTruth = null;
+		this.captureTruth = null;
 		const toDiscard = [...this.internal];
 		this.internal = [];
 		for (const entry of toDiscard) {
@@ -1031,6 +1143,10 @@ export class ScreenCaptureRecorder {
 	async discardScratch(scratchId: string): Promise<void> {
 		await discardScratchById(scratchId);
 		this.lastArtifacts = this.lastArtifacts.filter((a) => a.scratchId !== scratchId);
+		if (this.lastArtifacts.length === 0) {
+			this.activeCaptureTruth = null;
+			this.captureTruth = null;
+		}
 	}
 
 	async discardArtifacts(artifacts: CaptureArtifact[]): Promise<void> {
@@ -1051,6 +1167,10 @@ export class ScreenCaptureRecorder {
 		this.lastArtifacts = this.lastArtifacts.filter(
 			(artifact) => !scratchIds.has(artifact.scratchId)
 		);
+		if (this.lastArtifacts.length === 0) {
+			this.activeCaptureTruth = null;
+			this.captureTruth = null;
+		}
 	}
 
 	async discardAllScratches(): Promise<void> {
@@ -1074,6 +1194,8 @@ export class ScreenCaptureRecorder {
 		}
 		for (const id of ungroupedIds) await discardScratchById(id).catch(() => undefined);
 		this.lastArtifacts = [];
+		this.activeCaptureTruth = null;
+		this.captureTruth = null;
 	}
 
 	async loadRecoverableArtifacts(): Promise<CaptureArtifact[]> {
@@ -1100,6 +1222,8 @@ export class ScreenCaptureRecorder {
 
 	async clearRecoverableAndDiscard(): Promise<void> {
 		await this.discardAllScratches();
+		this.activeCaptureTruth = null;
+		this.captureTruth = null;
 	}
 }
 

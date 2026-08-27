@@ -23,6 +23,7 @@ import { createMedia, deleteMedia } from '../workspace-fs/media';
 import type { MediaAttribution, MediaMetadata } from './types';
 import { probeMediaFile } from './probe-client';
 import { mediaPool } from './pool.svelte';
+import { reconcileSystemAudioWithProbe } from './recording-capture-schema';
 import { isLottieFile, parseLottieFileBytes } from '../lottie/metadata';
 import {
 	effectiveMediaStorageMode,
@@ -78,11 +79,13 @@ export interface GeneratedAudioImportOptions {
 	projectId: string;
 	duration: number;
 	tags?: string[];
+	capture?: import('./types').RecordingCaptureMetadata;
 }
 
 export interface GeneratedVideoImportOptions {
 	projectId: string;
 	tags?: string[];
+	capture?: import('./types').RecordingCaptureMetadata;
 }
 
 export type RecordedAudioImportOptions = GeneratedAudioImportOptions;
@@ -363,6 +366,18 @@ export async function importGeneratedVideo(
 		throw new Error('The generated file does not contain a usable video track.');
 	}
 	const duration = Math.max(0, probe.durationSeconds);
+	let capture = options.capture;
+	if (capture?.systemAudio) {
+		const reconciled = reconcileSystemAudioWithProbe(capture.systemAudio, probe.hasAudio);
+		capture = {
+			...capture,
+			systemAudio: {
+				requested: capture.systemAudio.requested,
+				active: reconciled.active,
+				status: reconciled.status
+			}
+		};
+	}
 	const metadata: MediaMetadata = {
 		id,
 		storageType: 'workspace',
@@ -380,7 +395,8 @@ export async function importGeneratedVideo(
 		audioCodecSupported: probe.audioCodecSupported,
 		keyframeTimestamps: probe.keyframeTimestamps,
 		gopInterval: probe.gopInterval,
-		tags: [...new Set(['video', ...(options.tags ?? [])])]
+		tags: [...new Set(['video', ...(options.tags ?? [])])],
+		capture
 	};
 
 	try {
@@ -428,7 +444,8 @@ async function importWorkspaceAudio(
 					: 0,
 		audioCodec: probe?.audioCodec ?? (file.type === 'audio/wav' ? 'pcm_f32le' : undefined),
 		audioCodecSupported: true,
-		tags: [...new Set(['audio', ...baseTags, ...(options.tags ?? [])])]
+		tags: [...new Set(['audio', ...baseTags, ...(options.tags ?? [])])],
+		capture: options.capture
 	};
 
 	try {

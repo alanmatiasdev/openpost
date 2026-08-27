@@ -13,7 +13,8 @@
 		estimateBytesPerMinute,
 		formatBytes,
 		type RecorderKind,
-		type RecorderSelection
+		type RecorderSelection,
+		type ScreenCaptureTruth
 	} from '$lib/video-editor/recorder/recorder.svelte';
 	import { insertRecordingArtifacts } from '$lib/video-editor/recorder/insert-recording';
 	import {
@@ -55,8 +56,15 @@
 	let cameraFacingMode = $state(savedPreferences.cameraFacingMode);
 	let noiseSuppression = $state(savedPreferences.noiseSuppression);
 	let autoGainControl = $state(savedPreferences.autoGainControl);
+	let cursorMode = $state(savedPreferences.cursorMode);
 	let inserting = $state(false);
-	type RecoveryUrl = { kind: RecorderKind; url: string; name: string; scratchId: string };
+	type RecoveryUrl = {
+		kind: RecorderKind;
+		url: string;
+		name: string;
+		scratchId: string;
+		capture?: ScreenCaptureTruth | null;
+	};
 	let recoveryUrls = $state<RecoveryUrl[]>([]);
 	let availableBytes = $state<number | null>(null);
 
@@ -99,6 +107,27 @@
 	const captureBusy = $derived(
 		requestingActive || countdownActive || recordingActive || stoppingActive
 	);
+	const caps = $derived(recorder.capabilities);
+	const cursorSupported = $derived(caps.cursor.supported);
+	const hasDisplayMedia = $derived(caps.hasDisplayMedia);
+	const systemAudioTruth = $derived(recorder.captureTruth);
+	const systemAudioStatusText = $derived.by(() => {
+		if (!systemAudioTruth) return null;
+		switch (systemAudioTruth.systemAudioStatus) {
+			case 'active':
+				return m.video_editor_system_audio_active();
+			case 'inactive':
+				return m.video_editor_system_audio_inactive();
+			case 'denied':
+				return m.video_editor_system_audio_denied();
+			case 'unavailable':
+				return m.video_editor_system_audio_unavailable();
+			case 'not-requested':
+				return m.video_editor_system_audio_not_requested();
+			default:
+				return null;
+		}
+	});
 	const elapsed = $derived.by(() => {
 		const secs = Math.floor(recorder.elapsedMs / 1000);
 		return `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
@@ -175,17 +204,61 @@
 		preferences.set('cameraFacingMode', value);
 	}
 
+	function setCursorMode(value: string): void {
+		if (value !== 'always' && value !== 'motion' && value !== 'never') return;
+		cursorMode = value;
+		preferences.set('cursorMode', value);
+	}
+
+	function localizedCursor(value: string): string {
+		switch (value) {
+			case 'always':
+				return m.video_editor_record_cursor_always();
+			case 'motion':
+				return m.video_editor_record_cursor_motion();
+			case 'never':
+				return m.video_editor_record_cursor_never();
+			case 'unsupported':
+				return m.video_editor_record_cursor_unsupported();
+			case 'unknown':
+				return m.video_editor_record_cursor_unknown();
+			default:
+				return value;
+		}
+	}
+
 	function recoveryUrl(artifact: (typeof recorder.lastArtifacts)[number]): RecoveryUrl {
 		return {
 			kind: artifact.kind,
 			url: URL.createObjectURL(artifact.blob),
 			name: `recording-${artifact.kind}-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.webm`,
-			scratchId: artifact.scratchId
+			scratchId: artifact.scratchId,
+			capture: artifact.capture ?? undefined
 		};
+	}
+
+	function artifactStatusText(capture?: RecoveryUrl['capture']): string | null {
+		if (!capture) return null;
+		const status = capture.systemAudioStatus;
+		switch (status) {
+			case 'active':
+				return m.video_editor_system_audio_active();
+			case 'inactive':
+				return m.video_editor_system_audio_inactive();
+			case 'denied':
+				return m.video_editor_system_audio_denied();
+			case 'unavailable':
+				return m.video_editor_system_audio_unavailable();
+			case 'not-requested':
+				return m.video_editor_system_audio_not_requested();
+			default:
+				return null;
+		}
 	}
 
 	onMount(() => {
 		let mounted = true;
+		recorder.refreshCapabilities();
 		void refreshDevices();
 		void refreshQuota();
 		void recorder
@@ -208,13 +281,13 @@
 
 	$effect(() => {
 		if (open) {
+			recorder.refreshCapabilities();
 			void refreshDevices();
 			void refreshQuota();
 		}
 	});
 
 	$effect(() => {
-		// keep counters updated via snapshot reactivity
 		void recorder.counters;
 	});
 
@@ -223,12 +296,17 @@
 			showToast(m.video_editor_recording_failed(), 'error');
 			return;
 		}
+		if (includeScreen && !hasDisplayMedia) {
+			showToast(m.video_editor_record_display_unsupported(), 'error');
+			return;
+		}
 		const countdownSeconds = Number(countdown) || 0;
 		try {
 			await recorder.startWithSelection(selection, {
 				cameraDeviceId: cameraId || null,
 				microphoneDeviceId: micId || null,
 				includeSystemAudio,
+				cursorMode,
 				countdownSeconds,
 				videoResolution,
 				videoFrameRate: selectedFrameRate(),
@@ -265,7 +343,6 @@
 				onopenchange(false);
 			} catch (error) {
 				showToast(m.video_editor_recording_failed(), 'error');
-				// keep recoveryUrls so user can download
 			}
 		} catch {
 			showToast(localizedRecorderError(), 'error');
@@ -472,16 +549,61 @@
 				{/if}
 
 				{#if includeScreen}
-					<label class="flex min-h-11 items-center gap-2 text-sm">
-						<Checkbox
-							bind:checked={includeSystemAudio}
-							onCheckedChange={(checked) => preferences.set('includeSystemAudio', checked === true)}
-						/>
-						<span>{m.record_system_audio()}</span>
-						<span class="text-xs text-muted-foreground"
-							>({m.video_editor_system_audio_caveat()})</span
-						>
-					</label>
+					<div class="space-y-2">
+						<label class="flex min-h-11 items-center gap-2 text-sm">
+							<Checkbox
+								bind:checked={includeSystemAudio}
+								onCheckedChange={(checked) =>
+									preferences.set('includeSystemAudio', checked === true)}
+							/>
+							<span>{m.record_system_audio()}</span>
+							<span class="text-xs text-muted-foreground"
+								>({m.video_editor_system_audio_caveat()})</span
+							>
+						</label>
+						{#if !hasDisplayMedia}
+							<p
+								role="alert"
+								class="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200"
+							>
+								{m.video_editor_record_display_unsupported()}
+							</p>
+						{/if}
+						{#if includeScreen && systemAudioStatusText && recoveryUrls.length === 0}
+							<p
+								role="status"
+								aria-live="polite"
+								class="rounded-md bg-[oklch(0.18_0.01_55)] p-2 text-xs text-muted-foreground"
+							>
+								{systemAudioStatusText}
+							</p>
+						{/if}
+					</div>
+				{/if}
+
+				{#if includeScreen}
+					<div class="space-y-1">
+						{#if cursorSupported}
+							<div class="flex flex-col gap-1 text-xs">
+								<span>{m.video_editor_record_cursor_mode()}</span>
+								<AppSelect
+									value={cursorMode}
+									options={[
+										{ value: 'always', label: m.video_editor_record_cursor_always() },
+										{ value: 'motion', label: m.video_editor_record_cursor_motion() },
+										{ value: 'never', label: m.video_editor_record_cursor_never() }
+									]}
+									ariaLabel={m.video_editor_record_cursor_mode()}
+									onValueChange={setCursorMode}
+									class="h-11"
+								/>
+							</div>
+						{:else}
+							<p class="rounded-md bg-[oklch(0.18_0.01_55)] p-2 text-xs text-muted-foreground">
+								{m.video_editor_record_cursor_unsupported_hint()}
+							</p>
+						{/if}
+					</div>
 				{/if}
 
 				{#if includeMic}
@@ -732,17 +854,28 @@
 					<p class="font-medium text-amber-100">
 						{m.video_editor_recovery_available()}
 					</p>
-					<div class="mt-2 flex flex-wrap gap-2">
+					<div class="mt-2 flex flex-col gap-2">
 						{#each recoveryUrls as r (r.url)}
-							<a
-								href={r.url}
-								download={r.name}
-								class="rounded border px-2 py-1 underline focus-visible:outline-2 focus-visible:outline-amber-300"
-							>
-								{m.video_editor_recording_download({
-									source: sourceLabel(r.kind)
-								})}
-							</a>
+							<div class="flex flex-col gap-1 rounded bg-black/20 p-2">
+								<a
+									href={r.url}
+									download={r.name}
+									class="rounded border px-2 py-1 underline focus-visible:outline-2 focus-visible:outline-amber-300"
+								>
+									{m.video_editor_recording_download({
+										source: sourceLabel(r.kind)
+									})}
+								</a>
+								{#if r.capture}
+									{@const statusText = artifactStatusText(r.capture)}
+									{#if statusText}
+										<p role="status" class="text-[11px] text-amber-100">{statusText}</p>
+									{/if}
+									<p class="text-[11px] text-amber-200">
+										{m.video_editor_record_cursor_mode()}: {localizedCursor(r.capture.cursorActual)}
+									</p>
+								{/if}
+							</div>
 						{/each}
 					</div>
 					<div class="mt-3 flex flex-wrap gap-2">
@@ -766,7 +899,10 @@
 				<div class="flex flex-wrap justify-center gap-2 pt-2">
 					<Button
 						class="min-h-11 min-w-36"
-						disabled={!hasSelection || recordingActive || stoppingActive}
+						disabled={!hasSelection ||
+							recordingActive ||
+							stoppingActive ||
+							(includeScreen && !hasDisplayMedia)}
 						onclick={handleStart}
 					>
 						{m.video_editor_recording_start()}

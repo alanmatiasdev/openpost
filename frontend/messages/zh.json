@@ -7262,5 +7262,19 @@
 	"video_editor_audio_noise_amount_hint": "{amount}% — 数值越高降噪越多，但可能会让声音变柔和",
 	"video_editor_audio_noise_bypassed": "关闭",
 	"video_editor_audio_noise_applied": "开启 — {amount}%",
-	"video_editor_audio_noise_aria": "降噪强度"
+	"video_editor_audio_noise_aria": "降噪强度",
+	"video_editor_record_cursor_always": "始终显示",
+	"video_editor_record_cursor_mode": "光标",
+	"video_editor_record_cursor_motion": "移动时显示",
+	"video_editor_record_cursor_never": "隐藏",
+	"video_editor_record_cursor_unknown": "浏览器未报告",
+	"video_editor_record_cursor_unsupported": "不支持",
+	"video_editor_record_cursor_unsupported_hint": "此浏览器始终包含光标。",
+	"video_editor_record_display_unsupported": "此浏览器不支持屏幕录制。",
+	"video_editor_system_audio_active": "系统音频已激活 — 浏览器提供了音轨。",
+	"video_editor_system_audio_denied": "系统音频被拒绝。",
+	"video_editor_system_audio_inactive": "已请求系统音频但未提供 — 请检查浏览器的“共享音频”选项。",
+	"video_editor_system_audio_not_requested": "系统音频已关闭。",
+	"video_editor_system_audio_requested": "已请求系统音频。",
+	"video_editor_system_audio_unavailable": "系统音频不可用。"
 }

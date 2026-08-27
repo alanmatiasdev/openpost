@@ -117,6 +117,8 @@ describe('ScreenCaptureRecorder', () => {
 				getDisplayMedia,
 				getUserMedia,
 				enumerateDevices: vi.fn(async () => []),
+				// SAFETY: test returns only cursor flag for capability probe
+				getSupportedConstraints: () => ({ cursor: true }) satisfies MediaTrackSupportedConstraints,
 				addEventListener: vi.fn(),
 				removeEventListener: vi.fn()
 			},

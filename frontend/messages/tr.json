@@ -7262,5 +7262,19 @@
 	"video_editor_audio_noise_amount_hint": "{amount}% — daha yüksek daha fazla gürültü kaldırır ama sesi yumuşatabilir",
 	"video_editor_audio_noise_bypassed": "Kapalı",
 	"video_editor_audio_noise_applied": "Açık — {amount}%",
-	"video_editor_audio_noise_aria": "Gürültü azaltma şiddeti"
+	"video_editor_audio_noise_aria": "Gürültü azaltma şiddeti",
+	"video_editor_record_cursor_always": "Her zaman görünür",
+	"video_editor_record_cursor_mode": "İmleç",
+	"video_editor_record_cursor_motion": "Hareket ederken görünür",
+	"video_editor_record_cursor_never": "Gizli",
+	"video_editor_record_cursor_unknown": "Tarayıcı tarafından bildirilmedi",
+	"video_editor_record_cursor_unsupported": "Desteklenmiyor",
+	"video_editor_record_cursor_unsupported_hint": "Bu tarayıcı imleci her zaman kaydeder.",
+	"video_editor_record_display_unsupported": "Ekran kaydı bu tarayıcıda desteklenmiyor.",
+	"video_editor_system_audio_active": "Sistem sesi etkin — tarayıcı ses parçası sağladı.",
+	"video_editor_system_audio_denied": "Sistem sesi reddedildi.",
+	"video_editor_system_audio_inactive": "Sistem sesi istendi ancak sağlanmadı — tarayıcının ses paylaş kutusunu kontrol edin.",
+	"video_editor_system_audio_not_requested": "Sistem sesi kapalı.",
+	"video_editor_system_audio_requested": "Sistem sesi istendi.",
+	"video_editor_system_audio_unavailable": "Sistem sesi kullanılamıyor."
 }

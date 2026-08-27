@@ -20,6 +20,31 @@ export interface MediaAttribution {
 	licenseUrl?: string;
 }
 
+export type RecorderCursorMode = 'always' | 'motion' | 'never' | 'unsupported' | 'unknown';
+
+export type RecordingSystemAudioStatus =
+	| 'not-requested'
+	| 'active'
+	| 'inactive'
+	| 'unavailable'
+	| 'denied';
+
+export interface RecordingCaptureMetadata {
+	version: 1;
+	kind: 'screen' | 'camera' | 'microphone';
+	capturedAt: string;
+	cursor?: {
+		requested: RecorderCursorMode;
+		actual: RecorderCursorMode;
+		supported: boolean;
+	};
+	systemAudio?: {
+		requested: boolean;
+		active: boolean;
+		status: RecordingSystemAudioStatus;
+	};
+}
+
 export interface MediaMetadata {
 	id: string;
 	storageType: MediaStorageType;
@@ -57,4 +82,5 @@ export interface MediaMetadata {
 	lottieMarkers?: Array<{ name: string; start: number; duration: number }>;
 	attribution?: MediaAttribution;
 	tags: string[];
+	capture?: RecordingCaptureMetadata;
 }
