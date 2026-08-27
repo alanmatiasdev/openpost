@@ -300,7 +300,8 @@ export const timelineStore = {
 
 	_splitItem(
 		id: string,
-		frame: number
+		frame: number,
+		options: { synchronizeTranscriptCaptions?: boolean } = {}
 	): { leftItem: TimelineItem; rightItem: TimelineItem } | null {
 		const item = index.itemById.get(id);
 		if (!item) return null;
@@ -338,13 +339,15 @@ export const timelineStore = {
 			item.sourceEnd = boundaries.left.sourceEnd;
 			rightItem.sourceStart = boundaries.right.sourceStart;
 			rightItem.sourceEnd = boundaries.right.sourceEnd;
-			state.items = synchronizeTranscriptCaptionsAfterSplit(
-				state.items,
-				item,
-				rightItem,
-				frame,
-				state.settings.fps
-			);
+			if (options.synchronizeTranscriptCaptions !== false) {
+				state.items = synchronizeTranscriptCaptionsAfterSplit(
+					state.items,
+					item,
+					rightItem,
+					frame,
+					state.settings.fps
+				);
+			}
 		} else if (rightItem.type === 'lottie') {
 			rightItem.lottiePhaseOffset = (item.lottiePhaseOffset ?? 0) + relative;
 		}

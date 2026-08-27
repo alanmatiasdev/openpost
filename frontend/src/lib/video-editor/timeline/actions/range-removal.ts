@@ -188,7 +188,9 @@ export function removeTimelineRangesFromItems(
 				.sort((a, b) => b - a);
 
 			for (const frame of splitFrames) {
-				const anchorResult = timelineStore._splitItem(anchor.id, frame);
+				const anchorResult = timelineStore._splitItem(anchor.id, frame, {
+					synchronizeTranscriptCaptions: false
+				});
 				if (!anchorResult) continue;
 				splitCount += 1;
 				const linkedGroupId = anchorResult.leftItem.linkedGroupId;
@@ -197,7 +199,12 @@ export function removeTimelineRangesFromItems(
 					if (companion.linkedGroupId !== linkedGroupId || companion.id === anchor.id) continue;
 					if (lockedTrackIds.has(companion.trackId)) continue;
 					if (frame > companion.from && frame < companion.from + companion.durationInFrames) {
-						if (timelineStore._splitItem(companion.id, frame)) splitCount += 1;
+						if (
+							timelineStore._splitItem(companion.id, frame, {
+								synchronizeTranscriptCaptions: false
+							})
+						)
+							splitCount += 1;
 					}
 				}
 			}
