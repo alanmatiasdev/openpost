@@ -107,6 +107,7 @@ Bootstrap and data-plane settings stay deployment-only because OpenPost needs th
 | `OPENPOST_PIXABAY_API_KEY` | No | empty | Server-only Pixabay API key for image and video search. |
 | `OPENROUTER_API_KEY` | No | empty | Server-only OpenRouter key that enables automatic alt text for images without saved alt text when they are added to the text-and-thread composer. Supports `OPENROUTER_API_KEY_FILE`. |
 | `OPENPOST_IMAGE_CAPTION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model ID used for automatic image alt text. |
+| `OPENPOST_TEXT_GENERATION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model ID used to build publication copy from an idea. |
 | `OPENPOST_IMAGE_CAPTION_PROVIDER` | No | empty | Exact OpenRouter provider slug allowed for automatic image alt text. An empty value uses normal eligible-provider routing. |
 | `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR` | No | `false` | Require OpenRouter to use a zero-data-retention endpoint for automatic image alt text. Verify the configured model/provider pair supports ZDR before enabling. |
 | `OPENPOST_MEME_GENERATOR_ENABLED` | No | `true` | Enables the built-in template catalog, local previews and rendering, and durable OpenPost recipes. |

@@ -48,6 +48,7 @@ var configTestEnvKeys = []string{
 	"OPENPOST_IMAGE_CAPTION_MODEL",
 	"OPENPOST_IMAGE_CAPTION_PROVIDER",
 	"OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR",
+	"OPENPOST_TEXT_GENERATION_MODEL",
 	"OPENPOST_MEME_GENERATOR_ENABLED",
 	"OPENPOST_MEME_GENERATION_MODEL",
 	"OPENPOST_IMAGE_EDITOR_ENABLED",
@@ -180,6 +181,7 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.ImageCaptionModel)
 	require.Empty(t, cfg.ImageCaptionProvider)
 	require.False(t, cfg.ImageCaptionRequireZDR)
+	require.Equal(t, "openai/gpt-5.6-luna", cfg.TextGenerationModel)
 	require.True(t, cfg.MemeGeneratorEnabled)
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.MemeGenerationModel)
 	require.True(t, cfg.ImageEditorEnabled)
@@ -221,6 +223,14 @@ func TestLoadMemeGeneratorConfiguration(t *testing.T) {
 
 	require.False(t, cfg.MemeGeneratorEnabled)
 	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.MemeGenerationModel)
+}
+
+func TestLoadTextGenerationModel(t *testing.T) {
+	t.Setenv("OPENPOST_TEXT_GENERATION_MODEL", " openai/gpt-5.6-luna-20260709 ")
+
+	cfg := Load()
+
+	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.TextGenerationModel)
 }
 
 func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {

@@ -58,6 +58,7 @@ import (
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/passwordmail"
+	"github.com/openpost/backend/internal/services/postgeneration"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicurl"
@@ -467,6 +468,7 @@ func main() {
 	}
 
 	var imageCaptioner imagecaption.Captioner
+	var postBuilder postgeneration.Builder
 	if generator != nil {
 		imageCaptioner, err = imagecaption.New(generator, cfg.ImageCaptionModel)
 		if err != nil {
@@ -478,6 +480,11 @@ func main() {
 			cfg.ImageCaptionProvider,
 			cfg.ImageCaptionRequireZDR,
 		)
+		postBuilder, err = postgeneration.New(generator, cfg.TextGenerationModel)
+		if err != nil {
+			log.Fatalf("failed to initialize AI post builder: %v", err)
+		}
+		log.Printf("AI post builder enabled with model %s", cfg.TextGenerationModel)
 	}
 
 	var memeProvider memes.Provider
@@ -618,6 +625,7 @@ func main() {
 		ImageCaptioner:            imageCaptioner,
 		MemeProvider:              memeProvider,
 		MemeSuggester:             memeSuggester,
+		PostBuilder:               postBuilder,
 		Entitlement:               entitlementService,
 		TokenEncryptor:            tokenEncryptor,
 		TokenSource:               tokenManager,

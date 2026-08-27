@@ -5105,6 +5105,26 @@
 				"required": ["method", "path", "status", "duration_ms", "timestamp"],
 				"type": "object"
 			},
+			"FailureDismissalOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/FailureDismissalOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"dismissed_at": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					}
+				},
+				"required": ["id"],
+				"type": "object"
+			},
 			"FeatureStateResponse": {
 				"additionalProperties": false,
 				"properties": {
@@ -5451,6 +5471,69 @@
 					}
 				},
 				"required": ["candidates", "model", "catalog_revision"],
+				"type": "object"
+			},
+			"GeneratePostInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/GeneratePostInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"idea": {
+						"description": "Rough idea to turn into post copy",
+						"maxLength": 4000,
+						"minLength": 1,
+						"type": "string"
+					},
+					"social_account_ids": {
+						"description": "Destinations to write for",
+						"items": {
+							"type": "string"
+						},
+						"maxItems": 12,
+						"minItems": 1,
+						"type": ["array", "null"],
+						"uniqueItems": true
+					},
+					"workspace_id": {
+						"description": "Workspace ID",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "idea", "social_account_ids"],
+				"type": "object"
+			},
+			"GeneratePostOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/GeneratePostOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"model": {
+						"description": "Model that generated the copy",
+						"type": "string"
+					},
+					"renditions": {
+						"description": "Destination-specific copy",
+						"items": {
+							"$ref": "#/components/schemas/Rendition"
+						},
+						"type": ["array", "null"]
+					},
+					"source_text": {
+						"description": "Canonical publication copy",
+						"type": "string"
+					}
+				},
+				"required": ["source_text", "renditions", "model"],
 				"type": "object"
 			},
 			"Get-running-versionResponse": {
@@ -11416,6 +11499,9 @@
 					"creation_preset": {
 						"type": "string"
 					},
+					"failure_dismissed_at": {
+						"type": "string"
+					},
 					"goal": {
 						"type": "string"
 					},
@@ -12352,6 +12438,19 @@
 					}
 				},
 				"required": ["media", "recipe"],
+				"type": "object"
+			},
+			"Rendition": {
+				"additionalProperties": false,
+				"properties": {
+					"body": {
+						"type": "string"
+					},
+					"social_account_id": {
+						"type": "string"
+					}
+				},
+				"required": ["social_account_id", "body"],
 				"type": "object"
 			},
 			"RenditionActionOutcome": {
@@ -32734,6 +32833,106 @@
 				"tags": ["Auth"]
 			}
 		},
+		"/post-builder/generate": {
+			"post": {
+				"description": "Creates canonical and destination-specific copy for review. It does not save, schedule, or publish anything.",
+				"operationId": "generate-post",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/GeneratePostInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GeneratePostOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"429": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Too Many Requests"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					},
+					"502": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Gateway"
+					},
+					"503": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Service Unavailable"
+					}
+				},
+				"summary": "Build publication copy from an idea",
+				"tags": ["Publications"]
+			}
+		},
 		"/posting-schedules": {
 			"get": {
 				"operationId": "list-posting-schedules",
@@ -34532,6 +34731,168 @@
 						}
 					]
 				}
+			}
+		},
+		"/publications/{id}/failure-dismissal": {
+			"delete": {
+				"description": "Changes failed-list visibility without deleting the Publication, Renditions, attempts, or delivery history.",
+				"operationId": "restore-publication-failure",
+				"parameters": [
+					{
+						"description": "Publication ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Publication ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FailureDismissalOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Restore a dismissed publication failure",
+				"tags": ["Publications"]
+			},
+			"post": {
+				"description": "Changes failed-list visibility without deleting the Publication, Renditions, attempts, or delivery history.",
+				"operationId": "dismiss-publication-failure",
+				"parameters": [
+					{
+						"description": "Publication ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Publication ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FailureDismissalOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Dismiss a failed publication",
+				"tags": ["Publications"]
 			}
 		},
 		"/publications/{id}/publish-now": {

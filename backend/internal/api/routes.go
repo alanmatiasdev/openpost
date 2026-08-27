@@ -36,6 +36,7 @@ import (
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/passwordmail"
+	"github.com/openpost/backend/internal/services/postgeneration"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicurl"
@@ -60,6 +61,7 @@ type RouteDeps struct {
 	ImageCaptioner               imagecaption.Captioner
 	MemeProvider                 memes.Provider
 	MemeSuggester                memegeneration.Suggester
+	PostBuilder                  postgeneration.Builder
 	PublicMediaVerifier          *publicurl.MediaVerifier
 	Entitlement                  entitlements.Service
 	TokenEncryptor               *servicecrypto.TokenEncryptor
@@ -255,6 +257,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	publicationHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	publicationHandler.SetTelemetry(deps.Telemetry)
 	publicationHandler.RegisterRoutes(api)
+	handlers.NewPostBuilderHandler(deps.DB, deps.Authenticator, deps.PostBuilder).RegisterRoutes(api)
 	handlers.NewSocialSetHandler(deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewRepostHandler(deps.DB, deps.RepostService, deps.Authenticator).RegisterRoutes(api)
 	commentHandler := handlers.NewCommentHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenEncryptor)

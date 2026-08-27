@@ -3255,6 +3255,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/post-builder/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build publication copy from an idea
+         * @description Creates canonical and destination-specific copy for review. It does not save, schedule, or publish anything.
+         */
+        post: operations["generate-post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/posting-schedules": {
         parameters: {
             query?: never;
@@ -3497,6 +3517,30 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publications/{id}/failure-dismissal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a failed publication
+         * @description Changes failed-list visibility without deleting the Publication, Renditions, attempts, or delivery history.
+         */
+        post: operations["dismiss-publication-failure"];
+        /**
+         * Restore a dismissed publication failure
+         * @description Changes failed-list visibility without deleting the Publication, Renditions, attempts, or delivery history.
+         */
+        delete: operations["restore-publication-failure"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6381,6 +6425,16 @@ export interface components {
             status: number;
             timestamp: string;
         };
+        FailureDismissalOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FailureDismissalOutputBody.json
+             */
+            readonly $schema?: string;
+            dismissed_at?: string;
+            id: string;
+        };
         FeatureStateResponse: {
             /**
              * @description Availability state
@@ -6557,6 +6611,34 @@ export interface components {
             candidates: components["schemas"]["MemeSuggestionCandidate"][] | null;
             catalog_revision: string;
             model: string;
+        };
+        GeneratePostInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GeneratePostInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Rough idea to turn into post copy */
+            idea: string;
+            /** @description Destinations to write for */
+            social_account_ids: string[] | null;
+            /** @description Workspace ID */
+            workspace_id: string;
+        };
+        GeneratePostOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GeneratePostOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Model that generated the copy */
+            model: string;
+            /** @description Destination-specific copy */
+            renditions: components["schemas"]["Rendition"][] | null;
+            /** @description Canonical publication copy */
+            source_text: string;
         };
         "Get-running-versionResponse": {
             /**
@@ -9081,6 +9163,7 @@ export interface components {
             created_at: string;
             created_by: string;
             creation_preset: string;
+            failure_dismissed_at?: string;
             goal?: string;
             id: string;
             intent: string;
@@ -9521,6 +9604,10 @@ export interface components {
             readonly $schema?: string;
             media: components["schemas"]["MediaUploadResult"];
             recipe: components["schemas"]["MemeRecipeResponse"];
+        };
+        Rendition: {
+            body: string;
+            social_account_id: string;
         };
         RenditionActionOutcome: {
             delivery?: components["schemas"]["ProviderDeliveryResponse"];
@@ -23681,6 +23768,93 @@ export interface operations {
             };
         };
     };
+    "generate-post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratePostInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratePostOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-posting-schedules": {
         parameters: {
             query?: {
@@ -24821,6 +24995,142 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "dismiss-publication-failure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailureDismissalOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restore-publication-failure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailureDismissalOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
