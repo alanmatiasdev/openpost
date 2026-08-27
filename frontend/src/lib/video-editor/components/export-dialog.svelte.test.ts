@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { get } from 'svelte/store';
@@ -12,6 +12,10 @@ import type {
 	RenderExportOptions,
 	RenderExportResult
 } from '../media/render-export';
+import type {
+	ImageSequenceExecutionJob,
+	ImageSequenceExecutionOutcome
+} from '../media/render-execution';
 import '../../../routes/layout.css';
 
 const track: TimelineTrack = {
@@ -69,6 +73,10 @@ beforeEach(() => {
 	);
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [item], fps: 30, currentFrame: 0 });
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
 });
 
 describe('ExportDialog', () => {
@@ -159,6 +167,54 @@ describe('ExportDialog', () => {
 		await screen.getByRole('button', { name: 'Cancel export' }).click();
 		expect(renderSignal?.aborted).toBe(true);
 		expect(renderAudio).toHaveBeenCalledOnce();
+	});
+
+	it('downloads a ZIP when the workspace save is unavailable', async () => {
+		const blob = new Blob(['zip'], { type: 'application/zip' });
+		const renderSequence = vi.fn(
+			async (_job: ImageSequenceExecutionJob): Promise<ImageSequenceExecutionOutcome> => ({
+				renderPath: 'main-thread',
+				result: {
+					kind: 'zip',
+					fileName: 'Interview.zip',
+					relPath: null,
+					blob,
+					frameCount: 300,
+					totalBytes: blob.size,
+					savedToWorkspace: false
+				}
+			})
+		);
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sequence');
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+		const ondone = vi.fn();
+		const screen = await render(ExportDialog, {
+			project,
+			ondone,
+			onerror: vi.fn(),
+			probeCodec: vi.fn(async () => true),
+			renderSequence
+		});
+
+		await screen.getByRole('button', { name: 'Render full video' }).click();
+		await screen.getByText('WebM', { exact: true }).click();
+		await screen.getByRole('option', { name: 'PNG sequence' }).click();
+		if (screen.getByText('Folder', { exact: true }).query()) {
+			await screen.getByText('Folder', { exact: true }).click();
+			await screen.getByRole('option', { name: 'ZIP file' }).click();
+		}
+		await expect.element(screen.getByText('Ready to render')).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'Render now' })).toBeEnabled();
+		await screen.getByRole('button', { name: 'Render now' }).click();
+
+		await vi.waitFor(() => expect(renderSequence).toHaveBeenCalledOnce());
+		expect(createObjectURL).toHaveBeenCalledWith(blob);
+		expect(click).toHaveBeenCalledOnce();
+		expect(ondone).toHaveBeenCalledWith({
+			relPath: 'download:Interview.zip',
+			fileName: 'Interview.zip',
+			blob
+		});
 	});
 
 	it('shows live readiness, blocks missing sources, and fits a phone-width viewport', async () => {

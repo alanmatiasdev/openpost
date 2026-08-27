@@ -501,7 +501,7 @@ export class TimelineFrameRenderer {
 						width: composition.width,
 						height: composition.height,
 						burnSubtitles: true,
-						backgroundColor: this.backgroundColor
+						backgroundColor: composition.backgroundColor ?? this.backgroundColor
 					},
 					new Set([...this.ancestry, composition.id])
 				);

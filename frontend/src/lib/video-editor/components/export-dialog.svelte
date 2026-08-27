@@ -171,6 +171,15 @@
 				return 0.92;
 		}
 	}
+
+	function downloadBlob(blob: Blob, fileName: string): void {
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = fileName;
+		anchor.click();
+		setTimeout(() => URL.revokeObjectURL(url), 1_000);
+	}
 	const outputDimensions = $derived.by(() => {
 		if (!project) return { width: 1920, height: 1080 };
 		const [width, height] =
@@ -515,6 +524,7 @@
 						blob: new Blob([], { type: 'application/octet-stream' })
 					});
 				} else if (result.kind === 'zip') {
+					if (!result.savedToWorkspace) downloadBlob(result.blob, result.fileName);
 					ondone({
 						relPath: result.relPath ?? `download:${result.fileName}`,
 						fileName: result.fileName,

@@ -1833,9 +1833,11 @@ describe('TimelinePanel track groups', () => {
 		await expect
 			.element(screen.getByText(/Ungroup instead if you want to keep the tracks/))
 			.toBeVisible();
-		await screen.getByRole('button', { name: 'Delete group and tracks' }).click();
+		screen.getByRole('button', { name: 'Delete group and tracks' }).element().click();
+		await vi.waitFor(() =>
+			expect(timelineStore.tracks.some((track) => track.id === groupId)).toBe(false)
+		);
 		expect(timelineStore.items.map((item) => item.id)).toEqual(['music-bed']);
-		expect(timelineStore.tracks.some((track) => track.id === groupId)).toBe(false);
 	});
 });
 
