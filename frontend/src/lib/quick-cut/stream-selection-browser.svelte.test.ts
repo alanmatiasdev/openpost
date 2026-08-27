@@ -5,23 +5,23 @@ import {
 	BufferTarget,
 	CanvasSource,
 	Input,
-	Mp4OutputFormat,
-	Output
+	Output,
+	WebMOutputFormat
 } from 'mediabunny';
 import { probeSourceFile } from './source';
 import { preflightExport, exportSegments, discardScratchFile } from './export';
 import { createSegment } from './model';
 
-async function createAvMp4(): Promise<File> {
+async function createAvWebM(): Promise<File> {
 	const canvas = document.createElement('canvas');
 	canvas.width = 64;
 	canvas.height = 64;
 	const ctx = canvas.getContext('2d')!;
 	const target = new BufferTarget();
-	const output = new Output({ format: new Mp4OutputFormat(), target });
-	const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 500_000 });
+	const output = new Output({ format: new WebMOutputFormat(), target });
+	const video = new CanvasSource(canvas, { codec: 'vp9', bitrate: 500_000 });
 	const audio = new (await import('mediabunny')).AudioSampleSource({
-		codec: 'aac',
+		codec: 'opus',
 		bitrate: 64_000
 	});
 	output.addVideoTrack(video);
@@ -49,10 +49,10 @@ async function createAvMp4(): Promise<File> {
 	audio.close();
 	await output.finalize();
 	if (!target.buffer) throw new Error('no buffer');
-	return new File([target.buffer], 'av.mp4', { type: 'video/mp4' });
+	return new File([target.buffer], 'av.webm', { type: 'video/webm' });
 }
 
-async function createInterleavedMultiTrackMp4(): Promise<File> {
+async function createInterleavedMultiTrackWebM(): Promise<File> {
 	const canvas0 = document.createElement('canvas');
 	canvas0.width = 64;
 	canvas0.height = 64;
@@ -62,14 +62,14 @@ async function createInterleavedMultiTrackMp4(): Promise<File> {
 	canvas1.height = 128;
 	const ctx1 = canvas1.getContext('2d')!;
 	const target = new BufferTarget();
-	const output = new Output({ format: new Mp4OutputFormat(), target });
+	const output = new Output({ format: new WebMOutputFormat(), target });
 	// Create 2 video tracks and 2 audio tracks interleaved in container order: video0, audio0, video1, audio1
 	// This proves array[index] (per-type) is used, not global track.number
-	const video0 = new CanvasSource(canvas0, { codec: 'avc', bitrate: 300_000 });
+	const video0 = new CanvasSource(canvas0, { codec: 'vp9', bitrate: 300_000 });
 	const { AudioSampleSource, AudioSample } = await import('mediabunny');
-	const audio0 = new AudioSampleSource({ codec: 'aac', bitrate: 64_000 });
-	const video1 = new CanvasSource(canvas1, { codec: 'avc', bitrate: 300_000 });
-	const audio1 = new AudioSampleSource({ codec: 'aac', bitrate: 64_000 });
+	const audio0 = new AudioSampleSource({ codec: 'opus', bitrate: 64_000 });
+	const video1 = new CanvasSource(canvas1, { codec: 'vp9', bitrate: 300_000 });
+	const audio1 = new AudioSampleSource({ codec: 'opus', bitrate: 64_000 });
 	// Add in interleaved order
 	output.addVideoTrack(video0);
 	output.addAudioTrack(audio0);
@@ -114,12 +114,12 @@ async function createInterleavedMultiTrackMp4(): Promise<File> {
 	audio1.close();
 	await output.finalize();
 	if (!target.buffer) throw new Error('no buffer');
-	return new File([target.buffer], 'multi-interleaved.mp4', { type: 'video/mp4' });
+	return new File([target.buffer], 'multi-interleaved.webm', { type: 'video/webm' });
 }
 
 describe('quick-cut stream selection browser', () => {
 	it('video-off selection produces audio-only output', async () => {
-		const file = await createAvMp4();
+		const file = await createAvWebM();
 		const src = await probeSourceFile(file);
 		expect(src.videoStreams.length).toBeGreaterThan(0);
 		expect(src.audioStreams.length).toBeGreaterThan(0);
@@ -146,7 +146,7 @@ describe('quick-cut stream selection browser', () => {
 	}, 30000);
 
 	it('audio-off selection produces video-only output', async () => {
-		const file = await createAvMp4();
+		const file = await createAvWebM();
 		const src = await probeSourceFile(file);
 		src.selectedVideoTrackIndex = 0;
 		src.selectedAudioTrackIndices = [];
@@ -169,7 +169,7 @@ describe('quick-cut stream selection browser', () => {
 	}, 30000);
 
 	it('alternate video plus two audio tracks with interleaved container order produce exactly those output tracks and discard subtitle', async () => {
-		const file = await createInterleavedMultiTrackMp4();
+		const file = await createInterleavedMultiTrackWebM();
 		const src = await probeSourceFile(file);
 		// Prove per-type array indexing: videoTracks[1] should be second video (blue), not global track 2
 		expect(src.videoStreams.length).toBe(2);
