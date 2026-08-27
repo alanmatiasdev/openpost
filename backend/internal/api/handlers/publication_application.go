@@ -955,7 +955,9 @@ func (commands publicationApplication) retryRenditionTx(
 
 func (commands publicationApplication) markRetryRenditionScheduledTx(ctx context.Context, tx bun.Tx, publicationID string, now time.Time) error {
 	if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
-		Set("status = ?", models.PublicationStatusScheduled).Set("updated_at = ?", now).
+		Set("status = ?", models.PublicationStatusScheduled).
+		Set("failure_dismissed_at = NULL").
+		Set("updated_at = ?", now).
 		Where("id = ?", publicationID).Where("status = ?", models.PublicationStatusFailed).Exec(ctx); err != nil {
 		return err
 	}
@@ -1094,6 +1096,7 @@ func (commands publicationApplication) retryFailedRenditionsTx(
 	if _, err := tx.NewUpdate().
 		Model((*models.Publication)(nil)).
 		Set("status = ?", models.PublicationStatusScheduled).
+		Set("failure_dismissed_at = NULL").
 		Set("updated_at = ?", now).
 		Where("id = ?", publication.ID).
 		Exec(ctx); err != nil {

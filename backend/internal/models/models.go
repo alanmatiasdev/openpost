@@ -1195,6 +1195,7 @@ type Publication struct {
 	Revision            int       `bun:",notnull,default:1" json:"revision"`
 	ScheduledAt         time.Time `bun:"scheduled_at,nullzero" json:"scheduled_at"`
 	ActualRunAt         time.Time `bun:"actual_run_at,nullzero" json:"actual_run_at"`
+	FailureDismissedAt  time.Time `bun:"failure_dismissed_at,nullzero" json:"failure_dismissed_at"`
 	RandomDelayMinutes  int       `bun:"random_delay_minutes,notnull,default:0" json:"random_delay_minutes"`
 	RandomDelayExplicit bool      `bun:"random_delay_explicit,notnull,default:false" json:"-"`
 	MetadataJSON        string    `bun:"metadata_json,notnull,default:'{}'" json:"metadata_json"`

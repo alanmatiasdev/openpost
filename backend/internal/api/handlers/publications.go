@@ -134,6 +134,17 @@ type UpdatePublicationInput struct {
 	Body           PublicationUpdateBody
 }
 
+type FailureDismissalInput struct {
+	PathID string `path:"id" doc:"Publication ID"`
+}
+
+type FailureDismissalOutput struct {
+	Body struct {
+		ID          string `json:"id"`
+		DismissedAt string `json:"dismissed_at,omitempty"`
+	}
+}
+
 type UpsertRenditionsInput struct {
 	IdempotencyKey string `header:"Idempotency-Key" maxLength:"200" doc:"Replay key scoped to the caller, Workspace, and operation"`
 	PathID         string `path:"id" doc:"Publication ID"`
@@ -270,7 +281,57 @@ func (h *PublicationHandler) RegisterRoutes(api huma.API) {
 	h.publishNow(api)
 	h.retryFailedRenditions(api)
 	h.retryRendition(api)
+	h.failureDismissal(api)
 	h.replyToRendition(api)
+}
+
+func (h *PublicationHandler) failureDismissal(api huma.API) {
+	operation := func(method, operationID, summary string, dismissed bool) {
+		huma.Register(api, huma.Operation{
+			OperationID: operationID,
+			Method:      method,
+			Path:        "/publications/{id}/failure-dismissal",
+			Summary:     summary,
+			Description: "Changes failed-list visibility without deleting the Publication, Renditions, attempts, or delivery history.",
+			Tags:        []string{tagPublications},
+			Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+			Errors:      []int{403, 404, 409},
+		}, func(ctx context.Context, input *FailureDismissalInput) (*FailureDismissalOutput, error) {
+			publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
+			if err != nil {
+				return nil, err
+			}
+			if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
+				return nil, err
+			}
+			if publication.Status != models.PublicationStatusFailed {
+				return nil, huma.Error409Conflict("only failed publications can change failure dismissal")
+			}
+
+			query := h.db.NewUpdate().Model((*models.Publication)(nil)).Where("id = ?", publication.ID)
+			if dismissed {
+				if publication.FailureDismissedAt.IsZero() {
+					publication.FailureDismissedAt = time.Now().UTC()
+					query = query.Set("failure_dismissed_at = ?", publication.FailureDismissedAt)
+				} else {
+					query = query.Set("failure_dismissed_at = failure_dismissed_at")
+				}
+			} else {
+				publication.FailureDismissedAt = time.Time{}
+				query = query.Set("failure_dismissed_at = NULL")
+			}
+			if _, err := query.Exec(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to change failure dismissal")
+			}
+
+			output := &FailureDismissalOutput{}
+			output.Body.ID = publication.ID
+			output.Body.DismissedAt = formatOptionalTime(publication.FailureDismissedAt)
+			return output, nil
+		})
+	}
+	operation(http.MethodPost, "dismiss-publication-failure", "Dismiss a failed publication", true)
+	operation(http.MethodDelete, "restore-publication-failure", "Restore a dismissed publication failure", false)
 }
 
 func (h *PublicationHandler) deleteRendition(api huma.API) {
@@ -3958,6 +4019,7 @@ func publicationResponse(publication *models.Publication, media []MediaSummary) 
 		Revision:             publication.Revision,
 		ScheduledAt:          formatOptionalTime(publication.ScheduledAt),
 		ActualRunAt:          formatOptionalTime(publication.ActualRunAt),
+		FailureDismissedAt:   formatOptionalTime(publication.FailureDismissedAt),
 		RandomDelayMinutes:   publication.RandomDelayMinutes,
 		RandomDelayInherited: !publication.RandomDelayExplicit,
 		Metadata:             metadata,
