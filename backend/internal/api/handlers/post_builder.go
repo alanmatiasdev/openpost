@@ -105,7 +105,7 @@ func (h *PostBuilderHandler) loadDestinations(ctx context.Context, workspaceID s
 		Column("id", "platform").
 		Where("workspace_id = ?", workspaceID).
 		Where("is_active = TRUE").
-		Where("id IN (?)", bun.In(accountIDs)).
+		Where("id IN (?)", bun.List(accountIDs)).
 		Scan(ctx); err != nil {
 		return nil, huma.Error503ServiceUnavailable("failed to load post destinations")
 	}
