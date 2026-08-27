@@ -947,7 +947,7 @@ test.describe("product screenshot capture", () => {
     await mediaPicker.getByRole("button", { name: "Select command-review.png" }).click();
     await mediaPicker.getByRole("button", { name: "Add media", exact: true }).click();
     await expect(composer.getByRole("button", { name: "Remove media" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Publish Now" })).toBeVisible();
+    await expect(page.getByTestId("composer-primary-delivery-action")).toBeVisible();
     await capture(page, "main-dark.png", [
       page.getByTestId("desktop-composer-controls"),
       composer.getByRole("button", { name: "Remove media" }),

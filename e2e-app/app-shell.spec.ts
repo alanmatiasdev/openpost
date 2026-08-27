@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { authenticatePage, createPublication, createWorkspace, registerUser } from "./helpers";
+import {
+  authenticatePage,
+  composerDeliveryAction,
+  createPublication,
+  createWorkspace,
+  registerUser,
+} from "./helpers";
 
 test("authenticated navigation keeps the app shell mounted", async ({ page, request }) => {
   const unique = Date.now().toString(36);
@@ -95,7 +101,9 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
   await expect(homeBrand).toBeVisible();
   await expect(newPostAction).toBeVisible();
-  await expect(page.getByRole("button", { name: "Schedule", exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("composer-primary-delivery-action")).toBeVisible();
+  await expect(await composerDeliveryAction(page, "Schedule")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
   await expect(page.getByText("Editing draft post")).toHaveCount(0);
@@ -129,7 +137,9 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Schedule", exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("composer-primary-delivery-action")).toBeVisible();
+  await expect(await composerDeliveryAction(page, "Schedule")).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   const historyDrawer = page.getByTestId("publication-history-drawer");

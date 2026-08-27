@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import {
+  authenticatePage,
+  clickComposerDeliveryAction,
+  composerDeliveryAction,
+  createWorkspace,
+  registerUser,
+} from "./helpers";
 
 type PostPayload = {
   workspace_id?: string;
@@ -327,7 +333,10 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     if (route.request().method() === "GET") {
       await route.fulfill({
         contentType: "application/json",
-        json: { id: "publication-schedule", renditions: destinationOutcomes() },
+        json: {
+          id: "publication-schedule",
+          renditions: destinationOutcomes(),
+        },
       });
       return;
     }
@@ -430,20 +439,28 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Need inspiration?" })).toBeVisible();
+  const buildWithAI = page.getByRole("button", { name: "Build with AI" });
+  await expect(buildWithAI).toBeVisible();
+  await expect(buildWithAI).toBeDisabled();
   await page.getByLabel("Post text").fill(postContent);
+  await expect(buildWithAI).toBeEnabled();
   await page.getByRole("button", { name: "Add post" }).click();
   await page.getByLabel("Post text").nth(1).fill("The second post keeps the outcome panel shared.");
-  await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
+  await expect(await composerDeliveryAction(page, "Publish Now")).toBeDisabled();
+  await page.keyboard.press("Escape");
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toContainText(
     "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
   );
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Need inspiration?" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Post settings" }).click();
-  await expect(page.getByTestId("composer-settings-sheet")).toBeVisible();
-  await page.getByRole("button", { name: "Repost settings" }).click();
+  await expect(buildWithAI).toHaveCount(0);
+  await page
+    .getByTestId("desktop-composer-controls")
+    .getByRole("button", { name: "Repost settings", exact: true })
+    .click();
+  const settingsSheet = page.getByTestId("composer-settings-sheet");
+  await expect(settingsSheet).toBeVisible();
+  await settingsSheet.getByRole("button", { name: "Repost settings" }).click();
   await page.getByText("Custom", { exact: true }).click();
   const repostTarget = page.getByRole("checkbox", {
     name: "@openpost.bsky.social · bluesky",
@@ -453,7 +470,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await page.getByLabel("Minimum likes").fill("10");
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Schedule" }).first().click();
+  await clickComposerDeliveryAction(page, "Schedule");
   const futureDate = new Date();
   futureDate.setDate(futureDate.getDate() + 2);
   const futureDateLabel = new Intl.DateTimeFormat("en-US", {
@@ -481,7 +498,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     name: /^Schedule for .* 10:30$/,
   });
   await expect(quickSchedule).toBeEnabled();
-  await expect(quickSchedule.locator(".lucide-send")).toBeVisible();
+  await expect(quickSchedule.locator(".lucide-calendar-clock")).toBeVisible();
   await quickSchedule.click();
 
   await expect(page.getByLabel("Post text").first()).toBeFocused();

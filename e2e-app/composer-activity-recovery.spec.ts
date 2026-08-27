@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import {
+  authenticatePage,
+  clickComposerDeliveryAction,
+  createWorkspace,
+  registerUser,
+} from "./helpers";
 
 function socialAccount(id: string, workspaceID: string, username: string) {
   return {
@@ -377,7 +382,7 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
   await page.goto("/");
   await expect(page.getByTestId("composer-account-control")).toBeVisible();
   await page.getByLabel("Post text").fill("Schedule in the workspace timezone.");
-  await page.getByRole("button", { name: "Schedule", exact: true }).first().click();
+  await clickComposerDeliveryAction(page, "Schedule");
   const dialog = page.getByTestId("schedule-dialog-shell");
   await expect(dialog).toContainText("America/New_York");
   await dialog.getByLabel("Schedule time").fill("2099-07-21T09:00");

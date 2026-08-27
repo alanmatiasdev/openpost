@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import {
+  authenticatePage,
+  clickComposerDeliveryAction,
+  composerDeliveryAction,
+  createWorkspace,
+  registerUser,
+} from "./helpers";
 
 type PostPayload = {
   workspace_id?: string;
@@ -228,7 +234,9 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(2);
   await page.keyboard.press("Escape");
   await expect.poll(() => publicationPayload).toBeTruthy();
-  await expect(page.getByTestId("composer-delete")).toBeVisible();
+  const deleteAction = await composerDeliveryAction(page, "Delete");
+  await expect(deleteAction).toBeVisible();
+  await page.keyboard.press("Escape");
 
   expect(publicationPayload).toMatchObject({
     content_profile: "short_text",
@@ -260,7 +268,7 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await expect(page.getByText("Choose at least one account.")).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("composer-delete").click();
+  await clickComposerDeliveryAction(page, "Delete");
   await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect.poll(() => deleteRequested).toBe(true);
 });

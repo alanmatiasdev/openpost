@@ -1,5 +1,10 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import {
+  authenticatePage,
+  clickComposerDeliveryAction,
+  createWorkspace,
+  registerUser,
+} from "./helpers";
 
 type Workspace = {
   id: string;
@@ -234,9 +239,7 @@ test("a previous workspace next-slot response cannot replace the current schedul
   });
 
   await page.goto("/");
-  const scheduleButton = page.getByRole("button", { name: "Schedule", exact: true }).first();
-  await expect(scheduleButton).toBeVisible();
-  await scheduleButton.click();
+  await clickComposerDeliveryAction(page, "Schedule");
 
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
@@ -253,7 +256,7 @@ test("a previous workspace next-slot response cannot replace the current schedul
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
   await expect(page.getByRole("button", { name: new RegExp(second.name) }).first()).toBeVisible();
 
-  await scheduleButton.click();
+  await clickComposerDeliveryAction(page, "Schedule");
   await expect(scheduleDialog).toBeVisible();
   await scheduleDialog.getByRole("button", { name: "Next free slot", exact: true }).click();
   await expect(scheduleDialog).toContainText("Selected Jun 25 15:30");
@@ -395,11 +398,7 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await page.goto(`/?date=2030-06-10&workspace_id=${workspace.id}`);
 
   await expect(page.getByText("Choose a future date and time.", { exact: true })).toBeVisible();
-  const mobileScheduleButton = page
-    .getByTestId("composer-action-controls")
-    .getByRole("button", { name: "Schedule", exact: true });
-  await expect(mobileScheduleButton).toBeVisible();
-  await mobileScheduleButton.click();
+  await clickComposerDeliveryAction(page, "Schedule");
 
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toContainText("Select a date and time.");
