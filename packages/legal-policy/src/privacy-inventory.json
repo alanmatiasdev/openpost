@@ -647,6 +647,66 @@
       "source_refs": ["frontend/src/lib/video-editor/preview/playback-settings.svelte.ts"]
     },
     {
+      "id": "local-video-grade-presets",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-editor-grade-presets",
+      "purpose": "Keeps the user's named color-grade presets for reuse across browser-local Video Editor projects.",
+      "scope": "Application origin and current browser profile; at most 64 presets.",
+      "duration": "Until a preset is removed or replaced, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/effects/color-grade-presets.ts"]
+    },
+    {
+      "id": "local-video-effect-presets",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-editor-effect-presets",
+      "purpose": "Keeps the user's named visual-effect presets for reuse across browser-local Video Editor projects.",
+      "scope": "Application origin and current browser profile; the stored catalogue and each preset are size-bounded.",
+      "duration": "Until a preset is removed or replaced, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/effects/effect-presets.ts"]
+    },
+    {
+      "id": "local-video-diagnostics",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-editor-diagnostics",
+      "purpose": "Keeps the user's performance-overlay and clip-timing-overlay choices. It does not store project names, media identifiers, clip labels, or file paths.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "Until the choices are replaced or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/preview/diagnostics.svelte.ts"]
+    },
+    {
+      "id": "local-video-voiceover",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor voiceover recorder",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-editor-voiceover-v1",
+      "purpose": "Keeps voiceover input, noise suppression, automatic gain, timeline mute, and sync-offset preferences. It does not store recorded audio.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "Until the preferences are replaced or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/recorder/voiceover-recorder.svelte.ts"]
+    },
+    {
+      "id": "local-video-easing-presets",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "openpost-video-editor-easing-presets",
+      "purpose": "Keeps the user's named cubic-Bezier and spring easing presets for reuse across browser-local Video Editor projects.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "Until a preset is removed or replaced, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/timeline/custom-easing-presets.ts"]
+    },
+    {
       "id": "session-chunk-reload",
       "technology": "sessionStorage",
       "owner": "OpenPost application shell",
@@ -887,6 +947,82 @@
       "source_refs": ["frontend/src/lib/video-editor/media/opfs-cache.ts"]
     },
     {
+      "id": "opfs-video-moss-model-root",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor local voice generator",
+      "identifier_kind": "exact",
+      "identifier": "nano-reader-browser-model-store",
+      "purpose": "Holds the browser-local directory used by the MOSS text-to-speech runtime.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "The selected MOSS model remains until the user clears that local model, the browser evicts it, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/local-ai/tts/moss-model-storage.ts"]
+    },
+    {
+      "id": "opfs-video-moss-model",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor local voice generator",
+      "identifier_kind": "exact",
+      "identifier": "openpost-moss-tts-f52645-ceff0d",
+      "purpose": "Stores the versioned MOSS speech and audio-tokenizer model files beneath the local voice-model root.",
+      "scope": "Application origin and current browser profile; 16 model files with an expected total size of about 763 MB.",
+      "duration": "Until the user clears the MOSS local model, the browser evicts it, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/local-ai/tts/moss-model-storage.ts"]
+    },
+    {
+      "id": "opfs-video-interpolation-scratch",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor frame interpolation",
+      "identifier_kind": "exact",
+      "identifier": "interpolation-tmp",
+      "purpose": "Temporarily holds generated frame-interpolation output while the editor imports it into the current project.",
+      "scope": "Application origin and current browser profile; one generated file per active interpolation job.",
+      "duration": "The job removes its file after import, cancellation, or failure when possible. Browser eviction or site-data clearing also removes it.",
+      "necessity": "strictly_necessary",
+      "source_refs": [
+        "frontend/src/lib/video-editor/media/processing/interpolation/frame-interpolation-service.svelte.ts"
+      ]
+    },
+    {
+      "id": "opfs-video-upscale-scratch",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor upscaling",
+      "identifier_kind": "exact",
+      "identifier": "upscale-tmp",
+      "purpose": "Temporarily holds generated video-upscale output while the editor imports it into the current project.",
+      "scope": "Application origin and current browser profile; one generated file per active upscale job.",
+      "duration": "The job removes its file after import, cancellation, or failure when possible. Browser eviction or site-data clearing also removes it.",
+      "necessity": "strictly_necessary",
+      "source_refs": [
+        "frontend/src/lib/video-editor/media/processing/upscale/upscale-service.svelte.ts"
+      ]
+    },
+    {
+      "id": "opfs-video-export-scratch",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor export pipeline",
+      "identifier_kind": "exact",
+      "identifier": "openpost-export-scratch",
+      "purpose": "Holds a completed or partial local export when the browser cannot keep the encoded result in memory.",
+      "scope": "Application origin and current browser profile; one randomly named file per OPFS-backed export.",
+      "duration": "Aborted outputs are removed when possible. Completed files older than 24 hours are pruned when another export starts; browser eviction or site-data clearing can remove them sooner.",
+      "necessity": "strictly_necessary",
+      "source_refs": ["frontend/src/lib/video-editor/media/render-export.ts"]
+    },
+    {
+      "id": "opfs-video-recorder-scratch",
+      "technology": "OPFS",
+      "owner": "OpenPost Video Editor recorder",
+      "identifier_kind": "exact",
+      "identifier": "recorder-scratch",
+      "purpose": "Holds bounded screen, camera, and microphone recording chunks plus recovery manifests until the editor imports or discards the capture.",
+      "scope": "Application origin and current browser profile; generated names are tied to a recorder session when recovery is enabled.",
+      "duration": "Imported, discarded, and rejected captures are removed when possible. Recoverable sessions remain until the user recovers or discards them, the browser evicts them, or site data is cleared.",
+      "necessity": "strictly_necessary",
+      "source_refs": ["frontend/src/lib/video-editor/recorder/recorder-scratch.ts"]
+    },
+    {
       "id": "opfs-video-stream-files",
       "technology": "OPFS",
       "owner": "OpenPost Video Editor export pipeline",
@@ -933,6 +1069,36 @@
       "duration": "Up to 365 days, subject to versioned-cache replacement, entry-count eviction, browser pressure, or site-data clearing.",
       "necessity": "functional",
       "source_refs": ["frontend/vite.config.ts"]
+    },
+    {
+      "id": "cache-video-transformers-models",
+      "technology": "Cache Storage",
+      "owner": "OpenPost Video Editor local AI tools",
+      "identifier_kind": "exact",
+      "identifier": "transformers-cache",
+      "purpose": "Stores model, tokenizer, and configuration files downloaded for local transcription, captions, semantic and visual search, voice generation, and the on-device editing assistant.",
+      "scope": "Application origin and current browser profile; cache entries are separated by model URL.",
+      "duration": "A model remains until the user clears that local model, the browser evicts it, its version changes, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": [
+        "frontend/src/lib/video-editor/agent/storage.ts",
+        "frontend/src/lib/video-editor/local-ai/model-cache.ts"
+      ]
+    },
+    {
+      "id": "cache-video-onnx-models",
+      "technology": "Cache Storage",
+      "owner": "OpenPost Video Editor local AI tools",
+      "identifier_kind": "exact",
+      "identifier": "openpost-onnx-models-v1",
+      "purpose": "Stores ONNX model files downloaded for local transcription, frame interpolation, and voice generation.",
+      "scope": "Application origin and current browser profile; cache entries are separated by model URL.",
+      "duration": "A model remains until the user clears that local model, the browser evicts it, the cache version changes, or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": [
+        "frontend/src/lib/video-editor/local-ai/model-cache.ts",
+        "frontend/src/lib/video-editor/transcript/engine/onnx-model-cache.ts"
+      ]
     },
     {
       "id": "cache-workbox-precache",
