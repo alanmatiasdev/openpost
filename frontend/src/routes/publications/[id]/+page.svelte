@@ -113,6 +113,28 @@
 		);
 	}
 
+	async function toggleFailureDismissal() {
+		if (!publication || publication.status !== 'failed') return;
+		recoveryMessage = '';
+		recoveryFailed = false;
+		const response = publication.failure_dismissed_at
+			? await client.DELETE('/publications/{id}/failure-dismissal', {
+					params: { path: { id: publication.id } }
+				})
+			: await client.POST('/publications/{id}/failure-dismissal', {
+					params: { path: { id: publication.id } }
+				});
+		if (response.error) {
+			recoveryFailed = true;
+			recoveryMessage = m.activity_dismiss_failed_error();
+			return;
+		}
+		recoveryMessage = publication.failure_dismissed_at
+			? m.activity_restore_failed()
+			: m.activity_dismissed_failed();
+		await loadPublication(publication.id, true);
+	}
+
 	$effect(() => {
 		if (publicationId && publicationId !== requestedPublicationId) {
 			requestedPublicationId = publicationId;
@@ -154,6 +176,13 @@
 		description={m.publication_detail_description({ status: statusLabel(publication.status) })}
 	>
 		{#snippet actions()}
+			{#if publication.status === 'failed'}
+				<Button variant="outline" onclick={toggleFailureDismissal}>
+					{publication.failure_dismissed_at
+						? m.activity_restore_failed()
+						: m.activity_dismiss_failed()}
+				</Button>
+			{/if}
 			<Button variant="outline" onclick={() => history.back()}>
 				<ArrowLeftIcon class="mr-1.5 size-4" />
 				{m.common_back()}

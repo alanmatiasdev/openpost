@@ -27,6 +27,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { resolveAppPath } from '$lib/app-path';
+	import { showToast } from '$lib/toast';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	type ActivityDestination = NonNullable<Publication['renditions']>[number];
@@ -586,6 +587,35 @@
 			return;
 		}
 	}
+
+	async function dismissFailedPost(post: ActivityItem) {
+		if (!post.publication_id) return;
+		error = '';
+		const publicationID = post.publication_id;
+		const response = await client.POST('/publications/{id}/failure-dismissal', {
+			params: { path: { id: publicationID } }
+		});
+		if (response.error) {
+			error = response.error.detail || m.activity_dismiss_failed_error();
+			return;
+		}
+		posts = posts.filter((candidate) => candidate.id !== post.id);
+		showToast(m.activity_dismissed_failed(), 'success', {
+			actionLabel: m.activity_restore_failed(),
+			onAction: () => {
+				void (async () => {
+					const restored = await client.DELETE('/publications/{id}/failure-dismissal', {
+						params: { path: { id: publicationID } }
+					});
+					if (restored.error) {
+						error = restored.error.detail || m.activity_dismiss_failed_error();
+						return;
+					}
+					await loadData();
+				})();
+			}
+		});
+	}
 </script>
 
 {#snippet postList(items: ActivityItem[], emptyTitle: string, emptyDescription: string)}
@@ -631,20 +661,30 @@
 											<p class="text-xs font-medium">{m.activity_delivery_details()}</p>
 											<p class="text-xs text-muted-foreground">{destinationSummary(post)}</p>
 										</div>
-										<Button
-											variant="ghost"
-											size="sm"
-											class="h-8 text-xs"
-											onclick={() => copyDeliveryReport(post)}
-										>
-											{#if copiedReportPostID === post.id}
-												<CheckCircleIcon class="mr-1.5 size-3.5 text-emerald-600" />
-												{m.activity_report_copied()}
-											{:else}
-												<CopyIcon class="mr-1.5 size-3.5" />
-												{m.activity_copy_report()}
-											{/if}
-										</Button>
+										<div class="flex items-center gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												class="h-8 text-xs"
+												onclick={() => copyDeliveryReport(post)}
+											>
+												{#if copiedReportPostID === post.id}
+													<CheckCircleIcon class="mr-1.5 size-3.5 text-emerald-600" />
+													{m.activity_report_copied()}
+												{:else}
+													<CopyIcon class="mr-1.5 size-3.5" />
+													{m.activity_copy_report()}
+												{/if}
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												class="h-8 text-xs"
+												onclick={() => dismissFailedPost(post)}
+											>
+												{m.activity_dismiss_failed()}
+											</Button>
+										</div>
 									</div>
 								{/if}
 								<div class="divide-y divide-border/70 px-3">
