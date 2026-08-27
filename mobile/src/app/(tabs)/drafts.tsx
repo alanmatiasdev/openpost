@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,8 +13,8 @@ import {
   View,
 } from "react-native";
 import { useShareIntentContext } from "expo-share-intent";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BottomDrawer } from "@/components/bottom-drawer";
 import { BodyText, Button, Card, IconButton, Screen, TextField, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { relativeTime } from "@/lib/format";
@@ -231,73 +230,52 @@ function WorkspaceMenu({
   workspaces: { id: string; name?: string | null }[];
 }) {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const server = getServer();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === getWorkspaceId());
   return (
-    <Modal
-      animationType="slide"
-      transparent
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Pressable accessible={false} style={styles.overlay} onPress={onClose}>
-        <Pressable
-          accessible={false}
-          accessibilityViewIsModal
-          onPress={(event) => event.stopPropagation()}
-          style={styles.sheet}
-        >
-          <Card
-            style={[
-              styles.menu,
-              { backgroundColor: colors.card, paddingBottom: Math.max(insets.bottom, 12) },
-            ]}
+    <BottomDrawer onDismiss={onClose} open title="Workspace">
+      <View style={styles.menu}>
+        {workspaces.length > 1 ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              onClose();
+              router.push({
+                pathname: "/onboarding/workspace",
+                params: { mode: "switch" },
+              });
+            }}
+            style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
           >
-            {workspaces.length > 1 ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  onClose();
-                  router.push({
-                    pathname: "/onboarding/workspace",
-                    params: { mode: "switch" },
-                  });
-                }}
-                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-              >
-                <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
-                <BodyText>{activeWorkspace?.name ?? "Choose another workspace"}</BodyText>
-              </Pressable>
-            ) : null}
-            {server ? (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => {
-                  onClose();
-                  void Linking.openURL(server.baseUrl);
-                }}
-                style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-              >
-                <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
-                <BodyText>Manage accounts and settings</BodyText>
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                onClose();
-                void signOut().then(() => router.replace("/"));
-              }}
-              style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-            >
-              <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
-            </Pressable>
-          </Card>
+            <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
+            <BodyText>{activeWorkspace?.name ?? "Choose another workspace"}</BodyText>
+          </Pressable>
+        ) : null}
+        {server ? (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => {
+              onClose();
+              void Linking.openURL(server.baseUrl);
+            }}
+            style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+          >
+            <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
+            <BodyText>Manage accounts and settings</BodyText>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            onClose();
+            void signOut().then(() => router.replace("/"));
+          }}
+          style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+        >
+          <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
         </Pressable>
-      </Pressable>
-    </Modal>
+      </View>
+    </BottomDrawer>
   );
 }
 
@@ -341,20 +319,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    width: "100%",
-  },
   menu: {
     width: "100%",
-    paddingTop: 8,
-    paddingHorizontal: 8,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    gap: 4,
   },
   menuRow: {
     minHeight: 48,
