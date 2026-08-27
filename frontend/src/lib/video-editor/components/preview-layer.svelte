@@ -44,7 +44,11 @@
 	} from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { requiresProcessedPreviewAudioForTimeline } from '$lib/video-editor/audio/preview-processing';
-	import { renderSubtitleRaster, renderTextItemRaster } from '$lib/video-editor/media/text-raster';
+	import {
+		renderSubtitleCueRaster,
+		renderSubtitleRaster,
+		renderTextItemRaster
+	} from '$lib/video-editor/media/text-raster';
 	import { isTextMotionActive } from '$lib/video-editor/timeline/text-motion-eval';
 	import { renderShapeItemRaster } from '$lib/video-editor/shapes/render';
 	import type { ItemEffect } from '$lib/video-editor/effects/types';
@@ -622,6 +626,12 @@
 				? visualFrame
 				: null,
 			resolved.subtitleStyleScale,
+			resolved.captionHighlightMode,
+			resolved.karaokeActiveColor,
+			resolved.karaokeActiveBackground,
+			activeSubtitle?.id,
+			activeSubtitle?.words?.length,
+			visualFrame,
 			resolved.shapeType,
 			resolved.fillColor,
 			resolved.fillEnabled,
@@ -655,7 +665,13 @@
 				absoluteFrame: visualFrame
 			});
 		} else if (activeSubtitle) {
-			renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
+			// Karaoke highlight requires the exact cue words and the absolute frame; the shared
+			// helper falls back to normal rendering when karaoke is disabled or timings are unusable.
+			if (resolved.captionHighlightMode === 'karaoke' && activeSubtitle.words?.length) {
+				renderSubtitleCueRaster(context, activeSubtitle, resolved, width, height, visualFrame);
+			} else {
+				renderSubtitleRaster(context, activeSubtitle.text, resolved, width, height);
+			}
 		} else {
 			context.clearRect(0, 0, width, height);
 		}

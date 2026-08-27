@@ -38,7 +38,7 @@ import { mediaPool } from './pool.svelte';
 import { resolveMediaBlob } from './resolve-media-blob';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { scaleItemForCanvas } from './render-geometry';
-import { renderSubtitleRaster, renderTextItemRaster } from './text-raster';
+import { renderSubtitleCueRaster, renderSubtitleRaster, renderTextItemRaster } from './text-raster';
 import { renderShapeItemRaster } from '../shapes/render';
 import { animatedFrameIndexForItem, isAnimatedImageMedia } from './animated-image-plan';
 import { animatedImageCache } from './animated-image-client';
@@ -348,6 +348,25 @@ export class TimelineFrameRenderer {
 		};
 	}
 
+	private karaokeSubtitleSource(
+		item: TimelineItem,
+		cue: import('../project/types').SubtitleCue,
+		frame: number
+	) {
+		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
+		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
+		this.textCanvas.width = width;
+		this.textCanvas.height = height;
+		const context = this.textCanvas.getContext('2d');
+		if (!context) throw new Error('Failed to create the subtitle raster context.');
+		renderSubtitleCueRaster(context, cue, item, width, height, frame);
+		return {
+			source: this.textCanvas,
+			width,
+			height
+		};
+	}
+
 	private shapeSource(item: TimelineItem) {
 		const width = Math.max(1, Math.round(item.transform?.width ?? this.width));
 		const height = Math.max(1, Math.round(item.transform?.height ?? this.height));
@@ -463,7 +482,13 @@ export class TimelineFrameRenderer {
 	): Promise<StackLayerSource | null> {
 		if (resolvedItem.type === 'subtitle') {
 			const cue = selectCuesAtFrame(resolvedItem.cues ?? [], frame)[0];
-			return cue ? this.subtitleSource(resolvedItem, cue.text) : null;
+			if (!cue) return null;
+			// Shared karaoke helper guarantees preview and export resolve the same active word
+			// at exact frame boundaries; fallback renders exactly as a normal caption.
+			if (resolvedItem.captionHighlightMode === 'karaoke' && cue.words && cue.words.length > 0) {
+				return this.karaokeSubtitleSource(resolvedItem, cue, frame);
+			}
+			return this.subtitleSource(resolvedItem, cue.text);
 		}
 		if (resolvedItem.type === 'text') return this.textSource(resolvedItem, frame);
 		if (resolvedItem.type === 'shape') return this.shapeSource(resolvedItem);

@@ -16,11 +16,104 @@ import {
 import { getTextMotionPreset } from '../timeline/text-motion-presets';
 import { segmentTextUnits } from '../timeline/text-motion-segmentation';
 import { parseSubtitleCueText } from '../transcript/subtitle-cue-format';
+import {
+	karaokeActiveBackgroundOf,
+	karaokeActiveColorOf,
+	karaokeStateAtFrame,
+	isKaraokeEnabled
+} from '../transcript/karaoke';
+import type { SubtitleCue } from '../project/types';
 
 export type TextRasterContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export interface TextRasterFrame {
 	absoluteFrame: number;
+}
+
+const SUBTITLE_LAYOUT_CACHE_LIMIT = 32;
+const subtitleLayoutCache = new Map<string, TextBlockLayout>();
+
+function styledSubtitleItem(
+	text: string,
+	parsed: ReturnType<typeof parseSubtitleCueText>,
+	item: TimelineItem,
+	width: number,
+	height: number
+): TimelineItem {
+	const fontSize = item.fontSize ?? (height / 18) * (item.subtitleStyleScale ?? 1);
+	return {
+		...item,
+		text: parsed.plainText,
+		textSpans: parsed.spans,
+		spanLayout: 'inline',
+		fontFamily: item.fontFamily ?? 'Inter',
+		fontSize,
+		fontWeight: item.fontWeight ?? 600,
+		fontStyle: item.fontStyle ?? 'normal',
+		underline: item.underline ?? false,
+		color: item.color ?? '#ffffff',
+		backgroundFit: item.backgroundFit ?? 'content',
+		textAlign: parsed.alignment?.textAlign ?? item.textAlign ?? 'center',
+		verticalAlign: parsed.alignment?.verticalAlign ?? item.verticalAlign ?? 'bottom',
+		lineHeight: item.lineHeight ?? 1.25,
+		letterSpacing: item.letterSpacing ?? 0,
+		paddingX: item.paddingX ?? width * 0.05,
+		paddingY: item.paddingY ?? height * 0.05,
+		textShadow: item.textShadow ?? {
+			color: 'rgba(0, 0, 0, 0.9)',
+			blur: fontSize / 6,
+			offsetX: 0,
+			offsetY: Math.max(2, fontSize / 24)
+		}
+	};
+}
+
+function subtitleLayoutKey(styled: TimelineItem, width: number, height: number): string {
+	return JSON.stringify([
+		styled.text,
+		styled.textSpans,
+		width,
+		height,
+		styled.fontFamily,
+		styled.fontSize,
+		styled.fontWeight,
+		styled.fontStyle,
+		styled.underline,
+		styled.color,
+		styled.backgroundFit,
+		styled.textAlign,
+		styled.verticalAlign,
+		styled.lineHeight,
+		styled.letterSpacing,
+		styled.paddingX,
+		styled.paddingY,
+		styled.borderRadius,
+		styled.textShadow,
+		styled.strokeWidth,
+		styled.strokeColor
+	]);
+}
+
+function getCachedSubtitleLayout(
+	context: TextRasterContext,
+	styled: TimelineItem,
+	width: number,
+	height: number
+): TextBlockLayout {
+	const key = subtitleLayoutKey(styled, width, height);
+	const cached = subtitleLayoutCache.get(key);
+	if (cached) return cached;
+	const layout = layoutTextBlock(styled, width, height, createCanvasTextMeasurer(context));
+	subtitleLayoutCache.set(key, layout);
+	if (subtitleLayoutCache.size > SUBTITLE_LAYOUT_CACHE_LIMIT) {
+		const first = subtitleLayoutCache.keys().next().value;
+		if (first) subtitleLayoutCache.delete(first);
+	}
+	return layout;
+}
+
+export function clearSubtitleLayoutCacheForTests(): void {
+	subtitleLayoutCache.clear();
 }
 
 export function renderTextItemRaster(
@@ -241,31 +334,124 @@ export function renderSubtitleRaster(
 	height: number
 ): void {
 	const parsed = parseSubtitleCueText(text);
-	const fontSize = item.fontSize ?? (height / 18) * (item.subtitleStyleScale ?? 1);
-	const styledCue: TimelineItem = {
-		...item,
-		text: parsed.plainText,
-		textSpans: parsed.spans,
-		spanLayout: 'inline',
-		fontFamily: item.fontFamily ?? 'Inter',
-		fontSize,
-		fontWeight: item.fontWeight ?? 600,
-		fontStyle: item.fontStyle ?? 'normal',
-		underline: item.underline ?? false,
-		color: item.color ?? '#ffffff',
-		backgroundFit: item.backgroundFit ?? 'content',
-		textAlign: parsed.alignment?.textAlign ?? item.textAlign ?? 'center',
-		verticalAlign: parsed.alignment?.verticalAlign ?? item.verticalAlign ?? 'bottom',
-		lineHeight: item.lineHeight ?? 1.25,
-		letterSpacing: item.letterSpacing ?? 0,
-		paddingX: item.paddingX ?? width * 0.05,
-		paddingY: item.paddingY ?? height * 0.05,
-		textShadow: item.textShadow ?? {
-			color: 'rgba(0, 0, 0, 0.9)',
-			blur: fontSize / 6,
-			offsetX: 0,
-			offsetY: Math.max(2, fontSize / 24)
-		}
-	};
+	const styledCue = styledSubtitleItem(text, parsed, item, width, height);
 	renderTextItemRaster(context, styledCue, width, height);
+}
+
+export function renderSubtitleCueRaster(
+	context: TextRasterContext,
+	cue: SubtitleCue,
+	item: TimelineItem,
+	width: number,
+	height: number,
+	frame: number
+): void {
+	const parsed = parseSubtitleCueText(cue.text);
+	const styledCue = styledSubtitleItem(cue.text, parsed, item, width, height);
+	const prefersReducedMotion =
+		typeof window !== 'undefined' &&
+		typeof window.matchMedia === 'function' &&
+		window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	const karaokeState = prefersReducedMotion
+		? null
+		: karaokeStateAtFrame(item, cue, parsed.plainText, frame);
+	if (!karaokeState) {
+		context.clearRect(0, 0, width, height);
+		context.save();
+		const layout = getCachedSubtitleLayout(context, styledCue, width, height);
+		paintTextBackground(context, styledCue, layout);
+		if (styledCue.textShadow) {
+			context.shadowColor = styledCue.textShadow.color;
+			context.shadowBlur = styledCue.textShadow.blur;
+			context.shadowOffsetX = styledCue.textShadow.offsetX;
+			context.shadowOffsetY = styledCue.textShadow.offsetY;
+		}
+		for (const line of layout.lines) paintLaidOutLine(context, styledCue, line);
+		context.restore();
+		return;
+	}
+	context.clearRect(0, 0, width, height);
+	context.save();
+	const layout = getCachedSubtitleLayout(context, styledCue, width, height);
+	paintTextBackground(context, styledCue, layout);
+	if (styledCue.textShadow) {
+		context.shadowColor = styledCue.textShadow.color;
+		context.shadowBlur = styledCue.textShadow.blur;
+		context.shadowOffsetX = styledCue.textShadow.offsetX;
+		context.shadowOffsetY = styledCue.textShadow.offsetY;
+	}
+	for (const line of layout.lines) paintLaidOutLine(context, styledCue, line);
+	paintKaraokeHighlight(
+		context,
+		styledCue,
+		layout,
+		karaokeState.activeIndex,
+		karaokeActiveColorOf(item),
+		karaokeActiveBackgroundOf(item)
+	);
+	context.restore();
+}
+
+function paintKaraokeHighlight(
+	context: TextRasterContext,
+	item: TimelineItem,
+	layout: TextBlockLayout,
+	activeIndex: number,
+	activeColor: string,
+	activeBackground: string | undefined
+): void {
+	let globalTokenIndex = 0;
+	for (const line of layout.lines) {
+		if (!line.text.trim()) continue;
+		const lineTokens = line.text.trim().split(/\s+/);
+		for (let tokenPosition = 0; tokenPosition < lineTokens.length; tokenPosition += 1) {
+			if (globalTokenIndex === activeIndex) {
+				const prefix = lineTokens.slice(0, tokenPosition).join(' ');
+				const prefixWithSpace = prefix ? `${prefix} ` : '';
+				context.save();
+				context.font = line.cssFont;
+				applyCanvasLetterSpacing(context, line.letterSpacing);
+				context.textAlign = 'left';
+				context.textBaseline = 'alphabetic';
+				const prefixWidth = prefixWithSpace ? context.measureText(prefixWithSpace).width : 0;
+				const token = lineTokens[tokenPosition] ?? '';
+				const tokenWidth = context.measureText(token).width;
+				const x = line.startX + prefixWidth;
+				if (activeBackground) {
+					context.shadowColor = 'transparent';
+					context.shadowBlur = 0;
+					context.shadowOffsetX = 0;
+					context.shadowOffsetY = 0;
+					const padX = Math.max(2, line.fontSize * 0.08);
+					const padY = Math.max(1, line.fontSize * 0.06);
+					context.fillStyle = activeBackground;
+					// Draw background behind the active word without affecting surrounding text metrics
+					context.fillRect(
+						x - padX,
+						line.top + padY,
+						tokenWidth + padX * 2,
+						line.lineHeightPx - padY * 2
+					);
+					// Restore shadow for text
+					if (item.textShadow) {
+						context.shadowColor = item.textShadow.color;
+						context.shadowBlur = item.textShadow.blur;
+						context.shadowOffsetX = item.textShadow.offsetX;
+						context.shadowOffsetY = item.textShadow.offsetY;
+					}
+				}
+				if ((item.strokeWidth ?? 0) > 0) {
+					context.strokeStyle = item.strokeColor ?? '#000000';
+					context.lineWidth = (item.strokeWidth ?? 0) * 2;
+					context.lineJoin = 'round';
+					context.strokeText(token, x, line.baselineY);
+				}
+				context.fillStyle = activeColor;
+				context.fillText(token, x, line.baselineY);
+				context.restore();
+				return;
+			}
+			globalTokenIndex += 1;
+		}
+	}
 }
