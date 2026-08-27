@@ -1,10 +1,12 @@
 import type { TimelineItem } from '../project/types';
+import { queryTimelineItemRange, type TimelineItemRangeIndex } from './timeline-viewport';
 
 export const WAVEFORM_PREFETCH_AHEAD_PX = 800;
 export const WAVEFORM_PREFETCH_BEHIND_PX = 200;
 
 export interface WaveformDemandInput {
-	items: readonly TimelineItem[];
+	items?: readonly TimelineItem[];
+	itemIndex?: TimelineItemRangeIndex;
 	scrollLeft: number;
 	previousScrollLeft: number;
 	viewportWidth: number;
@@ -37,8 +39,14 @@ export function planTimelineWaveformDemand(input: WaveformDemandInput): string[]
 		visibleEnd + (movingRight ? WAVEFORM_PREFETCH_AHEAD_PX : WAVEFORM_PREFETCH_BEHIND_PX);
 	const viewportCenter = (visibleStart + visibleEnd) / 2;
 	const bestByMediaId = new Map<string, RankedDemand>();
+	const items = input.itemIndex
+		? queryTimelineItemRange(input.itemIndex, {
+				start: (demandStart - input.headerWidth) / input.pixelsPerFrame,
+				end: (demandEnd - input.headerWidth) / input.pixelsPerFrame
+			})
+		: (input.items ?? []);
 
-	for (const item of input.items) {
+	for (const item of items) {
 		if ((item.type !== 'video' && item.type !== 'audio') || !item.mediaId) continue;
 		const start = input.headerWidth + item.from * input.pixelsPerFrame;
 		const end = start + item.durationInFrames * input.pixelsPerFrame;

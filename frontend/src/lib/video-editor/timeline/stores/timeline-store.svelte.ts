@@ -99,6 +99,27 @@ function reindex(): void {
 	state.isDirty = true;
 }
 
+function moveIndexedItemTrack(item: TimelineItem, nextTrackId: string): void {
+	if (item.trackId === nextTrackId) return;
+	const previous = index.itemsByTrackId.get(item.trackId);
+	if (previous) {
+		const itemIndex = previous.indexOf(item);
+		if (itemIndex >= 0) previous.splice(itemIndex, 1);
+		if (previous.length === 0) index.itemsByTrackId.delete(item.trackId);
+	}
+	const next = index.itemsByTrackId.get(nextTrackId);
+	if (next) next.push(item);
+	else index.itemsByTrackId.set(nextTrackId, [item]);
+	item.trackId = nextTrackId;
+}
+
+function finishPreviewMutation(maxItemEndFrame: number): void {
+	if (maxItemEndFrame > index.maxItemEndFrame) {
+		index = { ...index, maxItemEndFrame };
+	}
+	state.isDirty = true;
+}
+
 export const timelineStore = {
 	get items(): TimelineItem[] {
 		return state.items;
@@ -344,6 +365,37 @@ export const timelineStore = {
 				item.trackId = update.trackId;
 			}
 		}
+		reindex();
+	},
+
+	/** Update gesture drafts without rebuilding whole-project indexes on every pointer frame. */
+	_previewMoveItems(updates: Array<{ id: string; from: number; trackId?: string }>): void {
+		let maxItemEndFrame = index.maxItemEndFrame;
+		for (const update of updates) {
+			const item = index.itemById.get(update.id);
+			if (!item) continue;
+			if (update.trackId) moveIndexedItemTrack(item, update.trackId);
+			item.from = update.from;
+			maxItemEndFrame = Math.max(maxItemEndFrame, item.from + item.durationInFrames);
+		}
+		finishPreviewMutation(maxItemEndFrame);
+	},
+
+	/** Apply gesture property drafts while keeping id and track indexes usable. */
+	_previewUpdateItems(updates: Array<{ id: string; patch: Partial<TimelineItem> }>): void {
+		let maxItemEndFrame = index.maxItemEndFrame;
+		for (const { id, patch } of updates) {
+			const item = index.itemById.get(id);
+			if (!item) continue;
+			if (patch.trackId) moveIndexedItemTrack(item, patch.trackId);
+			Object.assign(item, patch);
+			maxItemEndFrame = Math.max(maxItemEndFrame, item.from + item.durationInFrames);
+		}
+		finishPreviewMutation(maxItemEndFrame);
+	},
+
+	/** Rebuild exact duration and track indexes once after a gesture draft settles. */
+	_commitPreviewItems(): void {
 		reindex();
 	},
 

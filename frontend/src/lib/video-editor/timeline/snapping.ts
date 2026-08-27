@@ -31,6 +31,8 @@ export interface SnapResult {
 	didSnap: boolean;
 }
 
+const sortedSnapTargets = new WeakSet<SnapTarget[]>();
+
 export function calculateAdaptiveSnapThreshold(
 	zoomLevel: number,
 	pixelsPerFrame: number,
@@ -75,7 +77,30 @@ export function findNearestSnapTarget(
 ): SnapTarget | null {
 	let nearest: SnapTarget | null = null;
 	let nearestDistance = thresholdFrames;
-	for (const target of snapTargets) {
+	let startIndex = 0;
+	let endIndex = snapTargets.length;
+	if (sortedSnapTargets.has(snapTargets)) {
+		const minimumFrame = targetFrame - thresholdFrames;
+		const maximumFrame = targetFrame + thresholdFrames;
+		let low = 0;
+		let high = snapTargets.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (snapTargets[middle]!.frame <= minimumFrame) low = middle + 1;
+			else high = middle;
+		}
+		startIndex = low;
+		low = startIndex;
+		high = snapTargets.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (snapTargets[middle]!.frame < maximumFrame) low = middle + 1;
+			else high = middle;
+		}
+		endIndex = low;
+	}
+	for (let index = startIndex; index < endIndex; index++) {
+		const target = snapTargets[index]!;
 		const distance = Math.abs(targetFrame - target.frame);
 		if (
 			distance < nearestDistance ||
@@ -200,5 +225,7 @@ export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[]
 		targets.push({ frame: marker.frame, type: 'marker', markerId: marker.id });
 	}
 	targets.push({ frame: options.currentFrame, type: 'playhead' });
+	targets.sort((left, right) => left.frame - right.frame);
+	sortedSnapTargets.add(targets);
 	return targets;
 }

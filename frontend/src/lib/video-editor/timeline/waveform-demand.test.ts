@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '../project/types';
+import { buildTimelineItemRangeIndex } from './timeline-viewport';
 import { planTimelineWaveformDemand } from './waveform-demand';
 
 function item(id: string, from: number, mediaId = id): TimelineItem {
@@ -43,6 +44,25 @@ describe('timeline waveform demand', () => {
 		expect(demand({ items: [item('one', 10, 'shared'), item('two', 70, 'shared')] })).toEqual([
 			'shared'
 		]);
+	});
+
+	it('uses the interval index without changing viewport ordering', () => {
+		const items = [
+			item('far-left', 0),
+			item('visible', 220),
+			item('ahead', 410),
+			item('far', 20_000)
+		];
+		const input = {
+			scrollLeft: 800,
+			previousScrollLeft: 700,
+			viewportWidth: 500,
+			headerWidth: 180,
+			pixelsPerFrame: 4
+		};
+		expect(
+			planTimelineWaveformDemand({ ...input, itemIndex: buildTimelineItemRangeIndex(items) })
+		).toEqual(planTimelineWaveformDemand({ ...input, items }));
 	});
 
 	it('ignores non-media items and unusable viewport geometry', () => {

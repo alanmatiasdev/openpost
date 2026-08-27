@@ -389,6 +389,13 @@
 	);
 	const waveforms = $state<Record<string, { data: WaveformData | null; failed: boolean }>>({});
 	const waveformUnsubscribers = new Map<string, () => void>();
+	const waveformItemRangeIndex = $derived(
+		buildTimelineItemRangeIndex(
+			timelineStore.items.filter(
+				(item) => (item.type === 'video' || item.type === 'audio') && Boolean(item.mediaId)
+			)
+		)
+	);
 	let waveformDemandTimer: ReturnType<typeof setTimeout> | null = null;
 	let previousWaveformScrollLeft = 0;
 	const WAVEFORM_DEMAND_DELAY_MS = 90;
@@ -494,7 +501,7 @@
 		}
 		const currentScrollLeft = timelineViewport.scrollLeft;
 		const mediaIds = planTimelineWaveformDemand({
-			items: timelineStore.items,
+			itemIndex: waveformItemRangeIndex,
 			scrollLeft: currentScrollLeft,
 			previousScrollLeft: previousWaveformScrollLeft,
 			viewportWidth: timelineViewport.width,
@@ -576,8 +583,9 @@
 	let activeSnapTarget = $state<SnapTarget | null>(null);
 	let latestLockedItemFrame = $derived.by(() => {
 		let latest = Number.NEGATIVE_INFINITY;
-		for (const item of timelineStore.items) {
-			if (isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) {
+		for (const track of mediaTracks(timelineStore.tracks)) {
+			if (!isTrackEffectivelyLocked(track.id, timelineStore.tracks)) continue;
+			for (const item of timelineStore.itemsByTrackId.get(track.id) ?? []) {
 				latest = Math.max(latest, item.from);
 			}
 		}
@@ -633,6 +641,7 @@
 	} | null = null;
 	let mediaDropAnimationFrame: number | null = null;
 	let mediaDropAutoScrollFrame: number | null = null;
+	let mediaDropSnapTargets: SnapTarget[] | null = null;
 	let handledPlacementRequestId = 0;
 	interface SnappedMediaFrame {
 		from: number;
@@ -745,9 +754,10 @@
 			return;
 		}
 		const visibleAnimatedMedia = new Map<string, NonNullable<ReturnType<typeof mediaPool.get>>>();
-		for (const item of timelineStore.items) {
+		for (const itemId of visibleTimelineItemIds) {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item) continue;
 			if (item.type !== 'image' || !item.mediaId) continue;
-			if (!visibleTimelineItemIds.has(item.id)) continue;
 			const media = mediaPool.get(item.mediaId);
 			if (!isAnimatedImageMedia(media)) continue;
 			// SAFETY: isAnimatedImageMedia just proved the entry exists.
@@ -830,9 +840,10 @@
 		const visibleMedia = new Map<string, NonNullable<ReturnType<typeof mediaPool.get>>>();
 		const viewportStart = timelineViewport.scrollLeft + TRACK_HEADER_WIDTH;
 		const viewportEnd = timelineViewport.scrollLeft + timelineViewport.width;
-		for (const item of timelineStore.items) {
+		for (const itemId of visibleTimelineItemIds) {
+			const item = timelineStore.itemById.get(itemId);
+			if (!item) continue;
 			if (item.type !== 'video' || !item.mediaId) continue;
-			if (!visibleTimelineItemIds.has(item.id)) continue;
 			const mediaId = item.mediaId;
 			const media = mediaPool.get(mediaId);
 			if (!media?.tags.includes('video')) continue;
@@ -952,7 +963,17 @@
 	const timelineContentFrames = $derived(
 		Math.max(fps * 10, timelineStore.maxItemEndFrame + fps * 10)
 	);
+	let timelineIndexesFrozen = $state(false);
+	let frozenTimelineItemRangeIndexes: Map<string, TimelineItemRangeIndex> | null = null;
+	let frozenTimelineDensityBucketsByTrackId: Map<
+		string,
+		ReturnType<typeof buildTimelineDensityBuckets>
+	> | null = null;
+	let dragPromotedItemIds = $state<string[]>([]);
 	const timelineItemRangeIndexes = $derived.by(() => {
+		if (timelineIndexesFrozen && frozenTimelineItemRangeIndexes) {
+			return frozenTimelineItemRangeIndexes;
+		}
 		const indexes = new Map<string, TimelineItemRangeIndex>();
 		for (const track of mediaTracks(timelineStore.tracks)) {
 			indexes.set(
@@ -963,6 +984,9 @@
 		return indexes;
 	});
 	const timelineDensityBucketsByTrackId = $derived.by(() => {
+		if (timelineIndexesFrozen && frozenTimelineDensityBucketsByTrackId) {
+			return frozenTimelineDensityBucketsByTrackId;
+		}
 		const buckets = new Map<string, ReturnType<typeof buildTimelineDensityBuckets>>();
 		for (const [trackId, index] of timelineItemRangeIndexes) {
 			if (index.items.length >= DENSE_TIMELINE_TRACK_ITEM_THRESHOLD) {
@@ -971,6 +995,31 @@
 		}
 		return buckets;
 	});
+	function freezeTimelineIndexes(promotedItemIds: string[]): void {
+		frozenTimelineItemRangeIndexes = timelineItemRangeIndexes;
+		frozenTimelineDensityBucketsByTrackId = timelineDensityBucketsByTrackId;
+		dragPromotedItemIds = [...new Set(promotedItemIds)];
+		timelineIndexesFrozen = true;
+	}
+	function releaseTimelineIndexes(): void {
+		timelineIndexesFrozen = false;
+		frozenTimelineItemRangeIndexes = null;
+		frozenTimelineDensityBucketsByTrackId = null;
+		dragPromotedItemIds = [];
+	}
+	function promoteDragItems(itemIds: readonly string[]): void {
+		const next = new Set(dragPromotedItemIds);
+		for (const id of itemIds) next.add(id);
+		if (next.size !== dragPromotedItemIds.length) dragPromotedItemIds = [...next];
+	}
+	function previewMoveItems(updates: Array<{ id: string; from: number; trackId?: string }>): void {
+		promoteDragItems(updates.map(({ id }) => id));
+		timelineStore._previewMoveItems(updates);
+	}
+	function previewUpdateItems(updates: Array<{ id: string; patch: Partial<TimelineItem> }>): void {
+		promoteDragItems(updates.map(({ id }) => id));
+		timelineStore._previewUpdateItems(updates);
+	}
 	const timelineTransitionsByTrackId = $derived.by(() => {
 		const byTrackId = new Map<string, TimelineTransition[]>();
 		for (const transition of transitionsStore.list) {
@@ -993,14 +1042,28 @@
 			pixelsPerFrame: pxPerFrame,
 			trackItemCount: index.items.length
 		});
-		return buildTimelineTrackRenderPlan({
+		const plan = buildTimelineTrackRenderPlan({
 			index,
 			range,
 			pixelsPerFrame: pxPerFrame,
-			selectedItemIds,
+			selectedItemIds: [...selectedItemIds, ...dragPromotedItemIds],
 			primarySelectedItemId: selectedItemId,
 			densityBuckets: timelineDensityBucketsByTrackId.get(trackId)
 		});
+		if (dragPromotedItemIds.length === 0) return plan;
+		const nativeById = new Map(
+			plan.nativeItems.filter((item) => item.trackId === trackId).map((item) => [item.id, item])
+		);
+		for (const id of dragPromotedItemIds) {
+			const item = timelineStore.itemById.get(id);
+			if (item?.trackId === trackId) nativeById.set(id, item);
+		}
+		return {
+			...plan,
+			nativeItems: [...nativeById.values()].toSorted(
+				(left, right) => left.from - right.from || left.id.localeCompare(right.id)
+			)
+		};
 	}
 
 	function visibleTransitionsForTrack(
@@ -1830,18 +1893,9 @@
 		if (!timelineStore.snapEnabled) {
 			return { from: Math.max(0, Math.round(rawFrame)), snapTarget: null };
 		}
-		const targets = buildSnapTargets({
-			items: timelineStore.items,
-			tracks: timelineStore.tracks,
-			transitions: transitionsStore.list,
-			markers: timelineStore.markers,
-			currentFrame: timelineStore.currentFrame,
-			durationInFrames: timelineStore.maxItemEndFrame + fps * 10,
-			fps,
-			zoomLevel: zoom
-		});
+		mediaDropSnapTargets ??= snapTargetsFor([]);
 		const threshold = calculateAdaptiveSnapThreshold(zoom, pxPerFrame);
-		const result = calculateMoveSnap(rawFrame, durationInFrames, targets, threshold);
+		const result = calculateMoveSnap(rawFrame, durationInFrames, mediaDropSnapTargets, threshold);
 		return {
 			from: Math.max(0, result.snappedFrame),
 			snapTarget: result.snapTarget ?? null
@@ -1906,6 +1960,7 @@
 		mediaDropPreview = null;
 		pendingMediaDrop = null;
 		activeNativeMediaDrop = null;
+		mediaDropSnapTargets = null;
 		activeSnapTarget = null;
 		if (mediaDropAnimationFrame !== null) {
 			cancelAnimationFrame(mediaDropAnimationFrame);
@@ -2227,19 +2282,20 @@
 		if (kind === 'trim-end') {
 			const end = item.from + item.durationInFrames;
 			return (
-				timelineStore.items.find(
-					(candidate) =>
-						candidate.id !== item.id && candidate.trackId === item.trackId && candidate.from === end
-				) ?? null
+				queryTimelineItemRange(
+					timelineItemRangeIndexes.get(item.trackId) ?? EMPTY_TIMELINE_ITEM_RANGE_INDEX,
+					{ start: end, end: end + 1 }
+				).find((candidate) => candidate.id !== item.id && candidate.from === end) ?? null
 			);
 		}
 		if (kind === 'trim-start') {
 			return (
-				timelineStore.items.find(
+				queryTimelineItemRange(
+					timelineItemRangeIndexes.get(item.trackId) ?? EMPTY_TIMELINE_ITEM_RANGE_INDEX,
+					{ start: item.from - 1, end: item.from }
+				).find(
 					(candidate) =>
-						candidate.id !== item.id &&
-						candidate.trackId === item.trackId &&
-						candidate.from + candidate.durationInFrames === item.from
+						candidate.id !== item.id && candidate.from + candidate.durationInFrames === item.from
 				) ?? null
 			);
 		}
@@ -2253,19 +2309,21 @@
 
 	function findSlideNeighbors(item: TimelineItem): SlideNeighbors {
 		const end = item.from + item.durationInFrames;
+		const index = timelineItemRangeIndexes.get(item.trackId) ?? EMPTY_TIMELINE_ITEM_RANGE_INDEX;
+		const leftCandidates = queryTimelineItemRange(index, {
+			start: item.from - 1,
+			end: item.from
+		});
+		const rightCandidates = queryTimelineItemRange(index, { start: end, end: end + 1 });
 		return {
 			left:
-				timelineStore.items.find(
+				leftCandidates.find(
 					(candidate) =>
-						candidate.id !== item.id &&
-						candidate.trackId === item.trackId &&
-						candidate.from + candidate.durationInFrames === item.from
+						candidate.id !== item.id && candidate.from + candidate.durationInFrames === item.from
 				) ?? null,
 			right:
-				timelineStore.items.find(
-					(candidate) =>
-						candidate.id !== item.id && candidate.trackId === item.trackId && candidate.from === end
-				) ?? null
+				rightCandidates.find((candidate) => candidate.id !== item.id && candidate.from === end) ??
+				null
 		};
 	}
 
@@ -2609,6 +2667,7 @@
 			...(slideNeighbors?.left ? [slideNeighbors.left.id] : []),
 			...(slideNeighbors?.right ? [slideNeighbors.right.id] : [])
 		];
+		freezeTimelineIndexes([id, ...excludedIds]);
 		event.preventDefault();
 		drag = {
 			kind,
@@ -2675,7 +2734,7 @@
 			activeSnapTarget = plan.snapTarget;
 			if (plan.delta === drag.trackPushDelta) return;
 			drag.trackPushDelta = plan.delta;
-			timelineStore._moveItems(plan.moves);
+			previewMoveItems(plan.moves);
 			return;
 		}
 		if (drag.kind === 'move') {
@@ -2690,7 +2749,7 @@
 				: { snappedFrame: proposed, snapTarget: null, didSnap: false };
 			const from = Math.max(0, snap.snappedFrame);
 			activeSnapTarget = from === snap.snappedFrame ? snap.snapTarget : null;
-			timelineStore._moveItems(
+			previewMoveItems(
 				planLinkedMoveGesture(drag.original, from, drag.editItems, drag.selectedItemIds)
 			);
 			return;
@@ -2710,7 +2769,7 @@
 					anchorPatch?.sourceStart !== undefined &&
 					anchorPatch.sourceStart !== (drag.original.sourceStart ?? 0);
 				if (hasSourceChange) {
-					timelineStore._updateItems(updates);
+					previewUpdateItems(updates);
 					ensureEditPreviewPublished();
 				}
 			}
@@ -2732,7 +2791,7 @@
 			const hasSlideChange =
 				plan.itemPatch.from !== undefined && plan.itemPatch.from !== drag.original.from;
 			if (hasSlideChange) {
-				timelineStore._updateItems([
+				previewUpdateItems([
 					{ id: drag.id, patch: plan.itemPatch },
 					...(drag.slideLeft && plan.leftPatch
 						? [{ id: drag.slideLeft.id, patch: plan.leftPatch }]
@@ -2759,7 +2818,7 @@
 			);
 			if (!plan) return;
 			activeSnapTarget = plan.snapTarget;
-			timelineStore._updateItems([
+			previewUpdateItems([
 				{ id: drag.id, patch: plan.patch },
 				...(plan.linkedPatches ?? []),
 				...plan.moves.map((move) => ({
@@ -2786,7 +2845,7 @@
 				plan.patch.durationInFrames !== undefined &&
 				plan.patch.durationInFrames !== drag.original.durationInFrames;
 			if (hasRippleChange) {
-				timelineStore._updateItems([
+				previewUpdateItems([
 					{ id: drag.id, patch: plan.patch },
 					...(plan.linkedPatches ?? []),
 					...plan.moves.map((move) => ({
@@ -2846,7 +2905,7 @@
 						plan.rightPatch.durationInFrames !== right.durationInFrames);
 				if (hasRollingChange) {
 					activeSnapTarget = plan.snapTarget;
-					timelineStore._updateItems([
+					previewUpdateItems([
 						{ id: left.id, patch: plan.leftPatch },
 						{ id: right.id, patch: plan.rightPatch },
 						...(plan.linkedPatches ?? [])
@@ -2873,7 +2932,7 @@
 			)
 		);
 		activeSnapTarget = plan.snapTarget;
-		timelineStore._updateItems([{ id: drag.id, patch: plan.patch }, ...(plan.linkedPatches ?? [])]);
+		previewUpdateItems([{ id: drag.id, patch: plan.patch }, ...(plan.linkedPatches ?? [])]);
 	}
 
 	function commandTypeFor(kind: TimelineDragKind, rolling = false, ripple = false): string {
@@ -2894,7 +2953,10 @@
 		if (completed.rafId !== null) cancelAnimationFrame(completed.rafId);
 		if (cancelled) {
 			restoreSnapshot(completed.beforeSnapshot);
-		} else if (completed.ripple) {
+		} else {
+			timelineStore._commitPreviewItems();
+		}
+		if (!cancelled && completed.ripple) {
 			const current = timelineStore.itemById.get(completed.id);
 			const shift = current ? current.durationInFrames - completed.original.durationInFrames : 0;
 			if (shift !== 0) {
@@ -2946,6 +3008,7 @@
 			onedit();
 		}
 		drag = null;
+		releaseTimelineIndexes();
 		activeSnapTarget = null;
 		window.removeEventListener('pointermove', onPointerMove);
 		window.removeEventListener('pointerup', onPointerUp);
@@ -2979,7 +3042,7 @@
 			return;
 		if (!enabled && drag.rippleMoveIds.length > 0) {
 			const originalById = new Map(drag.editItems.map((item) => [item.id, item]));
-			timelineStore._moveItems(
+			previewMoveItems(
 				drag.rippleMoveIds.flatMap((id) => {
 					const original = originalById.get(id);
 					return original ? [{ id, from: original.from }] : [];
