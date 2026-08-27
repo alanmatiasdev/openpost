@@ -66,9 +66,9 @@
 				#{index + 1}
 			</button>
 
-			<div class="flex flex-1 flex-col gap-2">
+			<div class="flex min-w-0 flex-1 flex-col gap-2">
 				{#if src}
-					<span class="text-xs font-medium text-muted-foreground"
+					<span class="truncate text-xs font-medium text-muted-foreground"
 						>{m.quick_cut_source_label({
 							index: sources.findIndex((s) => s.id === seg.sourceId) + 1
 						})} · {src.name}</span

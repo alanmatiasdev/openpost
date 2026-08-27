@@ -2,6 +2,30 @@ import { expect, test } from "@playwright/test";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
+async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
+  const { documentOverflows, offenders } = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    const offenders = Array.from(document.body.querySelectorAll<HTMLElement>("*"))
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 0 && rect.right > viewportWidth + 1)
+      .map(({ element, rect }) => ({
+        tag: element.tagName.toLowerCase(),
+        label: element.getAttribute("aria-label"),
+        className: element.className.toString().slice(0, 160),
+        text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 120),
+        left: Math.round(rect.left),
+        right: Math.round(rect.right),
+        width: Math.round(rect.width),
+      }));
+    return {
+      documentOverflows: document.documentElement.scrollWidth > viewportWidth,
+      offenders,
+    };
+  });
+  expect(documentOverflows).toBe(false);
+  expect(offenders).toEqual([]);
+}
+
 test("quick cut loads with accessible controls and no overflow at 320/390/desktop", async ({
   page,
 }) => {
@@ -22,10 +46,7 @@ test("quick cut loads with accessible controls and no overflow at 320/390/deskto
     const box = await openBtn.boundingBox();
     expect(box).not.toBeNull();
     if (box) expect(box.height).toBeGreaterThanOrEqual(44);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    );
-    expect(overflow).toBe(false);
+    await expectNoHorizontalOverflow(page);
     await page.waitForTimeout(200);
     expect(errors.filter((e) => !e.includes("Failed to load resource"))).toEqual([]);
   }
@@ -51,14 +72,26 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   );
 
   await expect(page.getByText(/prores-proxy\.mov/i).first()).toBeVisible();
-  await page.getByRole("button", { name: /^I · In$/i }).click();
+  await page.getByRole("button", { name: /^I · Mark in$/i }).click();
   await page.locator("video").evaluate((video: HTMLVideoElement) => {
     video.currentTime = Math.min(0.08, video.duration || 0.08);
     video.dispatchEvent(new Event("timeupdate"));
   });
-  await page.getByRole("button", { name: /^O · Out$/i }).click();
+  await page.getByRole("button", { name: /^O · Mark out$/i }).click();
   await page.getByRole("button", { name: /Add segment/i }).click();
   await expect(page.getByRole("button", { name: /Segment 1/i })).toBeVisible();
+
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 390, height: 844 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: path.resolve(`frontend/.svelte-kit/openpost-quick-cut-${viewport.width}.png`),
+    });
+  }
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).first().click();
@@ -72,10 +105,6 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await expect(page.getByText(/Choose an OpenPost workspace before sending/i)).toBeVisible();
 
   await page.setViewportSize({ width: 320, height: 800 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    ),
-  ).toBe(false);
+  await expectNoHorizontalOverflow(page);
   expect(consoleErrors.filter((error) => !error.includes("Failed to load resource"))).toEqual([]);
 });

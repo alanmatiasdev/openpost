@@ -32,13 +32,13 @@
 	const visibleSegments = $derived(segments.filter((s) => s.sourceId === activeSource?.id));
 </script>
 
-<div class="space-y-2">
+<div class="min-w-0 space-y-2">
 	{#if activeSource}
-		<div class="flex items-center justify-between text-xs text-muted-foreground">
-			<span
+		<div class="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
+			<span class="min-w-0 truncate"
 				>{m.quick_cut_source_label({ index: 1 })} · {activeSource.name} · {activeSource.width}×{activeSource.height}</span
 			>
-			<span class="font-mono tabular-nums">{activeSource.duration.toFixed(1)}s</span>
+			<span class="shrink-0 font-mono tabular-nums">{activeSource.duration.toFixed(1)}s</span>
 		</div>
 		<div
 			class="relative h-14 w-full overflow-hidden rounded-xl border bg-card shadow-inner"

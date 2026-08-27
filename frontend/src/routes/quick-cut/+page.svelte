@@ -723,7 +723,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		</div>
 	</header>
 
-	<main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-3 sm:p-4">
+	<main class="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col gap-4 p-3 sm:p-4">
 		{#if sources.length === 0}
 			<div
 				class="mx-auto mt-10 max-w-xl rounded-2xl border border-dashed bg-card p-8 text-center shadow-sm sm:mt-16"
@@ -743,18 +743,18 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 				<p class="mt-4 text-xs text-muted-foreground">{m.quick_cut_workspace_hint()}</p>
 			</div>
 		{:else}
-			<div class="flex flex-wrap gap-2">
+			<div class="flex min-w-0 flex-wrap gap-2">
 				{#each sources as src, idx (src.id)}
 					<button
 						type="button"
-						class="flex min-h-11 items-center gap-2 rounded-full border px-3 py-1 text-xs {activeSourceId ===
+						class="flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs {activeSourceId ===
 						src.id
 							? 'border-primary bg-primary text-primary-foreground'
 							: 'bg-card hover:bg-accent'}"
 						aria-pressed={activeSourceId === src.id}
 						onclick={() => switchActiveSource(src.id)}
 					>
-						<span class="font-medium"
+						<span class="truncate font-medium"
 							>{m.quick_cut_source_label({ index: idx + 1 })} · {src.name}</span
 						>
 						{#if !src.file && !src.handle}
@@ -769,8 +769,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 				>
 			</div>
 
-			<div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-				<div class="flex flex-col gap-3">
+			<div class="grid min-w-0 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+				<div class="flex min-w-0 flex-col gap-3">
 					<!-- svelte-ignore a11y_media_has_caption -- trim preview; captions are not part of lossless cuts -->
 					<video
 						bind:this={videoEl}
@@ -879,7 +879,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 					{/if}
 				</div>
 
-				<div class="flex flex-col gap-4">
+				<div class="flex min-w-0 flex-col gap-4">
 					<div class="rounded-xl border bg-card p-4 shadow-sm">
 						<h2 class="text-sm font-semibold">
 							{m.quick_cut_segments_label()} · {enabledSegments.length}
@@ -1005,12 +1005,14 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 					<ul class="space-y-2">
 						{#each segments as seg, idx (seg.id)}
 							{@const src = sources.find((s) => s.id === seg.sourceId)}
-							<li class="flex items-center justify-between rounded-lg border bg-card p-2">
-								<span class="font-mono text-xs"
+							<li
+								class="flex min-w-0 flex-col gap-2 rounded-lg border bg-card p-2 sm:flex-row sm:items-center sm:justify-between"
+							>
+								<span class="min-w-0 font-mono text-xs break-all"
 									>{idx + 1}. {src?.name ?? ''}
 									{formatTimecode(seg.start)} → {formatTimecode(seg.end)}</span
 								>
-								<div class="flex gap-1">
+								<div class="flex shrink-0 gap-1">
 									<Button
 										size="xs"
 										variant="ghost"
