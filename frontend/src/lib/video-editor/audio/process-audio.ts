@@ -3,6 +3,7 @@ import { applyAudioEffectStages } from './audio-effects';
 import type { AudioEffect } from './audio-effects';
 import {
 	applyNoiseReduction,
+	applyNoiseReductionSync,
 	type ResolvedAudioNoiseReductionSettings
 } from './audio-noise-reduction';
 import { getAudioPitchRatioFromSemitones, isAudioPitchShiftActive } from './audio-pitch';
@@ -33,12 +34,23 @@ export async function processAudioChannels(
 	let processed = channels;
 	// Noise reduction before time-stretch preserves temporal characteristics.
 	if (options.noiseReduction) {
-		processed = applyNoiseReduction(
-			processed,
-			options.sampleRate,
-			options.noiseReduction,
-			options.signal
-		);
+		const total = processed[0]?.length ?? 0;
+		// Use cooperative async for long clips to keep UI responsive; sync fallback for short
+		if (total > 48000 * 60 * 2) {
+			processed = await applyNoiseReduction(
+				processed,
+				options.sampleRate,
+				options.noiseReduction,
+				options.signal
+			);
+		} else {
+			processed = applyNoiseReductionSync(
+				processed,
+				options.sampleRate,
+				options.noiseReduction,
+				options.signal
+			);
+		}
 	}
 	if (
 		processed.length > 0 &&

@@ -46,6 +46,14 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import { Label } from '$lib/components/ui/label';
 
+	let nrDraftAmount = $state<number | null>(null);
+	// Reset draft when selection or persisted amount changes
+	$effect(() => {
+		void audioItem?.audioNoiseReductionAmount;
+		void audioItem?.audioNoiseReductionEnabled;
+		nrDraftAmount = null;
+	});
+
 	let {
 		itemId,
 		onedit,
@@ -837,27 +845,28 @@
 									>{m.video_editor_audio_noise_amount()}</Label
 								>
 								<Slider
-									value={nr.amount}
+									value={nrDraftAmount ?? nr.amount}
 									min={0}
 									max={100}
 									step={1}
 									disabled={!nr.enabled}
 									ariaLabel={m.video_editor_audio_noise_aria()}
 									onValueChange={(v) => {
+										nrDraftAmount = clampNoiseReductionAmount(v);
+									}}
+									onValueCommit={(v) => {
 										const clamped = clampNoiseReductionAmount(v);
+										nrDraftAmount = null;
 										commitAudioPatch({
 											audioNoiseReductionAmount: clamped,
 											audioNoiseReductionEnabled: true
 										});
 									}}
-									onValueCommit={(v) =>
-										commitAudioPatch({
-											audioNoiseReductionAmount: clampNoiseReductionAmount(v),
-											audioNoiseReductionEnabled: true
-										})}
 								/>
 								<p class="mt-1 text-[10px] leading-snug text-white/40">
-									{m.video_editor_audio_noise_amount_hint({ amount: String(nr.amount) })}
+									{m.video_editor_audio_noise_amount_hint({
+										amount: String(nrDraftAmount ?? nr.amount)
+									})}
 								</p>
 							</div>
 						{/if}

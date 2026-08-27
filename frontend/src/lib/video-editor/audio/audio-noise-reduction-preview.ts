@@ -47,6 +47,7 @@ export async function processPreviewNoiseReduction(
 
 	return new Promise((resolve, reject) => {
 		const handleAbort = (): void => {
+			cleanup();
 			// SAFETY: abort payload matches worker's typed discriminant.
 			w.postMessage({
 				type: 'abort',
