@@ -2,6 +2,9 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const runRealMusicModel = process.env.VITE_OPENPOST_REAL_MUSIC_TEST === '1';
+const browserArgs = ['--enable-unsafe-webgpu'];
+if (runRealMusicModel) browserArgs.push('--unlimited-storage');
 
 export default defineConfig({
 	test: {
@@ -20,10 +23,10 @@ export default defineConfig({
 						provider: playwright({
 							launchOptions: {
 								executablePath: chromiumExecutablePath,
-								args: ['--enable-unsafe-webgpu']
+								args: browserArgs
 							}
 						}),
-						instances: [{ browser: 'chromium', headless: true }]
+						instances: [{ browser: 'chromium', headless: !runRealMusicModel }]
 					},
 					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
 					exclude: ['src/lib/server/**']
