@@ -35,13 +35,23 @@ const itemSchema = z.looseObject({
 	type: z.enum(TIMELINE_ITEM_KINDS)
 });
 
-const transitionSchema = z.looseObject({
-	id: requiredText,
-	type: z.enum(['crossfade', 'fade-black']),
-	durationInFrames: nonNegativeNumber,
-	fromItemId: requiredText,
-	toItemId: requiredText
-});
+const transitionSchema = z
+	.looseObject({
+		id: requiredText,
+		type: z.enum(['crossfade', 'fade-black']),
+		durationInFrames: nonNegativeNumber,
+		fromItemId: requiredText.optional(),
+		toItemId: requiredText.optional(),
+		leftClipId: requiredText.optional(),
+		rightClipId: requiredText.optional(),
+		trackId: requiredText.optional()
+	})
+	.refine(
+		(value) =>
+			(Boolean(value.fromItemId) && Boolean(value.toItemId)) ||
+			(Boolean(value.leftClipId) && Boolean(value.rightClipId)),
+		{ message: 'A transition must identify both clips.' }
+	);
 
 const markerSchema = z.looseObject({
 	id: requiredText,

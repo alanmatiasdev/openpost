@@ -22,6 +22,8 @@ import { editorSettings } from './settings/editor-settings.svelte';
 import { mediaRecovery } from './media/media-recovery.svelte';
 import { PeriodicAutosaveController } from './settings/periodic-autosave';
 import { getNextShuttleRate, type ShuttleDirection } from './preview/shuttle';
+import { unsupportedProjectSchemaVersion } from './project/project-editability';
+import { m } from '$lib/paraglide/messages';
 
 interface ReactiveTransportState {
 	playing: boolean;
@@ -107,6 +109,14 @@ class EditorSession {
 			const project = await getProject(projectId);
 			if (!project) {
 				this.loadError = 'Project not found';
+				return;
+			}
+			const unsupportedSchema = unsupportedProjectSchemaVersion(project);
+			if (unsupportedSchema !== null) {
+				this.project = null;
+				this.loadError = m.video_editor_project_newer_schema({
+					version: String(unsupportedSchema)
+				});
 				return;
 			}
 			this.project = {

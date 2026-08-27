@@ -17,6 +17,7 @@ import { clampBackground } from '../backgrounds/types';
 import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-groups';
 import { m } from '$lib/paraglide/messages';
 import { normalizeAudioEffects } from '../audio/audio-effects';
+import { convertFreeCutProjectDocument, isFreeCutProjectDocument } from './freecut-compat';
 
 export { CURRENT_SCHEMA_VERSION } from './migrations';
 
@@ -83,6 +84,7 @@ export function createBlankProject(name: string = m.video_editor_project_untitle
 		updatedAt: now,
 		duration: 0,
 		schemaVersion: CURRENT_SCHEMA_VERSION,
+		schemaFamily: 'openpost',
 		metadata: {
 			width: DEFAULT_PROJECT_WIDTH,
 			height: DEFAULT_PROJECT_HEIGHT,
@@ -279,7 +281,7 @@ function normalizeSubComposition(
 	const durationInFrames = Math.max(0, composition.durationInFrames ?? 0, contentDuration);
 	return {
 		...composition,
-		editorKind: 'sequence',
+		editorKind: composition.editorKind === 'composite-2d' ? 'composite-2d' : 'sequence',
 		items,
 		tracks,
 		transitions: composition.transitions ?? [],
@@ -309,6 +311,23 @@ export interface MigratedProject {
 export function migrateProjectDocument(stored: Project): MigratedProject {
 	// SAFETY: documents without schemaVersion are v1 by contract.
 	const version = Number.isFinite(stored.schemaVersion) ? (stored.schemaVersion ?? 1) : 1;
+	if (isFreeCutProjectDocument(stored)) {
+		const normalized = normalizeProject(
+			convertFreeCutProjectDocument(stored, CURRENT_SCHEMA_VERSION)
+		);
+		normalized.warnings.unshift({
+			code: 'FREECUT_SCHEMA_IMPORTED',
+			message: `Converted FreeCut schema ${version} to the OpenPost project format.`
+		});
+		return {
+			project: normalized.project,
+			migrated: true,
+			appliedMigrations: [CURRENT_SCHEMA_VERSION],
+			fromVersion: version,
+			toVersion: CURRENT_SCHEMA_VERSION,
+			warnings: normalized.warnings
+		};
+	}
 	if (version > CURRENT_SCHEMA_VERSION) {
 		return {
 			project: stored,

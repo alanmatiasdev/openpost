@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "“{name}”将移入此工作区的回收站。清空回收站之前媒体仍会保留。",
 	"video_editor_projects_empty": "还没有项目。创建一个即可开始剪辑。",
 	"video_editor_project_load_failed": "无法从工作区文件夹加载项目。",
+	"video_editor_project_newer_schema": "此项目使用较新的编辑器格式（架构 {version}）。请先更新 OpenPost，再进行编辑。",
 	"video_editor_saved": "所有更改已保存到本地",
 	"video_editor_media_pool": "媒体池",
 	"video_editor_mobile_panels": "编辑器面板",

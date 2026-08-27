@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "„{name}“ wird in den Papierkorb dieses Workspaces verschoben. Medien bleiben erhalten, bis der Papierkorb geleert wird.",
 	"video_editor_projects_empty": "Noch keine Projekte. Erstelle eines, um mit dem Schneiden zu beginnen.",
 	"video_editor_project_load_failed": "Das Projekt konnte nicht aus dem Workspace-Ordner geladen werden.",
+	"video_editor_project_newer_schema": "Dieses Projekt verwendet ein neueres Editorformat (Schema {version}). Aktualisiere OpenPost, bevor du es bearbeitest.",
 	"video_editor_saved": "Alle Änderungen lokal gespeichert",
 	"video_editor_media_pool": "Medienpool",
 	"video_editor_mobile_panels": "Editor-Bereiche",

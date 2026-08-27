@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "\"{name}\" bu çalışma alanının çöp kutusuna taşınır. Medya, çöp kutusu boşaltılana kadar kalır.",
 	"video_editor_projects_empty": "Henüz proje yok. Kesime başlamak için bir tane oluşturun.",
 	"video_editor_project_load_failed": "Proje çalışma alanı klasöründen yüklenemedi.",
+	"video_editor_project_newer_schema": "Bu proje daha yeni bir düzenleyici biçimi kullanıyor (şema {version}). Düzenlemeden önce OpenPost'u güncelleyin.",
 	"video_editor_saved": "Tüm değişiklikler yerel olarak kaydedildi",
 	"video_editor_media_pool": "Medya havuzu",
 	"video_editor_mobile_panels": "Düzenleyici panelleri",

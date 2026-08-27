@@ -192,7 +192,7 @@ describe('migrateProjectDocument', () => {
 		];
 
 		const result = migrateProjectDocument(stored);
-		expect(result.appliedMigrations).toEqual([2, 3, 4]);
+		expect(result.appliedMigrations).toEqual([2, 3, 4, 5]);
 		expect(result.project.timeline?.tracks.map((track) => [track.id, track.order])).toEqual([
 			['earlier', 0],
 			['later', 1]

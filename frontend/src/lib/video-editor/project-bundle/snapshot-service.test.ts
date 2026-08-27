@@ -105,6 +105,36 @@ describe('project snapshot service', () => {
 		expect(testRuntime.associations).toEqual(['current-media']);
 	});
 
+	it('imports FreeCut schema 15 snapshots through the compatibility converter', async () => {
+		const testRuntime = runtime();
+		const snapshot = await testRuntime.service.exportProjectSnapshot(testRuntime.source.id);
+		delete snapshot.project.schemaFamily;
+		snapshot.project.schemaVersion = 15;
+		snapshot.project.timeline!.transitions = [
+			{
+				id: 'freecut-transition',
+				type: 'crossfade',
+				durationInFrames: 12,
+				leftClipId: 'clip',
+				rightClipId: 'clip',
+				trackId: 'track-video-main'
+			} as unknown as NonNullable<Project['timeline']>['transitions'][number]
+		];
+		snapshot.checksum = await computeSnapshotChecksum(snapshot);
+
+		const result = await testRuntime.service.importProjectSnapshot(snapshot);
+
+		expect(result.project.schemaVersion).toBe(testRuntime.source.schemaVersion);
+		expect(result.project.schemaFamily).toBe('openpost');
+		expect(result.project.timeline?.transitions?.[0]).toMatchObject({
+			fromItemId: result.project.timeline.items[0]?.id,
+			toItemId: result.project.timeline.items[0]?.id
+		});
+		expect(result.warnings).toContain(
+			'Converted FreeCut schema 15 to the OpenPost project format.'
+		);
+	});
+
 	it('uses an explicit bundle media map without guessing from workspace metadata', async () => {
 		const bundledMedia = media('bundled-media', 'different-hash');
 		const testRuntime = runtime({ available: [bundledMedia] });

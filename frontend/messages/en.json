@@ -5918,6 +5918,7 @@
 	"video_editor_project_delete_body": "\"{name}\" moves to this workspace's trash. Media stays until the trash is emptied.",
 	"video_editor_projects_empty": "No projects yet. Create one to start cutting.",
 	"video_editor_project_load_failed": "The project could not be loaded from the workspace folder.",
+	"video_editor_project_newer_schema": "This project uses a newer editor format (schema {version}). Update OpenPost before editing it.",
 	"video_editor_saved": "All changes saved locally",
 	"video_editor_media_pool": "Media pool",
 	"video_editor_mobile_panels": "Editor panels",

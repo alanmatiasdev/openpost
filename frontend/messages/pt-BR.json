@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "\"{name}\" vai para a lixeira deste workspace. A mídia permanece até a lixeira ser esvaziada.",
 	"video_editor_projects_empty": "Nenhum projeto ainda. Crie um para começar a editar.",
 	"video_editor_project_load_failed": "Não foi possível carregar o projeto da pasta de edição.",
+	"video_editor_project_newer_schema": "Este projeto usa um formato de editor mais recente (esquema {version}). Atualize o OpenPost antes de editá-lo.",
 	"video_editor_saved": "Tudo salvo localmente",
 	"video_editor_media_pool": "Biblioteca de mídia",
 	"video_editor_mobile_panels": "Painéis do editor",

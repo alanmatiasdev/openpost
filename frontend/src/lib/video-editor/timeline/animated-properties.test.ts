@@ -40,6 +40,7 @@ describe('animatable properties', () => {
 
 	it('exposes typography lanes only on text items', () => {
 		const properties = getAnimatablePropertiesForItem(item('text'));
+		expect(properties).toContain('textStyleScale');
 		expect(properties).toContain('fontSize');
 		expect(properties).toContain('textShadowBlur');
 		expect(properties).toContain('strokeWidth');
@@ -120,9 +121,11 @@ describe('resolveAnimatedItemAt', () => {
 		};
 		const text: TimelineItem = {
 			...item('text'),
+			textStyleScale: 1,
 			fontSize: 40,
 			textShadow: { blur: 0, color: '#000000', offsetX: 0, offsetY: 0 },
 			keyframes: {
+				textStyleScale: { frames: [0, 30], values: [1, 2] },
 				fontSize: { frames: [0, 30], values: [40, 80] },
 				textShadowBlur: { frames: [0, 30], values: [0, 20] }
 			}
@@ -133,6 +136,7 @@ describe('resolveAnimatedItemAt', () => {
 
 		expect(resolvedVideo.transform).toMatchObject({ x: 40, opacity: 0.5 });
 		expect(resolvedVideo.crop?.left).toBe(50);
+		expect(resolvedText.textStyleScale).toBe(1.5);
 		expect(resolvedText.fontSize).toBe(60);
 		expect(resolvedText.textShadow).toMatchObject({ blur: 10, color: '#000000' });
 		expect(video.transform).toMatchObject({ x: 10, opacity: 1 });

@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "\"{name}\" se mueve a la basura de este espacio de trabajo. Los medios se quedan hasta que la basura se vacía.",
 	"video_editor_projects_empty": "No hay proyectos todavía. Cree uno para empezar a cortar.",
 	"video_editor_project_load_failed": "El proyecto no se pudo cargar desde la carpeta del espacio de trabajo.",
+	"video_editor_project_newer_schema": "Este proyecto usa un formato de editor más reciente (esquema {version}). Actualiza OpenPost antes de editarlo.",
 	"video_editor_saved": "Todos los cambios guardados localmente",
 	"video_editor_media_pool": "Grupo de medios de comunicación",
 	"video_editor_mobile_panels": "Paneles de edición",

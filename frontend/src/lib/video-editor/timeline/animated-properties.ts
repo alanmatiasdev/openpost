@@ -68,6 +68,7 @@ const CROP_PROPERTIES: KeyframeProperty[] = VIDEO_PROPERTIES.filter(
 );
 
 const TEXT_PROPERTIES: KeyframeProperty[] = [
+	'textStyleScale',
 	'fontSize',
 	'fontWeight',
 	'lineHeight',
@@ -298,6 +299,7 @@ function applyResolvedValue(
 		case 'cropSoftness':
 			return { ...item, crop: { ...cropOrDefault(item), softness: value } };
 		case 'volume':
+		case 'textStyleScale':
 		case 'fontSize':
 		case 'fontWeight':
 		case 'lineHeight':

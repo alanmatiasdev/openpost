@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "「{name}」をこのワークスペースのゴミ箱へ移動します。メディアはゴミ箱を空にするまで残ります。",
 	"video_editor_projects_empty": "プロジェクトはまだありません。作成して編集を始めましょう。",
 	"video_editor_project_load_failed": "ワークスペースフォルダからプロジェクトを読み込めませんでした。",
+	"video_editor_project_newer_schema": "このプロジェクトは新しいエディター形式（スキーマ {version}）を使用しています。編集する前に OpenPost を更新してください。",
 	"video_editor_saved": "すべての変更をローカルに保存しました",
 	"video_editor_media_pool": "メディアプール",
 	"video_editor_mobile_panels": "エディタパネル",

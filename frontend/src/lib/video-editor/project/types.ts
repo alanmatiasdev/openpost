@@ -313,6 +313,7 @@ export type BuiltInKeyframeProperty =
 	| 'cropBottom'
 	| 'cropSoftness'
 	| 'volume'
+	| 'textStyleScale'
 	| 'fontSize'
 	| 'fontWeight'
 	| 'lineHeight'
@@ -897,6 +898,8 @@ export interface Project {
 	 * Schema version for migrations. Projects without this field are version 1.
 	 */
 	schemaVersion?: number;
+	/** Distinguishes OpenPost's schema history from compatible foreign project formats. */
+	schemaFamily?: 'openpost';
 	thumbnailId?: string;
 	metadata: ProjectResolution;
 	timeline?: ProjectTimeline;

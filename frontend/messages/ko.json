@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "\"{name}\"이(가) 이 워크스페이스의 휴지통으로 이동합니다. 미디어는 휴지통을 비우기 전까지 유지됩니다.",
 	"video_editor_projects_empty": "아직 프로젝트가 없습니다. 하나 만들어 편집을 시작하세요.",
 	"video_editor_project_load_failed": "워크스페이스 폴더에서 프로젝트를 불러오지 못했습니다.",
+	"video_editor_project_newer_schema": "이 프로젝트는 더 최신 편집기 형식(스키마 {version})을 사용합니다. 편집하기 전에 OpenPost를 업데이트하세요.",
 	"video_editor_saved": "모든 변경 사항이 로컬에 저장되었습니다",
 	"video_editor_media_pool": "미디어 풀",
 	"video_editor_mobile_panels": "편집기 패널",

@@ -161,6 +161,7 @@
 		if (property === 'volume') return 'audio';
 		if (
 			[
+				'textStyleScale',
 				'fontSize',
 				'fontWeight',
 				'lineHeight',

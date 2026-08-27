@@ -1,6 +1,6 @@
 import type { Project, ProjectTimeline, TimelineItem, TimelineTrack } from './types';
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export interface ProjectMigration {
 	version: number;
@@ -103,6 +103,14 @@ const PROJECT_MIGRATIONS: ReadonlyMap<number, ProjectMigration> = new Map([
 					}
 				};
 			}
+		}
+	],
+	[
+		5,
+		{
+			version: 5,
+			description: 'Identify the OpenPost project schema family',
+			migrate: (project) => ({ ...project, schemaFamily: 'openpost' })
 		}
 	]
 ]);

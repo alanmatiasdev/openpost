@@ -5913,6 +5913,7 @@
 	"video_editor_project_delete_body": "« {name} » rejoint la corbeille de cet espace de travail. Les médias restent jusqu'à ce que la corbeille soit vidée.",
 	"video_editor_projects_empty": "Aucun projet pour le moment. Créez-en un pour commencer à monter.",
 	"video_editor_project_load_failed": "Impossible de charger le projet depuis le dossier de l'espace de travail.",
+	"video_editor_project_newer_schema": "Ce projet utilise un format d'éditeur plus récent (schéma {version}). Mettez OpenPost à jour avant de le modifier.",
 	"video_editor_saved": "Toutes les modifications sont enregistrées localement",
 	"video_editor_media_pool": "Réserve de médias",
 	"video_editor_mobile_panels": "Panneaux de l'éditeur",
