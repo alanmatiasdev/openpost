@@ -101,7 +101,7 @@ describe('publicationDraftCopy', () => {
 					]
 				}
 			]
-		} as Publication;
+		} satisfies Publication;
 
 		const copy = publicationDraftCopy(source);
 
