@@ -109,6 +109,10 @@
 		transcriptionService
 	} from '$lib/video-editor/transcript/transcription-service.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import {
+		createAssetLibrarySelectionController,
+		type AssetLibrarySelection
+	} from '$lib/video-editor/media/asset-library-selection';
 
 	let {
 		projectId,
@@ -159,6 +163,7 @@
 	let mediaDeleteTargets = $state<MediaMetadata[]>([]);
 	let mediaDeletePlan = $state<MediaDeletionPlan | null>(null);
 	let mediaDeleteDialogOpen = $state(false);
+	let assetMarqueeSelection = $state<AssetLibrarySelection | null>(null);
 	const ownedThumbnailUrls = new Map<string, string>();
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
@@ -212,6 +217,42 @@
 		clearSequenceSelection();
 	}
 
+	function assetMarqueePreviewSelected(kind: 'media' | 'sequence', id: string): boolean {
+		return Boolean(
+			kind === 'media'
+				? assetMarqueeSelection?.mediaIds.has(id)
+				: assetMarqueeSelection?.sequenceIds.has(id)
+		);
+	}
+
+	const assetSelectionController = createAssetLibrarySelectionController({
+		getSelection: () => ({
+			mediaIds: new Set(selectedMediaIds),
+			sequenceIds: new Set(selectedSequenceIds)
+		}),
+		getVisibleSelection: () => ({
+			mediaIds: new Set(visibleMedia.map((media) => media.id)),
+			sequenceIds: new Set(sequenceStore.compositions.map((sequence) => sequence.id))
+		}),
+		setSelection: (selection) => {
+			selectedMediaIds = selection.mediaIds;
+			selectedSequenceIds = selection.sequenceIds;
+			selectionAnchorId = null;
+			sequenceSelectionAnchorId = null;
+		},
+		clearSelection: clearAssetSelection,
+		requestDelete: confirmSelectedAssetDelete,
+		interactionBlocked: () =>
+			Boolean(urlImportOpen || mediaDeleteDialogOpen || deleteDialogOpen || editingSequenceId),
+		onMarqueeSelectionChange: (selection) => {
+			assetMarqueeSelection = selection;
+		}
+	});
+
+	function assetSelectionSurfaceAction(node: HTMLElement): { destroy(): void } {
+		return assetSelectionController.connect(node);
+	}
+
 	function selectMedia(event: MouseEvent, media: MediaMetadata): void {
 		const next = new Set(selectedMediaIds);
 		if (event.shiftKey && selectionAnchorId) {
@@ -235,6 +276,7 @@
 		}
 		selectedMediaIds = next;
 		selectionAnchorId = media.id;
+		assetSelectionController.focus();
 	}
 
 	function prepareMediaContextSelection(mediaId: string): void {
@@ -271,6 +313,7 @@
 		}
 		selectedSequenceIds = next;
 		sequenceSelectionAnchorId = sequence.id;
+		assetSelectionController.focus();
 	}
 
 	function prepareSequenceContextSelection(sequenceId: string): void {
@@ -990,9 +1033,23 @@
 	}
 </script>
 
-<div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+<div
+	class="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--video-editor-focus)]"
+	role="region"
+	aria-label={m.video_editor_assets()}
+	tabindex="-1"
+	data-testid="asset-selection-surface"
+	use:assetSelectionSurfaceAction
+>
+	<div
+		class="pointer-events-none absolute z-20 rounded-sm border border-[var(--video-editor-focus)] bg-[var(--video-editor-focus)]/12 shadow-[0_0_0_1px_oklch(0.12_0.01_50_/_0.5)]"
+		data-asset-marquee
+		aria-hidden="true"
+		hidden
+	></div>
 	<div
 		class="sticky top-0 z-10 -mx-2 space-y-1.5 border-b border-[oklch(0.25_0.012_55)] bg-[oklch(0.135_0.008_50)] px-2 pb-2"
+		data-marquee-ignore
 	>
 		<div class="flex items-center gap-1.5">
 			<label class="relative min-w-0 flex-1">
@@ -1158,6 +1215,9 @@
 							{#snippet child({ props })}
 								<li
 									{...props}
+									data-asset-row
+									data-asset-sequence-id={sequence.id}
+									data-marquee-selected={assetMarqueePreviewSelected('sequence', sequence.id)}
 									oncontextmenu={(event) => {
 										prepareSequenceContextSelection(sequence.id);
 										props.oncontextmenu?.(event);
@@ -1168,7 +1228,7 @@
 									title={m.video_editor_media_drag_hint()}
 									class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing {selectedSequenceIds.has(
 										sequence.id
-									)
+									) || assetMarqueePreviewSelected('sequence', sequence.id)
 										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
 										: ''}"
 								>
@@ -1316,6 +1376,9 @@
 							{#snippet child({ props })}
 								<li
 									{...props}
+									data-asset-row
+									data-asset-media-id={id}
+									data-marquee-selected={assetMarqueePreviewSelected('media', id)}
 									oncontextmenu={(event) => {
 										prepareMediaContextSelection(id);
 										props.oncontextmenu?.(event);
@@ -1331,7 +1394,7 @@
 											: undefined}
 									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {selectedMediaIds.has(
 										id
-									)
+									) || assetMarqueePreviewSelected('media', id)
 										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
 										: ''} {entry?.status === 'ready' && !issue
 										? 'cursor-grab active:cursor-grabbing'

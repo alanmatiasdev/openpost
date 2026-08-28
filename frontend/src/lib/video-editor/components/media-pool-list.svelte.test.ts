@@ -65,6 +65,30 @@ function linkedFileHandle(name: string, file: File): FileSystemFileHandle {
 	return handle;
 }
 
+function pointer(
+	target: EventTarget,
+	type: 'pointerdown' | 'pointermove' | 'pointerup',
+	x: number,
+	y: number,
+	options: { metaKey?: boolean; ctrlKey?: boolean } = {}
+): void {
+	target.dispatchEvent(
+		new PointerEvent(type, {
+			bubbles: true,
+			button: 0,
+			buttons: type === 'pointerup' ? 0 : 1,
+			clientX: x,
+			clientY: y,
+			pointerId: 23,
+			...options
+		})
+	);
+}
+
+function elementRect(left: number, top: number, right: number, bottom: number): DOMRect {
+	return new DOMRect(left, top, right - left, bottom - top);
+}
+
 beforeEach(() => {
 	commandHistory.clearHistory();
 	mediaPool.clear();
@@ -1034,5 +1058,183 @@ describe('MediaPoolList', () => {
 		await expect
 			.element(screen.getByText(/Web pages and signed-in downloads are not supported/))
 			.toBeVisible();
+	});
+
+	it('scopes asset shortcuts, selects visible assets, and leaves Backspace to the timeline', async () => {
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [
+					{
+						id: 'opening',
+						name: 'Opening',
+						items: [],
+						tracks: [track],
+						transitions: [],
+						fps: 30,
+						width: 1920,
+						height: 1080,
+						durationInFrames: 90
+					}
+				]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([
+			media('video', 'Interview.mp4', ['video']),
+			media('audio', 'Voice.wav', ['audio'])
+		]);
+		const onsourceopen = vi.fn();
+		const screen = await render(MediaPoolList, { projectId: 'project', onsourceopen });
+
+		await screen.getByRole('button', { name: 'Filter media' }).click();
+		await screen.getByRole('option', { name: 'Video' }).click();
+		await screen.getByRole('button', { name: 'Source: Interview.mp4' }).click();
+		expect(document.activeElement).toBe(screen.getByTestId('asset-selection-surface').element());
+		expect(onsourceopen).toHaveBeenCalledTimes(1);
+		await userEvent.keyboard(' ');
+		expect(onsourceopen).toHaveBeenCalledTimes(1);
+		document.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true })
+		);
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+
+		const search = screen.getByPlaceholder('Search project media').element();
+		search.focus();
+		search.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true })
+		);
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		search.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
+		);
+		await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+
+		const clearSelection = screen.getByRole('button', { name: 'Clear selection' }).element();
+		clearSelection.focus();
+		clearSelection.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await expect.element(screen.getByText('2 selected')).not.toBeInTheDocument();
+
+		const source = screen.getByRole('button', { name: 'Source: Interview.mp4' });
+		await source.click();
+		const backspace = new KeyboardEvent('keydown', {
+			key: 'Backspace',
+			bubbles: true,
+			cancelable: true
+		});
+		source.element().dispatchEvent(backspace);
+		expect(backspace.defaultPrevented).toBe(false);
+		await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+		source
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })
+			);
+		await expect.element(screen.getByRole('dialog')).toBeVisible();
+		await screen.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+		document.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })
+		);
+		await expect.element(screen.getByRole('dialog')).not.toBeInTheDocument();
+		outside.remove();
+	});
+
+	it('marquee-selects mixed assets, adds to the selection, and suppresses the release click', async () => {
+		await page.viewport(320, 720);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [
+					{
+						id: 'opening',
+						name: 'Opening',
+						items: [],
+						tracks: [track],
+						transitions: [],
+						fps: 30,
+						width: 1920,
+						height: 1080,
+						durationInFrames: 90
+					}
+				]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([
+			media('video-a', 'Interview.mp4', ['video']),
+			media('video-b', 'B-roll.mp4', ['video'])
+		]);
+		const onsequenceopen = vi.fn();
+		const onsourceopen = vi.fn();
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			onsequenceopen,
+			onsourceopen
+		});
+		const panel = screen.getByTestId('asset-selection-surface').element();
+		const sequence = screen.container.querySelector<HTMLElement>(
+			'[data-asset-sequence-id="opening"]'
+		)!;
+		const first = screen.container.querySelector<HTMLElement>('[data-asset-media-id="video-a"]')!;
+		const second = screen.container.querySelector<HTMLElement>('[data-asset-media-id="video-b"]')!;
+		vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue(elementRect(0, 0, 300, 180));
+		vi.spyOn(sequence, 'getBoundingClientRect').mockReturnValue(elementRect(20, 20, 260, 45));
+		vi.spyOn(first, 'getBoundingClientRect').mockReturnValue(elementRect(20, 55, 260, 80));
+		vi.spyOn(second, 'getBoundingClientRect').mockReturnValue(elementRect(20, 105, 260, 130));
+
+		pointer(panel, 'pointerdown', 280, 90);
+		pointer(window, 'pointermove', 10, 10);
+		await vi.waitFor(() => {
+			expect(screen.container.querySelector<HTMLElement>('[data-asset-marquee]')?.hidden).toBe(
+				false
+			);
+			expect(sequence.dataset.marqueeSelected).toBe('true');
+			expect(first.dataset.marqueeSelected).toBe('true');
+			expect(second.dataset.marqueeSelected).toBe('false');
+		});
+		pointer(window, 'pointerup', 10, 10);
+		expect(screen.container.querySelector<HTMLElement>('[data-asset-marquee]')?.hidden).toBe(true);
+		panel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+
+		pointer(panel, 'pointerdown', 280, 140, { metaKey: true });
+		pointer(window, 'pointermove', 10, 95, { metaKey: true });
+		pointer(window, 'pointerup', 10, 95, { metaKey: true });
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		expect(onsequenceopen).not.toHaveBeenCalled();
+		expect(onsourceopen).not.toHaveBeenCalled();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+
+		pointer(panel, 'pointerdown', 290, 170);
+		pointer(window, 'pointerup', 290, 170);
+		await expect.element(screen.getByText('3 selected')).not.toBeInTheDocument();
 	});
 });
