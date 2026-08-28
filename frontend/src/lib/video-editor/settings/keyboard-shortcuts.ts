@@ -53,6 +53,9 @@ export const DEFAULT_EDITOR_SHORTCUTS = {
 	COMPOSITION_NUDGE_RIGHT_FAST: 'shift+right',
 	COMPOSITION_REORDER_UP: 'alt+up',
 	COMPOSITION_REORDER_DOWN: 'alt+down',
+	TRACK_RENAME: 'f2',
+	TRACK_MOVE_UP: 'alt+up',
+	TRACK_MOVE_DOWN: 'alt+down',
 	UNDO: 'mod+z',
 	REDO: 'mod+shift+z',
 	ZOOM_IN: 'mod+equal',
@@ -155,6 +158,9 @@ export const EDITOR_SHORTCUT_DEFINITIONS: readonly EditorShortcutDefinition[] = 
 	{ id: 'COMPOSITION_NUDGE_RIGHT_FAST', section: 'timeline' },
 	{ id: 'COMPOSITION_REORDER_UP', section: 'timeline' },
 	{ id: 'COMPOSITION_REORDER_DOWN', section: 'timeline' },
+	{ id: 'TRACK_RENAME', section: 'timeline' },
+	{ id: 'TRACK_MOVE_UP', section: 'timeline' },
+	{ id: 'TRACK_MOVE_DOWN', section: 'timeline' },
 	{ id: 'UNDO', section: 'editing' },
 	{ id: 'REDO', section: 'editing' },
 	{ id: 'GRAPH_SELECT_ALL', section: 'editing' },
@@ -200,6 +206,7 @@ export const EDITOR_SHORTCUT_DEFINITIONS: readonly EditorShortcutDefinition[] = 
 ] as const;
 
 const MODIFIERS = ['mod', 'alt', 'shift'] as const;
+const FUNCTION_KEY_COUNT = 12;
 const MODIFIER_SET = new Set<string>(MODIFIERS);
 const MODIFIER_ORDER = new Map<string, number>(MODIFIERS.map((token, index) => [token, index]));
 
@@ -247,6 +254,9 @@ const KEY_LABELS = new Map<string, string>([
 	['enter', 'Enter']
 ]);
 
+for (let index = 1; index <= FUNCTION_KEY_COUNT; index += 1)
+	KEY_LABELS.set(`f${index}`, `F${index}`);
+
 const CODE_TOKENS = new Map<string, string>([
 	['Space', 'space'],
 	['Comma', 'comma'],
@@ -272,6 +282,9 @@ const CODE_TOKENS = new Map<string, string>([
 	['Tab', 'tab'],
 	['Enter', 'enter']
 ]);
+
+for (let index = 1; index <= FUNCTION_KEY_COUNT; index += 1)
+	CODE_TOKENS.set(`F${index}`, `f${index}`);
 
 export interface ShortcutEventData {
 	key?: string;
@@ -437,6 +450,27 @@ function platformIsMac(platformValue?: string): boolean {
 
 export function formatShortcutBinding(binding: string, platformValue?: string): string {
 	return formatShortcutBindingWithLabels(binding, { platform: platformValue });
+}
+
+const ARIA_KEY_TOKENS = new Map<string, string>([
+	['left', 'ArrowLeft'],
+	['right', 'ArrowRight'],
+	['up', 'ArrowUp'],
+	['down', 'ArrowDown'],
+	['escape', 'Escape'],
+	['space', 'Space']
+]);
+
+export function formatShortcutAriaKey(binding: string, platformValue?: string): string {
+	const mac = platformIsMac(platformValue);
+	return splitShortcutBinding(normalizeShortcutBinding(binding))
+		.map((token) => {
+			if (token === 'mod') return mac ? 'Meta' : 'Control';
+			if (token === 'alt') return 'Alt';
+			if (token === 'shift') return 'Shift';
+			return ARIA_KEY_TOKENS.get(token) ?? KEY_LABELS.get(token) ?? token.toUpperCase();
+		})
+		.join('+');
 }
 
 export interface ShortcutBindingLabelOptions {

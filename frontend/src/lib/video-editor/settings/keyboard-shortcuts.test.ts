@@ -6,6 +6,7 @@ import {
 	editorDeleteModeForEvent,
 	eventMatchesShortcut,
 	findShortcutConflicts,
+	formatShortcutAriaKey,
 	formatShortcutBinding,
 	normalizeShortcutBinding,
 	parseShortcutPreset,
@@ -26,6 +27,7 @@ describe('keyboard shortcuts', () => {
 		).toBe('mod+shift+comma');
 		expect(formatShortcutBinding('mod+alt+k', 'MacIntel')).toBe('Cmd + Option + K');
 		expect(formatShortcutBinding('mod+alt+k', 'Win32')).toBe('Ctrl + Alt + K');
+		expect(formatShortcutAriaKey('mod+alt+left', 'MacIntel')).toBe('Meta+Alt+ArrowLeft');
 	});
 
 	it('matches command events from their resolved binding', () => {
@@ -92,6 +94,14 @@ describe('keyboard shortcuts', () => {
 		expect(bindings.KEYFRAME_NEXT).toBe('alt+bracketright');
 		expect(bindings.KEYFRAME_TOGGLE_AUTO).toBe('a');
 		expect(bindings.KEYFRAME_FIT).toBe('f');
+	});
+
+	it('includes editable track-header bindings and recognizes function keys', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.TRACK_RENAME).toBe('f2');
+		expect(bindings.TRACK_MOVE_UP).toBe('alt+up');
+		expect(bindings.TRACK_MOVE_DOWN).toBe('alt+down');
+		expect(shortcutBindingFromEvent({ code: 'F2', key: 'F2' })).toBe('f2');
 	});
 
 	it('reports command and browser conflicts before a binding is replaced', () => {
