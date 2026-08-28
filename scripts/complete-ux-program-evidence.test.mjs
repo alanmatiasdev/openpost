@@ -72,10 +72,10 @@ describe("complete UX program evidence", () => {
     ];
 
     for (const task of completedTasks) {
-      expect(audit).not.toMatch(new RegExp(`^### ${task} —`, "mu"));
+      expect(audit).not.toMatch(new RegExp(`^### ${task} (?:-|\\u2014)`, "mu"));
     }
 
-    const taskHeadings = audit.match(/^### [A-Z0-9-]+ —/gmu) ?? [];
+    const taskHeadings = audit.match(/^### [A-Z0-9-]+ (?:-|\u2014)/gmu) ?? [];
     expect(taskHeadings).toHaveLength(64);
     expect(audit).toContain("Inventory: **64 unfinished task headings**");
     expect(audit).toContain("External status infrastructure remains deferred");
