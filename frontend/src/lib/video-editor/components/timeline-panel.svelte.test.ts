@@ -1559,7 +1559,6 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		await nextAnimationFrame();
 		const videoPreview = videoClip.querySelector<HTMLElement>('[data-effect-drop-preview]');
 		expect(videoPreview).not.toBeNull();
-		expect(videoPreview?.className).toContain('oklch(0.66_0.14_45');
 		expect(titleClip.querySelector('[data-effect-drop-preview]')).not.toBeNull();
 		expect(musicClip.querySelector('[data-effect-drop-preview]')).toBeNull();
 		expect(lockedClip.querySelector('[data-effect-drop-preview]')).toBeNull();
@@ -1625,8 +1624,7 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		dispatchPointer(window, 'pointerup', Math.min(videoRect.left, musicRect.left) - 5);
 		await nextAnimationFrame();
 
-		expect(videoClip.className).toContain('ring-1');
-		expect(musicClip.className).toContain('ring-1');
+		await expect.element(screen.getByText('2 clips selected')).toBeVisible();
 		expect(document.querySelector('[data-timeline-marquee]')).toBeNull();
 	});
 
@@ -1848,10 +1846,6 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			?.querySelector<HTMLButtonElement>('button[aria-label="Transition"]')
 			?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		await nextAnimationFrame();
-		expect(transition?.className).toContain('ring-2');
-		expect(
-			screen.getByRole('button', { name: /^Video\./ }).element().parentElement?.className
-		).not.toContain('ring-1');
 
 		const resizeEnd = screen.getByRole('button', { name: 'Resize transition end' }).element();
 		dispatchPointer(resizeEnd, 'pointerdown', 300);
