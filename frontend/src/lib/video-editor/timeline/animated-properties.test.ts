@@ -24,6 +24,8 @@ describe('animatable properties', () => {
 			'y',
 			'width',
 			'height',
+			'scaleX',
+			'scaleY',
 			'anchorX',
 			'anchorY',
 			'rotation',
