@@ -114,6 +114,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorShortcutTargetIsDisabled,
 		eventMatchesShortcut,
 		handleGlobalPlayPauseShortcut,
+		handleOpenSceneBrowserShortcut,
 		type EditorShortcutId
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -1087,13 +1088,22 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			}
 		}
 	}
+
+	function onSceneBrowserShortcut(event: KeyboardEvent): void {
+		handleOpenSceneBrowserShortcut(event, keyboardShortcuts.bindings.OPEN_SCENE_BROWSER, () => {
+			assetPanel = 'scenes';
+			requestAnimationFrame(() =>
+				document.querySelector<HTMLInputElement>('[data-scene-browser-search]')?.focus()
+			);
+		});
+	}
 </script>
 
 <svelte:head>
 	<title>{editorSession.project?.name ?? m.video_editor_title()}</title>
 </svelte:head>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydowncapture={onSceneBrowserShortcut} onkeydown={onKeydown} />
 
 <div
 	class="video-editor-theme flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"

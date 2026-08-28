@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "プロジェクトを保存",
 	"video_editor_shortcuts_command_export": "動画を書き出す",
 	"video_editor_shortcuts_command_settings": "エディタ設定を開く",
+	"video_editor_shortcuts_command_open_scene_browser": "シーンブラウザーを開く",
 	"video_editor_shortcuts_command_snap": "スナップを切り替え",
 	"video_editor_shortcuts_command_canvas_snap": "キャンバススナップを切り替え",
 	"video_editor_shortcuts_command_workspace_edit": "編集ワークスペースを開く",

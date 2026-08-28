@@ -67,6 +67,7 @@ export const DEFAULT_EDITOR_SHORTCUTS = {
 	SAVE: 'mod+s',
 	EXPORT: 'mod+shift+e',
 	OPEN_SETTINGS: 'mod+comma',
+	OPEN_SCENE_BROWSER: 'mod+shift+f',
 	TOGGLE_SNAP: 's',
 	TOGGLE_CANVAS_SNAP: 'shift+s',
 	WORKSPACE_EDIT: 'alt+1',
@@ -176,6 +177,7 @@ export const EDITOR_SHORTCUT_DEFINITIONS: readonly EditorShortcutDefinition[] = 
 	{ id: 'SAVE', section: 'project' },
 	{ id: 'EXPORT', section: 'project' },
 	{ id: 'OPEN_SETTINGS', section: 'project' },
+	{ id: 'OPEN_SCENE_BROWSER', section: 'project' },
 	{ id: 'WORKSPACE_EDIT', section: 'project' },
 	{ id: 'WORKSPACE_COLOR', section: 'project' },
 	{ id: 'WORKSPACE_MOTION', section: 'project' }
@@ -580,5 +582,35 @@ export function handleGlobalPlayPauseShortcut(
 	event.stopPropagation();
 	event.stopImmediatePropagation();
 	onToggle();
+	return true;
+}
+
+function sceneBrowserShortcutTargetIsDisabled(target: EventTarget | null): boolean {
+	return (
+		target instanceof HTMLElement &&
+		Boolean(
+			target.closest(
+				'input, textarea, select, [contenteditable="true"], [data-editor-shortcuts-disabled]'
+			)
+		)
+	);
+}
+
+export function handleOpenSceneBrowserShortcut(
+	event: KeyboardEvent,
+	binding: string,
+	onOpen: () => void
+): boolean {
+	if (
+		event.repeat ||
+		event.defaultPrevented ||
+		!eventMatchesShortcut(event, binding) ||
+		sceneBrowserShortcutTargetIsDisabled(event.target)
+	)
+		return false;
+	event.preventDefault();
+	event.stopPropagation();
+	event.stopImmediatePropagation();
+	onOpen();
 	return true;
 }

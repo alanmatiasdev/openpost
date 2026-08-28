@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "프로젝트 저장",
 	"video_editor_shortcuts_command_export": "동영상 내보내기",
 	"video_editor_shortcuts_command_settings": "편집기 설정 열기",
+	"video_editor_shortcuts_command_open_scene_browser": "장면 브라우저 열기",
 	"video_editor_shortcuts_command_snap": "스냅 전환",
 	"video_editor_shortcuts_command_canvas_snap": "캔버스 스냅 전환",
 	"video_editor_shortcuts_command_workspace_edit": "편집 작업 공간 열기",

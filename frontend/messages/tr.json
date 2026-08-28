@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "Projeyi kaydet",
 	"video_editor_shortcuts_command_export": "Videoyu dışa aktar",
 	"video_editor_shortcuts_command_settings": "Düzenleyici ayarlarını aç",
+	"video_editor_shortcuts_command_open_scene_browser": "Sahne tarayıcısını aç",
 	"video_editor_shortcuts_command_snap": "Yapıştırmayı aç/kapat",
 	"video_editor_shortcuts_command_canvas_snap": "Tuval hizalamayı aç/kapat",
 	"video_editor_shortcuts_command_workspace_edit": "Kurgu çalışma alanını aç",

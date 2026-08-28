@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "Guardar proyecto",
 	"video_editor_shortcuts_command_export": "Exportar vídeo",
 	"video_editor_shortcuts_command_settings": "Abrir configuración del editor",
+	"video_editor_shortcuts_command_open_scene_browser": "Abrir explorador de escenas",
 	"video_editor_shortcuts_command_snap": "Conmutar el chasquido",
 	"video_editor_shortcuts_command_canvas_snap": "Alternar ajuste del lienzo",
 	"video_editor_shortcuts_command_workspace_edit": "Abrir espacio de trabajo de edición",

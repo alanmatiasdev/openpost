@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "Save project",
 	"video_editor_shortcuts_command_export": "Export video",
 	"video_editor_shortcuts_command_settings": "Open editor settings",
+	"video_editor_shortcuts_command_open_scene_browser": "Open Scene Browser",
 	"video_editor_shortcuts_command_snap": "Toggle snapping",
 	"video_editor_shortcuts_command_canvas_snap": "Toggle canvas snapping",
 	"video_editor_shortcuts_command_workspace_edit": "Open Edit workspace",

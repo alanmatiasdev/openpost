@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "Enregistrer le projet",
 	"video_editor_shortcuts_command_export": "Exporter la vidéo",
 	"video_editor_shortcuts_command_settings": "Ouvrir les paramètres de l'éditeur",
+	"video_editor_shortcuts_command_open_scene_browser": "Ouvrir le navigateur de scènes",
 	"video_editor_shortcuts_command_snap": "Basculer le magnétisme",
 	"video_editor_shortcuts_command_canvas_snap": "Basculer le magnétisme du canevas",
 	"video_editor_shortcuts_command_workspace_edit": "Ouvrir l'espace Montage",

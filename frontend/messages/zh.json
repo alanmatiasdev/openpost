@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "保存项目",
 	"video_editor_shortcuts_command_export": "导出视频",
 	"video_editor_shortcuts_command_settings": "打开编辑器设置",
+	"video_editor_shortcuts_command_open_scene_browser": "打开场景浏览器",
 	"video_editor_shortcuts_command_snap": "切换吸附",
 	"video_editor_shortcuts_command_canvas_snap": "切换画布吸附",
 	"video_editor_shortcuts_command_workspace_edit": "打开剪辑工作区",

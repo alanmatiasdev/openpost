@@ -4416,6 +4416,7 @@
 	"video_editor_shortcuts_command_save": "Projekt speichern",
 	"video_editor_shortcuts_command_export": "Video exportieren",
 	"video_editor_shortcuts_command_settings": "Editor-Einstellungen öffnen",
+	"video_editor_shortcuts_command_open_scene_browser": "Szenenbrowser öffnen",
 	"video_editor_shortcuts_command_snap": "Einrasten umschalten",
 	"video_editor_shortcuts_command_canvas_snap": "Einrasten auf der Arbeitsfläche umschalten",
 	"video_editor_shortcuts_command_workspace_edit": "Schnitt-Arbeitsbereich öffnen",

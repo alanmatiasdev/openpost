@@ -133,6 +133,7 @@
 			/>
 			<Input
 				type="search"
+				data-scene-browser-search
 				class="h-8 w-full rounded-md border border-[oklch(0.28_0.015_55)] bg-[oklch(0.17_0.01_55)] pr-2 pl-7 text-xs placeholder:text-[oklch(0.52_0.015_55)] focus-visible:border-[oklch(0.66_0.14_45)] focus-visible:ring-2 focus-visible:ring-[oklch(0.66_0.14_45/0.25)]"
 				placeholder={m.video_editor_scene_search()}
 				bind:value={sceneBrowser.query}

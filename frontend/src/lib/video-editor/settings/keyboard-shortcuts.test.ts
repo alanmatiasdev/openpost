@@ -56,6 +56,11 @@ describe('keyboard shortcuts', () => {
 		).toEqual([]);
 	});
 
+	it('includes the FreeCut-compatible Scene Browser binding', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.OPEN_SCENE_BROWSER).toBe('mod+shift+f');
+	});
+
 	it('includes FreeCut-compatible timeline tool and edit-point navigation bindings', () => {
 		const bindings = resolveEditorShortcuts();
 		expect(bindings.SELECTION_TOOL).toBe('v');
@@ -106,7 +111,7 @@ describe('keyboard shortcuts', () => {
 		});
 	});
 
-	it('imports matching FreeCut command ids and ignores commands OpenPost does not expose', () => {
+	it('imports matching FreeCut command ids', () => {
 		expect(
 			parseShortcutPreset({
 				schema: 'freecut-hotkeys',
@@ -118,9 +123,12 @@ describe('keyboard shortcuts', () => {
 				}
 			})
 		).toEqual({
-			overrides: { PLAY_PAUSE: 'shift+space', WORKSPACE_COLOR: 'alt+8' },
-			importedCount: 2,
-			ignoredCount: 1,
+			overrides: {
+				PLAY_PAUSE: 'shift+space',
+				WORKSPACE_COLOR: 'alt+8'
+			},
+			importedCount: 3,
+			ignoredCount: 0,
 			sourceSchema: 'freecut-hotkeys',
 			sourceVersion: 1
 		});
