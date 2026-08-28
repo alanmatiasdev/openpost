@@ -116,6 +116,7 @@
 		onextractsubtitles = () => undefined,
 		onUnsupportedAudio,
 		deleteProjectMedia = deleteMediaFromProject,
+		generateMediaProxy = getAutomaticProxy,
 		requestSourceAccess = requestMediaSourceAccess,
 		pickSourceHandle = async () => (await window.showOpenFilePicker?.({ multiple: false }))?.[0],
 		relinkSourceMedia = relinkMediaSource
@@ -126,6 +127,7 @@
 		onextractsubtitles?: (media: MediaMetadata) => void;
 		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
 		deleteProjectMedia?: typeof deleteMediaFromProject;
+		generateMediaProxy?: typeof getAutomaticProxy;
 		requestSourceAccess?: typeof requestMediaSourceAccess;
 		pickSourceHandle?: () => Promise<FileSystemFileHandle | undefined>;
 		relinkSourceMedia?: typeof relinkMediaSource;
@@ -140,6 +142,8 @@
 	let query = $state('');
 	let filter = $state<MediaLibraryFilter>('all');
 	let sort = $state<MediaLibrarySort>('added');
+	let selectedMediaIds = $state<Set<string>>(new Set());
+	let selectionAnchorId = $state<string | null>(null);
 	let sequenceThumbnailUrls = $state<Record<string, string>>({});
 	let sequenceThumbnailGeneration = 0;
 	let deleteTarget = $state<SubComposition | null>(null);
@@ -149,13 +153,66 @@
 	let sequenceRenameCancelled = false;
 	let deleteReferenceCount = $state(0);
 	let deleteDialogOpen = $state(false);
-	let mediaDeleteTarget = $state<MediaMetadata | null>(null);
+	let mediaDeleteTargets = $state<MediaMetadata[]>([]);
 	let mediaDeletePlan = $state<MediaDeletionPlan | null>(null);
 	let mediaDeleteDialogOpen = $state(false);
 	const ownedThumbnailUrls = new Map<string, string>();
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
 	const mediaGroups = $derived(groupMediaByKind(visibleMedia));
+	const selectedMedia = $derived(
+		mediaPool.mediaList.filter((media) => selectedMediaIds.has(media.id))
+	);
+	const selectedProxyMedia = $derived(
+		selectedMedia.filter(
+			(media) =>
+				canGenerateProxy(media) &&
+				!sourceIssue(media.id) &&
+				!mediaProxy(media.id) &&
+				!proxyTask(media.id) &&
+				!otherMediaProcessing(media.id)
+		)
+	);
+
+	$effect(() => {
+		const availableIds = new Set(visibleMedia.map((media) => media.id));
+		if ([...selectedMediaIds].every((id) => availableIds.has(id))) return;
+		selectedMediaIds = new Set([...selectedMediaIds].filter((id) => availableIds.has(id)));
+		if (selectionAnchorId && !availableIds.has(selectionAnchorId)) selectionAnchorId = null;
+	});
+
+	function clearMediaSelection(): void {
+		selectedMediaIds = new Set();
+		selectionAnchorId = null;
+	}
+
+	function selectMedia(event: MouseEvent, media: MediaMetadata): void {
+		const next = new Set(selectedMediaIds);
+		if (event.shiftKey && selectionAnchorId) {
+			const from = visibleMedia.findIndex((candidate) => candidate.id === selectionAnchorId);
+			const to = visibleMedia.findIndex((candidate) => candidate.id === media.id);
+			if (from >= 0 && to >= 0) {
+				const start = Math.min(from, to);
+				const end = Math.max(from, to);
+				for (const candidate of visibleMedia.slice(start, end + 1)) next.add(candidate.id);
+			}
+		} else if (event.metaKey || event.ctrlKey) {
+			if (next.has(media.id)) next.delete(media.id);
+			else next.add(media.id);
+		} else {
+			next.clear();
+			next.add(media.id);
+			onsourceopen(media.id);
+		}
+		selectedMediaIds = next;
+		selectionAnchorId = media.id;
+	}
+
+	function prepareMediaContextSelection(mediaId: string): void {
+		if (selectedMediaIds.has(mediaId)) return;
+		selectedMediaIds = new Set([mediaId]);
+		selectionAnchorId = mediaId;
+	}
 	async function previewUrl(id: string): Promise<void> {
 		const media = mediaPool.get(id);
 		if (!media || objectUrls[id]) return;
@@ -461,7 +518,7 @@
 
 	async function generateProxy(media: MediaMetadata): Promise<void> {
 		try {
-			await getAutomaticProxy(media);
+			await generateMediaProxy(media);
 			showToast(m.video_editor_proxy_done(), 'success');
 		} catch (error) {
 			processFailure(media, error instanceof Error ? error : new Error(String(error)));
@@ -573,15 +630,32 @@
 	}
 
 	function confirmMediaDelete(media: MediaMetadata): void {
-		mediaDeleteTarget = media;
+		mediaDeleteTargets = [media];
 		mediaDeletePlan = planMediaDeletion(sequenceStore.projectTimeline(), [media.id]);
 		mediaDeleteDialogOpen = true;
 	}
 
+	function confirmSelectedMediaDelete(): void {
+		if (selectedMedia.length === 0) return;
+		mediaDeleteTargets = [...selectedMedia];
+		mediaDeletePlan = planMediaDeletion(
+			sequenceStore.projectTimeline(),
+			mediaDeleteTargets.map((media) => media.id)
+		);
+		mediaDeleteDialogOpen = true;
+	}
+
+	async function generateSelectedProxies(): Promise<void> {
+		await Promise.all(selectedProxyMedia.map((media) => generateProxy(media)));
+	}
+
 	async function deleteConfirmedMedia(): Promise<{ ok: boolean; message?: string }> {
-		const target = mediaDeleteTarget;
-		if (!target) return { ok: false, message: m.video_editor_media_delete_failed() };
-		const plan = planMediaDeletion(sequenceStore.projectTimeline(), [target.id]);
+		const targets = [...mediaDeleteTargets];
+		if (targets.length === 0) return { ok: false, message: m.video_editor_media_delete_failed() };
+		const plan = planMediaDeletion(
+			sequenceStore.projectTimeline(),
+			targets.map((media) => media.id)
+		);
 		const before = captureSnapshot();
 		mediaDeletePlan = plan;
 		let projectSaved = false;
@@ -591,13 +665,42 @@
 			editorSession.syncTimelineClock();
 			await editorSession.saveNow();
 			projectSaved = true;
-			await deleteProjectMedia(projectId, target.id);
-			clearProxyCache(target.id);
-			sceneBrowser.forget(target.id);
-			mediaPool.remove(target.id);
+			const failed: MediaMetadata[] = [];
+			for (const target of targets) {
+				try {
+					await deleteProjectMedia(projectId, target.id);
+					clearProxyCache(target.id);
+					sceneBrowser.forget(target.id);
+					mediaPool.remove(target.id);
+				} catch {
+					failed.push(target);
+				}
+			}
 			commandHistory.clearHistory();
-			showToast(m.video_editor_media_deleted({ name: target.fileName }), 'success');
-			mediaDeleteTarget = null;
+			if (failed.length > 0) {
+				selectedMediaIds = new Set(failed.map((media) => media.id));
+				selectionAnchorId = failed[0]?.id ?? null;
+				mediaDeleteTargets = failed;
+				mediaDeletePlan = planMediaDeletion(
+					sequenceStore.projectTimeline(),
+					failed.map((media) => media.id)
+				);
+				return {
+					ok: false,
+					message: m.video_editor_media_delete_batch_partial({
+						deleted: targets.length - failed.length,
+						failed: failed.length
+					})
+				};
+			}
+			showToast(
+				targets.length === 1
+					? m.video_editor_media_deleted({ name: targets[0]!.fileName })
+					: m.video_editor_media_deleted_batch({ count: targets.length }),
+				'success'
+			);
+			clearMediaSelection();
+			mediaDeleteTargets = [];
 			mediaDeletePlan = null;
 			return { ok: true };
 		} catch (error) {
@@ -766,6 +869,56 @@
 				</Select.Root>
 			</div>
 		</div>
+		{#if selectedMedia.length > 0}
+			<div
+				class="flex min-w-0 items-center gap-1.5 rounded-md border border-[oklch(0.34_0.025_50)] bg-[oklch(0.2_0.012_50)] px-1.5 py-1"
+				role="status"
+				aria-label={m.video_editor_media_selected_count({ count: selectedMedia.length })}
+			>
+				<span class="min-w-0 flex-1 truncate text-[10px] font-medium tabular-nums">
+					{m.video_editor_media_selected_count({ count: selectedMedia.length })}
+				</span>
+				{#if selectedProxyMedia.length > 0}
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						class="size-7! shrink-0"
+						aria-label={m.video_editor_media_generate_selected_proxies({
+							count: selectedProxyMedia.length
+						})}
+						title={m.video_editor_media_generate_selected_proxies({
+							count: selectedProxyMedia.length
+						})}
+						onclick={() => void generateSelectedProxies()}
+					>
+						<GaugeIcon class="size-3.5" aria-hidden="true" />
+					</Button>
+				{/if}
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					class="size-7! shrink-0 text-red-300 hover:text-red-200"
+					aria-label={m.video_editor_media_delete_selected({ count: selectedMedia.length })}
+					title={m.video_editor_media_delete_selected({ count: selectedMedia.length })}
+					onclick={confirmSelectedMediaDelete}
+				>
+					<TrashIcon class="size-3.5" aria-hidden="true" />
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					class="size-7! shrink-0"
+					aria-label={m.video_editor_media_clear_selection()}
+					title={m.video_editor_media_clear_selection()}
+					onclick={clearMediaSelection}
+				>
+					<XIcon class="size-3.5" aria-hidden="true" />
+				</Button>
+			</div>
+		{/if}
 	</div>
 	{#if mediaRecovery.issueCount > 0}
 		<div
@@ -944,6 +1097,10 @@
 							{#snippet child({ props })}
 								<li
 									{...props}
+									oncontextmenu={(event) => {
+										prepareMediaContextSelection(id);
+										props.oncontextmenu?.(event);
+									}}
 									draggable={entry?.status === 'ready' && !issue}
 									ondragstart={(event) =>
 										entry?.status === 'ready' && !issue && startMediaDrag(event, entry.media)}
@@ -953,8 +1110,11 @@
 										: entry?.status === 'ready'
 											? m.video_editor_media_drag_hint()
 											: undefined}
-									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {entry?.status ===
-										'ready' && !issue
+									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {selectedMediaIds.has(
+										id
+									)
+										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
+										: ''} {entry?.status === 'ready' && !issue
 										? 'cursor-grab active:cursor-grabbing'
 										: ''} {issue ? 'bg-amber-400/8 ring-1 ring-amber-400/25' : ''}"
 								>
@@ -962,7 +1122,9 @@
 										type="button"
 										class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
 										disabled={entry?.status !== 'ready' || Boolean(issue)}
-										onclick={() => entry && onsourceopen(id)}
+										aria-label={`${m.video_editor_source_monitor()}: ${entry?.media.fileName ?? ''}`}
+										aria-pressed={selectedMediaIds.has(id)}
+										onclick={(event) => entry && selectMedia(event, entry.media)}
 										title={issue ? sourceIssueLabel(issue) : m.video_editor_source_monitor()}
 									>
 										<span
@@ -1177,7 +1339,10 @@
 												<DropdownMenu.Item
 													variant="destructive"
 													disabled={mediaProcessing(id)}
-													onclick={() => confirmMediaDelete(entry.media)}
+													onclick={() =>
+														selectedMediaIds.has(id) && selectedMediaIds.size > 1
+															? confirmSelectedMediaDelete()
+															: confirmMediaDelete(entry.media)}
 												>
 													<TrashIcon class="size-4" aria-hidden="true" />
 													{m.common_delete()}
@@ -1352,7 +1517,10 @@
 								<ContextMenu.Item
 									variant="destructive"
 									disabled={mediaProcessing(id)}
-									onclick={() => confirmMediaDelete(entry.media)}
+									onclick={() =>
+										selectedMediaIds.has(id) && selectedMediaIds.size > 1
+											? confirmSelectedMediaDelete()
+											: confirmMediaDelete(entry.media)}
 								>
 									<TrashIcon class="size-4" aria-hidden="true" />
 									{m.common_delete()}
@@ -1380,8 +1548,10 @@
 
 <DestructiveConfirmDialog
 	bind:open={mediaDeleteDialogOpen}
-	title={m.video_editor_media_delete_title({ name: mediaDeleteTarget?.fileName ?? '' })}
-	description={mediaDeleteTarget
+	title={mediaDeleteTargets.length === 1
+		? m.video_editor_media_delete_title({ name: mediaDeleteTargets[0]?.fileName ?? '' })
+		: m.video_editor_media_delete_batch_title({ count: mediaDeleteTargets.length })}
+	description={mediaDeleteTargets.length > 0
 		? (mediaDeletePlan?.totalReferenceCount ?? 0) > 0
 			? mediaDeletePlan?.totalReferenceCount === 1
 				? m.video_editor_media_delete_reference()

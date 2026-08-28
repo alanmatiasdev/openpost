@@ -142,6 +142,142 @@ describe('MediaPoolList', () => {
 		expect(onsourceopen).not.toHaveBeenCalled();
 	});
 
+	it('selects visible media ranges without opening modifier-clicked sources', async () => {
+		await page.viewport(320, 720);
+		const interview = media('interview', 'Interview.mp4', ['video']);
+		const broll = media('broll', 'B-roll.mp4', ['video']);
+		const music = media('music', 'Theme.wav', ['audio']);
+		mediaPool.loadAll([interview, broll, music]);
+		const onsourceopen = vi.fn();
+		const screen = await render(MediaPoolList, { projectId: 'project', onsourceopen });
+		const source = (name: string) => screen.getByRole('button', { name: `Source: ${name}` });
+
+		await source(interview.fileName).click();
+		expect(onsourceopen).toHaveBeenCalledExactlyOnceWith(interview.id);
+		await expect.element(source(interview.fileName)).toHaveAttribute('aria-pressed', 'true');
+
+		await source(broll.fileName).click({ modifiers: ['Meta'] });
+		expect(onsourceopen).toHaveBeenCalledTimes(1);
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+
+		await source(music.fileName).click({ modifiers: ['Shift'] });
+		expect(onsourceopen).toHaveBeenCalledTimes(1);
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		await screen.getByRole('button', { name: 'Filter media' }).click();
+		await screen.getByRole('option', { name: 'Audio' }).click();
+		await expect.element(screen.getByText('1 selected')).toBeVisible();
+
+		await screen.getByRole('button', { name: 'Clear selection' }).click();
+		await expect.element(screen.getByText('1 selected')).not.toBeInTheDocument();
+	});
+
+	it('runs proxy and delete actions for the preserved media selection', async () => {
+		await page.viewport(320, 720);
+		const interview = media('interview', 'Interview.mp4', ['video']);
+		const broll = media('broll', 'B-roll.mp4', ['video']);
+		const music = media('music', 'Theme.wav', ['audio']);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track],
+				items: [interview, broll].map<TimelineItem>((source, index) => ({
+					id: `clip-${source.id}`,
+					trackId: track.id,
+					from: index * 60,
+					durationInFrames: 60,
+					label: source.fileName,
+					type: 'video',
+					mediaId: source.id
+				}))
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([interview, broll, music]);
+		const saveNow = vi.spyOn(editorSession, 'saveNow').mockResolvedValue();
+		const generateMediaProxy = vi.fn(async () => new Blob(['proxy'], { type: 'video/webm' }));
+		const deleteProjectMedia = vi.fn(async () => ({
+			deletedWorkspaceBytes: true,
+			remainingProjectIds: []
+		}));
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			generateMediaProxy,
+			deleteProjectMedia
+		});
+		const source = (name: string) => screen.getByRole('button', { name: `Source: ${name}` });
+
+		await source(interview.fileName).click();
+		await source(broll.fileName).click({ modifiers: ['Meta'] });
+		const brollRow = screen.getByText(broll.fileName).element().closest('li')!;
+		brollRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await expect.element(screen.getByRole('menu')).not.toBeInTheDocument();
+
+		await screen.getByRole('button', { name: 'Generate proxies for 2 selected media' }).click();
+		expect(generateMediaProxy).toHaveBeenCalledTimes(2);
+		expect(generateMediaProxy).toHaveBeenNthCalledWith(1, interview);
+		expect(generateMediaProxy).toHaveBeenNthCalledWith(2, broll);
+
+		await screen.getByRole('button', { name: 'Delete 2 selected media' }).click();
+		const dialog = screen.getByRole('dialog');
+		await expect.element(dialog.getByText('Delete 2 media sources?')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		expect(deleteProjectMedia).toHaveBeenCalledTimes(2);
+		expect(deleteProjectMedia).toHaveBeenNthCalledWith(1, 'project', interview.id);
+		expect(deleteProjectMedia).toHaveBeenNthCalledWith(2, 'project', broll.id);
+		expect(saveNow).toHaveBeenCalledTimes(1);
+		expect(sequenceStore.projectTimeline().items).toEqual([]);
+		expect(mediaPool.mediaList.map((item) => item.id)).toEqual([music.id]);
+		await expect.element(screen.getByText('2 selected')).not.toBeInTheDocument();
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	});
+
+	it('keeps failed batch deletions selected after saving the combined timeline edit', async () => {
+		await page.viewport(320, 720);
+		const interview = media('interview', 'Interview.mp4', ['video']);
+		const broll = media('broll', 'B-roll.mp4', ['video']);
+		mediaPool.loadAll([interview, broll]);
+		const saveNow = vi.spyOn(editorSession, 'saveNow').mockResolvedValue();
+		const deleteProjectMedia = vi.fn(async (_projectId: string, mediaId: string) => {
+			if (mediaId === broll.id) throw new Error('Workspace file is busy');
+			return { deletedWorkspaceBytes: true, remainingProjectIds: [] };
+		});
+		const screen = await render(MediaPoolList, { projectId: 'project', deleteProjectMedia });
+		const source = (name: string) => screen.getByRole('button', { name: `Source: ${name}` });
+
+		await source(interview.fileName).click();
+		await source(broll.fileName).click({ modifiers: ['Meta'] });
+		await screen.getByRole('button', { name: 'Delete 2 selected media' }).click();
+		const dialog = screen.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		expect(saveNow).toHaveBeenCalledTimes(1);
+		expect(deleteProjectMedia).toHaveBeenCalledTimes(2);
+		expect(mediaPool.mediaList.map((item) => item.id)).toEqual([broll.id]);
+		await expect.element(screen.getByText('1 selected')).toBeVisible();
+		await expect
+			.element(
+				dialog.getByText(
+					'Deleted 1. Could not delete 1; their timeline references were already removed.'
+				)
+			)
+			.toBeVisible();
+	});
+
 	it('repairs the exact broken media row from right-click and overflow menus', async () => {
 		await page.viewport(320, 720);
 		const interview = media('video', 'Interview.mp4', ['video'], {
