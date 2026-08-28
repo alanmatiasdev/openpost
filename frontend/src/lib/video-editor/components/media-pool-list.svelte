@@ -40,6 +40,7 @@
 	import ScanLineIcon from '@lucide/svelte/icons/scan-line';
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import { Button } from '$lib/components/ui/button';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import { Input } from '$lib/components/ui/input';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Select from '$lib/components/ui/select';
@@ -484,72 +485,102 @@
 			</h3>
 			<ul class="flex flex-col gap-1">
 				{#each sequenceStore.compositions as sequence (sequence.id)}
-					<li
-						draggable="true"
-						ondragstart={(event) => startCompositionDrag(event, sequence)}
-						ondragend={clearActiveMediaDrag}
-						title={m.video_editor_media_drag_hint()}
-						class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing"
-					>
-						<span
-							class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
-						>
-							{#if sequenceThumbnailUrls[sequence.id]}
-								<img
-									src={sequenceThumbnailUrls[sequence.id]}
-									alt=""
-									class="size-full object-cover"
-								/>
-							{:else}
-								<LayersIcon class="size-4" aria-hidden="true" />
-							{/if}
-						</span>
-						<button
-							type="button"
-							class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-							title={m.video_editor_sequence_open()}
-							onclick={() => openSequence(sequence.id)}
-						>
-							<span class="block truncate text-xs font-medium">{sequence.name}</span>
-							<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
-								{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
-							</span>
-						</button>
-						<DropdownMenu.Root>
-							<DropdownMenu.Trigger>
-								{#snippet child({ props })}
-									<Button
-										{...props}
-										variant="ghost"
-										size="icon-xs"
-										class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
-										aria-label={`${m.video_editor_sequence_options()}: ${sequence.name}`}
-									>
-										<MoreIcon class="size-3.5" aria-hidden="true" />
-									</Button>
-								{/snippet}
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Content class="video-editor-theme" align="end">
-								<DropdownMenu.Item onclick={() => placeSequence(sequence)}>
-									<PlusIcon class="size-4" aria-hidden="true" />
-									{m.video_editor_media_place()}
-								</DropdownMenu.Item>
-								<DropdownMenu.Separator />
-								<DropdownMenu.Item onclick={() => duplicateComposition(sequence)}>
-									<CopyIcon class="size-4" aria-hidden="true" />
-									{m.video_editor_sequence_duplicate()}
-								</DropdownMenu.Item>
-								<DropdownMenu.Separator />
-								<DropdownMenu.Item
-									class="text-red-300 focus:text-red-200"
-									onclick={() => confirmSequenceDelete(sequence)}
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							{#snippet child({ props })}
+								<li
+									{...props}
+									draggable="true"
+									ondragstart={(event) => startCompositionDrag(event, sequence)}
+									ondragend={clearActiveMediaDrag}
+									title={m.video_editor_media_drag_hint()}
+									class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing"
 								>
-									<TrashIcon class="size-4" aria-hidden="true" />
-									{m.common_delete()}
-								</DropdownMenu.Item>
-							</DropdownMenu.Content>
-						</DropdownMenu.Root>
-					</li>
+									<span
+										class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
+									>
+										{#if sequenceThumbnailUrls[sequence.id]}
+											<img
+												src={sequenceThumbnailUrls[sequence.id]}
+												alt=""
+												class="size-full object-cover"
+											/>
+										{:else}
+											<LayersIcon class="size-4" aria-hidden="true" />
+										{/if}
+									</span>
+									<button
+										type="button"
+										class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+										title={m.video_editor_sequence_open()}
+										onclick={() => openSequence(sequence.id)}
+									>
+										<span class="block truncate text-xs font-medium">{sequence.name}</span>
+										<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
+											{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
+										</span>
+									</button>
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													variant="ghost"
+													size="icon-xs"
+													class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
+													aria-label={`${m.video_editor_sequence_options()}: ${sequence.name}`}
+												>
+													<MoreIcon class="size-3.5" aria-hidden="true" />
+												</Button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content class="video-editor-theme" align="end">
+											<DropdownMenu.Item onclick={() => placeSequence(sequence)}>
+												<PlusIcon class="size-4" aria-hidden="true" />
+												{m.video_editor_media_place()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item onclick={() => duplicateComposition(sequence)}>
+												<CopyIcon class="size-4" aria-hidden="true" />
+												{m.video_editor_sequence_duplicate()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item
+												class="text-red-300 focus:text-red-200"
+												onclick={() => confirmSequenceDelete(sequence)}
+											>
+												<TrashIcon class="size-4" aria-hidden="true" />
+												{m.common_delete()}
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+								</li>
+							{/snippet}
+						</ContextMenu.Trigger>
+						<ContextMenu.Content class="video-editor-theme w-48">
+							<ContextMenu.Item onclick={() => openSequence(sequence.id)}>
+								<LayersIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_sequence_open()}
+							</ContextMenu.Item>
+							<ContextMenu.Item onclick={() => placeSequence(sequence)}>
+								<PlusIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_media_place()}
+							</ContextMenu.Item>
+							<ContextMenu.Separator />
+							<ContextMenu.Item onclick={() => duplicateComposition(sequence)}>
+								<CopyIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_sequence_duplicate()}
+							</ContextMenu.Item>
+							<ContextMenu.Separator />
+							<ContextMenu.Item
+								variant="destructive"
+								onclick={() => confirmSequenceDelete(sequence)}
+							>
+								<TrashIcon class="size-4" aria-hidden="true" />
+								{m.common_delete()}
+							</ContextMenu.Item>
+						</ContextMenu.Content>
+					</ContextMenu.Root>
 				{/each}
 			</ul>
 		</section>
@@ -567,131 +598,208 @@
 				{#each group.media as media (media.id)}
 					{@const id = media.id}
 					{@const entry = mediaPool.entry(id)}
-					<li
-						draggable={entry?.status === 'ready'}
-						ondragstart={(event) => entry?.status === 'ready' && startMediaDrag(event, entry.media)}
-						ondragend={clearActiveMediaDrag}
-						title={entry?.status === 'ready' ? m.video_editor_media_drag_hint() : undefined}
-						class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {entry?.status ===
-						'ready'
-							? 'cursor-grab active:cursor-grabbing'
-							: ''}"
-					>
-						<button
-							type="button"
-							class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
-							disabled={entry?.status !== 'ready'}
-							onclick={() => entry && onsourceopen(id)}
-							title={m.video_editor_source_monitor()}
-						>
-							<span
-								class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)]"
-							>
-								{#if entry?.status === 'importing'}
-									<LoaderIcon
-										class="size-4 animate-spin motion-reduce:animate-none"
-										aria-hidden="true"
-									/>
-								{:else if objectUrls[id] && !entry?.media.tags.includes('audio')}
-									<img src={objectUrls[id]} alt="" class="size-full object-cover" />
-								{:else if entry?.media.tags.includes('lottie')}
-									<SparklesIcon class="size-4" aria-hidden="true" />
-								{:else if entry?.media.tags.includes('audio')}
-									<Music2Icon class="size-4" aria-hidden="true" />
-								{:else if entry?.status === 'failed'}
-									<span class="text-xs text-red-400">!</span>
-								{:else}
-									<FilmIcon class="size-4" aria-hidden="true" />
-								{/if}
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="block truncate text-xs font-medium">{entry?.media.fileName}</span>
-								{#if entry?.status === 'ready'}
-									<span class="block text-[11px] text-[oklch(0.65_0.015_55)]">
-										{formatMediaListSummary(entry.media)}
-									</span>
-								{/if}
-							</span>
-						</button>
-						{#if entry}
-							<MediaInfoPopover media={entry.media} />
-						{/if}
-						{#if entry?.status === 'ready'}
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											variant="ghost"
-											size="icon-xs"
-											class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
-											aria-label={m.video_editor_media_more_actions({ name: entry.media.fileName })}
+					<ContextMenu.Root>
+						<ContextMenu.Trigger disabled={entry?.status !== 'ready'}>
+							{#snippet child({ props })}
+								<li
+									{...props}
+									draggable={entry?.status === 'ready'}
+									ondragstart={(event) =>
+										entry?.status === 'ready' && startMediaDrag(event, entry.media)}
+									ondragend={clearActiveMediaDrag}
+									title={entry?.status === 'ready' ? m.video_editor_media_drag_hint() : undefined}
+									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {entry?.status ===
+									'ready'
+										? 'cursor-grab active:cursor-grabbing'
+										: ''}"
+								>
+									<button
+										type="button"
+										class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
+										disabled={entry?.status !== 'ready'}
+										onclick={() => entry && onsourceopen(id)}
+										title={m.video_editor_source_monitor()}
+									>
+										<span
+											class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)]"
 										>
-											<MoreIcon class="size-3.5" aria-hidden="true" />
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content class="video-editor-theme w-52" align="end">
-									{#if canExtractEmbeddedSubtitles(entry.media)}
-										<DropdownMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
-											<CaptionsIcon class="size-4" aria-hidden="true" />
-											{m.video_editor_extract_embedded_subtitles()}
-										</DropdownMenu.Item>
-										<DropdownMenu.Separator />
+											{#if entry?.status === 'importing'}
+												<LoaderIcon
+													class="size-4 animate-spin motion-reduce:animate-none"
+													aria-hidden="true"
+												/>
+											{:else if objectUrls[id] && !entry?.media.tags.includes('audio')}
+												<img src={objectUrls[id]} alt="" class="size-full object-cover" />
+											{:else if entry?.media.tags.includes('lottie')}
+												<SparklesIcon class="size-4" aria-hidden="true" />
+											{:else if entry?.media.tags.includes('audio')}
+												<Music2Icon class="size-4" aria-hidden="true" />
+											{:else if entry?.status === 'failed'}
+												<span class="text-xs text-red-400">!</span>
+											{:else}
+												<FilmIcon class="size-4" aria-hidden="true" />
+											{/if}
+										</span>
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-xs font-medium">{entry?.media.fileName}</span
+											>
+											{#if entry?.status === 'ready'}
+												<span class="block text-[11px] text-[oklch(0.65_0.015_55)]">
+													{formatMediaListSummary(entry.media)}
+												</span>
+											{/if}
+										</span>
+									</button>
+									{#if entry}
+										<MediaInfoPopover media={entry.media} />
 									{/if}
-									<DropdownMenu.Sub>
-										<DropdownMenu.SubTrigger
-											disabled={!upscaleService.canUpscaleMedia(entry.media) || mediaProcessing(id)}
-											aria-label={upscaleActionLabel(entry.media)}
-											title={upscaleActionLabel(entry.media)}
-										>
-											<ScanLineIcon class="size-4" aria-hidden="true" />
-											{m.video_editor_media_upscale()}
-										</DropdownMenu.SubTrigger>
-										<DropdownMenu.SubContent class="video-editor-theme w-44">
-											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'liveAction')}>
-												{m.video_editor_media_upscale_live_action()}
-											</DropdownMenu.Item>
-											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'animation')}>
-												{m.video_editor_media_upscale_animation()}
-											</DropdownMenu.Item>
-											<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'threeD')}>
-												{m.video_editor_media_upscale_3d()}
-											</DropdownMenu.Item>
-										</DropdownMenu.SubContent>
-									</DropdownMenu.Sub>
-									<DropdownMenu.Sub>
-										<DropdownMenu.SubTrigger
-											disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
-												mediaProcessing(id)}
-											aria-label={interpolationActionLabel(entry.media)}
-											title={interpolationActionLabel(entry.media)}
-										>
-											<GaugeIcon class="size-4" aria-hidden="true" />
-											{m.video_editor_media_interpolate()}
-										</DropdownMenu.SubTrigger>
-										<DropdownMenu.SubContent class="video-editor-theme w-32">
-											{#each SUPPORTED_INTERPOLATION_FACTORS as factor}
-												<DropdownMenu.Item onclick={() => interpolateMedia(entry.media, factor)}>
-													{factor}x
-												</DropdownMenu.Item>
-											{/each}
-										</DropdownMenu.SubContent>
-									</DropdownMenu.Sub>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
+									{#if entry?.status === 'ready'}
+										<DropdownMenu.Root>
+											<DropdownMenu.Trigger>
+												{#snippet child({ props })}
+													<Button
+														{...props}
+														variant="ghost"
+														size="icon-xs"
+														class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
+														aria-label={m.video_editor_media_more_actions({
+															name: entry.media.fileName
+														})}
+													>
+														<MoreIcon class="size-3.5" aria-hidden="true" />
+													</Button>
+												{/snippet}
+											</DropdownMenu.Trigger>
+											<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+												{#if canExtractEmbeddedSubtitles(entry.media)}
+													<DropdownMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
+														<CaptionsIcon class="size-4" aria-hidden="true" />
+														{m.video_editor_extract_embedded_subtitles()}
+													</DropdownMenu.Item>
+													<DropdownMenu.Separator />
+												{/if}
+												<DropdownMenu.Sub>
+													<DropdownMenu.SubTrigger
+														disabled={!upscaleService.canUpscaleMedia(entry.media) ||
+															mediaProcessing(id)}
+														aria-label={upscaleActionLabel(entry.media)}
+														title={upscaleActionLabel(entry.media)}
+													>
+														<ScanLineIcon class="size-4" aria-hidden="true" />
+														{m.video_editor_media_upscale()}
+													</DropdownMenu.SubTrigger>
+													<DropdownMenu.SubContent class="video-editor-theme w-44">
+														<DropdownMenu.Item
+															onclick={() => upscaleMedia(entry.media, 'liveAction')}
+														>
+															{m.video_editor_media_upscale_live_action()}
+														</DropdownMenu.Item>
+														<DropdownMenu.Item
+															onclick={() => upscaleMedia(entry.media, 'animation')}
+														>
+															{m.video_editor_media_upscale_animation()}
+														</DropdownMenu.Item>
+														<DropdownMenu.Item onclick={() => upscaleMedia(entry.media, 'threeD')}>
+															{m.video_editor_media_upscale_3d()}
+														</DropdownMenu.Item>
+													</DropdownMenu.SubContent>
+												</DropdownMenu.Sub>
+												<DropdownMenu.Sub>
+													<DropdownMenu.SubTrigger
+														disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
+															mediaProcessing(id)}
+														aria-label={interpolationActionLabel(entry.media)}
+														title={interpolationActionLabel(entry.media)}
+													>
+														<GaugeIcon class="size-4" aria-hidden="true" />
+														{m.video_editor_media_interpolate()}
+													</DropdownMenu.SubTrigger>
+													<DropdownMenu.SubContent class="video-editor-theme w-32">
+														{#each SUPPORTED_INTERPOLATION_FACTORS as factor}
+															<DropdownMenu.Item
+																onclick={() => interpolateMedia(entry.media, factor)}
+															>
+																{factor}x
+															</DropdownMenu.Item>
+														{/each}
+													</DropdownMenu.SubContent>
+												</DropdownMenu.Sub>
+											</DropdownMenu.Content>
+										</DropdownMenu.Root>
+									{/if}
+									<button
+										type="button"
+										class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
+										disabled={entry?.status !== 'ready'}
+										aria-label={`${m.video_editor_media_place()}: ${entry?.media.fileName ?? ''}`}
+										title={m.video_editor_media_place()}
+										onclick={() => entry && placeMedia(entry.media)}
+									>
+										<PlusIcon class="size-3.5" aria-hidden="true" />
+									</button>
+								</li>
+							{/snippet}
+						</ContextMenu.Trigger>
+						{#if entry?.status === 'ready'}
+							<ContextMenu.Content class="video-editor-theme w-56">
+								<ContextMenu.Item onclick={() => onsourceopen(id)}>
+									<FilmIcon class="size-4" aria-hidden="true" />
+									{m.video_editor_source_monitor()}
+								</ContextMenu.Item>
+								<ContextMenu.Item onclick={() => placeMedia(entry.media)}>
+									<PlusIcon class="size-4" aria-hidden="true" />
+									{m.video_editor_media_place()}
+								</ContextMenu.Item>
+								{#if canExtractEmbeddedSubtitles(entry.media)}
+									<ContextMenu.Separator />
+									<ContextMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
+										<CaptionsIcon class="size-4" aria-hidden="true" />
+										{m.video_editor_extract_embedded_subtitles()}
+									</ContextMenu.Item>
+								{/if}
+								<ContextMenu.Separator />
+								<ContextMenu.Sub>
+									<ContextMenu.SubTrigger
+										disabled={!upscaleService.canUpscaleMedia(entry.media) || mediaProcessing(id)}
+										aria-label={upscaleActionLabel(entry.media)}
+										title={upscaleActionLabel(entry.media)}
+									>
+										<ScanLineIcon class="size-4" aria-hidden="true" />
+										{m.video_editor_media_upscale()}
+									</ContextMenu.SubTrigger>
+									<ContextMenu.SubContent class="video-editor-theme w-44">
+										<ContextMenu.Item onclick={() => upscaleMedia(entry.media, 'liveAction')}>
+											{m.video_editor_media_upscale_live_action()}
+										</ContextMenu.Item>
+										<ContextMenu.Item onclick={() => upscaleMedia(entry.media, 'animation')}>
+											{m.video_editor_media_upscale_animation()}
+										</ContextMenu.Item>
+										<ContextMenu.Item onclick={() => upscaleMedia(entry.media, 'threeD')}>
+											{m.video_editor_media_upscale_3d()}
+										</ContextMenu.Item>
+									</ContextMenu.SubContent>
+								</ContextMenu.Sub>
+								<ContextMenu.Sub>
+									<ContextMenu.SubTrigger
+										disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
+											mediaProcessing(id)}
+										aria-label={interpolationActionLabel(entry.media)}
+										title={interpolationActionLabel(entry.media)}
+									>
+										<GaugeIcon class="size-4" aria-hidden="true" />
+										{m.video_editor_media_interpolate()}
+									</ContextMenu.SubTrigger>
+									<ContextMenu.SubContent class="video-editor-theme w-32">
+										{#each SUPPORTED_INTERPOLATION_FACTORS as factor}
+											<ContextMenu.Item onclick={() => interpolateMedia(entry.media, factor)}>
+												{factor}x
+											</ContextMenu.Item>
+										{/each}
+									</ContextMenu.SubContent>
+								</ContextMenu.Sub>
+							</ContextMenu.Content>
 						{/if}
-						<button
-							type="button"
-							class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
-							disabled={entry?.status !== 'ready'}
-							aria-label={`${m.video_editor_media_place()}: ${entry?.media.fileName ?? ''}`}
-							title={m.video_editor_media_place()}
-							onclick={() => entry && placeMedia(entry.media)}
-						>
-							<PlusIcon class="size-3.5" aria-hidden="true" />
-						</button>
-					</li>
+					</ContextMenu.Root>
 				{/each}
 			</ul>
 		</section>

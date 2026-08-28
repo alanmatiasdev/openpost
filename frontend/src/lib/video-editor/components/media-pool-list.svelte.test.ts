@@ -75,6 +75,34 @@ describe('MediaPoolList', () => {
 		});
 	});
 
+	it('offers source and placement actions from a media row context menu', async () => {
+		mediaPool.loadAll([media('video', 'Interview.mp4', ['video'])]);
+		const onsourceopen = vi.fn();
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			onsourceopen
+		});
+		const row = screen.getByText('Interview.mp4').element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: 80,
+				clientY: 80
+			})
+		);
+
+		await expect.element(screen.getByRole('menuitem', { name: 'Source' })).toBeVisible();
+		await screen.getByRole('menuitem', { name: 'Place on timeline' }).click();
+		expect(mediaPlacement.request?.payload).toMatchObject({
+			source: 'media',
+			id: 'video'
+		});
+		expect(onsourceopen).not.toHaveBeenCalled();
+	});
+
 	it('keeps high-cost video tools in one clear menu with honest size gates', async () => {
 		await page.viewport(320, 720);
 		mediaPool.loadAll([

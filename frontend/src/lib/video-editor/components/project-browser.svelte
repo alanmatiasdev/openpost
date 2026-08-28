@@ -4,6 +4,7 @@
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import ProjectDetailsDialog from '$lib/video-editor/components/project-details-dialog.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -718,153 +719,196 @@
 		<ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" role="list">
 			{#each visibleProjects as project (project.id)}
 				<li>
-					<div
-						class={`group relative overflow-hidden rounded-xl border bg-[oklch(0.2_0.01_50)] transition-[border-color,transform] active:scale-[0.995] motion-reduce:transition-none ${selectedIds.has(project.id) ? 'border-[oklch(0.66_0.14_45)]' : 'border-[oklch(0.25_0.015_55)] hover:border-[oklch(0.38_0.025_55)]'}`}
-					>
-						<button
-							type="button"
-							class="absolute top-2 left-2 z-10 flex size-11 items-center justify-center rounded-full border border-white/25 bg-black/60 text-white opacity-70 backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)] data-[selected=true]:border-[oklch(0.72_0.15_50)] data-[selected=true]:bg-[oklch(0.58_0.14_45)] data-[selected=true]:opacity-100"
-							data-selected={selectedIds.has(project.id)}
-							role="checkbox"
-							aria-checked={selectedIds.has(project.id)}
-							aria-label={selectedIds.has(project.id)
-								? m.video_editor_project_deselect({ name: project.name })
-								: m.video_editor_project_select({ name: project.name })}
-							onclick={(event) => toggleSelection(event, project)}
-						>
-							{#if selectedIds.has(project.id)}
-								<CheckIcon class="size-4" aria-hidden="true" />
-							{:else}
-								<span class="size-3 rounded-full border border-current" aria-hidden="true"></span>
-							{/if}
-						</button>
-						<button
-							type="button"
-							class="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
-							onclick={() => onopen(project)}
-						>
-							<span class="relative block aspect-video overflow-hidden bg-[oklch(0.13_0.008_55)]">
-								{#if thumbnailUrls[project.id]}
-									<img
-										src={thumbnailUrls[project.id]}
-										alt={m.video_editor_project_thumbnail_alt({ name: project.name })}
-										class="size-full object-contain"
-										draggable="false"
-									/>
-								{:else}
-									<span
-										class="flex size-full items-center justify-center text-[oklch(0.48_0.015_55)]"
-									>
-										<PlayIcon class="size-11" aria-hidden="true" />
-									</span>
-								{/if}
-								<span
-									class="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white"
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							<div
+								class={`group relative overflow-hidden rounded-xl border bg-[oklch(0.2_0.01_50)] transition-[border-color,transform] active:scale-[0.995] motion-reduce:transition-none ${selectedIds.has(project.id) ? 'border-[oklch(0.66_0.14_45)]' : 'border-[oklch(0.25_0.015_55)] hover:border-[oklch(0.38_0.025_55)]'}`}
+							>
+								<button
+									type="button"
+									class="absolute top-2 left-2 z-10 flex size-11 items-center justify-center rounded-full border border-white/25 bg-black/60 text-white opacity-70 backdrop-blur-sm transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)] data-[selected=true]:border-[oklch(0.72_0.15_50)] data-[selected=true]:bg-[oklch(0.58_0.14_45)] data-[selected=true]:opacity-100"
+									data-selected={selectedIds.has(project.id)}
+									role="checkbox"
+									aria-checked={selectedIds.has(project.id)}
+									aria-label={selectedIds.has(project.id)
+										? m.video_editor_project_deselect({ name: project.name })
+										: m.video_editor_project_select({ name: project.name })}
+									onclick={(event) => toggleSelection(event, project)}
 								>
-									{projectAspectRatio(project)}
-								</span>
-							</span>
-							<span class="block p-4 pr-12">
-								<span class="block truncate font-medium">{project.name}</span>
-								{#if project.description.trim()}
-									<span class="mt-1 line-clamp-2 block text-xs text-[oklch(0.67_0.015_55)]">
-										{project.description}
-									</span>
-								{/if}
-								<span
-									class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-[oklch(0.68_0.015_55)]"
+									{#if selectedIds.has(project.id)}
+										<CheckIcon class="size-4" aria-hidden="true" />
+									{:else}
+										<span class="size-3 rounded-full border border-current" aria-hidden="true"
+										></span>
+									{/if}
+								</button>
+								<button
+									type="button"
+									class="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+									onclick={() => onopen(project)}
 								>
-									<span>{projectResolution(project)}</span>
-									<span>{project.metadata.fps} fps</span>
 									<span
-										>{m.video_editor_project_duration({
-											duration: formatDuration(project.duration)
-										})}</span
+										class="relative block aspect-video overflow-hidden bg-[oklch(0.13_0.008_55)]"
 									>
-								</span>
-								<span class="mt-2 block text-xs text-[oklch(0.58_0.015_55)]">
-									{new Date(project.updatedAt).toLocaleDateString()}
-								</span>
-							</span>
-						</button>
-						<div class="absolute top-2 right-2 rounded-md bg-black/55 backdrop-blur-sm">
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											variant="ghost"
-											size="icon-xs"
-											disabled={importing ||
-												duplicatingId !== null ||
-												exportingId !== null ||
-												bundleOperation !== null}
-											aria-busy={duplicatingId === project.id || exportingId === project.id}
-											aria-label={m.video_editor_project_actions({ name: project.name })}
+										{#if thumbnailUrls[project.id]}
+											<img
+												src={thumbnailUrls[project.id]}
+												alt={m.video_editor_project_thumbnail_alt({
+													name: project.name
+												})}
+												class="size-full object-contain"
+												draggable="false"
+											/>
+										{:else}
+											<span
+												class="flex size-full items-center justify-center text-[oklch(0.48_0.015_55)]"
+											>
+												<PlayIcon class="size-11" aria-hidden="true" />
+											</span>
+										{/if}
+										<span
+											class="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white"
 										>
-											{#if duplicatingId === project.id || exportingId === project.id}
-												<LoaderIcon
-													class="size-4 animate-spin motion-reduce:animate-none"
-													aria-hidden="true"
-												/>
-											{:else}
-												<MoreIcon class="size-4" aria-hidden="true" />
-											{/if}
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content class="video-editor-theme" align="end">
-									<DropdownMenu.Item onclick={() => editProject(project)}>
-										<PencilIcon class="size-4" aria-hidden="true" />
-										{m.video_editor_project_edit_action()}
-									</DropdownMenu.Item>
-									<DropdownMenu.Item
-										disabled={duplicatingId !== null || importing || bundleOperation !== null}
-										onclick={() => void onduplicate(project)}
-									>
-										<CopyIcon class="size-4" aria-hidden="true" />
-										{m.video_editor_project_duplicate()}
-									</DropdownMenu.Item>
-									<DropdownMenu.Item
-										disabled={exportingId !== null || bundleOperation !== null}
-										onclick={() => void onexportbundle(project)}
-									>
-										{#if exportingId === project.id && exportingKind === 'bundle'}
-											<LoaderIcon
-												class="size-4 animate-spin motion-reduce:animate-none"
-												aria-hidden="true"
-											/>
-										{:else}
-											<DownloadIcon class="size-4" aria-hidden="true" />
+											{projectAspectRatio(project)}
+										</span>
+									</span>
+									<span class="block p-4 pr-12">
+										<span class="block truncate font-medium">{project.name}</span>
+										{#if project.description.trim()}
+											<span class="mt-1 line-clamp-2 block text-xs text-[oklch(0.67_0.015_55)]">
+												{project.description}
+											</span>
 										{/if}
-										{m.video_editor_project_export_bundle()}
-									</DropdownMenu.Item>
-									<DropdownMenu.Item
-										disabled={exportingId !== null || bundleOperation !== null}
-										onclick={() => void onexportjson(project)}
-									>
-										{#if exportingId === project.id && exportingKind === 'json'}
-											<LoaderIcon
-												class="size-4 animate-spin motion-reduce:animate-none"
-												aria-hidden="true"
-											/>
-										{:else}
-											<DownloadIcon class="size-4" aria-hidden="true" />
-										{/if}
-										{m.video_editor_project_export_json()}
-									</DropdownMenu.Item>
-									<DropdownMenu.Separator />
-									<DropdownMenu.Item
-										class="text-red-300 focus:text-red-200"
-										onclick={() => confirmDelete(project)}
-									>
-										<TrashIcon class="size-4" aria-hidden="true" />
-										{m.video_editor_project_move_to_trash()}
-									</DropdownMenu.Item>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
-						</div>
-					</div>
+										<span
+											class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-[oklch(0.68_0.015_55)]"
+										>
+											<span>{projectResolution(project)}</span>
+											<span>{project.metadata.fps} fps</span>
+											<span
+												>{m.video_editor_project_duration({
+													duration: formatDuration(project.duration)
+												})}</span
+											>
+										</span>
+										<span class="mt-2 block text-xs text-[oklch(0.58_0.015_55)]">
+											{new Date(project.updatedAt).toLocaleDateString()}
+										</span>
+									</span>
+								</button>
+								<div class="absolute top-2 right-2 rounded-md bg-black/55 backdrop-blur-sm">
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													variant="ghost"
+													size="icon-xs"
+													disabled={importing ||
+														duplicatingId !== null ||
+														exportingId !== null ||
+														bundleOperation !== null}
+													aria-busy={duplicatingId === project.id || exportingId === project.id}
+													aria-label={m.video_editor_project_actions({
+														name: project.name
+													})}
+												>
+													{#if duplicatingId === project.id || exportingId === project.id}
+														<LoaderIcon
+															class="size-4 animate-spin motion-reduce:animate-none"
+															aria-hidden="true"
+														/>
+													{:else}
+														<MoreIcon class="size-4" aria-hidden="true" />
+													{/if}
+												</Button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content class="video-editor-theme" align="end">
+											<DropdownMenu.Item onclick={() => editProject(project)}>
+												<PencilIcon class="size-4" aria-hidden="true" />
+												{m.video_editor_project_edit_action()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item
+												disabled={duplicatingId !== null || importing || bundleOperation !== null}
+												onclick={() => void onduplicate(project)}
+											>
+												<CopyIcon class="size-4" aria-hidden="true" />
+												{m.video_editor_project_duplicate()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item
+												disabled={exportingId !== null || bundleOperation !== null}
+												onclick={() => void onexportbundle(project)}
+											>
+												{#if exportingId === project.id && exportingKind === 'bundle'}
+													<LoaderIcon
+														class="size-4 animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
+												{:else}
+													<DownloadIcon class="size-4" aria-hidden="true" />
+												{/if}
+												{m.video_editor_project_export_bundle()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item
+												disabled={exportingId !== null || bundleOperation !== null}
+												onclick={() => void onexportjson(project)}
+											>
+												{#if exportingId === project.id && exportingKind === 'json'}
+													<LoaderIcon
+														class="size-4 animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
+												{:else}
+													<DownloadIcon class="size-4" aria-hidden="true" />
+												{/if}
+												{m.video_editor_project_export_json()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item
+												class="text-red-300 focus:text-red-200"
+												onclick={() => confirmDelete(project)}
+											>
+												<TrashIcon class="size-4" aria-hidden="true" />
+												{m.video_editor_project_move_to_trash()}
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+								</div>
+							</div>
+						</ContextMenu.Trigger>
+						<ContextMenu.Content class="video-editor-theme w-52">
+							<ContextMenu.Item onclick={() => editProject(project)}>
+								<PencilIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_project_edit_action()}
+							</ContextMenu.Item>
+							<ContextMenu.Item
+								disabled={duplicatingId !== null || importing || bundleOperation !== null}
+								onclick={() => void onduplicate(project)}
+							>
+								<CopyIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_project_duplicate()}
+							</ContextMenu.Item>
+							<ContextMenu.Item
+								disabled={exportingId !== null || bundleOperation !== null}
+								onclick={() => void onexportbundle(project)}
+							>
+								<DownloadIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_project_export_bundle()}
+							</ContextMenu.Item>
+							<ContextMenu.Item
+								disabled={exportingId !== null || bundleOperation !== null}
+								onclick={() => void onexportjson(project)}
+							>
+								<DownloadIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_project_export_json()}
+							</ContextMenu.Item>
+							<ContextMenu.Separator />
+							<ContextMenu.Item variant="destructive" onclick={() => confirmDelete(project)}>
+								<TrashIcon class="size-4" aria-hidden="true" />
+								{m.video_editor_project_move_to_trash()}
+							</ContextMenu.Item>
+						</ContextMenu.Content>
+					</ContextMenu.Root>
 				</li>
 			{/each}
 		</ul>

@@ -104,6 +104,26 @@ it('keeps project search and compact actions usable at 320 pixels', async () => 
 	await settleUnmount(screen.unmount);
 });
 
+it('opens project actions from right click without opening the project', async () => {
+	const props = browserProps([project('alpha', 'Alpha launch', 100)]);
+	const screen = await render(ProjectBrowser, props);
+	const projectButton = screen.getByRole('button', { name: /^16:9 Alpha launch/ }).element();
+
+	projectButton.dispatchEvent(
+		new MouseEvent('contextmenu', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 120,
+			clientY: 80
+		})
+	);
+
+	await expect.element(screen.getByRole('menuitem', { name: 'Edit project' })).toBeVisible();
+	expect(props.onopen).not.toHaveBeenCalled();
+	await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
+	expect(props.onduplicate).toHaveBeenCalledWith(expect.objectContaining({ id: 'alpha' }));
+});
+
 it('creates a project from a compact canvas preset at 320 pixels', async () => {
 	await page.viewport(320, 760);
 	const oncreate = vi.fn(async () => true);

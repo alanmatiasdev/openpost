@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import '../../../routes/layout.css';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
@@ -7,7 +7,7 @@ import { commandHistory } from '$lib/video-editor/timeline/commands/command-stor
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
-import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
+import { addMarker, setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import {
@@ -160,6 +160,100 @@ beforeEach(() => {
 });
 
 describe('TimelinePanel progressive controls', () => {
+	it('offers target-aware timeline actions by right click and keyboard', async () => {
+		await page.viewport(720, 600);
+		const ondelete = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: 'video',
+			selectedItemIds: ['video'],
+			ondeleteselection: ondelete
+		});
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="video"] > button'
+		);
+		expect(clip).not.toBeNull();
+
+		clip!.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: 250,
+				clientY: 120
+			})
+		);
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Delete and leave gap/ }))
+			.toBeVisible();
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-timeline-context-menu.png'
+		});
+		await screen.getByRole('menuitem', { name: /^Delete and leave gap/ }).click();
+		expect(ondelete).toHaveBeenCalledOnce();
+
+		clip!.focus();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await expect.element(screen.getByRole('menuitem', { name: /^Copy/ })).toBeVisible();
+	});
+
+	it('offers track controls from the track header context menu', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const trackHeader = screen.container.querySelector<HTMLElement>(
+			'[data-track-header="video-track"]'
+		);
+		expect(trackHeader).not.toBeNull();
+		await userEvent.click(trackHeader!, {
+			button: 'right',
+			position: { x: 8, y: 8 }
+		});
+		screen.getByRole('menuitem', { name: 'Hide track' }).element().click();
+		expect(timelineStore.tracks.find((candidate) => candidate.id === 'video-track')?.visible).toBe(
+			false
+		);
+	});
+
+	it('adds a marker from an empty-track context menu', async () => {
+		timelineStore._setItems(
+			timelineStore.items.map((candidate) =>
+				candidate.id === 'music-bed'
+					? { ...candidate, durationInFrames: 5, sourceEnd: 5 }
+					: candidate
+			)
+		);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const trackRow = screen.container.querySelector<HTMLElement>('[data-track="audio-track"]');
+		const musicClip = screen.container.querySelector<HTMLElement>(
+			'[data-timeline-item-id="music-bed"]'
+		);
+		expect(trackRow).not.toBeNull();
+		expect(musicClip).not.toBeNull();
+		await userEvent.click(trackRow!, {
+			button: 'right',
+			position: {
+				x: musicClip!.offsetLeft + musicClip!.offsetWidth + 16,
+				y: 32
+			}
+		});
+		screen
+			.getByRole('menuitem', { name: /^Add marker/ })
+			.element()
+			.click();
+		expect(timelineStore.markers).toHaveLength(1);
+	});
+
+	it('deletes a marker from its context menu', async () => {
+		const markerId = addMarker(12);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const marker = screen.container.querySelector<HTMLButtonElement>(
+			`[data-timeline-marker="${markerId}"]`
+		);
+		expect(marker).not.toBeNull();
+
+		await userEvent.click(marker!, { button: 'right' });
+		screen.getByRole('menuitem', { name: 'Delete marker' }).element().click();
+		expect(timelineStore.markers).toHaveLength(0);
+	});
+
 	it('keeps beat analysis and keyframe editing closed until requested', async () => {
 		const screen = await render(TimelinePanel, {
 			onedit: vi.fn(),

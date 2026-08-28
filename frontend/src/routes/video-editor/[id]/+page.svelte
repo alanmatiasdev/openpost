@@ -795,10 +795,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		return true;
 	}
 
-	function pasteTimelineClipboard(): boolean {
-		const activeTrackId = selectedItemId
-			? (timelineStore.itemById.get(selectedItemId)?.trackId ?? null)
-			: null;
+	function pasteTimelineClipboard(
+		frame = timelineStore.currentFrame,
+		preferredTrackId?: string | null
+	): boolean {
+		setCurrentFrame(frame);
+		const activeTrackId =
+			preferredTrackId ??
+			(selectedItemId ? (timelineStore.itemById.get(selectedItemId)?.trackId ?? null) : null);
 		const pastedIds = pasteTimelineItemClipboard(activeTrackId);
 		if (pastedIds.length === 0) return false;
 		selectedItemIds = pastedIds;
@@ -1569,6 +1573,12 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						canvasHeight={renderProject?.metadata.height ?? 1080}
 						onedit={() => editorSession.scheduleAutosave()}
 						onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
+						oncopyselection={() => copyTimelineSelection(false)}
+						oncutselection={() => copyTimelineSelection(true)}
+						onpasteat={(frame, trackId) => pasteTimelineClipboard(frame, trackId)}
+						onsplitselection={handleSplit}
+						ondeleteselection={() => handleDelete(false)}
+						onrippledeleteselection={() => handleDelete(true)}
 						onopencomposition={handleOpenSequence}
 						ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
 					/>
