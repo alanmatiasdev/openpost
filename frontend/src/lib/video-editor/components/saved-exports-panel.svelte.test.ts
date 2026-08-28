@@ -32,7 +32,7 @@ describe('SavedExportsPanel', () => {
 		let files = [first, second];
 		const props = {
 			projectId: 'project',
-			refreshVersion: 0,
+			refreshKey: 'first',
 			listFiles: vi.fn(async () => files),
 			readFile: vi.fn(async () => new Blob(['render'], { type: 'video/webm' })),
 			deleteFile: vi.fn(async (path: string[]) => {
@@ -65,7 +65,7 @@ describe('SavedExportsPanel', () => {
 		expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
 		await page.viewport(320, 720);
 		files = [third, ...files];
-		await screen.rerender({ ...props, refreshVersion: 1 });
+		await screen.rerender({ ...props, refreshKey: 'first\u0000third' });
 		await expect.element(screen.getByText(third.name)).toBeVisible();
 		expect(props.listFiles).toHaveBeenCalledTimes(2);
 

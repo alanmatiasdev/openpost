@@ -16,6 +16,7 @@
 	import SavedExportsPanel from './saved-exports-panel.svelte';
 	import RenderProgress from './render-progress.svelte';
 	import type { RenderExportProgress } from '../media/render-export';
+	import { completedExportRefreshKey } from './render-queue-panel';
 
 	let { projectId }: { projectId: string } = $props();
 	let open = $state(false);
@@ -25,14 +26,7 @@
 		$renderQueueStore.jobs.filter((job) => job.status === 'queued' || job.status === 'rendering')
 			.length
 	);
-	const completedVersion = $derived(
-		Math.max(
-			0,
-			...$renderQueueStore.jobs
-				.filter((job) => job.status === 'completed')
-				.map((job) => job.finishedAt ?? 0)
-		)
-	);
+	const completedRefreshKey = $derived(completedExportRefreshKey($renderQueueStore.jobs));
 
 	$effect(() => {
 		if (open && !wasOpen) activeTab = activeCount > 0 ? 'queue' : 'saved';
@@ -211,7 +205,7 @@
 			</Tabs.Content>
 			<Tabs.Content value="saved" class="mt-3 min-h-0">
 				{#if open && activeTab === 'saved'}
-					<SavedExportsPanel {projectId} refreshVersion={completedVersion} />
+					<SavedExportsPanel {projectId} refreshKey={completedRefreshKey} />
 				{/if}
 			</Tabs.Content>
 		</Tabs.Root>

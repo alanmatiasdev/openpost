@@ -23,17 +23,17 @@
 
 	interface Props {
 		projectId: string;
-		refreshVersion?: number;
+		refreshKey?: string;
 		listFiles?: typeof listExportFiles;
 		readFile?: typeof readExportFile;
 		deleteFile?: typeof deleteExportFile;
 		getFolderName?: typeof workspaceFolderName;
 	}
-	type LoadTrigger = Pick<Props, 'projectId' | 'refreshVersion'>;
+	type LoadTrigger = Pick<Props, 'projectId' | 'refreshKey'>;
 
 	let {
 		projectId,
-		refreshVersion = 0,
+		refreshKey = '',
 		listFiles = listExportFiles,
 		readFile = readExportFile,
 		deleteFile = deleteExportFile,
@@ -84,7 +84,7 @@
 		}).format(timestamp);
 	}
 
-	async function load(trigger: LoadTrigger = { projectId, refreshVersion }): Promise<void> {
+	async function load(trigger: LoadTrigger = { projectId, refreshKey }): Promise<void> {
 		const generation = ++loadGeneration;
 		loading = true;
 		loadError = '';
@@ -158,7 +158,7 @@
 	}
 
 	$effect(() => {
-		void load({ projectId, refreshVersion });
+		void load({ projectId, refreshKey });
 	});
 </script>
 
