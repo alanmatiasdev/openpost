@@ -21,6 +21,11 @@ import {
 	type TranscriptionSourceSnapshot,
 	type TranscriptionSourceWindow
 } from './transcribe-action';
+import { editorSettings } from '../settings/editor-settings.svelte';
+import {
+	captionStylePresetById,
+	resolveCaptionStylePatch
+} from '../typography/caption-style-presets';
 
 export interface AiCaptionSourceWindow extends TranscriptionSourceWindow {
 	playbackSpeed: number;
@@ -151,33 +156,6 @@ function resolveAiCaptionCanvas(canvas?: AiCaptionCanvas): AiCaptionCanvas {
 	return { width: 1920, height: 1080 };
 }
 
-function captionStyleForCanvas(
-	canvas: AiCaptionCanvas
-): Pick<
-	TimelineItem,
-	'fontSize' | 'fontFamily' | 'fontWeight' | 'fontStyle' | 'color' | 'backgroundColor' | 'transform'
-> & { backgroundFit: 'content'; textAlign: 'center'; verticalAlign: 'middle' } {
-	return {
-		fontSize: Math.max(36, Math.round(canvas.height * 0.045)),
-		fontFamily: 'Inter',
-		fontWeight: 600,
-		fontStyle: 'normal',
-		color: '#ffffff',
-		backgroundColor: 'rgba(0, 0, 0, 0.55)',
-		backgroundFit: 'content',
-		textAlign: 'center',
-		verticalAlign: 'middle',
-		transform: {
-			x: 0,
-			y: Math.round(canvas.height * 0.32),
-			width: Math.round(canvas.width * 0.82),
-			height: Math.round(canvas.height * 0.16),
-			rotation: 0,
-			opacity: 1
-		}
-	};
-}
-
 /** Create or replace the generated AI-caption subtitle item for one exact clip source window. */
 export function addAiCaptionSubtitleItem(
 	sourceItemId: string,
@@ -225,7 +203,13 @@ export function addAiCaptionSubtitleItem(
 		if (!targetTrackId) throw new Error(m.video_editor_transcribe_unlock_track());
 		const id = existing?.id ?? crypto.randomUUID();
 		const resolvedCanvas = resolveAiCaptionCanvas(canvas);
-		const style = captionStyleForCanvas(resolvedCanvas);
+		const style = existing
+			? {}
+			: resolveCaptionStylePatch(
+					captionStylePresetById(editorSettings.defaultCaptionStylePresetId),
+					resolvedCanvas.width,
+					resolvedCanvas.height
+				);
 		const nextItem = {
 			...(existing ?? {}),
 			id,
@@ -244,35 +228,8 @@ export function addAiCaptionSubtitleItem(
 				isReversed: source.isReversed === true
 			},
 			cues,
-			...style,
-			underline: false,
-			lineHeight: 1.15,
-			letterSpacing: 0,
-			paddingX: 16,
-			paddingY: 8,
-			borderRadius: 8,
-			textShadow: {
-				offsetX: 0,
-				offsetY: 3,
-				blur: 10,
-				color: 'rgba(0, 0, 0, 0.75)'
-			}
+			...style
 		} satisfies TimelineItem;
-		if (existing) {
-			nextItem.fontSize = existing.fontSize ?? nextItem.fontSize;
-			nextItem.fontFamily = existing.fontFamily ?? nextItem.fontFamily;
-			nextItem.fontWeight = existing.fontWeight ?? nextItem.fontWeight;
-			nextItem.fontStyle = existing.fontStyle ?? nextItem.fontStyle;
-			nextItem.underline = existing.underline ?? nextItem.underline;
-			nextItem.color = existing.color ?? nextItem.color;
-			nextItem.backgroundColor = existing.backgroundColor ?? nextItem.backgroundColor;
-			nextItem.textAlign = existing.textAlign ?? nextItem.textAlign;
-			nextItem.verticalAlign = existing.verticalAlign ?? nextItem.verticalAlign;
-			nextItem.lineHeight = existing.lineHeight ?? nextItem.lineHeight;
-			nextItem.letterSpacing = existing.letterSpacing ?? nextItem.letterSpacing;
-			nextItem.textShadow = existing.textShadow ?? nextItem.textShadow;
-			nextItem.transform = existing.transform ?? nextItem.transform;
-		}
 		const duplicateIds = new Set(matches.slice(1).map((item) => item.id));
 		const nextItems = timelineStore.items
 			.filter((item) => !duplicateIds.has(item.id))

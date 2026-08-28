@@ -7,6 +7,7 @@ import { addAiCaptionSubtitleItem, buildAiCaptionCues } from './ai-captions';
 import type { MediaScene } from '../media/scene-search/types';
 import { collectSubtitleCues, subtitleSidecarSrt } from './subtitle-export';
 import { execute } from '../timeline/commands/command-store.svelte';
+import { editorSettings } from '../settings/editor-settings.svelte';
 
 const track: TimelineTrack = {
 	id: 'video',
@@ -57,6 +58,7 @@ const scenes: MediaScene[] = [
 
 beforeEach(() => {
 	commandHistory.clearHistory();
+	editorSettings.reset();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [source], fps: 30 });
 });
@@ -107,6 +109,29 @@ describe('ai-caption cue building', () => {
 });
 
 describe('addAiCaptionSubtitleItem', () => {
+	it('applies the configured recipe once and preserves later style edits on refresh', () => {
+		editorSettings.set('defaultCaptionStylePresetId', 'tiktok');
+		const id = addAiCaptionSubtitleItem(source.id, scenes, undefined, {
+			width: 1000,
+			height: 1000
+		});
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			fontFamily: 'Anton',
+			fontSize: 75,
+			strokeWidth: 2,
+			transform: { y: 0, width: 900, height: 220 }
+		});
+		timelineStore._updateItems([{ id, patch: { color: '#00ff00', paddingX: 27 } }]);
+		editorSettings.set('defaultCaptionStylePresetId', 'youtube');
+
+		addAiCaptionSubtitleItem(source.id, scenes, undefined, { width: 1000, height: 1000 });
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			fontFamily: 'Anton',
+			color: '#00ff00',
+			paddingX: 27
+		});
+	});
+
 	it('creates an undoable ai-caption subtitle item without touching transcript captions', () => {
 		const transcriptId = addGeneratedSubtitleItem(source.id, [
 			{ text: 'Transcript words', startSeconds: 1, endSeconds: 2 }
@@ -281,10 +306,10 @@ describe('addAiCaptionSubtitleItem', () => {
 			height: 1080
 		});
 		const wideItem = timelineStore.itemById.get(wide)!;
-		expect(wideItem.transform?.width).toBe(Math.round(1920 * 0.82));
+		expect(wideItem.transform?.width).toBe(Math.round(1920 * 0.7));
 		expect(wideItem.transform?.height).toBe(Math.round(1080 * 0.16));
-		expect(wideItem.transform?.y).toBe(Math.round(1080 * 0.32));
-		expect(wideItem.fontSize).toBe(Math.max(36, Math.round(1080 * 0.045)));
+		expect(wideItem.transform?.y).toBe(Math.round(1080 * 0.36));
+		expect(wideItem.fontSize).toBe(Math.round(1080 * 0.04));
 		timelineStore._setItems(timelineStore.items.filter((item) => item.id !== wide));
 		commandHistory.clearHistory();
 
@@ -293,10 +318,10 @@ describe('addAiCaptionSubtitleItem', () => {
 			height: 1920
 		});
 		const portraitItem = timelineStore.itemById.get(portrait)!;
-		expect(portraitItem.transform?.width).toBe(Math.round(1080 * 0.82));
+		expect(portraitItem.transform?.width).toBe(Math.round(1080 * 0.7));
 		expect(portraitItem.transform?.height).toBe(Math.round(1920 * 0.16));
-		expect(portraitItem.transform?.y).toBe(Math.round(1920 * 0.32));
-		expect(portraitItem.fontSize).toBe(Math.max(36, Math.round(1920 * 0.045)));
+		expect(portraitItem.transform?.y).toBe(Math.round(1920 * 0.36));
+		expect(portraitItem.fontSize).toBe(Math.round(1920 * 0.04));
 		timelineStore._setItems(timelineStore.items.filter((item) => item.id !== portrait));
 		commandHistory.clearHistory();
 
@@ -305,8 +330,8 @@ describe('addAiCaptionSubtitleItem', () => {
 			height: 1080
 		});
 		const squareItem = timelineStore.itemById.get(square)!;
-		expect(squareItem.transform?.width).toBe(Math.round(1080 * 0.82));
+		expect(squareItem.transform?.width).toBe(Math.round(1080 * 0.7));
 		expect(squareItem.transform?.height).toBe(Math.round(1080 * 0.16));
-		expect(squareItem.transform?.y).toBe(Math.round(1080 * 0.32));
+		expect(squareItem.transform?.y).toBe(Math.round(1080 * 0.36));
 	});
 });

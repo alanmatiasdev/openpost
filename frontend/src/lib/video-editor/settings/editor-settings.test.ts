@@ -59,6 +59,18 @@ describe('editor settings', () => {
 		expect(restored.mediaLibraryItemSize).toBe(4);
 	});
 
+	it('normalizes and persists the default generated caption style', () => {
+		expect(
+			normalizeEditorSettings({ defaultCaptionStylePresetId: 'unknown' })
+				.defaultCaptionStylePresetId
+		).toBe('netflix');
+
+		const storage = memoryStorage();
+		const settings = createEditorSettingsStore(storage);
+		settings.set('defaultCaptionStylePresetId', 'tiktok');
+		expect(createEditorSettingsStore(storage).defaultCaptionStylePresetId).toBe('tiktok');
+	});
+
 	it('persists changes and resets the complete settings document', () => {
 		const storage = memoryStorage();
 		const first = createEditorSettingsStore(storage);

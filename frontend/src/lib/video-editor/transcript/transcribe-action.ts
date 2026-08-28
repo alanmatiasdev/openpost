@@ -11,6 +11,11 @@ import type { TimelineItem } from '../project/types';
 import { m } from '$lib/paraglide/messages';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { editorSettings } from '../settings/editor-settings.svelte';
+import {
+	captionStylePresetById,
+	resolveCaptionStylePatch
+} from '../typography/caption-style-presets';
 import { buildCuesFromWords, type TranscriptWord } from './cues';
 import { BrowserTranscriber } from './engine/transcriber';
 import type { TranscribeOptions } from './engine/types';
@@ -121,10 +126,16 @@ export async function transcribeSource(
 }
 
 /** Create or replace the generated subtitle item for one exact clip source window. */
+export interface GeneratedCaptionCanvas {
+	width: number;
+	height: number;
+}
+
 export function addGeneratedSubtitleItem(
 	sourceItemId: string,
 	words: TranscriptWord[],
-	expectedSource?: TranscriptionSourceWindow | TranscriptionSourceSnapshot
+	expectedSource?: TranscriptionSourceWindow | TranscriptionSourceSnapshot,
+	canvas: GeneratedCaptionCanvas = { width: 1920, height: 1080 }
 ): string {
 	// SAFETY: execute returns the action's own string id unchanged.
 	return execute('ADD_GENERATED_SUBTITLES', () => {
@@ -163,8 +174,18 @@ export function addGeneratedSubtitleItem(
 				: undefined;
 		if (!existing && !topTrack) throw new Error(m.video_editor_transcribe_unlock_track());
 		const id = existing?.id ?? crypto.randomUUID();
+		const resolvedCanvas =
+			canvas.width > 0 && canvas.height > 0 ? canvas : { width: 1920, height: 1080 };
+		const style = existing
+			? {}
+			: resolveCaptionStylePatch(
+					captionStylePresetById(editorSettings.defaultCaptionStylePresetId),
+					resolvedCanvas.width,
+					resolvedCanvas.height
+				);
 		const nextItem = {
 			...(existing ?? {}),
+			...style,
 			id,
 			trackId: existing?.trackId ?? topTrack!.id,
 			from: source.from,

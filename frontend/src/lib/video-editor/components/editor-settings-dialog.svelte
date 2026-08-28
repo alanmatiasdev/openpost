@@ -54,6 +54,11 @@
 	import LocalModelCacheControl from './local-model-cache-control.svelte';
 	import KeyboardShortcutEditor from './keyboard-shortcut-editor.svelte';
 	import { previewEditorSound } from '$lib/video-editor/sounds/editor-sounds';
+	import {
+		CAPTION_STYLE_PRESETS,
+		type CaptionStylePresetId
+	} from '$lib/video-editor/typography/caption-style-presets';
+	import { captionStylePresetLabel } from '$lib/video-editor/typography/caption-style-i18n';
 
 	type Section = 'general' | 'timeline' | 'shortcuts' | 'ai' | 'storage';
 	type StorageAction = 'cache' | 'thumbnails' | 'generate-proxies' | 'delete-proxies';
@@ -493,6 +498,26 @@
 									class="mt-1 h-9 w-full"
 								/>
 							</div>
+						</div>
+						<div class="rounded-lg border border-[oklch(0.29_0.014_55)] p-4">
+							<label for="editor-default-caption-style" class="text-sm font-medium">
+								{m.video_editor_settings_default_caption_style()}
+							</label>
+							<p class="mt-0.5 text-xs text-[var(--video-editor-muted)]">
+								{m.video_editor_settings_default_caption_style_description()}
+							</p>
+							<AppSelect
+								id="editor-default-caption-style"
+								value={editorSettings.defaultCaptionStylePresetId}
+								ariaLabel={m.video_editor_settings_default_caption_style()}
+								options={CAPTION_STYLE_PRESETS.map((preset) => ({
+									value: preset.id,
+									label: captionStylePresetLabel(preset.id)
+								}))}
+								onValueChange={(value) =>
+									editorSettings.set('defaultCaptionStylePresetId', value as CaptionStylePresetId)}
+								class="mt-3 h-9 w-full"
+							/>
 						</div>
 					</section>
 				{:else}

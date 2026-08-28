@@ -24,9 +24,12 @@ import {
 	addGeneratedSubtitleItem,
 	captureTranscriptionSource,
 	transcribeSource,
+	type GeneratedCaptionCanvas,
 	type TranscriptionSourceSnapshot
 } from './transcribe-action';
 import { isTranscriptionOutOfMemoryError } from './transcription-errors';
+import { editorSession } from '../editor.svelte';
+import { sequenceStore } from '../sequences/sequence-store.svelte';
 
 export type TranscriptionJobStatus = 'queued' | 'running' | 'cancelling';
 
@@ -52,6 +55,7 @@ export interface TranscriptionServiceDependencies {
 	getSourceTranscript: typeof getSourceTranscript;
 	saveSourceTranscript: typeof saveSourceTranscript;
 	deleteSourceTranscript: typeof deleteSourceTranscript;
+	getCanvas?: () => GeneratedCaptionCanvas;
 }
 
 interface TranscriptionTarget {
@@ -96,7 +100,11 @@ const DEFAULT_DEPENDENCIES: TranscriptionServiceDependencies = {
 	transcribe: transcribeSource,
 	getSourceTranscript,
 	saveSourceTranscript,
-	deleteSourceTranscript
+	deleteSourceTranscript,
+	getCanvas: () => ({
+		width: sequenceStore.activeWidth ?? editorSession.project?.metadata.width ?? 1920,
+		height: sequenceStore.activeHeight ?? editorSession.project?.metadata.height ?? 1080
+	})
 };
 
 function abortError(): DOMException {
@@ -350,7 +358,12 @@ export class TranscriptionService {
 				source.sourceStartSeconds,
 				source.sourceEndSeconds
 			);
-			const subtitleItemId = addGeneratedSubtitleItem(item.id, words, source);
+			const subtitleItemId = addGeneratedSubtitleItem(
+				item.id,
+				words,
+				source,
+				this.dependencies.getCanvas?.()
+			);
 			return { sourceItemId: item.id, subtitleItemId };
 		}
 		return this.enqueueUncached(item, media, source, selection, key);
@@ -699,7 +712,12 @@ export class TranscriptionService {
 				continue;
 			}
 			try {
-				const subtitleItemId = addGeneratedSubtitleItem(target.item.id, words, target.source);
+				const subtitleItemId = addGeneratedSubtitleItem(
+					target.item.id,
+					words,
+					target.source,
+					this.dependencies.getCanvas?.()
+				);
 				this.settleTarget(job, target, undefined, {
 					sourceItemId: target.item.id,
 					subtitleItemId

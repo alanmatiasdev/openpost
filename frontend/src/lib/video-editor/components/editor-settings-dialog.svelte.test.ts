@@ -224,6 +224,14 @@ describe('EditorSettingsDialog', () => {
 		await screen.getByRole('button', { name: 'Speech model' }).click();
 		await screen.getByRole('option', { name: 'Whisper Small' }).click();
 		expect(editorSettings.defaultTranscriptionModel).toBe('whisper-small');
+		await screen.getByRole('button', { name: 'Default caption style' }).click();
+		await screen.getByRole('option', { name: 'TikTok' }).click();
+		expect(editorSettings.defaultCaptionStylePresetId).toBe('tiktok');
+		await page.screenshot({
+			element: dialog.element(),
+			path: '../../../../.svelte-kit/openpost-settings-caption-style-320.png'
+		});
+		expect(dialog.element().scrollWidth).toBeLessThanOrEqual(dialog.element().clientWidth);
 
 		await screen.getByRole('button', { name: 'Storage' }).click();
 		await expect

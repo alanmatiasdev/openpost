@@ -12,6 +12,7 @@
 		resolveCaptionStylePatch,
 		type CaptionStylePresetId
 	} from '../typography/caption-style-presets';
+	import { captionStylePresetLabel } from '../typography/caption-style-i18n';
 
 	let {
 		item,
@@ -45,21 +46,6 @@
 		{ value: 'center', label: m.video_editor_align_center() },
 		{ value: 'right', label: m.video_editor_align_right() }
 	]);
-
-	function presetLabel(id: CaptionStylePresetId): string {
-		switch (id) {
-			case 'netflix':
-				return m.video_editor_caption_preset_netflix();
-			case 'youtube':
-				return m.video_editor_caption_preset_youtube();
-			case 'bold-yellow':
-				return m.video_editor_caption_preset_bold_yellow();
-			case 'minimal-stroke':
-				return m.video_editor_caption_preset_outlined();
-			case 'tiktok':
-				return m.video_editor_caption_preset_tiktok();
-		}
-	}
 
 	function commit(patch: Partial<TimelineItem>, command = 'UPDATE_CAPTION_STYLE'): void {
 		updateItemProperties(activeItem.id, patch, command);
@@ -112,7 +98,7 @@
 					<span class="preset-preview" data-preset={preset.id} aria-hidden="true">
 						<span>{m.video_editor_caption_preview()}</span>
 					</span>
-					<span class="preset-name">{presetLabel(preset.id)}</span>
+					<span class="preset-name">{captionStylePresetLabel(preset.id)}</span>
 				</button>
 			{/each}
 		</div>

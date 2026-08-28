@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TimelineItem, TimelineTrack } from '../project/types';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { editorSettings } from '../settings/editor-settings.svelte';
 import { addGeneratedSubtitleItem, transcriptionSourceWindow } from './transcribe-action';
 
 const track: TimelineTrack = {
@@ -32,6 +33,7 @@ const source: TimelineItem = {
 
 beforeEach(() => {
 	commandHistory.clearHistory();
+	editorSettings.reset();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [source], fps: 30 });
 });
@@ -72,6 +74,37 @@ describe('transcription timeline mapping', () => {
 			endFrame: 30
 		});
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('applies the configured caption recipe to a new generated subtitle', () => {
+		editorSettings.set('defaultCaptionStylePresetId', 'bold-yellow');
+		const subtitleId = addGeneratedSubtitleItem(
+			source.id,
+			[{ text: 'Styled', startSeconds: 1, endSeconds: 2 }],
+			undefined,
+			{ width: 1000, height: 1000 }
+		);
+		expect(timelineStore.itemById.get(subtitleId)).toMatchObject({
+			fontFamily: 'Roboto Slab',
+			fontSize: 50,
+			fontWeight: 700,
+			color: '#FFD400',
+			strokeWidth: 1.5,
+			transform: { y: 380, width: 850, height: 180 }
+		});
+		timelineStore._updateItems([{ id: subtitleId, patch: { color: '#00ff00', paddingX: 27 } }]);
+		editorSettings.set('defaultCaptionStylePresetId', 'youtube');
+		addGeneratedSubtitleItem(
+			source.id,
+			[{ text: 'Restyled', startSeconds: 1, endSeconds: 2 }],
+			undefined,
+			{ width: 1000, height: 1000 }
+		);
+		expect(timelineStore.itemById.get(subtitleId)).toMatchObject({
+			fontFamily: 'Roboto Slab',
+			color: '#00ff00',
+			paddingX: 27
+		});
 	});
 
 	it('orders reversed captions by their exact timeline source direction', () => {

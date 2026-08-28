@@ -6,6 +6,11 @@ import {
 	TRANSCRIPTION_MODEL_OPTIONS,
 	TRANSCRIPTION_QUANTIZATION_OPTIONS
 } from '../transcript/engine/models';
+import {
+	CAPTION_STYLE_PRESETS,
+	DEFAULT_CAPTION_STYLE_PRESET_ID,
+	type CaptionStylePresetId
+} from '../typography/caption-style-presets';
 
 const STORAGE_KEY = 'openpost-video-editor-settings-v1';
 
@@ -28,6 +33,7 @@ export interface EditorSettingsValue {
 	defaultTranscriptionModel: TranscriptionModel;
 	defaultTranscriptionLanguage: string;
 	defaultTranscriptionQuantization: TranscriptionQuantization;
+	defaultCaptionStylePresetId: CaptionStylePresetId;
 }
 
 export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
@@ -41,7 +47,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
 	mediaLibraryItemSize: 2,
 	defaultTranscriptionModel: DEFAULT_TRANSCRIPTION_MODEL,
 	defaultTranscriptionLanguage: '',
-	defaultTranscriptionQuantization: 'hybrid'
+	defaultTranscriptionQuantization: 'hybrid',
+	defaultCaptionStylePresetId: DEFAULT_CAPTION_STYLE_PRESET_ID
 };
 
 interface SettingsStorage {
@@ -82,6 +89,14 @@ function isTranscriptionLanguage(value: JsonValue | undefined): value is string 
 		typeof value === 'string' &&
 		TRANSCRIPTION_LANGUAGE_OPTIONS.some((option) => option.value === value)
 	);
+}
+
+function isCaptionStylePresetId(value: JsonValue | undefined): value is CaptionStylePresetId {
+	return CAPTION_STYLE_PRESETS.some((preset) => preset.id === value);
+}
+
+function normalizeCaptionStylePresetId(value: JsonValue | undefined): CaptionStylePresetId {
+	return isCaptionStylePresetId(value) ? value : DEFAULT_CAPTION_STYLE_PRESET_ID;
 }
 
 function normalizeMediaLibraryViewMode(value: JsonValue | undefined): MediaLibraryViewMode {
@@ -139,7 +154,8 @@ export function normalizeEditorSettings(value: JsonValue): EditorSettingsValue {
 			record.defaultTranscriptionQuantization
 		)
 			? record.defaultTranscriptionQuantization
-			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionQuantization
+			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionQuantization,
+		defaultCaptionStylePresetId: normalizeCaptionStylePresetId(record.defaultCaptionStylePresetId)
 	};
 }
 
@@ -211,6 +227,9 @@ export function createEditorSettingsStore(storage: SettingsStorage | null = brow
 		},
 		get defaultTranscriptionQuantization(): TranscriptionQuantization {
 			return state.defaultTranscriptionQuantization;
+		},
+		get defaultCaptionStylePresetId(): CaptionStylePresetId {
+			return state.defaultCaptionStylePresetId;
 		},
 		set,
 		reset(): void {

@@ -6,6 +6,7 @@ import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { addGeneratedSubtitleItem } from './transcribe-action';
 import { addAiCaptionSubtitleItem } from './ai-captions';
+import { editorSettings } from '../settings/editor-settings.svelte';
 import type { MediaScene } from '../media/scene-search/types';
 import TranscriptPanel from '../components/transcript-panel.svelte';
 import AiCaptionControls from '../components/ai-caption-controls.svelte';
@@ -58,6 +59,7 @@ const scenes: MediaScene[] = [
 
 beforeEach(() => {
 	commandHistory.clearHistory();
+	editorSettings.reset();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [source], fps: 30 });
 });
@@ -73,7 +75,7 @@ describe('AI captions browser integration at 320 and 390', () => {
 		});
 		const aiItem = timelineStore.itemById.get(aiId)!;
 		expect(aiItem.captionSource?.type).toBe('ai-captions');
-		expect(aiItem.transform?.width).toBe(Math.round(1920 * 0.82));
+		expect(aiItem.transform?.width).toBe(Math.round(1920 * 0.7));
 		// Also verify portrait and square derive correctly (sane behavior)
 		timelineStore._setItems(timelineStore.items.filter((entry) => entry.id !== aiId));
 		commandHistory.clearHistory();
@@ -82,8 +84,8 @@ describe('AI captions browser integration at 320 and 390', () => {
 			height: 1920
 		});
 		const portrait = timelineStore.itemById.get(portraitId)!;
-		expect(portrait.transform?.width).toBe(Math.round(1080 * 0.82));
-		expect(portrait.transform?.y).toBe(Math.round(1920 * 0.32));
+		expect(portrait.transform?.width).toBe(Math.round(1080 * 0.7));
+		expect(portrait.transform?.y).toBe(Math.round(1920 * 0.36));
 		timelineStore._setItems(timelineStore.items.filter((entry) => entry.id !== portraitId));
 		commandHistory.clearHistory();
 		const squareId = addAiCaptionSubtitleItem(source.id, scenes, undefined, {
@@ -91,7 +93,7 @@ describe('AI captions browser integration at 320 and 390', () => {
 			height: 1080
 		});
 		const square = timelineStore.itemById.get(squareId)!;
-		expect(square.transform?.width).toBe(Math.round(1080 * 0.82));
+		expect(square.transform?.width).toBe(Math.round(1080 * 0.7));
 		expect(square.transform?.height).toBe(Math.round(1080 * 0.16));
 		// Clean and test full flow
 		timelineStore.__resetForTesting();
