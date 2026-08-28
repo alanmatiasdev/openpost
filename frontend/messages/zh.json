@@ -4528,6 +4528,8 @@
 	"video_editor_path_finish_closed": "闭合路径",
 	"video_editor_path_add_point": "添加点",
 	"video_editor_path_delete_point": "删除点",
+	"video_editor_path_convert_curve": "转换为曲线",
+	"video_editor_path_convert_corner": "转换为角点",
 	"video_editor_path_key_selected": "为所选打关键帧",
 	"video_editor_path_key_all": "为全部打关键帧",
 	"video_editor_path_clear_keys": "清除路径关键帧",

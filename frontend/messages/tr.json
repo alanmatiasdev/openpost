@@ -4528,6 +4528,8 @@
 	"video_editor_path_finish_closed": "Yolu kapat",
 	"video_editor_path_add_point": "Nokta ekle",
 	"video_editor_path_delete_point": "Nokta sil",
+	"video_editor_path_convert_curve": "Eğriye dönüştür",
+	"video_editor_path_convert_corner": "Köşeye dönüştür",
 	"video_editor_path_key_selected": "Seçilileri anahtarla",
 	"video_editor_path_key_all": "Tümünü anahtarla",
 	"video_editor_path_clear_keys": "Yol anahtarlarını temizle",

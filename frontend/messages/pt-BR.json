@@ -4528,6 +4528,8 @@
 	"video_editor_path_finish_closed": "Fechar traçado",
 	"video_editor_path_add_point": "Adicionar ponto",
 	"video_editor_path_delete_point": "Excluir ponto",
+	"video_editor_path_convert_curve": "Converter em curva",
+	"video_editor_path_convert_corner": "Converter em canto",
 	"video_editor_path_key_selected": "Animar selecionados",
 	"video_editor_path_key_all": "Animar todos",
 	"video_editor_path_clear_keys": "Limpar animação do traçado",

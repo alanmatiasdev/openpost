@@ -4528,6 +4528,8 @@
 	"video_editor_path_finish_closed": "Cerrar la ruta",
 	"video_editor_path_add_point": "Añadir punto",
 	"video_editor_path_delete_point": "Suprímase el punto",
+	"video_editor_path_convert_curve": "Convertir en curva",
+	"video_editor_path_convert_corner": "Convertir en esquina",
 	"video_editor_path_key_selected": "Clave seleccionada",
 	"video_editor_path_key_all": "Llave todo",
 	"video_editor_path_clear_keys": "Limpiar las teclas de ruta",
