@@ -1071,7 +1071,7 @@
 							<Button
 								variant={viewMode === 'month' ? 'secondary' : 'ghost'}
 								size="sm"
-								class="gap-1.5"
+								class="min-w-11 gap-1.5 md:min-w-8 2xl:min-w-0"
 								aria-label={m.calendar_month_view()}
 								onclick={() => changeView('month')}
 							>
@@ -1081,7 +1081,7 @@
 							<Button
 								variant={viewMode === 'week' ? 'secondary' : 'ghost'}
 								size="sm"
-								class="gap-1.5"
+								class="min-w-11 gap-1.5 md:min-w-8 2xl:min-w-0"
 								aria-label={m.calendar_week_view()}
 								onclick={() => changeView('week')}
 							>
