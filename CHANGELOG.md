@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-08-28
+
+### Fixed
+
+- Reject malformed changelog fragments before release preparation can omit and delete them, and keep generated release notes formatter-clean.
+- Stop the Video Editor project catalog from migrating preserved schema backups and creating recursive backup copies before a project is opened.
+- Enabled Pop, Zoom, Spin, Pulse, and Breath motion on text without changing its layout or line wrapping.
+- Prevented unused or disconnected Quick Cut sources from blocking valid exports.
+- Keep long timeline waveforms responsive by rendering only the visible window, with centered peaks and exact trim and reverse mapping.
+- Merge Quick Cut sources with different selected audio-track counts without dropping tracks or failing during transcode.
+
+### Added
+
+- Preserve timestamp-derived frame-rate metrics for imported and relinked video so variable-rate and dropped-frame sources keep accurate trim and frame-selection behavior.
+
+### Changed
+
+- Batch consecutive color effects into one GPU pass so stacked grades preview and export with fewer full-frame draws while preserving the same ordered color output.
+
 ## [4.6.2] - 2026-08-28
 
 ### Changed
