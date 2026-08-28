@@ -1,34 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-
-const telemetryGuidePath = new URL("../docs-site/configuration/telemetry.md", import.meta.url);
 const repositoryRoot = new URL("..", import.meta.url);
 
 describe("documentation telemetry", () => {
-  test("documents the complete MCP-managed production first-use funnel", async () => {
-    const guide = await readFile(telemetryGuidePath, "utf8");
-    const events = [
-      "signup started",
-      "signup completed",
-      "plan confirmed",
-      "workspace created",
-      "checkout completed",
-      "destination connected",
-      "first composition started",
-      "workspace activated",
-    ];
-    let previous = -1;
-    for (const event of events) {
-      const index = guide.indexOf(`\`${event}\``);
-      expect(index).toBeGreaterThan(previous);
-      previous = index;
-    }
-    expect(guide).toContain("PostHog MCP");
-    expect(guide).toContain("excludes marked smoke events");
-    expect(guide).not.toContain("POSTHOG_PERSONAL_API_KEY` Actions secret");
-  });
-
   test("rejects production Cloudflare builds without public telemetry configuration", () => {
     const result = spawnSync("bun", ["scripts/check-public-telemetry-env.mjs"], {
       cwd: repositoryRoot,

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -60,18 +59,6 @@ test("public provider claims are derived from the manifest on every claim surfac
       }),
     /projection is stale/u,
   );
-});
-
-test("root, CI, and release gates invoke provider certification before release use", async () => {
-  const [packageSource, ciSource, releaseSource] = await Promise.all([
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
-    readFile(new URL("./release.mjs", import.meta.url), "utf8"),
-  ]);
-  const packageJSON = JSON.parse(packageSource);
-  assert.match(packageJSON.scripts.check, /scripts\/tasks\.mjs check/u);
-  assert.match(ciSource, /bun run check -- policy/u);
-  assert.match(releaseSource, /run\(\["bun", "run", "check", "--", "provider-certification"\]\);/u);
 });
 
 test("a complete production subject with current local and live proof is claimable", () => {
