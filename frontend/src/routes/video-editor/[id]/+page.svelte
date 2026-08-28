@@ -82,8 +82,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		switchSequence
 	} from '$lib/video-editor/sequences/sequence-actions';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import BlendIcon from '@lucide/svelte/icons/blend';
+	import CombineIcon from '@lucide/svelte/icons/combine';
+	import RippleDeleteIcon from '@lucide/svelte/icons/between-horizontal-end';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import {
 		editorWorkspace,
@@ -107,12 +112,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 	import type { TextVoiceRequest } from '$lib/video-editor/local-ai/types';
 	import EditInspectorTabs from '$lib/video-editor/components/edit-inspector-tabs.svelte';
+	import WorkspaceGatePanel from '$lib/video-editor/components/workspace-gate-panel.svelte';
+	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
 	import {
 		resolveEditInspectorTabs,
 		type EditInspectorTab
 	} from '$lib/video-editor/components/edit-inspector-tabs';
 
 	const projectId = $derived(page.params.id ?? '');
+	const gate = createWorkspaceGate();
 	let selectedItemId = $state<string | null>(null);
 	let selectedItemIds = $state<string[]>([]);
 	let selectedTransitionId = $state<string | null>(null);
@@ -178,7 +186,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	$effect(() => {
 		voiceoverRecorder.reconcileProject(projectId);
-		if (projectId) void editorSession.load(projectId);
+		if (gate.state !== 'ready' || !projectId) return;
+		void editorSession.load(projectId);
 		return () => {
 			editorSession.pausePlayback();
 			editorSession.stopAutosaveTimers();
@@ -992,7 +1001,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		</div>
 	</header>
 
-	{#if editorSession.loading}
+	{#if gate.state !== 'ready'}
+		<main class="flex flex-1 flex-col items-center justify-center px-4 py-10">
+			<WorkspaceGatePanel {gate} />
+		</main>
+	{:else if editorSession.loading}
 		<main class="flex flex-1 items-center justify-center">
 			<LoaderIcon class="size-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
 			<span class="sr-only">{m.editors_loading()}</span>
@@ -1229,64 +1242,71 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 							{#if selectedItemId || selectedTransition}
 								<div
-									class="grid shrink-0 grid-cols-3 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
+									class="grid shrink-0 grid-cols-5 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
+									role="toolbar"
+									aria-label={m.video_editor_inspector()}
 								>
 									{#if selectedTransition}
 										<Button
 											size="sm"
 											variant="outline"
-											class="col-span-3 min-h-11 lg:min-h-8"
+											class="col-span-5 min-h-11 lg:min-h-8"
 											onclick={handleRemoveTransition}
 										>
 											{m.video_editor_break_transition()}
 										</Button>
 									{:else}
 										<Button
-											size="sm"
+											size="icon-sm"
 											variant="outline"
-											class="min-h-11 lg:min-h-8"
+											aria-label={m.video_editor_split()}
+											title={m.video_editor_split()}
 											data-cuelume-toggle={undefined}
 											onclick={handleSplit}
 										>
-											{m.video_editor_split()}
+											<ScissorsIcon aria-hidden="true" />
 										</Button>
 										<Button
-											size="sm"
+											size="icon-sm"
 											variant="outline"
-											class="min-h-11 lg:min-h-8"
+											aria-label={m.video_editor_delete_leave_gap()}
 											title={m.video_editor_delete_leave_gap_hint()}
 											data-cuelume-toggle={undefined}
 											onclick={() => handleDelete(false)}
 										>
-											{m.video_editor_delete_leave_gap()}
+											<TrashIcon aria-hidden="true" />
 										</Button>
 										<Button
-											size="sm"
+											size="icon-sm"
 											variant="outline"
-											class="min-h-11 lg:min-h-8"
+											aria-label={m.video_editor_ripple_delete()}
 											title={m.video_editor_ripple_delete_hint()}
 											data-cuelume-toggle={undefined}
 											onclick={() => handleDelete(true)}
 										>
-											{m.video_editor_ripple_delete()}
+											<RippleDeleteIcon aria-hidden="true" />
 										</Button>
 										<Button
-											size="sm"
+											size="icon-sm"
 											variant="ghost"
-											class="min-h-11 lg:min-h-8"
-											onclick={selectedIsCompound ? handleDissolveCompound : handleCreateCompound}
-										>
-											{selectedIsCompound
+											aria-label={selectedIsCompound
 												? m.video_editor_dissolve_compound()
 												: m.video_editor_create_compound()}
+											title={selectedIsCompound
+												? m.video_editor_dissolve_compound()
+												: m.video_editor_create_compound()}
+											onclick={selectedIsCompound ? handleDissolveCompound : handleCreateCompound}
+										>
+											<CombineIcon aria-hidden="true" />
 										</Button>
 										<Button
-											size="sm"
+											size="icon-sm"
 											variant="ghost"
-											class="col-span-2 min-h-11 lg:min-h-8"
+											aria-label={m.video_editor_crossfade()}
+											title={m.video_editor_crossfade()}
 											onclick={handleAddCrossfade}
 										>
-											{m.video_editor_crossfade()}
+											<BlendIcon aria-hidden="true" />
 										</Button>
 									{/if}
 								</div>

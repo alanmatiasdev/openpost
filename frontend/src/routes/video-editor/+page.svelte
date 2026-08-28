@@ -6,13 +6,12 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import Logo from '$lib/components/Logo.svelte';
-	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import PageLoading from '$lib/components/page-loading.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import ProjectBrowser from '$lib/video-editor/components/project-browser.svelte';
 	import WorkspaceIndicator from '$lib/video-editor/components/workspace-indicator.svelte';
+	import WorkspaceGatePanel from '$lib/video-editor/components/workspace-gate-panel.svelte';
 	import { createWorkspaceGate } from '$lib/video-editor/gate/workspace-gate.svelte';
 	import { saveProjectBundle } from '$lib/video-editor/project-bundle/bundle-export';
 	import { importProjectBundle } from '$lib/video-editor/project-bundle/bundle-import';
@@ -39,9 +38,6 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		sweepTrashOlderThan,
 		type TrashedProjectEntry
 	} from '$lib/video-editor/workspace-fs/trash';
-	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
-	import LoaderIcon from '@lucide/svelte/icons/loader-2';
-	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { onMount } from 'svelte';
 
 	const PROJECT_THUMBNAIL_READ_CONCURRENCY = 8;
@@ -510,65 +506,8 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	</header>
 
 	<main class="flex flex-1 flex-col items-center justify-center px-4 py-10">
-		{#if gate.state === 'initializing'}
-			<PageLoading label={m.editors_loading()} />
-		{:else if gate.state === 'unavailable'}
-			<div class="max-w-md text-center">
-				<h1 class="text-lg font-semibold">{m.video_editor_gate_unavailable_title()}</h1>
-				<p class="mt-2 text-sm text-[oklch(0.65_0.015_55)]">
-					{m.video_editor_gate_unavailable_body()}
-				</p>
-				<Button class="mt-6" onclick={() => history.back()}>{m.video_editor_go_back()}</Button>
-			</div>
-		{:else if gate.state === 'pick' || gate.state === 'reconnect'}
-			<div
-				class="w-full max-w-md rounded-xl border border-[oklch(0.25_0.015_55)] bg-[oklch(0.2_0.01_50)] p-8 text-center"
-			>
-				<FolderPlusIcon class="mx-auto size-10 text-[oklch(0.66_0.14_45)]" aria-hidden="true" />
-				<h1 class="mt-4 text-lg font-semibold">
-					{gate.state === 'pick'
-						? m.video_editor_gate_pick_title()
-						: m.video_editor_gate_reconnect_title()}
-				</h1>
-				<p class="mt-2 text-sm text-[oklch(0.65_0.015_55)]">
-					{gate.state === 'pick'
-						? m.video_editor_gate_pick_body()
-						: m.video_editor_gate_reconnect_body({ folder: gate.workspaceName })}
-				</p>
-				{#if gate.error}
-					<InlineNotice tone="error" class="mt-4 text-left">{gate.error}</InlineNotice>
-				{/if}
-				<div class="mt-6 flex flex-col items-center gap-2">
-					{#if gate.state === 'pick'}
-						<Button onclick={() => gate.pickFolder()} disabled={gate.busy}>
-							{#if gate.busy}
-								<LoaderIcon
-									class="size-4 animate-spin motion-reduce:animate-none"
-									aria-hidden="true"
-								/>
-							{:else}
-								<FolderPlusIcon class="size-4" aria-hidden="true" />
-							{/if}
-							{m.video_editor_gate_pick_cta()}
-						</Button>
-					{:else}
-						<Button onclick={() => gate.reconnect()} disabled={gate.busy}>
-							{#if gate.busy}
-								<LoaderIcon
-									class="size-4 animate-spin motion-reduce:animate-none"
-									aria-hidden="true"
-								/>
-							{:else}
-								<RefreshCwIcon class="size-4" aria-hidden="true" />
-							{/if}
-							{m.video_editor_gate_reconnect_cta()}
-						</Button>
-						<Button variant="ghost" size="sm" onclick={() => gate.chooseDifferentFolder()}>
-							{m.video_editor_gate_different_folder()}
-						</Button>
-					{/if}
-				</div>
-			</div>
+		{#if gate.state !== 'ready'}
+			<WorkspaceGatePanel {gate} />
 		{:else if gate.state === 'ready'}
 			<ProjectBrowser
 				{projects}
