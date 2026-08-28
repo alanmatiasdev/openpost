@@ -17,6 +17,7 @@ import { BLEND_MODES_GLSL, EFFECT_COMMON_GLSL, FULLSCREEN_VERTEX_GLSL } from './
 import { getGpuEffect } from './registry';
 import type { GpuParamValues, GpuShaderDefinition } from './types';
 import { gpuResourcePool } from './gpu-resource-pool';
+import { COLOR_BATCH_FRAGMENT_SOURCE, packColorBatch, planEffectPasses } from './color-batch';
 
 /** One resolved effect instance handed to `render`. */
 export interface GpuRenderEffect {
@@ -151,6 +152,8 @@ export class GpuCompositor {
 	private readonly vertexShader: WebGLShader;
 	private readonly programs = new Map<string, ProgramBundle>();
 	private blendProgram: ProgramBundle | null = null;
+	private colorBatchProgram: ProgramBundle | null = null;
+	private colorBatchUnavailable = false;
 	private sourceTexture: WebGLTexture | null = null;
 	private backdropTexture: WebGLTexture | null = null;
 	private pingTextures: [WebGLTexture | null, WebGLTexture | null] = [null, null];
@@ -257,6 +260,35 @@ export class GpuCompositor {
 		gl.deleteShader(fragment);
 		this.blendProgram = { program, uniformLocations: new Map(), samplerUnits: new Map() };
 		return this.blendProgram;
+	}
+
+	private getColorBatchProgram(): ProgramBundle | null {
+		if (this.colorBatchProgram) return this.colorBatchProgram;
+		if (this.colorBatchUnavailable) return null;
+		const gl = this.gl;
+		try {
+			const definition: GpuShaderDefinition = {
+				id: 'inline-color-batch',
+				label: 'Inline color batch',
+				category: 'color',
+				entryPoint: 'colorBatchFragment',
+				fragmentSource: COLOR_BATCH_FRAGMENT_SOURCE,
+				schema: [],
+				uniformValues: () => ({})
+			};
+			const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource(definition));
+			const program = linkProgram(gl, this.vertexShader, fragment);
+			gl.deleteShader(fragment);
+			this.colorBatchProgram = {
+				program,
+				uniformLocations: new Map(),
+				samplerUnits: new Map()
+			};
+			return this.colorBatchProgram;
+		} catch {
+			this.colorBatchUnavailable = true;
+			return null;
+		}
 	}
 
 	private location(bundle: ProgramBundle, name: string): WebGLUniformLocation | null {
@@ -470,23 +502,43 @@ export class GpuCompositor {
 
 			let currentTexture = this.sourceTexture;
 			let passIndex = 0;
+			let passes = planEffectPasses(effects, true);
+			const needsColorBatch = passes.some((pass) => pass.kind === 'color-batch');
+			const colorBatchProgram = needsColorBatch ? this.getColorBatchProgram() : null;
+			if (needsColorBatch && !colorBatchProgram) passes = planEffectPasses(effects, false);
 
-			for (const entry of effects) {
+			for (const pass of passes) {
+				const target = this.framebuffers[passIndex % 2];
+				const targetTexture = this.pingTextures[passIndex % 2];
+				if (!target || !targetTexture) return false;
+				gl.bindFramebuffer(gl.FRAMEBUFFER, target);
+				gl.viewport(0, 0, width, height);
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, currentTexture);
+
+				if (pass.kind === 'color-batch') {
+					if (!colorBatchProgram) return false;
+					const packed = packColorBatch(pass.effects, width, height, options.time ?? 0);
+					gl.useProgram(colorBatchProgram.program);
+					gl.uniform1i(this.location(colorBatchProgram, 'uInputTex'), 0);
+					gl.uniform1i(this.location(colorBatchProgram, 'uOpCount'), packed.count);
+					gl.uniform1iv(this.location(colorBatchProgram, 'uKinds[0]'), packed.kinds);
+					gl.uniform4fv(this.location(colorBatchProgram, 'uValues0[0]'), packed.values0);
+					gl.uniform4fv(this.location(colorBatchProgram, 'uValues1[0]'), packed.values1);
+					gl.drawArrays(gl.TRIANGLES, 0, 6);
+					currentTexture = targetTexture;
+					passIndex++;
+					continue;
+				}
+
+				const entry = pass.effect;
 				const definition = getGpuEffect(entry.effectId);
 				if (!definition) {
 					throw new Error(`GPU effect renderer unavailable: ${entry.effectId}`);
 				}
 				const bundle = this.getProgram(definition);
-				const target = this.framebuffers[passIndex % 2];
-				const targetTexture = this.pingTextures[passIndex % 2];
-				if (!target || !targetTexture) return false;
-
-				gl.bindFramebuffer(gl.FRAMEBUFFER, target);
-				gl.viewport(0, 0, width, height);
 				gl.useProgram(bundle.program);
 
-				gl.activeTexture(gl.TEXTURE0);
-				gl.bindTexture(gl.TEXTURE_2D, currentTexture);
 				for (const [name, unit] of bundle.samplerUnits) {
 					if (name === 'uInputTex') continue;
 					gl.uniform1i(this.location(bundle, name), unit);
@@ -580,6 +632,7 @@ export class GpuCompositor {
 		if (!lost) {
 			for (const bundle of this.programs.values()) gl.deleteProgram(bundle.program);
 			if (this.blendProgram) gl.deleteProgram(this.blendProgram.program);
+			if (this.colorBatchProgram) gl.deleteProgram(this.colorBatchProgram.program);
 			gpuResourcePool.clearForContext(gl);
 			for (const texture of this.pingTextures) if (texture) gl.deleteTexture(texture);
 			for (const framebuffer of this.framebuffers)
