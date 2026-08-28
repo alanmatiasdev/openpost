@@ -1016,7 +1016,7 @@
 		<div class="px-4 py-4 lg:px-6" style="container-type: inline-size;">
 			<PageHeader
 				title={formatCalendarTitle()}
-				titleClass="whitespace-nowrap"
+				titleClass="shrink-0 whitespace-nowrap"
 				loading={initialLoading}
 				class="gap-2"
 			>

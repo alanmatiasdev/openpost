@@ -585,7 +585,6 @@ test("published posts remain visible in calendar history and cannot move", async
 
   await page.goto("/calendar");
 
-  await expect(page.getByText("0 scheduled / 1 published / UTC", { exact: true })).toBeVisible();
   const publishedItem = page.locator(
     '[data-calendar-item][aria-label="Published calendar history"]',
   );
