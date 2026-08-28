@@ -72,12 +72,6 @@ func NewService(db *bun.DB, encryptor *servicecrypto.TokenEncryptor) *Service {
 	return &Service{db: db, encryptor: encryptor}
 }
 
-func Definitions() []Definition {
-	definitions := make([]Definition, len(promptDefinitions))
-	copy(definitions, promptDefinitions)
-	return definitions
-}
-
 func (s *Service) List(ctx context.Context) ([]State, error) {
 	var rows []models.AIPromptOverride
 	if err := s.db.NewSelect().Model(&rows).Order("key ASC").Scan(ctx); err != nil {
