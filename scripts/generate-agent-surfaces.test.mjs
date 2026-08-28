@@ -36,7 +36,9 @@ let productionBuildPromise;
 
 function ensureProductionBuilds(root) {
   productionBuildPromise ??= (async () => {
-    await runRootTask(root, ["build", "--", "marketing"], { TURBO_FORCE: "true" });
+    await runRootTask(root, ["build", "--", "marketing"], {
+      TURBO_FORCE: "true",
+    });
     await runRootTask(root, ["build", "--", "docs"], { TURBO_FORCE: "true" });
   })();
   return productionBuildPromise;
@@ -116,6 +118,34 @@ test("documentation discovery headers leave room for the canonical page catalogu
   assert.match(base, /^\/llms\*\.txt$/mu);
   assert.doesNotMatch(base, /^\/llms(?:-full)?\.txt$/mu);
   assert.doesNotThrow(() => renderOriginVaryHeaders(base, pages));
+});
+
+test("origin Vary headers compact dense route namespaces before the Pages limit", () => {
+  const base = [
+    "/",
+    "  Vary: Accept",
+    "/*.md",
+    "  Content-Type: text/markdown; charset=utf-8",
+    "  Vary: Accept",
+    "/llms.txt",
+    "  Content-Type: text/plain; charset=utf-8",
+    "",
+  ].join("\n");
+  const pages = [
+    { canonical: "https://docs.openpost.social/" },
+    ...Array.from({ length: 100 }, (_, index) => ({
+      canonical: `https://docs.openpost.social/usage/page-${index}`,
+    })),
+  ];
+
+  const rendered = renderOriginVaryHeaders(base, pages);
+
+  assert.match(rendered, /(?:^|\n)\/usage\/\*\n  Vary: Accept\n/u);
+  assert.doesNotMatch(rendered, /\/usage\/page-0\n/u);
+  for (const page of pages) {
+    assert.equal(headerRuleHas(rendered, new URL(page.canonical).pathname, "Vary: Accept"), true);
+  }
+  assert.equal(headerRuleHas(rendered, "/assets/app.js", "Vary: Accept"), false);
 });
 
 async function filesWithSuffix(directory, suffix, root = directory) {
@@ -643,7 +673,11 @@ test("documentation size exceptions require reviewed canonical metadata", async 
     surface: "documentation",
     outputDirectory: directory,
     pages: [page],
-    discovery: { title: "Documentation", description: "OpenPost documentation.", links: [] },
+    discovery: {
+      title: "Documentation",
+      description: "OpenPost documentation.",
+      links: [],
+    },
   };
 
   await assert.rejects(
@@ -657,7 +691,10 @@ test("documentation size exceptions require reviewed canonical metadata", async 
         {
           ...page,
           catalog: {
-            agentRepresentation: { membership: "ordinary", sizeException: { reviewed: false } },
+            agentRepresentation: {
+              membership: "ordinary",
+              sizeException: { reviewed: false },
+            },
           },
         },
       ],
@@ -926,7 +963,11 @@ OPENPOST_INLINE_CODE_0_ remains ordinary maintained prose.
         description: "Review provider requirements and outcomes.",
       },
     ],
-    discovery: { title: "Documentation", description: "Provider documentation.", links: [] },
+    discovery: {
+      title: "Documentation",
+      description: "Provider documentation.",
+      links: [],
+    },
   };
 
   await generateAgentSurface(projection);
@@ -980,19 +1021,28 @@ test("documentation full corpus groups selected pages with provenance and no rep
         page: "usage/accounts.md",
         sourcePath: includedSource,
         title: "Accounts",
-        catalog: { agentCorpus: { membership: "included", section: "user-guide" } },
+        catalog: {
+          agentCorpus: { membership: "included", section: "user-guide" },
+        },
       }),
       page({
         page: "development/notices.md",
         sourcePath: excludedSource,
         title: "Notices",
         catalog: {
-          agentCorpus: { membership: "excluded", reason: "Legal text stays separate." },
+          agentCorpus: {
+            membership: "excluded",
+            reason: "Legal text stays separate.",
+          },
         },
       }),
     ],
     corpus: { title: "OpenPost Documentation Full Corpus" },
-    discovery: { title: "Documentation", description: "OpenPost documentation.", links: [] },
+    discovery: {
+      title: "Documentation",
+      description: "OpenPost documentation.",
+      links: [],
+    },
   });
 
   const corpus = await readFile(path.join(directory, "llms-full.txt"), "utf8");
@@ -1033,7 +1083,9 @@ test("documentation full corpus warns above 1 MiB and fails above 2 MiB", async 
       canonical: `https://docs.openpost.social/development/large-${index}`,
       title: `Large ${index}`,
       description: `Large documentation page ${index}.`,
-      catalog: { agentCorpus: { membership: "included", section: "development" } },
+      catalog: {
+        agentCorpus: { membership: "included", section: "development" },
+      },
     });
   }
   const warnings = [];
@@ -1043,7 +1095,11 @@ test("documentation full corpus warns above 1 MiB and fails above 2 MiB", async 
     pages: pages.slice(0, 5),
     corpus: { title: "OpenPost Documentation Full Corpus" },
     warn: (message) => warnings.push(message),
-    discovery: { title: "Documentation", description: "OpenPost documentation.", links: [] },
+    discovery: {
+      title: "Documentation",
+      description: "OpenPost documentation.",
+      links: [],
+    },
   };
 
   await generateAgentSurface(projection);
@@ -1081,7 +1137,11 @@ test("documentation full corpus warns above 1 MiB and fails above 2 MiB", async 
       },
     ],
     corpus: { title: "OpenPost Documentation Full Corpus" },
-    discovery: { title: "Documentation", description: "OpenPost documentation.", links: [] },
+    discovery: {
+      title: "Documentation",
+      description: "OpenPost documentation.",
+      links: [],
+    },
   };
   await generateAgentSurface(exactProjection);
   const oneByteCorpusSize = Buffer.byteLength(
@@ -1147,7 +1207,12 @@ test("projection validation rejects unsafe or incomplete production contracts", 
       ...base,
       discovery: {
         ...base.discovery,
-        links: [{ ...base.discovery.links[0], url: "https://openpost.social/missing.md" }],
+        links: [
+          {
+            ...base.discovery.links[0],
+            url: "https://openpost.social/missing.md",
+          },
+        ],
       },
     }),
     /discovery link has no generated artifact/,
@@ -1158,7 +1223,10 @@ test("projection validation rejects unsafe or incomplete production contracts", 
       discovery: {
         ...base.discovery,
         links: [
-          { ...base.discovery.links[0], url: "https://docs.openpost.social/does-not-exist.md" },
+          {
+            ...base.discovery.links[0],
+            url: "https://docs.openpost.social/does-not-exist.md",
+          },
         ],
       },
     }),
@@ -1167,7 +1235,12 @@ test("projection validation rejects unsafe or incomplete production contracts", 
   await assert.rejects(
     generateAgentSurface({
       ...base,
-      pages: [{ sourcePath: path.join(directory, "absent.html"), outputPath: "index.md" }],
+      pages: [
+        {
+          sourcePath: path.join(directory, "absent.html"),
+          outputPath: "index.md",
+        },
+      ],
     }),
     /missing canonical source/,
   );
@@ -1176,7 +1249,12 @@ test("projection validation rejects unsafe or incomplete production contracts", 
       ...base,
       discovery: {
         ...base.discovery,
-        links: [{ ...base.discovery.links[0], url: "https://app.openpost.social/publications.md" }],
+        links: [
+          {
+            ...base.discovery.links[0],
+            url: "https://app.openpost.social/publications.md",
+          },
+        ],
       },
     }),
     /private application route/,
@@ -1186,7 +1264,12 @@ test("projection validation rejects unsafe or incomplete production contracts", 
       ...base,
       discovery: {
         ...base.discovery,
-        links: [{ ...base.discovery.links[0], url: "https://app.openpost.social/workspaces" }],
+        links: [
+          {
+            ...base.discovery.links[0],
+            url: "https://app.openpost.social/workspaces",
+          },
+        ],
       },
     }),
     /private application route/,
@@ -1270,7 +1353,10 @@ test("projection validation rejects unsafe or incomplete production contracts", 
     generateAgentSurface({
       ...base,
       fragmentSources: [
-        { canonical: "https://openpost.social/features", sourcePath: featuresPath },
+        {
+          canonical: "https://openpost.social/features",
+          sourcePath: featuresPath,
+        },
       ],
     }),
     /https:\/\/openpost\.social\/: broken internal fragment #missing-section/u,
@@ -1752,7 +1838,9 @@ test(
     await assertArtifactSnapshot(docsDirectory, firstDocsSurface);
     assert.deepEqual(await semanticHTMLSnapshot(docsDirectory, expectedDocsHTML), firstDocsHTML);
 
-    await runRootTask(root, ["build", "--", "marketing"], { TURBO_FORCE: "true" });
+    await runRootTask(root, ["build", "--", "marketing"], {
+      TURBO_FORCE: "true",
+    });
     await assertArtifactSnapshot(marketingDirectory, firstMarketingSurface);
     assert.deepEqual(
       await semanticHTMLSnapshot(marketingDirectory, expectedMarketingHTML),

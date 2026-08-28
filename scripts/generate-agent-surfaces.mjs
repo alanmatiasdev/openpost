@@ -54,14 +54,57 @@ function headerRuleCount(contents) {
     .length;
 }
 
+function headerPatternMatches(pattern, pathname) {
+  const wildcard = pattern.indexOf("*");
+  if (wildcard === -1) return pattern === pathname;
+  if (pattern.indexOf("*", wildcard + 1) !== -1) return false;
+  const prefix = pattern.slice(0, wildcard);
+  const suffix = pattern.slice(wildcard + 1);
+  return (
+    pathname.startsWith(prefix) &&
+    pathname.endsWith(suffix) &&
+    pathname.length >= prefix.length + suffix.length
+  );
+}
+
 function hasOriginVaryRule(contents, pathname) {
   const lines = contents.split("\n");
-  const ruleIndex = lines.findIndex((line) => line === pathname);
-  if (ruleIndex === -1) return false;
-  for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
-    if (lines[index].trim() === "Vary: Accept") return true;
+  for (let ruleIndex = 0; ruleIndex < lines.length; ruleIndex += 1) {
+    if (!headerPatternMatches(lines[ruleIndex], pathname)) continue;
+    for (let index = ruleIndex + 1; index < lines.length && /^\s/u.test(lines[index]); index += 1) {
+      if (lines[index].trim() === "Vary: Accept") return true;
+    }
   }
   return false;
+}
+
+function compactHeaderPatterns(pathnames, maximumPatterns) {
+  const patterns = new Set(pathnames);
+  if (patterns.size <= maximumPatterns) return [...patterns].sort();
+
+  const namespaces = new Map();
+  for (const pathname of pathnames) {
+    const match = /^\/([^/]+)\//u.exec(pathname);
+    if (!match) continue;
+    const pattern = `/${match[1]}/*`;
+    const members = namespaces.get(pattern) ?? [];
+    members.push(pathname);
+    namespaces.set(pattern, members);
+  }
+
+  const candidates = [...namespaces]
+    .filter(([, members]) => members.length > 1)
+    .sort(
+      ([leftPattern, leftMembers], [rightPattern, rightMembers]) =>
+        rightMembers.length - leftMembers.length || leftPattern.localeCompare(rightPattern),
+    );
+  for (const [pattern, members] of candidates) {
+    if (patterns.size <= maximumPatterns) break;
+    for (const member of members) patterns.delete(member);
+    patterns.add(pattern);
+  }
+
+  return [...patterns].sort();
 }
 
 export function renderOriginVaryHeaders(baseHeaders, pages) {
@@ -69,10 +112,12 @@ export function renderOriginVaryHeaders(baseHeaders, pages) {
   const canonicalPaths = [...new Set(pages.map((page) => new URL(page.canonical).pathname))].sort(
     (left, right) => (left < right ? -1 : left > right ? 1 : 0),
   );
-  const blocks = canonicalPaths
-    .filter((pathname) => !hasOriginVaryRule(operatorHeaders, pathname))
-    .map((pathname) => `${pathname}\n  Vary: Accept`)
-    .join("\n");
+  const uncoveredPaths = canonicalPaths.filter(
+    (pathname) => !hasOriginVaryRule(operatorHeaders, pathname),
+  );
+  const availablePatterns = maximumPagesHeaderRules - headerRuleCount(operatorHeaders);
+  const generatedPatterns = compactHeaderPatterns(uncoveredPaths, availablePatterns);
+  const blocks = generatedPatterns.map((pattern) => `${pattern}\n  Vary: Accept`).join("\n");
   const rendered = `${operatorHeaders.trimEnd()}\n${generatedVaryHeaderMarker}\n${blocks}\n`;
   const count = headerRuleCount(rendered);
   if (count > maximumPagesHeaderRules) {
@@ -344,7 +389,10 @@ function marketingRepresentation(source, page) {
 function parseFrontmatter(source) {
   const match = source.match(/^---\n([\s\S]*?)\n---\n?/u);
   if (!match) return { data: {}, body: source };
-  return { data: parseYaml(match[1]) ?? {}, body: source.slice(match[0].length) };
+  return {
+    data: parseYaml(match[1]) ?? {},
+    body: source.slice(match[0].length),
+  };
 }
 
 function mapFenceAwareLines(source, transform) {
@@ -564,7 +612,10 @@ async function documentationRepresentation(source, page, sourceRoot) {
     title: page.title,
     description: page.description,
     canonical: page.canonical,
-    markdown: representation({ ...page, body: sections.filter(Boolean).join("\n\n") }),
+    markdown: representation({
+      ...page,
+      body: sections.filter(Boolean).join("\n\n"),
+    }),
   };
 }
 
