@@ -2906,171 +2906,186 @@
 														}
 													}}
 												>
-													<span class="inline-label"
-														>{m.video_editor_composition_timeline_inline_props()}</span
-													>
-													<div class="dopesheet-mode-row" data-testid={`dopesheet-mode-${item.id}`}>
-														<button
-															type="button"
-															class="mode-btn"
-															class:active={keyframeEditorMode(item.id) === 'dopesheet'}
-															aria-pressed={keyframeEditorMode(item.id) === 'dopesheet'}
-															onclick={() => setKeyframeEditorMode(item.id, 'dopesheet')}
-															data-testid={`mode-lanes-${item.id}`}
-															>{m.video_editor_keyframe_view_dopesheet()}</button
+													<div class="inline-props-toolbar">
+														<span class="inline-label"
+															>{m.video_editor_composition_timeline_inline_props()}</span
 														>
-														<button
-															type="button"
-															class="mode-btn"
-															class:active={keyframeEditorMode(item.id) === 'graph'}
-															aria-pressed={keyframeEditorMode(item.id) === 'graph'}
-															onclick={() => setKeyframeEditorMode(item.id, 'graph')}
-															data-testid={`mode-graph-${item.id}`}
-															>{m.video_editor_composition_timeline_graph()}</button
+														<div
+															class="dopesheet-mode-row"
+															data-testid={`dopesheet-mode-${item.id}`}
 														>
-														<button
-															type="button"
-															class="mode-btn"
-															class:active={keyframeEditorMode(item.id) === 'split'}
-															aria-pressed={keyframeEditorMode(item.id) === 'split'}
-															onclick={() => setKeyframeEditorMode(item.id, 'split')}
-															data-testid={`mode-split-${item.id}`}
-															>{m.video_editor_keyframe_view_split()}</button
-														>
-														<button
-															type="button"
-															class="mode-btn"
-															class:active={autoKeyframeStore.isEnabled(
-																item.id,
-																activeKeyframeProperty(item)
-															)}
-															aria-pressed={autoKeyframeStore.isEnabled(
-																item.id,
-																activeKeyframeProperty(item)
-															)}
-															aria-label={m.video_editor_property_auto_key({
-																property: activeKeyframeProperty(item)
-															})}
-															onclick={() =>
-																autoKeyframeStore.toggle(item.id, activeKeyframeProperty(item))}
-															>A</button
-														>
-														<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
-															<span>{m.video_editor_keyframe_easing()}</span>
-															<Select.Root
-																type="single"
-																value={selectedEasing}
-																onValueChange={(v) => {
-																	if (!isEasingType(v)) return;
-																	selectedEasing = v;
-																	const sel = keyframeSelectionStore.forItem(item.id);
-																	if (sel.size === 0) return;
+															<button
+																type="button"
+																class="mode-btn"
+																class:active={keyframeEditorMode(item.id) === 'dopesheet'}
+																aria-pressed={keyframeEditorMode(item.id) === 'dopesheet'}
+																onclick={() => setKeyframeEditorMode(item.id, 'dopesheet')}
+																data-testid={`mode-lanes-${item.id}`}
+																>{m.video_editor_keyframe_view_dopesheet()}</button
+															>
+															<button
+																type="button"
+																class="mode-btn"
+																class:active={keyframeEditorMode(item.id) === 'graph'}
+																aria-pressed={keyframeEditorMode(item.id) === 'graph'}
+																onclick={() => setKeyframeEditorMode(item.id, 'graph')}
+																data-testid={`mode-graph-${item.id}`}
+																>{m.video_editor_composition_timeline_graph()}</button
+															>
+															<button
+																type="button"
+																class="mode-btn"
+																class:active={keyframeEditorMode(item.id) === 'split'}
+																aria-pressed={keyframeEditorMode(item.id) === 'split'}
+																onclick={() => setKeyframeEditorMode(item.id, 'split')}
+																data-testid={`mode-split-${item.id}`}
+																>{m.video_editor_keyframe_view_split()}</button
+															>
+															<button
+																type="button"
+																class="mode-btn"
+																class:active={autoKeyframeStore.isEnabled(
+																	item.id,
+																	activeKeyframeProperty(item)
+																)}
+																aria-pressed={autoKeyframeStore.isEnabled(
+																	item.id,
+																	activeKeyframeProperty(item)
+																)}
+																aria-label={m.video_editor_property_auto_key({
+																	property: activeKeyframeProperty(item)
+																})}
+																onclick={() =>
+																	autoKeyframeStore.toggle(item.id, activeKeyframeProperty(item))}
+																>A</button
+															>
+															<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
+																<span>{m.video_editor_keyframe_easing()}</span>
+																<Select.Root
+																	type="single"
+																	value={selectedEasing}
+																	onValueChange={(v) => {
+																		if (!isEasingType(v)) return;
+																		selectedEasing = v;
+																		const sel = keyframeSelectionStore.forItem(item.id);
+																		if (sel.size === 0) return;
+																		const props = getAnimatablePropertiesForItem(item);
+																		const updates: Array<{
+																			property: KeyframeProperty;
+																			frame: number;
+																			easing: EasingType;
+																		}> = [];
+																		for (const prop of props) {
+																			for (const kf of editorKeyframes(item, prop)) {
+																				if (!sel.has(keyframeIdentity(kf))) continue;
+																				updates.push({
+																					property: prop,
+																					frame: kf.frame,
+																					easing: v
+																				});
+																			}
+																		}
+																		if (setKeyframeEasings(item.id, updates)) onedit();
+																	}}
+																>
+																	<Select.Trigger
+																		class="h-7 min-w-24 px-2"
+																		aria-label={m.video_editor_keyframe_easing()}
+																		data-testid={`easing-select-${item.id}`}
+																	>
+																		<span class="truncate">
+																			{selectedEasing === 'linear'
+																				? m.video_editor_keyframe_easing_linear()
+																				: selectedEasing === 'ease-in'
+																					? m.video_editor_keyframe_easing_in()
+																					: selectedEasing === 'ease-out'
+																						? m.video_editor_keyframe_easing_out()
+																						: m.video_editor_keyframe_easing_in_out()}
+																		</span>
+																	</Select.Trigger>
+																	<Select.Content>
+																		<Select.Item value="linear"
+																			>{m.video_editor_keyframe_easing_linear()}</Select.Item
+																		>
+																		<Select.Item value="ease-in"
+																			>{m.video_editor_keyframe_easing_in()}</Select.Item
+																		>
+																		<Select.Item value="ease-out"
+																			>{m.video_editor_keyframe_easing_out()}</Select.Item
+																		>
+																		<Select.Item value="ease-in-out"
+																			>{m.video_editor_keyframe_easing_in_out()}</Select.Item
+																		>
+																	</Select.Content>
+																</Select.Root>
+															</div>
+															<button
+																type="button"
+																class="retime-btn"
+																aria-label={m.video_editor_composition_timeline_retime()}
+																title={m.video_editor_composition_timeline_retime_hint()}
+																onclick={() => {
+																	const sel = new Set(keyframeSelectionStore.forItem(item.id));
+																	if (sel.size < 2) return;
 																	const props = getAnimatablePropertiesForItem(item);
-																	const updates: Array<{
-																		property: KeyframeProperty;
-																		frame: number;
-																		easing: EasingType;
-																	}> = [];
-																	for (const prop of props) {
-																		for (const kf of editorKeyframes(item, prop)) {
-																			if (!sel.has(keyframeIdentity(kf))) continue;
-																			updates.push({ property: prop, frame: kf.frame, easing: v });
+																	const selected: {
+																		ref: ReturnType<typeof editorKeyframes>[number];
+																		prop: KeyframeProperty;
+																	}[] = [];
+																	for (const prop of props)
+																		for (const kf of editorKeyframes(item, prop))
+																			if (sel.has(keyframeIdentity(kf)))
+																				selected.push({ ref: kf, prop });
+																	if (selected.length < 2) return;
+																	const min = Math.min(...selected.map((s) => s.ref.frame));
+																	const max = Math.max(...selected.map((s) => s.ref.frame));
+																	const span = max - min || 1;
+																	const factor = 0.9;
+																	const edits: Parameters<typeof updateKeyframes>[1][number][] = [];
+																	for (const s of selected) {
+																		const t = (s.ref.frame - min) / span;
+																		const newFrame = Math.round(min + t * span * factor);
+																		if (newFrame !== s.ref.frame) {
+																			edits.push({
+																				ref: s.ref,
+																				frame: newFrame,
+																				value: s.ref.value
+																			});
 																		}
 																	}
-																	if (setKeyframeEasings(item.id, updates)) onedit();
+																	if (updateKeyframes(item.id, edits)) onedit();
 																}}
+																data-testid={`retime-batch-${item.id}`}
+																>{m.video_editor_composition_timeline_retime()}</button
 															>
-																<Select.Trigger
-																	class="h-7 min-w-24 px-2"
-																	aria-label={m.video_editor_keyframe_easing()}
-																	data-testid={`easing-select-${item.id}`}
-																>
-																	<span class="truncate">
-																		{selectedEasing === 'linear'
-																			? m.video_editor_keyframe_easing_linear()
-																			: selectedEasing === 'ease-in'
-																				? m.video_editor_keyframe_easing_in()
-																				: selectedEasing === 'ease-out'
-																					? m.video_editor_keyframe_easing_out()
-																					: m.video_editor_keyframe_easing_in_out()}
-																	</span>
-																</Select.Trigger>
-																<Select.Content>
-																	<Select.Item value="linear"
-																		>{m.video_editor_keyframe_easing_linear()}</Select.Item
-																	>
-																	<Select.Item value="ease-in"
-																		>{m.video_editor_keyframe_easing_in()}</Select.Item
-																	>
-																	<Select.Item value="ease-out"
-																		>{m.video_editor_keyframe_easing_out()}</Select.Item
-																	>
-																	<Select.Item value="ease-in-out"
-																		>{m.video_editor_keyframe_easing_in_out()}</Select.Item
-																	>
-																</Select.Content>
-															</Select.Root>
 														</div>
-														<button
-															type="button"
-															class="retime-btn"
-															aria-label={m.video_editor_composition_timeline_retime()}
-															title={m.video_editor_composition_timeline_retime_hint()}
-															onclick={() => {
-																const sel = new Set(keyframeSelectionStore.forItem(item.id));
-																if (sel.size < 2) return;
-																const props = getAnimatablePropertiesForItem(item);
-																const selected: {
-																	ref: ReturnType<typeof editorKeyframes>[number];
-																	prop: KeyframeProperty;
-																}[] = [];
-																for (const prop of props)
-																	for (const kf of editorKeyframes(item, prop))
-																		if (sel.has(keyframeIdentity(kf)))
-																			selected.push({ ref: kf, prop });
-																if (selected.length < 2) return;
-																const min = Math.min(...selected.map((s) => s.ref.frame));
-																const max = Math.max(...selected.map((s) => s.ref.frame));
-																const span = max - min || 1;
-																const factor = 0.9;
-																const edits: Parameters<typeof updateKeyframes>[1][number][] = [];
-																for (const s of selected) {
-																	const t = (s.ref.frame - min) / span;
-																	const newFrame = Math.round(min + t * span * factor);
-																	if (newFrame !== s.ref.frame) {
-																		edits.push({ ref: s.ref, frame: newFrame, value: s.ref.value });
-																	}
-																}
-																if (updateKeyframes(item.id, edits)) onedit();
-															}}
-															data-testid={`retime-batch-${item.id}`}
-															>{m.video_editor_composition_timeline_retime()}</button
-														>
 													</div>
-													{#if keyframeEditorMode(item.id) !== 'graph'}
-														<KeyframeDopesheet
-															{item}
-															availableProperties={getAnimatablePropertiesForItem(item)}
-															currentFrame={previewFrame ?? timelineStore.currentFrame}
-															pixelsPerFrame={pxPerFrame}
-															{timelineWidth}
-															{timelineX}
-															onscrub={seekTo}
-															onactiveproperty={(property) =>
-																setActiveKeyframeProperty(item.id, property)}
-															{onedit}
-														/>
-													{/if}
-													{#if keyframeEditorMode(item.id) !== 'dopesheet'}
-														<KeyframeValueGraph
-															{item}
-															property={activeKeyframeProperty(item)}
-															currentFrame={previewFrame ?? timelineStore.currentFrame}
-															onscrub={seekTo}
-															{onedit}
-															fitRequest={keyframeGraphFitRequest}
-														/>
-													{/if}
+													<div class="inline-props-views">
+														{#if keyframeEditorMode(item.id) !== 'graph'}
+															<KeyframeDopesheet
+																{item}
+																availableProperties={getAnimatablePropertiesForItem(item)}
+																currentFrame={previewFrame ?? timelineStore.currentFrame}
+																pixelsPerFrame={pxPerFrame}
+																{timelineWidth}
+																{timelineX}
+																onscrub={seekTo}
+																onactiveproperty={(property) =>
+																	setActiveKeyframeProperty(item.id, property)}
+																{onedit}
+															/>
+														{/if}
+														{#if keyframeEditorMode(item.id) !== 'dopesheet'}
+															<KeyframeValueGraph
+																{item}
+																property={activeKeyframeProperty(item)}
+																currentFrame={previewFrame ?? timelineStore.currentFrame}
+																onscrub={seekTo}
+																{onedit}
+																fitRequest={keyframeGraphFitRequest}
+															/>
+														{/if}
+													</div>
 												</div>
 												{#if item.motionLayers && item.motionLayers.length > 0}
 													<div class="motion-layer-bands" data-testid={`motion-layers-${item.id}`}>
@@ -4268,7 +4283,8 @@
 	}
 	.inline-props {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		align-items: stretch;
 		gap: 0.35rem;
 		padding: 0.3rem 0.35rem;
 		border-top: 1px dashed oklch(0.24 0.012 55);
@@ -4276,7 +4292,32 @@
 		font-size: 0.62rem;
 		color: oklch(0.68 0.015 65);
 	}
+	.inline-props-toolbar,
+	.dopesheet-mode-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.inline-props-toolbar {
+		flex-wrap: wrap;
+	}
+	.dopesheet-mode-row {
+		min-width: 0;
+		flex: 1 1 auto;
+		flex-wrap: wrap;
+	}
+	.inline-props-views {
+		display: grid;
+		min-width: 0;
+		width: 100%;
+		overflow-x: auto;
+	}
+	.inline-props-views :global([data-keyframe-value-graph]) {
+		min-width: min(20rem, 100%);
+		width: 100%;
+	}
 	.inline-label {
+		flex: 0 0 auto;
 		font-weight: 600;
 		color: oklch(0.76 0.14 45);
 	}
