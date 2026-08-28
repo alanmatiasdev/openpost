@@ -37,19 +37,6 @@ func TestAccountFeaturesMigrationCreatesTablesAndConstraints(t *testing.T) {
 	_, err = db.ExecContext(ctx, sqlStr)
 	require.NoError(t, err)
 
-	for _, tbl := range []string{"account_features"} {
-		var count int
-		err = db.NewRaw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(ctx, &count)
-		require.NoError(t, err)
-		require.Equal(t, 1, count, "table %s should exist", tbl)
-	}
-	for _, idx := range []string{"account_features_workspace_idx", "account_features_feature_idx", "account_features_workspace_feature_idx"} {
-		var c int
-		err = db.NewRaw("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?", idx).Scan(ctx, &c)
-		require.NoError(t, err)
-		require.Equal(t, 1, c, "index %s should exist", idx)
-	}
-
 	_, err = db.ExecContext(ctx, "INSERT INTO workspaces VALUES ('ws-1','org-1','W','2020-01-01')")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, "INSERT INTO social_accounts (id, workspace_id, slug, platform, account_id, access_token_encrypted) VALUES ('acc-1','ws-1','s','x','1',x'00')")

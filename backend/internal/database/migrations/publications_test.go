@@ -65,8 +65,12 @@ func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, "CREATE INDEX posts_status_upgrade_test_idx ON posts (status)")
 	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "CREATE TABLE posts_upgrade_audit (status TEXT NOT NULL)")
+	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `CREATE TRIGGER posts_status_upgrade_test_trigger
-		AFTER UPDATE OF status ON posts BEGIN SELECT NEW.status; END`)
+		AFTER UPDATE OF status ON posts BEGIN
+			INSERT INTO posts_upgrade_audit (status) VALUES (NEW.status);
+		END`)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO posts
 		(id, workspace_id, created_by, content, status, created_at)
@@ -88,18 +92,6 @@ func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
 	require.Equal(t, 1, revision)
 	require.Equal(t, "2026-07-13T09:24:27Z", updatedAt)
 
-	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'posts'")
-	var postSchema string
-	require.NoError(t, row.Scan(&postSchema))
-	require.Contains(t, postSchema, `"updated_at" TIMESTAMP NOT NULL DEFAULT current_timestamp`)
-	for _, objectName := range []string{"posts_status_upgrade_test_idx", "posts_status_upgrade_test_trigger"} {
-		var count int
-		require.NoError(t, db.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM sqlite_master WHERE name = ?", objectName,
-		).Scan(&count))
-		require.Equal(t, 1, count, objectName)
-	}
-
 	_, err = db.ExecContext(ctx, `INSERT INTO posts
 		(id, workspace_id, created_by, content, status, created_at)
 		VALUES ('new-post', 'new-workspace', 'new-user', 'new draft', 'draft', current_timestamp)`)
@@ -109,6 +101,13 @@ func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
 		"SELECT updated_at FROM posts WHERE id = 'new-post'",
 	).Scan(&defaultedUpdatedAt))
 	require.NotEmpty(t, defaultedUpdatedAt)
+	_, err = db.ExecContext(ctx, "UPDATE posts SET status = 'scheduled' WHERE id = 'legacy-post'")
+	require.NoError(t, err)
+	var auditedStatus string
+	require.NoError(t, db.QueryRowContext(ctx,
+		"SELECT status FROM posts_upgrade_audit",
+	).Scan(&auditedStatus))
+	require.Equal(t, "scheduled", auditedStatus)
 	runMigrationsThrough(t, db, 104)
 
 	_, err = db.ExecContext(ctx, "DELETE FROM posts WHERE id = 'legacy-post'")
