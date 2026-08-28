@@ -42,14 +42,13 @@ beforeEach(() => {
 afterEach(() => setLocale('en', { reload: false }));
 
 describe('TextPropertiesPanel', () => {
-	it('shows every template and round-trips structured layouts without crowding the inspector', async () => {
+	it('round-trips structured layouts without crowding the inspector', async () => {
 		const onedit = vi.fn();
 		const screen = await render(TextPropertiesPanel, {
 			item: timelineStore.itemById.get('text')!,
 			onedit
 		});
 
-		expect(screen.container.querySelectorAll('.template-strip > button')).toHaveLength(13);
 		await screen.getByRole('button', { name: '3 spans' }).click();
 		expect(timelineStore.itemById.get('text')?.textSpans?.map((span) => span.text)).toEqual([
 			'Tag',

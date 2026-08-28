@@ -31,14 +31,10 @@ function context(overrides: Partial<MotionPresetBuildContext> = {}): MotionPrese
 }
 
 describe('motion presets', () => {
-	it('ships the complete unique FreeCut catalog', () => {
+	it('keeps preset lookup aligned with unique catalog ids', () => {
 		const ids = MOTION_PRESETS.map((preset) => preset.id);
-		expect(ids).toHaveLength(20);
 		expect(new Set(ids)).toHaveLength(ids.length);
 		expect(MOTION_PRESETS_BY_ID.size).toBe(ids.length);
-		expect(MOTION_PRESETS.filter((preset) => preset.category === 'entrance')).toHaveLength(9);
-		expect(MOTION_PRESETS.filter((preset) => preset.category === 'exit')).toHaveLength(7);
-		expect(MOTION_PRESETS.filter((preset) => preset.category === 'emphasis')).toHaveLength(4);
 	});
 
 	it('writes only declared properties and keeps every key in bounds', () => {

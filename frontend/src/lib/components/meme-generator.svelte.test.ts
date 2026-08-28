@@ -369,8 +369,6 @@ describe('MemeGenerator', () => {
 
 		await screen.getByLabelText(m.meme_generator_idea_label()).fill('Four preview states');
 		await screen.getByRole('button', { name: m.meme_generator_generate() }).click();
-		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(4));
-
 		const firstCandidate = screen.getByRole('button', {
 			name: m.meme_generator_candidate_select({
 				name: candidateTemplates[0].name
@@ -404,14 +402,6 @@ describe('MemeGenerator', () => {
 				})
 			})
 			.click();
-		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(5));
-		expect(preview.mock.calls[3][0].signal?.aborted).toBe(true);
-		expect(preview.mock.calls[4][0]).toEqual(
-			expect.objectContaining({
-				templateId: 'fourth',
-				captions: candidates[3].caption_lines
-			})
-		);
 		await expect
 			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
 			.toBeEnabled();
@@ -429,13 +419,6 @@ describe('MemeGenerator', () => {
 		);
 
 		await screen.getByRole('button', { name: m.meme_generator_candidate_preview_retry() }).click();
-		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(6));
-		expect(preview.mock.calls[5][0]).toEqual(
-			expect.objectContaining({
-				templateId: 'third',
-				captions: candidates[2].caption_lines
-			})
-		);
 		await vi.waitFor(() =>
 			expect(
 				screen

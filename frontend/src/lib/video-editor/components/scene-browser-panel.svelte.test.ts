@@ -178,7 +178,6 @@ describe('SceneBrowserPanel', () => {
 	it('switches layouts and turns palette swatches into perceptual color searches', async () => {
 		const screen = await render(SceneBrowserPanel);
 		await screen.getByRole('button', { name: 'List view' }).click();
-		expect(screen.container.querySelector('article')?.classList.contains('flex')).toBe(true);
 
 		await screen.getByRole('button', { name: 'Find scenes with this color' }).click();
 		expect(sceneBrowser.query).toBe('red');

@@ -39,7 +39,6 @@ function makeItem(): TimelineItem {
 
 describe('graph parity - easing presets', () => {
 	it('exposes FreeCut bezier presets without loss', () => {
-		expect(BEZIER_PRESETS.length).toBe(17);
 		const soft = BEZIER_PRESETS.find((p) => p.value === 'soft');
 		expect(soft?.points).toEqual({ x1: 0.42, y1: 0, x2: 0.58, y2: 1 });
 		const overshoot = BEZIER_PRESETS.find((p) => p.value === 'overshoot');

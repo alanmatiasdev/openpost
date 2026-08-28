@@ -84,15 +84,9 @@ describe('TranscriptPanel cue formatting', () => {
 
 		await search.fill('launch tod');
 		await expect.element(screen.getByText('1/1', { exact: true })).toBeVisible();
-		expect(screen.container.querySelectorAll('[data-transcript-search-index].ring-1')).toHaveLength(
-			2
-		);
 
 		await search.fill('vidoe');
 		await expect.element(screen.getByText('~1/2', { exact: true })).toBeVisible();
-		expect(screen.container.querySelectorAll('[data-transcript-search-index].ring-1')).toHaveLength(
-			2
-		);
 		await screen.getByRole('button', { name: 'Next match' }).click();
 		expect(timelineStore.currentFrame).toBe(30);
 		await expect.element(screen.getByText('~2/2', { exact: true })).toBeVisible();

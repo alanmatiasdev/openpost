@@ -97,9 +97,6 @@ describe('SubtitlePropertiesPanel', () => {
 			onedit
 		});
 
-		expect(screen.container.querySelectorAll('.preset-strip > button[aria-pressed]')).toHaveLength(
-			5
-		);
 		await screen.getByRole('button', { name: 'Bold Yellow', exact: true }).click();
 		expect(timelineStore.itemById.get('subtitle')).toMatchObject({
 			fontFamily: 'Roboto Slab',

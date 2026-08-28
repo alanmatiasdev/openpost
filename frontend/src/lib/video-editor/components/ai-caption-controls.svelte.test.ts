@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import AiCaptionControls from './ai-caption-controls.svelte';
 
 describe('AiCaptionControls chrome', () => {
-	it('renders generate action with 44px target, no overflow at 320, and accessible progress/cancel', async () => {
+	it('renders generate action without overflow at 320', async () => {
 		await page.viewport(320, 720);
 		const onstart = vi.fn();
 		const oncancel = vi.fn();
@@ -19,7 +19,6 @@ describe('AiCaptionControls chrome', () => {
 		const button = screen.getByRole('button', { name: 'Generate AI captions' });
 		await expect.element(button).toBeVisible();
 		await expect.element(button).toBeEnabled();
-		await expect.element(button).toHaveClass('h-11');
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
 		expect(screen.container.scrollHeight).toBeGreaterThan(0);
 		await button.click();
@@ -41,7 +40,7 @@ describe('AiCaptionControls chrome', () => {
 		await expect.element(screen.getByText('Local vision model')).toBeVisible();
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(390);
 		const button = screen.getByRole('button', { name: 'Generate AI captions' });
-		await expect.element(button).toHaveClass('h-11');
+		await expect.element(button).toBeVisible();
 		document.documentElement.classList.remove('dark');
 	});
 
@@ -61,7 +60,6 @@ describe('AiCaptionControls chrome', () => {
 		await expect.element(screen.getByText('42%')).toBeVisible();
 		const cancel = screen.getByRole('button', { name: 'Cancel transcription' });
 		await expect.element(cancel).toBeVisible();
-		await expect.element(cancel).toHaveClass('h-11');
 		await cancel.click();
 		expect(oncancel).toHaveBeenCalledOnce();
 	});

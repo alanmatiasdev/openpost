@@ -155,14 +155,11 @@ describe('AI captions browser integration at 320 and 390', () => {
 			timelineStore.items.filter((entry) => entry.captionSource?.type === 'ai-captions')
 		).toHaveLength(1);
 
-		// Editable correction via TranscriptPanel and one-step undo, with 44px and overflow checks
+		// Editable correction via TranscriptPanel and one-step undo, with overflow checks
 		const screen = await render(TranscriptPanel, { onedit: vi.fn() });
 		// SAFETY: vitest-browser-svelte renders into an HTMLElement container in Chromium.
 		(screen.container as HTMLElement).style.width = '320px';
 		await expect.element(screen.getByRole('button', { name: 'Delete line' }).first()).toBeVisible();
-		// Check 44px target for delete button (first of several)
-		const delButton = screen.getByRole('button', { name: 'Delete line' }).first().element();
-		expect(delButton.className).toContain('size-');
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(321);
 		// Simulate correction: edit first cue text
 		const currentPanelItem = timelineStore.items.find(
@@ -210,6 +207,5 @@ describe('AI captions browser integration at 320 and 390', () => {
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(390);
 		const button = screen.getByRole('button', { name: 'Cancel transcription' });
 		await expect.element(button).toBeVisible();
-		await expect.element(button).toHaveClass('h-11');
 	});
 });

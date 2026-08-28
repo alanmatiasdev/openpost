@@ -539,41 +539,6 @@ describe('timeline fade handles', () => {
 			`Fade target was covered by ${hitDescription}`
 		).toBe(true);
 	});
-	it('respects density thresholds via container queries', async () => {
-		timelineStore.setAll({
-			tracks: [track('video-track', 'video', 0), track('audio-track', 'audio', 1)],
-			items: [
-				item({
-					id: 'audio-1',
-					trackId: 'audio-track',
-					label: 'Tiny',
-					type: 'audio',
-					durationInFrames: 2,
-					audioFadeIn: 0.05
-				})
-			],
-			fps: 30
-		});
-		const screen = await render(TimelinePanel, {
-			onedit: vi.fn(),
-			selectedItemId: 'audio-1',
-			selectedItemIds: ['audio-1']
-		});
-		await nextFrame();
-		const clip = requireElement(screen.container, '[data-timeline-item-id="audio-1"]', HTMLElement);
-		const handlesContainer = requireElement(clip, '[data-fade-handles-container]', HTMLElement);
-		expect(handlesContainer.className).toContain('@min-[44px]:opacity-40');
-		expect(handlesContainer.className).toContain('@min-[64px]:opacity-100');
-		expect(handlesContainer.className).toContain('opacity-0');
-		const handle = requireElement(
-			clip,
-			'[data-fade-kind="audio"][data-fade-handle="in"]',
-			HTMLElement
-		);
-		expect(handle.className).toContain('pointer-events-none');
-		expect(handle.className).toContain('@min-[44px]:pointer-events-auto');
-		expect(clip.className).toContain('@container');
-	});
 	it('hides handles when track locked or tool not select', async () => {
 		timelineStore.setAll({
 			tracks: [

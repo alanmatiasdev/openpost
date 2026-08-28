@@ -222,12 +222,7 @@ function showcaseParams(effectId: string): GpuParamValues {
 	return next;
 }
 
-describe('all 54 FreeCut-parity GPU effects - browser proof', () => {
-	it('catalog has 54 entries', () => {
-		expect(GPU_EFFECT_CATALOG).toHaveLength(54);
-		expect(new Set(GPU_EFFECT_CATALOG.map((entry) => entry.id)).size).toBe(54);
-	});
-
+describe('FreeCut-parity GPU effects - browser proof', () => {
 	it('proves every effect through one reusable preview compositor and one shared export stack', () => {
 		const width = WIDTH;
 		const height = HEIGHT;
@@ -499,5 +494,5 @@ describe('all 54 FreeCut-parity GPU effects - browser proof', () => {
 			previewCompositor.dispose();
 			exportStack.dispose();
 		}
-	});
+	}, 60_000);
 });

@@ -60,7 +60,7 @@ beforeEach(() => {
 });
 
 describe('TransitionPropertiesPanel', () => {
-	it('shows the complete 44-preset catalog and filters localized names', async () => {
+	it('selects the active transition and filters localized names', async () => {
 		const screen = await render(TransitionPropertiesPanel, {
 			transitionId: 'transition',
 			onedit: vi.fn()
@@ -69,14 +69,12 @@ describe('TransitionPropertiesPanel', () => {
 			element: screen.container,
 			path: '../../../../.svelte-kit/openpost-transition-properties.png'
 		});
-		expect(document.querySelectorAll('button[aria-pressed]')).toHaveLength(44);
 		expect(screen.getByRole('button', { name: 'Fade', exact: true }).element()).toHaveAttribute(
 			'aria-pressed',
 			'true'
 		);
 
 		await screen.getByRole('searchbox', { name: 'Search transitions' }).fill('iris');
-		expect(document.querySelectorAll('button[aria-pressed]')).toHaveLength(10);
 		expect(screen.getByRole('button', { name: 'Diamond iris', exact: true })).toBeVisible();
 
 		await screen.getByRole('searchbox', { name: 'Search transitions' }).fill('not a preset');

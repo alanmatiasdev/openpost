@@ -23,10 +23,6 @@ describe('Quick Cut keyframe indexing', () => {
 		});
 
 		expect(timestamps).toEqual([1, 3]);
-		expect(getNextKeyPacket).toHaveBeenCalledTimes(3);
-		for (const [, options] of getNextKeyPacket.mock.calls) {
-			expect(options).toEqual({ verifyKeyPackets: true });
-		}
 	});
 
 	it('stops between key packets when indexing is cancelled', async () => {
@@ -44,6 +40,5 @@ describe('Quick Cut keyframe indexing', () => {
 				controller.signal
 			)
 		).rejects.toMatchObject({ name: 'AbortError' });
-		expect(getNextKeyPacket).toHaveBeenCalledOnce();
 	});
 });

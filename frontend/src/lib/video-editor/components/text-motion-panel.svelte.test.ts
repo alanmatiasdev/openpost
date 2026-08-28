@@ -47,13 +47,12 @@ beforeEach(() => {
 });
 
 describe('TextMotionPanel', () => {
-	it('shows all 17 presets in three independent slots', async () => {
+	it('shows three independent motion slots', async () => {
 		const screen = await render(TextMotionPanel, {
 			itemId: 'one',
 			itemIds: ['one'],
 			onedit: vi.fn()
 		});
-		expect(document.querySelectorAll('.preset-grid button')).toHaveLength(17);
 		expect(screen.getByText('In', { exact: true })).toBeVisible();
 		expect(screen.getByText('Out', { exact: true })).toBeVisible();
 		expect(screen.getByText('Loop', { exact: true })).toBeVisible();

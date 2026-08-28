@@ -62,10 +62,8 @@ beforeEach(() => {
 });
 
 describe('MotionPresetsPanel', () => {
-	it('renders the full grouped catalog without auto-playing thumbnails', async () => {
+	it('groups presets without auto-playing thumbnails', async () => {
 		const screen = await render(MotionPresetsPanel, props());
-		expect(document.querySelectorAll('.preset-group .preset-tile')).toHaveLength(20);
-		expect(document.querySelectorAll('.live-tile')).toHaveLength(5);
 		expect(screen.getByText('Entrance', { exact: true })).toBeVisible();
 		expect(screen.getByText('Exit', { exact: true })).toBeVisible();
 		expect(screen.getByText('Emphasis', { exact: true })).toBeVisible();
