@@ -8,7 +8,11 @@ import path from "node:path";
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 import { resolveRunArtifact } from "./ci-artifacts.mjs";
 import { releaseCommandEnvironment } from "./release-command-environment.mjs";
-import { requireConventionalCommitMessage, selectWorkflowRun } from "./release-lifecycle.mjs";
+import {
+  releasePreparationHasChanges,
+  requireConventionalCommitMessage,
+  selectWorkflowRun,
+} from "./release-lifecycle.mjs";
 import { readReleaseManifest } from "./release-manifest.mjs";
 import {
   changedReleasePaths,
@@ -249,8 +253,12 @@ async function prepare(commitMessage) {
     throw error;
   }
   run(["git", "add", "--all"]);
-  run(["git", "commit", "-m", commitMessage || `docs: prepare ${tag} changelog`]);
-  run(["git", "push", "origin", "main"]);
+  if (releasePreparationHasChanges(git(["diff", "--cached", "--name-only"]))) {
+    run(["git", "commit", "-m", commitMessage || `docs: prepare ${tag} changelog`]);
+    run(["git", "push", "origin", "main"]);
+  } else {
+    console.log(`release prepare: ${tag} changelog is already prepared; reusing HEAD`);
+  }
 
   const revision = git(["rev-parse", "HEAD"]);
   await waitForCI(revision);
