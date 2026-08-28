@@ -10,15 +10,16 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/openpost/backend/internal/config"
 	"github.com/openpost/backend/internal/platform"
 )
 
 const (
 	externalAnalyticsTimeout       = 10 * time.Second
+	externalAnalyticsMaxRetryAfter = 7 * 24 * time.Hour
 	externalAnalyticsMaxBodyBytes  = 64 * 1024
 	externalAnalyticsStatusFailed  = "failed"
 	externalAnalyticsCodeResponse  = "external_source_invalid_response"
@@ -43,10 +44,21 @@ type externalAnalyticsEnvelope struct {
 	RetryAfterSeconds int64                  `json:"retry_after_seconds"`
 }
 
-func NewExternalAnalyticsAdapter(source config.AnalyticsSourceConfig) (platform.AnalyticsAdapter, error) {
-	parsed, err := url.Parse(source.BaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse analytics source URL: %w", err)
+func NewExternalAnalyticsAdapter(platformName, baseURL, bearerToken string) (platform.AnalyticsAdapter, error) {
+	platformName = strings.ToLower(strings.TrimSpace(platformName))
+	if platformName == "" {
+		return nil, fmt.Errorf("analytics source platform is required")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || parsed == nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, fmt.Errorf("analytics source URL must be an absolute http(s) URL")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, fmt.Errorf("analytics source URL must not include credentials, query, or fragment")
+	}
+	bearerToken = strings.TrimSpace(bearerToken)
+	if bearerToken == "" {
+		return nil, fmt.Errorf("analytics source bearer token is required")
 	}
 	client := &http.Client{
 		Timeout: externalAnalyticsTimeout,
@@ -58,9 +70,9 @@ func NewExternalAnalyticsAdapter(source config.AnalyticsSourceConfig) (platform.
 		client.Transport = defaultTransport.Clone()
 	}
 	return &externalAnalyticsAdapter{
-		platformName: source.Platform,
+		platformName: platformName,
 		baseURL:      parsed,
-		bearerToken:  source.BearerToken,
+		bearerToken:  bearerToken,
 		client:       client,
 	}, nil
 }
@@ -138,7 +150,8 @@ func (a *externalAnalyticsAdapter) fetch(ctx context.Context, endpoint string, p
 	if err := decoder.Decode(&envelope); err != nil {
 		return nil, platform.NewAnalyticsError(platform.AnalyticsStatusFailed, externalAnalyticsCodeResponse)
 	}
-	if decoder.More() {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
 		return nil, platform.NewAnalyticsError(platform.AnalyticsStatusFailed, externalAnalyticsCodeResponse)
 	}
 	if status := strings.ToLower(strings.TrimSpace(envelope.Status)); status != "" {
@@ -160,7 +173,7 @@ func readBoundedBody(body io.Reader) ([]byte, error) {
 }
 
 func validateExternalAnalyticsMetrics(raw map[string]json.Number) (platform.AnalyticsValues, error) {
-	if raw == nil {
+	if len(raw) == 0 {
 		return nil, platform.NewAnalyticsError(platform.AnalyticsStatusFailed, externalAnalyticsCodeResponse)
 	}
 	values := make(platform.AnalyticsValues, len(raw))
@@ -193,7 +206,7 @@ func isValidExternalMetricName(name string) bool {
 
 func classifyExternalAnalyticsStatus(status, code string, retryAfterSeconds int64) error {
 	cleanCode := sanitizeExternalAnalyticsCode(code)
-	retryAfter := time.Duration(max(0, int(retryAfterSeconds))) * time.Second
+	retryAfter := externalRetryAfterSeconds(retryAfterSeconds)
 	switch status {
 	case string(platform.AnalyticsStatusUnsupported):
 		return &platform.AnalyticsError{Status: platform.AnalyticsStatusUnsupported, Code: cleanCode}
@@ -243,11 +256,24 @@ func parseExternalRetryAfter(value string, now time.Time) time.Duration {
 	if value == "" {
 		return 0
 	}
-	if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds >= 0 {
-		return seconds
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return externalRetryAfterSeconds(seconds)
+	} else if strings.Trim(value, "0123456789") == "" {
+		return externalAnalyticsMaxRetryAfter
 	}
 	if retryAt, err := http.ParseTime(value); err == nil && retryAt.After(now) {
-		return retryAt.Sub(now)
+		return min(retryAt.Sub(now), externalAnalyticsMaxRetryAfter)
 	}
 	return 0
+}
+
+func externalRetryAfterSeconds(seconds int64) time.Duration {
+	if seconds <= 0 {
+		return 0
+	}
+	maxSeconds := int64(externalAnalyticsMaxRetryAfter / time.Second)
+	if seconds > maxSeconds {
+		return externalAnalyticsMaxRetryAfter
+	}
+	return time.Duration(seconds) * time.Second
 }

@@ -427,7 +427,7 @@ func main() {
 		growthService.SetProvider(name, adapter)
 	}
 	for _, source := range cfg.AnalyticsSources {
-		adapter, err := analyticsservice.NewExternalAnalyticsAdapter(source)
+		adapter, err := analyticsservice.NewExternalAnalyticsAdapter(source.Platform, source.BaseURL, source.BearerToken)
 		if err != nil {
 			log.Fatalf("failed to initialize external analytics source for %s: %v", source.Platform, err)
 		}

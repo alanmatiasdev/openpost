@@ -345,7 +345,7 @@ func (s *Service) syncAccount(ctx context.Context, accountID string) error {
 	}
 	token, err := s.analyticsAccessToken(ctx, adapter, account.ID)
 	if err != nil {
-		return s.recordFailureWithAdapter(ctx, subjectAccount, account.ID, account, adapter, err)
+		return s.recordFailure(ctx, subjectAccount, account.ID, account, adapter, err)
 	}
 	values, err := adapter.FetchAccountAnalytics(ctx, token, platform.AccountAnalyticsRequest{
 		AccountID:       account.AccountID,
@@ -353,7 +353,7 @@ func (s *Service) syncAccount(ctx context.Context, accountID string) error {
 		CapabilityState: analyticsCapabilityState(account.CapabilityState),
 	})
 	if err != nil {
-		return s.recordFailureWithAdapter(ctx, subjectAccount, account.ID, account, adapter, err)
+		return s.recordFailure(ctx, subjectAccount, account.ID, account, adapter, err)
 	}
 	return s.recordSuccess(ctx, subjectAccount, account.ID, account, "", "", values, accountCadence)
 }
@@ -400,11 +400,9 @@ func (s *Service) syncRendition(ctx context.Context, renditionID string) error {
 	}
 	token, err := s.analyticsAccessToken(ctx, adapter, account.ID)
 	if err != nil {
-		return s.recordFailureWithAdapter(ctx, subjectRendition, rendition.ID, account, adapter, err)
+		return s.recordFailure(ctx, subjectRendition, rendition.ID, account, adapter, err)
 	}
-	if analyticsAdapterUsesProviderToken(adapter) {
-		s.resolveAndStoreContentURL(ctx, adapter, token, account, &rendition)
-	}
+	s.resolveAndStoreContentURL(ctx, adapter, token, account, &rendition)
 	values, err := adapter.FetchContentAnalytics(ctx, token, platform.ContentAnalyticsRequest{
 		AccountID:     account.AccountID,
 		ExternalIDs:   externalIDs,
@@ -415,7 +413,7 @@ func (s *Service) syncRendition(ctx context.Context, renditionID string) error {
 		OwnReplyCount: max(0, len(externalIDs)-1),
 	})
 	if err != nil {
-		return s.recordFailureWithAdapter(ctx, subjectRendition, rendition.ID, account, adapter, err)
+		return s.recordFailure(ctx, subjectRendition, rendition.ID, account, adapter, err)
 	}
 	return s.recordSuccess(ctx, subjectRendition, rendition.ID, account, rendition.PublicationID, rendition.ID, values, contentCadence(s.now().Sub(publishedAt)))
 }
@@ -588,11 +586,7 @@ func (s *Service) recordUnavailable(ctx context.Context, subjectType, subjectID 
 	})
 }
 
-func (s *Service) recordFailure(ctx context.Context, subjectType, subjectID string, account models.SocialAccount, cause error) error {
-	return s.recordFailureWithAdapter(ctx, subjectType, subjectID, account, nil, cause)
-}
-
-func (s *Service) recordFailureWithAdapter(ctx context.Context, subjectType, subjectID string, account models.SocialAccount, adapter platform.AnalyticsAdapter, cause error) error {
+func (s *Service) recordFailure(ctx context.Context, subjectType, subjectID string, account models.SocialAccount, adapter platform.AnalyticsAdapter, cause error) error {
 	status, code, retryAfter := classifyAnalyticsError(cause)
 	now := s.now()
 	next := now.Add(time.Hour)
@@ -723,7 +717,7 @@ func (s *Service) enqueue(ctx context.Context, workspaceID, jobType, payload str
 
 func (s *Service) analyticsAdapter(account models.SocialAccount) platform.AnalyticsAdapter {
 	s.providersMu.RLock()
-	if adapter := s.sources[account.Platform]; adapter != nil {
+	if adapter := s.sources[strings.ToLower(strings.TrimSpace(account.Platform))]; adapter != nil {
 		s.providersMu.RUnlock()
 		return adapter
 	}

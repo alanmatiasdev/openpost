@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openpost/backend/internal/config"
 	"github.com/openpost/backend/internal/database"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
@@ -291,6 +290,9 @@ func TestExternalAnalyticsSourceSendsExpectedRequestsAndAuth(t *testing.T) {
 	db := newAnalyticsTestDB(t)
 	ctx := context.Background()
 	account := seedAnalyticsAccount(t, db, "")
+	account.Platform = "x"
+	_, err := db.NewUpdate().Model(&account).Column("platform").WherePK().Exec(ctx)
+	require.NoError(t, err)
 	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 	publication := seedAnalyticsPublication(t, db, account.WorkspaceID, "publication-http", now)
 	rendition := models.Rendition{
@@ -300,11 +302,11 @@ func TestExternalAnalyticsSourceSendsExpectedRequestsAndAuth(t *testing.T) {
 		Platform:        account.Platform,
 		Profile:         "short_text",
 		Status:          models.RenditionStatusPublished,
-		ExternalID:      "provider-post",
+		ExternalID:      "1234567890",
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	_, err := db.NewInsert().Model(&rendition).Exec(ctx)
+	_, err = db.NewInsert().Model(&rendition).Exec(ctx)
 	require.NoError(t, err)
 
 	type seenRequest struct {
@@ -332,29 +334,27 @@ func TestExternalAnalyticsSourceSendsExpectedRequestsAndAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter, err := NewExternalAnalyticsAdapter(config.AnalyticsSourceConfig{
-		Platform:    "test",
-		BaseURL:     server.URL + "/collector",
-		BearerToken: "external-secret",
-	})
+	adapter, err := NewExternalAnalyticsAdapter("x", server.URL+"/collector", "external-secret")
 	require.NoError(t, err)
 	service := NewService(db, &failingTokenSource{})
 	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
-	service.SetExternalSource("test", adapter)
+	service.SetExternalSource("x", adapter)
 
 	require.NoError(t, service.syncAccount(ctx, account.ID))
 	require.NoError(t, service.syncRendition(ctx, rendition.ID))
 	require.Len(t, seen, 2)
 	require.Equal(t, "/collector/analytics/account", seen[0].Path)
 	require.Equal(t, "Bearer external-secret", seen[0].Auth)
-	require.Equal(t, map[string]any{"platform": "test", "account_id": "provider-account"}, seen[0].Body)
+	require.Equal(t, map[string]any{"platform": "x", "account_id": "provider-account"}, seen[0].Body)
 	require.Equal(t, "/collector/analytics/content", seen[1].Path)
 	require.Equal(t, "Bearer external-secret", seen[1].Auth)
-	require.Equal(t, "test", seen[1].Body["platform"])
+	require.Equal(t, "x", seen[1].Body["platform"])
 	require.Equal(t, "provider-account", seen[1].Body["account_id"])
 	require.Equal(t, publication.ActualRunAt.UTC().Format(time.RFC3339), seen[1].Body["published_at"])
-	require.True(t, slices.Equal([]string{"provider-post"}, jsonStringSlice(t, seen[1].Body["external_ids"])))
+	require.True(t, slices.Equal([]string{"1234567890"}, jsonStringSlice(t, seen[1].Body["external_ids"])))
+	require.NoError(t, db.NewSelect().Model(&rendition).WherePK().Scan(ctx))
+	require.Equal(t, "https://x.com/i/web/status/1234567890", rendition.ExternalURL)
 }
 
 func TestExternalAnalyticsSourceOverviewUsesSourceSupportWithoutScopes(t *testing.T) {
@@ -371,11 +371,7 @@ func TestExternalAnalyticsSourceOverviewUsesSourceSupportWithoutScopes(t *testin
 			ContentRequiredScopes: []string{"analytics.content.read"},
 		},
 	})
-	adapter, err := NewExternalAnalyticsAdapter(config.AnalyticsSourceConfig{
-		Platform:    "test",
-		BaseURL:     "https://collector.example/openpost",
-		BearerToken: "external-secret",
-	})
+	adapter, err := NewExternalAnalyticsAdapter("test", "https://collector.example/openpost", "external-secret")
 	require.NoError(t, err)
 	service.SetExternalSource("test", adapter)
 
@@ -400,11 +396,7 @@ func TestExternalAnalyticsSourceQueuesWithoutProviderScopes(t *testing.T) {
 			AccountRequiredScopes: []string{"analytics.read"},
 		},
 	})
-	adapter, err := NewExternalAnalyticsAdapter(config.AnalyticsSourceConfig{
-		Platform:    "test",
-		BaseURL:     "https://collector.example/openpost",
-		BearerToken: "external-secret",
-	})
+	adapter, err := NewExternalAnalyticsAdapter("test", "https://collector.example/openpost", "external-secret")
 	require.NoError(t, err)
 	service.SetExternalSource("test", adapter)
 
@@ -424,11 +416,7 @@ func TestExternalAnalyticsSourcePreservesFeatureGate(t *testing.T) {
 		_, _ = w.Write([]byte(`{"metrics":{"followers":42}}`))
 	}))
 	defer server.Close()
-	adapter, err := NewExternalAnalyticsAdapter(config.AnalyticsSourceConfig{
-		Platform:    "test",
-		BaseURL:     server.URL,
-		BearerToken: "external-secret",
-	})
+	adapter, err := NewExternalAnalyticsAdapter("test", server.URL, "external-secret")
 	require.NoError(t, err)
 	service := NewService(db, staticTokenSource{})
 	service.SetFeatureGate(disabledGate{})
@@ -491,6 +479,31 @@ func TestExternalAnalyticsSourceMapsSourceStatusesAndUnsafeResponses(t *testing.
 			wantMessage: "external analytics source failed",
 		},
 		{
+			name:        "empty metrics rejected",
+			statusCode:  http.StatusOK,
+			body:        `{"metrics":{}}`,
+			wantStatus:  string(platform.AnalyticsStatusFailed),
+			wantCode:    "external_source_invalid_response",
+			wantMessage: "external analytics source failed",
+		},
+		{
+			name:        "trailing JSON rejected",
+			statusCode:  http.StatusOK,
+			body:        `{"metrics":{"followers":1}} {"metrics":{"followers":2}}`,
+			wantStatus:  string(platform.AnalyticsStatusFailed),
+			wantCode:    "external_source_invalid_response",
+			wantMessage: "external analytics source failed",
+		},
+		{
+			name:           "retry delay is capped",
+			statusCode:     http.StatusOK,
+			body:           `{"status":"rate_limited","code":"collector_busy","retry_after_seconds":9223372036854775807}`,
+			wantStatus:     string(platform.AnalyticsStatusRateLimited),
+			wantCode:       "collector_busy",
+			wantMessage:    "external analytics source rate limit",
+			wantNextSyncAt: 7 * 24 * time.Hour,
+		},
+		{
 			name:        "oversized response body rejected",
 			statusCode:  http.StatusOK,
 			body:        `{"metrics":{"followers":1},"padding":"` + strings.Repeat("x", externalAnalyticsMaxBodyBytes) + `"}`,
@@ -514,11 +527,7 @@ func TestExternalAnalyticsSourceMapsSourceStatusesAndUnsafeResponses(t *testing.
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer server.Close()
-			adapter, err := NewExternalAnalyticsAdapter(config.AnalyticsSourceConfig{
-				Platform:    "test",
-				BaseURL:     server.URL,
-				BearerToken: "external-secret",
-			})
+			adapter, err := NewExternalAnalyticsAdapter("test", server.URL, "external-secret")
 			require.NoError(t, err)
 			service := NewService(db, &failingTokenSource{})
 			service.SetFeatureGate(alwaysEnabledGate{})
