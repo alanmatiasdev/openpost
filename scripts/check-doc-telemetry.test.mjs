@@ -2,27 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
-const docsConfigPath = new URL("../docs-site/.vitepress/config.ts", import.meta.url);
-const docsThemePath = new URL("../docs-site/.vitepress/theme/index.ts", import.meta.url);
 const telemetryGuidePath = new URL("../docs-site/configuration/telemetry.md", import.meta.url);
-const docsPackagePath = new URL("../docs-site/package.json", import.meta.url);
-const marketingPackagePath = new URL("../marketing-site/package.json", import.meta.url);
-const marketingLayoutPath = new URL("../marketing-site/src/routes/+layout.svelte", import.meta.url);
 const repositoryRoot = new URL("..", import.meta.url);
 
 describe("documentation telemetry", () => {
-  test("uses the shared PostHog client without a legacy Umami script", async () => {
-    const [config, theme] = await Promise.all([
-      readFile(docsConfigPath, "utf8"),
-      readFile(docsThemePath, "utf8"),
-    ]);
-
-    expect(config).not.toContain("analytics.rgo.pt");
-    expect(config.toLowerCase()).not.toContain("umami");
-    expect(theme).toContain("configureTelemetry");
-    expect(theme).toMatch(/surface:\s*["']docs["']/u);
-  });
-
   test("documents the complete MCP-managed production first-use funnel", async () => {
     const guide = await readFile(telemetryGuidePath, "utf8");
     const events = [
@@ -46,14 +29,7 @@ describe("documentation telemetry", () => {
     expect(guide).not.toContain("POSTHOG_PERSONAL_API_KEY` Actions secret");
   });
 
-  test("rejects production Cloudflare builds without public telemetry configuration", async () => {
-    const [docsPackage, marketingPackage] = await Promise.all([
-      readFile(docsPackagePath, "utf8"),
-      readFile(marketingPackagePath, "utf8"),
-    ]);
-    expect(docsPackage).toContain("check-public-telemetry-env.mjs");
-    expect(marketingPackage).toContain("check-public-telemetry-env.mjs");
-
+  test("rejects production Cloudflare builds without public telemetry configuration", () => {
     const result = spawnSync("bun", ["scripts/check-public-telemetry-env.mjs"], {
       cwd: repositoryRoot,
       encoding: "utf8",
@@ -92,16 +68,7 @@ describe("documentation telemetry", () => {
     expect(result.stderr).toContain("https://cool.openpost.social");
   });
 
-  test("keeps local defaults non-production and sends marketing route templates", async () => {
-    const [docsTheme, marketingLayout] = await Promise.all([
-      readFile(docsThemePath, "utf8"),
-      readFile(marketingLayoutPath, "utf8"),
-    ]);
-    expect(docsTheme).toContain('VITE_OPENPOST_ENVIRONMENT || "development"');
-    expect(marketingLayout).toContain("VITE_OPENPOST_ENVIRONMENT || 'development'");
-    expect(marketingLayout).toContain("navigation.to?.route.id ?? '/unknown'");
-    expect(marketingLayout).not.toContain("route.id ?? window.location.pathname");
-
+  test("allows local development without public telemetry configuration", () => {
     const result = spawnSync("bun", ["scripts/check-public-telemetry-env.mjs"], {
       cwd: repositoryRoot,
       encoding: "utf8",

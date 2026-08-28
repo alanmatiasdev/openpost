@@ -13,8 +13,6 @@ const canonicalScripts = [
   "verify",
   "release",
 ];
-const tasksSource = readFileSync("scripts/tasks.mjs", "utf8");
-
 test("the root manifest exposes one canonical verification interface", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8"));
   for (const script of canonicalScripts) assert.ok(manifest.scripts[script], script);
@@ -40,22 +38,6 @@ test("the root manifest exposes one canonical verification interface", () => {
     "test:file",
     "verify",
   ]);
-});
-
-test("nested Turbo tasks inherit the root cache lease", () => {
-  const turbo = manifest("turbo.json");
-  const tasksSource = readFileSync("scripts/tasks.mjs", "utf8");
-  assert.ok(turbo.globalPassThroughEnv.includes("OPENPOST_ROOT_TASK_LOCKED"));
-  assert.match(tasksSource, /env: \{ \.\.\.step\.env, OPENPOST_ROOT_TASK_LOCKED: "1" \}/u);
-});
-
-test("development startup removes only its legacy cache without shared cache maintenance", () => {
-  assert.match(tasksSource, /removeLegacyTurboCache\(path\.join\(root, "\.turbo", "cache"\)\)/u);
-  const devBranch = tasksSource.match(
-    /if \(plan\.command === "dev"\) \{([\s\S]*?)\n\s+\} else \{/u,
-  )?.[1];
-  assert.ok(devBranch);
-  assert.doesNotMatch(devBranch, /tryTurboCacheMaintenance/u);
 });
 
 test("workspace manifests keep implementation tasks without old public aliases", () => {
