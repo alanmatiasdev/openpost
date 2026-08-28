@@ -22,6 +22,12 @@ type MastodonServerConfig struct {
 	InstanceURL  string `json:"instance_url"`
 }
 
+type AnalyticsSourceConfig struct {
+	Platform    string `json:"platform"`
+	BaseURL     string `json:"base_url"`
+	BearerToken string `json:"bearer_token"`
+}
+
 type Config struct {
 	Edition                  string
 	AppE2EHostedSignup       bool
@@ -120,6 +126,7 @@ type Config struct {
 	ThreadsRedirectURI  string
 
 	ProviderApps                  []platform.AppConfig
+	AnalyticsSources              []AnalyticsSourceConfig
 	ConnectorsFile                string
 	DisabledProviders             []string
 	ProviderCertificationEnforced bool
@@ -151,6 +158,8 @@ type Config struct {
 	PaddleTeamAnnualPriceID     string
 	PaddleAgencyMonthlyPriceID  string
 	PaddleAgencyAnnualPriceID   string
+
+	analyticsSourcesParseErr error
 }
 
 const (
@@ -379,6 +388,14 @@ func Load() *Config {
 			cfg.ProviderApps = mergeProviderApps(cfg.ProviderApps, defaultProviderAppConfig(cfg, apps)...)
 		}
 	}
+	if raw := getEnvDefault("OPENPOST_ANALYTICS_SOURCES", ""); raw != "" {
+		var sources []AnalyticsSourceConfig
+		if err := json.Unmarshal([]byte(raw), &sources); err != nil {
+			cfg.analyticsSourcesParseErr = fmt.Errorf("OPENPOST_ANALYTICS_SOURCES must be valid JSON: %w", err)
+		} else {
+			cfg.AnalyticsSources = normalizeAnalyticsSources(sources)
+		}
+	}
 
 	cfg.CORSOrigins = buildCORSOrigins(
 		cfg.Edition,
@@ -535,6 +552,17 @@ func parseStringList(raw string) []string {
 	return values
 }
 
+func normalizeAnalyticsSources(sources []AnalyticsSourceConfig) []AnalyticsSourceConfig {
+	normalized := make([]AnalyticsSourceConfig, 0, len(sources))
+	for _, source := range sources {
+		source.Platform = strings.ToLower(strings.TrimSpace(source.Platform))
+		source.BaseURL = strings.TrimRight(strings.TrimSpace(source.BaseURL), "/")
+		source.BearerToken = strings.TrimSpace(source.BearerToken)
+		normalized = append(normalized, source)
+	}
+	return normalized
+}
+
 func (c *Config) DatabaseDSN() string {
 	if c.DatabaseDriver == DatabaseDriverPostgres && c.DatabaseURL != "" {
 		return c.DatabaseURL
@@ -544,6 +572,9 @@ func (c *Config) DatabaseDSN() string {
 
 func (c *Config) ValidateRuntime() error {
 	if err := c.ValidateManagedSettings(); err != nil {
+		return err
+	}
+	if err := c.validateAnalyticsSources(); err != nil {
 		return err
 	}
 	if c.Edition != EditionCloud {
@@ -572,6 +603,43 @@ func (c *Config) ValidateRuntime() error {
 		return fmt.Errorf("OPENPOST_EDITION=cloud requires: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func (c *Config) validateAnalyticsSources() error {
+	if c.analyticsSourcesParseErr != nil {
+		return c.analyticsSourcesParseErr
+	}
+	if len(c.AnalyticsSources) == 0 {
+		return nil
+	}
+	invalid := make([]string, 0, len(c.AnalyticsSources))
+	seenPlatforms := make(map[string]struct{}, len(c.AnalyticsSources))
+	for _, source := range c.AnalyticsSources {
+		platformName := strings.TrimSpace(source.Platform)
+		if platformName == "" {
+			invalid = append(invalid, "platform is required")
+		} else if _, exists := seenPlatforms[platformName]; exists {
+			invalid = append(invalid, fmt.Sprintf("duplicate platform %q", platformName))
+		} else {
+			seenPlatforms[platformName] = struct{}{}
+		}
+		if strings.TrimSpace(source.BearerToken) == "" {
+			invalid = append(invalid, fmt.Sprintf("platform %q requires bearer_token", platformName))
+		}
+		parsed, err := url.Parse(strings.TrimSpace(source.BaseURL))
+		if err != nil || parsed == nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			invalid = append(invalid, fmt.Sprintf("platform %q requires an absolute http(s) URL", platformName))
+			continue
+		}
+		if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			invalid = append(invalid, fmt.Sprintf("platform %q base_url must not include credentials, query, or fragment", platformName))
+		}
+	}
+	if len(invalid) == 0 {
+		return nil
+	}
+	sort.Strings(invalid)
+	return fmt.Errorf("OPENPOST_ANALYTICS_SOURCES invalid: %s", strings.Join(invalid, ", "))
 }
 
 func (c *Config) missingCloudTelemetryConfig() []string {

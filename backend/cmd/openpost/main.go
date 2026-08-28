@@ -426,6 +426,14 @@ func main() {
 		repostService.SetProvider(name, adapter)
 		growthService.SetProvider(name, adapter)
 	}
+	for _, source := range cfg.AnalyticsSources {
+		adapter, err := analyticsservice.NewExternalAnalyticsAdapter(source)
+		if err != nil {
+			log.Fatalf("failed to initialize external analytics source for %s: %v", source.Platform, err)
+		}
+		analyticsService.SetExternalSource(source.Platform, adapter)
+		log.Printf("Registered external analytics source: %s", source.Platform)
+	}
 
 	storage, err := mediastore.New(context.Background(), mediastore.Config{
 		Driver:    cfg.StorageDriver,

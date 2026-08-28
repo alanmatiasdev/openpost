@@ -119,6 +119,7 @@ var configTestEnvKeys = []string{
 	"THREADS_CLIENT_SECRET",
 	"THREADS_REDIRECT_URI",
 	"OPENPOST_PROVIDER_APPS",
+	"OPENPOST_ANALYTICS_SOURCES",
 	"OPENPOST_CONNECTORS_FILE",
 	"OPENPOST_PROVIDER_CERTIFICATION_ENFORCED",
 	"OPENPOST_STORAGE_DRIVER",
@@ -533,6 +534,46 @@ func TestLoadFileBackedEnvSupportsLegacyAliases(t *testing.T) {
 	require.Equal(t, "postgres://alias.example/openpost", cfg.DatabaseURL)
 	require.Equal(t, "legacy-jwt-secret-with-thirty-two-chars", cfg.JWTSecret)
 	require.Equal(t, "legacy-encryption-key-with-thirty-two", cfg.EncryptionKey)
+}
+
+func TestLoadSupportsFileBackedAnalyticsSources(t *testing.T) {
+	t.Setenv("OPENPOST_ANALYTICS_SOURCES_FILE", writeEnvFile(t, "analytics-sources", `[
+		{"platform":"linkedin","base_url":"https://collector.example/openpost","bearer_token":"secret-token"}
+	]`))
+
+	cfg := Load()
+
+	require.Len(t, cfg.AnalyticsSources, 1)
+	require.Equal(t, "linkedin", cfg.AnalyticsSources[0].Platform)
+	require.Equal(t, "https://collector.example/openpost", cfg.AnalyticsSources[0].BaseURL)
+	require.Equal(t, "secret-token", cfg.AnalyticsSources[0].BearerToken)
+}
+
+func TestValidateRuntimeRejectsInvalidAnalyticsSourceConfiguration(t *testing.T) {
+	cfg := &Config{
+		Edition: EditionSelfHost,
+		AnalyticsSources: []AnalyticsSourceConfig{
+			{Platform: "linkedin", BaseURL: "collector.example", BearerToken: "token-a"},
+			{Platform: "linkedin", BaseURL: "https://collector.example", BearerToken: "token-b"},
+		},
+	}
+
+	err := cfg.ValidateRuntime()
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "OPENPOST_ANALYTICS_SOURCES")
+	require.ErrorContains(t, err, "absolute http(s) URL")
+	require.ErrorContains(t, err, "duplicate platform \"linkedin\"")
+}
+
+func TestValidateRuntimeRejectsMalformedAnalyticsSourcesJSON(t *testing.T) {
+	t.Setenv("OPENPOST_ANALYTICS_SOURCES_FILE", writeEnvFile(t, "analytics-sources", `[{`))
+
+	err := Load().ValidateRuntime()
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "OPENPOST_ANALYTICS_SOURCES")
+	require.ErrorContains(t, err, "valid JSON")
 }
 
 func TestLoadSupportsFileBackedProviderApps(t *testing.T) {
