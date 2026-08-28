@@ -82,6 +82,18 @@ describe('keyboard shortcuts', () => {
 		expect(bindings.NUDGE_DOWN_LARGE).toBe('mod+shift+down');
 	});
 
+	it('includes FreeCut-compatible scoped keyframe editor bindings', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.KEYFRAME_EDITOR_GRAPH).toBe('1');
+		expect(bindings.KEYFRAME_EDITOR_DOPESHEET).toBe('2');
+		expect(bindings.KEYFRAME_EDITOR_SPLIT).toBe('3');
+		expect(bindings.EDIT_KEYFRAME_ADD).toBe('k');
+		expect(bindings.KEYFRAME_PREVIOUS).toBe('alt+bracketleft');
+		expect(bindings.KEYFRAME_NEXT).toBe('alt+bracketright');
+		expect(bindings.KEYFRAME_TOGGLE_AUTO).toBe('a');
+		expect(bindings.KEYFRAME_FIT).toBe('f');
+	});
+
 	it('reports command and browser conflicts before a binding is replaced', () => {
 		const bindings = resolveEditorShortcuts({ PLAY_PAUSE: 'mod+s' });
 		expect(findShortcutConflicts(bindings, 'mod+s', 'PLAY_PAUSE')).toEqual(['SAVE']);
@@ -119,15 +131,17 @@ describe('keyboard shortcuts', () => {
 				overrides: {
 					PLAY_PAUSE: 'Shift+Space',
 					WORKSPACE_COLOR: 'Alt+8',
-					OPEN_SCENE_BROWSER: 'Ctrl+Shift+F'
+					OPEN_SCENE_BROWSER: 'Ctrl+Shift+F',
+					KEYFRAME_EDITOR_SPLIT: '4'
 				}
 			})
 		).toEqual({
 			overrides: {
 				PLAY_PAUSE: 'shift+space',
-				WORKSPACE_COLOR: 'alt+8'
+				WORKSPACE_COLOR: 'alt+8',
+				KEYFRAME_EDITOR_SPLIT: '4'
 			},
-			importedCount: 3,
+			importedCount: 4,
 			ignoredCount: 0,
 			sourceSchema: 'freecut-hotkeys',
 			sourceVersion: 1

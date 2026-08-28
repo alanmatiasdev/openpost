@@ -36,6 +36,11 @@
 	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { effectPropertyLabel } from '$lib/video-editor/effects/effect-keyframes';
+	import {
+		editorDeleteModeForEvent,
+		eventMatchesShortcut
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 
 	let {
 		item,
@@ -509,8 +514,8 @@
 
 	function onKeyDown(event: KeyboardEvent): void {
 		if (isEditableTarget(event.target)) return;
-		const modifier = event.ctrlKey || event.metaKey;
-		if (modifier && event.key.toLowerCase() === 'a') {
+		const bindings = keyboardShortcuts.bindings;
+		if (eventMatchesShortcut(event, bindings.GRAPH_SELECT_ALL)) {
 			event.preventDefault();
 			setSelection(
 				allKeyframes
@@ -519,29 +524,39 @@
 			);
 			return;
 		}
-		if (modifier && event.key.toLowerCase() === 'c') {
+		if (eventMatchesShortcut(event, bindings.COPY)) {
 			event.preventDefault();
 			copySelection();
 			return;
 		}
-		if (modifier && event.key.toLowerCase() === 'x') {
+		if (eventMatchesShortcut(event, bindings.CUT)) {
 			event.preventDefault();
 			copySelection(true);
 			return;
 		}
-		if (modifier && event.key.toLowerCase() === 'v') {
+		if (eventMatchesShortcut(event, bindings.PASTE)) {
 			event.preventDefault();
 			pasteClipboard();
 			return;
 		}
-		if (event.key === 'Delete' || event.key === 'Backspace') {
+		if (editorDeleteModeForEvent(event, bindings)) {
 			event.preventDefault();
 			removeSelection();
-		} else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+		} else if (
+			eventMatchesShortcut(event, bindings.GRAPH_NUDGE_LEFT) ||
+			eventMatchesShortcut(event, bindings.GRAPH_NUDGE_RIGHT) ||
+			eventMatchesShortcut(event, bindings.GRAPH_NUDGE_LEFT_FAST) ||
+			eventMatchesShortcut(event, bindings.GRAPH_NUDGE_RIGHT_FAST)
+		) {
 			event.preventDefault();
-			const amount = event.shiftKey ? 10 : 1;
-			moveSelectionBy(event.key === 'ArrowLeft' ? -amount : amount);
-		} else if (event.key === 'Escape') {
+			const fast =
+				eventMatchesShortcut(event, bindings.GRAPH_NUDGE_LEFT_FAST) ||
+				eventMatchesShortcut(event, bindings.GRAPH_NUDGE_RIGHT_FAST);
+			const left =
+				eventMatchesShortcut(event, bindings.GRAPH_NUDGE_LEFT) ||
+				eventMatchesShortcut(event, bindings.GRAPH_NUDGE_LEFT_FAST);
+			moveSelectionBy((left ? -1 : 1) * (fast ? 10 : 1));
+		} else if (eventMatchesShortcut(event, bindings.GRAPH_CLEAR_SELECTION)) {
 			setSelection([]);
 		}
 	}

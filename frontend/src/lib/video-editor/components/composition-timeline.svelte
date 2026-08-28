@@ -54,6 +54,12 @@
 	import { editorKeyframes, keyframeIdentity } from '$lib/video-editor/timeline/keyframe-editor';
 	import { activeVectorKeyframes } from '$lib/video-editor/timeline/vector-keyframes';
 	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
+	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
+	import {
+		adjacentKeyframe,
+		keyframeShortcutScopeActive,
+		type KeyframeEditorMode
+	} from '$lib/video-editor/timeline/keyframe-shortcuts';
 	import {
 		setKeyframeEasings,
 		updateKeyframes
@@ -365,7 +371,10 @@
 		| { kind: 'group'; trackId: string; itemIds: string[] };
 	let compositionContextTarget: CompositionContextTarget | null = $state(null);
 	let previewFrame: number | null = $state(null);
-	let dopesheetMode: 'lanes' | 'graph' = $state('lanes');
+	let keyframeEditorModes = $state<Partial<Record<string, KeyframeEditorMode>>>({});
+	let keyframeShortcutPointerItemId: string | null = $state(null);
+	let keyframeGraphFitRequest = $state(0);
+	let activeKeyframeProperties = $state<Partial<Record<string, KeyframeProperty>>>({});
 	let selectedEasing: string = $state('linear');
 	let linkPickSource: { itemId: string; property: string } | null = $state(null);
 	const ROW_H = 34;
@@ -613,6 +622,80 @@
 		const level = clampTimelineZoom(targetPxPerFrame / 4);
 		timelineStore._setZoomLevel(level);
 		status = m.video_editor_composition_timeline_fit();
+	}
+	function activeKeyframeProperty(item: TimelineItem): KeyframeProperty {
+		const available = getAnimatablePropertiesForItem(item);
+		const preferred = activeKeyframeProperties[item.id];
+		return (
+			(preferred && available.includes(preferred) ? preferred : undefined) ??
+			available.find((property) => editorKeyframes(item, property).length > 0) ??
+			available[0] ??
+			'x'
+		);
+	}
+	function setActiveKeyframeProperty(itemId: string, property: KeyframeProperty): void {
+		activeKeyframeProperties = { ...activeKeyframeProperties, [itemId]: property };
+	}
+	function keyframeEditorMode(itemId: string): KeyframeEditorMode {
+		return keyframeEditorModes[itemId] ?? 'dopesheet';
+	}
+	function setKeyframeEditorMode(itemId: string, mode: KeyframeEditorMode): void {
+		keyframeEditorModes = { ...keyframeEditorModes, [itemId]: mode };
+	}
+	function fitMotionKeyframes(item: TimelineItem, property: KeyframeProperty): void {
+		if (!scrollEl) return;
+		const frames = editorKeyframes(item, property).map((keyframe) => item.from + keyframe.frame);
+		const first = frames.length > 0 ? Math.min(...frames) : item.from;
+		const last = frames.length > 0 ? Math.max(...frames) : item.from + item.durationInFrames - 1;
+		const span = Math.max(fps, last - first + 1);
+		const center = (first + last) / 2;
+		const start = Math.max(0, center - span / 2);
+		const availableWidth = Math.max(1, scrollEl.clientWidth - 220 - 50);
+		const level = clampTimelineZoom(availableWidth / (span * timelinePixelsPerFrame(1)));
+		const targetScrollLeft = Math.max(0, start * timelinePixelsPerFrame(level) - 24);
+		timelineStore._setZoomLevel(level);
+		queueMicrotask(() => {
+			if (scrollEl) scrollEl.scrollLeft = targetScrollLeft;
+		});
+	}
+	function shortcutKeyframeItem(event: KeyboardEvent): TimelineItem | undefined {
+		const targetId =
+			event.target instanceof HTMLElement
+				? event.target.closest<HTMLElement>('[data-keyframe-shortcuts]')?.dataset.keyframeShortcuts
+				: undefined;
+		const itemId = targetId ?? keyframeShortcutPointerItemId;
+		return itemId ? timelineStore.itemById.get(itemId) : undefined;
+	}
+	function handleKeyframeShortcut(
+		event: KeyboardEvent,
+		matches: (...ids: EditorShortcutId[]) => boolean
+	): boolean {
+		if (!keyframeShortcutScopeActive(event.target, keyframeShortcutPointerItemId !== null)) {
+			return false;
+		}
+		const item = shortcutKeyframeItem(event);
+		if (!item) return false;
+		const property = activeKeyframeProperty(item);
+		const mode = keyframeEditorMode(item.id);
+		let handled = true;
+		if (matches('KEYFRAME_EDITOR_GRAPH')) setKeyframeEditorMode(item.id, 'graph');
+		else if (matches('KEYFRAME_EDITOR_DOPESHEET')) setKeyframeEditorMode(item.id, 'dopesheet');
+		else if (matches('KEYFRAME_EDITOR_SPLIT')) setKeyframeEditorMode(item.id, 'split');
+		else if (matches('KEYFRAME_PREVIOUS', 'KEYFRAME_NEXT')) {
+			const keyframe = adjacentKeyframe(
+				editorKeyframes(item, property),
+				timelineStore.currentFrame - item.from,
+				matches('KEYFRAME_PREVIOUS') ? 'previous' : 'next'
+			);
+			if (keyframe) seekTo(item.from + keyframe.frame);
+		} else if (matches('KEYFRAME_TOGGLE_AUTO')) {
+			autoKeyframeStore.toggle(item.id, property);
+		} else if (matches('KEYFRAME_FIT')) {
+			if (mode !== 'graph') fitMotionKeyframes(item, property);
+			if (mode !== 'dopesheet') keyframeGraphFitRequest += 1;
+		} else handled = false;
+		if (handled) event.preventDefault();
+		return handled;
 	}
 	function updateCompositionTiming(
 		patch: { fps?: number; durationInFrames?: number },
@@ -1499,15 +1582,17 @@
 		});
 	}
 	function handleKeydown(event: KeyboardEvent): void {
+		if (event.defaultPrevented) return;
 		if (editorShortcutTargetIsDisabled(event.target)) return;
+		const bindings = keyboardShortcuts.bindings;
+		const matches = (...ids: EditorShortcutId[]) =>
+			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
+		if (handleKeyframeShortcut(event, matches)) return;
 		if (
 			event.key !== 'Escape' &&
 			!(event.target instanceof HTMLElement && event.target.closest('[data-composition-shortcuts]'))
 		)
 			return;
-		const bindings = keyboardShortcuts.bindings;
-		const matches = (...ids: EditorShortcutId[]) =>
-			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
 		if (event.key === 'Escape') {
 			let handled = false;
 			if (pointerGestures?.activePointerId !== null) {
@@ -2808,7 +2893,19 @@
 												</div>
 											{/each}
 											{#if expanded}
-												<div class="inline-props" data-testid={`inline-props-${item.id}`}>
+												<div
+													class="inline-props"
+													role="group"
+													aria-label={m.video_editor_keyframe_view()}
+													data-testid={`inline-props-${item.id}`}
+													data-keyframe-shortcuts={item.id}
+													onpointerenter={() => (keyframeShortcutPointerItemId = item.id)}
+													onpointerleave={() => {
+														if (keyframeShortcutPointerItemId === item.id) {
+															keyframeShortcutPointerItemId = null;
+														}
+													}}
+												>
 													<span class="inline-label"
 														>{m.video_editor_composition_timeline_inline_props()}</span
 													>
@@ -2816,20 +2913,47 @@
 														<button
 															type="button"
 															class="mode-btn"
-															class:active={dopesheetMode === 'lanes'}
-															aria-pressed={dopesheetMode === 'lanes'}
-															onclick={() => (dopesheetMode = 'lanes')}
+															class:active={keyframeEditorMode(item.id) === 'dopesheet'}
+															aria-pressed={keyframeEditorMode(item.id) === 'dopesheet'}
+															onclick={() => setKeyframeEditorMode(item.id, 'dopesheet')}
 															data-testid={`mode-lanes-${item.id}`}
-															>{m.video_editor_keyframe_sheet_title()}</button
+															>{m.video_editor_keyframe_view_dopesheet()}</button
 														>
 														<button
 															type="button"
 															class="mode-btn"
-															class:active={dopesheetMode === 'graph'}
-															aria-pressed={dopesheetMode === 'graph'}
-															onclick={() => (dopesheetMode = 'graph')}
+															class:active={keyframeEditorMode(item.id) === 'graph'}
+															aria-pressed={keyframeEditorMode(item.id) === 'graph'}
+															onclick={() => setKeyframeEditorMode(item.id, 'graph')}
 															data-testid={`mode-graph-${item.id}`}
 															>{m.video_editor_composition_timeline_graph()}</button
+														>
+														<button
+															type="button"
+															class="mode-btn"
+															class:active={keyframeEditorMode(item.id) === 'split'}
+															aria-pressed={keyframeEditorMode(item.id) === 'split'}
+															onclick={() => setKeyframeEditorMode(item.id, 'split')}
+															data-testid={`mode-split-${item.id}`}
+															>{m.video_editor_keyframe_view_split()}</button
+														>
+														<button
+															type="button"
+															class="mode-btn"
+															class:active={autoKeyframeStore.isEnabled(
+																item.id,
+																activeKeyframeProperty(item)
+															)}
+															aria-pressed={autoKeyframeStore.isEnabled(
+																item.id,
+																activeKeyframeProperty(item)
+															)}
+															aria-label={m.video_editor_property_auto_key({
+																property: activeKeyframeProperty(item)
+															})}
+															onclick={() =>
+																autoKeyframeStore.toggle(item.id, activeKeyframeProperty(item))}
+															>A</button
 														>
 														<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
 															<span>{m.video_editor_keyframe_easing()}</span>
@@ -2923,7 +3047,7 @@
 															>{m.video_editor_composition_timeline_retime()}</button
 														>
 													</div>
-													{#if dopesheetMode === 'lanes'}
+													{#if keyframeEditorMode(item.id) !== 'graph'}
 														<KeyframeDopesheet
 															{item}
 															availableProperties={getAnimatablePropertiesForItem(item)}
@@ -2932,19 +3056,19 @@
 															{timelineWidth}
 															{timelineX}
 															onscrub={seekTo}
+															onactiveproperty={(property) =>
+																setActiveKeyframeProperty(item.id, property)}
 															{onedit}
 														/>
-													{:else}
+													{/if}
+													{#if keyframeEditorMode(item.id) !== 'dopesheet'}
 														<KeyframeValueGraph
 															{item}
-															property={getAnimatablePropertiesForItem(item).find(
-																(p) => editorKeyframes(item, p).length > 0
-															) ??
-																getAnimatablePropertiesForItem(item)[0] ??
-																('x' as KeyframeProperty)}
+															property={activeKeyframeProperty(item)}
 															currentFrame={previewFrame ?? timelineStore.currentFrame}
 															onscrub={seekTo}
 															{onedit}
+															fitRequest={keyframeGraphFitRequest}
 														/>
 													{/if}
 												</div>

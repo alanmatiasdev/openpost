@@ -28,7 +28,7 @@ Projects can hold reusable sequences and nested compositions. Published composit
 
 ## Motion, effects, color, and audio
 
-Animate transforms, masks, effect values, text, and other supported properties with keyframes. The dope sheet, value graph, spatial motion paths, easing presets, motion presets, parenting, links, expressions, and modifiers edit the same keyframe data. Direct canvas gestures commit once when the gesture ends so undo remains useful.
+Animate transforms, masks, effect values, text, and other supported properties with keyframes. The keyframe editor switches between Dope Sheet, Graph, and Split views in Edit and Motion. Its scoped shortcuts change views with 1, 2, and 3, add or update a key with K in Edit, move between keys with Option/Alt+[ and ], toggle auto-key with A, and fit the active view with F. You can remap or unassign every command in Editor settings. Spatial motion paths, easing presets, motion presets, parenting, links, expressions, and modifiers edit the same keyframe data. Direct canvas gestures commit once when the gesture ends so undo remains useful.
 
 Visual tools include crop, corner pinning, masks, blend modes, adjustment layers, transitions, caption and text styles, backgrounds, stickers, color wheels, curves, scopes, LUTs, and reusable grade and effect presets. Preview and export use the same effect and compositing rules.
 

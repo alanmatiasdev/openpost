@@ -86,7 +86,15 @@ export const DEFAULT_EDITOR_SHORTCUTS = {
 	GRAPH_NUDGE_LEFT_FAST: 'shift+left',
 	GRAPH_NUDGE_RIGHT_FAST: 'shift+right',
 	GRAPH_NUDGE_UP_FAST: 'shift+up',
-	GRAPH_NUDGE_DOWN_FAST: 'shift+down'
+	GRAPH_NUDGE_DOWN_FAST: 'shift+down',
+	KEYFRAME_EDITOR_GRAPH: '1',
+	KEYFRAME_EDITOR_DOPESHEET: '2',
+	KEYFRAME_EDITOR_SPLIT: '3',
+	EDIT_KEYFRAME_ADD: 'k',
+	KEYFRAME_PREVIOUS: 'alt+bracketleft',
+	KEYFRAME_NEXT: 'alt+bracketright',
+	KEYFRAME_TOGGLE_AUTO: 'a',
+	KEYFRAME_FIT: 'f'
 } as const;
 
 export type EditorShortcutId = keyof typeof DEFAULT_EDITOR_SHORTCUTS;
@@ -159,6 +167,14 @@ export const EDITOR_SHORTCUT_DEFINITIONS: readonly EditorShortcutDefinition[] = 
 	{ id: 'GRAPH_NUDGE_RIGHT_FAST', section: 'editing' },
 	{ id: 'GRAPH_NUDGE_UP_FAST', section: 'editing' },
 	{ id: 'GRAPH_NUDGE_DOWN_FAST', section: 'editing' },
+	{ id: 'KEYFRAME_EDITOR_GRAPH', section: 'editing' },
+	{ id: 'KEYFRAME_EDITOR_DOPESHEET', section: 'editing' },
+	{ id: 'KEYFRAME_EDITOR_SPLIT', section: 'editing' },
+	{ id: 'EDIT_KEYFRAME_ADD', section: 'editing' },
+	{ id: 'KEYFRAME_PREVIOUS', section: 'editing' },
+	{ id: 'KEYFRAME_NEXT', section: 'editing' },
+	{ id: 'KEYFRAME_TOGGLE_AUTO', section: 'editing' },
+	{ id: 'KEYFRAME_FIT', section: 'editing' },
 	{ id: 'ZOOM_IN', section: 'timeline' },
 	{ id: 'ZOOM_OUT', section: 'timeline' },
 	{ id: 'ZOOM_TO_FIT', section: 'timeline' },

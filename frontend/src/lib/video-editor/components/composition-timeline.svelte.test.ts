@@ -17,6 +17,7 @@ import {
 	writeMediaDragData
 } from '$lib/video-editor/media/media-drag';
 import CompositionTimeline from './composition-timeline.svelte';
+import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 
 const track: TimelineTrack = {
 	id: 'visual',
@@ -74,6 +75,7 @@ beforeEach(() => {
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	keyboardShortcuts.resetAll();
+	autoKeyframeStore.reset();
 	mediaPool.clear();
 	clearActiveMediaDrag();
 	timelinePreviewScrub.__resetForTesting();
@@ -85,6 +87,7 @@ afterEach(async () => {
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	keyboardShortcuts.resetAll();
+	autoKeyframeStore.reset();
 	mediaPool.clear();
 	clearActiveMediaDrag();
 	timelinePreviewScrub.__resetForTesting();
@@ -752,6 +755,47 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 				x: { frames: [0, 10], values: [0, 100], ids: ['a', 'b'], easings: ['linear', 'linear'] }
 			} as any
 		});
+		const second = makeItem({
+			id: 'two',
+			from: 60,
+			// SAFETY: test supplies the same minimal keyframe track shape as the first inline editor fixture.
+			keyframes: {
+				x: { frames: [0, 10], values: [20, 40], ids: ['c', 'd'], easings: ['linear', 'linear'] }
+			} as any
+		});
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition({ items: [item, second] })] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
+		await screen.getByTestId('layer-expand-one').click();
+		await screen.getByTestId('layer-expand-two').click();
+		await vi.waitFor(() => expect(screen.getByTestId('inline-props-one')).toBeVisible());
+		expect(screen.getByTestId('inline-props-one').element().textContent).toMatch(/Properties/);
+		await screen.getByTestId('mode-graph-one').click();
+		await vi.waitFor(() => {
+			expect(
+				screen
+					.getByTestId('inline-props-one')
+					.element()
+					.querySelector('[data-keyframe-value-graph]')
+			).toBeVisible();
+		});
+		expect(
+			screen.getByTestId('inline-props-two').element().querySelector('[data-keyframe-value-graph]')
+		).toBeNull();
+		await screen.getByTestId('mode-lanes-one').click();
+		expect(document.querySelector('[data-keyframe-value-graph]')).toBeNull();
+	});
+
+	it('keeps keyframe view, navigation, auto, and fit commands inside expanded Motion properties', async () => {
+		const item = makeItem({
+			id: 'one',
+			keyframes: {
+				x: { frames: [0, 10, 30], values: [0, 100, 50], ids: ['a', 'b', 'c'] }
+			}
+		});
 		sequenceStore.load(
 			{ ...createEmptyTimeline(), compositions: [composition({ items: [item] })] },
 			{ width: 1920, height: 1080, fps: 30 }
@@ -759,14 +803,59 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		sequenceStore.switchTo('comp-1');
 		const screen = await render(CompositionTimeline, { onedit: vi.fn() });
 		await screen.getByTestId('layer-expand-one').click();
-		await vi.waitFor(() => expect(screen.getByTestId('inline-props-one')).toBeVisible());
-		expect(screen.getByTestId('inline-props-one').element().textContent).toMatch(/Properties/);
-		await screen.getByTestId('mode-graph-one').click();
+		const editor = screen.getByTestId('inline-props-one').element();
+		const key = (value: string, code: string, altKey = false, target: EventTarget = editor) =>
+			target.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: value,
+					code,
+					altKey,
+					bubbles: true,
+					cancelable: true
+				})
+			);
+
+		key('1', 'Digit1');
 		await vi.waitFor(() =>
 			expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible()
 		);
-		await screen.getByTestId('mode-lanes-one').click();
-		expect(document.querySelector('[data-keyframe-value-graph]')).toBeNull();
+		expect(document.querySelector('[aria-label="Keyframe dope sheet"]')).toBeNull();
+		key('3', 'Digit3');
+		await expect.element(screen.getByRole('region', { name: 'Keyframe dope sheet' })).toBeVisible();
+		expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible();
+		key('2', 'Digit2');
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-keyframe-value-graph]')).toBeNull()
+		);
+
+		timelineStore._setCurrentFrame(5);
+		key(']', 'BracketRight', true);
+		expect(timelineStore.currentFrame).toBe(10);
+		key('[', 'BracketLeft', true);
+		expect(timelineStore.currentFrame).toBe(0);
+		key('a', 'KeyA');
+		expect(autoKeyframeStore.isEnabled('one', 'x')).toBe(true);
+		await expect
+			.element(screen.getByRole('button', { name: 'Toggle auto-key for x' }))
+			.toHaveAttribute('aria-pressed', 'true');
+		expect(key('f', 'KeyF')).toBe(false);
+
+		keyboardShortcuts.setBinding('KEYFRAME_NEXT', 'alt+8');
+		timelineStore._setCurrentFrame(0);
+		key(']', 'BracketRight', true);
+		expect(timelineStore.currentFrame).toBe(0);
+		key('8', 'Digit8', true);
+		expect(timelineStore.currentFrame).toBe(10);
+		timelineStore._setCurrentFrame(0);
+		editor.dispatchEvent(new PointerEvent('pointerenter'));
+		key('8', 'Digit8', true, window);
+		expect(timelineStore.currentFrame).toBe(10);
+		editor.dispatchEvent(new PointerEvent('pointerleave'));
+		timelineStore._setCurrentFrame(0);
+		key('8', 'Digit8', true, window);
+		expect(timelineStore.currentFrame).toBe(0);
+		await page.viewport(320, 720);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 	});
 
 	it('renders motion-layer and modifier bands with one-undo remove', async () => {

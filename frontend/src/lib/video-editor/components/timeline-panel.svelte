@@ -71,12 +71,18 @@
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import {
 		editorShortcutTargetIsDisabled,
 		eventMatchesShortcut,
 		formatShortcutBinding,
 		type EditorShortcutId
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import {
+		adjacentKeyframe,
+		keyframeShortcutScopeActive,
+		type KeyframeEditorMode
+	} from '$lib/video-editor/timeline/keyframe-shortcuts';
 	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import PropertyRuntimePanel from './property-runtime-panel.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
@@ -311,7 +317,6 @@
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
-	import ChartSplineIcon from '@lucide/svelte/icons/chart-spline';
 	import FlagIcon from '@lucide/svelte/icons/flag';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -2627,10 +2632,12 @@
 
 	function onPanelKeydown(event: KeyboardEvent): void {
 		if (handleAccessibleMediaPlacementKey(event)) return;
+		if (event.defaultPrevented) return;
 		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
 			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
+		if (handleKeyframeEditorShortcut(event, matches)) return;
 		if (matches('ZOOM_IN')) {
 			event.preventDefault();
 			zoomBy(TIMELINE_ZOOM_STEP);
@@ -3858,7 +3865,9 @@
 	}
 
 	let pendingKeyframeProperty = $state<KeyframeProperty>('opacity');
-	let showValueGraph = $state(false);
+	let keyframeEditorMode = $state<KeyframeEditorMode>('dopesheet');
+	let keyframeShortcutPointerInside = $state(false);
+	let keyframeGraphFitRequest = $state(0);
 	let selectedKeyframe = $state<{
 		property: KeyframeProperty;
 		frame: number;
@@ -4131,6 +4140,11 @@
 			label: keyframeLabel(property)
 		}))
 	);
+	const keyframeViewOptions = $derived([
+		{ value: 'dopesheet', label: m.video_editor_keyframe_view_dopesheet() },
+		{ value: 'graph', label: m.video_editor_keyframe_view_graph() },
+		{ value: 'split', label: m.video_editor_keyframe_view_split() }
+	]);
 	const easingOptions = $derived([
 		{ value: 'linear', label: m.video_editor_keyframe_easing_linear() },
 		{ value: 'hold', label: m.video_editor_keyframe_easing_hold() },
@@ -4257,7 +4271,12 @@
 	function addKeyframeAtPlayhead(property: KeyframeProperty): void {
 		const item = selectedItem;
 		if (!item) return;
-		const frame = Math.max(0, timelineStore.currentFrame - item.from);
+		if (
+			timelineStore.currentFrame < item.from ||
+			timelineStore.currentFrame >= item.from + item.durationInFrames
+		)
+			return;
+		const frame = timelineStore.currentFrame - item.from;
 		const resolved = resolvePreExpressionItemAt(item, timelineStore.currentFrame);
 		const transformValue = transformKeyframeValue(resolved, property);
 		const pathValue = isPathVertexKeyframeProperty(property)
@@ -4350,8 +4369,72 @@
 		if (property) pendingKeyframeProperty = property;
 	}
 
-	function toggleValueGraph(): void {
-		showValueGraph = !showValueGraph;
+	function setKeyframeEditorMode(value: string): void {
+		if (value === 'graph' || value === 'dopesheet' || value === 'split') {
+			keyframeEditorMode = value;
+		}
+	}
+
+	function fitKeyframeDopesheet(): void {
+		if (!scrollContainer || !selectedItem) return;
+		const frames = pendingEditorKeyframes.map((keyframe) => selectedItem.from + keyframe.frame);
+		const first = frames.length > 0 ? Math.min(...frames) : selectedItem.from;
+		const last =
+			frames.length > 0
+				? Math.max(...frames)
+				: selectedItem.from + selectedItem.durationInFrames - 1;
+		const span = Math.max(fps, last - first + 1);
+		const center = (first + last) / 2;
+		const start = Math.max(0, center - span / 2);
+		const availableWidth = Math.max(1, scrollContainer.clientWidth - TRACK_HEADER_WIDTH - 50);
+		const level = clampTimelineZoom(availableWidth / (span * timelinePixelsPerFrame(1)));
+		const targetScrollLeft = Math.max(
+			0,
+			TRACK_HEADER_WIDTH + start * timelinePixelsPerFrame(level) - 24
+		);
+		timelineStore._setZoomLevel(level);
+		queueMicrotask(() => {
+			if (scrollContainer) scrollContainer.scrollLeft = targetScrollLeft;
+		});
+	}
+
+	function fitActiveKeyframeView(): void {
+		if (keyframeEditorMode !== 'graph') fitKeyframeDopesheet();
+		if (keyframeEditorMode !== 'dopesheet') keyframeGraphFitRequest += 1;
+	}
+
+	function handleKeyframeEditorShortcut(
+		event: KeyboardEvent,
+		matches: (...ids: EditorShortcutId[]) => boolean
+	): boolean {
+		if (
+			!keyframesOpen ||
+			!selectedItem ||
+			!keyframeShortcutScopeActive(event.target, keyframeShortcutPointerInside)
+		)
+			return false;
+		let handled = true;
+		if (matches('KEYFRAME_EDITOR_GRAPH')) keyframeEditorMode = 'graph';
+		else if (matches('KEYFRAME_EDITOR_DOPESHEET')) keyframeEditorMode = 'dopesheet';
+		else if (matches('KEYFRAME_EDITOR_SPLIT')) keyframeEditorMode = 'split';
+		else if (matches('EDIT_KEYFRAME_ADD')) addKeyframeAtPlayhead(pendingKeyframeProperty);
+		else if (matches('KEYFRAME_PREVIOUS', 'KEYFRAME_NEXT')) {
+			const keyframe = adjacentKeyframe(
+				pendingEditorKeyframes,
+				timelineStore.currentFrame - selectedItem.from,
+				matches('KEYFRAME_PREVIOUS') ? 'previous' : 'next'
+			);
+			if (keyframe) {
+				selectedKeyframe = { property: keyframe.property, frame: keyframe.frame };
+				setCurrentFrame(selectedItem.from + keyframe.frame);
+			}
+		} else if (matches('KEYFRAME_TOGGLE_AUTO')) {
+			const enabled = autoKeyframeStore.toggle(selectedItem.id, pendingKeyframeProperty);
+			emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
+		} else if (matches('KEYFRAME_FIT')) fitActiveKeyframeView();
+		else handled = false;
+		if (handled) event.preventDefault();
+		return handled;
 	}
 
 	function applyBezierPreset(value: string): void {
@@ -4677,6 +4760,22 @@
 				>
 				<button
 					type="button"
+					class="rounded px-1.5 py-0.5 text-[10px] font-semibold text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.22_0.01_50)] data-[active=true]:bg-[oklch(0.66_0.14_45)] data-[active=true]:text-black"
+					data-active={selectedItem
+						? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
+						: false}
+					aria-pressed={selectedItem
+						? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
+						: false}
+					aria-label={m.video_editor_property_auto_key({
+						property: keyframeLabel(pendingKeyframeProperty)
+					})}
+					onclick={() =>
+						selectedItem && autoKeyframeStore.toggle(selectedItem.id, pendingKeyframeProperty)}
+					>A</button
+				>
+				<button
+					type="button"
 					class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40"
 					disabled={clearableKeyframeCount === 0}
 					aria-label={m.video_editor_clear_keyframes_toolbar()}
@@ -4685,19 +4784,13 @@
 				>
 					{m.video_editor_clear_keyframes_toolbar()}
 				</button>
-				<Button
-					variant="ghost"
-					size="icon"
-					class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-					data-active={showValueGraph}
-					aria-pressed={showValueGraph}
-					aria-label={m.video_editor_keyframe_graph_toggle()}
-					title={m.video_editor_keyframe_graph_toggle()}
-					disabled={pendingEditorKeyframes.length === 0}
-					onclick={toggleValueGraph}
-				>
-					<ChartSplineIcon class="size-3.5" />
-				</Button>
+				<AppSelect
+					class="h-7 w-24 text-xs"
+					value={keyframeEditorMode}
+					options={keyframeViewOptions}
+					ariaLabel={m.video_editor_keyframe_view()}
+					onValueChange={setKeyframeEditorMode}
+				/>
 			{/if}
 		{/if}
 		<Button
@@ -5490,22 +5583,31 @@
 
 					<!-- Keyframe dopesheet for the selected clip -->
 					{#if selectedItem && keyframesOpen}
-						<div class="relative bg-[oklch(0.145_0.008_55)]">
-							<KeyframeDopesheet
-								item={selectedItem}
-								availableProperties={availableKeyframeProperties}
-								currentFrame={timelineStore.currentFrame}
-								pixelsPerFrame={pxPerFrame}
-								{timelineWidth}
-								{timelineX}
-								onscrub={setCurrentFrame}
-								onselect={(keyframe) =>
-									(selectedKeyframe = keyframe
-										? { property: keyframe.property, frame: keyframe.frame }
-										: null)}
-								onactiveproperty={(property) => (pendingKeyframeProperty = property)}
-								{onedit}
-							/>
+						<div
+							class="relative bg-[oklch(0.145_0.008_55)]"
+							role="group"
+							aria-label={m.video_editor_keyframe_view()}
+							data-keyframe-shortcuts
+							onpointerenter={() => (keyframeShortcutPointerInside = true)}
+							onpointerleave={() => (keyframeShortcutPointerInside = false)}
+						>
+							{#if keyframeEditorMode !== 'graph'}
+								<KeyframeDopesheet
+									item={selectedItem}
+									availableProperties={availableKeyframeProperties}
+									currentFrame={timelineStore.currentFrame}
+									pixelsPerFrame={pxPerFrame}
+									{timelineWidth}
+									{timelineX}
+									onscrub={setCurrentFrame}
+									onselect={(keyframe) =>
+										(selectedKeyframe = keyframe
+											? { property: keyframe.property, frame: keyframe.frame }
+											: null)}
+									onactiveproperty={(property) => (pendingKeyframeProperty = property)}
+									{onedit}
+								/>
+							{/if}
 							<PropertyRuntimePanel
 								item={selectedItem}
 								items={timelineStore.items}
@@ -5598,7 +5700,7 @@
 									{/if}
 								</div>
 							{/if}
-							{#if showValueGraph && pendingEditorKeyframes.length > 0}
+							{#if keyframeEditorMode !== 'dopesheet'}
 								<KeyframeValueGraph
 									item={selectedItem}
 									property={pendingKeyframeProperty}
@@ -5609,6 +5711,7 @@
 											? { property: keyframe.property, frame: keyframe.frame }
 											: null)}
 									{onedit}
+									fitRequest={keyframeGraphFitRequest}
 								/>
 							{/if}
 						</div>

@@ -38,6 +38,7 @@ import { editorSession } from '$lib/video-editor/editor.svelte';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
 import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
+import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 
 const FILMSTRIP_TILE_WIDTH = 96;
 import TimelinePanel from './timeline-panel.svelte';
@@ -145,6 +146,7 @@ beforeEach(() => {
 	sequenceStore.reset();
 	mediaPool.loadAll([sceneMedia]);
 	keyboardShortcuts.resetAll();
+	autoKeyframeStore.reset();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	transitionsStore.setAll([]);
@@ -763,6 +765,114 @@ describe('TimelinePanel progressive controls', () => {
 		await expect.element(screen.getByRole('heading', { name: 'Beat markers' })).toBeVisible();
 		await expect.element(keyframes).toHaveAttribute('aria-pressed', 'true');
 		await expect.element(beats).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	it('scopes remappable FreeCut keyframe commands to the active editor', async () => {
+		timelineStore._setItems(
+			timelineStore.items.map((candidate) =>
+				candidate.id === 'video'
+					? {
+							...candidate,
+							keyframes: {
+								opacity: {
+									frames: [0, 30],
+									values: [0, 1],
+									ids: ['start', 'end'],
+									easings: ['linear', 'linear']
+								}
+							}
+						}
+					: candidate
+			)
+		);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: 'video',
+			selectedItemIds: ['video']
+		});
+		await screen.getByRole('button', { name: 'Keyframes', exact: true }).click();
+		const editor = screen.container.querySelector<HTMLElement>('[data-keyframe-shortcuts]');
+		expect(editor).not.toBeNull();
+		const key = (
+			value: string,
+			code: string,
+			options: { altKey?: boolean; target?: EventTarget } = {}
+		) =>
+			(options.target ?? editor!).dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: value,
+					code,
+					altKey: options.altKey,
+					bubbles: true,
+					cancelable: true
+				})
+			);
+
+		key('1', 'Digit1');
+		await expect
+			.element(screen.getByRole('application', { name: 'Keyframe value graph for opacity' }))
+			.toBeVisible();
+		expect(screen.container.querySelector('[aria-label="Keyframe dope sheet"]')).toBeNull();
+		await screen.getByRole('button', { name: 'Zoom in' }).last().click();
+		const graphHost = screen.container.querySelector<HTMLElement>('[data-keyframe-value-graph]');
+		expect(Number(graphHost?.dataset.graphEndFrame)).toBeLessThan(59);
+		key('f', 'KeyF');
+		await vi.waitFor(() => {
+			expect(Number(graphHost?.dataset.graphStartFrame)).toBe(0);
+			expect(Number(graphHost?.dataset.graphEndFrame)).toBe(59);
+		});
+		key('3', 'Digit3');
+		await expect.element(screen.getByRole('region', { name: 'Keyframe dope sheet' })).toBeVisible();
+		await expect
+			.element(screen.getByRole('application', { name: 'Keyframe value graph for opacity' }))
+			.toBeVisible();
+		key('2', 'Digit2');
+		await vi.waitFor(() =>
+			expect(screen.container.querySelector('[data-keyframe-value-graph]')).toBeNull()
+		);
+
+		setCurrentFrame(15);
+		key('k', 'KeyK');
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).toEqual([0, 15, 30]);
+		expect(onedit).toHaveBeenCalledTimes(1);
+		key('[', 'BracketLeft', { altKey: true });
+		expect(timelineStore.currentFrame).toBe(0);
+		key(']', 'BracketRight', { altKey: true });
+		expect(timelineStore.currentFrame).toBe(15);
+		key('a', 'KeyA');
+		expect(autoKeyframeStore.isEnabled('video', 'opacity')).toBe(true);
+		await expect
+			.element(screen.getByRole('button', { name: 'Toggle auto-key for opacity' }))
+			.toHaveAttribute('aria-pressed', 'true');
+
+		keyboardShortcuts.setBinding('EDIT_KEYFRAME_ADD', 'alt+8');
+		setCurrentFrame(20);
+		key('k', 'KeyK');
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).not.toContain(20);
+		key('8', 'Digit8', { altKey: true });
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).toContain(20);
+
+		setCurrentFrame(25);
+		editor!.dispatchEvent(new PointerEvent('pointerenter'));
+		key('8', 'Digit8', { altKey: true, target: window });
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).toContain(25);
+		editor!.dispatchEvent(new PointerEvent('pointerleave'));
+		setCurrentFrame(26);
+		key('8', 'Digit8', { altKey: true, target: window });
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).not.toContain(26);
+		const input = document.createElement('input');
+		editor!.append(input);
+		input.focus();
+		setCurrentFrame(27);
+		key('8', 'Digit8', { altKey: true, target: input });
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).not.toContain(27);
+		input.blur();
+		setCurrentFrame(80);
+		key('8', 'Digit8', { altKey: true });
+		expect(timelineStore.itemById.get('video')?.keyframes?.opacity?.frames).not.toContain(59);
+		await page.viewport(320, 720);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 	});
 });
 

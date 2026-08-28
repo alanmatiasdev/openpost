@@ -45,9 +45,10 @@
 	import { keyframeValueToHexColor } from '$lib/video-editor/timeline/color-keyframes';
 	import KeyframeEasingEditor, { type SegmentEasingUpdate } from './keyframe-easing-editor.svelte';
 	import {
-		eventMatchesShortcut,
-		resolveEditorShortcuts
+		editorDeleteModeForEvent,
+		eventMatchesShortcut
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	let {
 		item,
@@ -55,7 +56,8 @@
 		currentFrame,
 		onscrub,
 		onselect = () => {},
-		onedit
+		onedit,
+		fitRequest = 0
 	}: {
 		item: TimelineItem;
 		property: KeyframeProperty;
@@ -63,6 +65,7 @@
 		onscrub: (absoluteFrame: number) => void;
 		onselect?: (keyframe: EditorKeyframe | null) => void;
 		onedit: () => void;
+		fitRequest?: number;
 	} = $props();
 
 	const HEIGHT = 230;
@@ -93,6 +96,7 @@
 	let segmentMenu = $state<{ leftFrame: number } | null>(null);
 	let menuPreviewConfig = $state<EasingConfig | null>(null);
 	let resetKey = '';
+	let handledFitRequest = $state(0);
 
 	type KeyframeDrag = {
 		kind: 'keyframe';
@@ -268,6 +272,12 @@
 		menuPreviewConfig = null;
 		snapGuides = { frame: null, value: null };
 		segmentMenu = null;
+		fitToContent();
+	});
+
+	$effect(() => {
+		if (fitRequest === handledFitRequest) return;
+		handledFitRequest = fitRequest;
 		fitToContent();
 	});
 
@@ -727,7 +737,7 @@
 	}
 
 	function onKeyDown(event: KeyboardEvent): void {
-		const bindings = resolveEditorShortcuts();
+		const bindings = keyboardShortcuts.bindings;
 		// Escape first cancels active gestures
 		if (eventMatchesShortcut(event, bindings.GRAPH_CLEAR_SELECTION)) {
 			const hadDrag = drag !== null;
@@ -764,11 +774,7 @@
 			return;
 		}
 		// Delete selected keyframes
-		if (
-			(eventMatchesShortcut(event, bindings.DELETE_SELECTED) ||
-				eventMatchesShortcut(event, bindings.DELETE_SELECTED_ALT)) &&
-			selectedIds.size > 0
-		) {
+		if (editorDeleteModeForEvent(event, bindings) && selectedIds.size > 0) {
 			event.preventDefault();
 			const refs = points
 				.filter((point) => selectedIds.has(point.id))
@@ -814,6 +820,7 @@
 	function onPointKeyDown(point: (typeof points)[number], event: KeyboardEvent): void {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
+			event.stopPropagation();
 			setSelection([point.id]);
 			onselect(point.keyframe);
 			onscrub(item.from + point.keyframe.frame);
@@ -823,7 +830,6 @@
 			setSelection([point.id]);
 			onselect(point.keyframe);
 		}
-		onKeyDown(event);
 	}
 
 	function easingBezier(keyframe: EditorKeyframe): BezierControlPoints | null {
@@ -1004,6 +1010,8 @@
 	bind:this={host}
 	class="graph-host border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.13_0.008_55)]"
 	data-keyframe-value-graph
+	data-graph-start-frame={viewport.startFrame}
+	data-graph-end-frame={viewport.endFrame}
 >
 	<div
 		class="flex min-h-8 flex-wrap items-center gap-1 border-b border-[oklch(0.22_0.01_50)] px-2 py-1"

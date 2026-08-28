@@ -9,6 +9,7 @@ import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyfra
 import TimelinePanel from './timeline-panel.svelte';
 import { colorStringToKeyframeValue } from '$lib/video-editor/timeline/color-keyframes';
 import { CUSTOM_EASING_PRESETS_STORAGE_KEY } from '$lib/video-editor/timeline/custom-easing-presets';
+import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 
 const videoTrack: TimelineTrack = {
 	id: 'video-track',
@@ -86,6 +87,7 @@ beforeEach(() => {
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
 	keyframeSelectionStore.clear();
+	keyboardShortcuts.resetAll();
 	transitionsStore.clear();
 	timelineStore.setAll({
 		tracks: [videoTrack],
@@ -124,7 +126,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemIds: [scaled.id]
 		});
 		await screen.getByRole('button', { name: 'Scale X', exact: true }).click();
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		await expect
 			.element(
 				screen.getByRole('application', {
@@ -141,7 +144,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 
 		const graph = screen.getByRole('application', {
 			name: 'Keyframe value graph for opacity'
@@ -159,7 +163,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const first = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);
@@ -205,7 +210,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -247,7 +253,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const first = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);
@@ -297,7 +304,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		expect(screen.container.querySelector('[data-transition-blocked-range]')).not.toBeNull();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
@@ -334,7 +342,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -399,7 +408,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: smoothItem.id,
 			selectedItemIds: [smoothItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -445,7 +455,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -488,7 +499,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -552,7 +564,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: dense.id,
 			selectedItemIds: [dense.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const segments = screen.container.querySelectorAll<SVGGElement>('[data-segment-easing]');
 		expect(segments).toHaveLength(19);
 		expect(screen.container.querySelectorAll('[data-segment-easing] rect').length).toBeLessThan(19);
@@ -576,7 +589,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const middle = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 30"]'
 		);
@@ -621,7 +635,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const svg = screen.container.querySelector<SVGSVGElement>(
 			'svg[aria-label="Editable curves and keyframes"]'
 		);
@@ -687,7 +702,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemIds: [animatedItem.id]
 		});
 		await screen.getByText('ASCII: Text Color', { exact: true }).click();
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		await expect
 			.element(
 				screen.getByRole('application', {
@@ -715,7 +731,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const first = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);
@@ -762,7 +779,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		expect(screen.container.textContent).toContain('Snap off');
 		const first = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
@@ -800,10 +818,8 @@ describe('KeyframeValueGraph', () => {
 			items: [structuredClone(animatedItem)],
 			fps: 30
 		});
-		await screen
-			.getByRole('button', { name: 'Toggle keyframe value graph' })
-			.click()
-			.catch(() => {});
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const first2 = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);
@@ -856,7 +872,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		// Make pills visible by selecting a keyframe (required by dense-aware rendering)
 		const firstPoint = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
@@ -932,7 +949,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const point = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);
@@ -969,6 +987,51 @@ describe('KeyframeValueGraph', () => {
 		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(1);
 	});
 
+	it('honors remapped and unassigned graph bindings', async () => {
+		const screen = await renderTimelinePanel({
+			onedit: vi.fn(),
+			selectedItemId: animatedItem.id,
+			selectedItemIds: [animatedItem.id]
+		});
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
+		const point = screen.container.querySelector<SVGGElement>(
+			'g[aria-label="opacity keyframe at frame 0"]'
+		);
+		const app = screen
+			.getByRole('application', {
+				name: 'Keyframe value graph for opacity'
+			})
+			.element();
+		point?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		keyboardShortcuts.setBinding('GRAPH_NUDGE_RIGHT', 'alt+8');
+		app.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true })
+		);
+		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(0);
+		point?.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '8',
+				code: 'Digit8',
+				altKey: true,
+				bubbles: true
+			})
+		);
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(1);
+		});
+		keyboardShortcuts.unbind('GRAPH_NUDGE_RIGHT');
+		point?.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '8',
+				code: 'Digit8',
+				altKey: true,
+				bubbles: true
+			})
+		);
+		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(1);
+	});
+
 	it('cancels an active drag on Escape and at 320px keeps controls without overflow', async () => {
 		await page.viewport(320, 700);
 		const screen = await renderTimelinePanel({
@@ -976,7 +1039,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const app = screen.container.querySelector<HTMLElement>('[role="application"]');
 		const first = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
@@ -1048,7 +1112,8 @@ describe('KeyframeValueGraph', () => {
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
 		});
-		await screen.getByRole('button', { name: 'Toggle keyframe value graph' }).click();
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
 		const firstPoint = screen.container.querySelector<SVGGElement>(
 			'g[aria-label="opacity keyframe at frame 0"]'
 		);

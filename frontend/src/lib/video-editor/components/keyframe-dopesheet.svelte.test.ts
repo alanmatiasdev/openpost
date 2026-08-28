@@ -9,6 +9,7 @@ import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyfra
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { CUSTOM_EASING_PRESETS_STORAGE_KEY } from '$lib/video-editor/timeline/custom-easing-presets';
 import TimelinePanel from './timeline-panel.svelte';
+import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 
 const videoTrack: TimelineTrack = {
 	id: 'video-track',
@@ -91,6 +92,7 @@ beforeEach(() => {
 	keyframeSelectionStore.clearClipboard();
 	transitionsStore.clear();
 	localStorage.removeItem(CUSTOM_EASING_PRESETS_STORAGE_KEY);
+	keyboardShortcuts.resetAll();
 	timelineStore.setAll({ tracks: [videoTrack], items: [structuredClone(animatedItem)], fps: 30 });
 });
 
@@ -276,6 +278,39 @@ describe('KeyframeDopesheet', () => {
 			]);
 		});
 		expect(commandHistory.getLastCommandType()).toBe('UPDATE_KEYFRAMES');
+	});
+
+	it('uses the saved dope sheet nudge binding and ignores its replaced default', async () => {
+		const screen = await renderTimelinePanel({
+			onedit: vi.fn(),
+			selectedItemId: animatedItem.id,
+			selectedItemIds: [animatedItem.id]
+		});
+		const first = screen.container.querySelector<HTMLElement>(
+			'[data-dopesheet-keyframe-id="first"]'
+		);
+		const sheet = screen.getByRole('region', { name: 'Keyframe dope sheet' }).element();
+		expect(first).not.toBeNull();
+		if (!first) return;
+		const point = center(first);
+		pointer(first, 'pointerdown', point.x, point.y);
+		pointer(window, 'pointerup', point.x, point.y);
+		keyboardShortcuts.setBinding('GRAPH_NUDGE_RIGHT', 'alt+8');
+		sheet.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true })
+		);
+		expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(10);
+		sheet.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '8',
+				code: 'Digit8',
+				altKey: true,
+				bubbles: true
+			})
+		);
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames?.[0]).toBe(11);
+		});
 	});
 
 	it('marquee-selects overlapping diamonds across property rows', async () => {
