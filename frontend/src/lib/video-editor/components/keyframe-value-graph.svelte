@@ -11,6 +11,7 @@
 	} from '$lib/video-editor/project/types';
 	import {
 		duplicateKeyframes,
+		insertKeyframes,
 		removeKeyframes,
 		setKeyframeEasing,
 		setKeyframeEasings,
@@ -34,6 +35,7 @@
 		type MarqueeMode
 	} from '$lib/video-editor/timeline/keyframe-editor';
 	import { Button } from '$lib/components/ui/button';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 	import { calculateTransitionPortions } from '$lib/video-editor/timeline/transition-planner';
@@ -50,6 +52,8 @@
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { buildKeyframePastePlan } from '$lib/video-editor/timeline/keyframe-dopesheet';
+	import KeyframeContextMenuContent from './keyframe-context-menu-content.svelte';
 	let {
 		item,
 		property,
@@ -306,6 +310,72 @@
 
 	function setSelection(ids: Iterable<string>): void {
 		keyframeSelectionStore.replace(item.id, ids);
+	}
+
+	function selectAllKeyframes(): void {
+		setSelection(points.map((point) => point.id));
+		onselect(points[0]?.keyframe ?? null);
+	}
+
+	function removeSelection(): void {
+		const refs = points.filter((point) => selectedIds.has(point.id)).map((point) => point.keyframe);
+		if (refs.length === 0 || !removeKeyframes(item.id, refs)) return;
+		setSelection([]);
+		onselect(null);
+		onedit();
+	}
+
+	function copySelection(cut = false): void {
+		if (!keyframeSelectionStore.copy(item, selectedIds, cut)) return;
+		if (cut) removeSelection();
+	}
+
+	function pasteClipboard(): void {
+		const clipboard = keyframeSelectionStore.clipboard;
+		if (!clipboard) return;
+		const plan = buildKeyframePastePlan({
+			clipboard,
+			item,
+			anchorFrame: relativePlayhead,
+			availableProperties: [property],
+			blockedRanges
+		});
+		if (keyframeSelectionStore.isCut && plan.skippedUnsupported + plan.skippedBlocked > 0) return;
+		const refs = insertKeyframes(item.id, plan.inserts);
+		if (refs.length === 0) return;
+		setSelection(refs.map((ref) => ref.id ?? keyframeIdentity(ref)));
+		onselect(refs[0] ?? null);
+		if (keyframeSelectionStore.isCut) keyframeSelectionStore.clearClipboard();
+		onedit();
+	}
+
+	function prepareContextMenu(event: MouseEvent): void {
+		if (!(event.target instanceof Element)) return;
+		const target = event.target.closest<SVGGElement>('[data-keyframe-graph-id]');
+		const id = target?.dataset.keyframeGraphId;
+		if (!id || selectedIds.has(id)) return;
+		const point = points.find((candidate) => candidate.id === id);
+		if (!point) return;
+		setSelection([id]);
+		onselect(point.keyframe);
+	}
+
+	function openContextMenuFromKeyboard(event: KeyboardEvent): boolean {
+		if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return true;
+		const rect = target.getBoundingClientRect();
+		target.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: rect.left + rect.width / 2,
+				clientY: rect.top + rect.height / 2
+			})
+		);
+		return true;
 	}
 
 	function clampViewport(next: GraphViewport): GraphViewport {
@@ -737,6 +807,7 @@
 	}
 
 	function onKeyDown(event: KeyboardEvent): void {
+		if (openContextMenuFromKeyboard(event)) return;
 		const bindings = keyboardShortcuts.bindings;
 		// Escape first cancels active gestures
 		if (eventMatchesShortcut(event, bindings.GRAPH_CLEAR_SELECTION)) {
@@ -762,8 +833,7 @@
 		// Select all graph keyframes
 		if (eventMatchesShortcut(event, bindings.GRAPH_SELECT_ALL)) {
 			event.preventDefault();
-			setSelection(points.map((point) => point.id));
-			onselect(points[0]?.keyframe ?? null);
+			selectAllKeyframes();
 			return;
 		}
 		if (eventMatchesShortcut(event, bindings.GRAPH_CLEAR_SELECTION)) {
@@ -776,12 +846,7 @@
 		// Delete selected keyframes
 		if (editorDeleteModeForEvent(event, bindings) && selectedIds.size > 0) {
 			event.preventDefault();
-			const refs = points
-				.filter((point) => selectedIds.has(point.id))
-				.map((point) => point.keyframe);
-			if (removeKeyframes(item.id, refs)) onedit();
-			setSelection([]);
-			onselect(null);
+			removeSelection();
 			return;
 		}
 		const isLeft =
@@ -1065,361 +1130,395 @@
 		</Button>
 	</div>
 
-	<!-- The graph is one composite keyboard widget. Svelte's static-role table does not classify ARIA application as interactive. -->
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<div
-		role="application"
-		aria-label={m.video_editor_keyframe_graph_aria({ property: propertyLabel })}
-		tabindex="0"
-		class="focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
-		onkeydown={onKeyDown}
-		onwheel={onWheel}
-	>
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<svg
-			bind:this={svg}
-			class="block w-full touch-none select-none"
-			style="height:{HEIGHT}px"
-			viewBox="0 0 {width} {HEIGHT}"
-			role="group"
-			aria-label={m.video_editor_keyframe_graph_canvas()}
-			onpointerdown={startMarquee}
-			onpointermove={onPointerMove}
-			onpointerup={onPointerUp}
-			onpointercancel={onPointerCancel}
-			onlostpointercapture={onPointerCaptureLost}
-		>
-			<rect {width} height={HEIGHT} fill="oklch(0.125 0.008 55)" />
-			<g aria-hidden="true" class="pointer-events-none">
-				<defs>
-					<pattern
-						id="keyframe-transition-blocked"
-						width="6"
-						height="6"
-						patternUnits="userSpaceOnUse"
-					>
-						<path d="M -1 1 L 1 -1 M 0 6 L 6 0 M 5 7 L 7 5" stroke="oklch(0.66 0.14 45 / 0.35)" />
-					</pattern>
-				</defs>
-				{#each frameTicks as tick, index (index)}
-					<line
-						x1={tick.x}
-						x2={tick.x}
-						y1={dimensions.top}
-						y2={dimensions.top + dimensions.height}
-						stroke="oklch(0.25 0.012 55)"
-						stroke-width="1"
-					/>
-					<text
-						x={tick.x}
-						y={HEIGHT - 8}
-						text-anchor="middle"
-						fill="oklch(0.58 0.014 55)"
-						font-size="9"
-						font-family="monospace">{tick.frame}</text
-					>
-				{/each}
-				{#each valueTicks as tick, index (index)}
-					<line
-						x1={dimensions.left}
-						x2={dimensions.left + dimensions.width}
-						y1={tick.y}
-						y2={tick.y}
-						stroke="oklch(0.25 0.012 55)"
-						stroke-width="1"
-					/>
-					<text
-						x={dimensions.left - 5}
-						y={tick.y + 3}
-						text-anchor="end"
-						fill="oklch(0.58 0.014 55)"
-						font-size="9"
-						font-family="monospace">{formatValue(tick.value)}</text
-					>
-				{/each}
-				{#each blockedRanges as blocked, index (`${blocked.start}:${blocked.end}:${index}`)}
-					{@const start = graphPoint(blocked.start, viewport.minValue, viewport).x}
-					{@const end = graphPoint(blocked.end, viewport.minValue, viewport).x}
-					<rect
-						x={Math.max(dimensions.left, start)}
-						y={dimensions.top}
-						width={Math.max(
-							0,
-							Math.min(dimensions.left + dimensions.width, end) - Math.max(dimensions.left, start)
-						)}
-						height={dimensions.height}
-						fill="url(#keyframe-transition-blocked)"
-						data-transition-blocked-range
-					/>
-				{/each}
-			</g>
-
-			{#if snapGuides.frame !== null}
-				{@const gx = graphPoint(snapGuides.frame, viewport.minValue, viewport).x}
-				<line
-					x1={gx}
-					x2={gx}
-					y1={dimensions.top}
-					y2={dimensions.top + dimensions.height}
-					stroke="oklch(0.78 0.15 45)"
-					stroke-width="1"
-					stroke-dasharray="4 3"
-					opacity="0.9"
-					data-snap-guide="frame"
-				/>
-				<text
-					x={gx + 4}
-					y={dimensions.top + 10}
-					fill="oklch(0.78 0.15 45)"
-					font-size="8"
-					font-family="monospace"
-				>
-					{m.video_editor_keyframe_graph_snap_frame({ frame: snapGuides.frame })}
-				</text>
-			{/if}
-			{#if snapGuides.value !== null && !colorProperty}
-				{@const gy = graphPoint(0, snapGuides.value, viewport).y}
-				<line
-					x1={dimensions.left}
-					x2={dimensions.left + dimensions.width}
-					y1={gy}
-					y2={gy}
-					stroke="oklch(0.78 0.15 45)"
-					stroke-width="1"
-					stroke-dasharray="4 3"
-					opacity="0.9"
-					data-snap-guide="value"
-				/>
-				<text
-					x={dimensions.left + 4}
-					y={gy - 4}
-					fill="oklch(0.78 0.15 45)"
-					font-size="8"
-					font-family="monospace"
-				>
-					{m.video_editor_keyframe_graph_snap_value({ value: formatValue(snapGuides.value) })}
-				</text>
-			{/if}
-
-			{#if points[0]}
-				<line
-					x1={dimensions.left}
-					x2={points[0].x}
-					y1={points[0].y}
-					y2={points[0].y}
-					stroke="oklch(0.66 0.14 45 / 0.45)"
-					stroke-dasharray="4 4"
-				/>
-			{/if}
-			{#each points.slice(0, -1) as point, index (point.id)}
-				{@const next = points[index + 1]}
-				{#if next}
-					<path
-						data-keyframe-curve
-						d={curvePath(point.keyframe, next.keyframe, viewport)}
-						fill="none"
-						stroke={selectedIds.has(point.id) || selectedIds.has(next.id)
-							? 'oklch(0.78 0.15 45)'
-							: 'oklch(0.66 0.14 45)'}
-						stroke-width={selectedIds.has(point.id) || selectedIds.has(next.id) ? 2.5 : 1.5}
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class="pointer-events-none"
-					/>
-				{/if}
-			{/each}
-			{#if points.at(-1)}
-				{@const last = points.at(-1)!}
-				<line
-					x1={last.x}
-					x2={dimensions.left + dimensions.width}
-					y1={last.y}
-					y2={last.y}
-					stroke="oklch(0.66 0.14 45 / 0.45)"
-					stroke-dasharray="4 4"
-				/>
-			{/if}
-
-			{#each segmentSpans as span, index (`${span.start.frame}:${span.end.frame}:${index}`)}
-				{@const label = easingLabel(span.start)}
-				{@const isSelected =
-					selectedIds.has(keyframeIdentity(span.start)) ||
-					selectedIds.has(keyframeIdentity(span.end))}
-				{@const isMenuOpen = segmentMenu?.leftFrame === span.start.frame}
-				<g
-					data-segment-easing={span.start.frame}
-					role="button"
+	<ContextMenu.Root>
+		<ContextMenu.Trigger>
+			{#snippet child({ props })}
+				<!-- The graph is one composite keyboard widget. Svelte's static-role table does not classify ARIA application as interactive. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<div
+					{...props}
+					role="application"
+					aria-label={m.video_editor_keyframe_graph_aria({ property: propertyLabel })}
 					tabindex="0"
-					aria-label={m.video_editor_keyframe_graph_segment_easing({ frame: span.start.frame })}
-					class="cursor-pointer outline-none focus-visible:[filter:drop-shadow(0_0_2px_oklch(0.85_0.15_45))]"
-					onpointerdown={(event) => {
-						event.stopPropagation();
-						toggleSegmentMenu(span.start);
-					}}
-					onkeydown={(event) => {
-						if (event.key === 'Enter' || event.key === ' ') {
-							event.preventDefault();
-							event.stopPropagation();
-							toggleSegmentMenu(span.start);
-						}
-					}}
+					class="focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+					onkeydown={onKeyDown}
+					onwheel={onWheel}
+					oncontextmenucapture={prepareContextMenu}
 				>
-					<path
-						d={curvePath(span.start, span.end, viewport)}
-						fill="none"
-						stroke="transparent"
-						stroke-width="14"
-						class="segment-hit"
-						style="pointer-events: stroke"
-					/>
-					{#if visibleSegmentFrames.has(span.start.frame)}
-						<rect
-							x={span.midX - 22}
-							y={span.midY - 8}
-							width="44"
-							height="12"
-							rx="6"
-							fill={isMenuOpen ? 'oklch(0.66 0.14 45)' : 'oklch(0.22 0.01 50)'}
-							stroke={isMenuOpen || isSelected ? 'oklch(0.85 0.15 45)' : 'oklch(0.45 0.02 55)'}
-							stroke-width="1.5"
-							class="pointer-events-none"
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<svg
+						bind:this={svg}
+						class="block w-full touch-none select-none"
+						style="height:{HEIGHT}px"
+						viewBox="0 0 {width} {HEIGHT}"
+						role="group"
+						aria-label={m.video_editor_keyframe_graph_canvas()}
+						onpointerdown={startMarquee}
+						onpointermove={onPointerMove}
+						onpointerup={onPointerUp}
+						onpointercancel={onPointerCancel}
+						onlostpointercapture={onPointerCaptureLost}
+					>
+						<rect {width} height={HEIGHT} fill="oklch(0.125 0.008 55)" />
+						<g aria-hidden="true" class="pointer-events-none">
+							<defs>
+								<pattern
+									id="keyframe-transition-blocked"
+									width="6"
+									height="6"
+									patternUnits="userSpaceOnUse"
+								>
+									<path
+										d="M -1 1 L 1 -1 M 0 6 L 6 0 M 5 7 L 7 5"
+										stroke="oklch(0.66 0.14 45 / 0.35)"
+									/>
+								</pattern>
+							</defs>
+							{#each frameTicks as tick, index (index)}
+								<line
+									x1={tick.x}
+									x2={tick.x}
+									y1={dimensions.top}
+									y2={dimensions.top + dimensions.height}
+									stroke="oklch(0.25 0.012 55)"
+									stroke-width="1"
+								/>
+								<text
+									x={tick.x}
+									y={HEIGHT - 8}
+									text-anchor="middle"
+									fill="oklch(0.58 0.014 55)"
+									font-size="9"
+									font-family="monospace">{tick.frame}</text
+								>
+							{/each}
+							{#each valueTicks as tick, index (index)}
+								<line
+									x1={dimensions.left}
+									x2={dimensions.left + dimensions.width}
+									y1={tick.y}
+									y2={tick.y}
+									stroke="oklch(0.25 0.012 55)"
+									stroke-width="1"
+								/>
+								<text
+									x={dimensions.left - 5}
+									y={tick.y + 3}
+									text-anchor="end"
+									fill="oklch(0.58 0.014 55)"
+									font-size="9"
+									font-family="monospace">{formatValue(tick.value)}</text
+								>
+							{/each}
+							{#each blockedRanges as blocked, index (`${blocked.start}:${blocked.end}:${index}`)}
+								{@const start = graphPoint(blocked.start, viewport.minValue, viewport).x}
+								{@const end = graphPoint(blocked.end, viewport.minValue, viewport).x}
+								<rect
+									x={Math.max(dimensions.left, start)}
+									y={dimensions.top}
+									width={Math.max(
+										0,
+										Math.min(dimensions.left + dimensions.width, end) -
+											Math.max(dimensions.left, start)
+									)}
+									height={dimensions.height}
+									fill="url(#keyframe-transition-blocked)"
+									data-transition-blocked-range
+								/>
+							{/each}
+						</g>
+
+						{#if snapGuides.frame !== null}
+							{@const gx = graphPoint(snapGuides.frame, viewport.minValue, viewport).x}
+							<line
+								x1={gx}
+								x2={gx}
+								y1={dimensions.top}
+								y2={dimensions.top + dimensions.height}
+								stroke="oklch(0.78 0.15 45)"
+								stroke-width="1"
+								stroke-dasharray="4 3"
+								opacity="0.9"
+								data-snap-guide="frame"
+							/>
+							<text
+								x={gx + 4}
+								y={dimensions.top + 10}
+								fill="oklch(0.78 0.15 45)"
+								font-size="8"
+								font-family="monospace"
+							>
+								{m.video_editor_keyframe_graph_snap_frame({ frame: snapGuides.frame })}
+							</text>
+						{/if}
+						{#if snapGuides.value !== null && !colorProperty}
+							{@const gy = graphPoint(0, snapGuides.value, viewport).y}
+							<line
+								x1={dimensions.left}
+								x2={dimensions.left + dimensions.width}
+								y1={gy}
+								y2={gy}
+								stroke="oklch(0.78 0.15 45)"
+								stroke-width="1"
+								stroke-dasharray="4 3"
+								opacity="0.9"
+								data-snap-guide="value"
+							/>
+							<text
+								x={dimensions.left + 4}
+								y={gy - 4}
+								fill="oklch(0.78 0.15 45)"
+								font-size="8"
+								font-family="monospace"
+							>
+								{m.video_editor_keyframe_graph_snap_value({ value: formatValue(snapGuides.value) })}
+							</text>
+						{/if}
+
+						{#if points[0]}
+							<line
+								x1={dimensions.left}
+								x2={points[0].x}
+								y1={points[0].y}
+								y2={points[0].y}
+								stroke="oklch(0.66 0.14 45 / 0.45)"
+								stroke-dasharray="4 4"
+							/>
+						{/if}
+						{#each points.slice(0, -1) as point, index (point.id)}
+							{@const next = points[index + 1]}
+							{#if next}
+								<path
+									data-keyframe-curve
+									d={curvePath(point.keyframe, next.keyframe, viewport)}
+									fill="none"
+									stroke={selectedIds.has(point.id) || selectedIds.has(next.id)
+										? 'oklch(0.78 0.15 45)'
+										: 'oklch(0.66 0.14 45)'}
+									stroke-width={selectedIds.has(point.id) || selectedIds.has(next.id) ? 2.5 : 1.5}
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="pointer-events-none"
+								/>
+							{/if}
+						{/each}
+						{#if points.at(-1)}
+							{@const last = points.at(-1)!}
+							<line
+								x1={last.x}
+								x2={dimensions.left + dimensions.width}
+								y1={last.y}
+								y2={last.y}
+								stroke="oklch(0.66 0.14 45 / 0.45)"
+								stroke-dasharray="4 4"
+							/>
+						{/if}
+
+						{#each segmentSpans as span, index (`${span.start.frame}:${span.end.frame}:${index}`)}
+							{@const label = easingLabel(span.start)}
+							{@const isSelected =
+								selectedIds.has(keyframeIdentity(span.start)) ||
+								selectedIds.has(keyframeIdentity(span.end))}
+							{@const isMenuOpen = segmentMenu?.leftFrame === span.start.frame}
+							<g
+								data-segment-easing={span.start.frame}
+								role="button"
+								tabindex="0"
+								aria-label={m.video_editor_keyframe_graph_segment_easing({
+									frame: span.start.frame
+								})}
+								class="cursor-pointer outline-none focus-visible:[filter:drop-shadow(0_0_2px_oklch(0.85_0.15_45))]"
+								onpointerdown={(event) => {
+									event.stopPropagation();
+									toggleSegmentMenu(span.start);
+								}}
+								onkeydown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault();
+										event.stopPropagation();
+										toggleSegmentMenu(span.start);
+									}
+								}}
+							>
+								<path
+									d={curvePath(span.start, span.end, viewport)}
+									fill="none"
+									stroke="transparent"
+									stroke-width="14"
+									class="segment-hit"
+									style="pointer-events: stroke"
+								/>
+								{#if visibleSegmentFrames.has(span.start.frame)}
+									<rect
+										x={span.midX - 22}
+										y={span.midY - 8}
+										width="44"
+										height="12"
+										rx="6"
+										fill={isMenuOpen ? 'oklch(0.66 0.14 45)' : 'oklch(0.22 0.01 50)'}
+										stroke={isMenuOpen || isSelected
+											? 'oklch(0.85 0.15 45)'
+											: 'oklch(0.45 0.02 55)'}
+										stroke-width="1.5"
+										class="pointer-events-none"
+									/>
+									<text
+										x={span.midX}
+										y={span.midY + 2.5}
+										text-anchor="middle"
+										fill={isMenuOpen ? 'white' : 'oklch(0.88 0.02 55)'}
+										font-size="6.5"
+										font-weight="600"
+										class="pointer-events-none select-none">{label.slice(0, 9)}</text
+									>
+								{/if}
+							</g>
+						{/each}
+
+						{#each points.slice(0, -1) as point, index (point.id)}
+							{@const next = points[index + 1]}
+							{@const bezier = easingBezier(point.keyframe)}
+							{#if next && bezier && (selectedIds.has(point.id) || selectedIds.has(next.id))}
+								{@const outX = point.x + bezier.x1 * (next.x - point.x)}
+								{@const outY = point.y + bezier.y1 * (next.y - point.y)}
+								{@const inX = point.x + bezier.x2 * (next.x - point.x)}
+								{@const inY = point.y + bezier.y2 * (next.y - point.y)}
+								<line x1={point.x} y1={point.y} x2={outX} y2={outY} stroke="oklch(0.75 0.02 55)" />
+								<line x1={next.x} y1={next.y} x2={inX} y2={inY} stroke="oklch(0.75 0.02 55)" />
+								<circle
+									role="slider"
+									tabindex="-1"
+									aria-label={m.video_editor_keyframe_graph_outgoing_handle()}
+									aria-valuemin="0"
+									aria-valuemax="1"
+									aria-valuenow={bezier.x1}
+									cx={outX}
+									cy={outY}
+									r={HANDLE_HIT_RADIUS}
+									fill="transparent"
+									class="cursor-grab"
+									onpointerdown={(event) =>
+										startHandleDrag(point.keyframe, next.keyframe, 'out', bezier, event)}
+								/>
+								<circle
+									cx={outX}
+									cy={outY}
+									r="4"
+									fill="oklch(0.82 0.02 55)"
+									class="pointer-events-none"
+								/>
+								<circle
+									role="slider"
+									tabindex="-1"
+									aria-label={m.video_editor_keyframe_graph_incoming_handle()}
+									aria-valuemin="0"
+									aria-valuemax="1"
+									aria-valuenow={bezier.x2}
+									cx={inX}
+									cy={inY}
+									r={HANDLE_HIT_RADIUS}
+									fill="transparent"
+									class="cursor-grab"
+									onpointerdown={(event) =>
+										startHandleDrag(point.keyframe, next.keyframe, 'in', bezier, event)}
+								/>
+								<circle
+									cx={inX}
+									cy={inY}
+									r="4"
+									fill="oklch(0.82 0.02 55)"
+									class="pointer-events-none"
+								/>
+							{/if}
+						{/each}
+
+						{#each points as point (point.id)}
+							<g
+								role="button"
+								tabindex="0"
+								data-keyframe-graph-id={point.id}
+								aria-label={m.video_editor_keyframe_graph_point({
+									property: propertyLabel,
+									frame: point.keyframe.frame
+								})}
+								onpointerdown={(event) => startKeyframeDrag(point, event)}
+								onkeydown={(event) => onPointKeyDown(point, event)}
+							>
+								<circle
+									cx={point.x}
+									cy={point.y}
+									r={KEYFRAME_HIT_RADIUS}
+									fill="transparent"
+									class="cursor-grab"
+								/>
+								{#if selectedIds.has(point.id)}
+									<circle
+										cx={point.x}
+										cy={point.y}
+										r="9"
+										fill="none"
+										stroke="oklch(0.76 0.14 45 / 0.5)"
+										stroke-width="2"
+									/>
+								{/if}
+								<path
+									d={`M ${point.x} ${point.y - 5} L ${point.x + 5} ${point.y} L ${point.x} ${point.y + 5} L ${point.x - 5} ${point.y} Z`}
+									fill={selectedIds.has(point.id) ? 'oklch(0.76 0.14 45)' : 'oklch(0.82 0.02 55)'}
+									stroke="oklch(0.12 0.01 55)"
+									stroke-width="1.5"
+									class="pointer-events-none"
+								/>
+							</g>
+						{/each}
+
+						<line
+							role="slider"
+							tabindex="-1"
+							aria-label={m.video_editor_keyframe_graph_playhead()}
+							aria-valuemin="0"
+							aria-valuemax={item.durationInFrames - 1}
+							aria-valuenow={relativePlayhead}
+							x1={playheadX}
+							x2={playheadX}
+							y1="0"
+							y2={dimensions.top + dimensions.height}
+							stroke="oklch(0.66 0.14 45)"
+							stroke-width="1"
+							class="cursor-ew-resize"
+							onpointerdown={(event) => {
+								event.stopPropagation();
+								scrub(event);
+							}}
 						/>
-						<text
-							x={span.midX}
-							y={span.midY + 2.5}
-							text-anchor="middle"
-							fill={isMenuOpen ? 'white' : 'oklch(0.88 0.02 55)'}
-							font-size="6.5"
-							font-weight="600"
-							class="pointer-events-none select-none">{label.slice(0, 9)}</text
-						>
-					{/if}
-				</g>
-			{/each}
-
-			{#each points.slice(0, -1) as point, index (point.id)}
-				{@const next = points[index + 1]}
-				{@const bezier = easingBezier(point.keyframe)}
-				{#if next && bezier && (selectedIds.has(point.id) || selectedIds.has(next.id))}
-					{@const outX = point.x + bezier.x1 * (next.x - point.x)}
-					{@const outY = point.y + bezier.y1 * (next.y - point.y)}
-					{@const inX = point.x + bezier.x2 * (next.x - point.x)}
-					{@const inY = point.y + bezier.y2 * (next.y - point.y)}
-					<line x1={point.x} y1={point.y} x2={outX} y2={outY} stroke="oklch(0.75 0.02 55)" />
-					<line x1={next.x} y1={next.y} x2={inX} y2={inY} stroke="oklch(0.75 0.02 55)" />
-					<circle
-						role="slider"
-						tabindex="-1"
-						aria-label={m.video_editor_keyframe_graph_outgoing_handle()}
-						aria-valuemin="0"
-						aria-valuemax="1"
-						aria-valuenow={bezier.x1}
-						cx={outX}
-						cy={outY}
-						r={HANDLE_HIT_RADIUS}
-						fill="transparent"
-						class="cursor-grab"
-						onpointerdown={(event) =>
-							startHandleDrag(point.keyframe, next.keyframe, 'out', bezier, event)}
-					/>
-					<circle
-						cx={outX}
-						cy={outY}
-						r="4"
-						fill="oklch(0.82 0.02 55)"
-						class="pointer-events-none"
-					/>
-					<circle
-						role="slider"
-						tabindex="-1"
-						aria-label={m.video_editor_keyframe_graph_incoming_handle()}
-						aria-valuemin="0"
-						aria-valuemax="1"
-						aria-valuenow={bezier.x2}
-						cx={inX}
-						cy={inY}
-						r={HANDLE_HIT_RADIUS}
-						fill="transparent"
-						class="cursor-grab"
-						onpointerdown={(event) =>
-							startHandleDrag(point.keyframe, next.keyframe, 'in', bezier, event)}
-					/>
-					<circle cx={inX} cy={inY} r="4" fill="oklch(0.82 0.02 55)" class="pointer-events-none" />
-				{/if}
-			{/each}
-
-			{#each points as point (point.id)}
-				<g
-					role="button"
-					tabindex="0"
-					aria-label={m.video_editor_keyframe_graph_point({
-						property: propertyLabel,
-						frame: point.keyframe.frame
-					})}
-					onpointerdown={(event) => startKeyframeDrag(point, event)}
-					onkeydown={(event) => onPointKeyDown(point, event)}
-				>
-					<circle
-						cx={point.x}
-						cy={point.y}
-						r={KEYFRAME_HIT_RADIUS}
-						fill="transparent"
-						class="cursor-grab"
-					/>
-					{#if selectedIds.has(point.id)}
-						<circle
-							cx={point.x}
-							cy={point.y}
-							r="9"
-							fill="none"
-							stroke="oklch(0.76 0.14 45 / 0.5)"
-							stroke-width="2"
-						/>
-					{/if}
-					<path
-						d={`M ${point.x} ${point.y - 5} L ${point.x + 5} ${point.y} L ${point.x} ${point.y + 5} L ${point.x - 5} ${point.y} Z`}
-						fill={selectedIds.has(point.id) ? 'oklch(0.76 0.14 45)' : 'oklch(0.82 0.02 55)'}
-						stroke="oklch(0.12 0.01 55)"
-						stroke-width="1.5"
-						class="pointer-events-none"
-					/>
-				</g>
-			{/each}
-
-			<line
-				role="slider"
-				tabindex="-1"
-				aria-label={m.video_editor_keyframe_graph_playhead()}
-				aria-valuemin="0"
-				aria-valuemax={item.durationInFrames - 1}
-				aria-valuenow={relativePlayhead}
-				x1={playheadX}
-				x2={playheadX}
-				y1="0"
-				y2={dimensions.top + dimensions.height}
-				stroke="oklch(0.66 0.14 45)"
-				stroke-width="1"
-				class="cursor-ew-resize"
-				onpointerdown={(event) => {
-					event.stopPropagation();
-					scrub(event);
-				}}
-			/>
-			{#if marquee}
-				<rect
-					x={marquee.x}
-					y={marquee.y}
-					width={marquee.width}
-					height={marquee.height}
-					fill="oklch(0.66 0.14 45 / 0.12)"
-					stroke="oklch(0.76 0.14 45)"
-					stroke-dasharray="3 2"
-					class="pointer-events-none"
-				/>
-			{/if}
-		</svg>
-	</div>
+						{#if marquee}
+							<rect
+								x={marquee.x}
+								y={marquee.y}
+								width={marquee.width}
+								height={marquee.height}
+								fill="oklch(0.66 0.14 45 / 0.12)"
+								stroke="oklch(0.76 0.14 45)"
+								stroke-dasharray="3 2"
+								class="pointer-events-none"
+							/>
+						{/if}
+					</svg>
+				</div>
+			{/snippet}
+		</ContextMenu.Trigger>
+		<KeyframeContextMenuContent
+			selectedCount={selectedIds.size}
+			clipboardAvailable={keyframeSelectionStore.clipboard !== null}
+			keyframeCount={points.length}
+			oncopy={() => copySelection()}
+			oncut={() => copySelection(true)}
+			onpaste={pasteClipboard}
+			ondelete={removeSelection}
+			onselectall={selectAllKeyframes}
+			onfit={fitToContent}
+		/>
+	</ContextMenu.Root>
 	{#if segmentMenu}
 		{@const keyframe = keyframes.find((candidate) => candidate.frame === segmentMenu.leftFrame)}
 		{@const endFrame = segmentSpans.find((span) => span.start.frame === segmentMenu.leftFrame)?.end

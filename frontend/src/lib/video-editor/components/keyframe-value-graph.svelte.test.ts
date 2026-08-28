@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -154,6 +154,49 @@ describe('KeyframeValueGraph', () => {
 		expect(screen.container.querySelectorAll('[data-keyframe-curve]')).toHaveLength(2);
 		expect(screen.container.querySelectorAll('g[aria-label*="opacity keyframe"]')).toHaveLength(3);
 		expect(screen.container.querySelector('[aria-label="Graph playhead"]')).not.toBeNull();
+	});
+
+	it('opens target-aware keyframe actions by pointer and keyboard', async () => {
+		const onedit = vi.fn();
+		const screen = await renderTimelinePanel({
+			onedit,
+			selectedItemId: animatedItem.id,
+			selectedItemIds: [animatedItem.id]
+		});
+		await screen.getByRole('button', { name: 'Keyframe view' }).click();
+		await screen.getByRole('option', { name: 'Graph' }).click();
+		const first = screen.getByRole('button', { name: 'opacity keyframe at frame 0' }).element();
+		const middle = screen.getByRole('button', { name: 'opacity keyframe at frame 30' }).element();
+
+		first.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+		first.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+		middle.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: 320,
+				clientY: 160
+			})
+		);
+
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Copy selected keyframes/ }))
+			.toBeVisible();
+		expect(keyframeSelectionStore.forItem(animatedItem.id)).toEqual(new Set(['middle']));
+		await screen.getByRole('menuitem', { name: /^Delete/ }).click();
+		await vi.waitFor(() => expect(frameForKeyframe('middle')).toBeUndefined());
+		expect(onedit).toHaveBeenCalledOnce();
+
+		const graph = screen
+			.getByRole('application', {
+				name: 'Keyframe value graph for opacity'
+			})
+			.element();
+		graph.focus();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Select all graph keyframes/ }))
+			.toBeVisible();
 	});
 
 	it('moves a keyframe in frame and value as one undoable graph gesture', async () => {

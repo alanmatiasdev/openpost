@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
@@ -223,6 +223,54 @@ describe('KeyframeDopesheet', () => {
 		});
 		expect(commandHistory.getLastCommandType()).toBe('INSERT_KEYFRAMES');
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('opens target-aware edit actions by pointer and keyboard', async () => {
+		const onedit = vi.fn();
+		const screen = await renderTimelinePanel({
+			onedit,
+			selectedItemId: animatedItem.id,
+			selectedItemIds: [animatedItem.id]
+		});
+		const first = screen.container.querySelector<HTMLElement>(
+			'[data-dopesheet-keyframe-id="first"]'
+		)!;
+		const middle = screen.container.querySelector<HTMLElement>(
+			'[data-dopesheet-keyframe-id="middle"]'
+		)!;
+		const firstPoint = center(first);
+		const middlePoint = center(middle);
+		pointer(first, 'pointerdown', firstPoint.x, firstPoint.y);
+		pointer(window, 'pointerup', firstPoint.x, firstPoint.y);
+		pointer(middle, 'pointerdown', middlePoint.x, middlePoint.y, { ctrlKey: true });
+		pointer(window, 'pointerup', middlePoint.x, middlePoint.y, { ctrlKey: true });
+
+		first.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: firstPoint.x,
+				clientY: firstPoint.y
+			})
+		);
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Cut selected keyframes/ }))
+			.toBeVisible();
+		expect(keyframeSelectionStore.forItem(animatedItem.id).size).toBe(2);
+		await screen.getByRole('menuitem', { name: /^Copy selected keyframes/ }).click();
+		expect(keyframeSelectionStore.clipboard?.keyframes).toHaveLength(2);
+
+		const sheet = screen.getByRole('region', { name: 'Keyframe dope sheet' }).element();
+		sheet.focus();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Select all graph keyframes/ }))
+			.toBeVisible();
+		await screen.getByRole('menuitem', { name: /^Delete/ }).click();
+		await vi.waitFor(() => {
+			expect(timelineStore.itemById.get(animatedItem.id)?.keyframes?.opacity?.frames).toEqual([30]);
+		});
+		expect(onedit).toHaveBeenCalledOnce();
 	});
 
 	it('Shift-selects a lane range and removes it atomically with the keyboard', async () => {

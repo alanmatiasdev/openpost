@@ -7,6 +7,7 @@
 	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import UnlockIcon from '@lucide/svelte/icons/unlock';
 	import { Input } from '$lib/components/ui/input';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as Select from '$lib/components/ui/select';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import {
@@ -41,6 +42,7 @@
 		eventMatchesShortcut
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import KeyframeContextMenuContent from './keyframe-context-menu-content.svelte';
 
 	let {
 		item,
@@ -216,6 +218,43 @@
 	function setSelection(ids: Iterable<string>, primary?: EditorKeyframe | null): void {
 		keyframeSelectionStore.replace(item.id, ids);
 		onselect(primary ?? null);
+	}
+
+	function selectAllVisible(): void {
+		setSelection(
+			allKeyframes
+				.filter((keyframe) => rows.includes(keyframe.property))
+				.map((keyframe) => keyframeIdentity(keyframe))
+		);
+	}
+
+	function prepareContextMenu(event: MouseEvent): void {
+		if (!(event.target instanceof Element)) return;
+		const target = event.target.closest<HTMLElement>('[data-dopesheet-keyframe-id]');
+		const id = target?.dataset.dopesheetKeyframeId;
+		if (!id || selectedIds.has(id)) return;
+		const keyframe = allKeyframes.find((candidate) => keyframeIdentity(candidate) === id);
+		if (!keyframe) return;
+		setSelection([id], keyframe);
+		onactiveproperty(keyframe.property);
+	}
+
+	function openContextMenuFromKeyboard(event: KeyboardEvent): boolean {
+		if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return true;
+		const rect = target.getBoundingClientRect();
+		target.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: rect.left + rect.width / 2,
+				clientY: rect.top + Math.min(rect.height / 2, 160)
+			})
+		);
+		return true;
 	}
 
 	function capturePointer(target: EventTarget | null, pointerId: number): void {
@@ -513,15 +552,12 @@
 	}
 
 	function onKeyDown(event: KeyboardEvent): void {
+		if (openContextMenuFromKeyboard(event)) return;
 		if (isEditableTarget(event.target)) return;
 		const bindings = keyboardShortcuts.bindings;
 		if (eventMatchesShortcut(event, bindings.GRAPH_SELECT_ALL)) {
 			event.preventDefault();
-			setSelection(
-				allKeyframes
-					.filter((keyframe) => rows.includes(keyframe.property))
-					.map((keyframe) => keyframeIdentity(keyframe))
-			);
+			selectAllVisible();
 			return;
 		}
 		if (eventMatchesShortcut(event, bindings.COPY)) {
@@ -583,218 +619,241 @@
 	onpointercancel={onPointerUp}
 />
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div
-	bind:this={root}
-	role="region"
-	aria-label={m.video_editor_keyframe_sheet_aria()}
-	tabindex="0"
-	class="relative border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
-	style="width:{timelineWidth}px"
-	onkeydown={onKeyDown}
->
-	<div
-		class="sticky left-0 z-30 flex h-8 w-fit min-w-[720px] items-center gap-1 border-r border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5 text-[10px]"
-	>
-		<span class="mr-1 font-medium tracking-wide text-[oklch(0.72_0.02_55)] uppercase">
-			{m.video_editor_keyframe_sheet_title()}
-		</span>
-		<div class="flex rounded border border-[oklch(0.28_0.012_55)] p-0.5">
-			<button
-				type="button"
-				class="rounded px-1.5 py-0.5 data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.18)] data-[active=true]:text-[oklch(0.82_0.12_55)]"
-				data-active={filter === 'keyframed'}
-				onclick={() => (filter = 'keyframed')}
-				>{m.video_editor_keyframe_sheet_filter_animated()}</button
-			>
-			<button
-				type="button"
-				class="rounded px-1.5 py-0.5 data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.18)] data-[active=true]:text-[oklch(0.82_0.12_55)]"
-				data-active={filter === 'all'}
-				onclick={() => (filter = 'all')}>{m.video_editor_keyframe_sheet_filter_all()}</button
-			>
-		</div>
-		<Input
-			type="search"
-			class="h-6 w-32 rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1.5 text-xs shadow-none"
-			bind:value={searchQuery}
-			placeholder={m.video_editor_keyframe_sheet_search()}
-			aria-label={m.video_editor_keyframe_sheet_search()}
-		/>
-		<Select.Root type="single" value={groupFilter} onValueChange={setGroupFilter}>
-			<Select.Trigger
-				aria-label={m.video_editor_keyframe_sheet_group()}
-				class="h-6 justify-between rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1 text-xs shadow-none"
-			>
-				<span class="truncate"
-					>{groupFilter === 'all'
-						? m.video_editor_keyframe_sheet_group_all()
-						: groupFilter === 'transform'
-							? m.video_editor_keyframe_sheet_group_transform()
-							: groupFilter === 'crop'
-								? m.video_editor_keyframe_sheet_group_crop()
-								: groupFilter === 'typography'
-									? m.video_editor_keyframe_sheet_group_typography()
-									: groupFilter === 'path'
-										? m.video_editor_keyframe_sheet_group_path()
-										: groupFilter === 'audio'
-											? m.video_editor_keyframe_sheet_group_audio()
-											: m.video_editor_keyframe_sheet_group_other()}</span
-				>
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="all">{m.video_editor_keyframe_sheet_group_all()}</Select.Item>
-				<Select.Item value="transform"
-					>{m.video_editor_keyframe_sheet_group_transform()}</Select.Item
-				>
-				<Select.Item value="crop">{m.video_editor_keyframe_sheet_group_crop()}</Select.Item>
-				<Select.Item value="typography"
-					>{m.video_editor_keyframe_sheet_group_typography()}</Select.Item
-				>
-				<Select.Item value="path">{m.video_editor_keyframe_sheet_group_path()}</Select.Item>
-				<Select.Item value="audio">{m.video_editor_keyframe_sheet_group_audio()}</Select.Item>
-				<Select.Item value="other">{m.video_editor_keyframe_sheet_group_other()}</Select.Item>
-			</Select.Content>
-		</Select.Root>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
-			aria-label={m.video_editor_keyframe_sheet_copy()}
-			disabled={selectedIds.size === 0}
-			onclick={() => copySelection()}><CopyIcon class="size-3" /></button
-		>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
-			aria-label={m.video_editor_keyframe_sheet_cut()}
-			disabled={selectedIds.size === 0}
-			onclick={() => copySelection(true)}><ScissorsIcon class="size-3" /></button
-		>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
-			aria-label={keyframeSelectionStore.isCut
-				? m.video_editor_keyframe_sheet_move_clipboard()
-				: m.video_editor_keyframe_sheet_paste()}
-			disabled={!keyframeSelectionStore.clipboard}
-			onclick={pasteClipboard}><ClipboardPasteIcon class="size-3" /></button
-		>
-		{#if keyframeSelectionStore.isCut && keyframeSelectionStore.clipboard}
-			<span class="font-medium text-[oklch(0.78_0.14_65)] uppercase">
-				{m.video_editor_keyframe_sheet_cut_badge()}
-			</span>
-		{/if}
-		<label class="ml-1 flex items-center gap-1">
-			{m.video_editor_keyframe_sheet_frame()}
-			<Input
-				type="number"
-				min={0}
-				max={item.durationInFrames - 1}
-				class="h-5 w-14 rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1 font-mono text-xs shadow-none disabled:opacity-45"
-				value={selectedFrame ?? ''}
-				placeholder={selectedIds.size > 1 ? m.video_editor_keyframe_sheet_mixed() : '-'}
-				disabled={selectedFrame === undefined}
-				onchange={commitSelectedFrame}
-			/>
-		</label>
-		<span class="font-mono text-[9px] text-[oklch(0.58_0.014_55)]">
-			{m.video_editor_keyframe_sheet_selected({ count: selectedIds.size })}
-		</span>
-	</div>
-
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="relative max-h-60 overflow-x-hidden overflow-y-auto" onpointerdown={startMarquee}>
-		{#each rows as property (property)}
+<ContextMenu.Root>
+	<ContextMenu.Trigger>
+		{#snippet child({ props })}
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 			<div
-				role="group"
-				aria-label={m.video_editor_keyframe_sheet_row({ property: propertyLabel(property) })}
-				class="relative border-b border-[oklch(0.22_0.01_50)] last:border-b-0"
-				style="height:{ROW_HEIGHT}px"
+				{...props}
+				bind:this={root}
+				role="region"
+				aria-label={m.video_editor_keyframe_sheet_aria()}
+				tabindex="0"
+				class="relative border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+				style="width:{timelineWidth}px"
+				onkeydown={onKeyDown}
+				oncontextmenucapture={prepareContextMenu}
 			>
 				<div
-					class="sticky left-0 z-20 flex h-full w-[180px] items-center gap-1 border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5"
-					data-marquee-ignore
+					class="sticky left-0 z-30 flex h-8 w-fit min-w-[720px] items-center gap-1 border-r border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5 text-[10px]"
 				>
+					<span class="mr-1 font-medium tracking-wide text-[oklch(0.72_0.02_55)] uppercase">
+						{m.video_editor_keyframe_sheet_title()}
+					</span>
+					<div class="flex rounded border border-[oklch(0.28_0.012_55)] p-0.5">
+						<button
+							type="button"
+							class="rounded px-1.5 py-0.5 data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.18)] data-[active=true]:text-[oklch(0.82_0.12_55)]"
+							data-active={filter === 'keyframed'}
+							onclick={() => (filter = 'keyframed')}
+							>{m.video_editor_keyframe_sheet_filter_animated()}</button
+						>
+						<button
+							type="button"
+							class="rounded px-1.5 py-0.5 data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.18)] data-[active=true]:text-[oklch(0.82_0.12_55)]"
+							data-active={filter === 'all'}
+							onclick={() => (filter = 'all')}>{m.video_editor_keyframe_sheet_filter_all()}</button
+						>
+					</div>
+					<Input
+						type="search"
+						class="h-6 w-32 rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1.5 text-xs shadow-none"
+						bind:value={searchQuery}
+						placeholder={m.video_editor_keyframe_sheet_search()}
+						aria-label={m.video_editor_keyframe_sheet_search()}
+					/>
+					<Select.Root type="single" value={groupFilter} onValueChange={setGroupFilter}>
+						<Select.Trigger
+							aria-label={m.video_editor_keyframe_sheet_group()}
+							class="h-6 justify-between rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1 text-xs shadow-none"
+						>
+							<span class="truncate"
+								>{groupFilter === 'all'
+									? m.video_editor_keyframe_sheet_group_all()
+									: groupFilter === 'transform'
+										? m.video_editor_keyframe_sheet_group_transform()
+										: groupFilter === 'crop'
+											? m.video_editor_keyframe_sheet_group_crop()
+											: groupFilter === 'typography'
+												? m.video_editor_keyframe_sheet_group_typography()
+												: groupFilter === 'path'
+													? m.video_editor_keyframe_sheet_group_path()
+													: groupFilter === 'audio'
+														? m.video_editor_keyframe_sheet_group_audio()
+														: m.video_editor_keyframe_sheet_group_other()}</span
+							>
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="all">{m.video_editor_keyframe_sheet_group_all()}</Select.Item>
+							<Select.Item value="transform"
+								>{m.video_editor_keyframe_sheet_group_transform()}</Select.Item
+							>
+							<Select.Item value="crop">{m.video_editor_keyframe_sheet_group_crop()}</Select.Item>
+							<Select.Item value="typography"
+								>{m.video_editor_keyframe_sheet_group_typography()}</Select.Item
+							>
+							<Select.Item value="path">{m.video_editor_keyframe_sheet_group_path()}</Select.Item>
+							<Select.Item value="audio">{m.video_editor_keyframe_sheet_group_audio()}</Select.Item>
+							<Select.Item value="other">{m.video_editor_keyframe_sheet_group_other()}</Select.Item>
+						</Select.Content>
+					</Select.Root>
 					<button
 						type="button"
-						class="rounded p-0.5 text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.25_0.012_55)] hover:text-[oklch(0.82_0.02_55)]"
-						aria-label={lockedProperties.has(property)
-							? m.video_editor_keyframe_sheet_unlock({ property: propertyLabel(property) })
-							: m.video_editor_keyframe_sheet_lock({ property: propertyLabel(property) })}
-						onpointerdown={(event) => event.stopPropagation()}
-						onclick={() => toggleLock(property)}
+						class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
+						aria-label={m.video_editor_keyframe_sheet_copy()}
+						disabled={selectedIds.size === 0}
+						onclick={() => copySelection()}><CopyIcon class="size-3" /></button
 					>
-						{#if lockedProperties.has(property)}
-							<LockIcon class="size-3" />
-						{:else}
-							<UnlockIcon class="size-3" />
-						{/if}
-					</button>
 					<button
 						type="button"
-						class="min-w-0 flex-1 truncate text-left text-[9px] text-[oklch(0.66_0.015_55)] uppercase hover:text-[oklch(0.85_0.02_55)]"
-						onpointerdown={(event) => event.stopPropagation()}
-						onclick={() => onactiveproperty(property)}>{propertyLabel(property)}</button
+						class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
+						aria-label={m.video_editor_keyframe_sheet_cut()}
+						disabled={selectedIds.size === 0}
+						onclick={() => copySelection(true)}><ScissorsIcon class="size-3" /></button
 					>
 					<button
 						type="button"
-						class="rounded p-0.5 text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.25_0.012_55)] hover:text-[oklch(0.82_0.02_55)] disabled:opacity-35"
-						aria-label={m.video_editor_keyframe_sheet_add({ property: propertyLabel(property) })}
-						disabled={lockedProperties.has(property)}
-						onpointerdown={(event) => event.stopPropagation()}
-						onclick={() => addAtCurrentFrame(property)}><PlusIcon class="size-3" /></button
+						class="rounded p-1 hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
+						aria-label={keyframeSelectionStore.isCut
+							? m.video_editor_keyframe_sheet_move_clipboard()
+							: m.video_editor_keyframe_sheet_paste()}
+						disabled={!keyframeSelectionStore.clipboard}
+						onclick={pasteClipboard}><ClipboardPasteIcon class="size-3" /></button
 					>
-				</div>
-				{#each blockedRanges as blocked, index (`${blocked.start}:${blocked.end}:${index}`)}
-					<div
-						class="pointer-events-none absolute top-0 h-full bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.18)_0_3px,transparent_3px_6px)]"
-						style="left:{timelineX(item.from + blocked.start)}px;width:{Math.max(
-							1,
-							(blocked.end - blocked.start) * pixelsPerFrame
-						)}px"
-						data-dopesheet-transition-blocked
-					></div>
-				{/each}
-				{#each allKeyframes.filter((keyframe) => keyframe.property === property) as keyframe (keyframeIdentity(keyframe))}
-					{@const id = keyframeIdentity(keyframe)}
-					{@const previewFrame = previewFrames?.get(id)}
-					{@const displayFrame =
-						drag?.kind === 'keyframe' && drag.duplicate
-							? keyframe.frame
-							: (previewFrame ?? keyframe.frame)}
-					<button
-						type="button"
-						class="absolute top-1/2 z-10 size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[oklch(0.12_0.01_55)] bg-[oklch(0.72_0.02_55)] shadow-sm disabled:cursor-not-allowed disabled:opacity-45 data-[selected=true]:bg-[oklch(0.76_0.14_45)] data-[selected=true]:shadow-[0_0_0_2px_oklch(0.66_0.14_45_/_0.3)]"
-						style="left:{timelineX(item.from + displayFrame)}px"
-						aria-label={m.video_editor_keyframe_sheet_point({
-							property: propertyLabel(property),
-							frame: keyframe.frame
-						})}
-						aria-pressed={selectedIds.has(id)}
-						data-selected={selectedIds.has(id)}
-						data-dopesheet-keyframe-id={id}
-						disabled={lockedProperties.has(property)}
-						onpointerdown={(event) => startKeyframeDrag(keyframe, event)}
-						onkeydown={(event) => onPointKeyDown(keyframe, event)}
-					></button>
-					{#if drag?.kind === 'keyframe' && drag.duplicate && previewFrame !== undefined}
-						<div
-							class="pointer-events-none absolute top-1/2 z-20 size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-dashed border-[oklch(0.88_0.14_65)] bg-[oklch(0.66_0.14_45_/_0.45)]"
-							style="left:{timelineX(item.from + previewFrame)}px"
-							data-dopesheet-duplicate-preview
-						></div>
+					{#if keyframeSelectionStore.isCut && keyframeSelectionStore.clipboard}
+						<span class="font-medium text-[oklch(0.78_0.14_65)] uppercase">
+							{m.video_editor_keyframe_sheet_cut_badge()}
+						</span>
 					{/if}
-				{/each}
+					<label class="ml-1 flex items-center gap-1">
+						{m.video_editor_keyframe_sheet_frame()}
+						<Input
+							type="number"
+							min={0}
+							max={item.durationInFrames - 1}
+							class="h-5 w-14 rounded border border-[oklch(0.3_0.012_55)] bg-[oklch(0.2_0.008_55)] px-1 font-mono text-xs shadow-none disabled:opacity-45"
+							value={selectedFrame ?? ''}
+							placeholder={selectedIds.size > 1 ? m.video_editor_keyframe_sheet_mixed() : '-'}
+							disabled={selectedFrame === undefined}
+							onchange={commitSelectedFrame}
+						/>
+					</label>
+					<span class="font-mono text-[9px] text-[oklch(0.58_0.014_55)]">
+						{m.video_editor_keyframe_sheet_selected({ count: selectedIds.size })}
+					</span>
+				</div>
+
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="relative max-h-60 overflow-x-hidden overflow-y-auto"
+					onpointerdown={startMarquee}
+				>
+					{#each rows as property (property)}
+						<div
+							role="group"
+							aria-label={m.video_editor_keyframe_sheet_row({ property: propertyLabel(property) })}
+							class="relative border-b border-[oklch(0.22_0.01_50)] last:border-b-0"
+							style="height:{ROW_HEIGHT}px"
+						>
+							<div
+								class="sticky left-0 z-20 flex h-full w-[180px] items-center gap-1 border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5"
+								data-marquee-ignore
+							>
+								<button
+									type="button"
+									class="rounded p-0.5 text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.25_0.012_55)] hover:text-[oklch(0.82_0.02_55)]"
+									aria-label={lockedProperties.has(property)
+										? m.video_editor_keyframe_sheet_unlock({ property: propertyLabel(property) })
+										: m.video_editor_keyframe_sheet_lock({ property: propertyLabel(property) })}
+									onpointerdown={(event) => event.stopPropagation()}
+									onclick={() => toggleLock(property)}
+								>
+									{#if lockedProperties.has(property)}
+										<LockIcon class="size-3" />
+									{:else}
+										<UnlockIcon class="size-3" />
+									{/if}
+								</button>
+								<button
+									type="button"
+									class="min-w-0 flex-1 truncate text-left text-[9px] text-[oklch(0.66_0.015_55)] uppercase hover:text-[oklch(0.85_0.02_55)]"
+									onpointerdown={(event) => event.stopPropagation()}
+									onclick={() => onactiveproperty(property)}>{propertyLabel(property)}</button
+								>
+								<button
+									type="button"
+									class="rounded p-0.5 text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.25_0.012_55)] hover:text-[oklch(0.82_0.02_55)] disabled:opacity-35"
+									aria-label={m.video_editor_keyframe_sheet_add({
+										property: propertyLabel(property)
+									})}
+									disabled={lockedProperties.has(property)}
+									onpointerdown={(event) => event.stopPropagation()}
+									onclick={() => addAtCurrentFrame(property)}><PlusIcon class="size-3" /></button
+								>
+							</div>
+							{#each blockedRanges as blocked, index (`${blocked.start}:${blocked.end}:${index}`)}
+								<div
+									class="pointer-events-none absolute top-0 h-full bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.18)_0_3px,transparent_3px_6px)]"
+									style="left:{timelineX(item.from + blocked.start)}px;width:{Math.max(
+										1,
+										(blocked.end - blocked.start) * pixelsPerFrame
+									)}px"
+									data-dopesheet-transition-blocked
+								></div>
+							{/each}
+							{#each allKeyframes.filter((keyframe) => keyframe.property === property) as keyframe (keyframeIdentity(keyframe))}
+								{@const id = keyframeIdentity(keyframe)}
+								{@const previewFrame = previewFrames?.get(id)}
+								{@const displayFrame =
+									drag?.kind === 'keyframe' && drag.duplicate
+										? keyframe.frame
+										: (previewFrame ?? keyframe.frame)}
+								<button
+									type="button"
+									class="absolute top-1/2 z-10 size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[oklch(0.12_0.01_55)] bg-[oklch(0.72_0.02_55)] shadow-sm disabled:cursor-not-allowed disabled:opacity-45 data-[selected=true]:bg-[oklch(0.76_0.14_45)] data-[selected=true]:shadow-[0_0_0_2px_oklch(0.66_0.14_45_/_0.3)]"
+									style="left:{timelineX(item.from + displayFrame)}px"
+									aria-label={m.video_editor_keyframe_sheet_point({
+										property: propertyLabel(property),
+										frame: keyframe.frame
+									})}
+									aria-pressed={selectedIds.has(id)}
+									data-selected={selectedIds.has(id)}
+									data-dopesheet-keyframe-id={id}
+									disabled={lockedProperties.has(property)}
+									onpointerdown={(event) => startKeyframeDrag(keyframe, event)}
+									onkeydown={(event) => onPointKeyDown(keyframe, event)}
+								></button>
+								{#if drag?.kind === 'keyframe' && drag.duplicate && previewFrame !== undefined}
+									<div
+										class="pointer-events-none absolute top-1/2 z-20 size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-dashed border-[oklch(0.88_0.14_65)] bg-[oklch(0.66_0.14_45_/_0.45)]"
+										style="left:{timelineX(item.from + previewFrame)}px"
+										data-dopesheet-duplicate-preview
+									></div>
+								{/if}
+							{/each}
+						</div>
+					{/each}
+				</div>
+				{#if marquee}
+					<div
+						class="pointer-events-none absolute z-40 border border-[oklch(0.76_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.14)]"
+						style="left:{marquee.left}px;top:{marquee.top}px;width:{marquee.width}px;height:{marquee.height}px"
+						data-dopesheet-marquee
+					></div>
+				{/if}
+				<p class="sr-only" aria-live="polite">{status}</p>
 			</div>
-		{/each}
-	</div>
-	{#if marquee}
-		<div
-			class="pointer-events-none absolute z-40 border border-[oklch(0.76_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.14)]"
-			style="left:{marquee.left}px;top:{marquee.top}px;width:{marquee.width}px;height:{marquee.height}px"
-			data-dopesheet-marquee
-		></div>
-	{/if}
-	<p class="sr-only" aria-live="polite">{status}</p>
-</div>
+		{/snippet}
+	</ContextMenu.Trigger>
+	<KeyframeContextMenuContent
+		selectedCount={selectedIds.size}
+		clipboardAvailable={keyframeSelectionStore.clipboard !== null}
+		keyframeCount={allKeyframes.filter((keyframe) => rows.includes(keyframe.property)).length}
+		oncopy={() => copySelection()}
+		oncut={() => copySelection(true)}
+		onpaste={pasteClipboard}
+		ondelete={removeSelection}
+		onselectall={selectAllVisible}
+	/>
+</ContextMenu.Root>
