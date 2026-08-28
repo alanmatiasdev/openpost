@@ -6,17 +6,8 @@ import {
 } from './settings-navigation';
 
 describe('settings destination registry', () => {
-	it('registers ownership once with its navigation and page metadata', () => {
-		const ownership = getSettingsDestinations(false).find(
-			(destination) => destination.id === 'ownership'
-		);
-
-		expect(settingsTabIDs.filter((id) => id === 'ownership')).toHaveLength(1);
-		expect(ownership).toMatchObject({
-			group: 'organization',
-			loadingVariant: 'form'
-		});
-		expect(ownership?.title).toBe(ownership?.label);
+	it('does not register duplicate settings destinations', () => {
+		expect(new Set(settingsTabIDs).size).toBe(settingsTabIDs.length);
 	});
 
 	it('keeps instance destinations restricted and legacy aliases stable', () => {

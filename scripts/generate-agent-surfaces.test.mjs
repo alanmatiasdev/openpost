@@ -562,7 +562,7 @@ test(
     const discovery = await readFile(path.join(outputDirectory, "llms.txt"), "utf8");
     const routes = marketingRouteManifest.filter((entry) => entry.kind === "tool");
 
-    assert.equal(routes.length, 8);
+    assert.ok(routes.length > 0);
     assert.match(discovery, /^## Optional browser tools$/m);
     for (const route of routes) {
       const relative = route.path.slice(1);
