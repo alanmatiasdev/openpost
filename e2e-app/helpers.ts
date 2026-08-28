@@ -91,13 +91,14 @@ export async function authenticatePage(page: Page, token: string) {
 }
 
 export async function composerDeliveryAction(page: Page, name: string) {
-  const menu = page.getByRole("menu");
-  if (!(await menu.isVisible())) {
-    const trigger = page.getByTestId("composer-delivery-menu");
-    await expect(trigger).toBeVisible();
+  const trigger = page.getByTestId("composer-delivery-menu");
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") {
     await trigger.click();
-    await expect(menu).toBeVisible();
   }
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
   return menu.getByRole("menuitem", { name, exact: true });
 }
 
