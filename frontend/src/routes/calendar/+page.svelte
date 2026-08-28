@@ -1584,9 +1584,9 @@
 													onpointermove={onWeekPointerMove}
 													onpointerup={onWeekPointerUp}
 													onpointercancel={onWeekPointerCancel}
-												onlostpointercapture={onWeekPointerCaptureLost}
-												onkeydown={onWeekItemKeyDown}
-												onclick={(event) => onWeekItemClick(event, item)}
+													onlostpointercapture={onWeekPointerCaptureLost}
+													onkeydown={onWeekItemKeyDown}
+													onclick={(event) => onWeekItemClick(event, item)}
 												>
 													<span class="flex items-center gap-1 font-medium">
 														{#if !item.movable}<LockIcon class="size-3 shrink-0" />{/if}
