@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { TimelineItem } from '../project/types';
+import type { TimelineItem, TimelineTrack } from '../project/types';
+import { commandHistory } from '../timeline/commands/command-store.svelte';
+import { timelineStore } from '../timeline/stores/timeline-store.svelte';
+import { applyTranscriptTargetRangeRemoval } from './speech-cleanup-actions';
 import {
 	collectTranscriptSourceWords,
 	detectTranscriptSilenceRanges,
@@ -197,5 +200,128 @@ describe('transcript-gap silence detection', () => {
 				paddingEndMs: 0
 			})
 		).toEqual({});
+	});
+});
+
+describe('transcript range removal', () => {
+	it('does not change transcript captions for a source on a locked track', () => {
+		const unlockedTrack: TimelineTrack = {
+			id: 'unlocked',
+			name: 'Unlocked',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const lockedTrack: TimelineTrack = {
+			...unlockedTrack,
+			id: 'locked',
+			name: 'Locked',
+			locked: true,
+			order: 1
+		};
+		const captionsTrack: TimelineTrack = {
+			...unlockedTrack,
+			id: 'captions',
+			name: 'Captions',
+			order: 2
+		};
+		const clip = (id: string, trackId: string, mediaId: string): TimelineItem => ({
+			id,
+			trackId,
+			from: 0,
+			durationInFrames: 90,
+			label: id,
+			type: 'video',
+			mediaId,
+			sourceStart: 0,
+			sourceEnd: 90,
+			sourceFps: 30,
+			speed: 1
+		});
+		const caption = (id: string, clipId: string, mediaId: string, text: string): TimelineItem => ({
+			id,
+			trackId: captionsTrack.id,
+			from: 0,
+			durationInFrames: 90,
+			label: id,
+			type: 'subtitle',
+			captionSource: {
+				type: 'transcript',
+				clipId,
+				mediaId,
+				sourceStartSeconds: 0,
+				playbackSpeed: 1
+			},
+			cues: [
+				{
+					id: `${id}-cue`,
+					startFrame: 30,
+					endFrame: 60,
+					text,
+					words: [{ id: `${id}-word`, startFrame: 30, endFrame: 60, text }]
+				}
+			]
+		});
+		const unlockedClip = clip('unlocked-clip', unlockedTrack.id, 'unlocked-media');
+		const lockedClip = clip('locked-clip', lockedTrack.id, 'locked-media');
+		const unlockedCaption = caption(
+			'unlocked-caption',
+			unlockedClip.id,
+			'unlocked-media',
+			'Change me'
+		);
+		const lockedCaption = caption('locked-caption', lockedClip.id, 'locked-media', 'Keep me');
+		timelineStore.__resetForTesting();
+		timelineStore.setAll({
+			tracks: [unlockedTrack, lockedTrack, captionsTrack],
+			items: [unlockedClip, lockedClip, unlockedCaption, lockedCaption],
+			currentFrame: 0,
+			fps: 30
+		});
+		commandHistory.clearHistory();
+
+		const result = applyTranscriptTargetRangeRemoval(
+			{
+				[unlockedClip.id]: { mediaId: 'unlocked-media', ranges: [{ start: 1, end: 2 }] },
+				[lockedClip.id]: { mediaId: 'locked-media', ranges: [{ start: 1, end: 2 }] }
+			},
+			[
+				{
+					id: 'unlocked-word',
+					mediaId: 'unlocked-media',
+					sourceItemId: unlockedClip.id,
+					subtitleItemId: unlockedCaption.id,
+					cueId: 'unlocked-caption-cue',
+					wordId: 'unlocked-caption-word',
+					text: 'Change me',
+					start: 1,
+					end: 2
+				},
+				{
+					id: 'locked-word',
+					mediaId: 'locked-media',
+					sourceItemId: lockedClip.id,
+					subtitleItemId: lockedCaption.id,
+					cueId: 'locked-caption-cue',
+					wordId: 'locked-caption-word',
+					text: 'Keep me',
+					start: 1,
+					end: 2
+				}
+			]
+		);
+
+		expect(result).toMatchObject({ analyzedItemCount: 1, removedItemCount: 1 });
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(timelineStore.itemById.get(lockedClip.id)).toMatchObject({
+			durationInFrames: 90,
+			sourceStart: 0,
+			sourceEnd: 90
+		});
+		expect(timelineStore.itemById.get(lockedCaption.id)?.cues?.[0]?.text).toBe('Keep me');
 	});
 });

@@ -13,6 +13,7 @@ import {
 } from './caption-source-mapping';
 import { cueWithoutWords, type FillerRange, type TranscriptSourceWord } from './speech-cleanup';
 import type { TranscriptSelectionTargets } from './transcript-edit-model';
+import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 
 function mergedFrameRanges(
 	ranges: Array<{ start: number; end: number }>
@@ -144,12 +145,23 @@ export function applyTranscriptTargetRangeRemoval(
 	targets: TranscriptSelectionTargets,
 	removedWords: readonly TranscriptSourceWord[] = []
 ): RangeRemovalResult {
+	const lockedTrackIds = new Set(
+		effectiveMediaTracks(timelineStore.tracks)
+			.filter((track) => track.locked)
+			.map((track) => track.id)
+	);
+	const editableTargets = Object.fromEntries(
+		Object.entries(targets).filter(([sourceItemId]) => {
+			const item = timelineStore.itemById.get(sourceItemId);
+			return item !== undefined && !lockedTrackIds.has(item.trackId);
+		})
+	);
 	const rangesByItemId = Object.fromEntries(
-		Object.entries(targets).map(([sourceItemId, target]) => [sourceItemId, target.ranges])
+		Object.entries(editableTargets).map(([sourceItemId, target]) => [sourceItemId, target.ranges])
 	);
 	const rangesByCaptionClipId: Record<string, SourceRange[]> = {};
 	const captionClipIdByTarget = new Map<string, string>();
-	for (const [sourceItemId, target] of Object.entries(targets)) {
+	for (const [sourceItemId, target] of Object.entries(editableTargets)) {
 		const item = timelineStore.itemById.get(sourceItemId);
 		if (!item) continue;
 		const captionClipId = item.originId ?? item.id;
