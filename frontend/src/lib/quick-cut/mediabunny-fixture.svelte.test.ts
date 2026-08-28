@@ -504,6 +504,42 @@ describe('quick-cut mediabunny fixture', () => {
 		await discardScratchFile(art.scratchPath);
 	}, 30000);
 
+	it('merges exact WebM cuts without routing video through MP4', async () => {
+		const file = await createColorToneWebM('purple', 220, 2);
+		const source = await probeSourceFile(file);
+		const segments = [
+			createSegment(0.1, 0.6, { sourceId: source.id }),
+			createSegment(0.8, 1.3, { sourceId: source.id })
+		];
+		const preflight = await preflightExport([source], segments, 'exact', true);
+		expect(preflight.requiresTranscode).toBe(true);
+
+		const [artifact] = await exportSegments({
+			sources: [source],
+			segments,
+			cutMode: 'exact',
+			merge: true
+		});
+		try {
+			expect(artifact?.fileName).toMatch(/\.webm$/);
+			const input = new Input({
+				formats: ALL_FORMATS,
+				source: new BlobSource(artifact!.scratchFile)
+			});
+			try {
+				const video = await input.getPrimaryVideoTrack();
+				const audio = await input.getPrimaryAudioTrack();
+				expect(await video?.getCodec()).toBe('vp9');
+				expect(await audio?.getCodec()).toBe('opus');
+				expect(await input.computeDuration()).toBeCloseTo(1, 1);
+			} finally {
+				input.dispose?.();
+			}
+		} finally {
+			if (artifact) await discardScratchFile(artifact.scratchPath);
+		}
+	}, 30_000);
+
 	it('cancels export and cleans up scratch', async () => {
 		const fileA = await createColorMp4('yellow', 2);
 		const srcA = await probeSourceFile(fileA);

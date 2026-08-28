@@ -1339,8 +1339,9 @@ async function exportMergedTranscode(
 	const hasAudio = sources
 		.filter((s) => enabledIds.has(s.id))
 		.some((s) => getSelectedAudioStreams(s).length > 0);
-	const videoCodec: VideoCodec = 'avc';
-	const audioCodec: AudioCodec = 'aac';
+	const webmOutput = format instanceof WebMOutputFormat;
+	const videoCodec: VideoCodec = webmOutput ? 'vp9' : 'avc';
+	const audioCodec: AudioCodec = webmOutput ? 'opus' : 'aac';
 	const firstFps = sources.find((s) => enabledIds.has(s.id) && s.fps && s.fps > 0)?.fps ?? null;
 	const firstSelAudiosForOutput = (() => {
 		for (const s of sources)
@@ -1386,7 +1387,10 @@ async function exportMergedTranscode(
 			const selAudioIdxSet = new Set(selAudios.map((a) => a.index));
 			const tempConversion = await Conversion.init({
 				input: tempInput,
-				output: new Output({ format: new Mp4OutputFormat(), target: tempStreaming.target }),
+				output: new Output({
+					format: webmOutput ? new WebMOutputFormat() : new Mp4OutputFormat(),
+					target: tempStreaming.target
+				}),
 				trim: { start: seg.start, end: seg.end },
 				video: (track, n) => {
 					const idx = n - 1;
@@ -1438,7 +1442,10 @@ async function exportMergedTranscode(
 			} catch {
 				// ignore
 			}
-			const tempFile = await tempStreaming.file(`temp-${idx}.mp4`, 'video/mp4');
+			const tempFile = await tempStreaming.file(
+				`temp-${idx}.${webmOutput ? 'webm' : 'mp4'}`,
+				webmOutput ? 'video/webm' : 'video/mp4'
+			);
 			tempScratches.push({
 				file: tempFile,
 				path: tempFile.name,
