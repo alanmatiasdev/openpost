@@ -74,6 +74,16 @@ function center(element: Element) {
 	return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
+async function renderTimelinePanel(props: {
+	onedit: () => void;
+	selectedItemId: string;
+	selectedItemIds: string[];
+}) {
+	const screen = await render(TimelinePanel, props);
+	await screen.getByRole('button', { name: 'Keyframes' }).click();
+	return screen;
+}
+
 beforeEach(() => {
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
@@ -86,7 +96,7 @@ beforeEach(() => {
 
 describe('KeyframeDopesheet', () => {
 	it('filters animated and all properties and exposes row locks', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -119,7 +129,7 @@ describe('KeyframeDopesheet', () => {
 
 	it('moves a multi-key selection as one collision-safe retime', async () => {
 		const onedit = vi.fn();
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit,
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -157,7 +167,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('duplicates the selected key with Alt-drag and preserves easing', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -185,7 +195,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('copies and pastes normalized keyframes at the playhead in one undo step', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -214,7 +224,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('Shift-selects a lane range and removes it atomically with the keyboard', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -245,7 +255,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('nudges the selected key one frame with the keyboard', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -269,7 +279,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('marquee-selects overlapping diamonds across property rows', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -296,7 +306,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('cuts now, moves from the clipboard later, and clears cut state', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -337,7 +347,7 @@ describe('KeyframeDopesheet', () => {
 				toItemId: 'next'
 			}
 		]);
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -348,7 +358,7 @@ describe('KeyframeDopesheet', () => {
 	});
 
 	it('saves, updates, and removes a reusable custom easing preset', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]

@@ -71,6 +71,16 @@ function frameForKeyframe(id: string): number | undefined {
 	return index >= 0 ? track?.frames[index] : undefined;
 }
 
+async function renderTimelinePanel(props: {
+	onedit: () => void;
+	selectedItemId: string;
+	selectedItemIds: string[];
+}) {
+	const screen = await render(TimelinePanel, props);
+	await screen.getByRole('button', { name: 'Keyframes' }).click();
+	return screen;
+}
+
 beforeEach(() => {
 	localStorage.removeItem(CUSTOM_EASING_PRESETS_STORAGE_KEY);
 	timelineStore.__resetForTesting();
@@ -108,7 +118,7 @@ describe('KeyframeValueGraph', () => {
 			}
 		};
 		timelineStore.setAll({ tracks: [videoTrack], items: [scaled], fps: 30 });
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: scaled.id,
 			selectedItemIds: [scaled.id]
@@ -126,7 +136,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('renders sampled curves, a playhead, and accessible keyframe controls', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -144,7 +154,7 @@ describe('KeyframeValueGraph', () => {
 
 	it('moves a keyframe in frame and value as one undoable graph gesture', async () => {
 		const onedit = vi.fn();
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit,
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -190,7 +200,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('duplicates instead of moving when Alt is held at drag start', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -232,7 +242,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('uses FreeCut fine adjustment when Alt is pressed after a move starts', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -282,7 +292,7 @@ describe('KeyframeValueGraph', () => {
 				toItemId: 'next-video'
 			}
 		]);
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -319,7 +329,7 @@ describe('KeyframeValueGraph', () => {
 
 	it('commits cubic bezier handle edits on pointer release', async () => {
 		const onedit = vi.fn();
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit,
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -384,7 +394,7 @@ describe('KeyframeValueGraph', () => {
 			fps: 30
 		});
 		const onedit = vi.fn();
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit,
 			selectedItemId: smoothItem.id,
 			selectedItemIds: [smoothItem.id]
@@ -430,7 +440,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('discards a bezier preview when pointer capture is lost', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -473,7 +483,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('previews exact bezier numbers, cancels cleanly, and commits once', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -537,7 +547,7 @@ describe('KeyframeValueGraph', () => {
 			easingConfigs: Array.from({ length: 20 }, () => null)
 		};
 		timelineStore.setAll({ tracks: [videoTrack], items: [dense], fps: 30 });
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: dense.id,
 			selectedItemIds: [dense.id]
@@ -561,7 +571,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('saves and deletes a named custom easing and surfaces storage failure', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -606,7 +616,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('marquee-selects every graph diamond it overlaps', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -671,7 +681,7 @@ describe('KeyframeValueGraph', () => {
 				}
 			]
 		});
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -700,7 +710,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('shows snap guides when dragging near a neighbor frame and snaps with one undo', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -747,7 +757,7 @@ describe('KeyframeValueGraph', () => {
 
 	it('honors the shared snap setting, guides disappear when disabled, and Ctrl bypasses snap', async () => {
 		timelineStore._setSnapEnabled(false);
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -841,7 +851,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('keeps the segment menu open for spring edits, commits one undo on release, and cancels on Escape', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -917,7 +927,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('moves a selected keyframe with base and fast nudge catalog bindings and one undo', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -961,7 +971,7 @@ describe('KeyframeValueGraph', () => {
 
 	it('cancels an active drag on Escape and at 320px keeps controls without overflow', async () => {
 		await page.viewport(320, 700);
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]
@@ -1033,7 +1043,7 @@ describe('KeyframeValueGraph', () => {
 	});
 
 	it('spring slider pointerup plus change plus lostpointercapture commits once and stays committed', async () => {
-		const screen = await render(TimelinePanel, {
+		const screen = await renderTimelinePanel({
 			onedit: vi.fn(),
 			selectedItemId: animatedItem.id,
 			selectedItemIds: [animatedItem.id]

@@ -132,10 +132,8 @@ describe('EditorSettingsDialog', () => {
 			.element(screen.getByRole('button', { name: 'General' }))
 			.toHaveAttribute('data-cuelume-toggle', 'tick');
 		const interfaceSounds = screen.getByRole('switch', { name: 'Interface sounds' });
-		await expect.element(interfaceSounds).toHaveAttribute('aria-checked', 'false');
+		await expect.element(interfaceSounds).toHaveAttribute('aria-checked', 'true');
 		await expect.element(interfaceSounds).not.toHaveAttribute('data-cuelume-toggle');
-		await userEvent.click(interfaceSounds.element());
-		expect(soundPreferences.enabled).toBe(true);
 		await expect.element(screen.getByRole('slider', { name: 'Sound volume' })).toBeVisible();
 		await screen.getByRole('button', { name: 'Sound theme' }).click();
 		await screen.getByRole('option', { name: 'Crisp' }).click();
@@ -146,6 +144,8 @@ describe('EditorSettingsDialog', () => {
 		interfaceSounds.element().focus();
 		await userEvent.keyboard('{Enter}');
 		expect(soundPreferences.enabled).toBe(false);
+		await userEvent.click(interfaceSounds.element());
+		expect(soundPreferences.enabled).toBe(true);
 
 		const periodicSave = screen.getByRole('switch', { name: 'Periodic safety save' });
 		await expect.element(periodicSave).toHaveAttribute('aria-checked', 'true');
