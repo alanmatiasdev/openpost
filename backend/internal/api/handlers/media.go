@@ -619,33 +619,33 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				(SELECT MAX(publication.updated_at)
 				 FROM publication_assets asset
 				 JOIN publications publication ON publication.id = asset.publication_id
-				 WHERE asset.media_id = media_attachments.id),
+				 WHERE asset.media_id = media_attachment.id),
 				(SELECT MAX(publication.updated_at)
 				 FROM publication_segment_media segment_media
 				 JOIN publication_segments segment ON segment.id = segment_media.segment_id
 				 JOIN publications publication ON publication.id = segment.publication_id
-				 WHERE segment_media.media_id = media_attachments.id),
+				 WHERE segment_media.media_id = media_attachment.id),
 				(SELECT MAX(publication.updated_at)
 				 FROM rendition_media rendition_media_item
 				 JOIN renditions rendition ON rendition.id = rendition_media_item.rendition_id
 				 JOIN publications publication ON publication.id = rendition.publication_id
-				 WHERE rendition_media_item.media_id = media_attachments.id),
+				 WHERE rendition_media_item.media_id = media_attachment.id),
 				(SELECT MAX(publication.updated_at)
 				 FROM rendition_segment_media segment_media
 				 JOIN rendition_segments segment ON segment.id = segment_media.rendition_segment_id
 				 JOIN renditions rendition ON rendition.id = segment.rendition_id
 				 JOIN publications publication ON publication.id = rendition.publication_id
-				 WHERE segment_media.media_id = media_attachments.id),
+				 WHERE segment_media.media_id = media_attachment.id),
 				(SELECT MAX(document.updated_at)
 				 FROM design_media_references design_reference
 				 JOIN design_documents document ON document.id = design_reference.design_document_id
-				 WHERE design_reference.media_id = media_attachments.id),
+				 WHERE design_reference.media_id = media_attachment.id),
 				(SELECT MAX(revision.created_at)
 				 FROM design_revision_media_references revision_reference
 				 JOIN design_revisions revision ON revision.id = revision_reference.revision_id
 				 JOIN design_documents document ON document.id = revision.design_document_id
-				 WHERE revision_reference.media_id = media_attachments.id AND document.deleted_at IS NULL),
-				media_attachments.created_at
+				 WHERE revision_reference.media_id = media_attachment.id AND document.deleted_at IS NULL),
+				media_attachment.created_at
 			) DESC`)
 		default:
 			query = query.Order("created_at DESC")
