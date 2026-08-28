@@ -129,8 +129,8 @@ export function drawTransformedLayer(
 	context.translate(geometry.centerX, geometry.centerY);
 	context.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
 	context.scale(
-		transform.flipHorizontal === true ? -1 : 1,
-		transform.flipVertical === true ? -1 : 1
+		(transform.flipHorizontal === true ? -1 : 1) * (transform.scaleX ?? 1),
+		(transform.flipVertical === true ? -1 : 1) * (transform.scaleY ?? 1)
 	);
 	const cornerRadius = Math.min(
 		Math.max(0, transform.cornerRadius ?? 0),
@@ -490,8 +490,8 @@ export class CanvasStackCompositor {
 		context.translate(geometry.centerX, geometry.centerY);
 		context.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
 		context.scale(
-			transform.flipHorizontal === true ? -1 : 1,
-			transform.flipVertical === true ? -1 : 1
+			(transform.flipHorizontal === true ? -1 : 1) * (transform.scaleX ?? 1),
+			(transform.flipVertical === true ? -1 : 1) * (transform.scaleY ?? 1)
 		);
 		drawCornerPinImage(
 			context,

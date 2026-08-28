@@ -260,6 +260,22 @@ describe('CanvasStackCompositor', () => {
 		stack.dispose();
 	});
 
+	it('applies render-time scale without changing source layout bounds', () => {
+		const output = document.createElement('canvas');
+		const stack = new CanvasStackCompositor(output);
+		stack.beginFrame(8, 8, '#00000000');
+		const source = solid('#ff0000');
+		const item = layer('normal');
+		item.transform = { ...item.transform, scaleX: 2, scaleY: 2 };
+
+		stack.compositeLayer({ source, width: 4, height: 4 }, item, 1, 0);
+
+		expect(pixelAt(output, 1, 1)).toEqual([255, 0, 0, 255]);
+		expect(item.transform.width).toBe(4);
+		expect(item.transform.height).toBe(4);
+		stack.dispose();
+	});
+
 	it('runs clip GPU effects before blending the transformed layer', () => {
 		const output = document.createElement('canvas');
 		const stack = new CanvasStackCompositor(output);

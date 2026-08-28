@@ -170,12 +170,17 @@ describe('applyMotionPreset', () => {
 		]);
 	});
 
-	it('rejects scale presets on text instead of causing layout reflow', () => {
+	it('applies scale presets to text without changing its layout box', () => {
 		timelineStore._setItems([item('title', { type: 'text', text: 'Hello' })]);
-		expect(apply(['title'], 'pop-in')).toEqual({
-			ok: false,
-			reason: 'incompatible'
+		expect(apply(['title'], 'pop-in')).toEqual({ ok: true, appliedKeyframes: 6 });
+		expect(timelineStore.itemById.get('title')).toMatchObject({
+			transform: { width: 400, height: 300 },
+			keyframes: {
+				scaleX: { frames: [0, 15], values: [0.6, 1] },
+				scaleY: { frames: [0, 15], values: [0.6, 1] }
+			}
 		});
-		expect(commandHistory.undoStack).toHaveLength(0);
+		expect(timelineStore.itemById.get('title')?.keyframes?.width).toBeUndefined();
+		expect(timelineStore.itemById.get('title')?.keyframes?.height).toBeUndefined();
 	});
 });

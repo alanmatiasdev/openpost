@@ -69,6 +69,9 @@ export interface ItemTransform {
 	y?: number;
 	width?: number;
 	height?: number;
+	/** Render-time scale that does not change media or text layout bounds. */
+	scaleX?: number;
+	scaleY?: number;
 	anchorX?: number;
 	anchorY?: number;
 	rotation?: number;
@@ -97,7 +100,15 @@ export interface TransformParentBinding {
 }
 
 export type MotionModifierType = 'float-drift' | 'breath-pulse' | 'micro-shake' | 'sway' | 'spin';
-export type MotionModifierChannel = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity';
+export type MotionModifierChannel =
+	| 'x'
+	| 'y'
+	| 'width'
+	| 'height'
+	| 'scaleX'
+	| 'scaleY'
+	| 'rotation'
+	| 'opacity';
 export type MotionModifierChannelGains = Partial<Record<MotionModifierChannel, number>>;
 
 export interface MotionModifier {
@@ -119,6 +130,8 @@ export const TRANSFORM_ANIMATABLE_PROPERTIES = [
 	'y',
 	'width',
 	'height',
+	'scaleX',
+	'scaleY',
 	'anchorX',
 	'anchorY',
 	'rotation',
@@ -295,6 +308,8 @@ export type BuiltInKeyframeProperty =
 	| 'y'
 	| 'width'
 	| 'height'
+	| 'scaleX'
+	| 'scaleY'
 	| 'anchorX'
 	| 'anchorY'
 	| 'rotation'

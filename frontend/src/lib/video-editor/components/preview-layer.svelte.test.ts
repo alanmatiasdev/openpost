@@ -374,6 +374,33 @@ describe('PreviewLayer GPU rendering', () => {
 		expect(layer?.style.transform).toContain('rotate(4deg)');
 	});
 
+	it('scales text motion without changing the text layout box', async () => {
+		const title = textItem({
+			effects: [],
+			keyframes: {
+				scaleX: { frames: [0], values: [0.6] },
+				scaleY: { frames: [0], values: [0.6] }
+			}
+		});
+		editorSession.project = project(title);
+		timelineStore.setAll({
+			items: [title],
+			tracks: editorSession.project.timeline?.tracks,
+			fps: 30,
+			currentFrame: 0
+		});
+		await render(PreviewLayer, {
+			item: title,
+			canvasWidth: WIDTH,
+			canvasHeight: HEIGHT,
+			onselect: vi.fn()
+		});
+		const layer = document.querySelector<HTMLElement>('[data-preview-item="title"]');
+		expect(layer?.style.width).toBe('100%');
+		expect(layer?.style.height).toBe('100%');
+		expect(layer?.style.transform).toContain('scaleX(0.6) scaleY(0.6)');
+	});
+
 	it('mutes embedded video audio when a synced audio companion owns playback', async () => {
 		const video: TimelineItem = {
 			...textItem({

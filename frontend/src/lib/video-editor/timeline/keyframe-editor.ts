@@ -83,6 +83,8 @@ export const PROPERTY_VALUE_RANGES = {
 	y: { min: -1000, max: 2000, unit: 'px', decimals: 0 },
 	width: { min: 0, max: 2000, unit: 'px', decimals: 0 },
 	height: { min: 0, max: 2000, unit: 'px', decimals: 0 },
+	scaleX: { min: 0, max: 10, unit: 'x', decimals: 2 },
+	scaleY: { min: 0, max: 10, unit: 'x', decimals: 2 },
 	anchorX: { min: -1000, max: 2000, unit: 'px', decimals: 0 },
 	anchorY: { min: -1000, max: 2000, unit: 'px', decimals: 0 },
 	rotation: { min: -360, max: 360, unit: '°', decimals: 1 },

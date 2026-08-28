@@ -14,7 +14,6 @@ import { transitionsStore } from './transitions-store.svelte';
 import {
 	getMotionPresetAnchorFrame,
 	MOTION_PRESETS,
-	motionPresetScalesBox,
 	motionPresetById,
 	type MotionPreset,
 	type MotionPresetId,
@@ -80,9 +79,7 @@ const VISUAL_ITEM_TYPES = new Set<TimelineItem['type']>([
 ]);
 
 export function canApplyMotionPreset(item: TimelineItem, preset: MotionPreset): boolean {
-	return (
-		VISUAL_ITEM_TYPES.has(item.type) && !(item.type === 'text' && motionPresetScalesBox(preset))
-	);
+	return VISUAL_ITEM_TYPES.has(item.type);
 }
 
 export function applyMotionPreset(options: ApplyMotionPresetOptions): ApplyMotionPresetResult {
@@ -181,6 +178,8 @@ function resolvedMotionTransform(
 		y: item.transform?.y ?? 0,
 		width: Math.max(1, item.transform?.width ?? item.sourceWidth ?? frameWidth),
 		height: Math.max(1, item.transform?.height ?? item.sourceHeight ?? frameHeight),
+		scaleX: item.transform?.scaleX ?? 1,
+		scaleY: item.transform?.scaleY ?? 1,
 		rotation: item.transform?.rotation ?? 0,
 		opacity: item.transform?.opacity ?? 1
 	};

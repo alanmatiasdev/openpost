@@ -47,6 +47,8 @@ const VISUAL_PROPERTIES: KeyframeProperty[] = [
 	'y',
 	'width',
 	'height',
+	'scaleX',
+	'scaleY',
 	'anchorX',
 	'anchorY',
 	'rotation',
@@ -195,6 +197,8 @@ export function resolveAnimatedItemLocalAt(
 			y: transform.y ?? 0,
 			width: Math.max(1, transform.width ?? resolved.sourceWidth ?? motionContext.frameWidth),
 			height: Math.max(1, transform.height ?? resolved.sourceHeight ?? motionContext.frameHeight),
+			scaleX: transform.scaleX ?? 1,
+			scaleY: transform.scaleY ?? 1,
 			rotation: transform.rotation ?? 0,
 			opacity: transform.opacity ?? 1
 		};
@@ -223,6 +227,8 @@ export function resolvedTransformForItem(
 		y: transform.y ?? 0,
 		width,
 		height,
+		scaleX: transform.scaleX ?? 1,
+		scaleY: transform.scaleY ?? 1,
 		anchorX: transform.anchorX ?? width / 2,
 		anchorY: transform.anchorY ?? height / 2,
 		rotation: transform.rotation ?? 0,

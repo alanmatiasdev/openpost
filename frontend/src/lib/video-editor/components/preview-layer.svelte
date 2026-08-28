@@ -220,7 +220,7 @@
 			`top:${50 + ((transform.y ?? 0) / canvasHeight) * 100}%`,
 			`width:${(width / canvasWidth) * 100}%`,
 			`height:${(height / canvasHeight) * 100}%`,
-			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${transform.rotation ?? 0}deg) scaleX(${transform.flipHorizontal ? -1 : 1}) scaleY(${transform.flipVertical ? -1 : 1})`,
+			`transform:translate(${(-anchorX / width) * 100}%,${(-anchorY / height) * 100}%) rotate(${transform.rotation ?? 0}deg) scaleX(${(transform.flipHorizontal ? -1 : 1) * (transform.scaleX ?? 1)}) scaleY(${(transform.flipVertical ? -1 : 1) * (transform.scaleY ?? 1)})`,
 			`opacity:${
 				deferEffects
 					? 0

@@ -297,6 +297,10 @@
 				return resolved.transform?.width ?? source.sourceWidth ?? frameWidth;
 			case 'height':
 				return resolved.transform?.height ?? source.sourceHeight ?? frameHeight;
+			case 'scaleX':
+				return resolved.transform?.scaleX ?? 1;
+			case 'scaleY':
+				return resolved.transform?.scaleY ?? 1;
 			case 'anchorX':
 				return (
 					resolved.transform?.anchorX ??

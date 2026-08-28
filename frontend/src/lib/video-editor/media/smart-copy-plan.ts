@@ -152,6 +152,8 @@ function neutralTransform(item: TimelineItem, media: MediaMetadata): boolean {
 		closeTo(transform.rotation ?? 0, 0) &&
 		!transform.flipHorizontal &&
 		!transform.flipVertical &&
+		closeTo(transform.scaleX ?? 1, 1) &&
+		closeTo(transform.scaleY ?? 1, 1) &&
 		closeTo(transform.opacity ?? 1, 1) &&
 		closeTo(transform.cornerRadius ?? 0, 0)
 	);

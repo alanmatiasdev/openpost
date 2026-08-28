@@ -17,7 +17,6 @@
 	import {
 		MOTION_PRESET_CATEGORIES,
 		MOTION_PRESETS,
-		motionPresetScalesBox,
 		type MotionPreset,
 		type MotionPresetCategory,
 		type MotionPresetId
@@ -147,6 +146,8 @@
 		y: m.video_editor_motion_channel_y(),
 		width: m.video_editor_motion_channel_width(),
 		height: m.video_editor_motion_channel_height(),
+		scaleX: `${m.video_editor_expression_scale()} X`,
+		scaleY: `${m.video_editor_expression_scale()} Y`,
 		rotation: m.video_editor_motion_channel_rotation(),
 		opacity: m.video_editor_motion_channel_opacity()
 	});
@@ -157,9 +158,6 @@
 
 	function disabledReason(preset: MotionPreset): string | null {
 		if (selectedItems.length === 0) return m.video_editor_motion_select_clip();
-		if (selectedItems.some((item) => item.type === 'text') && motionPresetScalesBox(preset)) {
-			return m.video_editor_motion_text_incompatible();
-		}
 		if (selectedItems.some((item) => !canApplyMotionPreset(item, preset))) {
 			return m.video_editor_motion_incompatible();
 		}
@@ -168,9 +166,6 @@
 
 	function modulatorReason(modulator: MotionModulator): string | null {
 		if (selectedItems.length === 0) return m.video_editor_motion_select_clip();
-		if (modulator.scalesBox && selectedItems.some((item) => item.type === 'text')) {
-			return m.video_editor_motion_text_incompatible();
-		}
 		if (
 			selectedItems.some(
 				(item) =>

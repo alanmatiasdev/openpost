@@ -3888,6 +3888,8 @@
 			case 'y':
 			case 'width':
 			case 'height':
+			case 'scaleX':
+			case 'scaleY':
 			case 'anchorX':
 			case 'anchorY':
 			case 'rotation':

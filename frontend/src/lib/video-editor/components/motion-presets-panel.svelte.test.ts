@@ -225,20 +225,19 @@ describe('MotionPresetsPanel', () => {
 		expect(input.onedit).toHaveBeenCalledTimes(1);
 	});
 
-	it('disables box-scale presets for text with a clear reason', async () => {
+	it('offers scale presets and live breathing for text', async () => {
 		timelineStore.setAll({ items: [item('one', { type: 'text', text: 'Headline' })] });
 		await render(MotionPresetsPanel, props());
 		const pop = document.querySelector<HTMLButtonElement>('button[aria-label="Replace Pop in"]');
 		expect(pop).not.toBeNull();
-		expect(pop?.disabled).toBe(true);
-		expect(pop?.title).toBe('This preset changes the text box size and could reflow the text.');
+		expect(pop?.disabled).toBe(false);
 		expect(
 			document.querySelector<HTMLButtonElement>('button[aria-label="Replace Fade in"]')?.disabled
 		).toBe(false);
 		expect(
 			document.querySelector<HTMLButtonElement>('button[aria-label="Apply live Breath pulse"]')
 				?.disabled
-		).toBe(true);
+		).toBe(false);
 	});
 
 	it('reports transition overlap without saving or partly applying', async () => {
