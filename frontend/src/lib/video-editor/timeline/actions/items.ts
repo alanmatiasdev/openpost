@@ -688,6 +688,14 @@ export function updateMarker(
 	return true;
 }
 
+export function selectMarker(id: string): boolean {
+	const marker = timelineStore.markers.find((candidate) => candidate.id === id);
+	if (!marker) return false;
+	timelineStore._setSelectedMarkerId(id);
+	setCurrentFrame(marker.frame);
+	return true;
+}
+
 export function clearAllMarkers(): boolean {
 	if (timelineStore.markers.length === 0) return false;
 	execute('CLEAR_MARKERS', () => timelineStore._setMarkers([]));

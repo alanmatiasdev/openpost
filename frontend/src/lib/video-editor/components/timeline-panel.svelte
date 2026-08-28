@@ -12,6 +12,7 @@
 		addMarker,
 		setCurrentFrame,
 		removeMarker,
+		selectMarker as selectMarkerAction,
 		updateMarker,
 		joinItems,
 		linkItems,
@@ -65,6 +66,7 @@
 		isAnimatedImageMedia
 	} from '$lib/video-editor/media/animated-image-plan';
 	import FilmstripTile from './filmstrip-tile.svelte';
+	import MarkerListPopover from './marker-list-popover.svelte';
 	import TimelineFadeHandles from './timeline-fade-handles.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
@@ -1627,11 +1629,10 @@
 	}
 
 	function selectMarker(marker: TimelineMarker): void {
-		timelineStore._setSelectedMarkerId(marker.id);
+		if (!selectMarkerAction(marker.id)) return;
 		selectedItemId = null;
 		selectedItemIds = [];
 		selectedTransitionId = null;
-		setCurrentFrame(marker.frame);
 	}
 
 	function addMarkerAtPlayhead(): void {
@@ -4146,6 +4147,7 @@
 		>
 			<ChevronRightIcon class="size-3.5" />
 		</Button>
+		<MarkerListPopover {onedit} onselect={selectMarker} />
 		<Button
 			variant="ghost"
 			size="icon"

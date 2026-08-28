@@ -15,6 +15,7 @@ import {
 	removeItems,
 	removeMarker,
 	rippleDeleteItems,
+	selectMarker,
 	setCurrentFrame,
 	setItemSpeed,
 	setItemsReversed,
@@ -63,6 +64,10 @@ describe('timeline marker actions', () => {
 		});
 		commandHistory.undo();
 		expect(timelineStore.markers[0]).toMatchObject({ id: first, frame: 12 });
+		expect(selectMarker(second)).toBe(true);
+		expect(timelineStore.selectedMarkerId).toBe(second);
+		expect(timelineStore.currentFrame).toBe(42);
+		expect(selectMarker('missing')).toBe(false);
 
 		timelineStore._setSelectedMarkerId(first);
 		removeMarker(first);
