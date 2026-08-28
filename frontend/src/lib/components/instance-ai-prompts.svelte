@@ -80,7 +80,7 @@
 			sections.push(`Platform instructions:\n[${previewPlatform}]\n${platformValue}`);
 		}
 		if (fixedOutputContract) {
-			sections.push(`[${m.settings_ai_prompts_output_rules()}]\n${fixedOutputContract}`);
+			sections.push(fixedOutputContract);
 		}
 		return sections.filter(Boolean).join('\n\n');
 	});
@@ -164,6 +164,13 @@
 		return data;
 	}
 
+	function showSaveError(cause: unknown) {
+		showToast(
+			cause instanceof Error ? cause.message : m.settings_ai_prompts_save_failed(),
+			'error'
+		);
+	}
+
 	async function saveSelected() {
 		if (!selected || !selectedDirty || saving) return;
 		saving = true;
@@ -171,10 +178,7 @@
 			await saveValue(selected, selectedDraft);
 			showToast(m.settings_ai_prompts_saved(), 'success');
 		} catch (cause) {
-			showToast(
-				cause instanceof Error ? cause.message : m.settings_ai_prompts_save_failed(),
-				'error'
-			);
+			showSaveError(cause);
 		} finally {
 			saving = false;
 		}
@@ -192,19 +196,11 @@
 				onAction: () => {
 					void saveValue(reset, previous)
 						.then(() => showToast(m.settings_ai_prompts_saved(), 'success'))
-						.catch((cause) => {
-							showToast(
-								cause instanceof Error ? cause.message : m.settings_ai_prompts_save_failed(),
-								'error'
-							);
-						});
+						.catch(showSaveError);
 				}
 			});
 		} catch (cause) {
-			showToast(
-				cause instanceof Error ? cause.message : m.settings_ai_prompts_save_failed(),
-				'error'
-			);
+			showSaveError(cause);
 		} finally {
 			resetting = false;
 		}
@@ -293,7 +289,7 @@
 						value={selectedDraft}
 						oninput={(event) => (drafts[selected.key] = event.currentTarget.value)}
 						maxlength={20000}
-						class="min-h-80 resize-y font-mono text-sm leading-6"
+						class="min-h-80 resize-y text-sm leading-6"
 					/>
 					{#if selected.overridden && selected.updated_at}
 						<p class="text-xs text-muted-foreground">
@@ -302,6 +298,20 @@
 								date: formatDate(selected.updated_at)
 							})}
 						</p>
+					{/if}
+					{#if selected.overridden}
+						<details class="rounded-md border bg-muted/20">
+							<summary
+								class="flex min-h-11 cursor-pointer list-none items-center px-3 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								{m.settings_ai_prompts_builtin_default()}
+							</summary>
+							<p
+								class="border-t px-3 py-3 text-sm leading-6 whitespace-pre-wrap text-muted-foreground"
+							>
+								{selected.default_value}
+							</p>
+						</details>
 					{/if}
 				</div>
 
@@ -332,7 +342,7 @@
 								</div>
 							</div>
 							<pre
-								class="max-h-96 overflow-auto rounded-md bg-background p-4 font-mono text-xs leading-5 whitespace-pre-wrap text-foreground">{effectivePreview}</pre>
+								class="max-h-96 overflow-auto rounded-md bg-background p-4 text-sm leading-6 whitespace-pre-wrap text-foreground">{effectivePreview}</pre>
 						</div>
 					</details>
 				</div>
