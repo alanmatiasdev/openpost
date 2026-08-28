@@ -1035,6 +1035,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			const enabled = !timelineStore.snapEnabled;
 			timelineStore._setSnapEnabled(enabled);
 			emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
+		} else if (matches('TOGGLE_CANVAS_SNAP')) {
+			event.preventDefault();
+			const enabled = !editorSettings.canvasSnapEnabled;
+			editorSettings.set('canvasSnapEnabled', enabled);
+			emitEditorSound(enabled ? 'toggleOn' : 'toggleOff', editorSession.clock.isPlaying);
 		} else if (
 			matches('DELETE_SELECTED', 'DELETE_SELECTED_ALT', 'RIPPLE_DELETE', 'RIPPLE_DELETE_ALT')
 		) {

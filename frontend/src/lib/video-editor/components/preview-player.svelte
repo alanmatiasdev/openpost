@@ -11,6 +11,7 @@
 	} from '$lib/video-editor/project/types';
 	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -1335,7 +1336,7 @@
 								{canvasHeight}
 								currentFrame={timelineStore.currentFrame}
 								{isPlaying}
-								snappingEnabled={timelineStore.snapEnabled}
+								snappingEnabled={editorSettings.canvasSnapEnabled}
 								snapItems={activeItems}
 								ontransformdraft={(value) => (groupDraftTransforms = value)}
 								oncommit={commitGroupTransforms}
@@ -1343,7 +1344,8 @@
 									selectedItemId = itemId;
 									selectedItemIds = [itemId];
 								}}
-								ontogglesnapping={() => timelineStore._setSnapEnabled(!timelineStore.snapEnabled)}
+								ontogglesnapping={() =>
+									editorSettings.set('canvasSnapEnabled', !editorSettings.canvasSnapEnabled)}
 								{onedit}
 							/>
 						{:else if selectedResolved && !selectedTrackLocked}
@@ -1369,7 +1371,7 @@
 									{canvasWidth}
 									{canvasHeight}
 									snapItems={activeItems}
-									snappingEnabled={timelineStore.snapEnabled}
+									snappingEnabled={editorSettings.canvasSnapEnabled}
 									currentFrame={timelineStore.currentFrame}
 									{isPlaying}
 									ontransformdraft={(value) => (draftTransform = value)}

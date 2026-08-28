@@ -47,6 +47,15 @@ describe('keyboard shortcuts', () => {
 		).toBe('ripple');
 	});
 
+	it('keeps timeline and canvas snapping on separate FreeCut-compatible bindings', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.TOGGLE_SNAP).toBe('s');
+		expect(bindings.TOGGLE_CANVAS_SNAP).toBe('shift+s');
+		expect(
+			findShortcutConflicts(bindings, bindings.TOGGLE_CANVAS_SNAP, 'TOGGLE_CANVAS_SNAP')
+		).toEqual([]);
+	});
+
 	it('reports command and browser conflicts before a binding is replaced', () => {
 		const bindings = resolveEditorShortcuts({ PLAY_PAUSE: 'mod+s' });
 		expect(findShortcutConflicts(bindings, 'mod+s', 'PLAY_PAUSE')).toEqual(['SAVE']);

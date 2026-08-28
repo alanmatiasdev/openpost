@@ -25,6 +25,7 @@ export interface EditorSettingsValue {
 	maxUndoHistory: number;
 	autoSaveIntervalMinutes: number;
 	snapByDefault: boolean;
+	canvasSnapEnabled: boolean;
 	showWaveforms: boolean;
 	showFilmstrips: boolean;
 	extractFilmstrips: boolean;
@@ -40,6 +41,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
 	maxUndoHistory: 100,
 	autoSaveIntervalMinutes: 5,
 	snapByDefault: true,
+	canvasSnapEnabled: true,
 	showWaveforms: true,
 	showFilmstrips: true,
 	extractFilmstrips: true,
@@ -130,6 +132,10 @@ export function normalizeEditorSettings(value: JsonValue): EditorSettingsValue {
 			typeof record.snapByDefault === 'boolean'
 				? record.snapByDefault
 				: DEFAULT_EDITOR_SETTINGS.snapByDefault,
+		canvasSnapEnabled:
+			typeof record.canvasSnapEnabled === 'boolean'
+				? record.canvasSnapEnabled
+				: DEFAULT_EDITOR_SETTINGS.canvasSnapEnabled,
 		showWaveforms:
 			typeof record.showWaveforms === 'boolean'
 				? record.showWaveforms
@@ -203,6 +209,9 @@ export function createEditorSettingsStore(storage: SettingsStorage | null = brow
 		},
 		get snapByDefault(): boolean {
 			return state.snapByDefault;
+		},
+		get canvasSnapEnabled(): boolean {
+			return state.canvasSnapEnabled;
 		},
 		get showWaveforms(): boolean {
 			return state.showWaveforms;

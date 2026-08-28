@@ -387,9 +387,13 @@
 				'flex size-11 shrink-0 items-center justify-center rounded text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white md:size-7 [@media(pointer:coarse)]:size-11',
 				snappingEnabled && 'bg-white/15 text-white'
 			]}
-			aria-label={snappingEnabled ? m.video_editor_snap_disable() : m.video_editor_snap_enable()}
+			aria-label={snappingEnabled
+				? m.video_editor_canvas_snap_disable()
+				: m.video_editor_canvas_snap_enable()}
 			aria-pressed={snappingEnabled}
-			title={snappingEnabled ? m.video_editor_snap_disable() : m.video_editor_snap_enable()}
+			title={snappingEnabled
+				? m.video_editor_canvas_snap_disable()
+				: m.video_editor_canvas_snap_enable()}
 			onclick={ontogglesnapping}
 		>
 			<MagnetIcon class="size-3.5" aria-hidden="true" />

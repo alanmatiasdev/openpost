@@ -121,6 +121,7 @@
 		EXPORT: m.video_editor_shortcuts_command_export,
 		OPEN_SETTINGS: m.video_editor_shortcuts_command_settings,
 		TOGGLE_SNAP: m.video_editor_shortcuts_command_snap,
+		TOGGLE_CANVAS_SNAP: m.video_editor_shortcuts_command_canvas_snap,
 		WORKSPACE_EDIT: m.video_editor_shortcuts_command_workspace_edit,
 		WORKSPACE_COLOR: m.video_editor_shortcuts_command_workspace_color,
 		WORKSPACE_MOTION: m.video_editor_shortcuts_command_workspace_motion,

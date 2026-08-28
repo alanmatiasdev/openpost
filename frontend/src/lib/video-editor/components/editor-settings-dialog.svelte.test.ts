@@ -219,6 +219,12 @@ describe('EditorSettingsDialog', () => {
 		await expect.element(waveforms).toHaveAttribute('aria-checked', 'true');
 		await waveforms.click();
 		expect(editorSettings.showWaveforms).toBe(false);
+		const canvasSnapping = screen.getByRole('switch', { name: 'Snap canvas objects' });
+		await expect.element(canvasSnapping).toHaveAttribute('aria-checked', 'true');
+		timelineStore._setSnapEnabled(false);
+		await canvasSnapping.click();
+		expect(editorSettings.canvasSnapEnabled).toBe(false);
+		expect(timelineStore.snapEnabled).toBe(false);
 
 		await screen.getByRole('button', { name: 'Local AI' }).click();
 		await screen.getByRole('button', { name: 'Speech model' }).click();

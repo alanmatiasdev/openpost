@@ -19,6 +19,7 @@ import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { createMotionAnimationLayer } from '../timeline/motion-layer-eval';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { updateProjectCanvas } from '../project/canvas-settings';
+import { editorSettings } from '../settings/editor-settings.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -169,6 +170,7 @@ afterEach(async () => {
 	timelinePreviewScrub.__resetForTesting();
 	spatialEffectEditorStore.__resetForTesting();
 	commandHistory.clearHistory();
+	editorSettings.reset();
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -199,6 +201,53 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('keeps the canvas magnet independent from timeline snapping', async () => {
+		await page.viewport(1000, 700);
+		const bottom = colorLayer('bottom', 'bottom-track', '#ff0000');
+		const top = colorLayer('top', 'top-track', '#0000ff');
+		bottom.transform = { x: -100, y: 0, width: 100, height: 100 };
+		top.transform = { x: 100, y: 0, width: 100, height: 100 };
+		const project: Project = {
+			id: 'independent-snap-project',
+			name: 'Independent snap project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [track('top-track', 0), track('bottom-track', 1)],
+				items: [bottom, top]
+			}
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [bottom, top],
+			tracks: project.timeline!.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		timelineStore._setSnapEnabled(false);
+		editorSettings.set('canvasSnapEnabled', true);
+
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: top.id,
+			selectedItemIds: [bottom.id, top.id],
+			onedit: vi.fn()
+		});
+		const canvasMagnet = screen.getByRole('button', {
+			name: 'Disable canvas snapping (Shift+S)'
+		});
+		await expect.element(canvasMagnet).toHaveAttribute('aria-pressed', 'true');
+		await canvasMagnet.click();
+
+		expect(editorSettings.canvasSnapEnabled).toBe(false);
+		expect(timelineStore.snapEnabled).toBe(false);
+		await expect
+			.element(screen.getByRole('button', { name: 'Enable canvas snapping (Shift+S)' }))
+			.toHaveAttribute('aria-pressed', 'false');
+	});
+
 	it('selects a buried overlapping layer from the canvas context menu', async () => {
 		await page.viewport(1000, 700);
 		const bottom = colorLayer('bottom', 'bottom-track', '#ff0000');

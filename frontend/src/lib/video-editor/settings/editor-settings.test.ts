@@ -71,6 +71,18 @@ describe('editor settings', () => {
 		expect(createEditorSettingsStore(storage).defaultCaptionStylePresetId).toBe('tiktok');
 	});
 
+	it('persists canvas snapping independently from the timeline default', () => {
+		const storage = memoryStorage();
+		const settings = createEditorSettingsStore(storage);
+		settings.set('snapByDefault', false);
+		settings.set('canvasSnapEnabled', true);
+
+		const restored = createEditorSettingsStore(storage);
+		expect(restored.snapByDefault).toBe(false);
+		expect(restored.canvasSnapEnabled).toBe(true);
+		expect(normalizeEditorSettings({ canvasSnapEnabled: 'yes' }).canvasSnapEnabled).toBe(true);
+	});
+
 	it('persists changes and resets the complete settings document', () => {
 		const storage = memoryStorage();
 		const first = createEditorSettingsStore(storage);

@@ -83,7 +83,12 @@
 	];
 
 	function setBoolean(
-		key: 'snapByDefault' | 'showWaveforms' | 'showFilmstrips' | 'extractFilmstrips',
+		key:
+			| 'snapByDefault'
+			| 'canvasSnapEnabled'
+			| 'showWaveforms'
+			| 'showFilmstrips'
+			| 'extractFilmstrips',
 		value: boolean
 	): void {
 		editorSettings.set(key, value);
@@ -404,7 +409,7 @@
 						<h3 id="settings-timeline-title" class="text-sm font-medium">
 							{m.video_editor_settings_timeline()}
 						</h3>
-						{#each [{ key: 'snapByDefault' as const, label: m.video_editor_settings_snap_default(), description: m.video_editor_settings_snap_default_description(), value: editorSettings.snapByDefault }, { key: 'showWaveforms' as const, label: m.video_editor_settings_show_waveforms(), description: m.video_editor_settings_show_waveforms_description(), value: editorSettings.showWaveforms }, { key: 'showFilmstrips' as const, label: m.video_editor_settings_show_filmstrips(), description: m.video_editor_settings_show_filmstrips_description(), value: editorSettings.showFilmstrips }, { key: 'extractFilmstrips' as const, label: m.video_editor_settings_extract_filmstrips(), description: m.video_editor_settings_extract_filmstrips_description(), value: editorSettings.extractFilmstrips }] as setting (setting.key)}
+						{#each [{ key: 'snapByDefault' as const, label: m.video_editor_settings_snap_default(), description: m.video_editor_settings_snap_default_description(), value: editorSettings.snapByDefault }, { key: 'canvasSnapEnabled' as const, label: m.video_editor_settings_canvas_snap(), description: m.video_editor_settings_canvas_snap_description(), value: editorSettings.canvasSnapEnabled }, { key: 'showWaveforms' as const, label: m.video_editor_settings_show_waveforms(), description: m.video_editor_settings_show_waveforms_description(), value: editorSettings.showWaveforms }, { key: 'showFilmstrips' as const, label: m.video_editor_settings_show_filmstrips(), description: m.video_editor_settings_show_filmstrips_description(), value: editorSettings.showFilmstrips }, { key: 'extractFilmstrips' as const, label: m.video_editor_settings_extract_filmstrips(), description: m.video_editor_settings_extract_filmstrips_description(), value: editorSettings.extractFilmstrips }] as setting (setting.key)}
 							<div
 								class="flex items-center justify-between gap-4 rounded-lg border border-[oklch(0.29_0.014_55)] px-4 py-3"
 							>
