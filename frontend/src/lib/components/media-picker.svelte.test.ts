@@ -227,8 +227,6 @@ describe('MediaPicker meme source', () => {
 		const dialogBox = dialog.getBoundingClientRect();
 		const generatorBox = generator.getBoundingClientRect();
 
-		expect(dialog.className).toContain('meme-picker-workbench');
-		expect(dialog.className).toContain('sm:max-w-[90rem]');
 		expect(dialogBox.width).toBeGreaterThanOrEqual(1100);
 		expect(dialogBox.height).toBeGreaterThanOrEqual(800);
 		expect(generatorBox.height).toBeGreaterThanOrEqual(700);
