@@ -1016,9 +1016,10 @@
 		<div class="px-4 py-4 lg:px-6" style="container-type: inline-size;">
 			<PageHeader
 				title={formatCalendarTitle()}
-				titleClass="min-w-max shrink-0 whitespace-nowrap"
+				contentClass="min-w-max shrink-0"
+				titleClass="whitespace-nowrap"
 				loading={initialLoading}
-				class="gap-2"
+				class="flex-wrap gap-2"
 			>
 				{#snippet actions()}
 					<div class="flex flex-wrap items-center gap-1.5">
