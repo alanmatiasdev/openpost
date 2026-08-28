@@ -195,3 +195,20 @@ test("Video Editor restores its workspace before a direct new-project handoff", 
   await expect(page.getByText("Direct handoff")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 });
+
+test("Video Editor quick export saves an MP4 in the workspace", async ({ page }) => {
+  test.setTimeout(90_000);
+  const projectName = "Quick export proof";
+  await createProject(page, projectName);
+  await page.getByRole("button", { name: "Add text" }).click();
+
+  const exportButton = page.getByRole("button", { name: "Export MP4" });
+  await exportButton.click();
+  await expect(page.getByText(`Saved ${projectName}.mp4 to the exports folder.`)).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByRole("button", { name: "Exports" }).click();
+  await expect(page.getByText(`${projectName}.mp4`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Download ${projectName}.mp4` })).toBeEnabled();
+});
