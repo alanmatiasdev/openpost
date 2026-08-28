@@ -78,6 +78,7 @@ export interface RecorderSelection {
 export interface RecorderStartOptions {
 	cameraDeviceId?: string | null;
 	microphoneDeviceId?: string | null;
+	onDeviceFallback?: (kind: 'camera' | 'microphone') => void;
 	includeSystemAudio?: boolean;
 	cursorMode?: CursorMode;
 	countdownSeconds?: number;
@@ -164,6 +165,39 @@ function stopMediaStreams(streams: MediaStream[]): void {
 		for (const track of stream.getTracks()) track.stop();
 	}
 	streams.length = 0;
+}
+
+interface UserMediaRequestResult {
+	stream: MediaStream;
+	usedDeviceFallback: boolean;
+}
+
+async function requestUserMediaWithDeviceFallback(
+	deviceId: string | null,
+	constraints: (deviceId: string | null) => MediaStreamConstraints
+): Promise<UserMediaRequestResult> {
+	try {
+		return {
+			stream: await navigator.mediaDevices.getUserMedia(constraints(deviceId)),
+			usedDeviceFallback: false
+		};
+	} catch (error) {
+		if (!deviceId || !(error instanceof DOMException) || error.name !== 'OverconstrainedError') {
+			throw error;
+		}
+		return {
+			stream: await navigator.mediaDevices.getUserMedia(constraints(null)),
+			usedDeviceFallback: true
+		};
+	}
+}
+
+function notifyDeviceFallback(options: RecorderStartOptions, kind: 'camera' | 'microphone'): void {
+	try {
+		options.onDeviceFallback?.(kind);
+	} catch (error) {
+		logger.warn(`Could not notify ${kind} device fallback`, error);
+	}
 }
 
 export async function listRecorderDevices(): Promise<RecorderDeviceLists> {
@@ -361,34 +395,40 @@ export class ScreenCaptureRecorder {
 			if (selection.camera) {
 				const deviceId = options.cameraDeviceId ?? null;
 				const facingMode = options.cameraFacingMode ?? 'default';
-				const video: MediaTrackConstraints = preferredVideoConstraints(options);
-				if (deviceId) video.deviceId = { exact: deviceId };
-				else if (facingMode !== 'default') video.facingMode = { ideal: facingMode };
-				cameraStream = await navigator.mediaDevices.getUserMedia({
-					video,
-					audio: false
+				const cameraRequest = await requestUserMediaWithDeviceFallback(deviceId, (requestedId) => {
+					const video: MediaTrackConstraints = preferredVideoConstraints(options);
+					if (requestedId) video.deviceId = { exact: requestedId };
+					else if (facingMode !== 'default') video.facingMode = { ideal: facingMode };
+					return { video, audio: false };
 				});
+				cameraStream = cameraRequest.stream;
 				trackAcquired(cameraStream);
 				if (generation !== this.generation) {
 					cleanupStartStreams();
 					return;
 				}
+				if (cameraRequest.usedDeviceFallback) notifyDeviceFallback(options, 'camera');
 			}
 			if (selection.microphone) {
 				const deviceId = options.microphoneDeviceId ?? null;
-				micStream = await navigator.mediaDevices.getUserMedia({
-					audio: microphoneConstraints({
-						deviceId: deviceId ?? undefined,
-						noiseSuppression: options.noiseSuppression,
-						autoGainControl: options.autoGainControl
-					}),
-					video: false
-				});
+				const microphoneRequest = await requestUserMediaWithDeviceFallback(
+					deviceId,
+					(requestedId) => ({
+						audio: microphoneConstraints({
+							deviceId: requestedId ?? undefined,
+							noiseSuppression: options.noiseSuppression,
+							autoGainControl: options.autoGainControl
+						}),
+						video: false
+					})
+				);
+				micStream = microphoneRequest.stream;
 				trackAcquired(micStream);
 				if (generation !== this.generation) {
 					cleanupStartStreams();
 					return;
 				}
+				if (microphoneRequest.usedDeviceFallback) notifyDeviceFallback(options, 'microphone');
 			}
 		} catch (error) {
 			cleanupStartStreams();

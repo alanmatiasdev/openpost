@@ -305,6 +305,15 @@
 			await recorder.startWithSelection(selection, {
 				cameraDeviceId: cameraId || null,
 				microphoneDeviceId: micId || null,
+				onDeviceFallback: (kind) => {
+					if (kind === 'camera') {
+						cameraId = '';
+						preferences.set('cameraDeviceId', '');
+						return;
+					}
+					micId = '';
+					preferences.set('microphoneDeviceId', '');
+				},
 				includeSystemAudio,
 				cursorMode,
 				countdownSeconds,

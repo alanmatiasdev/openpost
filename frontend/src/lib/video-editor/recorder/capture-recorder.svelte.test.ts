@@ -257,13 +257,65 @@ describe('ScreenCaptureRecorder', () => {
 		getUserMedia.mockRejectedValueOnce(new DOMException('Denied', 'NotAllowedError'));
 		const recorder = new ScreenCaptureRecorder();
 		await expect(
-			recorder.startWithSelection({ screen: true, camera: true }, {})
+			recorder.startWithSelection(
+				{ screen: true, camera: true },
+				{ cameraDeviceId: 'selected-camera' }
+			)
 		).rejects.toMatchObject({ name: 'NotAllowedError' });
 		expect(recorder.error).toBe('permission-denied');
+		expect(getUserMedia).toHaveBeenCalledOnce();
 		expect(displayStream.getTracks().every((track) => track.stop.mock.calls.length === 1)).toBe(
 			true
 		);
 		expect(recorder.screenStream).toBeNull();
+	});
+
+	it('falls back to default inputs when saved camera and microphone devices disappeared', async () => {
+		let request = 0;
+		getUserMedia.mockImplementation(async (constraints: MediaStreamConstraints) => {
+			request += 1;
+			if (request === 1 || request === 3) {
+				throw new DOMException('Saved device is unavailable', 'OverconstrainedError');
+			}
+			return constraints.video ? mediaStream(cameraStream) : mediaStream(microphoneStream);
+		});
+		const onDeviceFallback = vi.fn();
+		const recorder = new ScreenCaptureRecorder();
+
+		await recorder.startWithSelection(
+			{ screen: false, camera: true, microphone: true },
+			{
+				cameraDeviceId: 'missing-camera',
+				microphoneDeviceId: 'missing-microphone',
+				onDeviceFallback
+			}
+		);
+
+		expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+			video: { deviceId: { exact: 'missing-camera' } },
+			audio: false
+		});
+		expect(getUserMedia).toHaveBeenNthCalledWith(2, { video: {}, audio: false });
+		expect(getUserMedia).toHaveBeenNthCalledWith(3, {
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+				deviceId: { exact: 'missing-microphone' }
+			},
+			video: false
+		});
+		expect(getUserMedia).toHaveBeenNthCalledWith(4, {
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false
+			},
+			video: false
+		});
+		expect(onDeviceFallback.mock.calls).toEqual([['camera'], ['microphone']]);
+		expect(recorder.status).toBe('recording');
+		await recorder.cancel();
 	});
 
 	it('cancels a countdown without starting MediaRecorder', async () => {
