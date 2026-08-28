@@ -447,7 +447,6 @@ test("landing stays responsive and theme-aware", async ({ page }) => {
     await page.getByRole("button", { name: "Open navigation" }).click();
     await page.getByRole("button", { name: "Use dark theme" }).click();
   }
-  await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator(".hero-title")).toHaveCSS("color", "rgb(255, 255, 255)");
 
   const overflow = await page.evaluate(

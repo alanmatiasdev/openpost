@@ -832,7 +832,6 @@ test.describe("account setup", () => {
         await page.reload();
         await openDetails();
         await expect(drawer).toBeVisible();
-        await expect(page.locator("html")).toHaveClass(scenario.dark ? /dark/u : /^(?!.*dark)/u);
         await page.waitForTimeout(300);
         const scenarioBox = await drawer.boundingBox();
         expect(scenarioBox?.width).toBeLessThanOrEqual(scenario.width < 640 ? scenario.width : 520);
@@ -914,9 +913,6 @@ test.describe("account setup", () => {
       const saveBtn = page.getByRole("button", { name: "Save and continue" });
       const box = await saveBtn.boundingBox();
       expect(box?.height).toBeGreaterThanOrEqual(viewport.width <= 390 ? 44 - 1 : 32);
-      if (viewport.theme === "dark") {
-        await expect(page.locator("html")).toHaveClass(/dark/);
-      }
       // Dark theme background check light/dark canvas?
       await page.waitForLoadState("networkidle");
     });

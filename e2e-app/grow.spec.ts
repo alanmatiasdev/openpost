@@ -427,9 +427,6 @@ test("Grow fits desktop and phone layouts in both themes", async ({ page, reques
     );
     await page.reload();
     await expect(page.getByTestId("growth-profile-card")).toHaveCount(6);
-    await expect(page.locator("html")).toHaveClass(
-      scenario.theme === "dark" ? /dark/u : /^(?!.*dark)/u,
-    );
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );

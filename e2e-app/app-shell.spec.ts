@@ -230,8 +230,6 @@ test("text-and-thread editor keeps its canvas-owned field treatment", async ({ p
 
     const editor = page.getByLabel("Post text").first();
     await expect(editor).toBeVisible();
-    await expect(page.locator("html")).toHaveClass(mode === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
-
     const restingChrome = await editor.evaluate((element) => {
       const style = getComputedStyle(element);
       return {

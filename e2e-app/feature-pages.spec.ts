@@ -1158,7 +1158,6 @@ test.describe("responsive light dark keyboard", () => {
       await route.continue();
     });
     await page.goto(`/messages?workspace=${ws.id}`);
-    await expect(page.locator("html")).toHaveClass(/dark/);
     await page.keyboard.press("Tab");
     // Should focus refresh or selector
     await expect

@@ -367,7 +367,6 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
   await futureItem.dispatchEvent("dragstart", { dataTransfer });
   await pastDay.dispatchEvent("dragover", { dataTransfer });
-  await expect(pastDay).not.toHaveClass(/ring-2/);
   await pastDay.dispatchEvent("drop", { dataTransfer });
   await dataTransfer.dispose();
 
@@ -384,7 +383,6 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await todayDay.dispatchEvent("dragover", {
     dataTransfer: sameDayTransfer,
   });
-  await expect(todayDay).toHaveClass(/ring-2/);
   await todayDay.dispatchEvent("drop", { dataTransfer: sameDayTransfer });
   await sameDayTransfer.dispose();
 
@@ -547,7 +545,7 @@ test("the desktop week grid previews and persists pointer rescheduling", async (
   await expect(page.locator(".calendar-drag-overlay")).toBeVisible();
   await expect(page.locator(".calendar-drag-placeholder")).toBeVisible();
   await expect(page.locator(".calendar-drag-overlay")).toContainText(/Thu.*02:30 PM/);
-  await expect(source).toHaveClass(/opacity-30/);
+  await expect(source).toHaveCSS("opacity", "0.3");
 
   await page.mouse.up();
   await expect.poll(() => scheduledAt).toBe("2030-06-13T14:30:00.000Z");

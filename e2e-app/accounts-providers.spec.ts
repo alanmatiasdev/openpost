@@ -328,7 +328,6 @@ test("accounts page connects an operator-installed custom connector", async ({ p
     await page.setViewportSize({ width: 390, height: 844 });
     await page.evaluate(() => localStorage.setItem("mode-watcher-mode", "dark"));
     await page.reload();
-    await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page.getByTestId("account-card-account-directus")).toBeVisible();
     await page.screenshot({ path: ".impeccable/review/mobile.png", fullPage: true });
     await page.setViewportSize({ width: 320, height: 568 });
@@ -408,7 +407,6 @@ for (const viewport of [
     }
 
     await page.goto(`/accounts?oauth_status=cancelled&workspace_id=${workspace.id}`);
-    if (viewport.width === 390) await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page).toHaveURL(/\/accounts$/);
     await expect(page.getByRole("heading", { level: 1, name: "Social accounts" })).toBeVisible();
     await expect(

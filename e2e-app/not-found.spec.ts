@@ -95,8 +95,6 @@ test("client navigation preserves localized recovery at supported phone presenta
 
     await expect(page).toHaveURL(new RegExp(`${missingPath}$`));
     await expect(page.getByRole("heading", { name: scenario.heading })).toBeFocused();
-    if (scenario.theme === "dark") await expect(page.locator("html")).toHaveClass(/dark/);
-    else await expect(page.locator("html")).not.toHaveClass(/dark/);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );

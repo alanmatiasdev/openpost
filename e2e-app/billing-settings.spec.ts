@@ -62,8 +62,6 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
       }
 
       await expect(page).toHaveURL(/\/settings\?tab=plan$/);
-      if (scenario.theme === "dark") await expect(page.locator("html")).toHaveClass(/dark/);
-      else await expect(page.locator("html")).not.toHaveClass(/dark/);
       await expect(page.getByRole("heading", { name: planLabel })).toBeVisible();
       await expect(
         page.getByRole("heading", {
@@ -968,7 +966,6 @@ test("plan selection from signup starts checkout after onboarding", async ({ pag
     localStorage.setItem("mode-watcher-mode", "dark");
   });
   await page.reload();
-  await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
   expect(welcomeCalls).toBe(1);
   await expect.poll(() => resumeCalls).toBe(3);

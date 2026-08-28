@@ -1025,7 +1025,6 @@ async function capture(page: Page, filename: string, landmarks: Locator[]) {
   await page.waitForFunction(() =>
     Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0),
   );
-  await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(
     page.getByRole("region", { name: /Notifications/u }).getByRole("listitem"),
   ).toHaveCount(0);

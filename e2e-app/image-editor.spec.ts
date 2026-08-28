@@ -1946,7 +1946,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
       },
     ],
   });
-  await expect(paintBucketRow).toHaveClass(/opacity-60/);
+  await expect(paintBucketRow).toHaveCSS("opacity", "0.6");
   await page.waitForTimeout(60);
   await touch.send("Input.dispatchTouchEvent", {
     type: "touchMove",
