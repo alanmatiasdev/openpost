@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.6.2] - 2026-08-28
+
+### Changed
+
+- Document the disk-backed Video Editor, Quick Cut, Recorder, local models, export queue, and explicit Media handoff without retired cloud-project or return-token claims.
+
+### Fixed
+
+- Keep transcript cuts from removing or retiming captions tied to clips on locked tracks.
+- Keep corrected auto-caption lines, transcript search, karaoke, and edit-by-transcript words in sync while retaining usable word timing.
+- Keep auto-caption word timing inside edited cue bounds and treat a cleared word as deletion instead of retaining a blank transcript token.
+- Keep exact merged WebM Quick Cut exports in VP9 and Opus, show real export eligibility before rendering, and reject invalid ranges before they enter the project.
+- Keep camera and microphone recording available when a previously selected input was unplugged by falling back to the browser default and clearing the stale choice.
+- Preserve the originating draft when sending a Video Editor export to OpenPost and attach the uploaded video when the composer opens.
+- Resume a previously running Video Editor render queue after reload while keeping interrupted renders safely paused.
+- Refresh the open Saved exports list for every completed queue job, including jobs that finish within the same millisecond.
+- List saved image-sequence folders beside rendered files and delete a sequence folder recursively after confirmation.
+
 ## [4.6.1] - 2026-08-28
 
 ### Fixed
