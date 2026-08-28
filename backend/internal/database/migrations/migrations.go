@@ -56,42 +56,10 @@ func runMigrations(db *bun.DB, source fs.FS) error {
 		appliedSet[m.Version] = true
 	}
 
-	// Read embedded migration files
-	entries, err := fs.ReadDir(source, ".")
+	migrations, err := loadMigrations(db, source)
 	if err != nil {
-		return fmt.Errorf("failed to read migration files: %w", err)
+		return err
 	}
-
-	var migrations []migration
-	versionNames := make(map[int64]string)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-		version, err := parseVersion(entry.Name())
-		if err != nil {
-			return fmt.Errorf("invalid migration filename %q: %w", entry.Name(), err)
-		}
-		// Applied migrations are tracked by version alone, so two files sharing
-		// a version would silently skip whichever sorts second.
-		if existing, ok := versionNames[version]; ok {
-			return fmt.Errorf("migration version collision: %q and %q both use version %d", existing, entry.Name(), version)
-		}
-		versionNames[version] = entry.Name()
-		content, err := fs.ReadFile(source, entry.Name())
-		if err != nil {
-			return fmt.Errorf("failed to read migration %q: %w", entry.Name(), err)
-		}
-		migrations = append(migrations, migration{
-			version: version,
-			name:    entry.Name(),
-			sql:     normalizeMigrationSQL(db.Dialect().Name(), string(content)),
-		})
-	}
-
-	sort.Slice(migrations, func(i, j int) bool {
-		return migrations[i].version < migrations[j].version
-	})
 	if err := repairMigrationHistoryCollisions(ctx, db, appliedSet, migrations); err != nil {
 		return fmt.Errorf("migration history compatibility repair failed: %w", err)
 	}
@@ -112,6 +80,45 @@ func runMigrations(db *bun.DB, source fs.FS) error {
 	}
 
 	return finalizeMigrations(ctx, db, appliedSet)
+}
+
+func loadMigrations(db *bun.DB, source fs.FS) ([]migration, error) {
+	entries, err := fs.ReadDir(source, ".")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read migration files: %w", err)
+	}
+
+	var migrations []migration
+	versionNames := make(map[int64]string)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		version, err := parseVersion(entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("invalid migration filename %q: %w", entry.Name(), err)
+		}
+		// Applied migrations are tracked by version alone, so two files sharing
+		// a version would silently skip whichever sorts second.
+		if existing, ok := versionNames[version]; ok {
+			return nil, fmt.Errorf("migration version collision: %q and %q both use version %d", existing, entry.Name(), version)
+		}
+		versionNames[version] = entry.Name()
+		content, err := fs.ReadFile(source, entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("failed to read migration %q: %w", entry.Name(), err)
+		}
+		migrations = append(migrations, migration{
+			version: version,
+			name:    entry.Name(),
+			sql:     normalizeMigrationSQL(db.Dialect().Name(), string(content)),
+		})
+	}
+
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].version < migrations[j].version
+	})
+	return migrations, nil
 }
 
 func repairMigrationHistoryCollisions(
@@ -375,9 +382,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 		err = addPublishingFailureColumnsToPostDestinations(ctx, db)
 	case 41:
 		description = "publication editor backfill"
-		if err = ensurePublicationRepostOverride(ctx, db); err == nil {
-			err = backfillPublicationTextEditors(ctx, db)
-		}
+		err = preparePublicationEditorBackfill(ctx, db)
 	case 51:
 		description = "optional password"
 		err = makeUserPasswordOptional(ctx, db)
@@ -409,6 +414,13 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func preparePublicationEditorBackfill(ctx context.Context, db *bun.DB) error {
+	if err := ensurePublicationRepostOverride(ctx, db); err != nil {
+		return err
+	}
+	return backfillPublicationTextEditors(ctx, db)
 }
 
 // ensureWorkspaceInvitationsTable creates workspace_invitations from the model
