@@ -1,5 +1,7 @@
 {
 	"video_editor_gap": "Lücke",
+	"video_editor_close_gap": "Lücke schließen",
+	"video_editor_track_close_all_gaps": "Alle Lücken schließen",
 	"video_editor_leave_gap": "Löschen und Lücke lassen",
 	"video_editor_gap_duration": "Lückendauer",
 	"video_editor_gap_description": "Dieser leere Abschnitt erhält das Timing von Overlays und Audio.",

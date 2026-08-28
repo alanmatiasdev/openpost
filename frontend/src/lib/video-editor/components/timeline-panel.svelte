@@ -10,6 +10,10 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
 		addMarker,
+		canCloseAllGapsOnTrack,
+		canCloseGapAtPosition,
+		closeAllGapsOnTrack,
+		closeGapAtPosition,
 		setCurrentFrame,
 		removeMarker,
 		selectMarker as selectMarkerAction,
@@ -18,6 +22,7 @@
 		linkItems,
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
+	import { findTrackGapAtFrame } from '$lib/video-editor/timeline/gap-closing';
 	import { markerAfter, markerBefore, markerDisplayName } from '$lib/video-editor/timeline/markers';
 	import { shuttleScrubResume } from '$lib/video-editor/preview/shuttle-scrub-resume.svelte';
 	import {
@@ -3607,6 +3612,16 @@
 		if (sound) emitEditorSound(sound, editorSession.clock.isPlaying);
 	}
 
+	function closeContextGap(): void {
+		if (timelineContextTarget?.kind !== 'space' || !timelineContextTarget.trackId) return;
+		if (closeGapAtPosition(timelineContextTarget.trackId, timelineContextTarget.frame)) onedit();
+	}
+
+	function closeContextTrackGaps(): void {
+		if (!contextTrack || contextTrack.isGroup) return;
+		if (closeAllGapsOnTrack(contextTrack.id)) onedit();
+	}
+
 	function deleteTrack(trackId: string): void {
 		const removedItemIds = new Set(
 			timelineStore.items.filter((item) => item.trackId === trackId).map((item) => item.id)
@@ -3928,6 +3943,23 @@
 		timelineContextTarget?.kind === 'track'
 			? timelineStore.tracks.find((track) => track.id === timelineContextTarget.trackId)
 			: undefined
+	);
+	const contextSpaceGap = $derived.by(() => {
+		if (timelineContextTarget?.kind !== 'space' || !timelineContextTarget.trackId) return null;
+		return findTrackGapAtFrame(
+			timelineStore.items,
+			timelineContextTarget.trackId,
+			timelineContextTarget.frame
+		);
+	});
+	const contextSpaceGapCanClose = $derived(
+		contextSpaceGap !== null &&
+			timelineContextTarget?.kind === 'space' &&
+			timelineContextTarget.trackId !== null &&
+			canCloseGapAtPosition(timelineContextTarget.trackId, timelineContextTarget.frame)
+	);
+	const contextTrackGapsCanClose = $derived(
+		contextTrack !== undefined && !contextTrack.isGroup && canCloseAllGapsOnTrack(contextTrack.id)
 	);
 	const contextTransition = $derived(
 		timelineContextTarget?.kind === 'transition'
@@ -6029,6 +6061,12 @@
 				? timelineStore.tracks.find((track) => track.id === contextTrack.parentTrackId)
 				: undefined}
 			{@const effectiveContextTrack = effectiveTrackState(contextTrack, timelineStore.tracks)}
+			{#if !contextTrack.isGroup}
+				<ContextMenu.Item disabled={!contextTrackGapsCanClose} onclick={closeContextTrackGaps}>
+					{m.video_editor_track_close_all_gaps()}
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+			{/if}
 			<ContextMenu.Item
 				disabled={parentTrack?.visible === false}
 				onclick={() => editTrack(() => toggleTrackVisibility(contextTrack.id))}
@@ -6078,6 +6116,12 @@
 				{contextTrack.isGroup ? m.video_editor_track_group_delete() : m.video_editor_track_delete()}
 			</ContextMenu.Item>
 		{:else if timelineContextTarget?.kind === 'space'}
+			{#if contextSpaceGap}
+				<ContextMenu.Item disabled={!contextSpaceGapCanClose} onclick={closeContextGap}>
+					{m.video_editor_close_gap()}
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+			{/if}
 			<ContextMenu.Item onclick={() => addContextMarker(timelineContextTarget.frame)}>
 				{m.video_editor_add_marker()}
 				<ContextMenu.Shortcut

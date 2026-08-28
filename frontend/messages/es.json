@@ -1,5 +1,7 @@
 {
 	"video_editor_gap": "Hueco",
+	"video_editor_close_gap": "Cerrar hueco",
+	"video_editor_track_close_all_gaps": "Cerrar todos los huecos",
 	"video_editor_leave_gap": "Eliminar y dejar hueco",
 	"video_editor_gap_duration": "Duración del hueco",
 	"video_editor_gap_description": "Esta sección vacía conserva la sincronización de las superposiciones y el audio.",

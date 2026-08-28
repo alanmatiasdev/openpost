@@ -30,6 +30,7 @@ import { effectiveMediaTracks } from '../utils/track-groups';
 import { sequenceStore } from '../../sequences/sequence-store.svelte';
 import { scaleItemKeyframes } from '../edit-constraints';
 import { scaleItemVectorKeyframes } from '../vector-keyframes';
+import { buildTrackGapClosePlan, type TrackGapClosePlan } from '../gap-closing';
 import {
 	clampSpeed,
 	sourceToTimelineFrames,
@@ -650,29 +651,103 @@ export function rippleDeleteItems(
 	});
 }
 
-/** Close one gap between neighbors on a track by sliding the right side left. */
-export function closeGapAtPosition(trackId: string, position: number): void {
-	execute('CLOSE_GAP', () => {
-		const trackItems = (timelineStore.itemsByTrackId.get(trackId) ?? [])
-			.slice()
-			.sort((a, b) => a.from - b.from);
-		const leftEnd = Math.max(
-			...trackItems
-				.filter((i) => i.from + i.durationInFrames <= position)
-				.map((i) => i.from + i.durationInFrames),
-			0
-		);
-		const updates: Array<{ id: string; from: number }> = [];
-		for (const item of trackItems) {
-			if (item.from >= position) {
-				updates.push({
-					id: item.id,
-					from: Math.max(item.from - (position - leftEnd), leftEnd)
+interface ResolvedTrackGapClosePlan extends TrackGapClosePlan {
+	updates: Array<{ id: string; from: number }>;
+}
+
+function resolveTrackGapClosePlan(
+	trackId: string,
+	frame: number | undefined
+): ResolvedTrackGapClosePlan | null {
+	const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
+	const targetTrack = effectiveTracks.find((track) => track.id === trackId);
+	if (!targetTrack || targetTrack.locked) return null;
+	const plan = buildTrackGapClosePlan(timelineStore.items, trackId, frame);
+	if (!plan) return null;
+	const updatesById = new Map(plan.updates.map((update) => [update.id, update]));
+	const linkedUpdateIds = new Set<string>();
+
+	if (timelineStore.linkedSelectionEnabled) {
+		const effectiveTracksById = new Map(effectiveTracks.map((track) => [track.id, track]));
+		for (const update of plan.updates) {
+			const anchor = timelineStore.itemById.get(update.id);
+			if (!anchor) continue;
+			const shift = anchor.from - update.from;
+			for (const companion of getSynchronizedLinkedItems(timelineStore.items, anchor.id)) {
+				if (companion.id === anchor.id || companion.trackId === trackId) continue;
+				const companionTrack = effectiveTracksById.get(companion.trackId);
+				if (companionTrack?.locked) return null;
+				if (isTrackSyncLockEnabled(companionTrack)) continue;
+				updatesById.set(companion.id, {
+					id: companion.id,
+					from: Math.max(0, companion.from - shift)
 				});
+				linkedUpdateIds.add(companion.id);
 			}
 		}
-		timelineStore._moveItems(updates);
-	});
+	}
+
+	const updates = [...updatesById.values()];
+	const nextFromById = new Map(updates.map((update) => [update.id, update.from]));
+	for (const movedId of linkedUpdateIds) {
+		const moved = timelineStore.itemById.get(movedId);
+		if (!moved) continue;
+		const movedFrom = nextFromById.get(moved.id);
+		if (movedFrom === undefined) continue;
+		for (const other of timelineStore.items) {
+			if (other.id === moved.id || other.trackId !== moved.trackId) continue;
+			const otherFrom = nextFromById.get(other.id) ?? other.from;
+			const overlapsAfter =
+				movedFrom < otherFrom + other.durationInFrames &&
+				movedFrom + moved.durationInFrames > otherFrom;
+			const overlappedBefore =
+				moved.from < other.from + other.durationInFrames &&
+				moved.from + moved.durationInFrames > other.from;
+			if (overlapsAfter && !overlappedBefore) return null;
+		}
+	}
+	return { ...plan, updates };
+}
+
+export function canCloseGapAtPosition(trackId: string, frame: number): boolean {
+	return resolveTrackGapClosePlan(trackId, frame) !== null;
+}
+
+export function canCloseAllGapsOnTrack(trackId: string): boolean {
+	return resolveTrackGapClosePlan(trackId, undefined) !== null;
+}
+
+function closeTrackGapPlan(
+	trackId: string,
+	frame: number | undefined,
+	command: 'CLOSE_GAP' | 'CLOSE_ALL_GAPS'
+): boolean {
+	const plan = resolveTrackGapClosePlan(trackId, frame);
+	if (!plan) return false;
+
+	return execute(
+		command,
+		() => {
+			timelineStore._moveItems(plan.updates);
+			propagateRemovedIntervalsToSyncLockedTracks({
+				editedTrackIds: new Set([trackId]),
+				intervals: plan.intervals
+			});
+			pruneInvalidTransitions();
+			return true;
+		},
+		frame === undefined ? { trackId } : { trackId, frame: Math.max(0, Math.round(frame)) }
+	);
+}
+
+/** Close the bounded gap under a frame and ripple the same interval through sync-locked tracks. */
+export function closeGapAtPosition(trackId: string, frame: number): boolean {
+	return closeTrackGapPlan(trackId, frame, 'CLOSE_GAP');
+}
+
+/** Close every bounded gap on one track as a single undoable ripple edit. */
+export function closeAllGapsOnTrack(trackId: string): boolean {
+	return closeTrackGapPlan(trackId, undefined, 'CLOSE_ALL_GAPS');
 }
 
 export function setInPoint(frame: number | null): void {

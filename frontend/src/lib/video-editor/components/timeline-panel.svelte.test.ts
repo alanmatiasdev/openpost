@@ -724,6 +724,77 @@ describe('TimelinePanel progressive controls', () => {
 		expect(timelineStore.markers).toHaveLength(1);
 	});
 
+	it('closes the exact bounded gap opened from empty track space', async () => {
+		timelineStore._setItems([
+			item({ id: 'video-before', from: 0, durationInFrames: 20 }),
+			item({ id: 'video-after', from: 60, durationInFrames: 20 }),
+			item({
+				id: 'audio-after',
+				trackId: 'audio-track',
+				type: 'audio',
+				from: 60,
+				durationInFrames: 20
+			})
+		]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const row = screen.container.querySelector<HTMLElement>('[data-track="video-track"]')!;
+		const before = screen.container.querySelector<HTMLElement>(
+			'[data-timeline-item-id="video-before"]'
+		)!;
+		const after = screen.container.querySelector<HTMLElement>(
+			'[data-timeline-item-id="video-after"]'
+		)!;
+		const rowRect = row.getBoundingClientRect();
+		const beforeRect = before.getBoundingClientRect();
+		const afterRect = after.getBoundingClientRect();
+		const gapX = (beforeRect.right + afterRect.left) / 2 - rowRect.left;
+
+		await userEvent.click(row, {
+			button: 'right',
+			position: { x: gapX, y: rowRect.height / 2 }
+		});
+		await screen.getByRole('menuitem', { name: 'Close gap' }).click();
+
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(20);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(20);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('closes every track gap from a header context menu and exposes it by keyboard', async () => {
+		timelineStore._setItems([
+			item({ id: 'video-a', from: 20, durationInFrames: 20 }),
+			item({ id: 'video-b', from: 60, durationInFrames: 20 })
+		]);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const trackName = screen.getByRole('button', { name: 'video-track' });
+		await trackName.click();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await screen.getByRole('menuitem', { name: 'Close all gaps' }).click();
+
+		expect(timelineStore.itemById.get('video-a')?.from).toBe(0);
+		expect(timelineStore.itemById.get('video-b')?.from).toBe(20);
+	});
+
+	it('disables track gap closing when the target track is locked', async () => {
+		timelineStore._setTracks(
+			timelineStore.tracks.map((candidate) =>
+				candidate.id === 'video-track' ? { ...candidate, locked: true } : candidate
+			)
+		);
+		timelineStore._setItems([
+			item({ id: 'video-a', from: 0, durationInFrames: 20 }),
+			item({ id: 'video-b', from: 60, durationInFrames: 20 })
+		]);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const trackHeader = screen.container.querySelector<HTMLElement>(
+			'[data-track-header="video-track"]'
+		)!;
+		await userEvent.click(trackHeader, { button: 'right' });
+
+		await expect.element(screen.getByRole('menuitem', { name: 'Close all gaps' })).toBeDisabled();
+	});
+
 	it('deletes a marker from its context menu', async () => {
 		const markerId = addMarker(12);
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });

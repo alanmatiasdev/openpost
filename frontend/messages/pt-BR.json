@@ -1,5 +1,7 @@
 {
 	"video_editor_gap": "Intervalo",
+	"video_editor_close_gap": "Fechar intervalo",
+	"video_editor_track_close_all_gaps": "Fechar todos os intervalos",
 	"video_editor_leave_gap": "Excluir e deixar intervalo",
 	"video_editor_gap_duration": "Duração do intervalo",
 	"video_editor_gap_description": "Esta seção vazia preserva o tempo das sobreposições e do áudio.",

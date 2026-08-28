@@ -1,5 +1,7 @@
 {
 	"video_editor_gap": "间隙",
+	"video_editor_close_gap": "关闭间隙",
+	"video_editor_track_close_all_gaps": "关闭所有间隙",
 	"video_editor_leave_gap": "删除并保留间隙",
 	"video_editor_gap_duration": "间隙时长",
 	"video_editor_gap_description": "此空白段保留叠加层与音频的时间关系。",

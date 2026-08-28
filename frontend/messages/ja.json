@@ -1,5 +1,7 @@
 {
 	"video_editor_gap": "ギャップ",
+	"video_editor_close_gap": "ギャップを閉じる",
+	"video_editor_track_close_all_gaps": "すべてのギャップを閉じる",
 	"video_editor_leave_gap": "削除してギャップを残す",
 	"video_editor_gap_duration": "ギャップの長さ",
 	"video_editor_gap_description": "この空の区間は、オーバーレイやオーディオのタイミングを保ちます。",

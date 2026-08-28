@@ -10,6 +10,8 @@ import {
 	addShapeItem,
 	addTextItem,
 	clearAllMarkers,
+	closeAllGapsOnTrack,
+	closeGapAtPosition,
 	joinItems,
 	linkItems,
 	removeItems,
@@ -189,6 +191,183 @@ describe('timeline delete actions', () => {
 			'after',
 			'continuous-audio'
 		]);
+	});
+});
+
+describe('timeline gap closing actions', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		timelineStore._setTracks(createDefaultTracks());
+		commandHistory.clearHistory();
+		transitionsStore.clear();
+	});
+
+	it('closes one exact gap across sync-locked tracks in one undo step', () => {
+		timelineStore._setItems([
+			clip({ id: 'video-before', from: 0, durationInFrames: 30 }),
+			clip({ id: 'video-after', from: 60, durationInFrames: 30 }),
+			clip({
+				id: 'audio-before',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 0,
+				durationInFrames: 30
+			}),
+			clip({
+				id: 'audio-after',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 60,
+				durationInFrames: 30
+			})
+		]);
+
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(true);
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(30);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(30);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('CLOSE_GAP');
+
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(60);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(60);
+	});
+
+	it('does nothing on occupied or trailing space and on effectively locked tracks', () => {
+		timelineStore._setItems([
+			clip({ id: 'before', from: 0, durationInFrames: 30 }),
+			clip({ id: 'after', from: 60, durationInFrames: 30 })
+		]);
+
+		expect(closeGapAtPosition('track-video-main', 10)).toBe(false);
+		expect(closeGapAtPosition('track-video-main', 100)).toBe(false);
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-video-main' ? { ...track, locked: true } : track
+			)
+		);
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(false);
+		expect(commandHistory.canUndo).toBe(false);
+
+		timelineStore._setTracks([
+			{
+				id: 'locked-group',
+				name: 'Locked group',
+				isGroup: true,
+				height: 96,
+				locked: true,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: 0
+			},
+			...createDefaultTracks().map((track, index) =>
+				track.id === 'track-video-main'
+					? { ...track, parentTrackId: 'locked-group', order: index + 1 }
+					: { ...track, order: index + 1 }
+			)
+		]);
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(false);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('closes every target-track gap and sync-lock interval as one edit', () => {
+		timelineStore._setItems([
+			clip({ id: 'video-a', from: 20, durationInFrames: 20 }),
+			clip({ id: 'video-b', from: 60, durationInFrames: 20 }),
+			clip({ id: 'video-c', from: 100, durationInFrames: 20 }),
+			clip({
+				id: 'audio-late',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 100,
+				durationInFrames: 20
+			})
+		]);
+
+		expect(closeAllGapsOnTrack('track-video-main')).toBe(true);
+		expect(
+			timelineStore.items
+				.filter((item) => item.trackId === 'track-video-main')
+				.map(({ id, from }) => ({ id, from }))
+		).toEqual([
+			{ id: 'video-a', from: 0 },
+			{ id: 'video-b', from: 20 },
+			{ id: 'video-c', from: 40 }
+		]);
+		expect(timelineStore.itemById.get('audio-late')?.from).toBe(40);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('CLOSE_ALL_GAPS');
+	});
+
+	it('keeps a linked companion aligned when its track opts out of sync lock', () => {
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-audio' ? { ...track, syncLock: false } : track
+			)
+		);
+		timelineStore._setItems([
+			clip({ id: 'video-before', from: 0, durationInFrames: 30 }),
+			clip({ id: 'video-after', from: 60, durationInFrames: 30, linkedGroupId: 'pair' }),
+			clip({
+				id: 'audio-after',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 60,
+				durationInFrames: 30,
+				linkedGroupId: 'pair'
+			})
+		]);
+
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(true);
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(30);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(30);
+	});
+
+	it('rejects gap closing when an opted-out linked companion cannot move safely', () => {
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-audio' ? { ...track, syncLock: false, locked: true } : track
+			)
+		);
+		timelineStore._setItems([
+			clip({ id: 'video-before', from: 0, durationInFrames: 30 }),
+			clip({ id: 'video-after', from: 60, durationInFrames: 30, linkedGroupId: 'pair' }),
+			clip({
+				id: 'audio-after',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 60,
+				durationInFrames: 30,
+				linkedGroupId: 'pair'
+			})
+		]);
+
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(false);
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(60);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(60);
+		expect(commandHistory.canUndo).toBe(false);
+
+		timelineStore._setTracks(
+			timelineStore.tracks.map((track) =>
+				track.id === 'track-audio' ? { ...track, locked: false } : track
+			)
+		);
+		timelineStore._setItems([
+			...timelineStore.items,
+			clip({
+				id: 'audio-blocker',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 30,
+				durationInFrames: 30,
+				linkedGroupId: undefined
+			})
+		]);
+		expect(closeGapAtPosition('track-video-main', 45)).toBe(false);
+		expect(timelineStore.itemById.get('video-after')?.from).toBe(60);
+		expect(timelineStore.itemById.get('audio-after')?.from).toBe(60);
+		expect(commandHistory.canUndo).toBe(false);
 	});
 });
 
