@@ -423,13 +423,35 @@ func preparePublicationEditorBackfill(ctx context.Context, db *bun.DB) error {
 	return backfillPublicationTextEditors(ctx, db)
 }
 
-// ensureWorkspaceInvitationsTable creates workspace_invitations from the model
-// when migrations run before CreateSchema. The current model already carries
-// the delivery columns, so migration 111's ALTERs then no-op through the
+// ensureWorkspaceInvitationsTable creates workspace_invitations from migration
+// 111's frozen schema when migrations run before CreateSchema. The frozen schema
+// carries the delivery columns, so migration 111's ALTERs then no-op through the
 // duplicate-column path; upgraded databases keep their table and gain the columns.
 func ensureWorkspaceInvitationsTable(ctx context.Context, db *bun.DB) error {
-	_, err := db.NewCreateTable().Model((*models.WorkspaceInvitation)(nil)).IfNotExists().Exec(ctx)
+	_, err := db.NewCreateTable().Model((*workspaceInvitationMigration111)(nil)).IfNotExists().Exec(ctx)
 	return err
+}
+
+// workspaceInvitationMigration111 freezes the table shape migration 111 saw.
+// Historical migration behavior must not change when the live model gains fields.
+type workspaceInvitationMigration111 struct {
+	bun.BaseModel `bun:"table:workspace_invitations"`
+
+	ID                     string    `bun:",pk"`
+	WorkspaceID            string    `bun:",notnull"`
+	Email                  string    `bun:",notnull"`
+	Role                   string    `bun:",notnull,default:'editor'"`
+	InvitedByUserID        string    `bun:",notnull"`
+	AcceptedByUserID       string    `bun:",nullzero"`
+	TokenHash              string    `bun:",unique,notnull"`
+	ExpiresAt              time.Time `bun:",notnull"`
+	AcceptedAt             time.Time `bun:",nullzero"`
+	RevokedAt              time.Time `bun:",nullzero"`
+	LastSentAt             time.Time `bun:"last_sent_at,nullzero"`
+	EmailDeliveryStatus    string    `bun:"email_delivery_status,notnull,default:'unavailable'"`
+	EmailDeliveryJobID     string    `bun:"email_delivery_job_id,notnull,default:''"`
+	EmailDeliveryUpdatedAt time.Time `bun:"email_delivery_updated_at,nullzero"`
+	CreatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
 func ensureWorkspaceInvitationDeliveryUpdatedAt(ctx context.Context, db *bun.DB) error {

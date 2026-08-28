@@ -78,12 +78,25 @@ func initSQLiteDB(dsn string) (*bun.DB, error) {
 // when the DSN does not reference a file outside the working directory
 // (memory databases, bare filenames).
 func sqliteFileDir(dsn string) string {
-	path := strings.TrimPrefix(dsn, "file:")
-	if index := strings.IndexByte(path, '?'); index >= 0 {
-		if values, err := url.ParseQuery(path[index+1:]); err == nil && values.Get("mode") == "memory" {
+	path := dsn
+	if strings.HasPrefix(dsn, "file:") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
 			return ""
 		}
-		path = path[:index]
+		if parsed.Query().Get("mode") == "memory" {
+			return ""
+		}
+		if parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost") {
+			return ""
+		}
+		path = parsed.Path
+		if parsed.Opaque != "" {
+			path, err = url.PathUnescape(parsed.Opaque)
+			if err != nil {
+				return ""
+			}
+		}
 	}
 	if path == "" || path == ":memory:" {
 		return ""

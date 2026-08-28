@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -40,4 +41,28 @@ func TestWorkspaceInvitationDeliveryMigrationPreservesExistingInvitations(t *tes
 		Where("id = ?", "invite-1").Scan(ctx, &row))
 	require.Equal(t, "unavailable", row.Status)
 	require.Empty(t, row.JobID)
+}
+
+func TestRunMigration111BeforeCreateSchemaBuildsStableInvitationTable(t *testing.T) {
+	db := newMigrationsTestDB(t)
+	ctx := context.Background()
+	raw, err := migrationFiles.ReadFile("111_workspace_invitation_delivery.sql")
+	require.NoError(t, err)
+
+	require.NoError(t, runMigrations(db, fstest.MapFS{
+		"111_workspace_invitation_delivery.sql": &fstest.MapFile{Data: raw},
+	}))
+
+	for _, column := range []string{
+		"id",
+		"workspace_id",
+		"email",
+		"email_delivery_status",
+		"email_delivery_job_id",
+		"email_delivery_updated_at",
+	} {
+		present, columnErr := migrationColumnExists(ctx, db, "workspace_invitations", column)
+		require.NoError(t, columnErr)
+		require.True(t, present, "expected migration 111 table column %s", column)
+	}
 }

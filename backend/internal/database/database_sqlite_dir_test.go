@@ -1,6 +1,7 @@
 package database
 
 import (
+	"net/url"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +17,17 @@ func TestInitDBCreatesMissingSQLiteDirectory(t *testing.T) {
 	require.FileExists(t, path)
 }
 
+func TestInitDBCreatesEscapedSQLiteDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested db", "openpost.db")
+	dsn := (&url.URL{Scheme: "file", Path: path, RawQuery: "cache=shared&mode=rwc"}).String()
+
+	db, err := InitDB(dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	require.NoError(t, CreateSchema(db))
+	require.FileExists(t, path)
+}
+
 func TestSqliteFileDir(t *testing.T) {
 	cases := []struct {
 		name string
@@ -23,6 +35,8 @@ func TestSqliteFileDir(t *testing.T) {
 		want string
 	}{
 		{name: "absolute file path", dsn: "file:/data/db/openpost.db?cache=shared&mode=rwc", want: "/data/db"},
+		{name: "escaped absolute file path", dsn: "file:/data/openpost%20db/openpost.db?cache=shared&mode=rwc", want: "/data/openpost db"},
+		{name: "localhost authority", dsn: "file://localhost/data/db/openpost.db?cache=shared&mode=rwc", want: "/data/db"},
 		{name: "relative nested path", dsn: "file:state/openpost.db", want: "state"},
 		{name: "bare filename", dsn: "file:openpost.db?cache=shared&mode=rwc", want: ""},
 		{name: "plain path without scheme", dsn: "/data/db/openpost.db", want: "/data/db"},
