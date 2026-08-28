@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { Project, TimelineItem, TimelineTrack } from '../project/types';
 import { editorSession } from '../editor.svelte';
@@ -199,6 +199,62 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('selects a buried overlapping layer from the canvas context menu', async () => {
+		await page.viewport(1000, 700);
+		const bottom = colorLayer('bottom', 'bottom-track', '#ff0000');
+		const top = colorLayer('top', 'top-track', '#0000ff');
+		bottom.label = 'Bottom layer';
+		top.label = 'Top layer';
+		bottom.transform = { x: 0, y: 0, width: 300, height: 200 };
+		top.transform = { x: 0, y: 0, width: 120, height: 120, rotation: 20 };
+		const project: Project = {
+			id: 'layer-picker-project',
+			name: 'Layer picker project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [track('top-track', 0), track('bottom-track', 1)],
+				items: [bottom, top]
+			}
+		};
+		editorSession.project = project;
+		sequenceStore.load(project.timeline!, project.metadata);
+		timelineStore.setAll({
+			items: [bottom, top],
+			tracks: project.timeline!.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: top.id,
+			selectedItemIds: [top.id],
+			onedit: vi.fn()
+		});
+		screen.container.style.width = '900px';
+		screen.container.style.height = '600px';
+		const monitor = screen.getByRole('application', { name: 'Program' });
+		await expect.element(monitor).toBeVisible();
+
+		await userEvent.click(monitor, { button: 'right', position: { x: 400, y: 200 } });
+		await expect.element(screen.getByRole('menuitem', { name: /^Top layer/ })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: /^Bottom layer/ })).toBeVisible();
+		await screen.getByRole('menuitem', { name: /^Bottom layer/ }).click();
+
+		await userEvent.click(monitor, { button: 'right', position: { x: 400, y: 200 } });
+		expect(screen.getByRole('menuitem', { name: /^Bottom layer/ }).element()).toHaveAttribute(
+			'aria-current',
+			'true'
+		);
+		await userEvent.keyboard('{Escape}');
+
+		monitor.element().focus();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await expect.element(screen.getByRole('menuitem', { name: /^Top layer/ })).toBeVisible();
+	});
+
 	it('resizes the program monitor with project canvas undo and redo', async () => {
 		const project: Project = {
 			id: 'canvas-project',
