@@ -38,6 +38,10 @@ const userDocsSidebar = [
       { text: "Analytics", link: "/usage/analytics" },
       { text: "Media Library", link: "/usage/media-library" },
       { text: "OpenPost Studio", link: "/usage/studio" },
+      { text: "Image Editor", link: "/usage/image-editor" },
+      { text: "Video Editor", link: "/usage/video-editor" },
+      { text: "Quick Cut", link: "/usage/quick-cut" },
+      { text: "Recorder", link: "/usage/recording" },
     ],
   },
   {
@@ -179,7 +183,10 @@ const developmentSidebar = [
       { text: "API Reference", link: "/development/api-reference" },
       { text: "API Tokens", link: "/development/api-tokens" },
       { text: "API Compatibility", link: "/development/compatibility-policy" },
-      { text: "Post Migration", link: "/development/post-publication-migration" },
+      {
+        text: "Post Migration",
+        link: "/development/post-publication-migration",
+      },
       { text: "Frontend", link: "/development/frontend" },
       {
         text: "Image Editor Completeness",
@@ -197,7 +204,10 @@ const developmentSidebar = [
       { text: "Releases and Versioning", link: "/development/releases" },
       { text: "MCP And ChatGPT App", link: "/development/mcp" },
       { text: "Billing And Usage", link: "/development/billing-and-usage" },
-      { text: "Invitation Delivery Callbacks", link: "/development/invitation-delivery-callbacks" },
+      {
+        text: "Invitation Delivery Callbacks",
+        link: "/development/invitation-delivery-callbacks",
+      },
       {
         text: "Production Architecture",
         link: "/development/production-readiness",

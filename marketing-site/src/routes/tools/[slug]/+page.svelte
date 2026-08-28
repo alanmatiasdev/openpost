@@ -33,7 +33,7 @@
 				'Each destination still applies its own codec, duration, file-size, and aspect-ratio rules.'
 			],
 			privacyBehavior:
-				'Projects, recordings, transcripts, and analysis stay in this browser unless you explicitly save them to OpenPost or use them in a post.',
+				'Projects, collected media, recordings, transcripts, analysis, queues, and exports stay in the disk workspace you choose. Only a finished file you send crosses into OpenPost Media.',
 			nextStep:
 				'This page describes the editor. Open the guest editor to work without an account, then save the result to OpenPost only if you want to schedule it.'
 		},

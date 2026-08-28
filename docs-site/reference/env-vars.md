@@ -28,15 +28,14 @@ This page lists the most common core and provider variables. Use [Environment Va
 | `OPENPOST_MEME_GENERATOR_ENABLED` | `true`                | Enable the built-in template catalog, local rendering, and saved generation recipes. |
 | `OPENPOST_MEME_GENERATION_MODEL`  | `openai/gpt-5.6-luna` | OpenRouter model used only for optional template and caption suggestions.            |
 
-## OpenPost Video Editor and stock media
+## Stock media
 
-| Variable                        | Default                | Purpose                                                                                        |
-| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `OPENPOST_VIDEO_MODEL_BASE_URL` | `/video-editor-models` | Serve the pinned local transcription and voice-detection files from another operator base URL. |
-| `OPENPOST_STOCK_MEDIA_ENABLED`  | `false`                | Enable the public, rate-limited stock search API for providers with configured server keys.    |
-| `OPENPOST_PEXELS_API_KEY`       | empty                  | Server-only Pexels photo and video API key.                                                    |
-| `OPENPOST_UNSPLASH_ACCESS_KEY`  | empty                  | Server-only Unsplash photo API access key.                                                     |
-| `OPENPOST_PIXABAY_API_KEY`      | empty                  | Server-only Pixabay image and video API key.                                                   |
+| Variable                       | Default | Purpose                                                                                     |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------- |
+| `OPENPOST_STOCK_MEDIA_ENABLED` | `false` | Enable the public, rate-limited stock search API for providers with configured server keys. |
+| `OPENPOST_PEXELS_API_KEY`      | empty   | Server-only Pexels photo and video API key.                                                 |
+| `OPENPOST_UNSPLASH_ACCESS_KEY` | empty   | Server-only Unsplash photo API access key.                                                  |
+| `OPENPOST_PIXABAY_API_KEY`     | empty   | Server-only Pixabay image and video API key.                                                |
 
 ## User feedback
 

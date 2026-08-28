@@ -48,6 +48,14 @@ _Avoid_: Studio Image Editor, web Image Editor
 The web video tool for removing source ranges. It copies eligible streams without re-encoding and can transcode when an exact cut requires it.
 _Avoid_: Video Editor
 
+**Workspace folder**:
+The user-chosen disk folder that is the source of truth for OpenPost Video Editor projects, collected media, linked-source records, derived media, recordings, render queues, and exports.
+_Avoid_: Workspace, cloud project, browser project
+
+**Recording**:
+A local screen, camera, or microphone capture produced by the OpenPost recorder. Synchronized sources remain separate media until an edit or export combines them.
+_Avoid_: Session, stream, cloud recording
+
 **Media pool**:
 The sources available to one Video Project, including linked local files and media obtained from OpenPost.
 _Avoid_: Media library, project bundle

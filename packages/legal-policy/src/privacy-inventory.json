@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "reviewed_on": "2026-08-11",
-  "next_review_on": "2026-11-11",
+  "reviewed_on": "2026-08-28",
+  "next_review_on": "2026-11-28",
   "summary_notice": "This plain-language summary is a guide, not a replacement for the Privacy Policy. If it differs from the full policy, the full policy controls.",
   "summary_points": [
     "The managed service stores the account, workspace, publishing, media, security, billing, and support data needed to provide OpenPost.",
     "Social credentials are encrypted. Passwords are hashed. OpenPost does not receive full payment-card details.",
     "OpenPost sends data to a social network, identity provider, stock-media service, or AI provider only for the connection or action described in the full policy.",
     "You can export or request deletion of account data. Shared ownership, active billing, legal duties, security needs, and short-lived recovery copies can delay or limit deletion.",
-    "Some editor projects and recovery data stay only in your browser unless you choose a cloud save, Media save, or post handoff. Preferences and downloaded models also stay browser-local."
+    "Video Editor projects stay in the workspace folder you choose. Local Image Editor work, recovery data, preferences, and downloaded models stay in browser storage until you clear them or choose an explicit OpenPost save or upload."
   ],
   "managed_retention": [
     {
@@ -112,8 +112,8 @@
       "category": "One-time verification, reset, and sign-in records",
       "owner": "Managed OpenPost service",
       "purpose": "Complete time-limited identity, account recovery, authorization, native sign-in, and editor-return operations without storing reusable plaintext secrets.",
-      "includes": "Email verification challenges, email-change challenges with old and new addresses and keyed code hashes, password-reset token hashes, MFA or passkey authentication challenges, OIDC authorization requests, native handoffs, logout events, social OAuth request tokens and account selections, CLI authorization sessions, OAuth codes, and short-lived editor return tokens.",
-      "duration": "Email verification codes are valid for 10 minutes and records more than 24 hours past expiry are pruned when a later challenge is created. Email-change codes are valid for 15 minutes; records more than 24 hours past expiry are pruned when a later email-change challenge is created. Password-reset tokens are valid for one hour and the prior unused token is replaced by a new request. OIDC authorization requests are valid for 10 minutes. Image and Video Editor return tokens are valid for two hours. Other one-time records use their stored expiry.",
+      "includes": "Email verification challenges, email-change challenges with old and new addresses and keyed code hashes, password-reset token hashes, MFA or passkey authentication challenges, OIDC authorization requests, native handoffs, logout events, social OAuth request tokens and account selections, CLI authorization sessions, OAuth codes, and short-lived Image Editor return tokens.",
+      "duration": "Email verification codes are valid for 10 minutes and records more than 24 hours past expiry are pruned when a later challenge is created. Email-change codes are valid for 15 minutes; records more than 24 hours past expiry are pruned when a later email-change challenge is created. Password-reset tokens are valid for one hour and the prior unused token is replaced by a new request. OIDC authorization requests are valid for 10 minutes. Image Editor return tokens are valid for two hours. Other one-time records use their stored expiry.",
       "deletion_trigger": "Use or expiry ends authorization. Replacement, explicit cancellation where supported, cleanup during a later related operation, or account/workspace deletion can remove the stored row.",
       "exceptions": "Use and expiry do not always physically remove a row immediately, but they prevent the one-time record from being accepted again.",
       "evidence": [
@@ -191,13 +191,13 @@
     },
     {
       "id": "managed-editor-brand-data",
-      "category": "Cloud-saved editor projects, templates, and brand data",
+      "category": "Cloud-saved Image Editor projects, templates, and brand data",
       "owner": "Managed OpenPost service",
-      "purpose": "Restore explicitly cloud-saved creative work, provide reusable customer templates and brand resources, and support safe revision recovery.",
-      "includes": "Image Editor designs, Video Editor projects, project assets, templates, brand kits, licensed font records, saved revisions, previews, and handoff results explicitly saved to OpenPost.",
-      "duration": "Current projects, named checkpoints, templates, and brand data remain until the user deletes the item or its workspace or account is deleted. Image and Video Editor autosaves are capped at the 20 most recent during later saves. Both receive a 30-day expiry timestamp, but only the Video Editor currently deletes expired autosaves during a later project save; the Image Editor has no separate age-based purge for that timestamp.",
-      "deletion_trigger": "Project, template, brand item, workspace, or account deletion. Later saves remove excess autosaves in both editors and expired autosaves in the Video Editor.",
-      "exceptions": "Browser-only projects are covered by the browser-storage inventory, not this managed-service schedule. Referenced media follows the media lifecycle.",
+      "purpose": "Restore explicitly cloud-saved Image Editor work, provide reusable customer templates and brand resources, and support safe revision recovery.",
+      "includes": "Image Editor designs and assets, templates, brand kits, licensed font records, saved revisions, previews, and handoff results explicitly saved to OpenPost.",
+      "duration": "Current designs, named checkpoints, templates, and brand data remain until the user deletes the item or its workspace or account is deleted. Image Editor autosaves are capped at the 20 most recent during later saves and receive a 30-day expiry timestamp, but there is no separate age-based purge for that timestamp.",
+      "deletion_trigger": "Design, template, brand item, workspace, or account deletion. Later saves remove excess Image Editor autosaves.",
+      "exceptions": "Browser-only designs are covered by the browser-storage inventory. Disk-backed Video Editor projects remain outside managed-service retention; their browser-held handles, preferences, caches, and scratch data are inventoried below. Referenced Media follows the managed Media lifecycle.",
       "evidence": [
         "backend/internal/api/handlers/image_editor.go",
         "backend/internal/models/models.go"

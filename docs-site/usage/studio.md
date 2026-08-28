@@ -8,6 +8,6 @@ Use [OpenPost Image Editor](/usage/image-editor) for still images and multi-page
 
 ## Video Editor
 
-Use [OpenPost Video Editor](/usage/video-editor) for video editing and recording. It supports local projects, timeline editing, captions, output variants, recovery, export, optional cloud saves, and returning finished media to a post.
+Use [OpenPost Video Editor](/usage/video-editor) for disk-backed multitrack projects, motion, color, audio, captions, local generation, recovery, export, and sending a finished file to OpenPost Media. Use [Quick Cut](/usage/quick-cut) for range removal that can preserve encoded streams, or [Recorder](/usage/recording) for screen, camera, and microphone capture.
 
-Both editors are available from the web app's Editors area. Cloud-saved image and video projects remain scoped to the active workspace. Local video sources stay in the browser until you explicitly upload or publish them.
+Both editors are available from the web app's Editors area. Cloud-saved Image Editor projects remain scoped to the active workspace. Video Editor projects stay in the disk workspace you choose until you explicitly upload or publish an export.

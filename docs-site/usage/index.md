@@ -29,7 +29,9 @@ The web app is the main place to work.
 - [Media](/usage/media-library) covers reusable files, designs, templates, brand items, tags, file sources, use checks, and safe cleanup.
 - [OpenPost Studio](/usage/studio) helps you choose between the image and video editing workflows.
 - [OpenPost Image Editor](/usage/image-editor) covers the no-account editor, multi-page still-image designs, saved versions, background removal, export, and return to the post editor.
-- [OpenPost Video Editor](/usage/video-editor) covers local video editing and recording, captions, format variants, recovery, export, cloud save, and return to a post.
+- [OpenPost Video Editor](/usage/video-editor) covers disk-backed projects, multitrack editing, motion, color, audio, captions, local models, export, and Media handoff.
+- [Quick Cut](/usage/quick-cut) covers verified keyframe cuts, exact cuts, stream selection, merged output, and lossless packet-copy export.
+- [Recorder](/usage/recording) covers separate synchronized screen, camera, and microphone capture, recovery, and timeline insertion.
 
 ## CLI
 

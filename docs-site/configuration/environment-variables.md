@@ -100,7 +100,6 @@ Bootstrap and data-plane settings stay deployment-only because OpenPost needs th
 | `OPENPOST_S3_FORCE_PATH_STYLE` | No | `false` | Force path-style S3 addressing for compatible providers that require it. |
 | `OPENPOST_IMAGE_EDITOR_ENABLED` | No | `true` | Enables OpenPost Image Editor routes and APIs. Set `false` for an operational rollback; Media upload and library features remain available and OpenPost Image Editor migrations still run. |
 | `OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL` | No | `/image-editor-models` | Base URL for the background-removal model, WASM, and runtime assets. Leave unset to use the files embedded with OpenPost. |
-| `OPENPOST_VIDEO_MODEL_BASE_URL` | No | `/video-editor-models` | Base URL for the pinned transcription and voice-detection model files. Leave unset to use embedded files. |
 | `OPENPOST_STOCK_MEDIA_ENABLED` | No | `false` | Enables rate-limited stock search for providers that also have a configured server-side key. |
 | `OPENPOST_PEXELS_API_KEY` | No | empty | Server-only Pexels API key for photo and video search. |
 | `OPENPOST_UNSPLASH_ACCESS_KEY` | No | empty | Server-only Unsplash access key for photo search and required selection tracking. |

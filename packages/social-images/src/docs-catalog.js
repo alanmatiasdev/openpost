@@ -1468,6 +1468,38 @@ export const docsPageCatalog = Object.freeze([
     }
   },
   {
+    "page": "usage/quick-cut.md",
+    "title": "Quick Cut",
+    "description": "Quick Cut removes ranges from one or more media files with the least processing possible.",
+    "route": "/usage/quick-cut",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "user-guide"
+    }
+  },
+  {
+    "page": "usage/recording.md",
+    "title": "Recorder",
+    "description": "Open /record to capture screen, camera, and microphone sources as separate synchronized files.",
+    "route": "/usage/recording",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "user-guide"
+    }
+  },
+  {
     "page": "usage/scheduling.md",
     "title": "Scheduling",
     "description": "OpenPost saves scheduled posts in its database, so they survive a server restart.",
@@ -1534,7 +1566,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "usage/video-editor.md",
     "title": "OpenPost Video Editor",
-    "description": "OpenPost Video Editor is a local-first editor for social videos and recordings up to two hours.",
+    "description": "OpenPost Video Editor is a local-first multitrack editor for social video.",
     "route": "/usage/video-editor",
     "agentRepresentation": {
       "membership": "ordinary"

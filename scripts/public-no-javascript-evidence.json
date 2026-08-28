@@ -509,7 +509,7 @@
   },
   "https://docs.openpost.social/usage/composing-posts": {
     "audience": "This page is for people creating a Publication in the composer.",
-    "boundary": "The Workspace setup guide advances when you enter non-empty text, attach media, or intentionally add a thread post. Opening or focusing the composer, choosing a destination, and saving an empty draft do not count as starting a composition. This progress is stored once per Workspace and remains complete after refresh."
+    "boundary": "The Video Editor project, sources, and other exports remain in the disk workspace."
   },
   "https://docs.openpost.social/usage/destination-options": {
     "audience": "This page is for people tailoring one Publication for each selected social account.",
@@ -529,7 +529,15 @@
   },
   "https://docs.openpost.social/usage/media-library": {
     "audience": "This page is for people organizing reusable media and editor assets in a Workspace.",
-    "boundary": "Use tags for flexible organization: one file can have several tags, and choosing several tag filters shows files that have all of them. Select files to add or remove a tag, mark favorites, or delete a group. Deleting a tag does not delete its files."
+    "boundary": "Disk-backed Video Editor projects are separate from Media and do not create hidden retention references."
+  },
+  "https://docs.openpost.social/usage/quick-cut": {
+    "audience": "Quick Cut removes ranges from one or more media files with the least processing possible.",
+    "boundary": "Quick Cut rejects plans that would silently drop unsupported subtitle, data, unknown-audio, or extra-video streams."
+  },
+  "https://docs.openpost.social/usage/recording": {
+    "audience": "Open /record to capture screen, camera, and microphone sources as separate synchronized files.",
+    "boundary": "OpenPost requests screen, camera, or microphone access only after you start recording."
   },
   "https://docs.openpost.social/usage/scheduling": {
     "audience": "The composer interprets dates and times in the workspace timezone. You can:",
@@ -537,19 +545,19 @@
   },
   "https://docs.openpost.social/usage/settings": {
     "audience": "Use this tab when the setting should differ between brands, clients, or projects.",
-    "boundary": "The media lifecycle information is not a workspace control. Temporary post-specific media moves to Trash after its final successful publication or 14 days without use, and Trash is permanently removed after seven days. Favorites, organized media, active work, and editor projects remain protected. OpenPost keeps the periods fixed so an old client or stored workspace value cannot weaken the policy."
+    "boundary": "The media lifecycle information is not a workspace control."
   },
   "https://docs.openpost.social/usage/studio": {
-    "audience": "OpenPost Studio is the editing area for images and video. Choose the editor that matches the media you need to create.",
-    "boundary": "Cloud-saved image and video projects remain scoped to the active workspace. Local video sources stay in the browser until you explicitly upload or publish them."
+    "audience": "OpenPost Studio is the editing area for images and video.",
+    "boundary": "Video Editor projects stay in the disk workspace you choose until you explicitly upload or publish an export."
   },
   "https://docs.openpost.social/usage/threads": {
     "audience": "This page is for people creating ordered multi-post sequences.",
     "boundary": "Failures in early posts can block later posts in the same thread."
   },
   "https://docs.openpost.social/usage/video-editor": {
-    "audience": "OpenPost Video Editor is a local-first editor for social videos and recordings up to two hours.",
-    "boundary": "The editor is available on every OpenPost instance. Operators can change the model asset base URL, but there is no Video Editor feature toggle."
+    "audience": "OpenPost Video Editor is a local-first multitrack editor for social video.",
+    "boundary": "Video Editor does not create or sync cloud projects."
   },
   "https://docs.openpost.social/usage/workspaces": {
     "audience": "Use a workspace to keep one brand, client, or project separate.",
