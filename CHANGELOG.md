@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Let production releases resume an already prepared candidate without trying to create an empty commit.
 - Show Video Editor shortcut keys using the active keyboard layout when the browser provides it.
 - Make Space control the active video monitor without clicking focused controls, with Backspace for lift delete and Delete for ripple delete.
 - Saved keyboard bindings now control duplicate, select all, group, nudge, reorder, copy, paste, and delete actions in the 2D composition timeline without hijacking focused controls.
