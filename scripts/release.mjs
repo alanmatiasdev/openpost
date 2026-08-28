@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 import { resolveRunArtifact } from "./ci-artifacts.mjs";
+import { releaseCommandEnvironment } from "./release-command-environment.mjs";
 import { requireConventionalCommitMessage, selectWorkflowRun } from "./release-lifecycle.mjs";
 import { readReleaseManifest } from "./release-manifest.mjs";
 import {
@@ -604,7 +605,7 @@ function run(argv, extraEnv = {}) {
   console.log(`\n==> ${argv.join(" ")}`);
   const result = Bun.spawnSync(argv, {
     cwd: root,
-    env: { ...process.env, ...extraEnv },
+    env: releaseCommandEnvironment(process.env, extraEnv),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
@@ -617,7 +618,7 @@ async function runParallel(commands) {
   const processes = commands.map((argv) =>
     Bun.spawn(argv, {
       cwd: root,
-      env: process.env,
+      env: releaseCommandEnvironment(),
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -646,7 +647,7 @@ async function runParallel(commands) {
 function runCapture(argv, extraEnv = {}) {
   const result = Bun.spawnSync(argv, {
     cwd: root,
-    env: { ...process.env, ...extraEnv },
+    env: releaseCommandEnvironment(process.env, extraEnv),
     stdout: "pipe",
     stderr: "inherit",
   });
@@ -657,7 +658,7 @@ function runCapture(argv, extraEnv = {}) {
 function runOptional(argv) {
   const result = Bun.spawnSync(argv, {
     cwd: root,
-    env: process.env,
+    env: releaseCommandEnvironment(),
     stdout: "pipe",
     stderr: "pipe",
   });
