@@ -222,8 +222,9 @@ export async function preflightExport(
 	const firstSource = sourceById.get(enabled[0]!.sourceId)!;
 	const outputFormat = outputFormatForSource(firstSource);
 	const estimatedBytes = estimateOutputBytes(enabled, sources);
-	// Validate stream selections are possible
-	for (const src of sources) {
+	// An imported source with no enabled segment contributes nothing to this export.
+	for (const sourceId of new Set(enabled.map((segment) => segment.sourceId))) {
+		const src = sourceById.get(sourceId)!;
 		const err = validateStreamSelection(src);
 		if (err) {
 			return {

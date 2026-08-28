@@ -266,6 +266,22 @@ describe('quick-cut preflight', () => {
 		expect(pre.reason).toMatch(/no tracks/i);
 	});
 
+	it('ignores invalid sources that no enabled segment uses', async () => {
+		const used = makeSource('used');
+		const unused = makeSource('unused', {
+			selectedVideoTrackIndex: null,
+			selectedAudioTrackIndices: []
+		});
+		const preflight = await preflightExport(
+			[used, unused],
+			[createSegment(0, 1, { sourceId: used.id })],
+			'nearestKeyframe',
+			false
+		);
+		expect(preflight.eligible).toBe(true);
+		expect(preflight.perSegment).toEqual([expect.objectContaining({ requiresTranscode: false })]);
+	});
+
 	it('allows video-off exports and keeps audio packet copy', async () => {
 		const src = makeSource('s1', { selectedVideoTrackIndex: null, selectedAudioTrackIndices: [0] });
 		const seg = createSegment(0, 1, { sourceId: src.id });
