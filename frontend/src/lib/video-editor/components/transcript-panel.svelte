@@ -36,7 +36,7 @@
 	import { sourceSecondsToTimelineFrame } from '$lib/video-editor/timeline/utils/media-item-frames';
 	import { findTranscriptWordMatches } from '$lib/video-editor/transcript/fuzzy-search';
 	import {
-		correctedCueTiming,
+		correctedCueTimingPatch,
 		correctedCueWords,
 		correctedSubtitleWord
 	} from '$lib/video-editor/transcript/caption-correction';
@@ -251,9 +251,9 @@
 		startFrame: number,
 		endFrame: number
 	): void {
-		const { startFrame: start, endFrame: end } = correctedCueTiming(cue, startFrame, endFrame);
-		if (start === cue.startFrame && end === cue.endFrame) return;
-		replaceCue(item, { ...cue, startFrame: start, endFrame: end }, 'EDIT_CUE_TIMING');
+		const corrected = correctedCueTimingPatch(cue, startFrame, endFrame);
+		if (corrected.startFrame === cue.startFrame && corrected.endFrame === cue.endFrame) return;
+		replaceCue(item, { ...cue, ...corrected }, 'EDIT_CUE_TIMING');
 	}
 
 	function updateWord(
@@ -262,6 +262,10 @@
 		wordId: string,
 		patch: Partial<SubtitleWord>
 	): void {
+		if (patch.text !== undefined && patch.text.trim() === '') {
+			deleteWord(item, cue, wordId);
+			return;
+		}
 		const corrected = correctedSubtitleWord(cue, wordId, patch);
 		if (!corrected) return;
 		replaceCue(

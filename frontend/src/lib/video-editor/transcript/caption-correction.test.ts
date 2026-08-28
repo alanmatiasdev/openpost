@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { SubtitleCue } from '../project/types';
-import { correctedCueTiming, correctedCueWords, correctedSubtitleWord } from './caption-correction';
+import {
+	correctedCueTiming,
+	correctedCueTimingPatch,
+	correctedCueWords,
+	correctedSubtitleWord
+} from './caption-correction';
 
 const cue: SubtitleCue = {
 	id: 'cue',
@@ -20,6 +25,17 @@ describe('caption correction', () => {
 			endFrame: 50
 		});
 		expect(correctedCueTiming(cue, 60, 40)).toEqual({ startFrame: 60, endFrame: 61 });
+	});
+
+	it('retimes words into corrected cue bounds without changing their identity', () => {
+		expect(correctedCueTimingPatch(cue, 20, 40)).toEqual({
+			startFrame: 20,
+			endFrame: 40,
+			words: [
+				{ id: 'one', startFrame: 20, endFrame: 28, text: 'One' },
+				{ id: 'two', startFrame: 30, endFrame: 40, text: 'two' }
+			]
+		});
 	});
 
 	it('updates word copy and timing while deriving the full cue bounds', () => {

@@ -15,6 +15,34 @@ export function correctedCueTiming(
 	return { startFrame: start, endFrame: end };
 }
 
+export interface CorrectedCueTimingPatch {
+	startFrame: number;
+	endFrame: number;
+	words?: SubtitleWord[];
+}
+
+/** Move and scale timed words with their cue so no word survives outside it. */
+export function correctedCueTimingPatch(
+	cue: SubtitleCue,
+	startFrame: number,
+	endFrame: number
+): CorrectedCueTimingPatch {
+	const corrected = correctedCueTiming(cue, startFrame, endFrame);
+	if (!cue.words) return corrected;
+	const previousDuration = Math.max(1, cue.endFrame - cue.startFrame);
+	const nextDuration = corrected.endFrame - corrected.startFrame;
+	const mapFrame = (frame: number) => {
+		const progress = Math.max(0, Math.min(1, (frame - cue.startFrame) / previousDuration));
+		return Math.round(corrected.startFrame + progress * nextDuration);
+	};
+	const words = cue.words.map((word) => {
+		const start = Math.min(corrected.endFrame - 1, mapFrame(word.startFrame));
+		const end = Math.max(start + 1, Math.min(corrected.endFrame, mapFrame(word.endFrame)));
+		return { ...word, startFrame: start, endFrame: end };
+	});
+	return { ...corrected, words };
+}
+
 export interface CorrectedWordPatch {
 	words: SubtitleWord[];
 	startFrame: number;

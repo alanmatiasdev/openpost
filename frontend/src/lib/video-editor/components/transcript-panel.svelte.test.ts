@@ -206,6 +206,27 @@ describe('TranscriptPanel cue formatting', () => {
 			.not.toBeInTheDocument();
 	});
 
+	it('keeps timed words inside cue edits and treats an empty word as delete', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TranscriptPanel, { onedit });
+		const cueStart = screen.getByLabelText('Start', { exact: true });
+
+		await cueStart.fill('40');
+		cueStart.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]).toMatchObject({
+			startFrame: 40,
+			endFrame: 90,
+			words: [{ id: 'word', startFrame: 40, endFrame: 57, text: 'Ready' }]
+		});
+
+		const wordInput = screen.getByRole('textbox', { name: 'Transcript word', exact: true });
+		await wordInput.fill('');
+		wordInput.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('subtitle')?.cues).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(2);
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+
 	it('stages transcript words for review, then ripple deletes them in one undo step', async () => {
 		await page.viewport(320, 720);
 		const videoTrack: TimelineTrack = { ...track, id: 'video', name: 'Video', order: 1 };
