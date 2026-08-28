@@ -790,6 +790,7 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 	});
 
 	it('keeps keyframe view, navigation, auto, and fit commands inside expanded Motion properties', async () => {
+		await page.viewport(320, 720);
 		const item = makeItem({
 			id: 'one',
 			keyframes: {
@@ -822,7 +823,9 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		expect(document.querySelector('[aria-label="Keyframe dope sheet"]')).toBeNull();
 		key('3', 'Digit3');
 		await expect.element(screen.getByRole('region', { name: 'Keyframe dope sheet' })).toBeVisible();
-		expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible();
+		await vi.waitFor(() =>
+			expect(document.querySelector('[data-keyframe-value-graph]')).toBeVisible()
+		);
 		key('2', 'Digit2');
 		await vi.waitFor(() =>
 			expect(document.querySelector('[data-keyframe-value-graph]')).toBeNull()
