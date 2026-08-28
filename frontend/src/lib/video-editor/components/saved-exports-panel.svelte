@@ -2,6 +2,7 @@
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
@@ -227,63 +228,90 @@
 		{:else if entries}
 			<ul class="space-y-2">
 				{#each entries as entry (pathKey(entry))}
-					<li
-						class="flex items-center gap-2.5 rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
-					>
-						{#if entry.kind === 'directory'}
-							<FolderOpenIcon
-								class="size-4 shrink-0 text-[var(--video-editor-muted)]"
-								aria-hidden="true"
-							/>
-						{:else if isAudioFile(entry.name)}
-							<FileAudioIcon
-								class="size-4 shrink-0 text-[var(--video-editor-muted)]"
-								aria-hidden="true"
-							/>
-						{:else}
-							<FileVideoIcon
-								class="size-4 shrink-0 text-[var(--video-editor-muted)]"
-								aria-hidden="true"
-							/>
-						{/if}
-						<div class="min-w-0 flex-1">
-							<p class="text-sm leading-tight font-medium break-words">{entry.name}</p>
-							<p class="mt-0.5 text-[11px] text-[var(--video-editor-muted)] tabular-nums">
-								{entry.kind === 'directory'
-									? m.video_editor_saved_exports_folder()
-									: formatBytes(entry.size)}{#if entry.lastModified > 0}
-									· {formatDate(entry.lastModified)}{/if}
-							</p>
-						</div>
-						<div class="flex shrink-0 gap-0.5">
-							{#if entry.kind === 'file'}
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									disabled={Boolean(busyPath)}
-									onclick={() => void download(entry)}
-									aria-label={m.video_editor_saved_exports_download_named({ name: entry.name })}
+					<li>
+						<ContextMenu.Root>
+							<ContextMenu.Trigger>
+								<div
+									data-export-path={pathKey(entry)}
+									class="flex items-center gap-2.5 rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
 								>
-									{#if busyPath === pathKey(entry)}
-										<LoaderIcon
-											class="animate-spin motion-reduce:animate-none"
+									{#if entry.kind === 'directory'}
+										<FolderOpenIcon
+											class="size-4 shrink-0 text-[var(--video-editor-muted)]"
+											aria-hidden="true"
+										/>
+									{:else if isAudioFile(entry.name)}
+										<FileAudioIcon
+											class="size-4 shrink-0 text-[var(--video-editor-muted)]"
 											aria-hidden="true"
 										/>
 									{:else}
-										<DownloadIcon aria-hidden="true" />
+										<FileVideoIcon
+											class="size-4 shrink-0 text-[var(--video-editor-muted)]"
+											aria-hidden="true"
+										/>
 									{/if}
-								</Button>
-							{/if}
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								disabled={Boolean(busyPath)}
-								onclick={() => requestDelete(entry)}
-								aria-label={m.video_editor_saved_exports_delete_named({ name: entry.name })}
-							>
-								<TrashIcon aria-hidden="true" />
-							</Button>
-						</div>
+									<div class="min-w-0 flex-1">
+										<p class="text-sm leading-tight font-medium break-words">{entry.name}</p>
+										<p class="mt-0.5 text-[11px] text-[var(--video-editor-muted)] tabular-nums">
+											{entry.kind === 'directory'
+												? m.video_editor_saved_exports_folder()
+												: formatBytes(entry.size)}{#if entry.lastModified > 0}
+												· {formatDate(entry.lastModified)}{/if}
+										</p>
+									</div>
+									<div class="flex shrink-0 gap-0.5">
+										{#if entry.kind === 'file'}
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												disabled={Boolean(busyPath)}
+												onclick={() => void download(entry)}
+												aria-label={m.video_editor_saved_exports_download_named({
+													name: entry.name
+												})}
+											>
+												{#if busyPath === pathKey(entry)}
+													<LoaderIcon
+														class="animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
+												{:else}
+													<DownloadIcon aria-hidden="true" />
+												{/if}
+											</Button>
+										{/if}
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											disabled={Boolean(busyPath)}
+											onclick={() => requestDelete(entry)}
+											aria-label={m.video_editor_saved_exports_delete_named({ name: entry.name })}
+										>
+											<TrashIcon aria-hidden="true" />
+										</Button>
+									</div>
+								</div>
+							</ContextMenu.Trigger>
+							<ContextMenu.Content class="video-editor-theme w-64">
+								{#if entry.kind === 'file'}
+									<ContextMenu.Item
+										disabled={Boolean(busyPath)}
+										onclick={() => void download(entry)}
+									>
+										{m.video_editor_saved_exports_download_named({ name: entry.name })}
+									</ContextMenu.Item>
+									<ContextMenu.Separator />
+								{/if}
+								<ContextMenu.Item
+									variant="destructive"
+									disabled={Boolean(busyPath)}
+									onclick={() => requestDelete(entry)}
+								>
+									{m.video_editor_saved_exports_delete_named({ name: entry.name })}
+								</ContextMenu.Item>
+							</ContextMenu.Content>
+						</ContextMenu.Root>
 					</li>
 				{/each}
 			</ul>

@@ -63,6 +63,20 @@ describe('SavedExportsPanel', () => {
 			});
 
 		const screen = await render(SavedExportsPanel, props);
+		const openContextMenu = (entry: ExportEntry) => {
+			const row = screen.container.querySelector<HTMLElement>(
+				`[data-export-path="${entry.path.join('/')}"]`
+			);
+			expect(row).not.toBeNull();
+			row!.dispatchEvent(
+				new MouseEvent('contextmenu', {
+					bubbles: true,
+					cancelable: true,
+					clientX: 80,
+					clientY: 80
+				})
+			);
+		};
 
 		await expect.element(screen.getByText(first.name)).toBeVisible();
 		await expect.element(screen.getByText(second.name)).toBeVisible();
@@ -83,7 +97,8 @@ describe('SavedExportsPanel', () => {
 		await expect.element(screen.getByText(third.name)).toBeVisible();
 		expect(props.listFiles).toHaveBeenCalledTimes(2);
 
-		await screen.getByRole('button', { name: `Download ${first.name}` }).click();
+		openContextMenu(first);
+		await screen.getByRole('menuitem', { name: `Download ${first.name}` }).click();
 		expect(props.readFile).toHaveBeenCalledWith(first.path);
 		expect(createObjectURL).toHaveBeenCalledOnce();
 		expect(click).toHaveBeenCalledOnce();
@@ -91,7 +106,8 @@ describe('SavedExportsPanel', () => {
 		expect(clickedHref).toBe('blob:render');
 		await vi.waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:render'));
 
-		await screen.getByRole('button', { name: `Delete ${first.name}` }).click();
+		openContextMenu(first);
+		await screen.getByRole('menuitem', { name: `Delete ${first.name}` }).click();
 		await expect
 			.element(screen.getByRole('heading', { name: `Delete ${first.name}?` }))
 			.toBeVisible();
@@ -101,7 +117,9 @@ describe('SavedExportsPanel', () => {
 		expect(props.deleteEntry).toHaveBeenCalledWith(first.path, false);
 		expect(props.listFiles).toHaveBeenCalledTimes(3);
 
-		await screen.getByRole('button', { name: `Delete ${sequence.name}` }).click();
+		openContextMenu(sequence);
+		expect(screen.getByRole('menuitem', { name: `Download ${sequence.name}` }).query()).toBeNull();
+		await screen.getByRole('menuitem', { name: `Delete ${sequence.name}` }).click();
 		await screen.getByRole('button', { name: 'Delete', exact: true }).click();
 		await expect.element(screen.getByText(sequence.name)).not.toBeInTheDocument();
 		expect(props.deleteEntry).toHaveBeenCalledWith(sequence.path, true);
