@@ -69,6 +69,8 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 
 ## Verify and deliver
 
+- Tests need an independent reason to exist: reproduce a real failure through the closest stable boundary or check an externally defined contract. Each test must fail on a plausible behavior regression, not merely because the implementation was refactored.
+- Remove circular tests that call a new private helper or guard and assert its own literals, branches, fields, or error text. When no meaningful behavior test exists, use focused practical verification and add no test.
 - During development, run the nearest relevant check after each edit: `bun run check:frontend:types` for Svelte/TS type checking only, `bun run check:contracts` for generated contracts, `bun run test:file -- <path>` for a single test, `bun run test:backend:pkg -- <package>` for one Go package. Use `bun run check -- <scope>` for a full surface gate once the candidate is stable. Use `bun run doctor` before broad, browser, or release work; `bun run release -- check` before releases; `bun run verify` only for high-risk local build proof.
 - UI and copy changes must pass the `ux-consistency` acceptance bar before finishing.
 - Behavior changes: sync docs, product copy, and contracts under `Unreleased`. Write changelog entries to `changes/<issue-number>.md`, not directly to `CHANGELOG.md`, to avoid conflicts when parallel tickets are in flight.
