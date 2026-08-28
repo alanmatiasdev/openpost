@@ -29,10 +29,7 @@ test("production build stages cannot drift back to mutable tags", () => {
   const problems = validateImagePolicy(
     {
       ...inputs,
-      dockerfile: inputs.dockerfile.replace(
-        /(@sha256:[a-f0-9]{64})(?= AS backend-builder)/u,
-        "",
-      ),
+      dockerfile: inputs.dockerfile.replace(/(@sha256:[a-f0-9]{64})(?= AS backend-builder)/u, ""),
     },
     new Date("2026-08-09T00:00:00Z"),
   );
