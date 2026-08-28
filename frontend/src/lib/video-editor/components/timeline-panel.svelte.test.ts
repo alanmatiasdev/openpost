@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import '../../../routes/layout.css';
-import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
+import type {
+	TimelineItem,
+	TimelineTrack,
+	TimelineTransition
+} from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -194,6 +198,95 @@ describe('TimelinePanel progressive controls', () => {
 		clip!.focus();
 		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
 		await expect.element(screen.getByRole('menuitem', { name: /^Copy/ })).toBeVisible();
+	});
+
+	it('runs applicable clip actions from the pointer-targeted context menu', async () => {
+		const left = item({
+			id: 'left',
+			originId: 'origin',
+			mediaId: 'media',
+			durationInFrames: 30,
+			sourceEnd: 30
+		});
+		const right = item({
+			id: 'right',
+			originId: 'origin',
+			mediaId: 'media',
+			from: 30,
+			durationInFrames: 30,
+			sourceStart: 30,
+			sourceEnd: 60
+		});
+		timelineStore._setItems([left, right]);
+		timelineStore._setCurrentFrame(45);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: right.id,
+			selectedItemIds: [left.id, right.id]
+		});
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			`[data-timeline-item-id="${right.id}"] > button`
+		);
+		expect(clip).not.toBeNull();
+
+		clip!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByRole('menuitem', { name: 'Freeze frame' })).toBeEnabled();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Arrange selected clips' }))
+			.toBeVisible();
+		await screen.getByRole('menuitem', { name: /^Join selected clips/ }).click();
+
+		expect(timelineStore.items).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('JOIN_ITEMS');
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('targets and removes a transition instead of opening the track menu', async () => {
+		const left = item({
+			id: 'left',
+			mediaId: 'media',
+			durationInFrames: 60,
+			sourceEnd: 60
+		});
+		const right = item({
+			id: 'right',
+			mediaId: 'media',
+			from: 60,
+			durationInFrames: 60,
+			sourceStart: 60,
+			sourceEnd: 120
+		});
+		timelineStore._setItems([left, right]);
+		const transition: TimelineTransition = {
+			id: 'dissolve',
+			type: 'crossfade',
+			presentation: 'fade',
+			durationInFrames: 20,
+			alignment: 0.5,
+			fromItemId: left.id,
+			toItemId: right.id
+		};
+		transitionsStore.setAll([transition]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const target = screen.container.querySelector<HTMLButtonElement>(
+			`[data-transition-id="${transition.id}"] > button`
+		);
+		expect(target).not.toBeNull();
+
+		target!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByRole('menuitem', { name: 'Remove transition' })).toBeVisible();
+		expect(
+			[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some((item) =>
+				item.textContent?.includes('Add marker')
+			)
+		).toBe(false);
+		await screen.getByRole('menuitem', { name: 'Remove transition' }).click();
+
+		expect(transitionsStore.list).toEqual([]);
+		expect(commandHistory.getLastCommandType()).toBe('REMOVE_TRANSITION');
+		expect(onedit).toHaveBeenCalledOnce();
 	});
 
 	it('offers track controls from the track header context menu', async () => {

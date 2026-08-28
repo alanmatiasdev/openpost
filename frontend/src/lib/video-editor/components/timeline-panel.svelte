@@ -188,6 +188,7 @@
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import {
 		pruneOrphanedTransitions,
+		removeTransition,
 		transitionsStore,
 		updateTransition
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
@@ -356,6 +357,7 @@
 	let selectedTrackIds = $state<string[]>([]);
 	type TimelineContextTarget =
 		| { kind: 'items'; itemIds: string[]; primaryId: string }
+		| { kind: 'transition'; transitionId: string }
 		| { kind: 'marker'; markerId: string }
 		| { kind: 'track'; trackId: string }
 		| { kind: 'space'; frame: number; trackId: string | null };
@@ -1309,6 +1311,14 @@
 		selectedItemIds = [];
 	}
 
+	function removeContextTransition(): void {
+		if (!contextTransition) return;
+		removeTransition(contextTransition.id);
+		selectedTransitionId = null;
+		timelineContextTarget = null;
+		onedit();
+	}
+
 	function transitionDurationFromPointer(clientX: number): number {
 		if (!transitionResize) return 0;
 		const delta = pxDeltaToFrames(clientX - transitionResize.startX);
@@ -1433,6 +1443,15 @@
 
 	function prepareTimelineContextMenu(event: MouseEvent): void {
 		const element = event.target instanceof Element ? event.target : null;
+		const transitionId =
+			element?.closest<HTMLElement>('[data-transition-id]')?.dataset.transitionId;
+		if (transitionId && transitionsStore.list.some((candidate) => candidate.id === transitionId)) {
+			selectTransition(transitionId);
+			timelineStore._setSelectedMarkerId(null);
+			timelineContextTarget = { kind: 'transition', transitionId };
+			return;
+		}
+
 		const itemId = element?.closest<HTMLElement>('[data-timeline-item-id]')?.dataset.timelineItemId;
 		if (itemId && timelineStore.itemById.has(itemId)) {
 			if (!selectedItemIds.includes(itemId)) {
@@ -3815,6 +3834,18 @@
 			? timelineStore.tracks.find((track) => track.id === timelineContextTarget.trackId)
 			: undefined
 	);
+	const contextTransition = $derived(
+		timelineContextTarget?.kind === 'transition'
+			? transitionsStore.list.find(
+					(transition) => transition.id === timelineContextTarget.transitionId
+				)
+			: undefined
+	);
+	const contextPrimaryItem = $derived(
+		timelineContextTarget?.kind === 'items'
+			? timelineStore.itemById.get(timelineContextTarget.primaryId)
+			: undefined
+	);
 	const contextMarker = $derived(
 		timelineContextTarget?.kind === 'marker'
 			? timelineStore.markers.find((marker) => marker.id === timelineContextTarget.markerId)
@@ -3890,6 +3921,17 @@
 		);
 	});
 	const bentoEligibleIds = $derived(eligibleBentoItemIds(selectedItemIds));
+	const hasContextClipActions = $derived(
+		Boolean(
+			contextPrimaryItem?.compositionId ||
+			contextPrimaryItem?.type === 'video' ||
+			canJoinSelectedItems ||
+			bentoEligibleIds.length >= 2 ||
+			captionConsolidationTarget ||
+			clearableKeyframeCount > 0 ||
+			lockedAnimatedSelectionCount > 0
+		)
+	);
 	const pathVertexSelection = $derived(
 		selectedItem ? pathVertexSelectionStore.forItem(selectedItem.id) : null
 	);
@@ -5444,7 +5486,64 @@
 		{/snippet}
 	</ContextMenu.Trigger>
 	<ContextMenu.Content class="video-editor-theme w-60">
-		{#if timelineContextTarget?.kind === 'items'}
+		{#if contextTransition}
+			<ContextMenu.Item variant="destructive" onclick={removeContextTransition}>
+				{m.video_editor_transition_delete()}
+			</ContextMenu.Item>
+		{:else if timelineContextTarget?.kind === 'items'}
+			{#if contextPrimaryItem?.compositionId}
+				<ContextMenu.Item
+					onclick={() => {
+						if (contextPrimaryItem?.compositionId) {
+							onopencomposition(contextPrimaryItem.compositionId);
+						}
+					}}
+				>
+					{m.video_editor_sequence_open()}
+				</ContextMenu.Item>
+			{/if}
+			{#if contextPrimaryItem?.type === 'video'}
+				<ContextMenu.Item
+					disabled={!canFreezeSelectedItem || freezeFramePending}
+					onclick={() => {
+						if (contextPrimaryItem) onfreezeframe(contextPrimaryItem.id);
+					}}
+				>
+					{m.video_editor_freeze_frame()}
+				</ContextMenu.Item>
+			{/if}
+			{#if canJoinSelectedItems}
+				<ContextMenu.Item onclick={joinSelection}>
+					{m.video_editor_join_selected()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+			{/if}
+			{#if bentoEligibleIds.length >= 2}
+				<ContextMenu.Item onclick={() => (bentoLayoutOpen = true)}>
+					{m.video_editor_bento_open()}
+				</ContextMenu.Item>
+			{/if}
+			{#if captionConsolidationTarget}
+				<ContextMenu.Item onclick={consolidateSelection}>
+					{m.video_editor_consolidate_captions()}
+				</ContextMenu.Item>
+			{/if}
+			{#if clearableKeyframeCount > 0 || lockedAnimatedSelectionCount > 0}
+				<ContextMenu.Item
+					disabled={clearableKeyframeCount === 0}
+					onclick={openClearKeyframesDialog}
+				>
+					{m.video_editor_clear_keyframes_toolbar()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(
+							keyboardShortcuts.bindings.CLEAR_KEYFRAMES
+						)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+			{/if}
+			{#if hasContextClipActions}<ContextMenu.Separator />{/if}
 			<ContextMenu.Item onclick={() => oncutselection()}>
 				{m.video_editor_shortcuts_command_cut()}
 				<ContextMenu.Shortcut
