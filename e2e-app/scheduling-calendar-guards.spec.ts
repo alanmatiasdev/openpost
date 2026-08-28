@@ -467,6 +467,94 @@ test("the desktop week grid opens the composer on a 15-minute snapped time", asy
   );
 });
 
+test("the desktop week grid previews and persists pointer rescheduling", async ({
+  page,
+  request,
+}, testInfo) => {
+  const seed = `week-drag-${Date.now().toString(36)}-${testInfo.workerIndex}`;
+  const { workspace } = await createAuthenticatedWorkspace(page, request, seed);
+  await page.clock.setFixedTime(new Date("2030-06-10T12:00:00.000Z"));
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const post = scheduledPost(
+    "week-drag-post",
+    workspace.id,
+    "Pointer scheduled post",
+    "2030-06-12T13:00:00.000Z",
+  );
+  await mockCalendarData(page, [post]);
+
+  let scheduledAt = post.scheduled_at;
+  const publication = () => ({
+    id: "publication-week-drag-post",
+    workspace_id: workspace.id,
+    created_by: post.created_by,
+    title: post.content,
+    intent: "post",
+    content_profile: "short_text",
+    source_text: post.content,
+    source_url: "",
+    goal: "",
+    audience: "",
+    status: "scheduled",
+    revision: scheduledAt === post.scheduled_at ? 1 : 2,
+    scheduled_at: scheduledAt,
+    actual_run_at: "",
+    created_at: post.created_at,
+    updated_at: post.created_at,
+    metadata: {},
+    renditions: [],
+    segments: [],
+    media: [],
+  });
+  await page.route("**/api/v1/publications?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      headers: { "X-Has-More": "false" },
+      json: [publication()],
+    });
+  });
+  await page.route("**/api/v1/publications/publication-week-drag-post", async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    const body = route.request().postDataJSON() as { scheduled_at: string };
+    scheduledAt = body.scheduled_at;
+    await route.fulfill({
+      contentType: "application/json",
+      json: publication(),
+    });
+  });
+
+  await page.goto("/calendar");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  const source = page.locator('[data-calendar-week-item][aria-label="Pointer scheduled post"]');
+  const targetHour = page.getByRole("group", { name: /Jun 13.*14:00/ });
+  await source.scrollIntoViewIfNeeded();
+  await expect(source).toBeVisible();
+  const [sourceBounds, targetBounds] = await Promise.all([
+    source.boundingBox(),
+    targetHour.boundingBox(),
+  ]);
+  expect(sourceBounds).not.toBeNull();
+  expect(targetBounds).not.toBeNull();
+
+  await page.mouse.move(sourceBounds!.x + 30, sourceBounds!.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(sourceBounds!.x + 45, sourceBounds!.y + 18);
+  await page.mouse.move(targetBounds!.x + 40, targetBounds!.y + 40, { steps: 6 });
+
+  await expect(page.locator(".calendar-drag-overlay")).toBeVisible();
+  await expect(page.locator(".calendar-drag-placeholder")).toBeVisible();
+  await expect(page.locator(".calendar-drag-overlay")).toContainText(/Thu.*02:30 PM/);
+  await expect(source).toHaveClass(/opacity-30/);
+
+  await page.mouse.up();
+  await expect.poll(() => scheduledAt).toBe("2030-06-13T14:30:00.000Z");
+  await expect(page.locator(".calendar-drag-overlay")).toHaveCount(0);
+  await expect(targetHour.getByRole("button", { name: "Pointer scheduled post" })).toBeVisible();
+});
+
 test("published posts remain visible in calendar history and cannot move", async ({
   page,
   request,
