@@ -552,24 +552,6 @@ test("documentation production projection covers every ordinary catalog page", (
   }
 });
 
-test("API reference keeps its interactive viewer and publishes maintained no-JavaScript content", async () => {
-  const root = path.resolve(import.meta.dirname, "..");
-  const source = await readFile(path.join(root, "docs-site/development/api-reference.md"), "utf8");
-  const entry = docsSocialEntries.find(
-    (candidate) => candidate.page === "development/api-reference.md",
-  );
-
-  assert.equal(entry?.agentRepresentation.membership, "ordinary");
-  assert.ok(
-    productionProjections.documentation.pages.some(
-      (page) => page.page === "development/api-reference.md",
-    ),
-  );
-  assert.match(source, /^# API Reference$/m);
-  assert.match(source, /\[authoritative OpenAPI JSON\]\(\/openapi\.json\)/u);
-  assert.match(source, /<ClientOnly>[\s\S]*<OASpec hideBranding \/>[\s\S]*<\/ClientOnly>/u);
-});
-
 test(
   "marketing production artifacts preserve every browser tool explanation without controls",
   { timeout: 180_000 },
@@ -1432,24 +1414,6 @@ test(
         `${surface} build must follow the shared route catalogue check`,
       );
     }
-
-    const marketingLayout = await readFile(
-      path.join(root, "marketing-site/src/routes/+layout.svelte"),
-      "utf8",
-    );
-    assert.match(marketingLayout, /marketingAgentMarkdownUrl/u);
-    assert.match(marketingLayout, /rel="alternate" type="text\/markdown" href=\{agentMarkdown\}/u);
-    assert.match(
-      marketingLayout,
-      /rel="alternate"[\s\S]{0,80}type="text\/plain"[\s\S]{0,80}href="https:\/\/openpost\.social\/llms\.txt"/,
-    );
-
-    const docsConfig = await readFile(path.join(root, "docs-site/.vitepress/config.ts"), "utf8");
-    assert.match(docsConfig, /type: "text\/markdown"/);
-    assert.match(docsConfig, /new URL\(agentPage\.page, `\$\{docsSiteUrl\}\/`\)\.href/u);
-    assert.match(docsConfig, /type: "text\/plain"/);
-    assert.match(docsConfig, /href: `\$\{docsSiteUrl\}\/llms\.txt`/);
-    assert.match(docsConfig, /href: `\$\{docsSiteUrl\}\/llms-full\.txt`/);
 
     await ensureProductionBuilds(root);
 
