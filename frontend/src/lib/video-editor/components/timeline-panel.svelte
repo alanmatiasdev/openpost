@@ -4794,7 +4794,7 @@
 						{#each [...timelineStore.markers].sort((left, right) => left.frame - right.frame) as marker (marker.id)}
 							<button
 								type="button"
-								class="pointer-events-auto absolute top-0 flex h-6 w-5 -translate-x-1/2 cursor-grab items-start justify-center pt-0.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white active:cursor-grabbing max-md:h-11 max-md:w-11 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+								class="pointer-events-auto absolute top-0 flex h-6 w-5 -translate-x-1/2 cursor-grab items-start justify-center pt-0.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white active:cursor-grabbing [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
 								style="left:{timelineX(marker.frame)}px"
 								aria-label={`${markerName(marker)}, ${m.video_editor_marker_frame_value({ frame: marker.frame })}`}
 								aria-pressed={timelineStore.selectedMarkerId === marker.id}
@@ -5152,7 +5152,7 @@
 											<button
 												type="button"
 												role="slider"
-												class="absolute inset-x-0 z-30 h-3 -translate-y-1/2 cursor-ns-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white max-md:h-11 [@media(pointer:coarse)]:h-11"
+												class="absolute inset-x-0 z-30 h-3 -translate-y-1/2 cursor-ns-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white [@media(pointer:coarse)]:h-11"
 												style="top:{audioVolumeLinePercent(volumeDb)}%"
 												aria-label={`${m.video_editor_clip_volume()}: ${formatAudioVolumeDb(volumeDb)}`}
 												aria-valuemin={AUDIO_VOLUME_DB_MIN}
@@ -5182,7 +5182,7 @@
 										{/if}
 										<button
 											type="button"
-											class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white max-md:w-11 [@media(pointer:coarse)]:w-11 {activeEditTool ===
+											class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11 {activeEditTool ===
 											'track-push'
 												? pushAvailability === 'ready'
 													? 'bg-cyan-400/45 hover:bg-cyan-300/70'
@@ -5219,7 +5219,7 @@
 										></button>
 										<button
 											type="button"
-											class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white max-md:w-11 [@media(pointer:coarse)]:w-11"
+											class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11"
 											aria-label={m.video_editor_trim_end()}
 											title={m.video_editor_trim_keyboard()}
 											onkeydown={(event) =>
@@ -5269,7 +5269,7 @@
 										</button>
 										<button
 											type="button"
-											class="absolute inset-y-0 -left-3 z-20 w-6 cursor-ew-resize touch-none rounded-l-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white max-md:-left-[22px] max-md:w-11 [@media(pointer:coarse)]:-left-[22px] [@media(pointer:coarse)]:w-11"
+											class="absolute inset-y-0 -left-3 z-20 w-6 cursor-ew-resize touch-none rounded-l-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-left-[22px] [@media(pointer:coarse)]:w-11"
 											aria-label={m.video_editor_transition_resize_start()}
 											title={m.video_editor_transition_resize_keyboard()}
 											onkeydown={(event) => resizeTransitionWithKeyboard(event, transition, 'left')}
@@ -5277,7 +5277,7 @@
 										></button>
 										<button
 											type="button"
-											class="absolute inset-y-0 -right-3 z-20 w-6 cursor-ew-resize touch-none rounded-r-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white max-md:-right-[22px] max-md:w-11 [@media(pointer:coarse)]:-right-[22px] [@media(pointer:coarse)]:w-11"
+											class="absolute inset-y-0 -right-3 z-20 w-6 cursor-ew-resize touch-none rounded-r-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-right-[22px] [@media(pointer:coarse)]:w-11"
 											aria-label={m.video_editor_transition_resize_end()}
 											title={m.video_editor_transition_resize_keyboard()}
 											onkeydown={(event) =>
@@ -5288,7 +5288,7 @@
 								{/if}
 							{/each}
 							{#if !track.isGroup}<div
-									class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none max-md:h-11 [@media(pointer:coarse)]:h-11"
+									class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none [@media(pointer:coarse)]:h-11"
 									role="slider"
 									tabindex="0"
 									aria-orientation="vertical"

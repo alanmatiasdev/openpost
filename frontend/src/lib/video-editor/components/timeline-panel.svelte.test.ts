@@ -201,6 +201,7 @@ describe('TimelinePanel progressive controls', () => {
 	});
 
 	it('runs applicable clip actions from the pointer-targeted context menu', async () => {
+		await page.viewport(320, 720);
 		const left = item({
 			id: 'left',
 			originId: 'origin',
@@ -230,7 +231,7 @@ describe('TimelinePanel progressive controls', () => {
 		);
 		expect(clip).not.toBeNull();
 
-		clip!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await userEvent.click(clip!, { button: 'right' });
 		await expect.element(screen.getByRole('menuitem', { name: 'Freeze frame' })).toBeEnabled();
 		await expect
 			.element(screen.getByRole('menuitem', { name: 'Arrange selected clips' }))
@@ -243,6 +244,7 @@ describe('TimelinePanel progressive controls', () => {
 	});
 
 	it('targets and removes a transition instead of opening the track menu', async () => {
+		await page.viewport(320, 720);
 		const left = item({
 			id: 'left',
 			mediaId: 'media',
@@ -275,7 +277,7 @@ describe('TimelinePanel progressive controls', () => {
 		);
 		expect(target).not.toBeNull();
 
-		target!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await userEvent.click(target!, { button: 'right' });
 		await expect.element(screen.getByRole('menuitem', { name: 'Remove transition' })).toBeVisible();
 		expect(
 			[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some((item) =>
@@ -306,6 +308,7 @@ describe('TimelinePanel progressive controls', () => {
 	});
 
 	it('adds a marker from an empty-track context menu', async () => {
+		await page.viewport(720, 600);
 		timelineStore._setItems(
 			timelineStore.items.map((candidate) =>
 				candidate.id === 'music-bed'
@@ -314,18 +317,10 @@ describe('TimelinePanel progressive controls', () => {
 			)
 		);
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
-		const trackRow = screen.container.querySelector<HTMLElement>('[data-track="audio-track"]');
-		const musicClip = screen.container.querySelector<HTMLElement>(
-			'[data-timeline-item-id="music-bed"]'
-		);
-		expect(trackRow).not.toBeNull();
-		expect(musicClip).not.toBeNull();
-		await userEvent.click(trackRow!, {
+		const timeline = screen.getByRole('region', { name: 'Timeline' }).element();
+		await userEvent.click(timeline, {
 			button: 'right',
-			position: {
-				x: musicClip!.offsetLeft + musicClip!.offsetWidth + 16,
-				y: 32
-			}
+			position: { x: 500, y: 120 }
 		});
 		screen
 			.getByRole('menuitem', { name: /^Add marker/ })
@@ -379,7 +374,7 @@ describe('TimelinePanel progressive controls', () => {
 });
 
 describe('TimelinePanel Bento layout entry', () => {
-	it('keeps marker, trim, and track-resize targets usable at phone width', async () => {
+	it('sizes timeline hit targets for the active pointer at phone width', async () => {
 		await page.viewport(320, 720);
 		timelineStore._setMarkers([{ id: 'phone-marker', frame: 10, color: '#d97746' }]);
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
@@ -388,10 +383,13 @@ describe('TimelinePanel Bento layout entry', () => {
 		const trackResize = screen
 			.getByRole('slider', { name: 'Resize video-track track height' })
 			.element();
-		expect(marker.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
-		expect(marker.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
-		expect(trimStart.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
-		expect(trackResize.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+		const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+		expect(marker.getBoundingClientRect().width).toBeGreaterThanOrEqual(coarsePointer ? 44 : 20);
+		expect(marker.getBoundingClientRect().height).toBeGreaterThanOrEqual(coarsePointer ? 44 : 24);
+		expect(trimStart.getBoundingClientRect().width).toBeGreaterThanOrEqual(coarsePointer ? 44 : 8);
+		expect(trackResize.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+			coarsePointer ? 44 : 8
+		);
 		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
 	});
 
