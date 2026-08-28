@@ -44,6 +44,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { aiCaptionService } from '$lib/video-editor/transcript/ai-caption-service.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { conformReversePreview } from '$lib/video-editor/media/reverse-conform-service';
+	import {
+		copyColorGradeFromItem,
+		pasteColorGradeToItems
+	} from '$lib/video-editor/effects/color-grade-clipboard';
 	import { renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -619,6 +623,20 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			const media = mediaPool.get(mediaId);
 			if (media) void conformReversePreview(media).catch(() => undefined);
 		}
+	}
+
+	function handleCopyColorGrade(itemId: string): void {
+		const result = copyColorGradeFromItem(itemId);
+		if (result) {
+			showToast(m.video_editor_color_grade_copied({ count: result.effectCount }), 'success');
+		}
+	}
+
+	function handlePasteColorGrade(itemIds: string[]): void {
+		const result = pasteColorGradeToItems(itemIds);
+		if (!result) return;
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_color_grade_pasted({ count: result.effectCount }), 'success');
 	}
 
 	const selectedSupportsEffects = $derived(
@@ -1606,6 +1624,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						oncreatevoice={openTextVoice}
 						oncreatecompound={createCompoundForItems}
 						ondissolvecompound={dissolveCompoundItem}
+						oncopygrade={handleCopyColorGrade}
+						onpastegrade={handlePasteColorGrade}
 						oncopyselection={() => copyTimelineSelection(false)}
 						oncutselection={() => copyTimelineSelection(true)}
 						onpasteat={(frame, trackId) => pasteTimelineClipboard(frame, trackId)}

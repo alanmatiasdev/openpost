@@ -42,6 +42,10 @@
 		upsertGpuEffectParamsOnItems
 	} from '$lib/video-editor/timeline/actions/effects';
 	import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
+	import {
+		copyColorGradeFromItem,
+		pasteColorGradeToItems
+	} from '$lib/video-editor/effects/color-grade-clipboard';
 
 	let {
 		itemId,
@@ -164,9 +168,9 @@
 	}
 
 	function copyGrade(): void {
-		if (grade.length === 0) return;
-		colorPreviewStore.copyGrade(grade);
-		status = m.video_editor_color_grade_copied({ count: grade.length });
+		if (!itemId) return;
+		const result = copyColorGradeFromItem(itemId);
+		if (result) status = m.video_editor_color_grade_copied({ count: result.effectCount });
 	}
 
 	function applyGrade(effects: readonly GradeEffectSnapshot[], message: string): void {
@@ -176,9 +180,10 @@
 	}
 
 	function pasteGrade(): void {
-		const copied = colorPreviewStore.gradeClipboard;
-		if (!copied?.length) return;
-		applyGrade(copied, m.video_editor_color_grade_pasted({ count: copied.length }));
+		const result = pasteColorGradeToItems(targetItemIds);
+		if (!result) return;
+		status = m.video_editor_color_grade_pasted({ count: result.effectCount });
+		onedit();
 	}
 
 	function savePreset(): void {

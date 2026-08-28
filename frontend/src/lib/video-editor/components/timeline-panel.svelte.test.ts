@@ -37,6 +37,7 @@ import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview
 import { editorSession } from '$lib/video-editor/editor.svelte';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 
 const FILMSTRIP_TILE_WIDTH = 96;
 import TimelinePanel from './timeline-panel.svelte';
@@ -136,6 +137,7 @@ async function nextAnimationFrame(): Promise<void> {
 
 beforeEach(() => {
 	timelinePreviewScrub.__resetForTesting();
+	colorPreviewStore.__resetForTesting();
 	mediaTasks.reset();
 	clearSceneDragData();
 	clearActiveMediaDrag();
@@ -347,6 +349,51 @@ describe('TimelinePanel progressive controls', () => {
 		await userEvent.click(compound!, { button: 'right' });
 		await screen.getByRole('menuitem', { name: 'Dissolve compound clip' }).click();
 		expect(ondissolvecompound).toHaveBeenCalledWith('compound');
+	});
+
+	it('copies and pastes grades for the exact visual context selection', async () => {
+		const oncopygrade = vi.fn();
+		const onpastegrade = vi.fn();
+		timelineStore._updateItems([
+			{
+				id: 'video',
+				patch: {
+					effects: [
+						{
+							id: 'grade',
+							type: 'gpu',
+							effectId: 'gpu-color-wheels',
+							params: { lift: -0.2 },
+							enabled: true
+						}
+					]
+				}
+			}
+		]);
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: 'video',
+			selectedItemIds: ['video', 'music-bed'],
+			oncopygrade,
+			onpastegrade
+		});
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="video"] > button'
+		);
+		expect(clip).not.toBeNull();
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Copy grade' }).element().click();
+		expect(oncopygrade).toHaveBeenCalledWith('video');
+
+		colorPreviewStore.copyGrade([
+			{ effectId: 'gpu-color-wheels', params: { gain: 1.4 }, enabled: true }
+		]);
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Paste grade' }).element().click();
+		expect(onpastegrade).toHaveBeenCalledWith(['video']);
 	});
 
 	it('targets and removes a transition instead of opening the track menu', async () => {

@@ -86,6 +86,8 @@
 	} from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getTextItemPlainText } from '$lib/video-editor/typography/text-item-spans';
+	import { hasColorGrade } from '$lib/video-editor/effects/color-grade';
+	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
@@ -327,6 +329,8 @@
 		oncreatevoice = () => {},
 		oncreatecompound = () => {},
 		ondissolvecompound = () => {},
+		oncopygrade = () => {},
+		onpastegrade = () => {},
 		oncopyselection = () => false,
 		oncutselection = () => false,
 		onpasteat = () => false,
@@ -352,6 +356,8 @@
 		oncreatevoice?: (itemId: string, text: string) => void;
 		oncreatecompound?: (itemIds: string[]) => void;
 		ondissolvecompound?: (itemId: string) => void;
+		oncopygrade?: (itemId: string) => void;
+		onpastegrade?: (itemIds: string[]) => void;
 		oncopyselection?: () => boolean;
 		oncutselection?: () => boolean;
 		onpasteat?: (frame: number, trackId: string | null) => boolean;
@@ -3894,11 +3900,20 @@
 	const contextVoiceText = $derived(
 		contextPrimaryItem?.type === 'text' ? getTextItemPlainText(contextPrimaryItem).trim() : ''
 	);
-	const hasContextEditTools = $derived(
+	const hasContextPrimaryEditTools = $derived(
 		contextPrimaryItem?.type === 'video' ||
 			contextPrimaryItem?.type === 'audio' ||
 			(contextPrimaryItem?.type === 'text' && contextVoiceText.length > 0)
 	);
+	const contextGradeSourceItem = $derived(contextItems.find((item) => hasColorGrade(item.effects)));
+	const contextGradeTargetItemIds = $derived(
+		contextItems.filter((item) => item.type !== 'audio').map((item) => item.id)
+	);
+	const hasContextGradeActions = $derived(
+		contextGradeSourceItem !== undefined ||
+			(Boolean(colorPreviewStore.gradeClipboard?.length) && contextGradeTargetItemIds.length > 0)
+	);
+	const hasContextEditTools = $derived(hasContextPrimaryEditTools || hasContextGradeActions);
 	const contextMarker = $derived(
 		timelineContextTarget?.kind === 'marker'
 			? timelineStore.markers.find((marker) => marker.id === timelineContextTarget.markerId)
@@ -5623,6 +5638,19 @@
 							>
 								{m.video_editor_text_create_voice()}
 							</ContextMenu.Item>
+						{/if}
+						{#if hasContextGradeActions}
+							{#if hasContextPrimaryEditTools}<ContextMenu.Separator />{/if}
+							{#if contextGradeSourceItem}
+								<ContextMenu.Item onclick={() => oncopygrade(contextGradeSourceItem.id)}>
+									{m.video_editor_color_copy_grade()}
+								</ContextMenu.Item>
+							{/if}
+							{#if colorPreviewStore.gradeClipboard?.length && contextGradeTargetItemIds.length > 0}
+								<ContextMenu.Item onclick={() => onpastegrade(contextGradeTargetItemIds)}>
+									{m.video_editor_color_paste_grade()}
+								</ContextMenu.Item>
+							{/if}
 						{/if}
 					</ContextMenu.SubContent>
 				</ContextMenu.Sub>
