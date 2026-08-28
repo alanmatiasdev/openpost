@@ -120,6 +120,56 @@ async function createColorToneWebM(
 	return new File([target.buffer], `${color}-${frequency}.webm`, { type: 'video/webm' });
 }
 
+async function createColorMultiToneWebM(
+	color: string,
+	frequencies: readonly number[],
+	durationSec = 1
+): Promise<File> {
+	const canvas = document.createElement('canvas');
+	canvas.width = 128;
+	canvas.height = 72;
+	const context = canvas.getContext('2d')!;
+	const target = new BufferTarget();
+	const output = new Output({ format: new WebMOutputFormat(), target });
+	const video = new CanvasSource(canvas, { codec: 'vp9', bitrate: 1_000_000 });
+	const audioSources = frequencies.map(
+		() => new AudioSampleSource({ codec: 'opus', bitrate: 96_000 })
+	);
+	output.addVideoTrack(video);
+	for (const audio of audioSources) output.addAudioTrack(audio);
+	await output.start();
+
+	const sampleRate = 48_000;
+	for (const [index, frequency] of frequencies.entries()) {
+		const pcm = new Float32Array(Math.round(durationSec * sampleRate));
+		for (let frame = 0; frame < pcm.length; frame++) {
+			pcm[frame] = Math.sin((2 * Math.PI * frequency * frame) / sampleRate) * 0.4;
+		}
+		const sample = new AudioSample({
+			data: pcm,
+			format: 'f32',
+			numberOfChannels: 1,
+			sampleRate,
+			timestamp: 0
+		});
+		await audioSources[index]!.add(sample);
+		sample.close();
+	}
+
+	for (let frame = 0; frame < Math.ceil(durationSec * 30); frame++) {
+		context.fillStyle = color;
+		context.fillRect(0, 0, canvas.width, canvas.height);
+		await video.add(frame / 30, 1 / 30);
+	}
+	video.close();
+	for (const audio of audioSources) audio.close();
+	await output.finalize();
+	if (!target.buffer) throw new Error('No multi-track A/V fixture bytes.');
+	return new File([target.buffer], `${color}-${frequencies.join('-')}.webm`, {
+		type: 'video/webm'
+	});
+}
+
 async function decodedMono(blob: Blob): Promise<{ samples: Float32Array; sampleRate: number }> {
 	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
 	try {
@@ -320,6 +370,54 @@ describe('quick-cut mediabunny fixture', () => {
 		expectToneAt(decoded.samples, decoded.sampleRate, 2, 220);
 		await discardScratchFile(artifact!.scratchPath);
 	}, 30000);
+
+	it('transcodes mixed audio track counts without depending on import order', async () => {
+		const oneTrackFile = await createColorToneWebM('red', 220);
+		const twoTrackFile = await createColorMultiToneWebM('blue', [440, 660]);
+		const oneTrackSource = {
+			...(await probeSourceFile(oneTrackFile)),
+			selectedAudioTrackIndices: [0]
+		};
+		const twoTrackSource = {
+			...(await probeSourceFile(twoTrackFile)),
+			selectedAudioTrackIndices: [0, 1]
+		};
+		expect(oneTrackSource.audioStreams).toHaveLength(1);
+		expect(twoTrackSource.audioStreams).toHaveLength(2);
+		const segments = [
+			createSegment(0.1, 0.7, { sourceId: twoTrackSource.id }),
+			createSegment(0.1, 0.7, { sourceId: oneTrackSource.id })
+		];
+		const preflight = await preflightExport(
+			[oneTrackSource, twoTrackSource],
+			segments,
+			'exact',
+			true
+		);
+		expect(preflight.eligible).toBe(true);
+		expect(preflight.requiresTranscode).toBe(true);
+
+		const [artifact] = await exportSegments({
+			sources: [oneTrackSource, twoTrackSource],
+			segments,
+			cutMode: 'exact',
+			merge: true
+		});
+		try {
+			const input = new Input({
+				formats: ALL_FORMATS,
+				source: new BlobSource(artifact!.scratchFile)
+			});
+			try {
+				expect(await input.getAudioTracks()).toHaveLength(2);
+				expect(await input.computeDuration()).toBeCloseTo(1.2, 1);
+			} finally {
+				input.dispose?.();
+			}
+		} finally {
+			if (artifact) await discardScratchFile(artifact.scratchPath);
+		}
+	}, 30_000);
 
 	it('incompatible dimensions source proves preflight requires transcode', async () => {
 		const fileA = await createColorMp4('red', 1, 128, 72);

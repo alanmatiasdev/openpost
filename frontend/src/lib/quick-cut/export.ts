@@ -1350,27 +1350,22 @@ async function exportMergedTranscode(
 	const ext = extensionForFormat(format);
 	const finalStreaming = await createStreamingOutputTarget(signal);
 	const finalOutput = new Output({ format, target: finalStreaming.target });
-	const enabledIds = new Set(segments.map((s) => s.sourceId));
-	const hasAudio = sources
-		.filter((s) => enabledIds.has(s.id))
-		.some((s) => getSelectedAudioStreams(s).length > 0);
 	const webmOutput = format instanceof WebMOutputFormat;
 	const videoCodec: VideoCodec = webmOutput ? 'vp9' : 'avc';
 	const audioCodec: AudioCodec = webmOutput ? 'opus' : 'aac';
-	const firstFps = sources.find((s) => enabledIds.has(s.id) && s.fps && s.fps > 0)?.fps ?? null;
-	const firstSelAudiosForOutput = (() => {
-		for (const s of sources)
-			if (enabledIds.has(s.id)) {
-				const sel = getSelectedAudioStreams(s);
-				if (sel.length > 0) return sel;
-			}
-		return [];
-	})();
+	const firstOutputSource = sourceById.get(segments[0]!.sourceId)!;
+	const firstFps = getSelectedVideoStream(firstOutputSource)?.fps ?? null;
+	const outputAudioTrackCount = Math.max(
+		0,
+		...segments.map((segment) => getSelectedAudioStreams(sourceById.get(segment.sourceId)!).length)
+	);
 	const videoSource = new EncodedVideoPacketSource(videoCodec);
-	finalOutput.addVideoTrack(videoSource, { frameRate: firstFps > 0 ? firstFps : undefined });
+	finalOutput.addVideoTrack(videoSource, {
+		frameRate: firstFps > 0 ? firstFps : undefined
+	});
 	const audioSources: EncodedAudioPacketSource[] = [];
-	if (hasAudio) {
-		for (let ai = 0; ai < firstSelAudiosForOutput.length; ai++) {
+	if (outputAudioTrackCount > 0) {
+		for (let ai = 0; ai < outputAudioTrackCount; ai++) {
 			const src = new EncodedAudioPacketSource(audioCodec);
 			audioSources.push(src);
 			finalOutput.addAudioTrack(src);
@@ -1379,12 +1374,16 @@ async function exportMergedTranscode(
 	const startTime = Date.now();
 	let muxedTime = 0;
 	let videoSeq = 0;
-	const audioSeqs: number[] = firstSelAudiosForOutput.map(() => 0);
+	const audioSeqs: number[] = Array.from({ length: outputAudioTrackCount }, () => 0);
 	const onAbort = () => {
 		if (finalOutput.state === 'started') void finalOutput.cancel();
 	};
 	signal?.addEventListener('abort', onAbort, { once: true });
-	const tempScratches: Array<{ file: File; path: string; discard: () => Promise<void> }> = [];
+	const tempScratches: Array<{
+		file: File;
+		path: string;
+		discard: () => Promise<void>;
+	}> = [];
 	try {
 		await finalOutput.start();
 		for (let idx = 0; idx < segments.length; idx++) {
@@ -1397,7 +1396,10 @@ async function exportMergedTranscode(
 			for (const a of selAudios) await ensureAc3DecoderForCodec(a.codec);
 			if (selVideo) await ensureAc3DecoderForCodec(selVideo.codec);
 			const tempStreaming = await createStreamingOutputTarget(signal);
-			const tempInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
+			const tempInput = new Input({
+				formats: ALL_FORMATS,
+				source: new BlobSource(file)
+			});
 			const selVideoIdx = selVideo?.index ?? -1;
 			const selAudioIdxSet = new Set(selAudios.map((a) => a.index));
 			const tempConversion = await Conversion.init({
@@ -1466,7 +1468,10 @@ async function exportMergedTranscode(
 				path: tempFile.name,
 				discard: () => tempStreaming.discard()
 			});
-			const segInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(tempFile) });
+			const segInput = new Input({
+				formats: ALL_FORMATS,
+				source: new BlobSource(tempFile)
+			});
 			const vTrack = await segInput.getPrimaryVideoTrack();
 			if (!vTrack) {
 				segInput.dispose?.();
@@ -1485,22 +1490,27 @@ async function exportMergedTranscode(
 			for await (const pkt of vSink.packets()) {
 				throwIfAborted(signal);
 				await videoSource.add(
-					pkt.clone({ timestamp: muxedTime + pkt.timestamp, sequenceNumber: videoSeq++ }),
+					pkt.clone({
+						timestamp: muxedTime + pkt.timestamp,
+						sequenceNumber: videoSeq++
+					}),
 					{
 						decoderConfig: first ? (vDec ?? undefined) : undefined
 					}
 				);
 				first = false;
 			}
-			if (hasAudio) {
+			if (outputAudioTrackCount > 0) {
 				const tempAudioTracks = await segInput.getAudioTracks().catch(() => []);
-				if (tempAudioTracks.length !== audioSources.length) {
+				if (tempAudioTracks.length > audioSources.length) {
 					segInput.dispose?.();
 					throw new Error(
-						`Temp audio track count mismatch for ${src.name}: expected ${audioSources.length}, got ${tempAudioTracks.length}`
+						`Temp audio track count overflow for ${src.name}: expected at most ${audioSources.length}, got ${tempAudioTracks.length}`
 					);
 				}
-				for (let ai = 0; ai < audioSources.length; ai++) {
+				// Tracks absent from this segment intentionally have no packets in
+				// its timestamp window, which decoders present as silence.
+				for (let ai = 0; ai < tempAudioTracks.length; ai++) {
 					const aTrack = tempAudioTracks[ai]!;
 					const aSink = new EncodedPacketSink(aTrack);
 					const aDec = await aTrack.getDecoderConfig();
@@ -1508,7 +1518,10 @@ async function exportMergedTranscode(
 					for await (const pkt of aSink.packets()) {
 						throwIfAborted(signal);
 						await audioSources[ai]!.add(
-							pkt.clone({ timestamp: muxedTime + pkt.timestamp, sequenceNumber: audioSeqs[ai]++ }),
+							pkt.clone({
+								timestamp: muxedTime + pkt.timestamp,
+								sequenceNumber: audioSeqs[ai]++
+							}),
 							{
 								decoderConfig: aFirst ? (aDec ?? undefined) : undefined
 							}
