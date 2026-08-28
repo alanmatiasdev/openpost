@@ -9,11 +9,13 @@ import {
 	createCompoundClip,
 	createSequence,
 	deleteSequence,
+	deleteSequences,
 	duplicateSequence,
 	dissolveCompoundClip,
 	nestSequence,
 	nestSequenceOnExactTracks,
 	sequenceDeletionImpact,
+	sequenceDeletionImpactFor,
 	switchSequence
 } from './sequence-actions';
 import { sequenceStore } from './sequence-store.svelte';
@@ -557,6 +559,61 @@ describe('compound clips', () => {
 		commandHistory.undo();
 		expect(sequenceStore.compositionById.has('target')).toBe(true);
 		expect(timelineStore.items[0]?.compositionId).toBe('target');
+	});
+
+	it('deletes several sequences and all external references as one undoable edit', () => {
+		const second = composition('second');
+		const first = composition('first', [
+			item({
+				id: 'first-second',
+				type: 'composition',
+				trackId: 'first-video',
+				compositionId: second.id
+			})
+		]);
+		const host = composition('host', [
+			item({
+				id: 'host-first',
+				type: 'composition',
+				trackId: 'host-video',
+				compositionId: first.id
+			}),
+			item({
+				id: 'host-second',
+				type: 'composition',
+				trackId: 'host-video',
+				compositionId: second.id
+			})
+		]);
+		sequenceStore.addComposition(first, true);
+		sequenceStore.addComposition(second, true);
+		sequenceStore.addComposition(host, true);
+		timelineStore._setItems([
+			item({ id: 'root-first', type: 'composition', compositionId: first.id })
+		]);
+		expect(switchSequence(second.id)).toBe(true);
+		commandHistory.clearHistory();
+		expect(sequenceDeletionImpactFor([first.id, second.id])).toEqual({
+			rootReferenceCount: 1,
+			nestedReferenceCount: 2,
+			totalReferenceCount: 3
+		});
+
+		expect(deleteSequences([first.id, second.id])).toEqual([first.id, second.id]);
+		expect(sequenceStore.activeSequenceId).toBeNull();
+		expect(sequenceStore.compositions.map((candidate) => candidate.id)).toEqual([host.id]);
+		expect(sequenceStore.compositionById.get(host.id)?.items).toEqual([]);
+		expect(timelineStore.items).toEqual([]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		commandHistory.undo();
+		expect(sequenceStore.compositions.map((candidate) => candidate.id)).toEqual([
+			first.id,
+			second.id,
+			host.id
+		]);
+		expect(sequenceStore.compositionById.get(host.id)?.items).toHaveLength(2);
+		expect(timelineStore.items[0]?.compositionId).toBe(first.id);
 	});
 
 	it('keeps undo history isolated between Main and a sequence tab', () => {

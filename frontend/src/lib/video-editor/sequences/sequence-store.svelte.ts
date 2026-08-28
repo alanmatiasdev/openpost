@@ -134,12 +134,15 @@ function flushActive(): void {
 		current.compositionControls,
 		snapshot.items
 	);
-	state.sequenceViewById[state.activeSequenceId] = {
+	const nextView = {
 		currentFrame: timelineStore.currentFrame,
 		zoomLevel: timelineStore.zoomLevel,
 		scrollPosition: timelineStore.scrollPosition
 	};
-	state.compositions[index] = {
+	if (!equal(state.sequenceViewById[state.activeSequenceId], nextView)) {
+		state.sequenceViewById[state.activeSequenceId] = nextView;
+	}
+	const nextComposition = {
 		...current,
 		compositionControls,
 		items: snapshot.items,
@@ -156,6 +159,7 @@ function flushActive(): void {
 			0
 		)
 	};
+	if (!equal(current, nextComposition)) state.compositions[index] = nextComposition;
 }
 
 export const sequenceStore = {
@@ -364,8 +368,8 @@ export const sequenceStore = {
 			if (equal(current, from)) currentById.set(id, copy(to));
 		}
 		const orderedIds = [
-			...state.compositions.map((composition) => composition.id),
-			...toSnapshot.compositions.map((composition) => composition.id)
+			...toSnapshot.compositions.map((composition) => composition.id),
+			...state.compositions.map((composition) => composition.id)
 		].filter((id, index, ids) => ids.indexOf(id) === index && currentById.has(id));
 		state.compositions = orderedIds.map((id) => currentById.get(id)!);
 
@@ -381,6 +385,13 @@ export const sequenceStore = {
 				state.topLevelSequenceIds = [...state.topLevelSequenceIds, id];
 			}
 		}
+		state.topLevelSequenceIds = [
+			...toSnapshot.topLevelSequenceIds,
+			...state.topLevelSequenceIds
+		].filter(
+			(id, index, ids) =>
+				ids.indexOf(id) === index && currentById.has(id) && state.topLevelSequenceIds.includes(id)
+		);
 
 		if (equal(state.rootTimeline, fromSnapshot.rootTimeline)) {
 			state.rootTimeline = copy(toSnapshot.rootTimeline);

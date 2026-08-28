@@ -8,7 +8,7 @@ import type {
 	TimelineTrack,
 	TimelineTransition
 } from '../project/types';
-import { commandHistory, execute } from '../timeline/commands/command-store.svelte';
+import { commandHistory, execute, executeAtomic } from '../timeline/commands/command-store.svelte';
 import { clonePropertyRuntime } from '../timeline/actions/property-runtime';
 import {
 	detachedTransformParentBinding,
@@ -179,15 +179,22 @@ export interface SequenceDeletionImpact {
 }
 
 export function sequenceDeletionImpact(compositionId: string): SequenceDeletionImpact {
+	return sequenceDeletionImpactFor([compositionId]);
+}
+
+export function sequenceDeletionImpactFor(compositionIds: string[]): SequenceDeletionImpact {
 	const timeline = sequenceStore.projectTimeline();
+	const targetIds = new Set(compositionIds);
 	const rootReferenceCount = timeline.items.filter(
-		(item) => item.compositionId === compositionId
+		(item) => item.compositionId && targetIds.has(item.compositionId)
 	).length;
 	const nestedReferenceCount = (timeline.compositions ?? [])
-		.filter((composition) => composition.id !== compositionId)
+		.filter((composition) => !targetIds.has(composition.id))
 		.reduce(
 			(count, composition) =>
-				count + composition.items.filter((item) => item.compositionId === compositionId).length,
+				count +
+				composition.items.filter((item) => item.compositionId && targetIds.has(item.compositionId))
+					.length,
 			0
 		);
 	return {
@@ -545,6 +552,20 @@ export function deleteSequence(compositionId: string): boolean {
 	return execute('DELETE_SEQUENCE', () => {
 		const removed = sequenceStore.deleteCompositionAndReferences(compositionId);
 		if (removed) commandHistory.removeContext(compositionId);
+		return removed;
+	});
+}
+
+export function deleteSequences(compositionIds: string[]): string[] {
+	const availableIds = new Set(sequenceStore.compositions.map((composition) => composition.id));
+	const targets = [...new Set(compositionIds)].filter((id) => availableIds.has(id));
+	if (targets.length === 0) return [];
+	if (sequenceStore.activeSequenceId && targets.includes(sequenceStore.activeSequenceId)) {
+		if (!switchSequence(null)) return [];
+	}
+	return executeAtomic('DELETE_SEQUENCES', () => {
+		const removed = targets.filter((id) => sequenceStore.deleteCompositionAndReferences(id));
+		for (const id of removed) commandHistory.removeContext(id);
 		return removed;
 	});
 }

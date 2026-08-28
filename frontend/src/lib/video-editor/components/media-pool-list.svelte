@@ -13,10 +13,11 @@
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import {
-		deleteSequence,
+		deleteSequences,
 		duplicateSequence,
 		renameSequence,
 		sequenceDeletionImpact,
+		sequenceDeletionImpactFor,
 		switchSequence
 	} from '$lib/video-editor/sequences/sequence-actions';
 	import {
@@ -144,9 +145,11 @@
 	let sort = $state<MediaLibrarySort>('added');
 	let selectedMediaIds = $state<Set<string>>(new Set());
 	let selectionAnchorId = $state<string | null>(null);
+	let selectedSequenceIds = $state<Set<string>>(new Set());
+	let sequenceSelectionAnchorId = $state<string | null>(null);
 	let sequenceThumbnailUrls = $state<Record<string, string>>({});
 	let sequenceThumbnailGeneration = 0;
-	let deleteTarget = $state<SubComposition | null>(null);
+	let deleteTargets = $state<SubComposition[]>([]);
 	let editingSequenceId = $state<string | null>(null);
 	let sequenceNameDraft = $state('');
 	let sequenceRenameInput = $state<HTMLInputElement | null>(null);
@@ -173,6 +176,10 @@
 				!otherMediaProcessing(media.id)
 		)
 	);
+	const selectedSequences = $derived(
+		sequenceStore.compositions.filter((sequence) => selectedSequenceIds.has(sequence.id))
+	);
+	const selectedAssetCount = $derived(selectedMedia.length + selectedSequences.length);
 
 	$effect(() => {
 		const availableIds = new Set(visibleMedia.map((media) => media.id));
@@ -181,9 +188,28 @@
 		if (selectionAnchorId && !availableIds.has(selectionAnchorId)) selectionAnchorId = null;
 	});
 
+	$effect(() => {
+		const availableIds = new Set(sequenceStore.compositions.map((sequence) => sequence.id));
+		if ([...selectedSequenceIds].every((id) => availableIds.has(id))) return;
+		selectedSequenceIds = new Set([...selectedSequenceIds].filter((id) => availableIds.has(id)));
+		if (sequenceSelectionAnchorId && !availableIds.has(sequenceSelectionAnchorId)) {
+			sequenceSelectionAnchorId = null;
+		}
+	});
+
 	function clearMediaSelection(): void {
 		selectedMediaIds = new Set();
 		selectionAnchorId = null;
+	}
+
+	function clearSequenceSelection(): void {
+		selectedSequenceIds = new Set();
+		sequenceSelectionAnchorId = null;
+	}
+
+	function clearAssetSelection(): void {
+		clearMediaSelection();
+		clearSequenceSelection();
 	}
 
 	function selectMedia(event: MouseEvent, media: MediaMetadata): void {
@@ -194,14 +220,17 @@
 			if (from >= 0 && to >= 0) {
 				const start = Math.min(from, to);
 				const end = Math.max(from, to);
+				if (!event.metaKey && !event.ctrlKey) next.clear();
 				for (const candidate of visibleMedia.slice(start, end + 1)) next.add(candidate.id);
 			}
+			if (!event.metaKey && !event.ctrlKey) clearSequenceSelection();
 		} else if (event.metaKey || event.ctrlKey) {
 			if (next.has(media.id)) next.delete(media.id);
 			else next.add(media.id);
 		} else {
 			next.clear();
 			next.add(media.id);
+			clearSequenceSelection();
 			onsourceopen(media.id);
 		}
 		selectedMediaIds = next;
@@ -212,6 +241,43 @@
 		if (selectedMediaIds.has(mediaId)) return;
 		selectedMediaIds = new Set([mediaId]);
 		selectionAnchorId = mediaId;
+		clearSequenceSelection();
+	}
+
+	function selectSequence(event: MouseEvent, sequence: SubComposition): void {
+		const next = new Set(selectedSequenceIds);
+		if (event.shiftKey && sequenceSelectionAnchorId) {
+			const from = sequenceStore.compositions.findIndex(
+				(candidate) => candidate.id === sequenceSelectionAnchorId
+			);
+			const to = sequenceStore.compositions.findIndex((candidate) => candidate.id === sequence.id);
+			if (from >= 0 && to >= 0) {
+				const start = Math.min(from, to);
+				const end = Math.max(from, to);
+				if (!event.metaKey && !event.ctrlKey) next.clear();
+				for (const candidate of sequenceStore.compositions.slice(start, end + 1)) {
+					next.add(candidate.id);
+				}
+			}
+			if (!event.metaKey && !event.ctrlKey) clearMediaSelection();
+		} else if (event.metaKey || event.ctrlKey) {
+			if (next.has(sequence.id)) next.delete(sequence.id);
+			else next.add(sequence.id);
+		} else {
+			next.clear();
+			next.add(sequence.id);
+			clearMediaSelection();
+			openSequence(sequence.id);
+		}
+		selectedSequenceIds = next;
+		sequenceSelectionAnchorId = sequence.id;
+	}
+
+	function prepareSequenceContextSelection(sequenceId: string): void {
+		if (selectedSequenceIds.has(sequenceId)) return;
+		selectedSequenceIds = new Set([sequenceId]);
+		sequenceSelectionAnchorId = sequenceId;
+		clearMediaSelection();
 	}
 	async function previewUrl(id: string): Promise<void> {
 		const media = mediaPool.get(id);
@@ -630,6 +696,7 @@
 	}
 
 	function confirmMediaDelete(media: MediaMetadata): void {
+		deleteTargets = [];
 		mediaDeleteTargets = [media];
 		mediaDeletePlan = planMediaDeletion(sequenceStore.projectTimeline(), [media.id]);
 		mediaDeleteDialogOpen = true;
@@ -637,6 +704,7 @@
 
 	function confirmSelectedMediaDelete(): void {
 		if (selectedMedia.length === 0) return;
+		deleteTargets = [];
 		mediaDeleteTargets = [...selectedMedia];
 		mediaDeletePlan = planMediaDeletion(
 			sequenceStore.projectTimeline(),
@@ -651,17 +719,29 @@
 
 	async function deleteConfirmedMedia(): Promise<{ ok: boolean; message?: string }> {
 		const targets = [...mediaDeleteTargets];
+		const sequenceTargets = [...deleteTargets];
 		if (targets.length === 0) return { ok: false, message: m.video_editor_media_delete_failed() };
+		const originalSequenceId = sequenceStore.activeSequenceId;
+		const beforeProject = sequenceStore.projectTimeline();
+		const beforeResolution = sequenceStore.rootResolution;
 		const plan = planMediaDeletion(
-			sequenceStore.projectTimeline(),
+			beforeProject,
 			targets.map((media) => media.id)
 		);
 		const before = captureSnapshot();
 		mediaDeletePlan = plan;
 		let projectSaved = false;
+		let sequencesDeleted = false;
 		try {
 			editorSession.pausePlayback();
 			removePlannedMediaReferences(plan);
+			if (sequenceTargets.length > 0) {
+				const removedSequences = deleteSequences(sequenceTargets.map((sequence) => sequence.id));
+				if (removedSequences.length !== sequenceTargets.length) {
+					throw new Error(m.video_editor_sequence_delete_failed());
+				}
+				sequencesDeleted = true;
+			}
 			editorSession.syncTimelineClock();
 			await editorSession.saveNow();
 			projectSaved = true;
@@ -677,6 +757,14 @@
 				}
 			}
 			commandHistory.clearHistory();
+			for (const sequence of sequenceTargets) compoundThumbnailService.clear(sequence.id);
+			selectedSequenceIds = new Set(
+				[...selectedSequenceIds].filter(
+					(id) => !sequenceTargets.some((sequence) => sequence.id === id)
+				)
+			);
+			deleteTargets = [];
+			deleteReferenceCount = 0;
 			if (failed.length > 0) {
 				selectedMediaIds = new Set(failed.map((media) => media.id));
 				selectionAnchorId = failed[0]?.id ?? null;
@@ -687,25 +775,39 @@
 				);
 				return {
 					ok: false,
-					message: m.video_editor_media_delete_batch_partial({
-						deleted: targets.length - failed.length,
+					message: (sequenceTargets.length > 0
+						? m.video_editor_assets_delete_batch_partial
+						: m.video_editor_media_delete_batch_partial)({
+						deleted: targets.length - failed.length + sequenceTargets.length,
 						failed: failed.length
 					})
 				};
 			}
 			showToast(
-				targets.length === 1
-					? m.video_editor_media_deleted({ name: targets[0]!.fileName })
-					: m.video_editor_media_deleted_batch({ count: targets.length }),
+				sequenceTargets.length > 0
+					? m.video_editor_assets_deleted_batch({
+							count: targets.length + sequenceTargets.length
+						})
+					: targets.length === 1
+						? m.video_editor_media_deleted({ name: targets[0]!.fileName })
+						: m.video_editor_media_deleted_batch({ count: targets.length }),
 				'success'
 			);
-			clearMediaSelection();
+			clearAssetSelection();
 			mediaDeleteTargets = [];
 			mediaDeletePlan = null;
 			return { ok: true };
 		} catch (error) {
 			if (!projectSaved) {
+				if (sequencesDeleted && commandHistory.getLastCommandType() === 'DELETE_SEQUENCES') {
+					commandHistory.undo();
+				}
 				restoreSnapshot(before);
+				if (sequencesDeleted) {
+					sequenceStore.load(beforeProject, beforeResolution);
+					if (originalSequenceId) sequenceStore.switchTo(originalSequenceId);
+					commandHistory.setActiveContext(originalSequenceId);
+				}
 				editorSession.syncTimelineClock();
 			}
 			return {
@@ -777,9 +879,110 @@
 	}
 
 	function confirmSequenceDelete(sequence: SubComposition): void {
-		deleteTarget = sequence;
+		mediaDeleteTargets = [];
+		mediaDeletePlan = null;
+		deleteTargets = [sequence];
 		deleteReferenceCount = sequenceDeletionImpact(sequence.id).totalReferenceCount;
 		deleteDialogOpen = true;
+	}
+
+	function confirmSelectedSequenceDelete(): void {
+		if (selectedSequences.length === 0) return;
+		mediaDeleteTargets = [];
+		mediaDeletePlan = null;
+		deleteTargets = [...selectedSequences];
+		deleteReferenceCount = sequenceDeletionImpactFor(
+			deleteTargets.map((sequence) => sequence.id)
+		).totalReferenceCount;
+		deleteDialogOpen = true;
+	}
+
+	function confirmSelectedAssetDelete(): void {
+		if (selectedMedia.length > 0 && selectedSequences.length > 0) {
+			mediaDeleteTargets = [...selectedMedia];
+			mediaDeletePlan = planMediaDeletion(
+				sequenceStore.projectTimeline(),
+				mediaDeleteTargets.map((media) => media.id)
+			);
+			deleteTargets = [...selectedSequences];
+			deleteReferenceCount = sequenceDeletionImpactFor(
+				deleteTargets.map((sequence) => sequence.id)
+			).totalReferenceCount;
+			mediaDeleteDialogOpen = true;
+			return;
+		}
+		if (selectedMedia.length > 0) {
+			confirmSelectedMediaDelete();
+			return;
+		}
+		confirmSelectedSequenceDelete();
+	}
+
+	async function deleteConfirmedSequences(): Promise<{ ok: boolean; message?: string }> {
+		const targets = [...deleteTargets];
+		if (targets.length === 0) {
+			return { ok: false, message: m.video_editor_sequence_delete_failed() };
+		}
+		editorSession.pausePlayback();
+		const removed = deleteSequences(targets.map((target) => target.id));
+		if (removed.length !== targets.length) {
+			return { ok: false, message: m.video_editor_sequence_delete_failed() };
+		}
+		editorSession.syncTimelineClock();
+		try {
+			await editorSession.saveNow();
+		} catch (error) {
+			commandHistory.undo();
+			editorSession.syncTimelineClock();
+			return {
+				ok: false,
+				message:
+					error instanceof Error && error.message
+						? error.message
+						: m.video_editor_sequence_delete_failed()
+			};
+		}
+		for (const target of targets) compoundThumbnailService.clear(target.id);
+		selectedSequenceIds = new Set([...selectedSequenceIds].filter((id) => !removed.includes(id)));
+		if (sequenceSelectionAnchorId && removed.includes(sequenceSelectionAnchorId)) {
+			sequenceSelectionAnchorId = null;
+		}
+		showToast(
+			targets.length === 1
+				? m.video_editor_sequence_deleted({ name: targets[0]!.name })
+				: m.video_editor_sequence_deleted_batch({ count: targets.length }),
+			'success'
+		);
+		deleteTargets = [];
+		deleteReferenceCount = 0;
+		return { ok: true };
+	}
+
+	function mediaDeleteDialogTitle(): string {
+		if (deleteTargets.length > 0) {
+			return m.video_editor_assets_delete_batch_title({
+				count: mediaDeleteTargets.length + deleteTargets.length
+			});
+		}
+		if (mediaDeleteTargets.length === 1) {
+			return m.video_editor_media_delete_title({
+				name: mediaDeleteTargets[0]?.fileName ?? ''
+			});
+		}
+		return m.video_editor_media_delete_batch_title({ count: mediaDeleteTargets.length });
+	}
+
+	function mediaDeleteDialogDescription(): string {
+		const mediaReferences = mediaDeletePlan?.totalReferenceCount ?? 0;
+		if (deleteTargets.length > 0) {
+			const referenceCount = mediaReferences + deleteReferenceCount;
+			if (referenceCount === 0) return m.video_editor_assets_delete_unused();
+			if (referenceCount === 1) return m.video_editor_assets_delete_reference();
+			return m.video_editor_assets_delete_references({ count: referenceCount });
+		}
+		if (mediaReferences === 0) return m.video_editor_media_delete_unused();
+		if (mediaReferences === 1) return m.video_editor_media_delete_reference();
+		return m.video_editor_media_delete_references({ count: mediaReferences });
 	}
 
 	function openSubtitlePicker(media: MediaMetadata): void {
@@ -869,14 +1072,14 @@
 				</Select.Root>
 			</div>
 		</div>
-		{#if selectedMedia.length > 0}
+		{#if selectedAssetCount > 0}
 			<div
 				class="flex min-w-0 items-center gap-1.5 rounded-md border border-[oklch(0.34_0.025_50)] bg-[oklch(0.2_0.012_50)] px-1.5 py-1"
 				role="status"
-				aria-label={m.video_editor_media_selected_count({ count: selectedMedia.length })}
+				aria-label={m.video_editor_media_selected_count({ count: selectedAssetCount })}
 			>
 				<span class="min-w-0 flex-1 truncate text-[10px] font-medium tabular-nums">
-					{m.video_editor_media_selected_count({ count: selectedMedia.length })}
+					{m.video_editor_media_selected_count({ count: selectedAssetCount })}
 				</span>
 				{#if selectedProxyMedia.length > 0}
 					<Button
@@ -900,9 +1103,9 @@
 					variant="ghost"
 					size="icon-xs"
 					class="size-7! shrink-0 text-red-300 hover:text-red-200"
-					aria-label={m.video_editor_media_delete_selected({ count: selectedMedia.length })}
-					title={m.video_editor_media_delete_selected({ count: selectedMedia.length })}
-					onclick={confirmSelectedMediaDelete}
+					aria-label={m.video_editor_assets_delete_selected({ count: selectedAssetCount })}
+					title={m.video_editor_assets_delete_selected({ count: selectedAssetCount })}
+					onclick={confirmSelectedAssetDelete}
 				>
 					<TrashIcon class="size-3.5" aria-hidden="true" />
 				</Button>
@@ -913,7 +1116,7 @@
 					class="size-7! shrink-0"
 					aria-label={m.video_editor_media_clear_selection()}
 					title={m.video_editor_media_clear_selection()}
-					onclick={clearMediaSelection}
+					onclick={clearAssetSelection}
 				>
 					<XIcon class="size-3.5" aria-hidden="true" />
 				</Button>
@@ -955,11 +1158,19 @@
 							{#snippet child({ props })}
 								<li
 									{...props}
+									oncontextmenu={(event) => {
+										prepareSequenceContextSelection(sequence.id);
+										props.oncontextmenu?.(event);
+									}}
 									draggable={editingSequenceId !== sequence.id}
 									ondragstart={(event) => startCompositionDrag(event, sequence)}
 									ondragend={clearActiveMediaDrag}
 									title={m.video_editor_media_drag_hint()}
-									class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing"
+									class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing {selectedSequenceIds.has(
+										sequence.id
+									)
+										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
+										: ''}"
 								>
 									<span
 										class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
@@ -997,7 +1208,9 @@
 											type="button"
 											class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 											title={m.video_editor_sequence_open()}
-											onclick={() => openSequence(sequence.id)}
+											aria-label={`${m.video_editor_sequence_open()}: ${sequence.name}`}
+											aria-pressed={selectedSequenceIds.has(sequence.id)}
+											onclick={(event) => selectSequence(event, sequence)}
 										>
 											<span class="block truncate text-xs font-medium">{sequence.name}</span>
 											<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
@@ -1036,7 +1249,10 @@
 											<DropdownMenu.Separator />
 											<DropdownMenu.Item
 												class="text-red-300 focus:text-red-200"
-												onclick={() => confirmSequenceDelete(sequence)}
+												onclick={() =>
+													selectedSequenceIds.has(sequence.id) && selectedAssetCount > 1
+														? confirmSelectedAssetDelete()
+														: confirmSequenceDelete(sequence)}
 											>
 												<TrashIcon class="size-4" aria-hidden="true" />
 												{m.common_delete()}
@@ -1067,7 +1283,10 @@
 							<ContextMenu.Separator />
 							<ContextMenu.Item
 								variant="destructive"
-								onclick={() => confirmSequenceDelete(sequence)}
+								onclick={() =>
+									selectedSequenceIds.has(sequence.id) && selectedAssetCount > 1
+										? confirmSelectedAssetDelete()
+										: confirmSequenceDelete(sequence)}
 							>
 								<TrashIcon class="size-4" aria-hidden="true" />
 								{m.common_delete()}
@@ -1340,8 +1559,8 @@
 													variant="destructive"
 													disabled={mediaProcessing(id)}
 													onclick={() =>
-														selectedMediaIds.has(id) && selectedMediaIds.size > 1
-															? confirmSelectedMediaDelete()
+														selectedMediaIds.has(id) && selectedAssetCount > 1
+															? confirmSelectedAssetDelete()
 															: confirmMediaDelete(entry.media)}
 												>
 													<TrashIcon class="size-4" aria-hidden="true" />
@@ -1518,8 +1737,8 @@
 									variant="destructive"
 									disabled={mediaProcessing(id)}
 									onclick={() =>
-										selectedMediaIds.has(id) && selectedMediaIds.size > 1
-											? confirmSelectedMediaDelete()
+										selectedMediaIds.has(id) && selectedAssetCount > 1
+											? confirmSelectedAssetDelete()
 											: confirmMediaDelete(entry.media)}
 								>
 									<TrashIcon class="size-4" aria-hidden="true" />
@@ -1548,26 +1767,18 @@
 
 <DestructiveConfirmDialog
 	bind:open={mediaDeleteDialogOpen}
-	title={mediaDeleteTargets.length === 1
-		? m.video_editor_media_delete_title({ name: mediaDeleteTargets[0]?.fileName ?? '' })
-		: m.video_editor_media_delete_batch_title({ count: mediaDeleteTargets.length })}
-	description={mediaDeleteTargets.length > 0
-		? (mediaDeletePlan?.totalReferenceCount ?? 0) > 0
-			? mediaDeletePlan?.totalReferenceCount === 1
-				? m.video_editor_media_delete_reference()
-				: m.video_editor_media_delete_references({
-						count: mediaDeletePlan?.totalReferenceCount ?? 0
-					})
-			: m.video_editor_media_delete_unused()
-		: ''}
+	title={mediaDeleteDialogTitle()}
+	description={mediaDeleteTargets.length > 0 ? mediaDeleteDialogDescription() : ''}
 	confirmLabel={m.common_delete()}
 	onConfirm={deleteConfirmedMedia}
 />
 
 <DestructiveConfirmDialog
 	bind:open={deleteDialogOpen}
-	title={m.video_editor_sequence_delete_title({ name: deleteTarget?.name ?? '' })}
-	description={deleteTarget
+	title={deleteTargets.length === 1
+		? m.video_editor_sequence_delete_title({ name: deleteTargets[0]?.name ?? '' })
+		: m.video_editor_sequence_delete_batch_title({ count: deleteTargets.length })}
+	description={deleteTargets.length > 0
 		? deleteReferenceCount > 0
 			? deleteReferenceCount === 1
 				? m.video_editor_sequence_delete_reference()
@@ -1575,19 +1786,5 @@
 			: m.video_editor_sequence_delete_unused()
 		: ''}
 	confirmLabel={m.common_delete()}
-	onConfirm={() => {
-		if (!deleteTarget) return { ok: false, message: m.video_editor_sequence_delete_failed() };
-		const target = deleteTarget;
-		editorSession.pausePlayback();
-		if (!deleteSequence(target.id)) {
-			return { ok: false, message: m.video_editor_sequence_delete_failed() };
-		}
-		compoundThumbnailService.clear(target.id);
-		editorSession.syncTimelineClock();
-		editorSession.scheduleAutosave();
-		showToast(m.video_editor_sequence_deleted({ name: target.name }), 'success');
-		deleteTarget = null;
-		deleteReferenceCount = 0;
-		return { ok: true };
-	}}
+	onConfirm={deleteConfirmedSequences}
 />

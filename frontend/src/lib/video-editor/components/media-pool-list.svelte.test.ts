@@ -156,11 +156,12 @@ describe('MediaPoolList', () => {
 		expect(onsourceopen).toHaveBeenCalledExactlyOnceWith(interview.id);
 		await expect.element(source(interview.fileName)).toHaveAttribute('aria-pressed', 'true');
 
-		await source(broll.fileName).click({ modifiers: ['Meta'] });
-		expect(onsourceopen).toHaveBeenCalledTimes(1);
-		await expect.element(screen.getByText('2 selected')).toBeVisible();
-
 		await source(music.fileName).click({ modifiers: ['Shift'] });
+		expect(onsourceopen).toHaveBeenCalledTimes(1);
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		await source(broll.fileName).click({ modifiers: ['Meta'] });
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		await source(broll.fileName).click({ modifiers: ['Meta'] });
 		expect(onsourceopen).toHaveBeenCalledTimes(1);
 		await expect.element(screen.getByText('3 selected')).toBeVisible();
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
@@ -231,7 +232,7 @@ describe('MediaPoolList', () => {
 		expect(generateMediaProxy).toHaveBeenNthCalledWith(1, interview);
 		expect(generateMediaProxy).toHaveBeenNthCalledWith(2, broll);
 
-		await screen.getByRole('button', { name: 'Delete 2 selected media' }).click();
+		await screen.getByRole('button', { name: 'Delete 2 selected assets' }).click();
 		const dialog = screen.getByRole('dialog');
 		await expect.element(dialog.getByText('Delete 2 media sources?')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Delete' }).click();
@@ -261,7 +262,7 @@ describe('MediaPoolList', () => {
 
 		await source(interview.fileName).click();
 		await source(broll.fileName).click({ modifiers: ['Meta'] });
-		await screen.getByRole('button', { name: 'Delete 2 selected media' }).click();
+		await screen.getByRole('button', { name: 'Delete 2 selected assets' }).click();
 		const dialog = screen.getByRole('dialog');
 		await dialog.getByRole('button', { name: 'Delete' }).click();
 
@@ -803,6 +804,180 @@ describe('MediaPoolList', () => {
 		expect(sequenceStore.compositionById.has(sequence.id)).toBe(false);
 		expect(sequenceStore.projectTimeline().items).toHaveLength(0);
 		expect(sequenceStore.compositions).toHaveLength(1);
+	});
+
+	it('selects and durably deletes a reusable sequence range with one undo', async () => {
+		await page.viewport(320, 720);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const sequences = ['Opening', 'Interview', 'Closing'].map<SubComposition>((name, index) => ({
+			id: name.toLowerCase(),
+			name,
+			items: [],
+			tracks: [track],
+			transitions: [],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 60 + index
+		}));
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track],
+				items: sequences.map<TimelineItem>((sequence, index) => ({
+					id: `reference-${sequence.id}`,
+					trackId: track.id,
+					from: index * 70,
+					durationInFrames: sequence.durationInFrames,
+					label: sequence.name,
+					type: 'composition',
+					compositionId: sequence.id
+				})),
+				compositions: sequences,
+				topLevelSequenceIds: sequences.map((sequence) => sequence.id)
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		expect(sequenceStore.switchTo(sequences[1]!.id)).toBe(true);
+		const saveNow = vi.spyOn(editorSession, 'saveNow').mockResolvedValue();
+		const onsequenceopen = vi.fn();
+		const screen = await render(MediaPoolList, { projectId: 'project', onsequenceopen });
+		const open = (name: string) => screen.getByRole('button', { name: `Open sequence: ${name}` });
+
+		await open(sequences[0]!.name).click();
+		expect(onsequenceopen).toHaveBeenCalledTimes(1);
+		await open(sequences[2]!.name).click({ modifiers: ['Shift'] });
+		expect(onsequenceopen).toHaveBeenCalledTimes(1);
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		await open(sequences[1]!.name).click({ modifiers: ['Meta'] });
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		await open(sequences[1]!.name).click({ modifiers: ['Meta'] });
+		expect(onsequenceopen).toHaveBeenCalledTimes(1);
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		await expect.element(open(sequences[2]!.name)).toHaveAttribute('aria-pressed', 'true');
+
+		const selectedRow = screen.getByText(sequences[1]!.name).element().closest('li')!;
+		selectedRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByText('3 selected')).toBeVisible();
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+		await screen.getByRole('button', { name: 'Delete 3 selected assets' }).click();
+		const dialog = screen.getByRole('dialog');
+		await expect.element(dialog.getByText('Delete 3 reusable sequences?')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		expect(saveNow).toHaveBeenCalledTimes(1);
+		expect(sequenceStore.activeSequenceId).toBeNull();
+		expect(sequenceStore.compositions).toEqual([]);
+		expect(sequenceStore.projectTimeline().items).toEqual([]);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(sequenceStore.compositions.map((sequence) => sequence.id)).toEqual(
+			sequences.map((sequence) => sequence.id)
+		);
+		expect(sequenceStore.projectTimeline().items).toHaveLength(3);
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	});
+
+	it('preserves a mixed right-click selection and deletes it from one confirmation', async () => {
+		await page.viewport(320, 720);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const source = media('interview', 'Interview.mp4', ['video']);
+		const sequence: SubComposition = {
+			id: 'opening',
+			name: 'Opening',
+			items: [],
+			tracks: [track],
+			transitions: [],
+			fps: 30,
+			width: 1920,
+			height: 1080,
+			durationInFrames: 60
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				tracks: [track],
+				items: [
+					{
+						id: 'source-reference',
+						trackId: track.id,
+						from: 0,
+						durationInFrames: 60,
+						label: source.fileName,
+						type: 'video',
+						mediaId: source.id
+					},
+					{
+						id: 'sequence-reference',
+						trackId: track.id,
+						from: 70,
+						durationInFrames: 60,
+						label: sequence.name,
+						type: 'composition',
+						compositionId: sequence.id
+					}
+				],
+				compositions: [sequence],
+				topLevelSequenceIds: [sequence.id]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([source]);
+		const saveNow = vi
+			.spyOn(editorSession, 'saveNow')
+			.mockRejectedValueOnce(new Error('Workspace write failed'))
+			.mockResolvedValueOnce();
+		const deleteProjectMedia = vi.fn(async () => ({
+			deletedWorkspaceBytes: true,
+			remainingProjectIds: []
+		}));
+		const screen = await render(MediaPoolList, { projectId: 'project', deleteProjectMedia });
+
+		await screen.getByRole('button', { name: 'Open sequence: Opening' }).click();
+		await screen
+			.getByRole('button', { name: 'Source: Interview.mp4' })
+			.click({ modifiers: ['Meta'] });
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		const sequenceRow = screen.getByText(sequence.name).element().closest('li')!;
+		sequenceRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByText('2 selected')).toBeVisible();
+		await screen.getByRole('menuitem', { name: 'Delete' }).click();
+		const dialog = screen.getByRole('dialog');
+		await expect.element(dialog.getByText('Delete 2 selected assets?')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+		await expect.element(dialog.getByText('Workspace write failed')).toBeVisible();
+		expect(deleteProjectMedia).not.toHaveBeenCalled();
+		expect(sequenceStore.compositions.map((candidate) => candidate.id)).toEqual([sequence.id]);
+		expect(sequenceStore.projectTimeline().items).toHaveLength(2);
+
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		expect(saveNow).toHaveBeenCalledTimes(2);
+		expect(deleteProjectMedia).toHaveBeenCalledExactlyOnceWith('project', source.id);
+		expect(sequenceStore.compositions).toEqual([]);
+		expect(sequenceStore.projectTimeline().items).toEqual([]);
+		expect(mediaPool.mediaList).toEqual([]);
 	});
 
 	it('filters, groups, explains media facts, and fits its URL flow on a phone', async () => {
