@@ -1072,19 +1072,21 @@
 								variant={viewMode === 'month' ? 'secondary' : 'ghost'}
 								size="sm"
 								class="gap-1.5"
+								aria-label={m.calendar_month_view()}
 								onclick={() => changeView('month')}
 							>
-								<CalendarDaysIcon class="size-3.5" />
-								{m.calendar_month_view()}
+								<CalendarDaysIcon class="size-3.5" aria-hidden="true" />
+								<span class="hidden 2xl:inline">{m.calendar_month_view()}</span>
 							</Button>
 							<Button
 								variant={viewMode === 'week' ? 'secondary' : 'ghost'}
 								size="sm"
 								class="gap-1.5"
+								aria-label={m.calendar_week_view()}
 								onclick={() => changeView('week')}
 							>
-								<Rows3Icon class="size-3.5" />
-								{m.calendar_week_view()}
+								<Rows3Icon class="size-3.5" aria-hidden="true" />
+								<span class="hidden 2xl:inline">{m.calendar_week_view()}</span>
 							</Button>
 						</div>
 
@@ -1175,10 +1177,11 @@
 						<Button
 							variant="outline"
 							class="gap-1.5"
+							aria-label={m.calendar_open_queue()}
 							href={resolve('/settings') + '?tab=schedule#posting-schedule'}
 						>
-							<ListIcon class="size-4" />
-							{m.calendar_open_queue()}
+							<ListIcon class="size-4" aria-hidden="true" />
+							<span class="hidden 2xl:inline">{m.calendar_open_queue()}</span>
 						</Button>
 
 						<Tooltip.Root>
