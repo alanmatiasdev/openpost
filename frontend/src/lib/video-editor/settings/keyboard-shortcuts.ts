@@ -518,14 +518,10 @@ export function parseShortcutPreset(
 }
 
 export function editorShortcutTargetIsDisabled(target: EventTarget | null): boolean {
-	return (
-		target instanceof HTMLElement &&
-		Boolean(
-			target.closest(
-				'input, textarea, select, button, a, [contenteditable="true"], [data-editor-shortcuts-disabled]'
-			)
-		)
-	);
+	if (!(target instanceof HTMLElement)) return false;
+	if (target.closest('[data-editor-shortcuts-disabled]')) return true;
+	if (target.closest('[data-editor-shortcuts-enabled]')) return false;
+	return Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"]'));
 }
 
 function editorPlaybackTargetIsDisabled(target: EventTarget | null): boolean {

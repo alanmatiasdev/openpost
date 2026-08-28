@@ -169,6 +169,53 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   expect(consoleFailures).toEqual([]);
 });
 
+test("Video Editor keyboard transport and delete commands survive focused controls", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Keyboard route proof");
+
+  const addText = page.getByRole("button", { name: "Add text" });
+  const clips = page.locator("[data-timeline-item-id]");
+  await addText.click();
+  await expect(clips).toHaveCount(1);
+
+  await addText.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await expect(clips).toHaveCount(1);
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  await expect(clips).toHaveCount(1);
+
+  const playhead = page.getByRole("slider", { name: "Timeline playhead" });
+  await playhead.focus();
+  await page.keyboard.press("End");
+  await addText.click();
+  await expect(clips).toHaveCount(2);
+
+  await clips.nth(1).locator(":scope > button").first().click();
+  await page.keyboard.press("Backspace");
+  await expect(clips).toHaveCount(1);
+
+  await addText.click();
+  await expect(clips).toHaveCount(2);
+  const firstLeft = await clips
+    .nth(0)
+    .evaluate((clip) => parseFloat((clip as HTMLElement).style.left));
+  const secondLeft = await clips
+    .nth(1)
+    .evaluate((clip) => parseFloat((clip as HTMLElement).style.left));
+  expect(secondLeft).toBeGreaterThan(firstLeft);
+
+  await clips.nth(0).locator(":scope > button").first().click();
+  await page.keyboard.press("Delete");
+  await expect(clips).toHaveCount(1);
+  await expect
+    .poll(() => clips.nth(0).evaluate((clip) => parseFloat((clip as HTMLElement).style.left)))
+    .toBe(firstLeft);
+});
+
 test("Video Editor restores its workspace before reloading a project deep link", async ({
   page,
 }) => {

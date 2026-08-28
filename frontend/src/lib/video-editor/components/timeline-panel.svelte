@@ -2835,6 +2835,9 @@
 		clearSyncLockPreview();
 		breakingTransitionPreviewIds = [];
 		event.stopPropagation();
+		if (event.currentTarget instanceof HTMLElement) {
+			event.currentTarget.focus({ preventScroll: true });
+		}
 		if (event.metaKey || event.ctrlKey || !selectedItemIds.includes(id)) selectItem(event, id);
 		else selectedItemId = id;
 		const item = timelineStore.itemById.get(id);
@@ -5161,6 +5164,7 @@
 											: 'border-transparent'} {resolvedTrack.locked ? 'opacity-75' : ''}"
 										style={clipStyle(displayItem)}
 										data-timeline-item-id={item.id}
+										data-editor-shortcuts-enabled
 										use:observeTimelineItem={item.id}
 										ondragenter={(event) => previewEffectDrop(event, item.id)}
 										ondragover={(event) => previewEffectDrop(event, item.id)}
