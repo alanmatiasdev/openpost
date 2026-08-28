@@ -30,6 +30,7 @@
 	import Music2Icon from '@lucide/svelte/icons/music-2';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import XIcon from '@lucide/svelte/icons/x';
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import CopyIcon from '@lucide/svelte/icons/copy';
@@ -79,6 +80,8 @@
 		MediaImportCancelledError,
 		type UnsupportedAudioImportRequest
 	} from '$lib/video-editor/media/import.svelte';
+	import { sceneBrowser } from '$lib/video-editor/media/scene-search/scene-browser.svelte';
+	import { isSceneAnalyzableMedia } from '$lib/video-editor/media/scene-search/scene-analysis-client';
 
 	let {
 		projectId,
@@ -265,7 +268,8 @@
 	function mediaProcessing(mediaId: string): boolean {
 		return Boolean(
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
-			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId))
+			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
+			mediaTasks.get(mediaTaskId('scene-analysis', mediaId))
 		);
 	}
 
@@ -316,6 +320,32 @@
 		try {
 			const generated = await frameInterpolationService.generate(media, projectId, factor);
 			showToast(m.video_editor_media_interpolate_done({ name: generated.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	function sceneAnalysisLabel(media: MediaMetadata): string {
+		if (sceneBrowser.progress(media.id)) return m.video_editor_media_cancel_ai_analysis();
+		return sceneBrowser.analysis(media.id)
+			? m.video_editor_media_reanalyze_ai()
+			: m.video_editor_media_analyze_ai();
+	}
+
+	async function analyzeMedia(media: MediaMetadata): Promise<void> {
+		if (sceneBrowser.progress(media.id)) {
+			sceneBrowser.cancel(media.id);
+			return;
+		}
+		try {
+			const analysis = await sceneBrowser.analyze(media, Boolean(sceneBrowser.analysis(media.id)));
+			showToast(
+				m.video_editor_media_analysis_done({
+					name: media.fileName,
+					count: analysis.scenes.length
+				}),
+				'success'
+			);
 		} catch (error) {
 			processFailure(media, error instanceof Error ? error : new Error(String(error)));
 		}
@@ -676,6 +706,21 @@
 														<CaptionsIcon class="size-4" aria-hidden="true" />
 														{m.video_editor_extract_embedded_subtitles()}
 													</DropdownMenu.Item>
+												{/if}
+												{#if isSceneAnalyzableMedia(entry.media)}
+													<DropdownMenu.Item
+														disabled={mediaProcessing(id) && !sceneBrowser.progress(id)}
+														onclick={() => void analyzeMedia(entry.media)}
+													>
+														{#if sceneBrowser.progress(id)}
+															<XIcon class="size-4" aria-hidden="true" />
+														{:else}
+															<SparklesIcon class="size-4" aria-hidden="true" />
+														{/if}
+														{sceneAnalysisLabel(entry.media)}
+													</DropdownMenu.Item>
+												{/if}
+												{#if canExtractEmbeddedSubtitles(entry.media) || isSceneAnalyzableMedia(entry.media)}
 													<DropdownMenu.Separator />
 												{/if}
 												<DropdownMenu.Sub>
@@ -755,6 +800,19 @@
 									<ContextMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
 										<CaptionsIcon class="size-4" aria-hidden="true" />
 										{m.video_editor_extract_embedded_subtitles()}
+									</ContextMenu.Item>
+								{/if}
+								{#if isSceneAnalyzableMedia(entry.media)}
+									<ContextMenu.Item
+										disabled={mediaProcessing(id) && !sceneBrowser.progress(id)}
+										onclick={() => void analyzeMedia(entry.media)}
+									>
+										{#if sceneBrowser.progress(id)}
+											<XIcon class="size-4" aria-hidden="true" />
+										{:else}
+											<SparklesIcon class="size-4" aria-hidden="true" />
+										{/if}
+										{sceneAnalysisLabel(entry.media)}
 									</ContextMenu.Item>
 								{/if}
 								<ContextMenu.Separator />

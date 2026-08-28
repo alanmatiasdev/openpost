@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { editorSession } from '../editor.svelte';
@@ -11,6 +11,7 @@ import { createEmptyTimeline } from '../project/defaults';
 import type { SubComposition, TimelineItem, TimelineTrack } from '../project/types';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
+import { sceneBrowser } from '../media/scene-search/scene-browser.svelte';
 import MediaPoolList from './media-pool-list.svelte';
 import '../../../routes/layout.css';
 
@@ -42,8 +43,14 @@ beforeEach(() => {
 	mediaPool.clear();
 	mediaRecovery.reset();
 	mediaPlacement.cancel();
+	sceneBrowser.reset();
 	sequenceStore.reset();
 	editorSession.project = null;
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+	sceneBrowser.reset();
 });
 
 describe('MediaPoolList', () => {
@@ -101,6 +108,68 @@ describe('MediaPoolList', () => {
 			id: 'video'
 		});
 		expect(onsourceopen).not.toHaveBeenCalled();
+	});
+
+	it('analyzes and refreshes one media row without touching unrelated media', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		const broll = media('broll', 'B-roll.mp4', ['video']);
+		mediaPool.loadAll([interview, broll]);
+		const analysis = {
+			schemaVersion: 1 as const,
+			detectorVersion: 1,
+			mediaId: interview.id,
+			sourceFileSize: interview.fileSize,
+			method: 'histogram' as const,
+			sampleIntervalSec: 0.25,
+			analyzedAt: Date.now(),
+			scenes: [
+				{
+					id: `${interview.id}:0`,
+					mediaId: interview.id,
+					index: 0,
+					startSec: 0,
+					endSec: 2,
+					timeSec: 1,
+					text: 'Speaker at a desk'
+				}
+			]
+		};
+		const analyze = vi.spyOn(sceneBrowser, 'analyze').mockImplementation(async (_media, force) => {
+			expect(_media.id).toBe(interview.id);
+			sceneBrowser.__setAnalysisForTesting(analysis);
+			return { ...analysis, analyzedAt: force ? analysis.analyzedAt + 1 : analysis.analyzedAt };
+		});
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const row = screen.getByText(interview.fileName).element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Analyze with AI' }).click();
+		expect(analyze).toHaveBeenLastCalledWith(interview, false);
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Reanalyze with AI' }).click();
+		expect(analyze).toHaveBeenLastCalledWith(interview, true);
+		expect(analyze).toHaveBeenCalledTimes(2);
+	});
+
+	it('cancels the active AI analysis from the same media row', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		mediaPool.loadAll([interview]);
+		vi.spyOn(sceneBrowser, 'progress').mockReturnValue({
+			stage: 'captioning',
+			percent: 40,
+			completed: 2,
+			total: 5
+		});
+		const cancel = vi.spyOn(sceneBrowser, 'cancel').mockImplementation(() => undefined);
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const row = screen.getByText(interview.fileName).element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Cancel AI analysis' }).click();
+		expect(cancel).toHaveBeenCalledExactlyOnceWith(interview.id);
 	});
 
 	it('keeps high-cost video tools in one clear menu with honest size gates', async () => {
