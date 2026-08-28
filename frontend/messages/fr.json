@@ -2,6 +2,8 @@
 	"video_editor_gap": "Espace",
 	"video_editor_close_gap": "Fermer l’espace",
 	"video_editor_track_close_all_gaps": "Fermer tous les espaces",
+	"video_editor_track_add": "Ajouter une piste",
+	"video_editor_track_delete_empty": "Supprimer les pistes vides",
 	"video_editor_leave_gap": "Supprimer et laisser un espace",
 	"video_editor_gap_duration": "Durée de l'espace",
 	"video_editor_gap_description": "Cette section vide préserve la synchronisation des incrustations et de l'audio.",

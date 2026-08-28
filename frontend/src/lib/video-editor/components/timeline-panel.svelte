@@ -228,6 +228,7 @@
 		moveTrack,
 		renameTrack,
 		removeTrackGroupWithContents,
+		removeEmptyTracks,
 		removeTrack,
 		toggleTrackLock,
 		toggleTrackMute,
@@ -238,6 +239,7 @@
 		ungroupTracks,
 		type TrackKind
 	} from '$lib/video-editor/timeline/actions/tracks';
+	import { emptyTrackIdsForRemoval } from '$lib/video-editor/timeline/track-removal';
 	import {
 		effectiveMediaTracks,
 		effectiveTrackState,
@@ -3622,6 +3624,14 @@
 		if (closeAllGapsOnTrack(contextTrack.id)) onedit();
 	}
 
+	function removeContextEmptyTracks(): void {
+		if (!contextTrack || contextTrack.isGroup) return;
+		const removedIds = new Set(removeEmptyTracks(contextTrack.id));
+		if (removedIds.size === 0) return;
+		selectedTrackIds = selectedTrackIds.filter((trackId) => !removedIds.has(trackId));
+		onedit();
+	}
+
 	function deleteTrack(trackId: string): void {
 		const removedItemIds = new Set(
 			timelineStore.items.filter((item) => item.trackId === trackId).map((item) => item.id)
@@ -3960,6 +3970,11 @@
 	);
 	const contextTrackGapsCanClose = $derived(
 		contextTrack !== undefined && !contextTrack.isGroup && canCloseAllGapsOnTrack(contextTrack.id)
+	);
+	const contextEmptyTrackIds = $derived.by(() =>
+		contextTrack && !contextTrack.isGroup
+			? emptyTrackIdsForRemoval(timelineStore.tracks, timelineStore.items, contextTrack.id)
+			: []
 	);
 	const contextTransition = $derived(
 		timelineContextTarget?.kind === 'transition'
@@ -6064,6 +6079,24 @@
 			{#if !contextTrack.isGroup}
 				<ContextMenu.Item disabled={!contextTrackGapsCanClose} onclick={closeContextTrackGaps}>
 					{m.video_editor_track_close_all_gaps()}
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+				<ContextMenu.Sub>
+					<ContextMenu.SubTrigger>{m.video_editor_track_add()}</ContextMenu.SubTrigger>
+					<ContextMenu.SubContent class="video-editor-theme w-48">
+						<ContextMenu.Item onclick={() => addNamedTrack('video')}>
+							{m.video_editor_track_add_video()}
+						</ContextMenu.Item>
+						<ContextMenu.Item onclick={() => addNamedTrack('audio')}>
+							{m.video_editor_track_add_audio()}
+						</ContextMenu.Item>
+					</ContextMenu.SubContent>
+				</ContextMenu.Sub>
+				<ContextMenu.Item
+					disabled={contextEmptyTrackIds.length === 0}
+					onclick={removeContextEmptyTracks}
+				>
+					{m.video_editor_track_delete_empty()}
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
 			{/if}

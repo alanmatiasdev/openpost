@@ -2,6 +2,8 @@
 	"video_editor_gap": "Boşluk",
 	"video_editor_close_gap": "Boşluğu kapat",
 	"video_editor_track_close_all_gaps": "Tüm boşlukları kapat",
+	"video_editor_track_add": "İz ekle",
+	"video_editor_track_delete_empty": "Boş izleri sil",
 	"video_editor_leave_gap": "Sil ve boşluk bırak",
 	"video_editor_gap_duration": "Boşluk süresi",
 	"video_editor_gap_description": "Bu boş bölüm kaplamaların ve sesin zamanlamasını korur.",

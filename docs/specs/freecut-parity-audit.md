@@ -109,6 +109,10 @@ locks, orphan targets, and unsafe linked-media collisions. Each action commits o
 moves opted-out linked companions, propagates removed intervals through sync-locked
 tracks, and prunes invalid transitions (`timeline/gap-closing.ts`,
 `timeline/actions/items.ts`, `components/timeline-panel.svelte`).
+The same track-header menu keeps creation compact in an Add track submenu and removes
+all empty tracks atomically. Cleanup preserves the context track when every row is
+empty, keeps at least one media track, removes orphaned groups, and disables itself
+when no safe cleanup exists (`timeline/track-removal.ts`, `timeline/actions/tracks.ts`).
 
 ## 5. Effects & color
 

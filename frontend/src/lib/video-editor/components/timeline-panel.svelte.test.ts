@@ -702,6 +702,51 @@ describe('TimelinePanel progressive controls', () => {
 		);
 	});
 
+	it('adds tracks and removes empty tracks from the keyboard-opened header menu', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const trackName = screen.getByRole('button', { name: 'video-track' });
+		await trackName.click();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await screen.getByRole('menuitem', { name: 'Add track' }).hover();
+		const addVideoTrack = screen.getByRole('menuitem', { name: 'Add video track' });
+		await expect.element(addVideoTrack).toBeVisible();
+		addVideoTrack.element().click();
+		expect(timelineStore.tracks.filter((track) => track.kind === 'video')).toHaveLength(2);
+		expect(commandHistory.getLastCommandType()).toBe('ADD_TRACK');
+
+		const trackHeader = screen.container.querySelector<HTMLElement>(
+			'[data-track-header="video-track"]'
+		)!;
+		await userEvent.click(trackHeader, { button: 'right' });
+		await screen.getByRole('menuitem', { name: 'Delete empty tracks' }).click();
+		expect(timelineStore.tracks.map((track) => track.id)).toEqual(['video-track', 'audio-track']);
+		expect(commandHistory.getLastCommandType()).toBe('REMOVE_EMPTY_TRACKS');
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+
+	it('disables empty-track cleanup and hides media-only actions on groups', async () => {
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const trackHeader = screen.container.querySelector<HTMLElement>(
+			'[data-track-header="video-track"]'
+		)!;
+		await userEvent.click(trackHeader, { button: 'right' });
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Delete empty tracks' }))
+			.toBeDisabled();
+
+		await userEvent.keyboard('{Escape}');
+		const groupId = createTrackGroup(['video-track'], 'Production')!;
+		const groupScreen = await render(TimelinePanel, { onedit: vi.fn() });
+		const groupHeader = groupScreen.container.querySelector<HTMLElement>(
+			`[data-track-header="${groupId}"]`
+		)!;
+		await userEvent.click(groupHeader, { button: 'right' });
+		await expect
+			.element(groupScreen.getByRole('menuitem', { name: 'Add track' }))
+			.not.toBeInTheDocument();
+	});
+
 	it('adds a marker from an empty-track context menu', async () => {
 		await page.viewport(720, 600);
 		timelineStore._setItems(

@@ -2,6 +2,8 @@
 	"video_editor_gap": "Gap",
 	"video_editor_close_gap": "Close gap",
 	"video_editor_track_close_all_gaps": "Close all gaps",
+	"video_editor_track_add": "Add track",
+	"video_editor_track_delete_empty": "Delete empty tracks",
 	"video_editor_leave_gap": "Delete and leave gap",
 	"video_editor_gap_duration": "Gap duration",
 	"video_editor_gap_description": "This empty section preserves the timing of overlays and audio.",
