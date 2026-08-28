@@ -110,6 +110,25 @@ describe('MediaPoolList', () => {
 		expect(onsourceopen).not.toHaveBeenCalled();
 	});
 
+	it('routes embedded subtitle extraction through the shared picker owner', async () => {
+		const interview = media('video', 'Interview.mkv', ['video'], {
+			mimeType: 'video/x-matroska'
+		});
+		mediaPool.loadAll([interview]);
+		const onextractsubtitles = vi.fn();
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			onextractsubtitles
+		});
+		const row = screen.getByText(interview.fileName).element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Extract embedded subtitles' }).click();
+
+		expect(onextractsubtitles).toHaveBeenCalledExactlyOnceWith(interview);
+	});
+
 	it('analyzes and refreshes one media row without touching unrelated media', async () => {
 		const interview = media('video', 'Interview.mp4', ['video']);
 		const broll = media('broll', 'B-roll.mp4', ['video']);

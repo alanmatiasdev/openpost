@@ -4,7 +4,7 @@ import type { TimelineItem, TimelineTrack } from '../project/types';
 import { m } from '$lib/paraglide/messages';
 import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
-import { effectiveMediaTracks } from '../timeline/utils/track-groups';
+import { effectiveMediaTracks, isTrackEffectivelyLocked } from '../timeline/utils/track-groups';
 import {
 	extractMatroskaTextSubtitleTracksFromBlob,
 	type EmbeddedSubtitleScanOptions,
@@ -268,6 +268,10 @@ export function insertEmbeddedSubtitleTrack(
 	const obsoleteIds = new Set(
 		timelineStore.items.filter((item) => subtitleForClip(item, clipIds)).map((item) => item.id)
 	);
+	const obsoleteItems = timelineStore.items.filter((item) => obsoleteIds.has(item.id));
+	if (obsoleteItems.some((item) => isTrackEffectivelyLocked(item.trackId, timelineStore.tracks))) {
+		throw new Error(m.video_editor_transcribe_unlock_existing());
+	}
 	const segments = clips
 		.map((clip) => buildSubtitleForClip(media, track, clip, options))
 		.filter((item): item is TimelineItem => item !== null);

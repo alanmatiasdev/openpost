@@ -46,11 +46,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Select from '$lib/components/ui/select';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
-	import EmbeddedSubtitlePicker from './embedded-subtitle-picker.svelte';
-	import {
-		canExtractEmbeddedSubtitles,
-		type EmbeddedSubtitleInsertResult
-	} from '$lib/video-editor/media/embedded-subtitle-service';
+	import { canExtractEmbeddedSubtitles } from '$lib/video-editor/media/embedded-subtitle-service';
 	import type { MediaMetadata } from '$lib/video-editor/media/types';
 	import { readBlob } from '$lib/video-editor/workspace-fs/fs-primitives';
 	import { requireWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
@@ -99,19 +95,19 @@
 		projectId,
 		onsequenceopen = () => undefined,
 		onsourceopen = () => undefined,
+		onextractsubtitles = () => undefined,
 		onUnsupportedAudio,
 		deleteProjectMedia = deleteMediaFromProject
 	}: {
 		projectId: string;
 		onsequenceopen?: () => void;
 		onsourceopen?: (mediaId: string) => void;
+		onextractsubtitles?: (media: MediaMetadata) => void;
 		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
 		deleteProjectMedia?: typeof deleteMediaFromProject;
 	} = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
-	let subtitlePickerOpen = $state(false);
-	let subtitleMedia = $state<MediaMetadata | null>(null);
 	let urlImportOpen = $state(false);
 	let query = $state('');
 	let filter = $state<MediaLibraryFilter>('all');
@@ -128,13 +124,6 @@
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
 	const mediaGroups = $derived(groupMediaByKind(visibleMedia));
-	const canvasWidth = $derived(
-		sequenceStore.activeSequence?.width ?? editorSession.project?.metadata.width ?? 1920
-	);
-	const canvasHeight = $derived(
-		sequenceStore.activeSequence?.height ?? editorSession.project?.metadata.height ?? 1080
-	);
-
 	async function previewUrl(id: string): Promise<void> {
 		const media = mediaPool.get(id);
 		if (!media || objectUrls[id]) return;
@@ -448,17 +437,7 @@
 	}
 
 	function openSubtitlePicker(media: MediaMetadata): void {
-		subtitleMedia = media;
-		subtitlePickerOpen = true;
-	}
-
-	function handleSubtitleInsert(result: EmbeddedSubtitleInsertResult): void {
-		if (result.itemIds.length === 0) {
-			showToast(m.video_editor_subtitle_outside_clips(), 'error');
-			return;
-		}
-		editorSession.scheduleAutosave();
-		showToast(m.video_editor_subtitle_inserted({ count: result.cueCount }), 'success');
+		onextractsubtitles(media);
 	}
 </script>
 
@@ -951,14 +930,6 @@
 		</p>
 	{/if}
 </div>
-
-<EmbeddedSubtitlePicker
-	media={subtitleMedia}
-	bind:open={subtitlePickerOpen}
-	{canvasWidth}
-	{canvasHeight}
-	oninsert={handleSubtitleInsert}
-/>
 
 <MediaUrlImportDialog bind:open={urlImportOpen} onimport={importUrl} />
 

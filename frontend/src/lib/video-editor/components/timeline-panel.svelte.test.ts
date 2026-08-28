@@ -320,16 +320,28 @@ describe('TimelinePanel progressive controls', () => {
 
 	it('routes media tools to the exact clips opened by right click', async () => {
 		await page.viewport(720, 720);
+		mediaPool.loadAll([
+			{ ...sceneMedia, fileName: 'scene-source.mkv', mimeType: 'video/x-matroska' }
+		]);
+		timelineStore._setItems(
+			timelineStore.items.map((entry) =>
+				entry.id === 'video' ? { ...entry, mediaId: sceneMedia.id } : entry
+			)
+		);
 		const onreverseitems = vi.fn();
 		const onsplitscenes = vi.fn();
+		const ontranscribecaptions = vi.fn();
 		const onaicaptions = vi.fn();
+		const onextractsubtitles = vi.fn();
 		const onopenspeechcleanup = vi.fn();
 		const oncreatecompound = vi.fn();
 		const screen = await render(TimelinePanel, {
 			onedit: vi.fn(),
 			onreverseitems,
 			onsplitscenes,
+			ontranscribecaptions,
 			onaicaptions,
+			onextractsubtitles,
 			onopenspeechcleanup,
 			oncreatecompound
 		});
@@ -351,9 +363,7 @@ describe('TimelinePanel progressive controls', () => {
 		await userEvent.keyboard('{ArrowRight}');
 		await expect.element(screen.getByRole('menuitem', { name: /^Fast scan/ })).toBeVisible();
 		await expect.element(screen.getByRole('menuitem', { name: /^Adaptive \+ LFM/ })).toBeVisible();
-		await expect
-			.element(screen.getByRole('menuitem', { name: 'Generate AI captions' }))
-			.toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: 'Captions' })).toBeVisible();
 		await expect.element(screen.getByRole('menuitem', { name: 'Fillers' })).toBeVisible();
 		await expect.element(screen.getByRole('menuitem', { name: 'Silence' })).toBeVisible();
 		screen
@@ -384,8 +394,33 @@ describe('TimelinePanel progressive controls', () => {
 
 		await userEvent.click(clip!, { button: 'right' });
 		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
-		screen.getByRole('menuitem', { name: 'Generate AI captions' }).element().click();
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Generate captions locally' }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Describe scenes with AI' }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Extract embedded subtitles' }))
+			.toBeVisible();
+		screen.getByRole('menuitem', { name: 'Generate captions locally' }).element().click();
+		expect(ontranscribecaptions).toHaveBeenCalledWith('video');
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		screen.getByRole('menuitem', { name: 'Describe scenes with AI' }).element().click();
 		expect(onaicaptions).toHaveBeenCalledWith('video');
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		screen.getByRole('menuitem', { name: 'Extract embedded subtitles' }).element().click();
+		expect(onextractsubtitles).toHaveBeenCalledWith('video');
 
 		await userEvent.click(clip!, { button: 'right' });
 		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
@@ -395,6 +430,124 @@ describe('TimelinePanel progressive controls', () => {
 		await userEvent.click(clip!, { button: 'right' });
 		await screen.getByRole('menuitem', { name: 'Create compound clip' }).click();
 		expect(oncreatecompound).toHaveBeenCalledWith(['video']);
+	});
+
+	it('consolidates selected imported captions from their right-click menu', async () => {
+		timelineStore._setTracks([track('caption-track', 'video', -1), ...timelineStore.tracks]);
+		const captions = [
+			item({
+				id: 'caption-a',
+				trackId: 'caption-track',
+				from: 0,
+				durationInFrames: 20,
+				label: 'First caption',
+				type: 'text',
+				text: 'First caption',
+				captionSource: {
+					type: 'subtitle-import',
+					clipId: 'video',
+					mediaId: 'scene-media',
+					fileName: 'captions.srt',
+					format: 'srt'
+				}
+			}),
+			item({
+				id: 'caption-b',
+				trackId: 'caption-track',
+				from: 20,
+				durationInFrames: 20,
+				label: 'Second caption',
+				type: 'text',
+				text: 'Second caption',
+				captionSource: {
+					type: 'subtitle-import',
+					clipId: 'video',
+					mediaId: 'scene-media',
+					fileName: 'captions.srt',
+					format: 'srt'
+				}
+			})
+		];
+		timelineStore._setItems([timelineStore.itemById.get('video')!, ...captions]);
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			selectedItemId: captions[0]!.id,
+			selectedItemIds: captions.map((caption) => caption.id)
+		});
+		const caption = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="caption-a"] > button'
+		)!;
+
+		await userEvent.click(caption, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		await screen.getByRole('menuitem', { name: 'Consolidate captions' }).click();
+
+		expect(commandHistory.getLastCommandType()).toBe('CONSOLIDATE_CAPTIONS');
+		expect(timelineStore.items.filter((entry) => entry.type === 'subtitle')).toHaveLength(1);
+		expect(timelineStore.items.filter((entry) => entry.type === 'text')).toHaveLength(0);
+	});
+
+	it('reports refresh and pending caption states for the exact source clip', async () => {
+		mediaPool.loadAll([sceneMedia]);
+		timelineStore._setTracks([track('caption-track', 'video', -1), ...timelineStore.tracks]);
+		timelineStore._setItems([
+			item({ mediaId: sceneMedia.id }),
+			item({
+				id: 'speech-captions',
+				type: 'subtitle',
+				trackId: 'caption-track',
+				captionSource: { type: 'transcript', clipId: 'video', mediaId: sceneMedia.id },
+				cues: []
+			}),
+			item({
+				id: 'scene-captions',
+				type: 'subtitle',
+				trackId: 'caption-track',
+				captionSource: { type: 'ai-captions', clipId: 'video', mediaId: sceneMedia.id },
+				cues: []
+			})
+		]);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="video"] > button'
+		)!;
+
+		await userEvent.click(clip, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Regenerate auto-captions' }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Refresh AI scene captions' }))
+			.toBeVisible();
+	});
+
+	it('disables caption actions while their jobs are active', async () => {
+		mediaPool.loadAll([sceneMedia]);
+		timelineStore._setItems([item({ mediaId: sceneMedia.id })]);
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			transcriptionPendingItemIds: ['video'],
+			aiCaptionPendingItemIds: ['video']
+		});
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="video"] > button'
+		)!;
+
+		await userEvent.click(clip, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Captions' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Updating auto-captions…' }))
+			.toHaveAttribute('data-disabled');
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Updating AI scene captions…' }))
+			.toHaveAttribute('data-disabled');
 	});
 
 	it('offers text voice and compound dissolve for compatible clips', async () => {

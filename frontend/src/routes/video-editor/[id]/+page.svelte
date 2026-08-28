@@ -52,6 +52,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
+	import EmbeddedSubtitlePicker from '$lib/video-editor/components/embedded-subtitle-picker.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
 	import AssetLibraryPanel from '$lib/video-editor/components/asset-library-panel.svelte';
 	import EditorAssistantPanel from '$lib/video-editor/components/editor-assistant-panel.svelte';
@@ -103,6 +104,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		type EditorWorkspaceId
 	} from '$lib/video-editor/workspaces/editor-workspace.svelte';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import {
+		canExtractEmbeddedSubtitles,
+		type EmbeddedSubtitleInsertResult
+	} from '$lib/video-editor/media/embedded-subtitle-service';
 	import {
 		editorDeleteModeForEvent,
 		editorShortcutTargetIsDisabled,
@@ -160,6 +166,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			: null
 	);
 	const transcriptionJobCount = $derived(transcriptionService.jobs.length);
+	const transcriptionPendingItemIds = $derived(transcriptionService.jobs.map((job) => job.itemId));
 	const selectedAiCaptionJob = $derived(
 		selectedItemId ? aiCaptionService.jobForItem(selectedItemId) : undefined
 	);
@@ -167,7 +174,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedAiCaptionJob ? aiCaptionService.queuePosition(selectedAiCaptionJob.id) : null
 	);
 	const aiCaptionJobCount = $derived(aiCaptionService.jobs.length);
+	const aiCaptionPendingItemIds = $derived(aiCaptionService.jobs.map((job) => job.itemId));
 	let aiCaptionError = $state<string | null>(null);
+	let embeddedSubtitleMedia = $state<ReturnType<typeof mediaPool.get> | null>(null);
+	let embeddedSubtitlePickerOpen = $state(false);
 
 	function openTextVoice(itemId: string, text: string): void {
 		textVoiceRequest = {
@@ -537,9 +547,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorSession.scheduleAutosave();
 	}
 
-	async function handleTranscribe(selection: TranscriptionSelection): Promise<void> {
-		if (!selectedItemId) return;
-		const item = timelineStore.itemById.get(selectedItemId);
+	async function handleTranscribeItem(
+		itemId: string,
+		selection: TranscriptionSelection
+	): Promise<void> {
+		const item = timelineStore.itemById.get(itemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
 		if (!item || !media) return;
 		if (media.audioCodecSupported === false) {
@@ -547,7 +559,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			return;
 		}
 		try {
-			await transcriptionService.enqueue(item.id, selection);
+			await transcriptionService.enqueue(itemId, selection);
 			editorSession.scheduleAutosave();
 			showToast(m.video_editor_transcribe_done(), 'success');
 		} catch (err) {
@@ -555,6 +567,18 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				showToast(err instanceof Error ? err.message : String(err), 'error');
 			}
 		}
+	}
+
+	async function handleTranscribe(selection: TranscriptionSelection): Promise<void> {
+		if (selectedItemId) await handleTranscribeItem(selectedItemId, selection);
+	}
+
+	function handleDefaultCaptions(itemId: string): void {
+		void handleTranscribeItem(itemId, {
+			model: editorSettings.defaultTranscriptionModel,
+			language: editorSettings.defaultTranscriptionLanguage || undefined,
+			quantization: editorSettings.defaultTranscriptionQuantization
+		});
 	}
 
 	function cancelTranscription(): void {
@@ -578,6 +602,35 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	function cancelAiCaptions(): void {
 		if (selectedItemId) aiCaptionService.cancelForItem(selectedItemId);
+	}
+
+	function openEmbeddedSubtitlePicker(media: NonNullable<ReturnType<typeof mediaPool.get>>): void {
+		embeddedSubtitleMedia = media;
+		embeddedSubtitlePickerOpen = true;
+	}
+
+	function openEmbeddedSubtitlesForItem(itemId: string): void {
+		const item = timelineStore.itemById.get(itemId);
+		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
+		if (
+			!item ||
+			!media ||
+			item.isReversed === true ||
+			isTrackEffectivelyLocked(item.trackId, timelineStore.tracks) ||
+			!canExtractEmbeddedSubtitles(media)
+		) {
+			return;
+		}
+		openEmbeddedSubtitlePicker(media);
+	}
+
+	function handleEmbeddedSubtitleInsert(result: EmbeddedSubtitleInsertResult): void {
+		if (result.itemIds.length === 0) {
+			showToast(m.video_editor_subtitle_outside_clips(), 'error');
+			return;
+		}
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_subtitle_inserted({ count: result.cueCount }), 'success');
 	}
 
 	async function handleImportCaptions(): Promise<void> {
@@ -1216,6 +1269,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									onUnsupportedAudio={requestUnsupportedAudioDecision}
 									onsequenceopen={resetTimelineSelection}
 									onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
+									onextractsubtitles={openEmbeddedSubtitlePicker}
 								/>
 							{:else if assetPanel === 'scenes'}
 								<SceneBrowserPanel />
@@ -1654,13 +1708,17 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						bind:selectedTransitionId
 						freezeFramePending={freezingItemId !== null}
 						sceneScanPending={scanningScenes}
+						{transcriptionPendingItemIds}
+						{aiCaptionPendingItemIds}
 						canvasWidth={renderProject?.metadata.width ?? 1920}
 						canvasHeight={renderProject?.metadata.height ?? 1080}
 						onedit={() => editorSession.scheduleAutosave()}
 						onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
 						onreverseitems={handleReverseItems}
 						onsplitscenes={(itemId, mode) => void handleAutoSplitScenes(itemId, mode)}
+						ontranscribecaptions={handleDefaultCaptions}
 						onaicaptions={(itemId) => void handleAiCaptions(itemId)}
+						onextractsubtitles={openEmbeddedSubtitlesForItem}
 						onopenspeechcleanup={openAgentSpeechCleanup}
 						oncreatevoice={openTextVoice}
 						oncreatecompound={createCompoundForItems}
@@ -1692,6 +1750,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 <EditorSettingsDialog bind:open={settingsOpen} />
 
 <MediaRecoveryDialog onedit={() => editorSession.scheduleAutosave()} />
+
+<EmbeddedSubtitlePicker
+	media={embeddedSubtitleMedia}
+	bind:open={embeddedSubtitlePickerOpen}
+	canvasWidth={sequenceStore.activeWidth}
+	canvasHeight={sequenceStore.activeHeight}
+	oninsert={handleEmbeddedSubtitleInsert}
+/>
 
 <RecordingDialog
 	open={recordingOpen}

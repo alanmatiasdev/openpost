@@ -320,6 +320,7 @@
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import type { SceneScanMode } from '$lib/video-editor/media/scene-scan';
+	import { canExtractEmbeddedSubtitles } from '$lib/video-editor/media/embedded-subtitle-service';
 
 	let {
 		onedit,
@@ -328,7 +329,9 @@
 		onfreezeframe = () => {},
 		onreverseitems = () => {},
 		onsplitscenes = () => {},
+		ontranscribecaptions = () => {},
 		onaicaptions = () => {},
+		onextractsubtitles = () => {},
 		onopenspeechcleanup = () => {},
 		oncreatevoice = () => {},
 		oncreatecompound = () => {},
@@ -343,6 +346,8 @@
 		onrippledeleteselection = () => {},
 		freezeFramePending = false,
 		sceneScanPending = false,
+		transcriptionPendingItemIds = [],
+		aiCaptionPendingItemIds = [],
 		canvasWidth = 1920,
 		canvasHeight = 1080,
 		selectedItemId = $bindable(null),
@@ -355,7 +360,9 @@
 		onfreezeframe?: (itemId: string) => void;
 		onreverseitems?: (itemIds: string[], isReversed: boolean) => void;
 		onsplitscenes?: (itemId: string, mode: SceneScanMode) => void;
+		ontranscribecaptions?: (itemId: string) => void;
 		onaicaptions?: (itemId: string) => void;
+		onextractsubtitles?: (itemId: string) => void;
 		onopenspeechcleanup?: (mode: 'fillers' | 'silence', itemIds: string[]) => void;
 		oncreatevoice?: (itemId: string, text: string) => void;
 		oncreatecompound?: (itemIds: string[]) => void;
@@ -370,6 +377,8 @@
 		onrippledeleteselection?: () => void;
 		freezeFramePending?: boolean;
 		sceneScanPending?: boolean;
+		transcriptionPendingItemIds?: readonly string[];
+		aiCaptionPendingItemIds?: readonly string[];
 		canvasWidth?: number;
 		canvasHeight?: number;
 		selectedItemId?: string | null;
@@ -3897,6 +3906,51 @@
 			? timelineStore.itemById.get(timelineContextTarget.primaryId)
 			: undefined
 	);
+	const contextPrimaryMedia = $derived(
+		contextPrimaryItem?.mediaId ? mediaPool.get(contextPrimaryItem.mediaId) : undefined
+	);
+	const transcriptionPendingSet = $derived(new Set(transcriptionPendingItemIds));
+	const aiCaptionPendingSet = $derived(new Set(aiCaptionPendingItemIds));
+	const contextHasTranscriptCaptions = $derived(
+		contextPrimaryItem
+			? timelineStore.items.some(
+					(item) =>
+						item.captionSource?.type === 'transcript' &&
+						item.captionSource.clipId === contextPrimaryItem.id
+				)
+			: false
+	);
+	const contextHasAiCaptions = $derived(
+		contextPrimaryItem
+			? timelineStore.items.some(
+					(item) =>
+						item.captionSource?.type === 'ai-captions' &&
+						item.captionSource.clipId === contextPrimaryItem.id
+				)
+			: false
+	);
+	const contextCanManageCaptions = $derived(
+		Boolean(
+			contextPrimaryItem &&
+			(contextPrimaryItem.type === 'video' || contextPrimaryItem.type === 'audio') &&
+			contextPrimaryItem.mediaId &&
+			contextPrimaryItem.isReversed !== true &&
+			!isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks) &&
+			(contextPrimaryItem.type !== 'audio' ||
+				!timelineStore.items.some(
+					(item) =>
+						item.type === 'video' &&
+						item.mediaId === contextPrimaryItem.mediaId &&
+						item.linkedGroupId !== undefined &&
+						item.linkedGroupId === contextPrimaryItem.linkedGroupId
+				))
+		)
+	);
+	const contextCanExtractEmbeddedSubtitles = $derived(
+		contextCanManageCaptions &&
+			contextPrimaryMedia !== undefined &&
+			canExtractEmbeddedSubtitles(contextPrimaryMedia)
+	);
 	const contextItems = $derived.by(() =>
 		timelineContextTarget?.kind === 'items'
 			? timelineContextTarget.itemIds
@@ -3915,7 +3969,8 @@
 	const hasContextPrimaryEditTools = $derived(
 		contextPrimaryItem?.type === 'video' ||
 			contextPrimaryItem?.type === 'audio' ||
-			(contextPrimaryItem?.type === 'text' && contextVoiceText.length > 0)
+			(contextPrimaryItem?.type === 'text' && contextVoiceText.length > 0) ||
+			captionConsolidationTarget !== null
 	);
 	const contextGradeSourceItem = $derived(contextItems.find((item) => hasColorGrade(item.effects)));
 	const contextGradeTargetItemIds = $derived(
@@ -5654,11 +5709,6 @@
 									</ContextMenu.SubContent>
 								</ContextMenu.Sub>
 							{/if}
-							{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
-								<ContextMenu.Item onclick={() => onaicaptions(contextPrimaryItem.id)}>
-									{m.video_editor_ai_captions_action()}
-								</ContextMenu.Item>
-							{/if}
 							<ContextMenu.Separator />
 							<ContextMenu.Item onclick={() => onopenspeechcleanup('fillers', contextMediaItemIds)}>
 								{m.video_editor_cleanup_fillers_short()}
@@ -5672,6 +5722,45 @@
 							>
 								{m.video_editor_text_create_voice()}
 							</ContextMenu.Item>
+						{/if}
+						{#if contextPrimaryItem && (contextCanManageCaptions || captionConsolidationTarget)}
+							<ContextMenu.Sub>
+								<ContextMenu.SubTrigger>{m.video_editor_tool_captions()}</ContextMenu.SubTrigger>
+								<ContextMenu.SubContent class="video-editor-theme w-60">
+									{#if contextCanManageCaptions}
+										<ContextMenu.Item
+											disabled={transcriptionPendingSet.has(contextPrimaryItem.id)}
+											onclick={() => ontranscribecaptions(contextPrimaryItem.id)}
+										>
+											{transcriptionPendingSet.has(contextPrimaryItem.id)
+												? m.video_editor_captions_updating()
+												: contextHasTranscriptCaptions
+													? m.video_editor_captions_regenerate()
+													: m.video_editor_captions_generate()}
+										</ContextMenu.Item>
+										<ContextMenu.Item
+											disabled={aiCaptionPendingSet.has(contextPrimaryItem.id)}
+											onclick={() => onaicaptions(contextPrimaryItem.id)}
+										>
+											{aiCaptionPendingSet.has(contextPrimaryItem.id)
+												? m.video_editor_ai_scene_captions_updating()
+												: contextHasAiCaptions
+													? m.video_editor_ai_scene_captions_refresh()
+													: m.video_editor_ai_scene_captions_generate()}
+										</ContextMenu.Item>
+									{/if}
+									{#if contextCanExtractEmbeddedSubtitles}
+										<ContextMenu.Item onclick={() => onextractsubtitles(contextPrimaryItem.id)}>
+											{m.video_editor_extract_embedded_subtitles()}
+										</ContextMenu.Item>
+									{/if}
+									{#if captionConsolidationTarget}
+										<ContextMenu.Item onclick={consolidateSelection}>
+											{m.video_editor_consolidate_captions()}
+										</ContextMenu.Item>
+									{/if}
+								</ContextMenu.SubContent>
+							</ContextMenu.Sub>
 						{/if}
 						{#if hasContextGradeActions}
 							{#if hasContextPrimaryEditTools}<ContextMenu.Separator />{/if}
@@ -5726,11 +5815,6 @@
 			{#if bentoEligibleIds.length >= 2}
 				<ContextMenu.Item onclick={() => (bentoLayoutOpen = true)}>
 					{m.video_editor_bento_open()}
-				</ContextMenu.Item>
-			{/if}
-			{#if captionConsolidationTarget}
-				<ContextMenu.Item onclick={consolidateSelection}>
-					{m.video_editor_consolidate_captions()}
 				</ContextMenu.Item>
 			{/if}
 			{#if clearableKeyframeCount > 0 || lockedAnimatedSelectionCount > 0}
