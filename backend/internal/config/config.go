@@ -388,14 +388,7 @@ func Load() *Config {
 			cfg.ProviderApps = mergeProviderApps(cfg.ProviderApps, defaultProviderAppConfig(cfg, apps)...)
 		}
 	}
-	if raw := getEnvDefault("OPENPOST_ANALYTICS_SOURCES", ""); raw != "" {
-		var sources []AnalyticsSourceConfig
-		if err := json.Unmarshal([]byte(raw), &sources); err != nil {
-			cfg.analyticsSourcesParseErr = fmt.Errorf("OPENPOST_ANALYTICS_SOURCES must be valid JSON: %w", err)
-		} else {
-			cfg.AnalyticsSources = normalizeAnalyticsSources(sources)
-		}
-	}
+	loadAnalyticsSources(cfg)
 
 	cfg.CORSOrigins = buildCORSOrigins(
 		cfg.Edition,
@@ -563,6 +556,19 @@ func normalizeAnalyticsSources(sources []AnalyticsSourceConfig) []AnalyticsSourc
 	return normalized
 }
 
+func loadAnalyticsSources(cfg *Config) {
+	raw := getEnvDefault("OPENPOST_ANALYTICS_SOURCES", "")
+	if raw == "" {
+		return
+	}
+	var sources []AnalyticsSourceConfig
+	if err := json.Unmarshal([]byte(raw), &sources); err != nil {
+		cfg.analyticsSourcesParseErr = fmt.Errorf("OPENPOST_ANALYTICS_SOURCES must be valid JSON: %w", err)
+		return
+	}
+	cfg.AnalyticsSources = normalizeAnalyticsSources(sources)
+}
+
 func (c *Config) DatabaseDSN() string {
 	if c.DatabaseDriver == DatabaseDriverPostgres && c.DatabaseURL != "" {
 		return c.DatabaseURL
@@ -615,31 +621,36 @@ func (c *Config) validateAnalyticsSources() error {
 	invalid := make([]string, 0, len(c.AnalyticsSources))
 	seenPlatforms := make(map[string]struct{}, len(c.AnalyticsSources))
 	for _, source := range c.AnalyticsSources {
-		platformName := strings.TrimSpace(source.Platform)
-		if platformName == "" {
-			invalid = append(invalid, "platform is required")
-		} else if _, exists := seenPlatforms[platformName]; exists {
-			invalid = append(invalid, fmt.Sprintf("duplicate platform %q", platformName))
-		} else {
-			seenPlatforms[platformName] = struct{}{}
-		}
-		if strings.TrimSpace(source.BearerToken) == "" {
-			invalid = append(invalid, fmt.Sprintf("platform %q requires bearer_token", platformName))
-		}
-		parsed, err := url.Parse(strings.TrimSpace(source.BaseURL))
-		if err != nil || parsed == nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			invalid = append(invalid, fmt.Sprintf("platform %q requires an absolute http(s) URL", platformName))
-			continue
-		}
-		if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-			invalid = append(invalid, fmt.Sprintf("platform %q base_url must not include credentials, query, or fragment", platformName))
-		}
+		invalid = append(invalid, analyticsSourceValidationIssues(source, seenPlatforms)...)
 	}
 	if len(invalid) == 0 {
 		return nil
 	}
 	sort.Strings(invalid)
 	return fmt.Errorf("OPENPOST_ANALYTICS_SOURCES invalid: %s", strings.Join(invalid, ", "))
+}
+
+func analyticsSourceValidationIssues(source AnalyticsSourceConfig, seenPlatforms map[string]struct{}) []string {
+	platformName := strings.TrimSpace(source.Platform)
+	invalid := make([]string, 0, 3)
+	if platformName == "" {
+		invalid = append(invalid, "platform is required")
+	} else if _, exists := seenPlatforms[platformName]; exists {
+		invalid = append(invalid, fmt.Sprintf("duplicate platform %q", platformName))
+	} else {
+		seenPlatforms[platformName] = struct{}{}
+	}
+	if strings.TrimSpace(source.BearerToken) == "" {
+		invalid = append(invalid, fmt.Sprintf("platform %q requires bearer_token", platformName))
+	}
+	parsed, err := url.Parse(strings.TrimSpace(source.BaseURL))
+	if err != nil || parsed == nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return append(invalid, fmt.Sprintf("platform %q requires an absolute http(s) URL", platformName))
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		invalid = append(invalid, fmt.Sprintf("platform %q base_url must not include credentials, query, or fragment", platformName))
+	}
+	return invalid
 }
 
 func (c *Config) missingCloudTelemetryConfig() []string {
