@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-08-28
+
+### Fixed
+
+- Restore the saved Video Editor workspace before opening a project deep link or creating a project from another OpenPost surface.
+- Keep selected-clip actions contained in a compact, touch-safe inspector toolbar.
+
 ## [4.6.0] - 2026-08-27
 
 ### Changed
