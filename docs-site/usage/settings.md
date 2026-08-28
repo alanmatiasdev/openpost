@@ -197,6 +197,7 @@ Instance settings are available only to instance administrators.
 
 - **Overview** shows account growth, publishing activity, and the running release.
 - **Configuration** manages optional account policy, authentication, email delivery, OpenPost Image Editor, feedback, provider behavior, and OAuth provider applications.
+- **AI prompts** manages the base and platform-specific writing instructions used by AI social-post generation.
 - **Users** shows instance-wide account, plan, access, and activity details.
 - **Instance audit** uses the Organization audit vocabulary across every Organization. Filter by Organization, Workspace, actor, action, resource, result, or time, then export the same safe facts as JSON or CSV.
 
@@ -208,5 +209,7 @@ failure, and pending results explicit. Organization and Workspace IDs provide
 scope without granting access to their content.
 
 The Configuration screen identifies whether each value comes from the environment, an encrypted admin override, or the application default. Instance administrators can replace an allowlisted environment-backed value. Before and after saving, the screen names the environment source and clearly labels that the admin value will override or is overriding it. Removing the admin override restores the environment value or default after a server restart. Database, encryption, network, and storage settings remain deployment-only because OpenPost needs them before this screen can load.
+
+The AI prompts screen applies changes to the next generated draft without a server restart. It keeps the source-controlled base and platform defaults visible, records the last administrator and update time, and lets an administrator restore each built-in prompt. OpenPost keeps the JSON response schema and destination validation outside the editable text, so prompt changes cannot alter the response shape required by the composer. Prompt overrides are encrypted in the database. The screen and API require an unscoped instance-administrator browser session; API, CLI, MCP, and Workspace-scoped credentials are rejected.
 
 Self-hosted users need provider apps when they bring their own OAuth keys. Provider apps keep environment-first precedence and remain read-only when defined by the deployment. Mastodon is a common case because each server can need its own app. See [Environment Variables](/configuration/environment-variables), [Platform Overview](/providers/overview), and [Mastodon](/providers/mastodon).

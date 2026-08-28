@@ -15,6 +15,7 @@
 	import AccountManagement from '$lib/components/account-management.svelte';
 	import InstanceAdminUsers from '$lib/components/instance-admin-users.svelte';
 	import InstanceConfiguration from '$lib/components/instance-configuration.svelte';
+	import InstanceAIPrompts from '$lib/components/instance-ai-prompts.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
 	import OrganizationAuditSettings from '$lib/components/organization-audit-settings.svelte';
@@ -211,6 +212,8 @@
 					<InstanceSettingsTab userID={authState.user?.id ?? ''} active />
 				{:else if authState.user?.is_admin && activeSettingsTab === 'configuration'}
 					<InstanceConfiguration active />
+				{:else if authState.user?.is_admin && activeSettingsTab === 'ai-prompts'}
+					<InstanceAIPrompts active />
 				{:else if authState.user?.is_admin && activeSettingsTab === 'users'}
 					<InstanceAdminUsers />
 				{:else if authState.user?.is_admin && activeSettingsTab === 'instance-audit'}
