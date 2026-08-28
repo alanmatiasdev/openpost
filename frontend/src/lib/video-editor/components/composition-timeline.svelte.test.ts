@@ -7,6 +7,7 @@ import type { SubComposition, TimelineItem, TimelineTrack } from '$lib/video-edi
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 import type { MediaMetadata } from '$lib/video-editor/media/types';
@@ -72,6 +73,7 @@ beforeEach(() => {
 	sequenceStore.reset();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
+	keyboardShortcuts.resetAll();
 	mediaPool.clear();
 	clearActiveMediaDrag();
 	timelinePreviewScrub.__resetForTesting();
@@ -82,6 +84,7 @@ afterEach(async () => {
 	sequenceStore.reset();
 	timelineStore.__resetForTesting();
 	commandHistory.clearHistory();
+	keyboardShortcuts.resetAll();
 	mediaPool.clear();
 	clearActiveMediaDrag();
 	timelinePreviewScrub.__resetForTesting();
@@ -145,6 +148,51 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		expect(onedit).toHaveBeenCalledTimes(1);
 		commandHistory.undo();
 		expect(timelineStore.itemById.has('one')).toBe(true);
+	});
+
+	it('uses saved composition bindings and leaves focused controls alone', async () => {
+		keyboardShortcuts.setBinding('COMPOSITION_DUPLICATE', 'alt+8');
+		keyboardShortcuts.setBinding('COMPOSITION_NUDGE_RIGHT', 'alt+9');
+		keyboardShortcuts.setBinding('DELETE_SELECTED', 'alt+0');
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		await screen.getByTestId('composition-bar-one').click();
+		const timeline = screen.getByTestId('composition-timeline').element();
+		const send = (target: Element, init: KeyboardEventInit) =>
+			target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+
+		send(timeline, { key: 'd', code: 'KeyD', metaKey: true });
+		expect(timelineStore.items).toHaveLength(2);
+		send(timeline, { key: '8', code: 'Digit8', altKey: true });
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(3));
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+
+		send(screen.getByTestId('layer-expand-one').element(), {
+			key: '8',
+			code: 'Digit8',
+			altKey: true
+		});
+		expect(timelineStore.items).toHaveLength(2);
+
+		send(timeline, { key: 'ArrowRight', code: 'ArrowRight' });
+		expect(timelineStore.itemById.get('one')?.from).toBe(0);
+		send(timeline, { key: '9', code: 'Digit9', altKey: true });
+		expect(timelineStore.itemById.get('one')?.from).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+
+		send(timeline, { key: 'Backspace', code: 'Backspace' });
+		expect(timelineStore.itemById.has('one')).toBe(true);
+		send(timeline, { key: '0', code: 'Digit0', altKey: true });
+		expect(timelineStore.itemById.has('one')).toBe(false);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledTimes(3);
 	});
 
 	it('runs layer row context actions and supports keyboard invocation', async () => {

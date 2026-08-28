@@ -13,6 +13,13 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
+	import {
+		editorDeleteModeForEvent,
+		editorShortcutTargetIsDisabled,
+		eventMatchesShortcut,
+		type EditorShortcutId
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { removeItems, updateItemProperties } from '$lib/video-editor/timeline/actions/items';
@@ -1492,8 +1499,10 @@
 		});
 	}
 	function handleKeydown(event: KeyboardEvent): void {
-		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
-			return;
+		if (editorShortcutTargetIsDisabled(event.target)) return;
+		const bindings = keyboardShortcuts.bindings;
+		const matches = (...ids: EditorShortcutId[]) =>
+			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
 		if (event.key === 'Escape') {
 			let handled = false;
 			if (pointerGestures?.activePointerId !== null) {
@@ -1537,53 +1546,45 @@
 			clearSelection();
 			return;
 		}
-		if ((event.key === 'Delete' || event.key === 'Backspace') && selectedItemIds.size > 0) {
+		if (editorDeleteModeForEvent(event, bindings) && selectedItemIds.size > 0) {
 			event.preventDefault();
 			removeSelected();
 			return;
 		}
-		if (
-			(event.ctrlKey || event.metaKey) &&
-			event.key.toLowerCase() === 'c' &&
-			selectedItemIds.size > 0
-		) {
+		if (matches('COPY') && selectedItemIds.size > 0) {
 			event.preventDefault();
 			copySelected();
 			return;
 		}
-		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+		if (matches('PASTE')) {
 			event.preventDefault();
 			pasteClipboard();
 			return;
 		}
-		if (
-			(event.ctrlKey || event.metaKey) &&
-			event.key.toLowerCase() === 'd' &&
-			selectedItemIds.size > 0
-		) {
+		if (matches('COMPOSITION_DUPLICATE') && selectedItemIds.size > 0) {
 			event.preventDefault();
 			duplicateSelected();
 			return;
 		}
-		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+		if (matches('COMPOSITION_SELECT_ALL')) {
 			event.preventDefault();
 			selectedItemIds = new Set(visualLayerItems.map((i) => i.id));
 			return;
 		}
-		if (
-			(event.ctrlKey || event.metaKey) &&
-			event.key.toLowerCase() === 'g' &&
-			selectedItemIds.size > 1
-		) {
+		if (matches('COMPOSITION_GROUP') && selectedItemIds.size > 1) {
 			event.preventDefault();
 			groupSelected();
 			return;
 		}
-		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+		const nudgeLeft = matches('COMPOSITION_NUDGE_LEFT', 'COMPOSITION_NUDGE_LEFT_FAST');
+		const nudgeRight = matches('COMPOSITION_NUDGE_RIGHT', 'COMPOSITION_NUDGE_RIGHT_FAST');
+		if (nudgeLeft || nudgeRight) {
 			if (selectedItemIds.size === 0) return;
 			event.preventDefault();
-			const delta = event.key === 'ArrowLeft' ? -1 : 1;
-			const amount = event.shiftKey ? 10 : 1;
+			const delta = nudgeLeft ? -1 : 1;
+			const amount = matches('COMPOSITION_NUDGE_LEFT_FAST', 'COMPOSITION_NUDGE_RIGHT_FAST')
+				? 10
+				: 1;
 			const before = captureSnapshot();
 			let moved = false;
 			const anchor = [...selectedItemIds]
@@ -1614,14 +1615,15 @@
 			}
 			return;
 		}
-		// reorder with Alt+Arrow
-		if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && lastSelectedId) {
+		const reorderUp = matches('COMPOSITION_REORDER_UP');
+		const reorderDown = matches('COMPOSITION_REORDER_DOWN');
+		if ((reorderUp || reorderDown) && lastSelectedId) {
 			event.preventDefault();
 			const item = timelineStore.itemById.get(lastSelectedId);
 			if (!item) return;
 			const rows = motionRows;
 			const idx = rows.findIndex((r) => isLayerRow(r) && r.item.id === lastSelectedId);
-			const dir = event.key === 'ArrowUp' ? -1 : 1;
+			const dir = reorderUp ? -1 : 1;
 			const targetIdx = idx + dir;
 			if (targetIdx < 0 || targetIdx >= rows.length) return;
 			const before = captureSnapshot();
