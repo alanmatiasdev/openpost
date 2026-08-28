@@ -267,8 +267,7 @@ test("composer preserves its draft through Image cancel and links out to the Vid
 
   await composer.getByRole("button", { name: "Add media" }).click();
   let picker = page.getByRole("dialog");
-  await picker.getByRole("button", { name: "More", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Create", exact: true }).click();
+  await picker.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page).toHaveURL(/\/image-editor\/new\?/u);
   await page.getByRole("button", { name: "Back to post" }).click();
   await expect(page).toHaveURL(/\/publications\/publication-handoff$/u);
@@ -280,8 +279,7 @@ test("composer preserves its draft through Image cancel and links out to the Vid
   await composer.getByRole("button", { name: "Add media" }).click();
   picker = page.getByRole("dialog");
   await picker.getByRole("tab", { name: "Library" }).click();
-  await picker.getByRole("button", { name: "More", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Edit in OpenPost Video Editor" }).click();
+  await picker.getByRole("button", { name: "Edit in OpenPost Video Editor" }).click();
   await expect(page).toHaveURL(/\/video-editor\/new\?/u);
   const handoffParams = new URL(page.url()).searchParams;
   expect(handoffParams.get("source")).toBe("media:video-old");
