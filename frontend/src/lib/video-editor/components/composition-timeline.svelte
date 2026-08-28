@@ -70,6 +70,7 @@
 		isTrackEffectivelyLocked,
 		effectiveTrackState
 	} from '$lib/video-editor/timeline/utils/track-groups';
+	import { snapshotTimelineState } from '$lib/video-editor/timeline/utils/state-snapshot.svelte';
 	import { getTextMotionPreset } from '$lib/video-editor/timeline/text-motion-presets';
 	import {
 		textMotionPresetLabel,
@@ -124,6 +125,7 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as Select from '$lib/components/ui/select';
 	import type {
 		MotionTimelineGroupRow,
@@ -351,6 +353,10 @@
 	let expandedGroupIds = $state<Set<string>>(new Set());
 	let filterText = $state('');
 	let clipboard: TimelineItem[] | null = $state(null);
+	type CompositionContextTarget =
+		| { kind: 'layer'; itemId: string }
+		| { kind: 'group'; trackId: string; itemIds: string[] };
+	let compositionContextTarget: CompositionContextTarget | null = $state(null);
 	let previewFrame: number | null = $state(null);
 	let dopesheetMode: 'lanes' | 'graph' = $state('lanes');
 	let selectedEasing: string = $state('linear');
@@ -374,6 +380,16 @@
 		motionRows.filter((r): r is MotionTimelineGroupRow => r.kind === 'group')
 	);
 	const layerEntries = $derived(motionRows.filter(isLayerRow));
+	const contextLayer = $derived(
+		compositionContextTarget?.kind === 'layer'
+			? timelineStore.itemById.get(compositionContextTarget.itemId)
+			: undefined
+	);
+	const contextGroup = $derived(
+		compositionContextTarget?.kind === 'group'
+			? trackById.get(compositionContextTarget.trackId)
+			: undefined
+	);
 	const sidebarRows = $derived.by(() => {
 		const query = filterText.trim().toLowerCase();
 		if (!query) return motionRows;
@@ -507,6 +523,56 @@
 		selectedItemIds = new Set();
 		lastSelectedId = null;
 		onselectitem?.(null);
+	}
+	function prepareCompositionContextMenu(event: MouseEvent): void {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+
+		const groupElement = target.closest<HTMLElement>('[data-group-row]');
+		const groupId = groupElement?.dataset.groupRow;
+		if (groupId) {
+			const group = groupRows.find((row) => row.track.id === groupId);
+			if (!group) return;
+			const allSelected = group.itemIds.every((id) => selectedItemIds.has(id));
+			if (!allSelected) {
+				selectedItemIds = new Set(group.itemIds);
+				lastSelectedId = group.itemIds[0] ?? null;
+				onselectitem?.(lastSelectedId);
+			}
+			compositionContextTarget = {
+				kind: 'group',
+				trackId: groupId,
+				itemIds: [...group.itemIds]
+			};
+			return;
+		}
+
+		const layerElement = target.closest<HTMLElement>('[data-layer-row]');
+		const itemId = layerElement?.dataset.layerRow;
+		if (itemId && timelineStore.itemById.has(itemId)) {
+			if (!selectedItemIds.has(itemId)) selectItem(itemId, false, false);
+			compositionContextTarget = { kind: 'layer', itemId };
+			return;
+		}
+
+		compositionContextTarget = null;
+		event.preventDefault();
+	}
+	function openCompositionContextMenuFromKeyboard(event: KeyboardEvent): void {
+		if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const rect = target.getBoundingClientRect();
+		target.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: rect.left + Math.min(24, rect.width / 2),
+				clientY: rect.top + rect.height / 2
+			})
+		);
 	}
 	function seekTo(frame: number): void {
 		const clamped = Math.max(0, Math.min(frame, durationFrames - 1));
@@ -736,7 +802,7 @@
 		const ids = expandMotionLayerItemIds(motionPlan, [...selectedItemIds]);
 		const selected = timelineStore.items.filter((i) => ids.includes(i.id));
 		const newItems: TimelineItem[] = selected.map((item) => ({
-			...structuredClone(item),
+			...snapshotTimelineState(item),
 			id: crypto.randomUUID(),
 			from: item.from + 10,
 			label: item.label ? `${item.label} copy` : item.type
@@ -751,7 +817,7 @@
 		const ids = expandMotionLayerItemIds(motionPlan, [...selectedItemIds]);
 		clipboard = timelineStore.items
 			.filter((i) => ids.includes(i.id))
-			.map((i) => structuredClone(i));
+			.map((i) => snapshotTimelineState(i));
 		status = m.video_editor_motion_copied();
 	}
 	function pasteClipboard(): void {
@@ -759,7 +825,7 @@
 		const before = captureSnapshot();
 		const offset = 10;
 		const newItems: TimelineItem[] = clipboard.map((item) => ({
-			...structuredClone(item),
+			...snapshotTimelineState(item),
 			id: crypto.randomUUID(),
 			from: Math.max(0, item.from + offset)
 		}));
@@ -802,6 +868,21 @@
 			.map((t) => (t.parentTrackId === groupId ? { ...t, parentTrackId: undefined } : t));
 		timelineStore._setTracks(newTracks);
 		commandHistory.addUndoEntry({ type: 'UNGROUP_TRACKS' }, before);
+		onedit();
+	}
+	function deleteGroupAndContents(groupId: string, itemIds: string[]): void {
+		if (!trackById.has(groupId)) return;
+		const ids = itemIds.flatMap((id) => expandMotionLayerItemIds(motionPlan, [id]));
+		executeAtomic('DELETE_GROUP', () => {
+			if (ids.length > 0) removeItems(ids, false);
+			const remaining = timelineStore.tracks
+				.filter((track) => track.id !== groupId)
+				.map((track) =>
+					track.parentTrackId === groupId ? { ...track, parentTrackId: undefined } : track
+				);
+			timelineStore._setTracks(remaining);
+		});
+		if (ids.some((id) => selectedItemIds.has(id))) clearSelection();
 		onedit();
 	}
 	function toggleGroupCollapse(groupId: string): void {
@@ -2234,761 +2315,831 @@
 			</div>
 		</div>
 		<div class="composition-body" data-testid="composition-body">
-			<div
-				class="layer-sidebar"
-				aria-label={m.video_editor_composition_timeline_layers()}
-				bind:this={sidebarEl}
-				onscroll={handleSidebarScroll}
-			>
-				<div class="layer-sidebar-header">
-					<span>{m.video_editor_composition_timeline_layer()}</span>
-					<span class="col-parent">{m.video_editor_motion_parent_label()}</span>
-					<span class="col-blend"><BlendIcon class="size-3" /></span>
-					<span class="col-timing">{m.video_editor_composition_timeline_timing()}</span>
-				</div>
-				{#if sidebarWindow.beforeSize > 0}
-					<div
-						class="sidebar-virtual-spacer"
-						style:height={`${sidebarWindow.beforeSize}px`}
-						aria-hidden="true"
-						data-testid="sidebar-virtual-before"
-					></div>
-				{/if}
-				{#each visibleSidebarRows as row (row.kind === 'group' ? row.track.id : row.item.id)}
-					{@const rowKey = motionRowKey(row)}
-					{#if row.kind === 'group'}
-						{@const isExpanded = !row.track.isCollapsed}
-						{@const groupSelected = row.itemIds.some((id) => selectedItemIds.has(id))}
+			<ContextMenu.Root>
+				<ContextMenu.Trigger>
+					{#snippet child({ props })}
 						<div
-							class="group-row"
-							use:measureSidebarRow={rowKey}
-							data-group-row={row.track.id}
-							data-testid={`group-row-${row.track.id}`}
+							{...props}
+							class="layer-sidebar"
+							aria-label={m.video_editor_composition_timeline_layers()}
+							bind:this={sidebarEl}
+							oncontextmenucapture={prepareCompositionContextMenu}
+							onscroll={handleSidebarScroll}
 						>
-							<button
-								type="button"
-								class="group-header"
-								class:selected={groupSelected}
-								aria-pressed={groupSelected}
-								aria-label={row.track.name}
-								data-testid={`group-header-${row.track.id}`}
-								ondblclick={() => renameStart(row.track.id, row.track.name)}
-								onclick={() => {
-									if (row.itemIds.length === 0) return;
-									const allSelected = row.itemIds.every((id) => selectedItemIds.has(id));
-									if (allSelected) {
-										const next = new Set(selectedItemIds);
-										for (const id of row.itemIds) next.delete(id);
-										selectedItemIds = next;
-									} else {
-										const next = new Set(selectedItemIds);
-										for (const id of row.itemIds) next.add(id);
-										selectedItemIds = next;
-									}
-								}}
-							>
-								<span
-									class="group-toggle"
-									role="button"
-									tabindex="0"
-									aria-label={isExpanded
-										? m.video_editor_composition_timeline_collapse()
-										: m.video_editor_composition_timeline_expand()}
-									onclick={(e) => {
-										e.stopPropagation();
-										toggleGroupCollapse(row.track.id);
-									}}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											toggleGroupCollapse(row.track.id);
-										}
-									}}
-								>
-									{#if isExpanded}<ChevronDownIcon class="size-3" />{:else}<ChevronRightIcon
-											class="size-3"
-										/>{/if}
-								</span>
-								{#if editingNameId === row.track.id}
-									<Input
-										id="rename-{row.track.id}"
-										class="rename-input"
-										value={editingNameValue}
-										oninput={(e) =>
-											(editingNameValue = (e.currentTarget as HTMLInputElement).value)}
-										onkeydown={(e) => {
-											if (e.key === 'Enter') renameCommit();
-											if (e.key === 'Escape') editingNameId = null;
-										}}
-										onblur={renameCommit}
-										data-testid={`rename-group-${row.track.id}`}
-										aria-label={m.video_editor_composition_timeline_rename()}
-									/>
-								{:else}
-									<span class="group-name">{row.track.name}</span>
-									<span class="group-span"
-										>{row.itemIds.length
-											? `${Math.min(...row.itemIds.map((id) => timelineStore.itemById.get(id)?.from ?? 0))}–${Math.max(...row.itemIds.map((id) => (timelineStore.itemById.get(id)?.from ?? 0) + (timelineStore.itemById.get(id)?.durationInFrames ?? 0)))}`
-											: ''}</span
-									>
-								{/if}
-							</button>
-							<span class="group-actions">
-								<Button
-									size="icon"
-									variant="ghost"
-									aria-label={row.track.visible
-										? m.video_editor_timeline_hide()
-										: m.video_editor_timeline_show()}
-									onclick={() => toggleTrackVisible(row.track.id)}
-									data-testid={`group-visible-${row.track.id}`}
-									class="icon-btn"
-								>
-									{#if row.track.visible}<EyeIcon class="size-3" />{:else}<EyeOffIcon
-											class="size-3"
-										/>{/if}
-								</Button>
-								<Button
-									size="icon"
-									variant="ghost"
-									aria-label={row.track.locked
-										? m.video_editor_timeline_unlock()
-										: m.video_editor_timeline_lock()}
-									onclick={() => toggleTrackLocked(row.track.id)}
-									data-testid={`group-lock-${row.track.id}`}
-									class="icon-btn"
-								>
-									{#if row.track.locked}<LockIcon class="size-3" />{:else}<UnlockIcon
-											class="size-3"
-										/>{/if}
-								</Button>
-								<Button
-									size="icon"
-									variant="ghost"
-									aria-label={row.track.muted
-										? m.video_editor_timeline_unmute()
-										: m.video_editor_timeline_mute()}
-									onclick={() => toggleTrackMuted(row.track.id)}
-									data-testid={`group-mute-${row.track.id}`}
-									class="icon-btn"
-								>
-									{#if row.track.muted}<VolumeOffIcon class="size-3" />{:else}<VolumeIcon
-											class="size-3"
-										/>{/if}
-								</Button>
-								<Button
-									size="icon"
-									variant="ghost"
-									aria-label={m.video_editor_composition_timeline_ungroup()}
-									onclick={() => ungroupTrack(row.track.id)}
-									data-testid={`group-ungroup-${row.track.id}`}
-									class="icon-btn"
-								>
-									<UngroupIcon class="size-3" />
-								</Button>
-								<Button
-									size="icon"
-									variant="ghost"
-									aria-label={m.video_editor_composition_timeline_delete_group()}
-									onclick={() => {
-										const ids = row.itemIds.flatMap((id) =>
-											expandMotionLayerItemIds(motionPlan, [id])
-										);
-										executeAtomic('DELETE_GROUP', () => {
-											if (ids.length) removeItems(ids, false);
-											const remaining = timelineStore.tracks
-												.filter((track) => track.id !== row.track.id)
-												.map((track) =>
-													track.parentTrackId === row.track.id
-														? { ...track, parentTrackId: undefined }
-														: track
-												);
-											timelineStore._setTracks(remaining);
-										});
-										onedit();
-									}}
-									data-testid={`group-delete-${row.track.id}`}
-									class="icon-btn"
-								>
-									<TrashIcon class="size-3" />
-								</Button>
-							</span>
-							<span
-								class="drag-handle"
-								aria-label={m.video_editor_composition_timeline_reorder()}
-								role="button"
-								tabindex="0"
-								onpointerdown={(e) => startReorder(row.track.id, e)}
-								onkeydown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault(); /* keyboard reorder via Alt+Arrow */
-									}
-								}}>≡</span
-							>
-						</div>
-					{:else}
-						{@const item = row.item}
-						{@const track = row.track}
-						{@const isSelected = selectedItemIds.has(item.id)}
-						{@const parentId = item.transformParent?.parentItemId}
-						{@const expanded = expandedLayerIds.has(item.id)}
-						{@const filtered = filterText.trim()
-							? item.label.toLowerCase().includes(filterText.toLowerCase())
-							: true}
-						{#if filtered}
-							{@const vRows = vectorRowsFor(item)}
-							{@const textBands = item.type === 'text' ? getTextMotionTimelineBands(item) : []}
-							<div
-								class="layer-row-wrap"
-								use:measureSidebarRow={rowKey}
-								data-row-id={item.id}
-								data-layer-row={item.id}
-							>
+							<div class="layer-sidebar-header">
+								<span>{m.video_editor_composition_timeline_layer()}</span>
+								<span class="col-parent">{m.video_editor_motion_parent_label()}</span>
+								<span class="col-blend"><BlendIcon class="size-3" /></span>
+								<span class="col-timing">{m.video_editor_composition_timeline_timing()}</span>
+							</div>
+							{#if sidebarWindow.beforeSize > 0}
 								<div
-									class="layer-row"
-									class:selected={isSelected}
-									class:pickTarget={pickTarget === item.id}
-									class:controller={item.type === 'controller'}
-									data-testid={`composition-layer-${item.id}`}
-									role="button"
-									tabindex="0"
-									aria-pressed={isSelected}
-									aria-label={itemLabel(item)}
-									ondblclick={() => renameStart(item.id, itemLabel(item))}
-									onclick={(e) => selectItem(item.id, e.ctrlKey || e.metaKey, e.shiftKey)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											selectItem(item.id, e.ctrlKey || e.metaKey, e.shiftKey);
-										}
-									}}
-									oncontextmenu={(e) => {
-										e.preventDefault(); // open context via right-click selects first
-										if (!selectedItemIds.has(item.id)) selectItem(item.id, false, false);
-									}}
-									onpointerdown={(e) => {
-										if (e.button === 2) return;
-										if (e.ctrlKey || e.metaKey) return;
-									}}
-								>
-									<button
-										type="button"
-										class="layer-expand"
-										aria-label={expanded
-											? m.video_editor_composition_timeline_collapse()
-											: m.video_editor_composition_timeline_expand()}
-										aria-pressed={expanded}
-										tabindex="0"
-										onclick={(e) => {
-											e.stopPropagation();
-											toggleLayerExpanded(item.id);
-										}}
-										data-testid={`layer-expand-${item.id}`}
-									>
-										{#if expanded}<ChevronDownIcon class="size-3" />{:else}<ChevronRightIcon
-												class="size-3"
-											/>{/if}
-									</button>
-									{#if editingNameId === item.id}
-										<Input
-											id="rename-{item.id}"
-											class="rename-input"
-											value={editingNameValue}
-											oninput={(e) =>
-												(editingNameValue = (e.currentTarget as HTMLInputElement).value)}
-											onkeydown={(e) => {
-												if (e.key === 'Enter') renameCommit();
-												if (e.key === 'Escape') editingNameId = null;
-											}}
-											onblur={renameCommit}
-											data-testid={`rename-layer-${item.id}`}
-											aria-label={m.video_editor_composition_timeline_rename()}
-										/>
-									{:else}
-										<span class="layer-name" title={itemLabel(item)}>{itemLabel(item)}</span>
-									{/if}
-									<span class="layer-type-badge" aria-label={item.type}
-										>{item.type === 'text'
-											? 'T'
-											: item.type === 'shape'
-												? 'S'
-												: item.type === 'controller'
-													? 'C'
-													: item.type[0]?.toUpperCase()}</span
-									>
-									<span class="layer-actions">
-										<Button
-											size="icon"
-											variant="ghost"
-											aria-label={(
-												track
-													? effectiveTrackState(track, timelineStore.tracks).visible === false
-													: false
-											)
-												? m.video_editor_timeline_show()
-												: m.video_editor_timeline_hide()}
-											onclick={(e) => {
-												e.stopPropagation();
-												if (track) toggleTrackVisible(track.id);
-											}}
-											data-testid={`layer-visible-${item.id}`}
-											class="icon-btn"
-										>
-											{#if track && effectiveTrackState(track, timelineStore.tracks).visible === false}<EyeOffIcon
-													class="size-3"
-												/>{:else}<EyeIcon class="size-3" />{/if}
-										</Button>
-										<Button
-											size="icon"
-											variant="ghost"
-											aria-label={(
-												track ? effectiveTrackState(track, timelineStore.tracks).locked : false
-											)
-												? m.video_editor_timeline_unlock()
-												: m.video_editor_timeline_lock()}
-											onclick={(e) => {
-												e.stopPropagation();
-												if (track) toggleTrackLocked(track.id);
-											}}
-											data-testid={`layer-lock-${item.id}`}
-											class="icon-btn"
-										>
-											{#if track && effectiveTrackState(track, timelineStore.tracks).locked}<LockIcon
-													class="size-3"
-												/>{:else}<UnlockIcon class="size-3" />{/if}
-										</Button>
-										<Button
-											size="icon"
-											variant="ghost"
-											aria-label={(
-												track ? effectiveTrackState(track, timelineStore.tracks).muted : false
-											)
-												? m.video_editor_timeline_unmute()
-												: m.video_editor_timeline_mute()}
-											onclick={(e) => {
-												e.stopPropagation();
-												if (track) toggleTrackMuted(track.id);
-											}}
-											data-testid={`layer-mute-${item.id}`}
-											class="icon-btn"
-										>
-											{#if track && effectiveTrackState(track, timelineStore.tracks).muted}<VolumeOffIcon
-													class="size-3"
-												/>{:else}<VolumeIcon class="size-3" />{/if}
-										</Button>
-										<Button
-											size="icon"
-											variant="ghost"
-											aria-label={(
-												track ? effectiveTrackState(track, timelineStore.tracks).solo : false
-											)
-												? m.video_editor_timeline_unsolo()
-												: m.video_editor_timeline_solo()}
-											onclick={(e) => {
-												e.stopPropagation();
-												if (track) toggleTrackSolo(track.id);
-											}}
-											data-testid={`layer-solo-${item.id}`}
-											class="icon-btn"
-										>
-											<span class="solo-label">S</span>
-										</Button>
-									</span>
-								</div>
-								<div class="layer-meta-row">
-									<div class="parent-cell">
-										{#if parentId}
-											{@const parent = timelineStore.itemById.get(parentId)}
-											<span class="parent-name">{parent ? parent.label : parentId.slice(0, 6)}</span
-											>
-											<Button
-												size="icon"
-												variant="ghost"
-												aria-label={m.video_editor_motion_parent_none()}
-												onclick={() => detachParent(item.id)}
-												data-testid={`parent-detach-${item.id}`}
-												class="icon-btn"><UnlinkIcon class="size-3" /></Button
-											>
-										{:else}
-											<Button
-												size="icon"
-												variant="ghost"
-												aria-label={m.video_editor_composition_timeline_link_parent({
-													name: itemLabel(item)
-												})}
-												data-testid={`parent-pick-${item.id}`}
-												onpointerdown={(event) => beginParentPick(item.id, event)}
-												class="icon-btn"><Link2Icon class="size-3" /></Button
-											>
-										{/if}
-									</div>
-									<label class="blend-cell">
-										<span class="sr-only">{m.video_editor_composition_timeline_blend_mode()}</span>
-										<Select.Root
-											type="single"
-											value={item.blendMode ?? 'normal'}
-											onValueChange={(value) => setBlendMode(item.id, value)}
-											disabled={isLocked(item)}
-										>
-											<Select.Trigger
-												aria-label={m.video_editor_composition_timeline_blend_mode()}
-												data-testid={`blend-${item.id}`}
-												class="blend-select"
-											>
-												<span class="truncate">{blendModeLabels[item.blendMode ?? 'normal']}</span>
-											</Select.Trigger>
-											<Select.Content>
-												{#each BLEND_MODE_GROUPS as group (group.label)}
-													<Select.Group>
-														<Select.GroupHeading
-															>{blendGroupLabels[group.label] ?? group.label}</Select.GroupHeading
-														>
-														{#each group.modes as mode (mode)}
-															<Select.Item value={mode}>{blendModeLabels[mode]}</Select.Item>
-														{/each}
-													</Select.Group>
-												{/each}
-											</Select.Content>
-										</Select.Root>
-									</label>
-									<span class="timing-cell" data-testid={`timing-${item.id}`}>
-										<Input
-											class="timing-input"
-											type="number"
-											min="0"
-											value={item.from}
-											aria-label="{itemLabel(item)} in"
-											disabled={isLocked(item)}
-											onchange={(e) =>
-												editItemTiming(item, 'in', (e.currentTarget as HTMLInputElement).value)}
-											data-testid={`timing-in-${item.id}`}
-										/>
-										<span>–</span>
-										<Input
-											class="timing-input"
-											type="number"
-											min="1"
-											value={item.from + item.durationInFrames}
-											aria-label="{itemLabel(item)} out"
-											disabled={isLocked(item)}
-											onchange={(e) =>
-												editItemTiming(item, 'out', (e.currentTarget as HTMLInputElement).value)}
-											data-testid={`timing-out-${item.id}`}
-										/>
-									</span>
-									<span
-										class="drag-handle"
-										aria-label={m.video_editor_composition_timeline_reorder()}
-										role="button"
-										tabindex="0"
-										onpointerdown={(e) => startReorder(track?.id ?? item.trackId, e)}>≡</span
-									>
-								</div>
-								{#each vRows as vRow (vRow.property)}
+									class="sidebar-virtual-spacer"
+									style:height={`${sidebarWindow.beforeSize}px`}
+									aria-hidden="true"
+									data-testid="sidebar-virtual-before"
+								></div>
+							{/if}
+							{#each visibleSidebarRows as row (row.kind === 'group' ? row.track.id : row.item.id)}
+								{@const rowKey = motionRowKey(row)}
+								{#if row.kind === 'group'}
+									{@const isExpanded = !row.track.isCollapsed}
+									{@const groupSelected = row.itemIds.some((id) => selectedItemIds.has(id))}
 									<div
-										class="vector-row"
-										data-vector-row={`${item.id}:${vRow.property}`}
-										data-testid={`vector-row-${item.id}-${vRow.property}`}
+										class="group-row"
+										use:measureSidebarRow={rowKey}
+										data-group-row={row.track.id}
+										data-testid={`group-row-${row.track.id}`}
 									>
-										<span class="vector-label">{vectorLabel(vRow.property)}</span>
-										<span class="vector-unit">{vRow.unit}</span>
-										<div class="vector-keys" aria-hidden="true"></div>
-									</div>
-								{/each}
-								{#each textBands as band (band.slot)}
-									<div class="text-band-row" data-testid={`text-band-row-${item.id}-${band.slot}`}>
-										<span class="text-band-label">{textSlotLabel(band.slot)}</span>
-										<span class="text-band-preset">{textPresetLabel(band.presetId)}</span>
-										<span class="text-band-meta"
-											>{m.video_editor_composition_timeline_text_duration({
-												frames: String(band.durationFrames)
-											})} · {m.video_editor_composition_timeline_text_units({
-												count: String(band.unitCount)
-											})}{band.offsetFrames
-												? ` · ${m.video_editor_composition_timeline_text_off({ frames: String(band.offsetFrames) })}`
-												: ''}</span
-										>
-									</div>
-								{/each}
-								{#if expanded}
-									<div class="inline-props" data-testid={`inline-props-${item.id}`}>
-										<span class="inline-label"
-											>{m.video_editor_composition_timeline_inline_props()}</span
-										>
-										<div class="dopesheet-mode-row" data-testid={`dopesheet-mode-${item.id}`}>
-											<button
-												type="button"
-												class="mode-btn"
-												class:active={dopesheetMode === 'lanes'}
-												aria-pressed={dopesheetMode === 'lanes'}
-												onclick={() => (dopesheetMode = 'lanes')}
-												data-testid={`mode-lanes-${item.id}`}
-												>{m.video_editor_keyframe_sheet_title()}</button
-											>
-											<button
-												type="button"
-												class="mode-btn"
-												class:active={dopesheetMode === 'graph'}
-												aria-pressed={dopesheetMode === 'graph'}
-												onclick={() => (dopesheetMode = 'graph')}
-												data-testid={`mode-graph-${item.id}`}
-												>{m.video_editor_composition_timeline_graph()}</button
-											>
-											<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
-												<span>{m.video_editor_keyframe_easing()}</span>
-												<Select.Root
-													type="single"
-													value={selectedEasing}
-													onValueChange={(v) => {
-														if (!isEasingType(v)) return;
-														selectedEasing = v;
-														const sel = keyframeSelectionStore.forItem(item.id);
-														if (sel.size === 0) return;
-														const props = getAnimatablePropertiesForItem(item);
-														const updates: Array<{
-															property: KeyframeProperty;
-															frame: number;
-															easing: EasingType;
-														}> = [];
-														for (const prop of props) {
-															for (const kf of editorKeyframes(item, prop)) {
-																if (!sel.has(keyframeIdentity(kf))) continue;
-																updates.push({ property: prop, frame: kf.frame, easing: v });
-															}
-														}
-														if (setKeyframeEasings(item.id, updates)) onedit();
-													}}
-												>
-													<Select.Trigger
-														class="h-7 min-w-24 px-2"
-														aria-label={m.video_editor_keyframe_easing()}
-														data-testid={`easing-select-${item.id}`}
-													>
-														<span class="truncate">
-															{selectedEasing === 'linear'
-																? m.video_editor_keyframe_easing_linear()
-																: selectedEasing === 'ease-in'
-																	? m.video_editor_keyframe_easing_in()
-																	: selectedEasing === 'ease-out'
-																		? m.video_editor_keyframe_easing_out()
-																		: m.video_editor_keyframe_easing_in_out()}
-														</span>
-													</Select.Trigger>
-													<Select.Content>
-														<Select.Item value="linear"
-															>{m.video_editor_keyframe_easing_linear()}</Select.Item
-														>
-														<Select.Item value="ease-in"
-															>{m.video_editor_keyframe_easing_in()}</Select.Item
-														>
-														<Select.Item value="ease-out"
-															>{m.video_editor_keyframe_easing_out()}</Select.Item
-														>
-														<Select.Item value="ease-in-out"
-															>{m.video_editor_keyframe_easing_in_out()}</Select.Item
-														>
-													</Select.Content>
-												</Select.Root>
-											</div>
-											<button
-												type="button"
-												class="retime-btn"
-												aria-label={m.video_editor_composition_timeline_retime()}
-												title={m.video_editor_composition_timeline_retime_hint()}
-												onclick={() => {
-													const sel = new Set(keyframeSelectionStore.forItem(item.id));
-													if (sel.size < 2) return;
-													const props = getAnimatablePropertiesForItem(item);
-													const selected: {
-														ref: ReturnType<typeof editorKeyframes>[number];
-														prop: KeyframeProperty;
-													}[] = [];
-													for (const prop of props)
-														for (const kf of editorKeyframes(item, prop))
-															if (sel.has(keyframeIdentity(kf))) selected.push({ ref: kf, prop });
-													if (selected.length < 2) return;
-													const min = Math.min(...selected.map((s) => s.ref.frame));
-													const max = Math.max(...selected.map((s) => s.ref.frame));
-													const span = max - min || 1;
-													const factor = 0.9;
-													const edits: Parameters<typeof updateKeyframes>[1][number][] = [];
-													for (const s of selected) {
-														const t = (s.ref.frame - min) / span;
-														const newFrame = Math.round(min + t * span * factor);
-														if (newFrame !== s.ref.frame) {
-															edits.push({ ref: s.ref, frame: newFrame, value: s.ref.value });
-														}
-													}
-													if (updateKeyframes(item.id, edits)) onedit();
-												}}
-												data-testid={`retime-batch-${item.id}`}
-												>{m.video_editor_composition_timeline_retime()}</button
-											>
-										</div>
-										{#if dopesheetMode === 'lanes'}
-											<KeyframeDopesheet
-												{item}
-												availableProperties={getAnimatablePropertiesForItem(item)}
-												currentFrame={previewFrame ?? timelineStore.currentFrame}
-												pixelsPerFrame={pxPerFrame}
-												{timelineWidth}
-												{timelineX}
-												onscrub={seekTo}
-												{onedit}
-											/>
-										{:else}
-											<KeyframeValueGraph
-												{item}
-												property={getAnimatablePropertiesForItem(item).find(
-													(p) => editorKeyframes(item, p).length > 0
-												) ??
-													getAnimatablePropertiesForItem(item)[0] ??
-													('x' as KeyframeProperty)}
-												currentFrame={previewFrame ?? timelineStore.currentFrame}
-												onscrub={seekTo}
-												{onedit}
-											/>
-										{/if}
-									</div>
-									{#if item.motionLayers && item.motionLayers.length > 0}
-										<div class="motion-layer-bands" data-testid={`motion-layers-${item.id}`}>
-											{#each item.motionLayers as layer (layer.id)}
-												<button
-													type="button"
-													class="motion-layer-band"
-													style="left:{timelineX(item.from)}px; width:{Math.max(
-														8,
-														item.durationInFrames * pxPerFrame
-													)}px"
-													data-testid={`motion-layer-${item.id}-${layer.id}`}
-													aria-label={layer.name ?? layer.presetId ?? 'layer'}
-													onclick={() => {
-														if (removeMotionLayerFromItems([item.id], layer.id) > 0) onedit();
-													}}
-												>
-													<span class="band-label">{layer.name ?? layer.presetId ?? 'layer'}</span>
-												</button>
-											{/each}
-										</div>
-									{/if}
-									{#if item.motionModifiers && item.motionModifiers.length > 0}
-										<div class="modifier-bands" data-testid={`motion-modifiers-${item.id}`}>
-											{#each item.motionModifiers as mod (mod.type)}
-												<button
-													type="button"
-													class="modifier-band"
-													style="left:{timelineX(item.from)}px; width:{Math.max(
-														8,
-														item.durationInFrames * pxPerFrame
-													)}px"
-													data-testid={`modifier-${item.id}-${mod.type}`}
-													aria-label={mod.type}
-													onclick={() => {
-														if (removeMotionModifierFromItems([item.id], mod.type) > 0) onedit();
-													}}
-												>
-													<span class="band-label">{mod.type}</span>
-												</button>
-											{/each}
-										</div>
-									{/if}
-									{#if item.pathVertices}
-										<div class="path-vertex-lane" data-testid={`path-vertices-${item.id}`}>
-											<span class="band-label">{item.pathVertices.length} vertices</span>
-										</div>
-									{/if}
-									{#if item.isMask}
-										<div class="mask-lane" data-testid={`mask-lane-${item.id}`}>
-											<span class="band-label"
-												>{item.maskType ?? 'mask'}
-												{item.maskFeather ? `feather ${item.maskFeather}` : ''}</span
-											>
-										</div>
-									{/if}
-									<div class="link-pick-row" data-testid={`link-pick-${item.id}`}>
 										<button
 											type="button"
-											class="link-pick-btn"
-											aria-pressed={linkPickSource?.itemId === item.id}
-											aria-label={m.video_editor_expression_pick_link()}
-											onclick={() => handleLinkButton(item.id)}
-											data-testid={`link-pick-btn-${item.id}`}
+											class="group-header"
+											class:selected={groupSelected}
+											aria-pressed={groupSelected}
+											aria-label={row.track.name}
+											data-testid={`group-header-${row.track.id}`}
+											ondblclick={() => renameStart(row.track.id, row.track.name)}
+											onclick={() => {
+												if (row.itemIds.length === 0) return;
+												const allSelected = row.itemIds.every((id) => selectedItemIds.has(id));
+												if (allSelected) {
+													const next = new Set(selectedItemIds);
+													for (const id of row.itemIds) next.delete(id);
+													selectedItemIds = next;
+												} else {
+													const next = new Set(selectedItemIds);
+													for (const id of row.itemIds) next.add(id);
+													selectedItemIds = next;
+												}
+											}}
+											onkeydown={openCompositionContextMenuFromKeyboard}
 										>
-											<Link2Icon class="size-3" />
-											{linkPickSource
-												? m.video_editor_expression_source_layer()
-												: m.video_editor_expression_link_title()}
-										</button>
-										{#if item.propertyLinks && item.propertyLinks.length > 0}
-											{#each item.propertyLinks as link (link.targetProperty)}
-												<span
-													class="link-badge"
-													data-testid={`link-badge-${item.id}-${link.targetProperty}`}
-													>{link.targetProperty}→{link.sourceItemId}</span
+											<span
+												class="group-toggle"
+												role="button"
+												tabindex="0"
+												aria-label={isExpanded
+													? m.video_editor_composition_timeline_collapse()
+													: m.video_editor_composition_timeline_expand()}
+												onclick={(e) => {
+													e.stopPropagation();
+													toggleGroupCollapse(row.track.id);
+												}}
+												onkeydown={(e) => {
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault();
+														toggleGroupCollapse(row.track.id);
+													}
+												}}
+											>
+												{#if isExpanded}<ChevronDownIcon class="size-3" />{:else}<ChevronRightIcon
+														class="size-3"
+													/>{/if}
+											</span>
+											{#if editingNameId === row.track.id}
+												<Input
+													id="rename-{row.track.id}"
+													class="rename-input"
+													value={editingNameValue}
+													oninput={(e) =>
+														(editingNameValue = (e.currentTarget as HTMLInputElement).value)}
+													onkeydown={(e) => {
+														if (e.key === 'Enter') renameCommit();
+														if (e.key === 'Escape') editingNameId = null;
+													}}
+													onblur={renameCommit}
+													data-testid={`rename-group-${row.track.id}`}
+													aria-label={m.video_editor_composition_timeline_rename()}
+												/>
+											{:else}
+												<span class="group-name">{row.track.name}</span>
+												<span class="group-span"
+													>{row.itemIds.length
+														? `${Math.min(...row.itemIds.map((id) => timelineStore.itemById.get(id)?.from ?? 0))}–${Math.max(...row.itemIds.map((id) => (timelineStore.itemById.get(id)?.from ?? 0) + (timelineStore.itemById.get(id)?.durationInFrames ?? 0)))}`
+														: ''}</span
 												>
+											{/if}
+										</button>
+										<span class="group-actions">
+											<Button
+												size="icon"
+												variant="ghost"
+												aria-label={row.track.visible
+													? m.video_editor_timeline_hide()
+													: m.video_editor_timeline_show()}
+												onclick={() => toggleTrackVisible(row.track.id)}
+												data-testid={`group-visible-${row.track.id}`}
+												class="icon-btn"
+											>
+												{#if row.track.visible}<EyeIcon class="size-3" />{:else}<EyeOffIcon
+														class="size-3"
+													/>{/if}
+											</Button>
+											<Button
+												size="icon"
+												variant="ghost"
+												aria-label={row.track.locked
+													? m.video_editor_timeline_unlock()
+													: m.video_editor_timeline_lock()}
+												onclick={() => toggleTrackLocked(row.track.id)}
+												data-testid={`group-lock-${row.track.id}`}
+												class="icon-btn"
+											>
+												{#if row.track.locked}<LockIcon class="size-3" />{:else}<UnlockIcon
+														class="size-3"
+													/>{/if}
+											</Button>
+											<Button
+												size="icon"
+												variant="ghost"
+												aria-label={row.track.muted
+													? m.video_editor_timeline_unmute()
+													: m.video_editor_timeline_mute()}
+												onclick={() => toggleTrackMuted(row.track.id)}
+												data-testid={`group-mute-${row.track.id}`}
+												class="icon-btn"
+											>
+												{#if row.track.muted}<VolumeOffIcon class="size-3" />{:else}<VolumeIcon
+														class="size-3"
+													/>{/if}
+											</Button>
+											<Button
+												size="icon"
+												variant="ghost"
+												aria-label={m.video_editor_composition_timeline_ungroup()}
+												onclick={() => ungroupTrack(row.track.id)}
+												data-testid={`group-ungroup-${row.track.id}`}
+												class="icon-btn"
+											>
+												<UngroupIcon class="size-3" />
+											</Button>
+											<Button
+												size="icon"
+												variant="ghost"
+												aria-label={m.video_editor_composition_timeline_delete_group()}
+												onclick={() => deleteGroupAndContents(row.track.id, row.itemIds)}
+												data-testid={`group-delete-${row.track.id}`}
+												class="icon-btn"
+											>
+												<TrashIcon class="size-3" />
+											</Button>
+										</span>
+										<span
+											class="drag-handle"
+											aria-label={m.video_editor_composition_timeline_reorder()}
+											role="button"
+											tabindex="0"
+											onpointerdown={(e) => startReorder(row.track.id, e)}
+											onkeydown={(e) => {
+												if (e.key === 'Enter' || e.key === ' ') {
+													e.preventDefault(); /* keyboard reorder via Alt+Arrow */
+												}
+											}}>≡</span
+										>
+									</div>
+								{:else}
+									{@const item = row.item}
+									{@const track = row.track}
+									{@const isSelected = selectedItemIds.has(item.id)}
+									{@const parentId = item.transformParent?.parentItemId}
+									{@const expanded = expandedLayerIds.has(item.id)}
+									{@const filtered = filterText.trim()
+										? item.label.toLowerCase().includes(filterText.toLowerCase())
+										: true}
+									{#if filtered}
+										{@const vRows = vectorRowsFor(item)}
+										{@const textBands =
+											item.type === 'text' ? getTextMotionTimelineBands(item) : []}
+										<div
+											class="layer-row-wrap"
+											use:measureSidebarRow={rowKey}
+											data-row-id={item.id}
+											data-layer-row={item.id}
+										>
+											<div
+												class="layer-row"
+												class:selected={isSelected}
+												class:pickTarget={pickTarget === item.id}
+												class:controller={item.type === 'controller'}
+												data-testid={`composition-layer-${item.id}`}
+												role="button"
+												tabindex="0"
+												aria-pressed={isSelected}
+												aria-label={itemLabel(item)}
+												ondblclick={() => renameStart(item.id, itemLabel(item))}
+												onclick={(e) => selectItem(item.id, e.ctrlKey || e.metaKey, e.shiftKey)}
+												onkeydown={(e) => {
+													openCompositionContextMenuFromKeyboard(e);
+													if (e.defaultPrevented) return;
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault();
+														selectItem(item.id, e.ctrlKey || e.metaKey, e.shiftKey);
+													}
+												}}
+												onpointerdown={(e) => {
+													if (e.button === 2) return;
+													if (e.ctrlKey || e.metaKey) return;
+												}}
+											>
 												<button
 													type="button"
-													class="icon-btn"
-													aria-label={m.video_editor_expression_remove_link()}
-													onclick={() => {
-														if (removeDirectPropertyLink(item.id, link.targetProperty)) onedit();
+													class="layer-expand"
+													aria-label={expanded
+														? m.video_editor_composition_timeline_collapse()
+														: m.video_editor_composition_timeline_expand()}
+													aria-pressed={expanded}
+													tabindex="0"
+													onclick={(e) => {
+														e.stopPropagation();
+														toggleLayerExpanded(item.id);
 													}}
-													data-testid={`link-remove-${item.id}-${link.targetProperty}`}
-													><UnlinkIcon class="size-3" /></button
+													data-testid={`layer-expand-${item.id}`}
 												>
-											{/each}
-										{/if}
-									</div>
-									{#if publishedControls(item).length > 0}
-										<div class="published-controls" data-testid={`published-controls-${item.id}`}>
-											<span class="band-label">{m.video_editor_motion_overrides_title()}</span>
-											{#each publishedControls(item) as control (control.id)}
-												<label class="control-row"
-													><span>{control.name}</span><Input
-														type={control.kind === 'color' ? 'color' : 'text'}
-														value={compositionControlValue(item, control)}
-														placeholder={control.defaultValue}
-														onchange={(e) => {
-															setCompositionControlValue(item, control, e.currentTarget.value);
+													{#if expanded}<ChevronDownIcon class="size-3" />{:else}<ChevronRightIcon
+															class="size-3"
+														/>{/if}
+												</button>
+												{#if editingNameId === item.id}
+													<Input
+														id="rename-{item.id}"
+														class="rename-input"
+														value={editingNameValue}
+														oninput={(e) =>
+															(editingNameValue = (e.currentTarget as HTMLInputElement).value)}
+														onkeydown={(e) => {
+															if (e.key === 'Enter') renameCommit();
+															if (e.key === 'Escape') editingNameId = null;
 														}}
-														data-testid={`control-override-${item.id}-${control.id}`}
-													/></label
+														onblur={renameCommit}
+														data-testid={`rename-layer-${item.id}`}
+														aria-label={m.video_editor_composition_timeline_rename()}
+													/>
+												{:else}
+													<span class="layer-name" title={itemLabel(item)}>{itemLabel(item)}</span>
+												{/if}
+												<span class="layer-type-badge" aria-label={item.type}
+													>{item.type === 'text'
+														? 'T'
+														: item.type === 'shape'
+															? 'S'
+															: item.type === 'controller'
+																? 'C'
+																: item.type[0]?.toUpperCase()}</span
 												>
+												<span class="layer-actions">
+													<Button
+														size="icon"
+														variant="ghost"
+														aria-label={(
+															track
+																? effectiveTrackState(track, timelineStore.tracks).visible === false
+																: false
+														)
+															? m.video_editor_timeline_show()
+															: m.video_editor_timeline_hide()}
+														onclick={(e) => {
+															e.stopPropagation();
+															if (track) toggleTrackVisible(track.id);
+														}}
+														data-testid={`layer-visible-${item.id}`}
+														class="icon-btn"
+													>
+														{#if track && effectiveTrackState(track, timelineStore.tracks).visible === false}<EyeOffIcon
+																class="size-3"
+															/>{:else}<EyeIcon class="size-3" />{/if}
+													</Button>
+													<Button
+														size="icon"
+														variant="ghost"
+														aria-label={(
+															track
+																? effectiveTrackState(track, timelineStore.tracks).locked
+																: false
+														)
+															? m.video_editor_timeline_unlock()
+															: m.video_editor_timeline_lock()}
+														onclick={(e) => {
+															e.stopPropagation();
+															if (track) toggleTrackLocked(track.id);
+														}}
+														data-testid={`layer-lock-${item.id}`}
+														class="icon-btn"
+													>
+														{#if track && effectiveTrackState(track, timelineStore.tracks).locked}<LockIcon
+																class="size-3"
+															/>{:else}<UnlockIcon class="size-3" />{/if}
+													</Button>
+													<Button
+														size="icon"
+														variant="ghost"
+														aria-label={(
+															track ? effectiveTrackState(track, timelineStore.tracks).muted : false
+														)
+															? m.video_editor_timeline_unmute()
+															: m.video_editor_timeline_mute()}
+														onclick={(e) => {
+															e.stopPropagation();
+															if (track) toggleTrackMuted(track.id);
+														}}
+														data-testid={`layer-mute-${item.id}`}
+														class="icon-btn"
+													>
+														{#if track && effectiveTrackState(track, timelineStore.tracks).muted}<VolumeOffIcon
+																class="size-3"
+															/>{:else}<VolumeIcon class="size-3" />{/if}
+													</Button>
+													<Button
+														size="icon"
+														variant="ghost"
+														aria-label={(
+															track ? effectiveTrackState(track, timelineStore.tracks).solo : false
+														)
+															? m.video_editor_timeline_unsolo()
+															: m.video_editor_timeline_solo()}
+														onclick={(e) => {
+															e.stopPropagation();
+															if (track) toggleTrackSolo(track.id);
+														}}
+														data-testid={`layer-solo-${item.id}`}
+														class="icon-btn"
+													>
+														<span class="solo-label">S</span>
+													</Button>
+												</span>
+											</div>
+											<div class="layer-meta-row">
+												<div class="parent-cell">
+													{#if parentId}
+														{@const parent = timelineStore.itemById.get(parentId)}
+														<span class="parent-name"
+															>{parent ? parent.label : parentId.slice(0, 6)}</span
+														>
+														<Button
+															size="icon"
+															variant="ghost"
+															aria-label={m.video_editor_motion_parent_none()}
+															onclick={() => detachParent(item.id)}
+															data-testid={`parent-detach-${item.id}`}
+															class="icon-btn"><UnlinkIcon class="size-3" /></Button
+														>
+													{:else}
+														<Button
+															size="icon"
+															variant="ghost"
+															aria-label={m.video_editor_composition_timeline_link_parent({
+																name: itemLabel(item)
+															})}
+															data-testid={`parent-pick-${item.id}`}
+															onpointerdown={(event) => beginParentPick(item.id, event)}
+															class="icon-btn"><Link2Icon class="size-3" /></Button
+														>
+													{/if}
+												</div>
+												<label class="blend-cell">
+													<span class="sr-only"
+														>{m.video_editor_composition_timeline_blend_mode()}</span
+													>
+													<Select.Root
+														type="single"
+														value={item.blendMode ?? 'normal'}
+														onValueChange={(value) => setBlendMode(item.id, value)}
+														disabled={isLocked(item)}
+													>
+														<Select.Trigger
+															aria-label={m.video_editor_composition_timeline_blend_mode()}
+															data-testid={`blend-${item.id}`}
+															class="blend-select"
+														>
+															<span class="truncate"
+																>{blendModeLabels[item.blendMode ?? 'normal']}</span
+															>
+														</Select.Trigger>
+														<Select.Content>
+															{#each BLEND_MODE_GROUPS as group (group.label)}
+																<Select.Group>
+																	<Select.GroupHeading
+																		>{blendGroupLabels[group.label] ??
+																			group.label}</Select.GroupHeading
+																	>
+																	{#each group.modes as mode (mode)}
+																		<Select.Item value={mode}>{blendModeLabels[mode]}</Select.Item>
+																	{/each}
+																</Select.Group>
+															{/each}
+														</Select.Content>
+													</Select.Root>
+												</label>
+												<span class="timing-cell" data-testid={`timing-${item.id}`}>
+													<Input
+														class="timing-input"
+														type="number"
+														min="0"
+														value={item.from}
+														aria-label="{itemLabel(item)} in"
+														disabled={isLocked(item)}
+														onchange={(e) =>
+															editItemTiming(
+																item,
+																'in',
+																(e.currentTarget as HTMLInputElement).value
+															)}
+														data-testid={`timing-in-${item.id}`}
+													/>
+													<span>–</span>
+													<Input
+														class="timing-input"
+														type="number"
+														min="1"
+														value={item.from + item.durationInFrames}
+														aria-label="{itemLabel(item)} out"
+														disabled={isLocked(item)}
+														onchange={(e) =>
+															editItemTiming(
+																item,
+																'out',
+																(e.currentTarget as HTMLInputElement).value
+															)}
+														data-testid={`timing-out-${item.id}`}
+													/>
+												</span>
+												<span
+													class="drag-handle"
+													aria-label={m.video_editor_composition_timeline_reorder()}
+													role="button"
+													tabindex="0"
+													onpointerdown={(e) => startReorder(track?.id ?? item.trackId, e)}>≡</span
+												>
+											</div>
+											{#each vRows as vRow (vRow.property)}
+												<div
+													class="vector-row"
+													data-vector-row={`${item.id}:${vRow.property}`}
+													data-testid={`vector-row-${item.id}-${vRow.property}`}
+												>
+													<span class="vector-label">{vectorLabel(vRow.property)}</span>
+													<span class="vector-unit">{vRow.unit}</span>
+													<div class="vector-keys" aria-hidden="true"></div>
+												</div>
 											{/each}
+											{#each textBands as band (band.slot)}
+												<div
+													class="text-band-row"
+													data-testid={`text-band-row-${item.id}-${band.slot}`}
+												>
+													<span class="text-band-label">{textSlotLabel(band.slot)}</span>
+													<span class="text-band-preset">{textPresetLabel(band.presetId)}</span>
+													<span class="text-band-meta"
+														>{m.video_editor_composition_timeline_text_duration({
+															frames: String(band.durationFrames)
+														})} · {m.video_editor_composition_timeline_text_units({
+															count: String(band.unitCount)
+														})}{band.offsetFrames
+															? ` · ${m.video_editor_composition_timeline_text_off({ frames: String(band.offsetFrames) })}`
+															: ''}</span
+													>
+												</div>
+											{/each}
+											{#if expanded}
+												<div class="inline-props" data-testid={`inline-props-${item.id}`}>
+													<span class="inline-label"
+														>{m.video_editor_composition_timeline_inline_props()}</span
+													>
+													<div class="dopesheet-mode-row" data-testid={`dopesheet-mode-${item.id}`}>
+														<button
+															type="button"
+															class="mode-btn"
+															class:active={dopesheetMode === 'lanes'}
+															aria-pressed={dopesheetMode === 'lanes'}
+															onclick={() => (dopesheetMode = 'lanes')}
+															data-testid={`mode-lanes-${item.id}`}
+															>{m.video_editor_keyframe_sheet_title()}</button
+														>
+														<button
+															type="button"
+															class="mode-btn"
+															class:active={dopesheetMode === 'graph'}
+															aria-pressed={dopesheetMode === 'graph'}
+															onclick={() => (dopesheetMode = 'graph')}
+															data-testid={`mode-graph-${item.id}`}
+															>{m.video_editor_composition_timeline_graph()}</button
+														>
+														<div class="easing-picker" data-testid={`easing-picker-${item.id}`}>
+															<span>{m.video_editor_keyframe_easing()}</span>
+															<Select.Root
+																type="single"
+																value={selectedEasing}
+																onValueChange={(v) => {
+																	if (!isEasingType(v)) return;
+																	selectedEasing = v;
+																	const sel = keyframeSelectionStore.forItem(item.id);
+																	if (sel.size === 0) return;
+																	const props = getAnimatablePropertiesForItem(item);
+																	const updates: Array<{
+																		property: KeyframeProperty;
+																		frame: number;
+																		easing: EasingType;
+																	}> = [];
+																	for (const prop of props) {
+																		for (const kf of editorKeyframes(item, prop)) {
+																			if (!sel.has(keyframeIdentity(kf))) continue;
+																			updates.push({ property: prop, frame: kf.frame, easing: v });
+																		}
+																	}
+																	if (setKeyframeEasings(item.id, updates)) onedit();
+																}}
+															>
+																<Select.Trigger
+																	class="h-7 min-w-24 px-2"
+																	aria-label={m.video_editor_keyframe_easing()}
+																	data-testid={`easing-select-${item.id}`}
+																>
+																	<span class="truncate">
+																		{selectedEasing === 'linear'
+																			? m.video_editor_keyframe_easing_linear()
+																			: selectedEasing === 'ease-in'
+																				? m.video_editor_keyframe_easing_in()
+																				: selectedEasing === 'ease-out'
+																					? m.video_editor_keyframe_easing_out()
+																					: m.video_editor_keyframe_easing_in_out()}
+																	</span>
+																</Select.Trigger>
+																<Select.Content>
+																	<Select.Item value="linear"
+																		>{m.video_editor_keyframe_easing_linear()}</Select.Item
+																	>
+																	<Select.Item value="ease-in"
+																		>{m.video_editor_keyframe_easing_in()}</Select.Item
+																	>
+																	<Select.Item value="ease-out"
+																		>{m.video_editor_keyframe_easing_out()}</Select.Item
+																	>
+																	<Select.Item value="ease-in-out"
+																		>{m.video_editor_keyframe_easing_in_out()}</Select.Item
+																	>
+																</Select.Content>
+															</Select.Root>
+														</div>
+														<button
+															type="button"
+															class="retime-btn"
+															aria-label={m.video_editor_composition_timeline_retime()}
+															title={m.video_editor_composition_timeline_retime_hint()}
+															onclick={() => {
+																const sel = new Set(keyframeSelectionStore.forItem(item.id));
+																if (sel.size < 2) return;
+																const props = getAnimatablePropertiesForItem(item);
+																const selected: {
+																	ref: ReturnType<typeof editorKeyframes>[number];
+																	prop: KeyframeProperty;
+																}[] = [];
+																for (const prop of props)
+																	for (const kf of editorKeyframes(item, prop))
+																		if (sel.has(keyframeIdentity(kf)))
+																			selected.push({ ref: kf, prop });
+																if (selected.length < 2) return;
+																const min = Math.min(...selected.map((s) => s.ref.frame));
+																const max = Math.max(...selected.map((s) => s.ref.frame));
+																const span = max - min || 1;
+																const factor = 0.9;
+																const edits: Parameters<typeof updateKeyframes>[1][number][] = [];
+																for (const s of selected) {
+																	const t = (s.ref.frame - min) / span;
+																	const newFrame = Math.round(min + t * span * factor);
+																	if (newFrame !== s.ref.frame) {
+																		edits.push({ ref: s.ref, frame: newFrame, value: s.ref.value });
+																	}
+																}
+																if (updateKeyframes(item.id, edits)) onedit();
+															}}
+															data-testid={`retime-batch-${item.id}`}
+															>{m.video_editor_composition_timeline_retime()}</button
+														>
+													</div>
+													{#if dopesheetMode === 'lanes'}
+														<KeyframeDopesheet
+															{item}
+															availableProperties={getAnimatablePropertiesForItem(item)}
+															currentFrame={previewFrame ?? timelineStore.currentFrame}
+															pixelsPerFrame={pxPerFrame}
+															{timelineWidth}
+															{timelineX}
+															onscrub={seekTo}
+															{onedit}
+														/>
+													{:else}
+														<KeyframeValueGraph
+															{item}
+															property={getAnimatablePropertiesForItem(item).find(
+																(p) => editorKeyframes(item, p).length > 0
+															) ??
+																getAnimatablePropertiesForItem(item)[0] ??
+																('x' as KeyframeProperty)}
+															currentFrame={previewFrame ?? timelineStore.currentFrame}
+															onscrub={seekTo}
+															{onedit}
+														/>
+													{/if}
+												</div>
+												{#if item.motionLayers && item.motionLayers.length > 0}
+													<div class="motion-layer-bands" data-testid={`motion-layers-${item.id}`}>
+														{#each item.motionLayers as layer (layer.id)}
+															<button
+																type="button"
+																class="motion-layer-band"
+																style="left:{timelineX(item.from)}px; width:{Math.max(
+																	8,
+																	item.durationInFrames * pxPerFrame
+																)}px"
+																data-testid={`motion-layer-${item.id}-${layer.id}`}
+																aria-label={layer.name ?? layer.presetId ?? 'layer'}
+																onclick={() => {
+																	if (removeMotionLayerFromItems([item.id], layer.id) > 0) onedit();
+																}}
+															>
+																<span class="band-label"
+																	>{layer.name ?? layer.presetId ?? 'layer'}</span
+																>
+															</button>
+														{/each}
+													</div>
+												{/if}
+												{#if item.motionModifiers && item.motionModifiers.length > 0}
+													<div class="modifier-bands" data-testid={`motion-modifiers-${item.id}`}>
+														{#each item.motionModifiers as mod (mod.type)}
+															<button
+																type="button"
+																class="modifier-band"
+																style="left:{timelineX(item.from)}px; width:{Math.max(
+																	8,
+																	item.durationInFrames * pxPerFrame
+																)}px"
+																data-testid={`modifier-${item.id}-${mod.type}`}
+																aria-label={mod.type}
+																onclick={() => {
+																	if (removeMotionModifierFromItems([item.id], mod.type) > 0)
+																		onedit();
+																}}
+															>
+																<span class="band-label">{mod.type}</span>
+															</button>
+														{/each}
+													</div>
+												{/if}
+												{#if item.pathVertices}
+													<div class="path-vertex-lane" data-testid={`path-vertices-${item.id}`}>
+														<span class="band-label">{item.pathVertices.length} vertices</span>
+													</div>
+												{/if}
+												{#if item.isMask}
+													<div class="mask-lane" data-testid={`mask-lane-${item.id}`}>
+														<span class="band-label"
+															>{item.maskType ?? 'mask'}
+															{item.maskFeather ? `feather ${item.maskFeather}` : ''}</span
+														>
+													</div>
+												{/if}
+												<div class="link-pick-row" data-testid={`link-pick-${item.id}`}>
+													<button
+														type="button"
+														class="link-pick-btn"
+														aria-pressed={linkPickSource?.itemId === item.id}
+														aria-label={m.video_editor_expression_pick_link()}
+														onclick={() => handleLinkButton(item.id)}
+														data-testid={`link-pick-btn-${item.id}`}
+													>
+														<Link2Icon class="size-3" />
+														{linkPickSource
+															? m.video_editor_expression_source_layer()
+															: m.video_editor_expression_link_title()}
+													</button>
+													{#if item.propertyLinks && item.propertyLinks.length > 0}
+														{#each item.propertyLinks as link (link.targetProperty)}
+															<span
+																class="link-badge"
+																data-testid={`link-badge-${item.id}-${link.targetProperty}`}
+																>{link.targetProperty}→{link.sourceItemId}</span
+															>
+															<button
+																type="button"
+																class="icon-btn"
+																aria-label={m.video_editor_expression_remove_link()}
+																onclick={() => {
+																	if (removeDirectPropertyLink(item.id, link.targetProperty))
+																		onedit();
+																}}
+																data-testid={`link-remove-${item.id}-${link.targetProperty}`}
+																><UnlinkIcon class="size-3" /></button
+															>
+														{/each}
+													{/if}
+												</div>
+												{#if publishedControls(item).length > 0}
+													<div
+														class="published-controls"
+														data-testid={`published-controls-${item.id}`}
+													>
+														<span class="band-label">{m.video_editor_motion_overrides_title()}</span
+														>
+														{#each publishedControls(item) as control (control.id)}
+															<label class="control-row"
+																><span>{control.name}</span><Input
+																	type={control.kind === 'color' ? 'color' : 'text'}
+																	value={compositionControlValue(item, control)}
+																	placeholder={control.defaultValue}
+																	onchange={(e) => {
+																		setCompositionControlValue(
+																			item,
+																			control,
+																			e.currentTarget.value
+																		);
+																	}}
+																	data-testid={`control-override-${item.id}-${control.id}`}
+																/></label
+															>
+														{/each}
+													</div>
+												{/if}
+											{/if}
 										</div>
 									{/if}
 								{/if}
-							</div>
+							{/each}
+							{#if sidebarWindow.afterSize > 0}
+								<div
+									class="sidebar-virtual-spacer"
+									style:height={`${sidebarWindow.afterSize}px`}
+									aria-hidden="true"
+									data-testid="sidebar-virtual-after"
+								></div>
+							{/if}
+							{#if motionRows.length === 0}
+								<div class="empty-layers" data-testid="composition-empty-layers">
+									<p>{m.video_editor_composition_timeline_empty()}</p>
+									<div class="empty-actions">
+										<Button
+											size="sm"
+											onclick={() => addGeneratedLayer('text')}
+											data-testid="empty-add-text">{m.video_editor_motion_add_text()}</Button
+										>
+										<Button
+											size="sm"
+											variant="outline"
+											onclick={() => addGeneratedLayer('solid')}
+											data-testid="empty-add-solid">{m.video_editor_motion_add_solid()}</Button
+										>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/snippet}
+				</ContextMenu.Trigger>
+				<ContextMenu.Content class="video-editor-theme w-56">
+					{#if compositionContextTarget?.kind === 'group' && contextGroup}
+						<ContextMenu.Item onclick={() => renameStart(contextGroup.id, contextGroup.name)}>
+							{m.video_editor_composition_timeline_rename()}
+						</ContextMenu.Item>
+						<ContextMenu.Item onclick={() => ungroupTrack(contextGroup.id)}>
+							{m.video_editor_composition_timeline_ungroup()}
+						</ContextMenu.Item>
+					{:else if compositionContextTarget?.kind === 'layer' && contextLayer}
+						<ContextMenu.Item onclick={() => renameStart(contextLayer.id, itemLabel(contextLayer))}>
+							{m.video_editor_composition_timeline_rename()}
+						</ContextMenu.Item>
+						<ContextMenu.Item disabled={selectedItemIds.size < 2} onclick={groupSelected}>
+							{m.video_editor_composition_timeline_group()}
+						</ContextMenu.Item>
+					{/if}
+					{#if compositionContextTarget}
+						<ContextMenu.Separator />
+						<ContextMenu.Item disabled={selectedItemIds.size === 0} onclick={duplicateSelected}>
+							{m.video_editor_composition_timeline_duplicate()}
+						</ContextMenu.Item>
+						<ContextMenu.Item disabled={selectedItemIds.size === 0} onclick={copySelected}>
+							{m.video_editor_composition_timeline_copy()}
+						</ContextMenu.Item>
+						<ContextMenu.Item disabled={!clipboard?.length} onclick={pasteClipboard}>
+							{m.video_editor_composition_timeline_paste()}
+						</ContextMenu.Item>
+						<ContextMenu.Separator />
+						{#if compositionContextTarget.kind === 'group'}
+							<ContextMenu.Item
+								variant="destructive"
+								onclick={() =>
+									deleteGroupAndContents(
+										compositionContextTarget.trackId,
+										compositionContextTarget.itemIds
+									)}
+							>
+								{m.video_editor_composition_timeline_delete_group()}
+							</ContextMenu.Item>
+						{:else}
+							<ContextMenu.Item variant="destructive" onclick={removeSelected}>
+								{m.video_editor_composition_timeline_delete()}
+							</ContextMenu.Item>
 						{/if}
 					{/if}
-				{/each}
-				{#if sidebarWindow.afterSize > 0}
-					<div
-						class="sidebar-virtual-spacer"
-						style:height={`${sidebarWindow.afterSize}px`}
-						aria-hidden="true"
-						data-testid="sidebar-virtual-after"
-					></div>
-				{/if}
-				{#if motionRows.length === 0}
-					<div class="empty-layers" data-testid="composition-empty-layers">
-						<p>{m.video_editor_composition_timeline_empty()}</p>
-						<div class="empty-actions">
-							<Button
-								size="sm"
-								onclick={() => addGeneratedLayer('text')}
-								data-testid="empty-add-text">{m.video_editor_motion_add_text()}</Button
-							>
-							<Button
-								size="sm"
-								variant="outline"
-								onclick={() => addGeneratedLayer('solid')}
-								data-testid="empty-add-solid">{m.video_editor_motion_add_solid()}</Button
-							>
-						</div>
-					</div>
-				{/if}
-			</div>
+				</ContextMenu.Content>
+			</ContextMenu.Root>
 			<div
 				class="timeline-content"
 				bind:this={scrollEl}

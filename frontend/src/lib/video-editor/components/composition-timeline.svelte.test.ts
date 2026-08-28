@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { get } from 'svelte/store';
 import { createEmptyTimeline } from '$lib/video-editor/project/defaults';
@@ -145,6 +145,104 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		expect(onedit).toHaveBeenCalledTimes(1);
 		commandHistory.undo();
 		expect(timelineStore.itemById.has('one')).toBe(true);
+	});
+
+	it('runs layer row context actions and supports keyboard invocation', async () => {
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		const layer = screen.getByTestId('composition-layer-one');
+		const historyBefore = commandHistory.undoStack.length;
+
+		await userEvent.click(layer, { button: 'right' });
+		await expect.element(screen.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: 'Group' })).toBeDisabled();
+		await expect.element(screen.getByRole('menuitem', { name: 'Paste' })).toBeDisabled();
+		await screen.getByRole('menuitem', { name: 'Copy' }).click();
+
+		await userEvent.click(layer, { button: 'right' });
+		await expect.element(screen.getByRole('menuitem', { name: 'Paste' })).not.toBeDisabled();
+		await screen.getByRole('menuitem', { name: 'Paste' }).click();
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(3));
+		expect(commandHistory.undoStack).toHaveLength(historyBefore + 1);
+		expect(onedit).toHaveBeenCalledTimes(1);
+		commandHistory.undo();
+		expect(timelineStore.items).toHaveLength(2);
+
+		await userEvent.click(layer, { button: 'right' });
+		await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
+
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(3));
+		expect(timelineStore.items.filter((item) => item.label === 'one copy')).toHaveLength(1);
+		expect(commandHistory.undoStack).toHaveLength(historyBefore + 1);
+		expect(onedit).toHaveBeenCalledTimes(2);
+
+		layer.element().focus();
+		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+		await expect.element(screen.getByRole('menuitem', { name: 'Copy' })).toBeVisible();
+		await userEvent.keyboard('{Escape}');
+
+		commandHistory.undo();
+		expect(timelineStore.items).toHaveLength(2);
+	});
+
+	it('deletes a group and its layers from one context action and one undo', async () => {
+		const groupTrack: TimelineTrack = {
+			...track,
+			id: 'group',
+			name: 'Titles',
+			kind: undefined,
+			isGroup: true,
+			order: 0
+		};
+		const firstTrack: TimelineTrack = {
+			...track,
+			id: 'first-track',
+			name: 'First',
+			parentTrackId: groupTrack.id,
+			order: 1
+		};
+		const secondTrack: TimelineTrack = {
+			...track,
+			id: 'second-track',
+			name: 'Second',
+			parentTrackId: groupTrack.id,
+			order: 2
+		};
+		const items = [
+			makeItem({ id: 'one', trackId: firstTrack.id }),
+			makeItem({ id: 'two', trackId: secondTrack.id })
+		];
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [
+					composition({ items, tracks: [groupTrack, firstTrack, secondTrack, audioTrack] })
+				]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		sequenceStore.switchTo('comp-1');
+		const onedit = vi.fn();
+		const screen = await render(CompositionTimeline, { onedit });
+		const historyBefore = commandHistory.undoStack.length;
+
+		await userEvent.click(screen.getByTestId('group-header-group'), { button: 'right' });
+		await expect.element(screen.getByRole('menuitem', { name: 'Ungroup' })).toBeVisible();
+		await screen.getByRole('menuitem', { name: 'Delete group' }).click();
+
+		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(0));
+		expect(timelineStore.tracks.some((candidate) => candidate.id === groupTrack.id)).toBe(false);
+		expect(commandHistory.undoStack).toHaveLength(historyBefore + 1);
+		expect(onedit).toHaveBeenCalledTimes(1);
+
+		commandHistory.undo();
+		expect(timelineStore.items.map((item) => item.id).toSorted()).toEqual(['one', 'two']);
+		expect(timelineStore.tracks.some((candidate) => candidate.id === groupTrack.id)).toBe(true);
 	});
 
 	it('links transform parent via pick whip with undo and shows cycle status', async () => {
