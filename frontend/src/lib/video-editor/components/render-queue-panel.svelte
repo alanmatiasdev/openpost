@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { m } from '$lib/paraglide/messages';
@@ -69,6 +70,14 @@
 			totalFrames:
 				job.totalFrames ?? Math.max(0, job.settings.range.endFrame - job.settings.range.startFrame)
 		};
+	}
+
+	function canMove(jobId: string, direction: -1 | 1): boolean {
+		const jobs = $renderQueueStore.jobs;
+		const index = jobs.findIndex((job) => job.id === jobId && job.status === 'queued');
+		if (index < 0) return false;
+		const candidates = direction < 0 ? jobs.slice(0, index) : jobs.slice(index + 1);
+		return candidates.some((job) => job.status === 'queued');
 	}
 </script>
 
@@ -141,63 +150,110 @@
 							{m.video_editor_queue_empty()}
 						</p>{:else}
 						<ul class="space-y-2">
-							{#each $renderQueueStore.jobs as job (job.id)}<li
-									class="rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
-								>
-									<div class="flex items-start gap-2">
-										<div class="min-w-0 flex-1">
-											<p class="text-sm leading-tight font-medium break-words">{job.name}</p>
-											<p class="text-[11px] text-[var(--video-editor-muted)]">
-												{formatDetails(job)} · {statusLabel(job)}
-											</p>
-											{#if job.status === 'rendering'}
-												<RenderProgress
-													progress={jobProgress(job)}
-													startedAt={job.startedAt}
-													class="mt-2"
-												/>
-											{/if}
-											{#if job.error}<p class="mt-1 text-xs text-red-200">{job.error}</p>{/if}
-											{#if job.status === 'completed' && job.outputLabel}<p
-													class="mt-1 truncate text-xs text-emerald-200"
-													title={job.savedPath ?? job.outputLabel}
-												>
-													{job.savedPath ?? job.outputLabel}
-												</p>{/if}
-										</div>
-										<div class="flex shrink-0 gap-0.5">
-											{#if job.status === 'queued'}<Button
-													variant="ghost"
-													size="icon-xs"
-													aria-label={m.video_editor_queue_move_up()}
+							{#each $renderQueueStore.jobs as job (job.id)}<li>
+									<ContextMenu.Root>
+										<ContextMenu.Trigger>
+											<div
+												data-render-queue-job={job.id}
+												class="rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
+											>
+												<div class="flex items-start gap-2">
+													<div class="min-w-0 flex-1">
+														<p class="text-sm leading-tight font-medium break-words">{job.name}</p>
+														<p class="text-[11px] text-[var(--video-editor-muted)]">
+															{formatDetails(job)} · {statusLabel(job)}
+														</p>
+														{#if job.status === 'rendering'}
+															<RenderProgress
+																progress={jobProgress(job)}
+																startedAt={job.startedAt}
+																class="mt-2"
+															/>
+														{/if}
+														{#if job.error}<p class="mt-1 text-xs text-red-200">{job.error}</p>{/if}
+														{#if job.status === 'completed' && job.outputLabel}<p
+																class="mt-1 truncate text-xs text-emerald-200"
+																title={job.savedPath ?? job.outputLabel}
+															>
+																{job.savedPath ?? job.outputLabel}
+															</p>{/if}
+													</div>
+													<div class="flex shrink-0 gap-0.5">
+														{#if job.status === 'queued'}<Button
+																variant="ghost"
+																size="icon-xs"
+																aria-label={m.video_editor_queue_move_up()}
+																onclick={() => renderQueueStore.move(job.id, -1)}
+																><ChevronUpIcon /></Button
+															><Button
+																variant="ghost"
+																size="icon-xs"
+																aria-label={m.video_editor_queue_move_down()}
+																onclick={() => renderQueueStore.move(job.id, 1)}
+																><ChevronDownIcon /></Button
+															>{/if}
+														{#if job.status === 'failed' || job.status === 'cancelled'}<Button
+																variant="ghost"
+																size="icon-xs"
+																aria-label={m.video_editor_queue_retry()}
+																onclick={() => renderQueueStore.retry(job.id)}
+																><RotateIcon /></Button
+															>{/if}
+														{#if job.status === 'queued' || job.status === 'rendering'}<Button
+																variant="ghost"
+																size="icon-xs"
+																aria-label={m.video_editor_queue_cancel()}
+																onclick={() => renderQueueRunner.cancel(job.id)}><XIcon /></Button
+															>{:else}<Button
+																variant="ghost"
+																size="icon-xs"
+																aria-label={m.video_editor_queue_remove()}
+																onclick={() => renderQueueStore.remove(job.id)}
+																><TrashIcon /></Button
+															>{/if}
+													</div>
+												</div>
+											</div>
+										</ContextMenu.Trigger>
+										<ContextMenu.Content class="video-editor-theme w-56">
+											{#if job.status === 'queued'}
+												<ContextMenu.Item
+													disabled={!canMove(job.id, -1)}
 													onclick={() => renderQueueStore.move(job.id, -1)}
-													><ChevronUpIcon /></Button
-												><Button
-													variant="ghost"
-													size="icon-xs"
-													aria-label={m.video_editor_queue_move_down()}
+												>
+													{m.video_editor_queue_move_up()}
+												</ContextMenu.Item>
+												<ContextMenu.Item
+													disabled={!canMove(job.id, 1)}
 													onclick={() => renderQueueStore.move(job.id, 1)}
-													><ChevronDownIcon /></Button
-												>{/if}
-											{#if job.status === 'failed' || job.status === 'cancelled'}<Button
-													variant="ghost"
-													size="icon-xs"
-													aria-label={m.video_editor_queue_retry()}
-													onclick={() => renderQueueStore.retry(job.id)}><RotateIcon /></Button
-												>{/if}
-											{#if job.status === 'queued' || job.status === 'rendering'}<Button
-													variant="ghost"
-													size="icon-xs"
-													aria-label={m.video_editor_queue_cancel()}
-													onclick={() => renderQueueRunner.cancel(job.id)}><XIcon /></Button
-												>{:else}<Button
-													variant="ghost"
-													size="icon-xs"
-													aria-label={m.video_editor_queue_remove()}
-													onclick={() => renderQueueStore.remove(job.id)}><TrashIcon /></Button
-												>{/if}
-										</div>
-									</div>
+												>
+													{m.video_editor_queue_move_down()}
+												</ContextMenu.Item>
+												<ContextMenu.Separator />
+											{/if}
+											{#if job.status === 'failed' || job.status === 'cancelled'}
+												<ContextMenu.Item onclick={() => renderQueueStore.retry(job.id)}>
+													{m.video_editor_queue_retry()}
+												</ContextMenu.Item>
+												<ContextMenu.Separator />
+											{/if}
+											{#if job.status === 'queued' || job.status === 'rendering'}
+												<ContextMenu.Item
+													variant="destructive"
+													onclick={() => renderQueueRunner.cancel(job.id)}
+												>
+													{m.video_editor_queue_cancel()}
+												</ContextMenu.Item>
+											{:else}
+												<ContextMenu.Item
+													variant="destructive"
+													onclick={() => renderQueueStore.remove(job.id)}
+												>
+													{m.video_editor_queue_remove()}
+												</ContextMenu.Item>
+											{/if}
+										</ContextMenu.Content>
+									</ContextMenu.Root>
 								</li>{/each}
 						</ul>
 					{/if}
