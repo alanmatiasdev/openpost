@@ -104,7 +104,9 @@ Bootstrap and data-plane settings stay deployment-only because OpenPost needs th
 | `OPENPOST_PEXELS_API_KEY` | No | empty | Server-only Pexels API key for photo and video search. |
 | `OPENPOST_UNSPLASH_ACCESS_KEY` | No | empty | Server-only Unsplash access key for photo search and required selection tracking. |
 | `OPENPOST_PIXABAY_API_KEY` | No | empty | Server-only Pixabay API key for image and video search. |
-| `OPENROUTER_API_KEY` | No | empty | Server-only OpenRouter key that enables automatic alt text for images without saved alt text when they are added to the text-and-thread composer. Supports `OPENROUTER_API_KEY_FILE`. |
+| `OPENROUTER_API_KEY` | No | empty | Server-only OpenRouter key that enables AI post building, meme suggestions, and automatic image alt text. Supports `OPENROUTER_API_KEY_FILE`. |
+| `OPENPOST_CONTENT_AI_PROVIDER` | No | image-caption provider | Exact OpenRouter provider slug allowed for post building and AI meme suggestions. The Hosted service requires `azure/eu`. |
+| `OPENPOST_CONTENT_AI_REQUIRE_ZDR` | No | image-caption ZDR policy | Require OpenRouter to use zero-data-retention endpoints for post building and AI meme suggestions. The Hosted service requires `true`. |
 | `OPENPOST_IMAGE_CAPTION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model ID used for automatic image alt text. |
 | `OPENPOST_TEXT_GENERATION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model ID used to build publication copy from an idea. |
 | `OPENPOST_IMAGE_CAPTION_PROVIDER` | No | empty | Exact OpenRouter provider slug allowed for automatic image alt text. An empty value uses normal eligible-provider routing. |

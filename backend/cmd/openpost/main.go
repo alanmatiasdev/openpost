@@ -453,24 +453,24 @@ func main() {
 	mediaHandler.SetVideoProcessor(videoProcessingService)
 	profileHandler := handlers.NewProfileHandler(db, authenticator, storage)
 
-	var generator ai.Generator
+	var imageGenerator ai.Generator
+	var contentGenerator ai.Generator
 	if cfg.OpenRouterAPIKey != "" {
-		generator, err = ai.NewOpenRouter(ai.OpenRouterConfig{
-			APIKey:      cfg.OpenRouterAPIKey,
-			HTTPReferer: cfg.PublicURL,
-			XTitle:      "OpenPost",
-			Provider:    cfg.ImageCaptionProvider,
-			RequireZDR:  cfg.ImageCaptionRequireZDR,
-		})
+		imageConfig, contentConfig := openRouterConfigs(cfg)
+		imageGenerator, err = ai.NewOpenRouter(imageConfig)
 		if err != nil {
-			log.Fatalf("failed to initialize OpenRouter: %v", err)
+			log.Fatalf("failed to initialize OpenRouter image generator: %v", err)
+		}
+		contentGenerator, err = ai.NewOpenRouter(contentConfig)
+		if err != nil {
+			log.Fatalf("failed to initialize OpenRouter text generator: %v", err)
 		}
 	}
 
 	var imageCaptioner imagecaption.Captioner
 	var postBuilder postgeneration.Builder
-	if generator != nil {
-		imageCaptioner, err = imagecaption.New(generator, cfg.ImageCaptionModel)
+	if imageGenerator != nil {
+		imageCaptioner, err = imagecaption.New(imageGenerator, cfg.ImageCaptionModel)
 		if err != nil {
 			log.Fatalf("failed to initialize automatic image captioning: %v", err)
 		}
@@ -480,11 +480,18 @@ func main() {
 			cfg.ImageCaptionProvider,
 			cfg.ImageCaptionRequireZDR,
 		)
-		postBuilder, err = postgeneration.New(generator, cfg.TextGenerationModel)
+	}
+	if contentGenerator != nil {
+		postBuilder, err = postgeneration.New(contentGenerator, cfg.TextGenerationModel)
 		if err != nil {
 			log.Fatalf("failed to initialize AI post builder: %v", err)
 		}
-		log.Printf("AI post builder enabled with model %s", cfg.TextGenerationModel)
+		log.Printf(
+			"AI post builder enabled with model %s provider %s zero_data_retention=%t",
+			cfg.TextGenerationModel,
+			cfg.ContentAIProvider,
+			cfg.ContentAIRequireZDR,
+		)
 	}
 
 	var memeProvider memes.Provider
@@ -494,8 +501,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to initialize built-in meme catalog: %v", err)
 		}
-		if generator != nil {
-			memeSuggester, err = memegeneration.New(generator, cfg.MemeGenerationModel)
+		if contentGenerator != nil {
+			memeSuggester, err = memegeneration.New(contentGenerator, cfg.MemeGenerationModel)
 			if err != nil {
 				log.Fatalf("failed to initialize AI meme suggestions: %v", err)
 			}

@@ -11,15 +11,17 @@ This page lists the most common core and provider variables. Use [Environment Va
 | `OPENPOST_IMAGE_EDITOR_ENABLED`        | `true`                 | Enable the OpenPost Image Editor UI and API. Disabling it leaves the Media library operational.  |
 | `OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL` | `/image-editor-models` | Serve the pinned background-removal model and runtime from another operator-controlled base URL. |
 
-## Automatic image alt text
+## Server-side AI
 
-| Variable                             | Default               | Purpose                                                                                                         |
-| ------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`                 | empty                 | Server-only OpenRouter key that enables automatic alt text for images without saved alt text; supports `_FILE`. |
-| `OPENPOST_IMAGE_CAPTION_MODEL`       | `openai/gpt-5.6-luna` | Model used with a 400px JPEG thumbnail and up to 1,000 characters of relevant post or thread segment text.      |
-| `OPENPOST_TEXT_GENERATION_MODEL`     | `openai/gpt-5.6-luna` | OpenRouter model used to build canonical and destination-specific post copy.                                    |
-| `OPENPOST_IMAGE_CAPTION_PROVIDER`    | empty                 | Optional exact OpenRouter provider slug allowed for automatic image alt text.                                   |
-| `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR` | `false`               | Require a zero-data-retention endpoint for automatic image alt text.                                            |
+| Variable                             | Default                | Purpose                                                                                                            |
+| ------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `OPENROUTER_API_KEY`                 | empty                  | Server-only OpenRouter key for AI post building, meme suggestions, and automatic image alt text; supports `_FILE`. |
+| `OPENPOST_CONTENT_AI_PROVIDER`       | image-caption provider | Exact OpenRouter provider used for AI post building and meme suggestions.                                          |
+| `OPENPOST_CONTENT_AI_REQUIRE_ZDR`    | image-caption policy   | Require zero-data-retention endpoints for AI post building and meme suggestions.                                   |
+| `OPENPOST_IMAGE_CAPTION_MODEL`       | `openai/gpt-5.6-luna`  | Model used with a 400px JPEG thumbnail and up to 1,000 characters of relevant post or thread segment text.         |
+| `OPENPOST_TEXT_GENERATION_MODEL`     | `openai/gpt-5.6-luna`  | OpenRouter model used to build canonical and destination-specific post copy.                                       |
+| `OPENPOST_IMAGE_CAPTION_PROVIDER`    | empty                  | Optional exact OpenRouter provider slug allowed for automatic image alt text.                                      |
+| `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR` | `false`                | Require a zero-data-retention endpoint for automatic image alt text.                                               |
 
 ## Meme maker
 
@@ -84,7 +86,9 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_FEEDBACK_SUPPORT_URL`                 | Fallback support URL                                                                              |
 | `OPENPOST_UPDATE_CHECK_ENABLED`                 | Enable read-only stable release checks for self-hosted instance admins                            |
 | `OPENPOST_CONNECTORS_FILE`                      | Absolute path to the self-hosted custom connector registry                                        |
-| `OPENROUTER_API_KEY`                            | Enable server-side automatic image alt text; supports `_FILE`                                     |
+| `OPENROUTER_API_KEY`                            | Enable AI post building, meme suggestions, and automatic image alt text; supports `_FILE`         |
+| `OPENPOST_CONTENT_AI_PROVIDER`                  | Exact OpenRouter provider used for AI post building and meme suggestions                          |
+| `OPENPOST_CONTENT_AI_REQUIRE_ZDR`               | Require zero-data-retention endpoints for AI post building and meme suggestions                   |
 | `OPENPOST_IMAGE_CAPTION_MODEL`                  | OpenRouter model ID for automatic image alt text                                                  |
 | `OPENPOST_TEXT_GENERATION_MODEL`                | OpenRouter model ID for AI post building                                                          |
 | `OPENPOST_IMAGE_CAPTION_PROVIDER`               | Exact OpenRouter provider slug allowed for automatic image alt text                               |

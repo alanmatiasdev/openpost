@@ -45,6 +45,8 @@ var configTestEnvKeys = []string{
 	"OPENPOST_PRIVACY_VERSION",
 	"OPENPOST_SUPPORT_EMAIL",
 	"OPENROUTER_API_KEY",
+	"OPENPOST_CONTENT_AI_PROVIDER",
+	"OPENPOST_CONTENT_AI_REQUIRE_ZDR",
 	"OPENPOST_IMAGE_CAPTION_MODEL",
 	"OPENPOST_IMAGE_CAPTION_PROVIDER",
 	"OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR",
@@ -178,6 +180,8 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Empty(t, cfg.PaddleClientToken)
 	require.Empty(t, cfg.PaddleWebhookSecret)
 	require.Empty(t, cfg.OpenRouterAPIKey)
+	require.Empty(t, cfg.ContentAIProvider)
+	require.False(t, cfg.ContentAIRequireZDR)
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.ImageCaptionModel)
 	require.Empty(t, cfg.ImageCaptionProvider)
 	require.False(t, cfg.ImageCaptionRequireZDR)
@@ -213,6 +217,8 @@ func TestLoadImageCaptionConfigurationSupportsFileBackedSecret(t *testing.T) {
 	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.ImageCaptionModel)
 	require.Equal(t, "azure/eu", cfg.ImageCaptionProvider)
 	require.True(t, cfg.ImageCaptionRequireZDR)
+	require.Equal(t, "azure/eu", cfg.ContentAIProvider)
+	require.True(t, cfg.ContentAIRequireZDR)
 }
 
 func TestLoadMemeGeneratorConfiguration(t *testing.T) {
@@ -227,10 +233,14 @@ func TestLoadMemeGeneratorConfiguration(t *testing.T) {
 
 func TestLoadTextGenerationModel(t *testing.T) {
 	t.Setenv("OPENPOST_TEXT_GENERATION_MODEL", " openai/gpt-5.6-luna-20260709 ")
+	t.Setenv("OPENPOST_CONTENT_AI_PROVIDER", " azure/eu ")
+	t.Setenv("OPENPOST_CONTENT_AI_REQUIRE_ZDR", "true")
 
 	cfg := Load()
 
 	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.TextGenerationModel)
+	require.Equal(t, "azure/eu", cfg.ContentAIProvider)
+	require.True(t, cfg.ContentAIRequireZDR)
 }
 
 func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {
@@ -710,9 +720,11 @@ func TestValidateRuntimeRejectsManagedPolicyVersionDrift(t *testing.T) {
 	require.ErrorContains(t, err, "OPENPOST_PRIVACY_VERSION="+legalpolicy.PrivacyVersion)
 }
 
-func TestValidateRuntimePinsManagedImageCaptionsToZdrEUProvider(t *testing.T) {
+func TestValidateRuntimePinsManagedAIToZdrEUProvider(t *testing.T) {
 	cfg := validCloudRuntimeConfig()
 	cfg.OpenRouterAPIKey = "openrouter-key"
+	cfg.ContentAIProvider = "openai"
+	cfg.ContentAIRequireZDR = false
 	cfg.ImageCaptionProvider = "openai"
 	cfg.ImageCaptionRequireZDR = false
 
@@ -721,7 +733,11 @@ func TestValidateRuntimePinsManagedImageCaptionsToZdrEUProvider(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "OPENPOST_IMAGE_CAPTION_PROVIDER=azure/eu")
 	require.ErrorContains(t, err, "OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR=true")
+	require.ErrorContains(t, err, "OPENPOST_CONTENT_AI_PROVIDER=azure/eu")
+	require.ErrorContains(t, err, "OPENPOST_CONTENT_AI_REQUIRE_ZDR=true")
 
+	cfg.ContentAIProvider = "azure/eu"
+	cfg.ContentAIRequireZDR = true
 	cfg.ImageCaptionProvider = "azure/eu"
 	cfg.ImageCaptionRequireZDR = true
 	require.NoError(t, cfg.ValidateRuntime())
