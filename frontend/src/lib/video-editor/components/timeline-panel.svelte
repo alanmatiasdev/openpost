@@ -39,6 +39,11 @@
 	} from '$lib/video-editor/media/waveform-client';
 	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
 	import { planTimelineWaveformDemand } from '$lib/video-editor/timeline/waveform-demand';
+	import {
+		TIMELINE_WAVEFORM_HEIGHT,
+		planTimelineWaveformRenderWindow,
+		waveformPolyline
+	} from '$lib/video-editor/timeline/waveform-render-window';
 	import { peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
 	import {
@@ -393,6 +398,16 @@
 	);
 	const waveforms = $state<Record<string, { data: WaveformData | null; failed: boolean }>>({});
 	const waveformUnsubscribers = new Map<string, () => void>();
+	const waveformRenderCache = new Map<
+		string,
+		{
+			peaks: Float32Array;
+			loadedSamples: number;
+			isComplete: boolean;
+			key: string;
+			value: { points: string; leftPx: number; widthPx: number; clipWidthPx: number };
+		}
+	>();
 	const waveformItemRangeIndex = $derived(
 		buildTimelineItemRangeIndex(
 			timelineStore.items.filter(
@@ -413,6 +428,7 @@
 	function clearWaveformSubscriptions(): void {
 		for (const unsubscribe of waveformUnsubscribers.values()) unsubscribe();
 		waveformUnsubscribers.clear();
+		waveformRenderCache.clear();
 		for (const mediaId of Object.keys(waveforms)) delete waveforms[mediaId];
 	}
 
@@ -481,6 +497,9 @@
 
 	$effect(() => {
 		const itemIds = new Set(timelineStore.items.map((item) => item.id));
+		for (const itemId of waveformRenderCache.keys()) {
+			if (!itemIds.has(itemId)) waveformRenderCache.delete(itemId);
+		}
 		const existingIds = selectedItemIds.filter((id) => itemIds.has(id));
 		if (existingIds.length !== selectedItemIds.length) selectedItemIds = existingIds;
 		if (selectedItemId && !itemIds.has(selectedItemId)) {
@@ -521,7 +540,9 @@
 		return clearWaveformDemandTimer;
 	});
 
-	function waveformSvgPoints(item: {
+	function timelineWaveform(item: {
+		id: string;
+		from: number;
 		mediaId?: string;
 		sourceStart?: number;
 		sourceEnd?: number;
@@ -529,25 +550,69 @@
 		speed?: number;
 		isReversed?: boolean;
 		durationInFrames: number;
-	}): string | null {
+	}): {
+		points: string;
+		leftPx: number;
+		widthPx: number;
+		clipWidthPx: number;
+	} | null {
 		if (!item.mediaId) return null;
 		const entry = waveforms[item.mediaId];
 		const data = entry?.data ?? cachedWaveform(item.mediaId);
 		if (!data) return null;
-		const width = Math.max(8, frameToPx(item.durationInFrames) - 4);
 		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
 		const sourceStart = item.sourceStart ?? 0;
 		const sourceEnd =
 			item.sourceEnd ?? sourceStart + (item.durationInFrames / fps) * (item.speed ?? 1) * sourceFps;
-		const columns = peaksForWindow(data, sourceStart, sourceEnd, sourceFps, width);
-		const points: string[] = [];
-		for (let column = 0; column < width; column++) {
-			const sourceColumn = item.isReversed ? width - column - 1 : column;
-			const min = columns[sourceColumn * 2];
-			const max = columns[sourceColumn * 2 + 1];
-			points.push(`${column + 2},${(max * 40).toFixed(1)} ${column + 2},${(min * 40).toFixed(1)}`);
-		}
-		return points.join(' ');
+		const window = planTimelineWaveformRenderWindow({
+			clipFromFrame: item.from,
+			clipDurationFrames: item.durationInFrames,
+			sourceStartFrame: sourceStart,
+			sourceEndFrame: sourceEnd,
+			pixelsPerFrame: pxPerFrame,
+			scrollLeft: timelineViewport.scrollLeft,
+			viewportWidth: timelineViewport.width,
+			headerWidth: TRACK_HEADER_WIDTH,
+			reversed: item.isReversed === true
+		});
+		if (!window) return null;
+		const renderKey = [
+			window.leftPx,
+			window.widthPx,
+			window.startSourceFrame,
+			window.endSourceFrame,
+			sourceFps,
+			window.reverseColumns
+		].join(':');
+		const cached = waveformRenderCache.get(item.id);
+		if (
+			cached?.peaks === data.peaks &&
+			cached.loadedSamples === data.loadedSamples &&
+			cached.isComplete === data.isComplete &&
+			cached.key === renderKey
+		)
+			return cached.value;
+		const columns = peaksForWindow(
+			data,
+			window.startSourceFrame,
+			window.endSourceFrame,
+			sourceFps,
+			window.widthPx
+		);
+		const value = {
+			points: waveformPolyline(columns, TIMELINE_WAVEFORM_HEIGHT, window.reverseColumns),
+			leftPx: window.leftPx,
+			widthPx: window.widthPx,
+			clipWidthPx: window.clipWidthPx
+		};
+		waveformRenderCache.set(item.id, {
+			peaks: data.peaks,
+			loadedSamples: data.loadedSamples,
+			isComplete: data.isComplete,
+			key: renderKey,
+			value
+		});
+		return value;
 	}
 	type TimelineDragKind =
 		| 'move'
@@ -4858,18 +4923,22 @@
 									{/if}
 								{/if}
 								{#if editorSettings.showWaveforms}
-									{@const waveformPoints = waveformSvgPoints(displayItem)}
-									{#if waveformPoints}
+									{@const waveform = timelineWaveform(displayItem)}
+									{#if waveform}
 										<svg
-											class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full origin-center"
-											style="transform:scaleY({displayItem.type === 'audio'
+											class="pointer-events-none absolute bottom-0 h-10 origin-center"
+											style="left:{waveform.leftPx}px;width:{waveform.widthPx}px;transform:scaleY({displayItem.type ===
+											'audio'
 												? audioVolumeWaveformScale(audioVolumeDb(displayItem))
 												: 1})"
-											viewBox="0 0 {Math.max(8, frameToPx(displayItem.durationInFrames) - 4)} 80"
+											viewBox="0 0 {waveform.widthPx} {TIMELINE_WAVEFORM_HEIGHT}"
 											preserveAspectRatio="none"
+											data-waveform-window
+											data-render-width={waveform.widthPx}
+											data-clip-width={waveform.clipWidthPx}
 										>
 											<polyline
-												points={waveformPoints}
+												points={waveform.points}
 												fill="none"
 												stroke="oklch(0.85 0.03 120)"
 												stroke-width="0.6"

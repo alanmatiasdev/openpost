@@ -316,6 +316,74 @@ describe('TimelinePanel Bento layout entry', () => {
 		}
 	});
 
+	it('bounds and centers the waveform for a long clip', async () => {
+		await page.viewport(1_280, 720);
+		const mediaId = `timeline-long-audio-${crypto.randomUUID()}`;
+		mediaPool.loadAll([
+			{
+				id: mediaId,
+				storageType: 'workspace',
+				fileName: 'long-session.wav',
+				fileSize: 100,
+				mimeType: 'audio/wav',
+				duration: 600,
+				width: 0,
+				height: 0,
+				fps: 0,
+				codec: 'pcm_s16le',
+				bitrate: 128_000,
+				tags: ['audio']
+			}
+		]);
+		timelineStore.setAll({
+			tracks: [track('audio-track', 'audio', 0)],
+			items: [
+				item({
+					id: 'long-session',
+					trackId: 'audio-track',
+					label: 'Long session',
+					type: 'audio',
+					mediaId,
+					durationInFrames: 18_000,
+					sourceEnd: 18_000,
+					sourceDuration: 18_000
+				})
+			],
+			fps: 30,
+			zoomLevel: 1
+		});
+		await saveWaveform(mediaId, {
+			peaks: Float32Array.from({ length: 600 }, (_, index) => (index % 10) / 10),
+			durationSeconds: 600,
+			samplesPerSecond: 1,
+			loadedSamples: 600,
+			isComplete: true
+		});
+
+		try {
+			const screen = await render(TimelinePanel, { onedit: vi.fn() });
+			const clip = screen.getByRole('button', { name: /Long session/ });
+			await vi.waitFor(() =>
+				expect(clip.element().querySelector('[data-waveform-window]')).not.toBeNull()
+			);
+			const waveform = clip.element().querySelector<SVGElement>('[data-waveform-window]')!;
+			const renderedWidth = Number(waveform.dataset.renderWidth);
+			const clipWidth = Number(waveform.dataset.clipWidth);
+			expect(renderedWidth).toBeLessThanOrEqual(2_480);
+			expect(clipWidth).toBeGreaterThan(70_000);
+			const coordinates = waveform
+				.querySelector('polyline')!
+				.getAttribute('points')!
+				.split(/[ ,]/)
+				.map(Number);
+			const yCoordinates = coordinates.filter((_, index) => index % 2 === 1);
+			expect(Math.min(...yCoordinates)).toBeLessThan(40);
+			expect(Math.max(...yCoordinates)).toBeGreaterThan(40);
+		} finally {
+			await clearWaveformCache(mediaId);
+		}
+	});
+
 	it('starts waveform work only for visible and approaching clips', async () => {
 		await page.viewport(800, 720);
 		const nearId = `waveform-near-${crypto.randomUUID()}`;
