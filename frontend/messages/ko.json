@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "모두 내보내기",
 	"quick_cut_in": "시작 지점",
 	"quick_cut_need_range": "시작 지점과 끝 지점을 먼저 지정하세요.",
+	"quick_cut_segment_too_short": "최소 {seconds}초를 유지하세요.",
+	"quick_cut_segment_outside_source": "범위를 소스 안에 유지하세요.",
 	"quick_cut_not_lossless": "이 파일은 손실 없는 방식으로 처리할 수 없습니다.",
 	"quick_cut_open": "파일 열기",
 	"quick_cut_out": "끝 지점",

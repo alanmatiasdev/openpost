@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "Exportar todos os cortes",
 	"quick_cut_in": "Marcar entrada",
 	"quick_cut_need_range": "Selecione um intervalo antes de cortar.",
+	"quick_cut_segment_too_short": "Mantenha pelo menos {seconds} segundos.",
+	"quick_cut_segment_outside_source": "Mantenha o intervalo dentro da fonte.",
 	"quick_cut_not_lossless": "Este arquivo não permite corte sem perdas.",
 	"quick_cut_open": "Abrir vídeo",
 	"quick_cut_out": "Marcar saída",

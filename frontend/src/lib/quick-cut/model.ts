@@ -9,7 +9,7 @@ import type {
 } from './types';
 
 export const KEYFRAME_TOLERANCE_SECONDS = 0.001;
-const MIN_SEGMENT_DURATION = 0.05;
+export const MIN_SEGMENT_DURATION_SECONDS = 0.05;
 
 function isFiniteNumber(value: number): boolean {
 	return Number.isFinite(value) && !Number.isNaN(value);
@@ -114,7 +114,7 @@ export function validateSegment(
 			message: 'End must be after start.'
 		});
 	}
-	if (segment.end - segment.start < MIN_SEGMENT_DURATION) {
+	if (segment.end - segment.start < MIN_SEGMENT_DURATION_SECONDS) {
 		errors.push({
 			segmentId: segment.id,
 			kind: 'zero_length',

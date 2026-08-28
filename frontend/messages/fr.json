@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "Cut export all",
 	"quick_cut_in": "Cut in",
 	"quick_cut_need_range": "Cut need range",
+	"quick_cut_segment_too_short": "Conservez au moins {seconds} secondes.",
+	"quick_cut_segment_outside_source": "Gardez la plage dans sa source.",
 	"quick_cut_not_lossless": "Cut not lossless",
 	"quick_cut_open": "Cut open",
 	"quick_cut_out": "Cut out",

@@ -72,14 +72,38 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   );
 
   await expect(page.getByText(/prores-proxy\.mov/i).first()).toBeVisible();
+  await page.locator("video").evaluate((video: HTMLVideoElement) => {
+    video.currentTime = Math.min(0.02, video.duration || 0.02);
+    video.dispatchEvent(new Event("timeupdate"));
+  });
   await page.getByRole("button", { name: /^I · Mark in$/i }).click();
   await page.locator("video").evaluate((video: HTMLVideoElement) => {
-    video.currentTime = Math.min(0.08, video.duration || 0.08);
+    video.currentTime = Math.min(0.04, video.duration || 0.04);
+    video.dispatchEvent(new Event("timeupdate"));
+  });
+  await page.getByRole("button", { name: /^O · Mark out$/i }).click();
+  await page.getByRole("button", { name: /Add segment/i }).click();
+  await expect(page.getByText("Keep at least 0.05 seconds.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Segment 1/i })).toHaveCount(0);
+
+  await page.locator("video").evaluate((video: HTMLVideoElement) => {
+    video.currentTime = Math.min(0.1, video.duration || 0.1);
     video.dispatchEvent(new Event("timeupdate"));
   });
   await page.getByRole("button", { name: /^O · Mark out$/i }).click();
   await page.getByRole("button", { name: /Add segment/i }).click();
   await expect(page.getByRole("button", { name: /Segment 1/i })).toBeVisible();
+
+  await page.getByLabel("Mark in 1").fill("00:00.03");
+  await page.getByLabel("Mark in 1").press("Tab");
+  await page.getByRole("radio", { name: /Exact time/i }).click();
+  await expect(
+    page.getByText("Some segments require re-encoding; others can be stream copied."),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /Nearest keyframe/i }).click();
+  await page.getByLabel("Mark in 1").fill("00:00.00");
+  await page.getByLabel("Mark in 1").press("Tab");
+  await expect(page.getByText("Stream copy is possible.")).toBeVisible();
 
   for (const viewport of [
     { width: 320, height: 800 },

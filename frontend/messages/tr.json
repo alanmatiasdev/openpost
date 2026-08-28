@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "Tümünü dışa aktar",
 	"quick_cut_in": "Giriş",
 	"quick_cut_need_range": "Önce giriş ve çıkış noktalarını ayarlayın.",
+	"quick_cut_segment_too_short": "En az {seconds} saniye tutun.",
+	"quick_cut_segment_outside_source": "Aralığı kaynak süresi içinde tutun.",
 	"quick_cut_not_lossless": "Bu bölüm kayıpsız kopyalanamadı.",
 	"quick_cut_open": "Dosya aç",
 	"quick_cut_out": "Çıkış",

@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "切口の輸出すべて",
 	"quick_cut_in": "カットイン",
 	"quick_cut_need_range": "切断の必要性の範囲",
+	"quick_cut_segment_too_short": "少なくとも {seconds} 秒を残してください。",
+	"quick_cut_segment_outside_source": "範囲をソース内に収めてください。",
 	"quick_cut_not_lossless": "ロスレスではなくカット",
 	"quick_cut_open": "オープンカット",
 	"quick_cut_out": "カットアウト",

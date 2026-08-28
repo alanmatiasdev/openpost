@@ -18,6 +18,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import StreamSelector from '$lib/quick-cut/components/StreamSelector.svelte';
 	import {
 		createSegment,
+		MIN_SEGMENT_DURATION_SECONDS,
+		validateSegment,
 		validateSegments,
 		hasOverlap,
 		normalizeSegments,
@@ -38,7 +40,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		CutMode,
 		LoopMode
 	} from '$lib/quick-cut/types';
-	import type { QuickCutExportProgress } from '$lib/quick-cut/export';
+	import type { PreflightResult, QuickCutExportProgress } from '$lib/quick-cut/export';
 	import {
 		createNewProject,
 		saveProjectToWorkspace,
@@ -80,6 +82,9 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		repeat: boolean;
 	} | null>(null);
 	let previewGeneration = 0;
+	let individualPreflight = $state<PreflightResult | null>(null);
+	let mergedPreflight = $state<PreflightResult | null>(null);
+	let preflightGeneration = 0;
 	let previewWait: AbortController | null = null;
 
 	const activeSource = $derived(sources.find((s) => s.id === activeSourceId) ?? sources[0] ?? null);
@@ -87,15 +92,27 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	const enabledSegments = $derived(segments.filter((segment) => segment.enabled !== false));
 	const validationErrors = $derived(validateSegments(enabledSegments, 0, sources));
 	const hasOverlapError = $derived(validationErrors.some((e) => e.kind === 'overlap'));
-	const preflight = $derived.by(() => {
-		// sync preflight cannot be async; we compute sync reason via model assess, but final preflight is async for quota
-		// For UI we show quick sync check
-		if (enabledSegments.length === 0)
-			return { eligible: false, reason: m.quick_cut_no_segments(), requiresTranscode: false };
-		// Use model validation for quick feedback
-		if (hasOverlapError)
-			return { eligible: false, reason: m.quick_cut_overlap_error(), requiresTranscode: false };
-		return { eligible: true, reason: '', requiresTranscode: false };
+	const preflight = $derived(merge ? mergedPreflight : individualPreflight);
+
+	$effect(() => {
+		const requestSources = sources.slice();
+		const requestSegments = enabledSegments.map((segment) => ({ ...segment }));
+		const requestCutMode = cutMode;
+		const generation = ++preflightGeneration;
+		individualPreflight = null;
+		mergedPreflight = null;
+		void Promise.all([
+			preflightExport(requestSources, requestSegments, requestCutMode, false),
+			preflightExport(requestSources, requestSegments, requestCutMode, true)
+		]).then(([individual, merged]) => {
+			if (generation === preflightGeneration) {
+				individualPreflight = individual;
+				mergedPreflight = merged;
+			}
+		});
+		return () => {
+			if (generation === preflightGeneration) preflightGeneration += 1;
+		};
 	});
 
 	function updateWorkspaceName() {
@@ -246,6 +263,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 			return;
 		}
 		const seg = createSegment(inPoint.time, outPoint.time, { sourceId: inPoint.sourceId });
+		if (!validateSegmentForProject(seg)) return;
 		if (hasOverlap([...segments, seg])) {
 			showToast(m.quick_cut_overlap_error(), 'error');
 			soundPreferences.play('error');
@@ -268,12 +286,33 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 
 	function updateSegment(id: string, patch: Partial<QuickCutSegment>): void {
 		const next = segments.map((s) => (s.id === id ? { ...s, ...patch } : s));
+		const candidate = next.find((segment) => segment.id === id);
+		if (!candidate || !validateSegmentForProject(candidate)) return;
 		if (hasOverlap(next)) {
 			showToast(m.quick_cut_overlap_error(), 'error');
 			return;
 		}
 		segments = next;
 		syncProject();
+	}
+
+	function validateSegmentForProject(segment: QuickCutSegment): boolean {
+		const source = sources.find((candidate) => candidate.id === segment.sourceId);
+		if (!source) {
+			showToast(m.quick_cut_need_range(), 'error');
+			return false;
+		}
+		const error = validateSegment(segment, source.duration)[0];
+		if (!error) return true;
+		const message =
+			error.kind === 'zero_length'
+				? m.quick_cut_segment_too_short({ seconds: MIN_SEGMENT_DURATION_SECONDS })
+				: error.kind === 'end_beyond_duration'
+					? m.quick_cut_segment_outside_source()
+					: m.quick_cut_need_range();
+		showToast(message, 'error');
+		soundPreferences.play('error');
+		return false;
 	}
 
 	function changeDefaultCutMode(mode: CutMode): void {
@@ -1075,7 +1114,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								size="sm"
 								variant="outline"
 								onclick={handleSendToOpenPost}
-								disabled={enabledSegments.length === 0}
+								disabled={!preflight?.eligible}
 								class="min-h-11">{m.quick_cut_send_to_openpost()}</Button
 							>
 						</div>
@@ -1086,7 +1125,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 					<div class="flex flex-wrap gap-2">
 						<Button
 							size="sm"
-							disabled={exporting || enabledSegments.length === 0}
+							disabled={exporting || !individualPreflight?.eligible}
 							onclick={handleExportAll}
 							class="min-h-11 flex-1">{m.quick_cut_export_all()}</Button
 						>
@@ -1094,7 +1133,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 							<Button
 								size="sm"
 								variant="secondary"
-								disabled={exporting || enabledSegments.length < 2}
+								disabled={exporting || enabledSegments.length < 2 || !mergedPreflight?.eligible}
 								onclick={handleExportMerged}
 								class="min-h-11 flex-1">{m.quick_cut_export_merged()}</Button
 							>
@@ -1104,7 +1143,9 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 					{#if segments.length === 1}
 						<Button
 							size="sm"
-							disabled={exporting || segments[0]!.enabled === false}
+							disabled={exporting ||
+								segments[0]!.enabled === false ||
+								!individualPreflight?.eligible}
 							onclick={() => handleExportOne(segments[0]!)}
 							class="min-h-11">{m.quick_cut_export()}</Button
 						>

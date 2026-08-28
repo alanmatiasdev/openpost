@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "导出全部剪辑",
 	"quick_cut_in": "入点",
 	"quick_cut_need_range": "请先设置入点和出点",
+	"quick_cut_segment_too_short": "至少保留 {seconds} 秒。",
+	"quick_cut_segment_outside_source": "请将范围保持在源文件时长内。",
 	"quick_cut_not_lossless": "此范围无法无损导出",
 	"quick_cut_open": "打开快速剪辑",
 	"quick_cut_out": "出点",

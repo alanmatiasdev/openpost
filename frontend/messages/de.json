@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "Alle Schnitte exportieren",
 	"quick_cut_in": "Schnitt-In",
 	"quick_cut_need_range": "Bereich zum Schneiden erforderlich",
+	"quick_cut_segment_too_short": "Behalte mindestens {seconds} Sekunden.",
+	"quick_cut_segment_outside_source": "Lass den Bereich innerhalb der Quelle.",
 	"quick_cut_not_lossless": "Schnitt nicht verlustfrei",
 	"quick_cut_open": "Schnitt öffnen",
 	"quick_cut_out": "Raus schneiden",

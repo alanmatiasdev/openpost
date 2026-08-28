@@ -5378,6 +5378,8 @@
 	"quick_cut_export_all": "Export all",
 	"quick_cut_in": "Mark in",
 	"quick_cut_need_range": "Mark an in and out point first.",
+	"quick_cut_segment_too_short": "Keep at least {seconds} seconds.",
+	"quick_cut_segment_outside_source": "Keep the range inside its source.",
 	"quick_cut_not_lossless": "This cut requires re-encoding.",
 	"quick_cut_open": "Open video",
 	"quick_cut_out": "Mark out",

@@ -5373,6 +5373,8 @@
 	"quick_cut_export_all": "Exportar todos os cortes",
 	"quick_cut_in": "Cut in",
 	"quick_cut_need_range": "Cut need range",
+	"quick_cut_segment_too_short": "Mantém pelo menos {seconds} segundos.",
+	"quick_cut_segment_outside_source": "Mantém o intervalo dentro da origem.",
 	"quick_cut_not_lossless": "Cut not lossless",
 	"quick_cut_open": "Cut open",
 	"quick_cut_out": "Cut out",
