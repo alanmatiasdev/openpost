@@ -12,6 +12,12 @@
 	import { replaceTextSpanCopy } from '$lib/video-editor/typography/text-item-spans';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import {
+		editorShortcutTargetIsDisabled,
+		eventMatchesShortcut,
+		type EditorShortcutId
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -99,6 +105,8 @@
 	import {
 		changedGroupTransformValues,
 		GROUP_TRANSFORM_PROPERTIES,
+		initializeGroupTransform,
+		translateGroup,
 		type GroupTransform
 	} from '$lib/video-editor/preview/group-transform';
 	import {
@@ -902,13 +910,15 @@
 		return committed;
 	}
 
-	function commitCanvasPosition(frame: number, x: number, y: number): boolean {
-		const local = selectedItemId
-			? localCanvasValuesForItem(selectedItemId, frame, { x, y })
-			: { x, y };
-		const committed = selectedItemId
-			? setPositionAtFrame(selectedItemId, frame, local.x ?? x, local.y ?? y)
-			: false;
+	function commitCanvasPosition(
+		frame: number,
+		x: number,
+		y: number,
+		itemId = selectedItemId
+	): boolean {
+		if (!itemId) return false;
+		const local = localCanvasValuesForItem(itemId, frame, { x, y });
+		const committed = setPositionAtFrame(itemId, frame, local.x ?? x, local.y ?? y);
 		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
 		return committed;
 	}
@@ -1058,6 +1068,93 @@
 		return committed;
 	}
 
+	function visualNudgeDelta(event: KeyboardEvent): { x: number; y: number } | null {
+		const bindings = keyboardShortcuts.bindings;
+		const matches = (id: EditorShortcutId) => eventMatchesShortcut(event, bindings[id]);
+		if (matches('NUDGE_LEFT_LARGE')) return { x: -10, y: 0 };
+		if (matches('NUDGE_RIGHT_LARGE')) return { x: 10, y: 0 };
+		if (matches('NUDGE_UP_LARGE')) return { x: 0, y: -10 };
+		if (matches('NUDGE_DOWN_LARGE')) return { x: 0, y: 10 };
+		if (matches('NUDGE_LEFT')) return { x: -1, y: 0 };
+		if (matches('NUDGE_RIGHT')) return { x: 1, y: 0 };
+		if (matches('NUDGE_UP')) return { x: 0, y: -1 };
+		if (matches('NUDGE_DOWN')) return { x: 0, y: 1 };
+		return null;
+	}
+
+	function handleVisualNudgeShortcut(event: KeyboardEvent): void {
+		if (
+			event.defaultPrevented ||
+			editorShortcutTargetIsDisabled(event.target) ||
+			(event.target instanceof HTMLElement &&
+				Boolean(event.target.closest('[data-composition-shortcuts]'))) ||
+			canvasContextDisabled
+		)
+			return;
+		const delta = visualNudgeDelta(event);
+		if (!delta) return;
+		const selectedIds = new Set(selectedItemIds);
+		if (selectedItemId) selectedIds.add(selectedItemId);
+		const items = timelineStore.items.filter(
+			(item) =>
+				selectedIds.has(item.id) &&
+				item.type !== 'audio' &&
+				item.type !== 'adjustment' &&
+				item.type !== 'controller' &&
+				timelineStore.currentFrame >= item.from &&
+				timelineStore.currentFrame < item.from + item.durationInFrames
+		);
+		if (
+			items.length === 0 ||
+			items.some((item) => isTrackEffectivelyLocked(item.trackId, timelineStore.tracks))
+		)
+			return;
+		event.preventDefault();
+		if (items.length === 1) {
+			const transform = resolvedTransformForItem(
+				resolveAnimatedItemAt(items[0]!, timelineStore.currentFrame, {
+					fps: timelineStore.fps,
+					frameWidth: canvasWidth,
+					frameHeight: canvasHeight,
+					items: timelineStore.items
+				}),
+				canvasWidth,
+				canvasHeight
+			);
+			if (
+				commitCanvasPosition(
+					timelineStore.currentFrame,
+					transform.x + delta.x,
+					transform.y + delta.y,
+					items[0]!.id
+				)
+			)
+				onedit();
+			return;
+		}
+		const transforms = new Map(
+			items.map((item) => [
+				item.id,
+				resolvedTransformForItem(
+					resolveAnimatedItemAt(item, timelineStore.currentFrame, {
+						fps: timelineStore.fps,
+						frameWidth: canvasWidth,
+						frameHeight: canvasHeight,
+						items: timelineStore.items
+					}),
+					canvasWidth,
+					canvasHeight
+				)
+			])
+		);
+		const translated = translateGroup(
+			initializeGroupTransform(transforms, canvasWidth, canvasHeight),
+			delta.x,
+			delta.y
+		);
+		if (commitGroupTransforms(timelineStore.currentFrame, translated)) onedit();
+	}
+
 	function createCanvasSpatialTangents(frame: number): boolean {
 		const committed = selectedItemId ? createPositionSpatialTangents(selectedItemId, frame) : false;
 		if (!committed) toast.error(m.video_editor_keyframe_transition_blocked());
@@ -1195,6 +1292,8 @@
 		if (needsStackedComposition) scheduleStackFrame();
 	});
 </script>
+
+<svelte:window onkeydown={handleVisualNudgeShortcut} />
 
 <div
 	class="fullscreen:p-6 [container-type:size] flex min-h-0 flex-1 overflow-auto bg-[oklch(0.12_0.008_55)] p-4"

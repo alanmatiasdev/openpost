@@ -20,6 +20,7 @@ import { createMotionAnimationLayer } from '../timeline/motion-layer-eval';
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { updateProjectCanvas } from '../project/canvas-settings';
 import { editorSettings } from '../settings/editor-settings.svelte';
+import { keyboardShortcuts } from '../settings/keyboard-shortcuts.svelte';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -171,6 +172,7 @@ afterEach(async () => {
 	spatialEffectEditorStore.__resetForTesting();
 	commandHistory.clearHistory();
 	editorSettings.reset();
+	keyboardShortcuts.resetAll();
 	editorSession.project = null;
 	timelineStore.clear();
 });
@@ -527,6 +529,99 @@ describe('PreviewPlayer backdrop composition', () => {
 		await vi.waitFor(() => {
 			expect(screen.container.querySelector('[data-group-transform-box]')).toBeNull();
 		});
+	});
+
+	it('nudges the active visual selection through remappable global shortcuts', async () => {
+		const bottom = colorLayer('bottom', 'bottom-track', '#ff0000');
+		const top = colorLayer('top', 'top-track', '#0000ff');
+		bottom.transform = { x: -100, y: 0, width: 100, height: 100 };
+		top.transform = { x: 100, y: 0, width: 100, height: 100 };
+		const project: Project = {
+			id: 'nudge-project',
+			name: 'Nudge project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			timeline: {
+				tracks: [track('top-track', 0), track('bottom-track', 1)],
+				items: [bottom, top]
+			}
+		};
+		editorSession.project = project;
+		timelineStore.setAll({
+			items: [bottom, top],
+			tracks: project.timeline!.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: top.id,
+			selectedItemIds: [bottom.id, top.id],
+			onedit
+		});
+		const key = (
+			value: string,
+			code: string,
+			options: Pick<KeyboardEventInit, 'shiftKey' | 'metaKey' | 'altKey'>,
+			target: EventTarget = window
+		) =>
+			target.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: value,
+					code,
+					bubbles: true,
+					cancelable: true,
+					...options
+				})
+			);
+
+		key('ArrowRight', 'ArrowRight', { shiftKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-99);
+		expect(timelineStore.itemById.get(top.id)?.transform?.x).toBe(101);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+
+		key('ArrowDown', 'ArrowDown', { shiftKey: true, metaKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.y).toBe(10);
+		expect(timelineStore.itemById.get(top.id)?.transform?.y).toBe(10);
+		expect(commandHistory.undoStack).toHaveLength(2);
+
+		keyboardShortcuts.setBinding('NUDGE_LEFT', 'alt+9');
+		key('ArrowLeft', 'ArrowLeft', { shiftKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-99);
+		key('9', 'Digit9', { altKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-100);
+
+		const input = document.createElement('input');
+		screen.container.append(input);
+		input.focus();
+		key('9', 'Digit9', { altKey: true }, input);
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-100);
+
+		timelineStore._setTracks([
+			track('top-track', 0),
+			{ ...track('bottom-track', 1), locked: true }
+		]);
+		key('ArrowDown', 'ArrowDown', { shiftKey: true, metaKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.y).toBe(10);
+		expect(timelineStore.itemById.get(top.id)?.transform?.y).toBe(10);
+
+		timelineStore._setTracks([track('top-track', 0), track('bottom-track', 1)]);
+		timelineStore._setCurrentFrame(30);
+		key('ArrowDown', 'ArrowDown', { shiftKey: true, metaKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.y).toBe(10);
+		expect(timelineStore.itemById.get(top.id)?.transform?.y).toBe(10);
+
+		timelineStore._setCurrentFrame(0);
+		const pendingPick = colorPreviewStore.requestPick(top.id, 'white-balance');
+		key('ArrowDown', 'ArrowDown', { shiftKey: true, metaKey: true });
+		expect(timelineStore.itemById.get(bottom.id)?.transform?.y).toBe(10);
+		expect(timelineStore.itemById.get(top.id)?.transform?.y).toBe(10);
+		colorPreviewStore.cancelPick();
+		expect(await pendingPick).toBeNull();
 	});
 
 	it('runs the spatial point editor as the program monitor exclusive tool', async () => {

@@ -65,6 +65,18 @@ describe('keyboard shortcuts', () => {
 		expect(bindings.NEXT_SNAP_POINT).toBe('down');
 	});
 
+	it('includes FreeCut-compatible visual nudge bindings', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.NUDGE_LEFT).toBe('shift+left');
+		expect(bindings.NUDGE_RIGHT).toBe('shift+right');
+		expect(bindings.NUDGE_UP).toBe('shift+up');
+		expect(bindings.NUDGE_DOWN).toBe('shift+down');
+		expect(bindings.NUDGE_LEFT_LARGE).toBe('mod+shift+left');
+		expect(bindings.NUDGE_RIGHT_LARGE).toBe('mod+shift+right');
+		expect(bindings.NUDGE_UP_LARGE).toBe('mod+shift+up');
+		expect(bindings.NUDGE_DOWN_LARGE).toBe('mod+shift+down');
+	});
+
 	it('reports command and browser conflicts before a binding is replaced', () => {
 		const bindings = resolveEditorShortcuts({ PLAY_PAUSE: 'mod+s' });
 		expect(findShortcutConflicts(bindings, 'mod+s', 'PLAY_PAUSE')).toEqual(['SAVE']);

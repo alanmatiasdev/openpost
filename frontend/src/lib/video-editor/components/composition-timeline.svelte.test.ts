@@ -165,6 +165,15 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		const timeline = screen.getByTestId('composition-timeline').element();
 		const send = (target: Element, init: KeyboardEventInit) =>
 			target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: '9',
+				code: 'Digit9',
+				altKey: true,
+				bubbles: true
+			})
+		);
+		expect(timelineStore.itemById.get('one')?.from).toBe(0);
 
 		send(timeline, { key: 'd', code: 'KeyD', metaKey: true });
 		expect(timelineStore.items).toHaveLength(2);

@@ -1500,6 +1500,11 @@
 	}
 	function handleKeydown(event: KeyboardEvent): void {
 		if (editorShortcutTargetIsDisabled(event.target)) return;
+		if (
+			event.key !== 'Escape' &&
+			!(event.target instanceof HTMLElement && event.target.closest('[data-composition-shortcuts]'))
+		)
+			return;
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
 			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
@@ -2095,6 +2100,7 @@
 		class="composition-timeline"
 		aria-label={m.video_editor_composition_timeline_label()}
 		data-testid="composition-timeline"
+		data-composition-shortcuts
 		ondragover={handleDragOver}
 		ondragleave={handleDragLeave}
 		ondrop={handleDrop}
