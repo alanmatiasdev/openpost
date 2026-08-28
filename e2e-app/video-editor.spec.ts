@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 async function installLocalWorkspacePicker(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -189,9 +190,9 @@ test("Video Editor restores its workspace before a direct new-project handoff", 
   await createProject(page, "Workspace seed");
 
   await page.goto("about:blank");
-  await page.goto("/video-editor/new?name=Direct%20handoff");
+  await page.goto("/video-editor/new?name=Direct%20handoff&return=draft-123");
 
-  await expect(page).toHaveURL(/\/video-editor\/[0-9a-f-]+$/u);
+  await expect(page).toHaveURL(/\/video-editor\/[0-9a-f-]+\?return=draft-123$/u);
   await expect(page.getByText("Direct handoff")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 });
@@ -211,4 +212,25 @@ test("Video Editor quick export saves an MP4 in the workspace", async ({ page })
   await page.getByRole("button", { name: "Exports" }).click();
   await expect(page.getByText(`${projectName}.mp4`, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: `Download ${projectName}.mp4` })).toBeEnabled();
+});
+
+test("Video Editor sends a rendered export into a new composer", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(request, `video-editor-send-${unique}@example.com`);
+  await createWorkspace(request, auth.token, "Video Editor send E2E");
+  await authenticatePage(page, auth.token);
+  await createProject(page, "Composer send proof");
+  await page.getByRole("button", { name: "Add text" }).click();
+
+  await page.getByRole("button", { name: "Send to OpenPost" }).click();
+  await expect(
+    page.getByRole("status").getByText("Sent to your OpenPost media library."),
+  ).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByRole("link", { name: "Open composer" }).click();
+  await expect(page.locator("[data-composer-media-id]")).toHaveCount(1);
+  await expect(page).toHaveURL(/\/$/u);
 });

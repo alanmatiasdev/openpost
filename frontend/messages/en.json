@@ -5989,6 +5989,7 @@
 	"video_editor_send_to_openpost": "Send to OpenPost",
 	"video_editor_export_done": "Saved {name} to the exports folder.",
 	"video_editor_sent": "Sent to your OpenPost media library.",
+	"video_editor_open_composer": "Open composer",
 	"video_editor_crossfade": "Add crossfade",
 	"video_editor_no_neighbor": "No touching clip follows this one.",
 	"video_editor_speed_slower": "Half speed",

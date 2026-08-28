@@ -18,23 +18,34 @@
 	const request = $derived.by(() => {
 		const name = page.url.searchParams.get('name')?.trim() || m.video_editor_project_untitled();
 		const source = page.url.searchParams.get('source');
-		return { key: `${name}\u0000${source ?? ''}`, name, source };
+		const returnPublicationId = page.url.searchParams.get('return')?.trim() || null;
+		return {
+			key: `${name}\u0000${source ?? ''}\u0000${returnPublicationId ?? ''}`,
+			name,
+			source,
+			returnPublicationId
+		};
 	});
 
 	$effect(() => {
 		if (gate.state !== 'ready' || attemptedRequest === request.key) return;
 		attemptedRequest = request.key;
 		error = '';
-		void createAndOpen(request.name, request.source);
+		void createAndOpen(request.name, request.source, request.returnPublicationId);
 	});
 
-	async function createAndOpen(name: string, source: string | null): Promise<void> {
+	async function createAndOpen(
+		name: string,
+		source: string | null,
+		returnPublicationId: string | null
+	): Promise<void> {
 		try {
 			const project = createBlankProject(name);
 			await createProject(project);
-			const target = source
-				? `/video-editor/${project.id}?${new URLSearchParams({ source })}`
-				: `/video-editor/${project.id}`;
+			const query = new URLSearchParams();
+			if (source) query.set('source', source);
+			if (returnPublicationId) query.set('return', returnPublicationId);
+			const target = `/video-editor/${project.id}${query.size > 0 ? `?${query}` : ''}`;
 			await goto(target, { replaceState: true });
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);

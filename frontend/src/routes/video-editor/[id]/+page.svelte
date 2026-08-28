@@ -6,6 +6,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { page } from '$app/state';
+	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
 	import Logo from '$lib/components/Logo.svelte';
 	import { showToast } from '$lib/toast';
@@ -439,6 +440,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	let exporting = $state(false);
 	let sending = $state(false);
+	let sentExport = $state<{ composerHref: string } | null>(null);
+
+	function composerMediaHref(workspaceId: string, mediaId: string): string {
+		const query = new URLSearchParams({ workspace_id: workspaceId, media_id: mediaId });
+		const returnPublicationId = page.url.searchParams.get('return')?.trim();
+		const path = returnPublicationId
+			? `/publications/${encodeURIComponent(returnPublicationId)}`
+			: '/';
+		return resolveAppPath(`${path}?${query}`);
+	}
 	async function handleExport(): Promise<void> {
 		if (!editorSession.project) return;
 		exporting = true;
@@ -468,6 +479,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		const workspaceId = workspaceCtx.currentWorkspace?.id;
 		if (!workspaceId || !editorSession.project) return;
 		sending = true;
+		sentExport = null;
 		try {
 			editorSession.pausePlayback();
 			await editorSession.saveNow();
@@ -480,11 +492,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				height: project.metadata.height,
 				subtitleMode: 'burn'
 			});
-			await sendToOpenPost({
+			const uploaded = await sendToOpenPost({
 				workspaceId,
 				blob: result.blob,
 				fileName: result.fileName
 			});
+			sentExport = {
+				composerHref: composerMediaHref(workspaceId, uploaded.mediaId)
+			};
 			showToast(m.video_editor_sent(), 'success');
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -1479,6 +1494,25 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								>
 									{m.video_editor_send_to_openpost()}
 								</Button>
+								{#if sentExport}
+									<div
+										class="mt-1 flex items-center justify-between gap-2 rounded-md border border-[oklch(0.38_0.06_145)] bg-[oklch(0.2_0.025_145)] px-2 py-1.5"
+										role="status"
+										aria-live="polite"
+									>
+										<p class="min-w-0 text-xs leading-5 text-[oklch(0.78_0.06_145)]">
+											{m.video_editor_sent()}
+										</p>
+										<Button
+											size="xs"
+											variant="ghost"
+											class="shrink-0 text-[oklch(0.86_0.07_145)] hover:bg-[oklch(0.27_0.04_145)] hover:text-[oklch(0.94_0.04_145)]"
+											href={sentExport.composerHref}
+										>
+											{m.video_editor_open_composer()}
+										</Button>
+									</div>
+								{/if}
 							</div>
 						</aside>
 					{:else if activeWorkspace === 'motion'}

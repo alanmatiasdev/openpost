@@ -37,6 +37,8 @@
 	let copyRequestKey = '';
 
 	const publicationId = $derived(page.params.id);
+	const initialWorkspaceId = $derived(page.url.searchParams.get('workspace_id'));
+	const initialMediaIds = $derived(page.url.searchParams.getAll('media_id'));
 	const readOnlyPublication = $derived(
 		publication?.status === 'published' ||
 			publication?.status === 'publishing' ||
@@ -314,6 +316,8 @@
 		{/if}
 		<ComposeTextPost
 			initialPublication={publication}
+			{initialWorkspaceId}
+			{initialMediaIds}
 			onSuccess={handleSuccess}
 			onDeleted={handleSuccess}
 		/>

@@ -5984,6 +5984,7 @@
 	"video_editor_send_to_openpost": "OpenPost'a gönder",
 	"video_editor_export_done": "{name} dışa aktarmalar klasörüne kaydedildi.",
 	"video_editor_sent": "OpenPost medya kitaplığınıza gönderildi.",
+	"video_editor_open_composer": "Düzenleyiciyi aç",
 	"video_editor_crossfade": "Çapraz geçiş ekle",
 	"video_editor_no_neighbor": "Bu klibin ardından bitişik klip yok.",
 	"video_editor_speed_slower": "Yarı hız",

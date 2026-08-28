@@ -193,6 +193,7 @@
 		initialScheduleTime?: string | null;
 		initialWorkspaceId?: string | null;
 		initialAccountIds?: string[];
+		initialMediaIds?: string[];
 		onHandoffSelected?: () => void;
 		onSuccess?: () => void;
 		onDeleted?: () => void | Promise<void>;
@@ -210,6 +211,7 @@
 		initialScheduleTime = null,
 		initialWorkspaceId = null,
 		initialAccountIds = [],
+		initialMediaIds = [],
 		onHandoffSelected,
 		onSuccess,
 		onDeleted,
@@ -224,6 +226,7 @@
 	let publicationId = $state('');
 	let revision = $state(1);
 	let lastInitializedPublicationId = $state<string | null>(null);
+	let appliedInitialMediaKey = $state('');
 	let isSaving = $state(false);
 	let isSubmitting = $state(false);
 	let deliveryPublicationID = $state('');
@@ -1953,6 +1956,37 @@
 		scheduleCapabilityResolve();
 	}
 
+	function finishVideoEditorMediaHandoff() {
+		const clean = new URL($page.url);
+		clean.searchParams.delete('media_id');
+		clean.searchParams.delete('workspace_id');
+		replaceState(resolveAppPath(`${clean.pathname}${clean.search}${clean.hash}`), {});
+	}
+
+	async function applyInitialMediaHandoff(mediaIds: string[]) {
+		const incoming = mergeMediaIds([], mediaIds);
+		if (!selectedWorkspaceId || incoming.length === 0) return;
+		const handoffKey = `${selectedWorkspaceId}|${incoming.join(',')}`;
+		if (handoffKey === appliedInitialMediaKey) return;
+		appliedInitialMediaKey = handoffKey;
+
+		const targetIndex = Math.max(0, Math.min(activePostIndex, posts.length - 1));
+		const targetPost = posts[targetIndex];
+		if (!targetPost) return;
+		const current = getEditorMediaIdsForPost(targetPost);
+		const next = mergeMediaIds(current, incoming);
+		const added = next.filter((id) => !current.includes(id));
+		if (incoming.some((id) => !next.includes(id))) {
+			error = m.media_upload_too_many({ maximum: composerMediaLimit });
+		}
+		if (added.length > 0) {
+			setEditorMediaIds(targetIndex, next);
+			await hydrateMediaMetadata(selectedWorkspaceId, added, true);
+			void generateMissingMediaAltText(added, getEditorContentForPost(targetPost));
+		}
+		finishVideoEditorMediaHandoff();
+	}
+
 	function openMediaPicker(postIndex: number) {
 		const post = posts[postIndex];
 		const target = post ? pasteMediaTargetForPost(post) : null;
@@ -2491,6 +2525,15 @@
 		if (!loadingWorkspaces && !isEditMode) {
 			void applyInitialComposerContext(dateParam, timeParam, workspaceParam, accountParams);
 		}
+	});
+
+	$effect(() => {
+		const mediaIds = initialMediaIds;
+		const workspaceParam = initialWorkspaceId;
+		if (loadingWorkspaces || mediaIds.length === 0 || !selectedWorkspaceId) return;
+		if (initialPublication && lastInitializedPublicationId !== initialPublication.id) return;
+		if (workspaceParam && workspaceParam !== selectedWorkspaceId) return;
+		void applyInitialMediaHandoff(mediaIds);
 	});
 
 	$effect(() => {
