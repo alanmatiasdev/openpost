@@ -153,19 +153,14 @@ export function calculateEdgeSnap(
 		: { snappedFrame: targetFrame, snapTarget: null, didSnap: false };
 }
 
-interface BuildSnapTargetsOptions {
+interface ItemSnapTargetOptions {
 	items: TimelineItem[];
 	tracks: TimelineTrack[];
 	transitions: TimelineTransition[];
-	markers: TimelineMarker[];
-	currentFrame: number;
-	durationInFrames: number;
-	fps: number;
-	zoomLevel: number;
 	excludeItemIds?: string[];
 }
 
-export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[] {
+function buildItemSnapTargets(options: ItemSnapTargetOptions): SnapTarget[] {
 	const excluded = new Set(options.excludeItemIds ?? []);
 	const visibleTrackIds = new Set(
 		effectiveMediaTracks(options.tracks)
@@ -213,6 +208,30 @@ export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[]
 			});
 		}
 	}
+	return targets;
+}
+
+export interface TimelineNavigationSnapPointOptions extends ItemSnapTargetOptions {
+	markers: TimelineMarker[];
+}
+
+export function timelineNavigationSnapPoints(
+	options: TimelineNavigationSnapPointOptions
+): number[] {
+	const points = new Set(buildItemSnapTargets(options).map((target) => target.frame));
+	for (const marker of options.markers) points.add(marker.frame);
+	return [...points].toSorted((left, right) => left - right);
+}
+
+interface BuildSnapTargetsOptions extends TimelineNavigationSnapPointOptions {
+	currentFrame: number;
+	durationInFrames: number;
+	fps: number;
+	zoomLevel: number;
+}
+
+export function buildSnapTargets(options: BuildSnapTargetsOptions): SnapTarget[] {
+	const targets = buildItemSnapTargets(options);
 
 	for (const frame of generateGridSnapPoints(
 		options.durationInFrames,

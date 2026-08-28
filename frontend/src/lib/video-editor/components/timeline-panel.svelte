@@ -166,6 +166,7 @@
 		buildSnapTargets,
 		calculateAdaptiveSnapThreshold,
 		calculateMoveSnap,
+		timelineNavigationSnapPoints,
 		type SnapTarget
 	} from '$lib/video-editor/timeline/snapping';
 	import {
@@ -2666,6 +2667,28 @@
 		} else if (matches('RATE_STRETCH_TOOL')) {
 			event.preventDefault();
 			toggleEditTool('rate-stretch');
+		} else if (matches('SLIP_TOOL')) {
+			event.preventDefault();
+			toggleEditTool('slip');
+		} else if (matches('SLIDE_TOOL')) {
+			event.preventDefault();
+			toggleEditTool('slide');
+		} else if (matches('SELECTION_TOOL')) {
+			event.preventDefault();
+			activeEditTool = null;
+			editPreviewStore.clear();
+		} else if (matches('PREVIOUS_SNAP_POINT', 'NEXT_SNAP_POINT')) {
+			event.preventDefault();
+			const points = timelineNavigationSnapPoints({
+				items: timelineStore.items,
+				tracks: timelineStore.tracks,
+				transitions: transitionsStore.list,
+				markers: timelineStore.markers
+			});
+			const frame = matches('NEXT_SNAP_POINT')
+				? points.find((point) => point > timelineStore.currentFrame)
+				: points.findLast((point) => point < timelineStore.currentFrame);
+			if (frame !== undefined) setCurrentFrame(frame);
 		}
 	}
 

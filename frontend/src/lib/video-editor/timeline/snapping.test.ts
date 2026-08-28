@@ -4,7 +4,8 @@ import {
 	buildSnapTargets,
 	calculateAdaptiveSnapThreshold,
 	calculateMoveSnap,
-	findNearestSnapTarget
+	findNearestSnapTarget,
+	timelineNavigationSnapPoints
 } from './snapping';
 
 const tracks: TimelineTrack[] = [
@@ -69,6 +70,30 @@ describe('timeline snapping', () => {
 		expect(targets).toContainEqual({ frame: 0, type: 'grid' });
 		expect(targets.some((target) => target.itemId === 'dragged')).toBe(false);
 		expect(targets.some((target) => target.itemId === 'hidden-item')).toBe(false);
+	});
+
+	it('builds deduplicated navigation points from visible edit edges and markers', () => {
+		const left = item('left', 'visible', 0, 100);
+		const right = item('right', 'visible', 100, 50);
+		expect(
+			timelineNavigationSnapPoints({
+				items: [left, right, item('hidden-item', 'hidden', 75, 20)],
+				tracks,
+				transitions: [
+					{
+						id: 'transition',
+						type: 'crossfade',
+						durationInFrames: 20,
+						fromItemId: left.id,
+						toItemId: right.id
+					}
+				],
+				markers: [
+					{ id: 'at-cut', frame: 100, color: '#fff' },
+					{ id: 'later', frame: 125, color: '#fff' }
+				]
+			})
+		).toEqual([0, 100, 125, 150]);
 	});
 
 	it('snaps the closer clip edge and keeps magnetic targets ahead of an equal grid target', () => {

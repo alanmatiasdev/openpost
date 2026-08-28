@@ -1388,6 +1388,63 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.zoomLevel).toBeCloseTo(1.15);
 	});
 
+	it('switches edit tools and seeks visible edit points through saved bindings', async () => {
+		const hiddenTrack = track('hidden-track', 'video', 2);
+		hiddenTrack.visible = false;
+		timelineStore._setTracks([...timelineStore.tracks, hiddenTrack]);
+		timelineStore._setItems([
+			...timelineStore.items,
+			item({ id: 'hidden-cut', trackId: hiddenTrack.id, from: 65, durationInFrames: 5 })
+		]);
+		addMarker(75);
+		const screen = await render(TimelinePanel, { onedit: vi.fn() });
+		const key = (value: string, code: string, altKey = false, target: EventTarget = window) =>
+			target.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: value,
+					code,
+					altKey,
+					bubbles: true,
+					cancelable: true
+				})
+			);
+
+		key('y', 'KeyY');
+		await expect
+			.element(screen.getByRole('button', { name: 'Slip clip source' }))
+			.toHaveAttribute('aria-pressed', 'true');
+		key('u', 'KeyU');
+		await expect
+			.element(screen.getByRole('button', { name: 'Slide clip between adjacent edits' }))
+			.toHaveAttribute('aria-pressed', 'true');
+		key('v', 'KeyV');
+		await expect
+			.element(screen.getByRole('button', { name: 'Slide clip between adjacent edits' }))
+			.toHaveAttribute('aria-pressed', 'false');
+
+		setCurrentFrame(61);
+		key('ArrowDown', 'ArrowDown');
+		expect(timelineStore.currentFrame).toBe(75);
+		key('ArrowUp', 'ArrowUp');
+		expect(timelineStore.currentFrame).toBe(60);
+
+		keyboardShortcuts.setBinding('NEXT_SNAP_POINT', 'alt+8');
+		key('ArrowDown', 'ArrowDown');
+		expect(timelineStore.currentFrame).toBe(60);
+		key('8', 'Digit8', true);
+		expect(timelineStore.currentFrame).toBe(75);
+
+		const input = document.createElement('input');
+		screen.container.append(input);
+		input.focus();
+		key('y', 'KeyY', false, input);
+		key('ArrowUp', 'ArrowUp', false, input);
+		await expect
+			.element(screen.getByRole('button', { name: 'Slip clip source' }))
+			.toHaveAttribute('aria-pressed', 'false');
+		expect(timelineStore.currentFrame).toBe(75);
+	});
+
 	it('scrubs the ruler with pointer drag and precise keyboard steps', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const region = document.querySelector<HTMLElement>('[role="region"][aria-label="Timeline"]');

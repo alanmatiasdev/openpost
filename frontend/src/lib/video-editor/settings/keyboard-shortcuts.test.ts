@@ -56,6 +56,15 @@ describe('keyboard shortcuts', () => {
 		).toEqual([]);
 	});
 
+	it('includes FreeCut-compatible timeline tool and edit-point navigation bindings', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(bindings.SELECTION_TOOL).toBe('v');
+		expect(bindings.SLIP_TOOL).toBe('y');
+		expect(bindings.SLIDE_TOOL).toBe('u');
+		expect(bindings.PREVIOUS_SNAP_POINT).toBe('up');
+		expect(bindings.NEXT_SNAP_POINT).toBe('down');
+	});
+
 	it('reports command and browser conflicts before a binding is replaced', () => {
 		const bindings = resolveEditorShortcuts({ PLAY_PAUSE: 'mod+s' });
 		expect(findShortcutConflicts(bindings, 'mod+s', 'PLAY_PAUSE')).toEqual(['SAVE']);
