@@ -34,7 +34,7 @@ interface ReactiveTransportState {
 const logger = createLogger('EditorSession');
 
 class EditorSession {
-	project = $state<Project | null>(null);
+	private projectState = $state<Project | null>(null);
 	loading = $state(true);
 	loadError = $state('');
 	saving = $state(false);
@@ -59,6 +59,16 @@ class EditorSession {
 			logger.error('periodic save failed', error);
 		}
 	);
+
+	get project(): Project | null {
+		if (!this.projectState) return null;
+		return { ...this.projectState, metadata: sequenceStore.rootResolution };
+	}
+
+	set project(project: Project | null) {
+		this.projectState = project;
+		if (project) sequenceStore._setRootResolution(project.metadata);
+	}
 
 	constructor() {
 		this.clock.on('framechange', (frame) => timelineStore._setCurrentFrame(frame));
@@ -261,6 +271,7 @@ class EditorSession {
 							0
 						) / project.metadata.fps,
 					timeline,
+					metadata: project.metadata,
 					animationPresets: project.animationPresets
 				});
 				this.saveError = '';

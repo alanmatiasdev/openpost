@@ -176,11 +176,24 @@ export const sequenceStore = {
 			? state.compositions.find((composition) => composition.id === state.activeSequenceId)
 			: undefined;
 	},
+	get rootResolution(): ProjectResolution {
+		return state.rootResolution;
+	},
 	get activeWidth(): number {
 		return sequenceStore.activeSequence?.width ?? state.rootResolution.width;
 	},
 	get activeHeight(): number {
 		return sequenceStore.activeSequence?.height ?? state.rootResolution.height;
+	},
+	_setRootResolution(resolution: ProjectResolution): void {
+		state.rootResolution = copy(resolution);
+	},
+	updateRootResolution(patch: Partial<ProjectResolution>): boolean {
+		if (state.activeSequenceId !== null) return false;
+		const next = { ...state.rootResolution, ...copy(patch) };
+		if (equal(next, state.rootResolution)) return false;
+		state.rootResolution = next;
+		return true;
 	},
 	load(timeline: ProjectTimeline, rootResolution: ProjectResolution): void {
 		state.compositions = copy(timeline.compositions ?? []).map((composition) => {

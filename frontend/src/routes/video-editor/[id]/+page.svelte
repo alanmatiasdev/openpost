@@ -53,6 +53,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import MotionPresetsPanel from '$lib/video-editor/components/motion-presets-panel.svelte';
 	import TextMotionPanel from '$lib/video-editor/components/text-motion-panel.svelte';
 	import ClipPropertiesPanel from '$lib/video-editor/components/clip-properties-panel.svelte';
+	import ProjectCanvasPanel from '$lib/video-editor/components/project-canvas-panel.svelte';
 	import TransitionPropertiesPanel from '$lib/video-editor/components/transition-properties-panel.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
 	import RenderQueueController from '$lib/video-editor/components/render-queue-controller.svelte';
@@ -1448,6 +1449,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											{m.video_editor_cleanup_silence_short()}
 										</Button>
 									</div>
+								{:else if sequenceStore.activeSequenceId === null}
+									<ProjectCanvasPanel onedit={() => editorSession.scheduleAutosave()} />
 								{:else}
 									<p class="px-1 py-3 text-sm text-[oklch(0.62_0.01_55)]">
 										{m.video_editor_select_clip()}

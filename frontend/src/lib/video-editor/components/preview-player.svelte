@@ -114,11 +114,12 @@
 		onedit
 	}: { selectedItemId?: string | null; selectedItemIds?: string[]; onedit: () => void } = $props();
 	const project = $derived(editorSession.project);
-	const canvasWidth = $derived(
-		sequenceStore.activeSequence?.width ?? project?.metadata.width ?? sequenceStore.activeWidth
-	);
-	const canvasHeight = $derived(
-		sequenceStore.activeSequence?.height ?? project?.metadata.height ?? sequenceStore.activeHeight
+	const canvasWidth = $derived(sequenceStore.activeWidth);
+	const canvasHeight = $derived(sequenceStore.activeHeight);
+	const canvasBackground = $derived(
+		sequenceStore.activeSequence?.backgroundColor ??
+			sequenceStore.rootResolution.backgroundColor ??
+			'#000000'
 	);
 	const aspect = $derived(`${canvasWidth} / ${canvasHeight}`);
 	const displayFrame = $derived(
@@ -506,18 +507,10 @@
 		const inputs = pendingStackInputs;
 		if (!stack || !projectState || !inputs || !needsStackedComposition) return;
 		const renderStartedAt = performance.now();
-		stack.beginFrame(
-			inputs.width,
-			inputs.height,
-			projectState.metadata.backgroundColor ?? '#000000'
-		);
+		stack.beginFrame(inputs.width, inputs.height, canvasBackground);
 		const comparisonMode = colorPreviewStore.comparisonMode;
 		if (comparisonMode === 'split' && compare) {
-			compare.beginFrame(
-				inputs.width,
-				inputs.height,
-				projectState.metadata.backgroundColor ?? '#000000'
-			);
+			compare.beginFrame(inputs.width, inputs.height, canvasBackground);
 		}
 		const frame = displayFrame;
 		const resolveVisualItem = (item: TimelineItem, beforeColor: boolean) => {

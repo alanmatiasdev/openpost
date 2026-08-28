@@ -17,6 +17,8 @@ import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { createTransformParentBinding } from '../timeline/transform-parenting';
 import { resolveAnimatedItemAt } from '../timeline/animated-properties';
 import { createMotionAnimationLayer } from '../timeline/motion-layer-eval';
+import { sequenceStore } from '../sequences/sequence-store.svelte';
+import { updateProjectCanvas } from '../project/canvas-settings';
 
 function track(id: string, order: number): TimelineTrack {
 	return {
@@ -197,6 +199,33 @@ function gradedProject(): Project {
 }
 
 describe('PreviewPlayer backdrop composition', () => {
+	it('resizes the program monitor with project canvas undo and redo', async () => {
+		const project: Project = {
+			id: 'canvas-project',
+			name: 'Canvas project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 0,
+			metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000000' },
+			timeline: { tracks: [], items: [] }
+		};
+		editorSession.project = project;
+		sequenceStore.load(project.timeline!, project.metadata);
+		const screen = await render(PreviewPlayer, { selectedItemId: null, onedit: vi.fn() });
+		const monitor = screen.container.querySelector<HTMLElement>('[data-program-monitor]');
+		expect(monitor).not.toBeNull();
+		if (!monitor) return;
+		expect(monitor.style.aspectRatio).toBe('1920 / 1080');
+
+		expect(updateProjectCanvas({ width: 1080, height: 1920 })).toBe(true);
+		await vi.waitFor(() => expect(monitor.style.aspectRatio).toBe('1080 / 1920'));
+		commandHistory.undo();
+		await vi.waitFor(() => expect(monitor.style.aspectRatio).toBe('1920 / 1080'));
+		commandHistory.redo();
+		await vi.waitFor(() => expect(monitor.style.aspectRatio).toBe('1080 / 1920'));
+	});
+
 	it('commits a layered canvas move to the editable base without double-counting motion', async () => {
 		await page.viewport(1000, 700);
 		const item = colorLayer('layered', 'video-track', '#ff0000');
