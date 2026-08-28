@@ -1,6 +1,6 @@
 <!-- Media pool list: imported sources with probe status; click adds to timeline -->
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import {
@@ -15,6 +15,7 @@
 	import {
 		deleteSequence,
 		duplicateSequence,
+		renameSequence,
 		sequenceDeletionImpact,
 		switchSequence
 	} from '$lib/video-editor/sequences/sequence-actions';
@@ -34,6 +35,7 @@
 	import LayersIcon from '@lucide/svelte/icons/layers-3';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import MoreIcon from '@lucide/svelte/icons/ellipsis';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
@@ -120,6 +122,10 @@
 	let sequenceThumbnailUrls = $state<Record<string, string>>({});
 	let sequenceThumbnailGeneration = 0;
 	let deleteTarget = $state<SubComposition | null>(null);
+	let editingSequenceId = $state<string | null>(null);
+	let sequenceNameDraft = $state('');
+	let sequenceRenameInput = $state<HTMLInputElement | null>(null);
+	let sequenceRenameCancelled = false;
 	let deleteReferenceCount = $state(0);
 	let deleteDialogOpen = $state(false);
 	let mediaDeleteTarget = $state<MediaMetadata | null>(null);
@@ -491,6 +497,34 @@
 		);
 	}
 
+	async function beginSequenceRename(sequence: SubComposition): Promise<void> {
+		editingSequenceId = sequence.id;
+		sequenceNameDraft = sequence.name;
+		sequenceRenameCancelled = false;
+		await tick();
+		sequenceRenameInput?.focus();
+		sequenceRenameInput?.select();
+	}
+
+	function cancelSequenceRename(): void {
+		sequenceRenameCancelled = true;
+		editingSequenceId = null;
+	}
+
+	function commitSequenceRename(sequence: SubComposition): void {
+		if (sequenceRenameCancelled) {
+			sequenceRenameCancelled = false;
+			return;
+		}
+		if (
+			sequenceNameDraft.trim() !== sequence.name &&
+			renameSequence(sequence.id, sequenceNameDraft)
+		) {
+			editorSession.scheduleAutosave();
+		}
+		editingSequenceId = null;
+	}
+
 	function confirmSequenceDelete(sequence: SubComposition): void {
 		deleteTarget = sequence;
 		deleteReferenceCount = sequenceDeletionImpact(sequence.id).totalReferenceCount;
@@ -620,7 +654,7 @@
 							{#snippet child({ props })}
 								<li
 									{...props}
-									draggable="true"
+									draggable={editingSequenceId !== sequence.id}
 									ondragstart={(event) => startCompositionDrag(event, sequence)}
 									ondragend={clearActiveMediaDrag}
 									title={m.video_editor_media_drag_hint()}
@@ -639,17 +673,37 @@
 											<LayersIcon class="size-4" aria-hidden="true" />
 										{/if}
 									</span>
-									<button
-										type="button"
-										class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-										title={m.video_editor_sequence_open()}
-										onclick={() => openSequence(sequence.id)}
-									>
-										<span class="block truncate text-xs font-medium">{sequence.name}</span>
-										<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
-											{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
-										</span>
-									</button>
+									{#if editingSequenceId === sequence.id}
+										<Input
+											bind:ref={sequenceRenameInput}
+											class="h-9 min-w-0 flex-1 bg-[oklch(0.16_0.01_50)] px-2 text-xs"
+											aria-label={m.common_rename()}
+											bind:value={sequenceNameDraft}
+											onblur={() => commitSequenceRename(sequence)}
+											onkeydown={(event) => {
+												if (event.key === 'Enter') {
+													event.preventDefault();
+													commitSequenceRename(sequence);
+												}
+												if (event.key === 'Escape') {
+													event.preventDefault();
+													cancelSequenceRename();
+												}
+											}}
+										/>
+									{:else}
+										<button
+											type="button"
+											class="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+											title={m.video_editor_sequence_open()}
+											onclick={() => openSequence(sequence.id)}
+										>
+											<span class="block truncate text-xs font-medium">{sequence.name}</span>
+											<span class="block text-[10px] text-[oklch(0.62_0.015_55)]">
+												{sequence.durationInFrames}f · {sequence.width}×{sequence.height}
+											</span>
+										</button>
+									{/if}
 									<DropdownMenu.Root>
 										<DropdownMenu.Trigger>
 											{#snippet child({ props })}
@@ -670,6 +724,10 @@
 												{m.video_editor_media_place()}
 											</DropdownMenu.Item>
 											<DropdownMenu.Separator />
+											<DropdownMenu.Item onclick={() => void beginSequenceRename(sequence)}>
+												<PencilIcon class="size-4" aria-hidden="true" />
+												{m.common_rename()}
+											</DropdownMenu.Item>
 											<DropdownMenu.Item onclick={() => duplicateComposition(sequence)}>
 												<CopyIcon class="size-4" aria-hidden="true" />
 												{m.video_editor_sequence_duplicate()}
@@ -697,6 +755,10 @@
 								{m.video_editor_media_place()}
 							</ContextMenu.Item>
 							<ContextMenu.Separator />
+							<ContextMenu.Item onclick={() => void beginSequenceRename(sequence)}>
+								<PencilIcon class="size-4" aria-hidden="true" />
+								{m.common_rename()}
+							</ContextMenu.Item>
 							<ContextMenu.Item onclick={() => duplicateComposition(sequence)}>
 								<CopyIcon class="size-4" aria-hidden="true" />
 								{m.video_editor_sequence_duplicate()}

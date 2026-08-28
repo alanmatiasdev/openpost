@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { editorSession } from '../editor.svelte';
 import { mediaPool } from '../media/pool.svelte';
@@ -486,6 +486,29 @@ describe('MediaPoolList', () => {
 			},
 			{ timeout: 5_000 }
 		);
+		const sequenceRow = screen.getByText('Scene').element().closest('li')!;
+		sequenceRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Rename' }).click();
+		const rename = screen.getByRole('textbox', { name: 'Rename' });
+		await rename.fill('Opening');
+		await userEvent.keyboard('{Enter}');
+
+		await expect.element(screen.getByText('Opening')).toBeVisible();
+		expect(sequenceStore.projectTimeline().items[0]?.label).toBe('Opening');
+		expect(commandHistory.getLastCommandType()).toBe('RENAME_SEQUENCE');
+
+		commandHistory.undo();
+		await expect.element(screen.getByText('Scene')).toBeVisible();
+		expect(sequenceStore.projectTimeline().items[0]?.label).toBe('Scene');
+
+		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
+		await expect.element(screen.getByRole('menuitem', { name: 'Rename' })).toBeVisible();
+		await screen.getByRole('menuitem', { name: 'Rename' }).click();
+		await screen.getByRole('textbox', { name: 'Rename' }).fill('Cancelled name');
+		await userEvent.keyboard('{Escape}');
+		await expect.element(screen.getByText('Scene')).toBeVisible();
+		expect(commandHistory.undoStack).toHaveLength(0);
+
 		await screen.getByRole('button', { name: 'Sequence options: Scene' }).click();
 		await screen.getByRole('menuitem', { name: 'Place on timeline' }).click();
 		expect(mediaPlacement.request?.payload).toMatchObject({
