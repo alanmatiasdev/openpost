@@ -194,6 +194,11 @@ describe('TimelinePanel progressive controls', () => {
 		});
 		await screen.getByRole('menuitem', { name: /^Delete and leave gap/ }).click();
 		expect(ondelete).toHaveBeenCalledOnce();
+		await vi.waitFor(() =>
+			expect(
+				document.querySelector('[data-slot="context-menu-content"][data-state="open"]')
+			).toBeNull()
+		);
 
 		clip!.focus();
 		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
@@ -241,6 +246,107 @@ describe('TimelinePanel progressive controls', () => {
 		expect(timelineStore.items).toHaveLength(1);
 		expect(commandHistory.getLastCommandType()).toBe('JOIN_ITEMS');
 		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('routes media tools to the exact clips opened by right click', async () => {
+		await page.viewport(720, 720);
+		const onreverseitems = vi.fn();
+		const onsplitscenes = vi.fn();
+		const onaicaptions = vi.fn();
+		const onopenspeechcleanup = vi.fn();
+		const oncreatecompound = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			onreverseitems,
+			onsplitscenes,
+			onaicaptions,
+			onopenspeechcleanup,
+			oncreatecompound
+		});
+		const clip = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="video"] > button'
+		);
+		expect(clip).not.toBeNull();
+
+		await userEvent.click(clip!, { button: 'right' });
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Create compound clip' }))
+			.toBeVisible();
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		await expect.element(screen.getByRole('menuitem', { name: /^Reverse clip/ })).toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Generate AI captions' }))
+			.toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: 'Fillers' })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: 'Silence' })).toBeVisible();
+		screen
+			.getByRole('menuitem', { name: /^Reverse clip/ })
+			.element()
+			.click();
+		expect(onreverseitems).toHaveBeenCalledWith(['video'], true);
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }).element().click();
+		expect(onsplitscenes).toHaveBeenCalledWith('video');
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Generate AI captions' }).element().click();
+		expect(onaicaptions).toHaveBeenCalledWith('video');
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Fillers' }).element().click();
+		expect(onopenspeechcleanup).toHaveBeenCalledWith('fillers', ['video']);
+
+		await userEvent.click(clip!, { button: 'right' });
+		await screen.getByRole('menuitem', { name: 'Create compound clip' }).click();
+		expect(oncreatecompound).toHaveBeenCalledWith(['video']);
+	});
+
+	it('offers text voice and compound dissolve for compatible clips', async () => {
+		const oncreatevoice = vi.fn();
+		const ondissolvecompound = vi.fn();
+		timelineStore._setItems([
+			item({
+				id: 'title',
+				type: 'text',
+				text: '  Read this aloud.  ',
+				label: 'Title'
+			}),
+			item({
+				id: 'compound',
+				type: 'composition',
+				compositionId: 'sequence',
+				from: 90
+			})
+		]);
+		const screen = await render(TimelinePanel, {
+			onedit: vi.fn(),
+			oncreatevoice,
+			ondissolvecompound
+		});
+		const title = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="title"] > button'
+		);
+		const compound = screen.container.querySelector<HTMLButtonElement>(
+			'[data-timeline-item-id="compound"] > button'
+		);
+		expect(title).not.toBeNull();
+		expect(compound).not.toBeNull();
+
+		await userEvent.click(title!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		await screen.getByRole('menuitem', { name: 'Create voice from text' }).click();
+		expect(oncreatevoice).toHaveBeenCalledWith('title', 'Read this aloud.');
+
+		await userEvent.click(compound!, { button: 'right' });
+		await screen.getByRole('menuitem', { name: 'Dissolve compound clip' }).click();
+		expect(ondissolvecompound).toHaveBeenCalledWith('compound');
 	});
 
 	it('targets and removes a transition instead of opening the track menu', async () => {

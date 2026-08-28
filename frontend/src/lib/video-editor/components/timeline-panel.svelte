@@ -85,6 +85,7 @@
 		visibleFilmstripTargetIndices
 	} from '$lib/video-editor/media/filmstrip-plan';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { getTextItemPlainText } from '$lib/video-editor/typography/text-item-spans';
 	import { createTimelineAudioSkimController } from '$lib/video-editor/audio/audio-skim-controller.svelte';
 	import { previewPlaybackSettings } from '$lib/video-editor/preview/playback-settings.svelte';
 	import {
@@ -319,6 +320,13 @@
 		ontransitionbreak = () => {},
 		onopencomposition = () => {},
 		onfreezeframe = () => {},
+		onreverseitems = () => {},
+		onsplitscenes = () => {},
+		onaicaptions = () => {},
+		onopenspeechcleanup = () => {},
+		oncreatevoice = () => {},
+		oncreatecompound = () => {},
+		ondissolvecompound = () => {},
 		oncopyselection = () => false,
 		oncutselection = () => false,
 		onpasteat = () => false,
@@ -326,6 +334,7 @@
 		ondeleteselection = () => {},
 		onrippledeleteselection = () => {},
 		freezeFramePending = false,
+		sceneScanPending = false,
 		canvasWidth = 1920,
 		canvasHeight = 1080,
 		selectedItemId = $bindable(null),
@@ -336,6 +345,13 @@
 		ontransitionbreak?: (count: number) => void;
 		onopencomposition?: (compositionId: string) => void;
 		onfreezeframe?: (itemId: string) => void;
+		onreverseitems?: (itemIds: string[], isReversed: boolean) => void;
+		onsplitscenes?: (itemId: string) => void;
+		onaicaptions?: (itemId: string) => void;
+		onopenspeechcleanup?: (mode: 'fillers' | 'silence', itemIds: string[]) => void;
+		oncreatevoice?: (itemId: string, text: string) => void;
+		oncreatecompound?: (itemIds: string[]) => void;
+		ondissolvecompound?: (itemId: string) => void;
 		oncopyselection?: () => boolean;
 		oncutselection?: () => boolean;
 		onpasteat?: (frame: number, trackId: string | null) => boolean;
@@ -343,6 +359,7 @@
 		ondeleteselection?: () => void;
 		onrippledeleteselection?: () => void;
 		freezeFramePending?: boolean;
+		sceneScanPending?: boolean;
 		canvasWidth?: number;
 		canvasHeight?: number;
 		selectedItemId?: string | null;
@@ -1500,6 +1517,22 @@
 		const trackId = element?.closest<HTMLElement>('[data-track]')?.dataset.track ?? null;
 		const frame = frameFromClientX(event.clientX) ?? timelineStore.currentFrame;
 		timelineContextTarget = { kind: 'space', frame, trackId };
+	}
+
+	function openTimelineContextMenuFromKeyboard(event: KeyboardEvent): void {
+		if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const target = event.target instanceof HTMLElement ? event.target : event.currentTarget;
+		const bounds = target.getBoundingClientRect();
+		target.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: bounds.left + bounds.width / 2,
+				clientY: bounds.top + bounds.height / 2
+			})
+		);
 	}
 
 	function addContextMarker(frame: number): void {
@@ -3846,6 +3879,26 @@
 			? timelineStore.itemById.get(timelineContextTarget.primaryId)
 			: undefined
 	);
+	const contextItems = $derived.by(() =>
+		timelineContextTarget?.kind === 'items'
+			? timelineContextTarget.itemIds
+					.map((id) => timelineStore.itemById.get(id))
+					.filter((item): item is TimelineItem => item !== undefined)
+			: []
+	);
+	const contextMediaItemIds = $derived(
+		contextItems
+			.filter((item) => item.type === 'video' || item.type === 'audio')
+			.map((item) => item.id)
+	);
+	const contextVoiceText = $derived(
+		contextPrimaryItem?.type === 'text' ? getTextItemPlainText(contextPrimaryItem).trim() : ''
+	);
+	const hasContextEditTools = $derived(
+		contextPrimaryItem?.type === 'video' ||
+			contextPrimaryItem?.type === 'audio' ||
+			(contextPrimaryItem?.type === 'text' && contextVoiceText.length > 0)
+	);
 	const contextMarker = $derived(
 		timelineContextTarget?.kind === 'marker'
 			? timelineStore.markers.find((marker) => marker.id === timelineContextTarget.markerId)
@@ -3858,6 +3911,17 @@
 			return item && !isTrackEffectivelyLocked(item.trackId, timelineStore.tracks);
 		});
 	});
+	const contextItemsAllEditable = $derived(
+		contextItems.length > 0 &&
+			contextItems.every((item) => !isTrackEffectivelyLocked(item.trackId, timelineStore.tracks))
+	);
+	const contextMediaItemsEditable = $derived(
+		contextItems.some(
+			(item) =>
+				(item.type === 'video' || item.type === 'audio') &&
+				!isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)
+		)
+	);
 	const canJoinSelectedItems = $derived.by(() => {
 		const lockedTrackIds = new Set(
 			effectiveMediaTracks(timelineStore.tracks)
@@ -3923,8 +3987,7 @@
 	const bentoEligibleIds = $derived(eligibleBentoItemIds(selectedItemIds));
 	const hasContextClipActions = $derived(
 		Boolean(
-			contextPrimaryItem?.compositionId ||
-			contextPrimaryItem?.type === 'video' ||
+			contextPrimaryItem ||
 			canJoinSelectedItems ||
 			bentoEligibleIds.length >= 2 ||
 			captionConsolidationTarget ||
@@ -4724,6 +4787,7 @@
 				tabindex="-1"
 				data-media-placement-surface
 				oncontextmenucapture={prepareTimelineContextMenu}
+				onkeydown={openTimelineContextMenuFromKeyboard}
 				onscroll={scheduleTimelineViewportUpdate}
 				onpointerdown={(event) => {
 					clearHoverPreview();
@@ -5501,6 +5565,67 @@
 				>
 					{m.video_editor_sequence_open()}
 				</ContextMenu.Item>
+				<ContextMenu.Item
+					disabled={!contextItemsAllEditable}
+					onclick={() => ondissolvecompound(contextPrimaryItem.id)}
+				>
+					{m.video_editor_dissolve_compound()}
+				</ContextMenu.Item>
+			{:else if contextPrimaryItem}
+				<ContextMenu.Item
+					disabled={!contextItemsAllEditable}
+					onclick={() => oncreatecompound(contextItems.map((item) => item.id))}
+				>
+					{m.video_editor_create_compound()}
+				</ContextMenu.Item>
+			{/if}
+			{#if hasContextEditTools}
+				<ContextMenu.Sub>
+					<ContextMenu.SubTrigger>{m.video_editor_tools()}</ContextMenu.SubTrigger>
+					<ContextMenu.SubContent class="video-editor-theme w-56">
+						{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
+							<ContextMenu.Item
+								disabled={!contextMediaItemsEditable}
+								onclick={() =>
+									onreverseitems(contextMediaItemIds, contextPrimaryItem?.isReversed !== true)}
+							>
+								{m.video_editor_clip_reverse()}
+								<ContextMenu.Shortcut>
+									{contextPrimaryItem?.isReversed
+										? m.video_editor_clip_reverse_on()
+										: m.video_editor_clip_reverse_off()}
+								</ContextMenu.Shortcut>
+							</ContextMenu.Item>
+							{#if contextPrimaryItem?.type === 'video'}
+								<ContextMenu.Item
+									disabled={sceneScanPending ||
+										isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)}
+									onclick={() => onsplitscenes(contextPrimaryItem.id)}
+								>
+									{m.video_editor_scene_split()}
+								</ContextMenu.Item>
+							{/if}
+							{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
+								<ContextMenu.Item onclick={() => onaicaptions(contextPrimaryItem.id)}>
+									{m.video_editor_ai_captions_action()}
+								</ContextMenu.Item>
+							{/if}
+							<ContextMenu.Separator />
+							<ContextMenu.Item onclick={() => onopenspeechcleanup('fillers', contextMediaItemIds)}>
+								{m.video_editor_cleanup_fillers_short()}
+							</ContextMenu.Item>
+							<ContextMenu.Item onclick={() => onopenspeechcleanup('silence', contextMediaItemIds)}>
+								{m.video_editor_cleanup_silence_short()}
+							</ContextMenu.Item>
+						{:else if contextPrimaryItem?.type === 'text' && contextVoiceText}
+							<ContextMenu.Item
+								onclick={() => oncreatevoice(contextPrimaryItem.id, contextVoiceText)}
+							>
+								{m.video_editor_text_create_voice()}
+							</ContextMenu.Item>
+						{/if}
+					</ContextMenu.SubContent>
+				</ContextMenu.Sub>
 			{/if}
 			{#if contextPrimaryItem?.type === 'video'}
 				<ContextMenu.Item

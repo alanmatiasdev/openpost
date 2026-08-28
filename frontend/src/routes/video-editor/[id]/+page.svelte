@@ -22,7 +22,8 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		removeMarker,
 		setCurrentFrame,
 		toggleMarkerAtPlayhead,
-		setItemSpeed
+		setItemSpeed,
+		setItemsReversed
 	} from '$lib/video-editor/timeline/actions/items';
 	import { markerAfter, markerBefore } from '$lib/video-editor/timeline/markers';
 	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
@@ -42,6 +43,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { transcriptionService } from '$lib/video-editor/transcript/transcription-service.svelte';
 	import { aiCaptionService } from '$lib/video-editor/transcript/ai-caption-service.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
+	import { conformReversePreview } from '$lib/video-editor/media/reverse-conform-service';
 	import { renderVideoExport } from '$lib/video-editor/media/render-execution';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -392,9 +394,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedTransitionId = null;
 	}
 
-	function handleCreateCompound(): void {
-		const ids =
-			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+	function createCompoundForItems(ids: string[]): void {
 		const compositionId = createCompoundClip(ids, m.video_editor_compound_default());
 		if (!compositionId) return;
 		selectedItemIds = timelineStore.items
@@ -405,13 +405,22 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		showToast(m.video_editor_compound_created(), 'success');
 	}
 
-	function handleDissolveCompound(): void {
-		if (!selectedItemId) return;
-		const restoredIds = dissolveCompoundClip(selectedItemId);
+	function handleCreateCompound(): void {
+		createCompoundForItems(
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : []
+		);
+	}
+
+	function dissolveCompoundItem(itemId: string): void {
+		const restoredIds = dissolveCompoundClip(itemId);
 		if (restoredIds.length === 0) return;
 		selectedItemIds = restoredIds;
 		selectedItemId = restoredIds[0] ?? null;
 		editorSession.scheduleAutosave();
+	}
+
+	function handleDissolveCompound(): void {
+		if (selectedItemId) dissolveCompoundItem(selectedItemId);
 	}
 
 	function activeRenderProject() {
@@ -547,11 +556,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		if (selectedItemId) transcriptionService.cancelForItem(selectedItemId);
 	}
 
-	async function handleAiCaptions(): Promise<void> {
-		if (!selectedItemId) return;
+	async function handleAiCaptions(itemId: string | null = selectedItemId): Promise<void> {
+		if (!itemId) return;
 		aiCaptionError = null;
 		try {
-			await aiCaptionService.enqueue(selectedItemId);
+			await aiCaptionService.enqueue(itemId);
 			editorSession.scheduleAutosave();
 			showToast(m.video_editor_ai_captions_done(), 'success');
 		} catch (err) {
@@ -594,6 +603,22 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		if (!item || item.type === 'text' || item.type === 'subtitle') return;
 		setItemSpeed(item.id, Math.round((item.speed ?? 1) * multiplier * 100) / 100);
 		editorSession.scheduleAutosave();
+	}
+
+	function handleReverseItems(itemIds: string[], isReversed: boolean): void {
+		const updatedIds = setItemsReversed(itemIds, isReversed);
+		if (updatedIds.length === 0) return;
+		editorSession.scheduleAutosave();
+		if (!isReversed) return;
+		const mediaIds = new Set<string>();
+		for (const id of updatedIds) {
+			const item = timelineStore.itemById.get(id);
+			if (item?.type === 'video' && item.mediaId) mediaIds.add(item.mediaId);
+		}
+		for (const mediaId of mediaIds) {
+			const media = mediaPool.get(mediaId);
+			if (media) void conformReversePreview(media).catch(() => undefined);
+		}
 	}
 
 	const selectedSupportsEffects = $derived(
@@ -722,9 +747,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	let scanningScenes = $state(false);
-	async function handleAutoSplitScenes(): Promise<void> {
-		if (!selectedItemId || scanningScenes) return;
-		const item = timelineStore.itemById.get(selectedItemId);
+	async function handleAutoSplitScenes(itemId: string | null = selectedItemId): Promise<void> {
+		if (!itemId || scanningScenes) return;
+		const item = timelineStore.itemById.get(itemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
 		if (!item || !media) return;
 		scanningScenes = true;
@@ -1360,7 +1385,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											variant="outline"
 											class="mt-3 min-h-11 w-full lg:min-h-8"
 											disabled={scanningScenes}
-											onclick={handleAutoSplitScenes}
+											onclick={() => void handleAutoSplitScenes()}
 										>
 											{#if scanningScenes}
 												<LoaderIcon
@@ -1569,10 +1594,18 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						bind:selectedItemIds
 						bind:selectedTransitionId
 						freezeFramePending={freezingItemId !== null}
+						sceneScanPending={scanningScenes}
 						canvasWidth={renderProject?.metadata.width ?? 1920}
 						canvasHeight={renderProject?.metadata.height ?? 1080}
 						onedit={() => editorSession.scheduleAutosave()}
 						onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
+						onreverseitems={handleReverseItems}
+						onsplitscenes={(itemId) => void handleAutoSplitScenes(itemId)}
+						onaicaptions={(itemId) => void handleAiCaptions(itemId)}
+						onopenspeechcleanup={openAgentSpeechCleanup}
+						oncreatevoice={openTextVoice}
+						oncreatecompound={createCompoundForItems}
+						ondissolvecompound={dissolveCompoundItem}
 						oncopyselection={() => copyTimelineSelection(false)}
 						oncutselection={() => copyTimelineSelection(true)}
 						onpasteat={(frame, trackId) => pasteTimelineClipboard(frame, trackId)}
