@@ -1,65 +1,20 @@
-import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { changelogFragmentEntries, parseChangelogFragment } from "./changelog-fragments.mjs";
 
 const changesDir = resolve("changes");
 const changelogPath = resolve("CHANGELOG.md");
 
-const fragmentPattern = /^.+\.md$/u;
-const groupPattern = /^### (.+)$/u;
-const itemPattern = /^-\s+(.+)$/u;
-
-const entries = readdirSync(changesDir)
-  .filter((name) => name !== "README.md" && fragmentPattern.test(name))
-  .sort();
+const entries = changelogFragmentEntries(changesDir);
 if (entries.length === 0) {
   process.stdout.write("changelog: no fragments to merge\n");
   process.exit(0);
 }
 
-function parseFragment(entry, content) {
-  const groups = new Map();
-  let currentGroup = null;
-  let currentItems = null;
-  let currentGroupItemCount = 0;
-
-  for (const rawLine of content.split(/\r?\n/u)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    const groupMatch = groupPattern.exec(line);
-    if (groupMatch) {
-      if (currentGroup !== null && currentGroupItemCount === 0) {
-        throw new Error(`changelog fragment ${entry} has an empty ${currentGroup} group`);
-      }
-      currentGroup = groupMatch[1];
-      currentItems = groups.get(currentGroup) ?? [];
-      groups.set(currentGroup, currentItems);
-      currentGroupItemCount = 0;
-      continue;
-    }
-
-    const itemMatch = itemPattern.exec(line);
-    if (itemMatch && currentItems) {
-      currentItems.push(itemMatch[1]);
-      currentGroupItemCount += 1;
-      continue;
-    }
-
-    throw new Error(`changelog fragment ${entry} must contain only ### groups and bullet items`);
-  }
-
-  if (currentGroup !== null && currentGroupItemCount === 0) {
-    throw new Error(`changelog fragment ${entry} has an empty ${currentGroup} group`);
-  }
-  if (groups.size === 0) {
-    throw new Error(`changelog fragment ${entry} has no grouped items`);
-  }
-  return groups;
-}
-
 const parsedFragments = entries.map((entry) => [
   entry,
-  parseFragment(entry, readFileSync(resolve(changesDir, entry), "utf8")),
+  parseChangelogFragment(entry, readFileSync(resolve(changesDir, entry), "utf8")),
 ]);
 const byGroup = new Map();
 for (const [, groups] of parsedFragments) {

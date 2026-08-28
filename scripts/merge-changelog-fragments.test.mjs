@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(new URL("./merge-changelog-fragments.mjs", import.meta.url));
+const checkScriptPath = fileURLToPath(new URL("./check-changelog.mjs", import.meta.url));
 const prepareScriptPath = fileURLToPath(
   new URL("./prepare-release-changelog.mjs", import.meta.url),
 );
@@ -68,4 +69,26 @@ test("release preparation rejects malformed fragments without deleting them", as
   assert.equal(await readFile(path.join(root, "CHANGELOG.md"), "utf8"), changelog);
   assert.match(await readFile(path.join(root, "changes", "123.md"), "utf8"), /Fixed one/u);
   assert.match(await readFile(path.join(root, "changes", "124.md"), "utf8"), /discarded/u);
+});
+
+test("the routine changelog check rejects malformed pending fragments", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "openpost-changelog-fragments-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "changes"));
+  await Promise.all([
+    writeFile(
+      path.join(root, "CHANGELOG.md"),
+      "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-08-01\n",
+    ),
+    writeFile(path.join(root, "changes", "123.md"), "---\ntype: fixed\n---\n\nBad format.\n"),
+  ]);
+
+  const result = spawnSync(process.execPath, [checkScriptPath], {
+    cwd: root,
+    encoding: "utf8",
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /123\.md must contain only ### groups and bullet items/u);
+  assert.match(await readFile(path.join(root, "changes", "123.md"), "utf8"), /Bad format/u);
 });
