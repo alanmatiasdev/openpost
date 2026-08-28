@@ -3,6 +3,7 @@ import {
 	SHORTCUT_PRESET_SCHEMA,
 	browserShortcutConflict,
 	createShortcutPreset,
+	editorDeleteModeForEvent,
 	eventMatchesShortcut,
 	findShortcutConflicts,
 	formatShortcutBinding,
@@ -33,6 +34,17 @@ describe('keyboard shortcuts', () => {
 			eventMatchesShortcut({ code: 'Space', key: ' ', shiftKey: true }, bindings.PLAY_PAUSE)
 		).toBe(true);
 		expect(eventMatchesShortcut({ code: 'Space', key: ' ' }, bindings.PLAY_PAUSE)).toBe(false);
+	});
+
+	it('uses Resolve-style Backspace lift delete and Delete ripple delete defaults', () => {
+		const bindings = resolveEditorShortcuts();
+		expect(editorDeleteModeForEvent({ code: 'Backspace', key: 'Backspace' }, bindings)).toBe(
+			'lift'
+		);
+		expect(editorDeleteModeForEvent({ code: 'Delete', key: 'Delete' }, bindings)).toBe('ripple');
+		expect(
+			editorDeleteModeForEvent({ code: 'Delete', key: 'Delete', metaKey: true }, bindings)
+		).toBe('ripple');
 	});
 
 	it('reports command and browser conflicts before a binding is replaced', () => {

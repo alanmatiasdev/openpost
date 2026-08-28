@@ -23,10 +23,10 @@ export const DEFAULT_EDITOR_SHORTCUTS = {
 	SPLIT_AT_PLAYHEAD_ALT: 'b',
 	JOIN_ITEMS: 'shift+j',
 	CLEAR_KEYFRAMES: 'shift+a',
-	DELETE_SELECTED: 'delete',
-	DELETE_SELECTED_ALT: 'backspace',
-	RIPPLE_DELETE: 'mod+delete',
-	RIPPLE_DELETE_ALT: 'mod+backspace',
+	DELETE_SELECTED: 'backspace',
+	DELETE_SELECTED_ALT: 'shift+backspace',
+	RIPPLE_DELETE: 'delete',
+	RIPPLE_DELETE_ALT: 'mod+delete',
 	FREEZE_FRAME: 'shift+f',
 	LINK_AUDIO_VIDEO: 'mod+alt+l',
 	UNLINK_AUDIO_VIDEO: 'alt+shift+l',
@@ -326,6 +326,27 @@ export function eventMatchesShortcut(event: ShortcutEventData, binding: string):
 	return shortcutBindingFromEvent(event) === normalizeShortcutBinding(binding);
 }
 
+export type EditorDeleteMode = 'lift' | 'ripple';
+
+export function editorDeleteModeForEvent(
+	event: ShortcutEventData,
+	bindings: EditorShortcutBindingMap
+): EditorDeleteMode | null {
+	if (
+		eventMatchesShortcut(event, bindings.RIPPLE_DELETE) ||
+		eventMatchesShortcut(event, bindings.RIPPLE_DELETE_ALT)
+	) {
+		return 'ripple';
+	}
+	if (
+		eventMatchesShortcut(event, bindings.DELETE_SELECTED) ||
+		eventMatchesShortcut(event, bindings.DELETE_SELECTED_ALT)
+	) {
+		return 'lift';
+	}
+	return null;
+}
+
 export function findShortcutConflicts(
 	bindings: EditorShortcutBindingMap,
 	binding: string,
@@ -487,4 +508,35 @@ export function editorShortcutTargetIsDisabled(target: EventTarget | null): bool
 			)
 		)
 	);
+}
+
+function editorPlaybackTargetIsDisabled(target: EventTarget | null): boolean {
+	return (
+		target instanceof HTMLElement &&
+		Boolean(
+			target.closest(
+				'input, textarea, select, [contenteditable="true"], [data-editor-shortcuts-disabled]'
+			)
+		)
+	);
+}
+
+export function handleGlobalPlayPauseShortcut(
+	event: KeyboardEvent,
+	binding: string,
+	onToggle: () => void
+): boolean {
+	if (
+		event.repeat ||
+		event.defaultPrevented ||
+		!eventMatchesShortcut(event, binding) ||
+		editorPlaybackTargetIsDisabled(event.target)
+	) {
+		return false;
+	}
+	event.preventDefault();
+	event.stopPropagation();
+	event.stopImmediatePropagation();
+	onToggle();
+	return true;
 }

@@ -98,8 +98,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	} from '$lib/video-editor/workspaces/editor-workspace.svelte';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import {
+		editorDeleteModeForEvent,
 		editorShortcutTargetIsDisabled,
 		eventMatchesShortcut,
+		handleGlobalPlayPauseShortcut,
 		type EditorShortcutId
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
@@ -809,10 +811,16 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 
 	function onKeydown(event: KeyboardEvent): void {
 		if (event.repeat || event.defaultPrevented) return;
-		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
 			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
+		if (
+			!sourceHoverStore.isActive &&
+			handleGlobalPlayPauseShortcut(event, bindings.PLAY_PAUSE, togglePlay)
+		) {
+			return;
+		}
+		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const sourceLocalPlayback = matches(
 			'PLAY_PAUSE',
 			'PREVIOUS_FRAME',
@@ -850,10 +858,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				return;
 			}
 		}
-		if (matches('PLAY_PAUSE')) {
-			event.preventDefault();
-			togglePlay();
-		} else if (matches('SAVE')) {
+		if (matches('SAVE')) {
 			event.preventDefault();
 			void editorSession.saveNow().catch(() => showToast(m.video_editor_save_failed(), 'error'));
 		} else if (matches('EXPORT')) {
@@ -910,20 +915,20 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		} else if (
 			matches('DELETE_SELECTED', 'DELETE_SELECTED_ALT', 'RIPPLE_DELETE', 'RIPPLE_DELETE_ALT')
 		) {
-			const ripple = matches('RIPPLE_DELETE', 'RIPPLE_DELETE_ALT');
-			if (ripple && selectedItemId) {
+			const deleteMode = editorDeleteModeForEvent(event, bindings);
+			if (deleteMode === 'ripple' && selectedItemId) {
 				event.preventDefault();
 				handleDelete(true);
-			} else if (!ripple && selectedTransitionId) {
+			} else if (deleteMode === 'lift' && selectedTransitionId) {
 				event.preventDefault();
 				removeTransition(selectedTransitionId);
 				selectedTransitionId = null;
 				editorSession.scheduleAutosave();
-			} else if (!ripple && timelineStore.selectedMarkerId) {
+			} else if (deleteMode === 'lift' && timelineStore.selectedMarkerId) {
 				event.preventDefault();
 				removeMarker(timelineStore.selectedMarkerId);
 				editorSession.scheduleAutosave();
-			} else if (!ripple && selectedItemId) {
+			} else if (deleteMode === 'lift' && selectedItemId) {
 				event.preventDefault();
 				handleDelete(false);
 			}

@@ -26,7 +26,8 @@
 	import {
 		editorShortcutTargetIsDisabled,
 		eventMatchesShortcut,
-		formatShortcutBinding
+		formatShortcutBinding,
+		handleGlobalPlayPauseShortcut
 	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { isAc3AudioCodec } from '$lib/video-editor/media/ac3-decoder';
@@ -646,12 +647,6 @@
 
 	function handleKeydown(event: KeyboardEvent): void {
 		if (event.repeat) return;
-		if (editorShortcutTargetIsDisabled(event.target)) {
-			if (event.target instanceof Node && monitorElement?.contains(event.target)) {
-				event.stopImmediatePropagation();
-			}
-			return;
-		}
 		if (!(event.target instanceof HTMLElement)) return;
 		const target = event.target;
 		const bindings = keyboardShortcuts.bindings;
@@ -667,6 +662,16 @@
 			(monitorElement.contains(target) ||
 				monitorElement.matches(':hover') ||
 				sourceHoverStore.isActive);
+		if (
+			isLocal &&
+			handleGlobalPlayPauseShortcut(event, bindings.PLAY_PAUSE, () => void togglePlayback())
+		) {
+			return;
+		}
+		if (editorShortcutTargetIsDisabled(event.target)) {
+			if (monitorElement?.contains(event.target)) event.stopImmediatePropagation();
+			return;
+		}
 		if (!isGlobalEditShortcut && !isLocal && !isShuttleShortcut) return;
 		if (isLocal && isShuttleShortcut) {
 			if (isShuttlePause) {
@@ -695,8 +700,6 @@
 		if (!isGlobalEditShortcut && !isLocal) return;
 		if (eventMatchesShortcut(event, bindings.CLEAR_IN_OUT)) {
 			clearMarks();
-		} else if (eventMatchesShortcut(event, bindings.PLAY_PAUSE)) {
-			void togglePlayback();
 		} else if (eventMatchesShortcut(event, bindings.MARK_IN)) {
 			markIn();
 		} else if (eventMatchesShortcut(event, bindings.MARK_OUT)) {

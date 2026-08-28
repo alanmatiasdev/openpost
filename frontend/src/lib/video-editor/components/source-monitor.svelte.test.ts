@@ -120,6 +120,22 @@ afterEach(() => {
 });
 
 describe('SourceMonitor', () => {
+	it('uses Space for source playback without clicking the focused play button', async () => {
+		const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+		const screen = await render(SourceMonitor, {
+			mediaId: source.id,
+			onclose: vi.fn(),
+			onedit: vi.fn()
+		});
+		const playButton = screen.getByRole('button', { name: 'Play', exact: true });
+		await expect.element(playButton).toBeVisible();
+		playButton.element().focus();
+
+		await userEvent.keyboard(' ');
+
+		expect(play).toHaveBeenCalledOnce();
+	});
+
 	it('prepares a playable proxy while keeping original audio for a ProRes source', async () => {
 		const response = await fetch(proResFixtureUrl);
 		expect(response.ok).toBe(true);
