@@ -11,11 +11,11 @@
 	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import {
-		deleteExportFile,
-		listExportFiles,
+		deleteExportEntry,
+		listExportEntries,
 		readExportFile,
 		workspaceFolderName,
-		type ExportFileEntry
+		type ExportEntry
 	} from '../workspace-fs/exports';
 	import { createLogger } from '../workspace-fs/logger';
 
@@ -24,9 +24,9 @@
 	interface Props {
 		projectId: string;
 		refreshKey?: string;
-		listFiles?: typeof listExportFiles;
+		listFiles?: typeof listExportEntries;
 		readFile?: typeof readExportFile;
-		deleteFile?: typeof deleteExportFile;
+		deleteEntry?: typeof deleteExportEntry;
 		getFolderName?: typeof workspaceFolderName;
 	}
 	type LoadTrigger = Pick<Props, 'projectId' | 'refreshKey'>;
@@ -34,24 +34,24 @@
 	let {
 		projectId,
 		refreshKey = '',
-		listFiles = listExportFiles,
+		listFiles = listExportEntries,
 		readFile = readExportFile,
-		deleteFile = deleteExportFile,
+		deleteEntry = deleteExportEntry,
 		getFolderName = workspaceFolderName
 	}: Props = $props();
 
-	let entries = $state<ExportFileEntry[] | null>(null);
+	let entries = $state<ExportEntry[] | null>(null);
 	let loading = $state(false);
 	let loadError = $state('');
 	let operationError = $state('');
 	let busyPath = $state('');
 	let deleteDialogOpen = $state(false);
-	let pendingDelete = $state<ExportFileEntry | null>(null);
+	let pendingDelete = $state<ExportEntry | null>(null);
 	let loadGeneration = 0;
 
 	const folderName = $derived(getFolderName());
 
-	function pathKey(entry: ExportFileEntry): string {
+	function pathKey(entry: ExportEntry): string {
 		return entry.path.join('/');
 	}
 
@@ -102,7 +102,8 @@
 		}
 	}
 
-	async function download(entry: ExportFileEntry): Promise<void> {
+	async function download(entry: ExportEntry): Promise<void> {
+		if (entry.kind !== 'file') return;
 		const key = pathKey(entry);
 		if (busyPath) return;
 		busyPath = key;
@@ -131,7 +132,7 @@
 		}
 	}
 
-	function requestDelete(entry: ExportFileEntry): void {
+	function requestDelete(entry: ExportEntry): void {
 		operationError = '';
 		pendingDelete = entry;
 		deleteDialogOpen = true;
@@ -142,7 +143,7 @@
 		const entry = pendingDelete;
 		busyPath = pathKey(entry);
 		try {
-			await deleteFile(entry.path);
+			await deleteEntry(entry.path, entry.kind === 'directory');
 			await load();
 			pendingDelete = null;
 			return {
@@ -229,7 +230,12 @@
 					<li
 						class="flex items-center gap-2.5 rounded-lg border border-[var(--video-editor-border)] bg-[var(--video-editor-control)] p-3"
 					>
-						{#if isAudioFile(entry.name)}
+						{#if entry.kind === 'directory'}
+							<FolderOpenIcon
+								class="size-4 shrink-0 text-[var(--video-editor-muted)]"
+								aria-hidden="true"
+							/>
+						{:else if isAudioFile(entry.name)}
 							<FileAudioIcon
 								class="size-4 shrink-0 text-[var(--video-editor-muted)]"
 								aria-hidden="true"
@@ -243,24 +249,31 @@
 						<div class="min-w-0 flex-1">
 							<p class="text-sm leading-tight font-medium break-words">{entry.name}</p>
 							<p class="mt-0.5 text-[11px] text-[var(--video-editor-muted)] tabular-nums">
-								{formatBytes(entry.size)}{#if entry.lastModified > 0}
+								{entry.kind === 'directory'
+									? m.video_editor_saved_exports_folder()
+									: formatBytes(entry.size)}{#if entry.lastModified > 0}
 									· {formatDate(entry.lastModified)}{/if}
 							</p>
 						</div>
 						<div class="flex shrink-0 gap-0.5">
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								disabled={Boolean(busyPath)}
-								onclick={() => void download(entry)}
-								aria-label={m.video_editor_saved_exports_download_named({ name: entry.name })}
-							>
-								{#if busyPath === pathKey(entry)}
-									<LoaderIcon class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-								{:else}
-									<DownloadIcon aria-hidden="true" />
-								{/if}
-							</Button>
+							{#if entry.kind === 'file'}
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									disabled={Boolean(busyPath)}
+									onclick={() => void download(entry)}
+									aria-label={m.video_editor_saved_exports_download_named({ name: entry.name })}
+								>
+									{#if busyPath === pathKey(entry)}
+										<LoaderIcon
+											class="animate-spin motion-reduce:animate-none"
+											aria-hidden="true"
+										/>
+									{:else}
+										<DownloadIcon aria-hidden="true" />
+									{/if}
+								</Button>
+							{/if}
 							<Button
 								variant="ghost"
 								size="icon-sm"

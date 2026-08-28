@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "已保存文件",
 	"video_editor_saved_exports_location": "已保存在 {folder}。",
 	"video_editor_saved_exports_location_generic": "已保存在你的本地工作区文件夹。",
+	"video_editor_saved_exports_folder": "文件夹",
 	"video_editor_saved_exports_refresh": "刷新已保存文件",
 	"video_editor_saved_exports_retry": "重试",
 	"video_editor_saved_exports_empty": "渲染后保存到此项目的文件会显示在这里。",

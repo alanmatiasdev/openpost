@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "Gespeicherte Dateien",
 	"video_editor_saved_exports_location": "Gespeichert in {folder}.",
 	"video_editor_saved_exports_location_generic": "Gespeichert im lokalen Workspace-Ordner.",
+	"video_editor_saved_exports_folder": "Ordner",
 	"video_editor_saved_exports_refresh": "Gespeicherte Dateien aktualisieren",
 	"video_editor_saved_exports_retry": "Erneut versuchen",
 	"video_editor_saved_exports_empty": "In dieses Projekt gerenderte und gespeicherte Dateien erscheinen hier.",

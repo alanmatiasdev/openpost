@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "Kayıtlı dosyalar",
 	"video_editor_saved_exports_location": "{folder} klasörüne kaydedildi.",
 	"video_editor_saved_exports_location_generic": "Yerel çalışma alanı klasörünüze kaydedildi.",
+	"video_editor_saved_exports_folder": "Klasör",
 	"video_editor_saved_exports_refresh": "Kayıtlı dosyaları yenile",
 	"video_editor_saved_exports_retry": "Yeniden dene",
 	"video_editor_saved_exports_empty": "Bu projeye kaydedilen işlenmiş dosyalar burada görünür.",

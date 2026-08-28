@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "Archivos guardados",
 	"video_editor_saved_exports_location": "Guardado en {folder}.",
 	"video_editor_saved_exports_location_generic": "Guardado en tu carpeta de espacio de trabajo local.",
+	"video_editor_saved_exports_folder": "Carpeta",
 	"video_editor_saved_exports_refresh": "Actualizar los archivos guardados",
 	"video_editor_saved_exports_retry": "Inténtalo de nuevo.",
 	"video_editor_saved_exports_empty": "Los archivos guardados en este proyecto aparecerán aquí.",

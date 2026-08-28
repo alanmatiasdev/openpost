@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "Fichiers enregistrés",
 	"video_editor_saved_exports_location": "Enregistré dans {folder}.",
 	"video_editor_saved_exports_location_generic": "Enregistré dans votre dossier d'espace de travail local.",
+	"video_editor_saved_exports_folder": "Dossier",
 	"video_editor_saved_exports_refresh": "Actualiser les fichiers enregistrés",
 	"video_editor_saved_exports_retry": "Réessayer",
 	"video_editor_saved_exports_empty": "Les fichiers rendus et enregistrés dans ce projet apparaîtront ici.",

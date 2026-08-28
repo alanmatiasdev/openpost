@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "Arquivos salvos",
 	"video_editor_saved_exports_location": "Salvo em {folder}.",
 	"video_editor_saved_exports_location_generic": "Salvo na pasta de trabalho local.",
+	"video_editor_saved_exports_folder": "Pasta",
 	"video_editor_saved_exports_refresh": "Atualizar arquivos salvos",
 	"video_editor_saved_exports_retry": "Tentar novamente",
 	"video_editor_saved_exports_empty": "Os arquivos renderizados e salvos neste projeto aparecerão aqui.",

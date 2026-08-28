@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "저장된 파일",
 	"video_editor_saved_exports_location": "{folder}에 저장됨.",
 	"video_editor_saved_exports_location_generic": "로컬 작업 영역 폴더에 저장되었습니다.",
+	"video_editor_saved_exports_folder": "폴더",
 	"video_editor_saved_exports_refresh": "저장된 파일 새로 고침",
 	"video_editor_saved_exports_retry": "다시 시도",
 	"video_editor_saved_exports_empty": "이 프로젝트에 저장된 렌더링 파일이 여기에 표시됩니다.",

@@ -4176,6 +4176,7 @@
 	"video_editor_queue_tab_saved": "保存済みファイル",
 	"video_editor_saved_exports_location": "{folder} に保存済みです。",
 	"video_editor_saved_exports_location_generic": "ローカルワークスペースフォルダに保存済みです。",
+	"video_editor_saved_exports_folder": "フォルダー",
 	"video_editor_saved_exports_refresh": "保存済みファイルを更新",
 	"video_editor_saved_exports_retry": "再試行",
 	"video_editor_saved_exports_empty": "このプロジェクトに保存されたレンダリング結果がここに表示されます。",
