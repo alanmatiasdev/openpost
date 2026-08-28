@@ -21,6 +21,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		importProjectSnapshotFile
 	} from '$lib/video-editor/project-bundle/snapshot-service';
 	import { duplicateProjectWithMedia } from '$lib/video-editor/project/project-operations';
+	import type { ProjectDetailsUpdate } from '$lib/video-editor/project/project-details';
 	import type { ProjectCreationSettings } from '$lib/video-editor/project/project-presets';
 	import { permanentlyDeleteProject } from '$lib/video-editor/project/project-trash';
 	import type { Project } from '$lib/video-editor/project/types';
@@ -169,17 +170,20 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		}
 	}
 
-	async function handleRename(project: Project): Promise<void> {
-		if (importing || duplicatingId || exportingId || bundleOperation) return;
-		const name = window.prompt(m.video_editor_project_rename_prompt(), project.name);
-		if (name === null) return;
-		const trimmed = name.trim();
-		if (!trimmed || trimmed === project.name) return;
+	async function handleUpdateProject(
+		project: Project,
+		update: ProjectDetailsUpdate
+	): Promise<string | null> {
+		if (importing || duplicatingId || exportingId || bundleOperation) {
+			return m.video_editor_project_edit_busy();
+		}
 		try {
-			await updateProject(project.id, { name: trimmed });
+			await updateProject(project.id, update);
 			await loadProjects();
+			showToast(m.video_editor_project_changes_saved(), 'success');
+			return null;
 		} catch (error) {
-			showToast(error instanceof Error ? error.message : String(error), 'error');
+			return error instanceof Error ? error.message : String(error);
 		}
 	}
 
@@ -534,7 +538,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 				onimportjson={handleImportJson}
 				onimportbundle={handleImportBundle}
 				onopen={openProject}
-				onrename={handleRename}
+				onupdate={handleUpdateProject}
 				onduplicate={handleDuplicate}
 				onexportjson={handleExportJson}
 				onexportbundle={handleExportBundle}

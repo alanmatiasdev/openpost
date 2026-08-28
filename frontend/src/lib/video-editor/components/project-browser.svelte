@@ -2,12 +2,14 @@
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
+	import ProjectDetailsDialog from '$lib/video-editor/components/project-details-dialog.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { m } from '$lib/paraglide/messages';
 	import type { BundleProgress } from '$lib/video-editor/project-bundle/bundle-types';
+	import type { ProjectDetailsUpdate } from '$lib/video-editor/project/project-details';
 	import type { Project } from '$lib/video-editor/project/types';
 	import {
 		MAX_PROJECT_HEIGHT,
@@ -63,7 +65,7 @@
 		onimportjson,
 		onimportbundle,
 		onopen,
-		onrename,
+		onupdate,
 		onduplicate,
 		onexportjson,
 		onexportbundle,
@@ -94,7 +96,7 @@
 		onimportjson: (file: File) => Promise<void>;
 		onimportbundle: (file: File) => Promise<void>;
 		onopen: (project: Project) => void;
-		onrename: (project: Project) => Promise<void>;
+		onupdate: (project: Project, update: ProjectDetailsUpdate) => Promise<string | null>;
 		onduplicate: (project: Project) => Promise<void>;
 		onexportjson: (project: Project) => Promise<void>;
 		onexportbundle: (project: Project) => Promise<void>;
@@ -126,6 +128,8 @@
 	let purgeDialogOpen = $state(false);
 	let jsonImportInput = $state<HTMLInputElement | null>(null);
 	let bundleImportInput = $state<HTMLInputElement | null>(null);
+	let editingProject = $state<Project | null>(null);
+	let editDialogOpen = $state(false);
 
 	const resolutions = $derived(
 		[...new Set(projects.map(projectResolution))].sort((a, b) => a.localeCompare(b))
@@ -244,6 +248,11 @@
 	function confirmDelete(project: Project): void {
 		pendingDelete = [project];
 		deleteDialogOpen = true;
+	}
+
+	function editProject(project: Project): void {
+		editingProject = project;
+		editDialogOpen = true;
 	}
 
 	function confirmBulkDelete(): void {
@@ -757,6 +766,11 @@
 							</span>
 							<span class="block p-4 pr-12">
 								<span class="block truncate font-medium">{project.name}</span>
+								{#if project.description.trim()}
+									<span class="mt-1 line-clamp-2 block text-xs text-[oklch(0.67_0.015_55)]">
+										{project.description}
+									</span>
+								{/if}
 								<span
 									class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-[oklch(0.68_0.015_55)]"
 								>
@@ -800,9 +814,9 @@
 									{/snippet}
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content class="video-editor-theme" align="end">
-									<DropdownMenu.Item onclick={() => void onrename(project)}>
+									<DropdownMenu.Item onclick={() => editProject(project)}>
 										<PencilIcon class="size-4" aria-hidden="true" />
-										{m.video_editor_project_rename()}
+										{m.video_editor_project_edit_action()}
 									</DropdownMenu.Item>
 									<DropdownMenu.Item
 										disabled={duplicatingId !== null || importing || bundleOperation !== null}
@@ -960,6 +974,8 @@
 		</section>
 	{/if}
 </div>
+
+<ProjectDetailsDialog bind:open={editDialogOpen} project={editingProject} onsave={onupdate} />
 
 <DestructiveConfirmDialog
 	bind:open={deleteDialogOpen}
