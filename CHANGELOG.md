@@ -4,6 +4,62 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-08-28
+
+### Fixed
+
+- Show Video Editor shortcut keys using the active keyboard layout when the browser provides it.
+- Make Space control the active video monitor without clicking focused controls, with Backspace for lift delete and Delete for ripple delete.
+- Saved keyboard bindings now control duplicate, select all, group, nudge, reorder, copy, paste, and delete actions in the 2D composition timeline without hijacking focused controls.
+- Prevent touch-sized timeline resize controls from covering clips, transitions, and empty space in narrow windows used with a mouse or trackpad.
+- AI post building and meme suggestions now retry transient managed-provider failures within their full content-generation budget instead of failing after five seconds.
+- Keep video editor shortcuts active after selecting a timeline clip with the pointer.
+- Create the SQLite database directory before opening it, so a fresh install with a volume mounted over the data path boots instead of failing with a misleading "unable to open database file" error.
+- Duplicate migration version numbers no longer silently skip migrations. Versions 094 and 108 were each assigned to two files, so `108_idempotency_records.sql` never ran (requests carrying an `Idempotency-Key` failed with 503 "no such table: idempotency_records") and `094_workspace_invitation_delivery.sql` was skipped on upgraded databases. The skipped migrations are renumbered to 110 and 111 so existing installations heal on their next start, and the migration runner now refuses to start when two files share a version.
+- Make track rename and reorder shortcuts editable, removable, and portable through Video Editor shortcut presets.
+- Keep the Video Editor keyframe graph and dope sheet usable together at narrow widths.
+- Keep compact calendar date ranges visible and align published-history checks with the visible calendar item.
+- Keep the mobile Video Editor inspector actions clear of the timeline at short phone heights.
+- Release commands now stay bound to the OpenPost repository when a checkout has extra review remotes.
+
+### Added
+
+- Choose a common social-video canvas or exact dimensions and frame rate when creating a Video Editor project.
+- Browse, seek, remove, or clear every Video Editor timeline marker from one compact list.
+- Change an existing Video Editor project's canvas size and background with undo and autosave.
+- Edit a Video Editor project's name, description, dimensions, and frame rate from the project library.
+- Use right-click or Shift+F10 for contextual Video Editor actions on clips, timeline space, tracks, markers, media, sequences, and projects.
+- Right-click the Program monitor to choose any overlapping visual layer under the pointer, including animated, rotated, and scaled layers.
+- Right-click 2D composition layer and group rows to rename, group, duplicate, copy, paste, or delete them with the same undoable actions as the toolbar.
+- Analyze, refresh, or cancel one video or image Scene Browser index from its media-row overflow or right-click menu.
+- Delete project media from its overflow or right-click menu with an exact timeline-impact warning, shared-file protection, and durable failure recovery.
+- Use target-aware timeline right-click menus for transitions and applicable clip actions such as join, freeze frame, layout, captions, and keyframe cleanup.
+- Open reverse, scene splitting, captions, speech cleanup, text-to-speech, and compound clip tools directly from timeline clip context menus.
+- Copy and paste color grades across selected clips from the timeline context menu.
+- Join a split clip directly with its previous or next continuous neighbor from the timeline context menu.
+- Choose a fast scan or frame-accurate local AI verification when splitting clips at scene changes.
+- Generate, refresh, extract, and consolidate clip captions from one target-aware timeline menu.
+- Generate, cancel, and remove preview proxies from each video source menu.
+- Rename reusable video sequences from their media-library menus.
+- Generate and reuse source transcripts from each audio or video media menu.
+- Relink missing or changed video editor media directly from its media-row menus.
+- Select media with Command/Ctrl-click or Shift-click, then generate missing proxies or delete the batch from one compact toolbar. Right-click preserves a selected group and reports partial deletion failures without hiding affected sources.
+- Select reusable sequences with Command/Ctrl-click or Shift-click, combine them with media sources, and delete the full asset selection from one confirmed, durable operation.
+- Let self-hosted operators collect account and content analytics through per-platform HTTP sources when provider analytics API access is unavailable.
+- Drag across project media and reusable sequences to select them together, then use focused Delete, Escape, or Command/Ctrl+A shortcuts without stealing timeline or text-editing keys.
+- Browse project media and reusable sequences in a responsive grid or compact list, with five persistent card-size choices.
+- Edit shape and mask points from a focused right-click menu without losing a multi-point selection.
+- Choose the default style for new transcript and AI captions without overwriting later caption edits.
+- Toggle canvas-object snapping independently from timeline snapping with `Shift+S`, the canvas magnet, or editor settings.
+- Switch timeline edit tools with `V`, `Y`, or `U`, and seek visible edit points with Up or Down.
+- Nudge selected visual items by 1 or 10 canvas pixels with remappable keyboard shortcuts.
+- Open Scene Browser and focus its search with a remappable Command/Ctrl+Shift+F shortcut.
+- Switch between Graph, Dope Sheet, and Split keyframe views and use remappable, scoped keyframe editing commands in Edit and Motion.
+- Edit graph and dope-sheet keyframes from target-aware right-click menus with keyboard access and saved shortcut labels.
+- Close one timeline gap from empty space or every gap on a track from its right-click menu, with sync-lock, linked-media, lock, and one-step undo safety.
+- Add video or audio tracks and remove every empty track from the track-header right-click menu, with safe handling for empty timelines and groups.
+- Let instance administrators edit the base and platform-specific writing prompts used for AI social-post generation.
+
 ## [4.7.0] - 2026-08-28
 
 ### Fixed
