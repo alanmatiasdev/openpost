@@ -191,7 +191,7 @@ export function createRenderQueueStore(): RenderQueueStore {
 			);
 			store.set({
 				jobs: restored,
-				isPaused: paused || restored.some((job) => job.status === 'queued'),
+				isPaused: paused,
 				activeJobId: null
 			});
 		},

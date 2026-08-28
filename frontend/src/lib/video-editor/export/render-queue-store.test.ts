@@ -87,10 +87,18 @@ describe('render queue store', () => {
 
 	it('restores interrupted jobs as paused queued work and clears only finished jobs', () => {
 		const queue = createRenderQueueStore();
-		queue.hydrate([job('rendering', 'rendering'), job('done', 'completed'), job('queued')], false);
+		queue.hydrate([job('rendering', 'rendering'), job('done', 'completed'), job('queued')], true);
 		expect(get(queue)).toMatchObject({ isPaused: true, activeJobId: null });
 		expect(get(queue).jobs[0]).toMatchObject({ status: 'queued', progress: 0 });
 		queue.clearFinished();
 		expect(get(queue).jobs.map(({ id }) => id)).toEqual(['rendering', 'queued']);
+	});
+
+	it('keeps queued work running when the restored queue was not paused', () => {
+		const queue = createRenderQueueStore();
+		queue.hydrate([job('queued')], false);
+
+		expect(get(queue)).toMatchObject({ isPaused: false, activeJobId: null });
+		expect(queue.next()?.id).toBe('queued');
 	});
 });

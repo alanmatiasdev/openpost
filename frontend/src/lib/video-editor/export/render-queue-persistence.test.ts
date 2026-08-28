@@ -73,6 +73,13 @@ describe('render queue persistence', () => {
 		expect(after).not.toBe(before);
 	});
 
+	it('keeps queued work unpaused when the saved queue was running', () => {
+		const restored = restoreRenderQueue(serializeRenderQueue([job('queued', 'queued')], false));
+
+		expect(restored.isPaused).toBe(false);
+		expect(restored.jobs).toHaveLength(1);
+	});
+
 	it('rejects unsupported documents without guessing', () => {
 		// SAFETY: this deliberately invalid schema version exercises the runtime compatibility guard.
 		expect(
