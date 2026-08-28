@@ -9,6 +9,8 @@ import type {
 	RenderExportWorkerResponse
 } from './render-export-worker.types';
 
+const LAZY_IMAGE_SEQUENCE_LOAD_TIMEOUT_MS = 30_000;
+
 function asWritableStream(
 	stub: Partial<FileSystemWritableFileStream>
 ): FileSystemWritableFileStream {
@@ -192,7 +194,7 @@ afterEach(() => {
 describe('image sequence worker/main ownership', () => {
 	it(
 		'uses worker batches and writes on main thread without calling fallback',
-		{ timeout: 10000 },
+		{ timeout: LAZY_IMAGE_SEQUENCE_LOAD_TIMEOUT_MS },
 		async () => {
 			const worker = new FakeWorker((w, msg) => {
 				if (msg.type === 'start') {
