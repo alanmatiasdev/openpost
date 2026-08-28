@@ -235,6 +235,23 @@ export function removeItems(
 	});
 }
 
+/**
+ * Remove confirmed project-media references even when their timeline tracks are locked.
+ * The media deletion workflow owns durability and deliberately keeps this irreversible edit
+ * out of command history.
+ */
+export function removeItemsForMediaDeletion(ids: readonly string[]): string[] {
+	const requested = new Set(ids);
+	const existingIds = timelineStore.items
+		.filter((item) => requested.has(item.id))
+		.map((item) => item.id);
+	if (existingIds.length === 0) return [];
+	detachTransformChildrenForRemoval(existingIds);
+	timelineStore._removeItems(existingIds);
+	pruneOrphanedTransitions();
+	return existingIds;
+}
+
 export function moveItems(updates: Array<{ id: string; from: number; trackId?: string }>): void {
 	if (updates.length === 0) return;
 	execute('MOVE_ITEMS', () => {

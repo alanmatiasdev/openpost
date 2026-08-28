@@ -172,6 +172,123 @@ describe('MediaPoolList', () => {
 		expect(cancel).toHaveBeenCalledExactlyOnceWith(interview.id);
 	});
 
+	it('confirms affected references and safely deletes one project media item', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: true,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const source: TimelineItem = {
+			id: 'source',
+			trackId: track.id,
+			from: 0,
+			durationInFrames: 60,
+			label: 'Interview',
+			type: 'video',
+			mediaId: interview.id
+		};
+		const caption: TimelineItem = {
+			id: 'caption',
+			trackId: track.id,
+			from: 0,
+			durationInFrames: 60,
+			label: 'Interview captions',
+			type: 'subtitle',
+			captionSource: {
+				type: 'transcript',
+				clipId: source.id,
+				mediaId: interview.id
+			}
+		};
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), tracks: [track], items: [source, caption] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([interview]);
+		const deleteProjectMedia = vi.fn(async () => ({
+			deletedWorkspaceBytes: true,
+			remainingProjectIds: []
+		}));
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			deleteProjectMedia
+		});
+		const row = screen.getByText(interview.fileName).element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Delete' }).click();
+		const dialog = screen.getByRole('dialog');
+		await expect
+			.element(dialog.getByText(/removes 2 timeline clips and generated captions/))
+			.toBeVisible();
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		await expect.element(dialog).not.toBeInTheDocument();
+		expect(deleteProjectMedia).toHaveBeenCalledExactlyOnceWith('project', interview.id);
+		expect(sequenceStore.projectTimeline().items).toEqual([]);
+		expect(mediaPool.get(interview.id)).toBeUndefined();
+	});
+
+	it('restores timeline references and keeps media when the durable save fails', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		const source: TimelineItem = {
+			id: 'source',
+			trackId: track.id,
+			from: 0,
+			durationInFrames: 60,
+			label: 'Interview',
+			type: 'video',
+			mediaId: interview.id
+		};
+		sequenceStore.load(
+			{ ...createEmptyTimeline(), tracks: [track], items: [source] },
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([interview]);
+		vi.spyOn(editorSession, 'saveNow').mockRejectedValue(new Error('Workspace write failed'));
+		const deleteProjectMedia = vi.fn(async () => ({
+			deletedWorkspaceBytes: true,
+			remainingProjectIds: []
+		}));
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			deleteProjectMedia
+		});
+		const row = screen.getByText(interview.fileName).element().closest('li');
+		expect(row).not.toBeNull();
+
+		row!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Delete' }).click();
+		const dialog = screen.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'Delete' }).click();
+
+		await expect.element(dialog.getByText('Workspace write failed')).toBeVisible();
+		expect(sequenceStore.projectTimeline().items.map((candidate) => candidate.id)).toEqual([
+			'source'
+		]);
+		expect(mediaPool.get(interview.id)?.id).toBe(interview.id);
+		expect(deleteProjectMedia).not.toHaveBeenCalled();
+	});
+
 	it('keeps high-cost video tools in one clear menu with honest size gates', async () => {
 		await page.viewport(320, 720);
 		mediaPool.loadAll([

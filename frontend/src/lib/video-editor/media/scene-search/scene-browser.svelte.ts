@@ -299,6 +299,16 @@ export const sceneBrowser = {
 		clipProvider.dispose();
 	},
 
+	forget(mediaId: string): void {
+		analysisControllers.get(mediaId)?.abort();
+		analysisControllers.delete(mediaId);
+		loadPromises.delete(mediaId);
+		delete state.analyses[mediaId];
+		delete state.progress[mediaId];
+		delete state.errors[mediaId];
+		if (state.scope === mediaId) state.scope = null;
+	},
+
 	async prepareSemanticQuery(query: string): Promise<void> {
 		const trimmed = query.trim();
 		const generation = ++queryGeneration;

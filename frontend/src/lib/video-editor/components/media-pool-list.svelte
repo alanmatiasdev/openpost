@@ -76,23 +76,37 @@
 		type InterpolationFactor
 	} from '$lib/video-editor/media/processing/interpolation/interpolation-factor';
 	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
+	import { clearProxyCache } from '$lib/video-editor/media/proxy-client';
 	import {
 		MediaImportCancelledError,
 		type UnsupportedAudioImportRequest
 	} from '$lib/video-editor/media/import.svelte';
 	import { sceneBrowser } from '$lib/video-editor/media/scene-search/scene-browser.svelte';
 	import { isSceneAnalyzableMedia } from '$lib/video-editor/media/scene-search/scene-analysis-client';
+	import {
+		planMediaDeletion,
+		type MediaDeletionPlan
+	} from '$lib/video-editor/media/media-deletion';
+	import { removePlannedMediaReferences } from '$lib/video-editor/media/media-deletion-action';
+	import { deleteMediaFromProject } from '$lib/video-editor/media/project-media-delete';
+	import {
+		captureSnapshot,
+		restoreSnapshot
+	} from '$lib/video-editor/timeline/commands/snapshot.svelte';
+	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 
 	let {
 		projectId,
 		onsequenceopen = () => undefined,
 		onsourceopen = () => undefined,
-		onUnsupportedAudio
+		onUnsupportedAudio,
+		deleteProjectMedia = deleteMediaFromProject
 	}: {
 		projectId: string;
 		onsequenceopen?: () => void;
 		onsourceopen?: (mediaId: string) => void;
 		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
+		deleteProjectMedia?: typeof deleteMediaFromProject;
 	} = $props();
 
 	let objectUrls = $state<Record<string, string>>({});
@@ -107,6 +121,9 @@
 	let deleteTarget = $state<SubComposition | null>(null);
 	let deleteReferenceCount = $state(0);
 	let deleteDialogOpen = $state(false);
+	let mediaDeleteTarget = $state<MediaMetadata | null>(null);
+	let mediaDeletePlan = $state<MediaDeletionPlan | null>(null);
+	let mediaDeleteDialogOpen = $state(false);
 	const ownedThumbnailUrls = new Map<string, string>();
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
@@ -348,6 +365,49 @@
 			);
 		} catch (error) {
 			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	function confirmMediaDelete(media: MediaMetadata): void {
+		mediaDeleteTarget = media;
+		mediaDeletePlan = planMediaDeletion(sequenceStore.projectTimeline(), [media.id]);
+		mediaDeleteDialogOpen = true;
+	}
+
+	async function deleteConfirmedMedia(): Promise<{ ok: boolean; message?: string }> {
+		const target = mediaDeleteTarget;
+		if (!target) return { ok: false, message: m.video_editor_media_delete_failed() };
+		const plan = planMediaDeletion(sequenceStore.projectTimeline(), [target.id]);
+		const before = captureSnapshot();
+		mediaDeletePlan = plan;
+		let projectSaved = false;
+		try {
+			editorSession.pausePlayback();
+			removePlannedMediaReferences(plan);
+			editorSession.syncTimelineClock();
+			await editorSession.saveNow();
+			projectSaved = true;
+			await deleteProjectMedia(projectId, target.id);
+			clearProxyCache(target.id);
+			sceneBrowser.forget(target.id);
+			mediaPool.remove(target.id);
+			commandHistory.clearHistory();
+			showToast(m.video_editor_media_deleted({ name: target.fileName }), 'success');
+			mediaDeleteTarget = null;
+			mediaDeletePlan = null;
+			return { ok: true };
+		} catch (error) {
+			if (!projectSaved) {
+				restoreSnapshot(before);
+				editorSession.syncTimelineClock();
+			}
+			return {
+				ok: false,
+				message:
+					error instanceof Error && error.message
+						? error.message
+						: m.video_editor_media_delete_failed()
+			};
 		}
 	}
 
@@ -769,6 +829,15 @@
 														{/each}
 													</DropdownMenu.SubContent>
 												</DropdownMenu.Sub>
+												<DropdownMenu.Separator />
+												<DropdownMenu.Item
+													variant="destructive"
+													disabled={mediaProcessing(id)}
+													onclick={() => confirmMediaDelete(entry.media)}
+												>
+													<TrashIcon class="size-4" aria-hidden="true" />
+													{m.common_delete()}
+												</DropdownMenu.Item>
 											</DropdownMenu.Content>
 										</DropdownMenu.Root>
 									{/if}
@@ -855,6 +924,15 @@
 										{/each}
 									</ContextMenu.SubContent>
 								</ContextMenu.Sub>
+								<ContextMenu.Separator />
+								<ContextMenu.Item
+									variant="destructive"
+									disabled={mediaProcessing(id)}
+									onclick={() => confirmMediaDelete(entry.media)}
+								>
+									<TrashIcon class="size-4" aria-hidden="true" />
+									{m.common_delete()}
+								</ContextMenu.Item>
 							</ContextMenu.Content>
 						{/if}
 					</ContextMenu.Root>
@@ -883,6 +961,22 @@
 />
 
 <MediaUrlImportDialog bind:open={urlImportOpen} onimport={importUrl} />
+
+<DestructiveConfirmDialog
+	bind:open={mediaDeleteDialogOpen}
+	title={m.video_editor_media_delete_title({ name: mediaDeleteTarget?.fileName ?? '' })}
+	description={mediaDeleteTarget
+		? (mediaDeletePlan?.totalReferenceCount ?? 0) > 0
+			? mediaDeletePlan?.totalReferenceCount === 1
+				? m.video_editor_media_delete_reference()
+				: m.video_editor_media_delete_references({
+						count: mediaDeletePlan?.totalReferenceCount ?? 0
+					})
+			: m.video_editor_media_delete_unused()
+		: ''}
+	confirmLabel={m.common_delete()}
+	onConfirm={deleteConfirmedMedia}
+/>
 
 <DestructiveConfirmDialog
 	bind:open={deleteDialogOpen}
