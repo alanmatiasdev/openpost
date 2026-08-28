@@ -25,6 +25,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Let mobile users add an image while starting a post, then review or remove it in the existing draft editor.
 - Choose a common social-video canvas or exact dimensions and frame rate when creating a Video Editor project.
 - Browse, seek, remove, or clear every Video Editor timeline marker from one compact list.
 - Change an existing Video Editor project's canvas size and background with undo and autosave.
