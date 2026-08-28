@@ -54,9 +54,21 @@ func TestOpenRouterGenerateSendsPrivateMultimodalRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := generator.Generate(context.Background(), GenerateRequest{
-		Model:           "openai/gpt-5.6-luna",
-		SystemPrompt:    "Write useful alternative text.",
-		UserPrompt:      "Describe the attached images.",
+		Model:        "openai/gpt-5.6-luna",
+		SystemPrompt: "Write useful alternative text.",
+		UserPrompt:   "Describe the attached images.",
+		ResponseSchema: &JSONSchema{
+			Name:        "image_description",
+			Description: "One image description",
+			Schema: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"description"},
+				"properties": map[string]any{
+					"description": map[string]any{"type": "string"},
+				},
+			},
+		},
 		MaxOutputTokens: 96,
 		ReasoningEffort: ReasoningEffortNone,
 		Images: []Image{
@@ -79,6 +91,22 @@ func TestOpenRouterGenerateSendsPrivateMultimodalRequest(t *testing.T) {
 	require.Equal(t, float64(96), received["max_completion_tokens"])
 	require.Equal(t, "none", received["reasoning_effort"])
 	require.Equal(t, false, received["stream"])
+	require.Equal(t, map[string]any{
+		"type": "json_schema",
+		"json_schema": map[string]any{
+			"name":        "image_description",
+			"description": "One image description",
+			"strict":      true,
+			"schema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []any{"description"},
+				"properties": map[string]any{
+					"description": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}, received["response_format"])
 	require.Equal(t, map[string]any{
 		"allow_fallbacks":    false,
 		"data_collection":    "deny",

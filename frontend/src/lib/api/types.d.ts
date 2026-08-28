@@ -261,6 +261,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/ai-prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List instance AI prompts */
+        get: operations["list-instance-ai-prompts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ai-prompts/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save an instance AI prompt */
+        put: operations["save-instance-ai-prompt"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/audit-events": {
         parameters: {
             query?: never;
@@ -4160,6 +4194,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIPromptResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AIPromptResponse.json
+             */
+            readonly $schema?: string;
+            default_value: string;
+            default_version: string;
+            key: string;
+            /** @enum {string} */
+            kind: "base" | "platform";
+            overridden: boolean;
+            platform?: string;
+            updated_at?: string;
+            updated_by?: string;
+            value: string;
+        };
+        AIPromptsResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AIPromptsResponse.json
+             */
+            readonly $schema?: string;
+            fixed_output_contract: string;
+            prompts: components["schemas"]["AIPromptResponse"][] | null;
+        };
         APITokenResponse: {
             /** @description Creation time */
             created_at: string;
@@ -10112,6 +10174,15 @@ export interface components {
             provider: string;
             provider_environment?: string;
         };
+        SaveAIPromptInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SaveAIPromptInputBody.json
+             */
+            readonly $schema?: string;
+            value: string;
+        };
         SaveAccountFeaturesInputBody: {
             /**
              * Format: uri
@@ -12333,6 +12404,71 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-instance-ai-prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIPromptsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "save-instance-ai-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Prompt catalogue key */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveAIPromptInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIPromptResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

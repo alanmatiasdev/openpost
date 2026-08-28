@@ -136,6 +136,7 @@ func CreateSchema(db *bun.DB) error {
 		(*models.ProviderApp)(nil),
 		(*models.ProviderInstallation)(nil),
 		(*models.InstanceSetting)(nil),
+		(*models.AIPromptOverride)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.ProviderAccountBinding)(nil),
 		(*models.ConnectorConnectionSession)(nil),

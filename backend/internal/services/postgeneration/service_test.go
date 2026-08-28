@@ -8,6 +8,7 @@ import (
 
 	"github.com/openpost/backend/internal/ai"
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/services/aiprompts"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,6 +16,12 @@ type generatorFunc func(context.Context, ai.GenerateRequest) (ai.GenerateResult,
 
 func (f generatorFunc) Generate(ctx context.Context, request ai.GenerateRequest) (ai.GenerateResult, error) {
 	return f(ctx, request)
+}
+
+type promptResolverFunc func(context.Context, []string) (aiprompts.PostGenerationInstructions, error)
+
+func (f promptResolverFunc) ResolvePostGeneration(ctx context.Context, platforms []string) (aiprompts.PostGenerationInstructions, error) {
+	return f(ctx, platforms)
 }
 
 func TestBuildReturnsCanonicalCopyAndEveryRequestedRendition(t *testing.T) {
@@ -25,7 +32,16 @@ func TestBuildReturnsCanonicalCopyAndEveryRequestedRendition(t *testing.T) {
 			Text:  `{"source_text":"We shipped offline mode. Your drafts now keep moving without a connection.","renditions":[{"target":"target_1","body":"Offline mode is live. Keep drafting even when the connection drops."},{"target":"target_2","body":"We shipped offline mode so your publishing work can continue through unreliable connections."}]}`,
 			Model: "openai/gpt-5.6-luna",
 		}, nil
-	}), "openai/gpt-5.6-luna")
+	}), "openai/gpt-5.6-luna", promptResolverFunc(func(_ context.Context, platforms []string) (aiprompts.PostGenerationInstructions, error) {
+		require.ElementsMatch(t, []string{"x", "linkedin"}, platforms)
+		return aiprompts.PostGenerationInstructions{
+			Base: "Use the instance writing rules.",
+			Platforms: map[string]string{
+				"x":        "Use the saved X rules.",
+				"linkedin": "Use the saved LinkedIn rules.",
+			},
+		}, nil
+	}))
 	require.NoError(t, err)
 
 	result, err := service.Build(t.Context(), Input{
@@ -46,15 +62,11 @@ func TestBuildReturnsCanonicalCopyAndEveryRequestedRendition(t *testing.T) {
 	require.Contains(t, request.UserPrompt, "target_1")
 	require.Contains(t, request.UserPrompt, "linkedin")
 	require.Contains(t, request.UserPrompt, `"max_characters":280`)
-	require.Contains(t, request.SystemPrompt, "Never use em dashes")
-	for _, rule := range []string{
-		"Use plain, active language",
-		"Cut puffery, promotional language, vague claims, filler, and generic conclusions",
-		"Do not force ideas into groups of three",
-		"Do not use decorative emoji",
-	} {
-		require.Contains(t, request.SystemPrompt, rule)
-	}
+	require.Contains(t, request.SystemPrompt, "Use the instance writing rules.")
+	require.Contains(t, request.SystemPrompt, "Use the saved X rules.")
+	require.Contains(t, request.SystemPrompt, "Use the saved LinkedIn rules.")
+	require.NotNil(t, request.ResponseSchema)
+	require.Equal(t, "openpost_post_generation", request.ResponseSchema.Name)
 }
 
 func TestBuildRemovesDashPunctuationFromGeneratedCopy(t *testing.T) {
@@ -62,7 +74,7 @@ func TestBuildRemovesDashPunctuationFromGeneratedCopy(t *testing.T) {
 		return ai.GenerateResult{
 			Text: `{"source_text":"Build once—publish everywhere.","renditions":[{"target":"target_1","body":"Write once – adapt for each channel."}]}`,
 		}, nil
-	}), "openai/gpt-5.6-luna")
+	}), "openai/gpt-5.6-luna", nil)
 	require.NoError(t, err)
 
 	result, err := service.Build(t.Context(), Input{
@@ -83,7 +95,7 @@ func TestBuildFitsRenditionsToDestinationLimit(t *testing.T) {
 		return ai.GenerateResult{
 			Text: `{"source_text":"Draft","renditions":[{"target":"target_1","body":"` + tooLong + `"}]}`,
 		}, nil
-	}), "openai/gpt-5.6-luna")
+	}), "openai/gpt-5.6-luna", nil)
 	require.NoError(t, err)
 
 	result, err := service.Build(t.Context(), Input{
@@ -100,7 +112,7 @@ func TestBuildRejectsMissingOrInventedDestinationOutput(t *testing.T) {
 		return ai.GenerateResult{
 			Text: `{"source_text":"Draft","renditions":[{"target":"target_2","body":"Invented"}]}`,
 		}, nil
-	}), "openai/gpt-5.6-luna")
+	}), "openai/gpt-5.6-luna", nil)
 	require.NoError(t, err)
 
 	_, err = service.Build(t.Context(), Input{

@@ -1,6 +1,71 @@
 {
 	"components": {
 		"schemas": {
+			"AIPromptResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AIPromptResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"default_value": {
+						"type": "string"
+					},
+					"default_version": {
+						"type": "string"
+					},
+					"key": {
+						"type": "string"
+					},
+					"kind": {
+						"enum": ["base", "platform"],
+						"type": "string"
+					},
+					"overridden": {
+						"type": "boolean"
+					},
+					"platform": {
+						"type": "string"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"updated_by": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string"
+					}
+				},
+				"required": ["key", "kind", "default_version", "default_value", "value", "overridden"],
+				"type": "object"
+			},
+			"AIPromptsResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AIPromptsResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"fixed_output_contract": {
+						"type": "string"
+					},
+					"prompts": {
+						"items": {
+							"$ref": "#/components/schemas/AIPromptResponse"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["prompts", "fixed_output_contract"],
+				"type": "object"
+			},
 			"APITokenResponse": {
 				"additionalProperties": false,
 				"properties": {
@@ -13648,6 +13713,25 @@
 				"required": ["provider"],
 				"type": "object"
 			},
+			"SaveAIPromptInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/SaveAIPromptInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"value": {
+						"maxLength": 20000,
+						"minLength": 1,
+						"type": "string"
+					}
+				},
+				"required": ["value"],
+				"type": "object"
+			},
 			"SaveAccountFeaturesInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -17777,6 +17861,86 @@
 				},
 				"summary": "Get OAuth authorization URL for a platform",
 				"tags": ["Accounts"]
+			}
+		},
+		"/admin/ai-prompts": {
+			"get": {
+				"operationId": "list-instance-ai-prompts",
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AIPromptsResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "List instance AI prompts",
+				"tags": ["Admin"]
+			}
+		},
+		"/admin/ai-prompts/{key}": {
+			"put": {
+				"operationId": "save-instance-ai-prompt",
+				"parameters": [
+					{
+						"description": "Prompt catalogue key",
+						"in": "path",
+						"name": "key",
+						"required": true,
+						"schema": {
+							"description": "Prompt catalogue key",
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SaveAIPromptInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AIPromptResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "Save an instance AI prompt",
+				"tags": ["Admin"]
 			}
 		},
 		"/admin/audit-events": {

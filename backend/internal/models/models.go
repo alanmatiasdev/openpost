@@ -976,6 +976,19 @@ type InstanceSetting struct {
 	UpdatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
+// AIPromptOverride stores one instance-wide administrator replacement for a
+// code-owned AI prompt. The prompt catalogue remains source-controlled, so a
+// missing row always means "use the current built-in prompt".
+type AIPromptOverride struct {
+	bun.BaseModel `bun:"table:ai_prompt_overrides"`
+
+	Key            string    `bun:",pk" json:"key"`
+	ValueEncrypted []byte    `bun:"value_encrypted,notnull" json:"-"`
+	UpdatedByID    string    `bun:"updated_by_id,nullzero" json:"updated_by_id,omitempty"`
+	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
 // OAuthGrant is one provider authorization. Destination accounts reference a
 // grant instead of owning credential copies so token rotation and revocation
 // have one atomic consistency boundary.

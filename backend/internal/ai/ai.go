@@ -42,9 +42,18 @@ type GenerateRequest struct {
 	Model           string
 	SystemPrompt    string
 	UserPrompt      string
+	ResponseSchema  *JSONSchema
 	Images          []Image
 	MaxOutputTokens int64
 	ReasoningEffort ReasoningEffort
+}
+
+// JSONSchema asks a generator adapter to constrain its response to one strict,
+// machine-owned shape. Human-editable prompt text must not define this shape.
+type JSONSchema struct {
+	Name        string
+	Description string
+	Schema      map[string]any
 }
 
 type Usage struct {

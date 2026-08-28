@@ -216,12 +216,41 @@ func buildOpenRouterRequest(request GenerateRequest, providerSlug string, requir
 		ReasoningEffort: optionalnullable.From(&reasoningEffort),
 		Stream:          &stream,
 	}
+	if request.ResponseSchema != nil {
+		responseFormat, err := openRouterResponseFormat(*request.ResponseSchema)
+		if err != nil {
+			return components.ChatRequest{}, err
+		}
+		chatRequest.ResponseFormat = &responseFormat
+	}
 	if request.MaxOutputTokens > 0 {
 		maxOutputTokens := request.MaxOutputTokens
 		chatRequest.MaxCompletionTokens = optionalnullable.From(&maxOutputTokens)
 	}
 
 	return chatRequest, nil
+}
+
+func openRouterResponseFormat(schema JSONSchema) (components.ResponseFormat, error) {
+	name := strings.TrimSpace(schema.Name)
+	if name == "" {
+		return components.ResponseFormat{}, errors.New("AI response schema name is required")
+	}
+	if len(schema.Schema) == 0 {
+		return components.ResponseFormat{}, errors.New("AI response schema is required")
+	}
+	strict := true
+	config := components.ChatJSONSchemaConfig{
+		Name:   name,
+		Schema: schema.Schema,
+		Strict: optionalnullable.From(&strict),
+	}
+	if description := strings.TrimSpace(schema.Description); description != "" {
+		config.Description = &description
+	}
+	return components.CreateResponseFormatJSONSchema(components.ChatFormatJSONSchemaConfig{
+		JSONSchema: config,
+	}), nil
 }
 
 func openRouterImageContent(image Image) (components.ChatContentItems, error) {

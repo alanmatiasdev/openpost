@@ -11,6 +11,7 @@ import (
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/accountfeatures"
+	"github.com/openpost/backend/internal/services/aiprompts"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
@@ -93,6 +94,7 @@ type RouteDeps struct {
 	FeedbackService              *feedback.Service
 	IdentityService              *identity.Service
 	InstanceSettingsService      *instancesettings.Service
+	AIPromptService              *aiprompts.Service
 	AnalyticsService             *analyticsservice.Service
 	MessagingService             *messagingservice.Service
 	EngagementService            *engagementservice.Service
@@ -278,6 +280,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 		deps.FrontendURL,
 	).RegisterRoutes(api)
 	handlers.NewInstanceSettingsHandler(deps.InstanceSettingsService, deps.DB, deps.Authenticator).RegisterRoutes(api)
+	handlers.NewAIPromptHandler(deps.AIPromptService, deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewUpdateStatusHandler(deps.DB, deps.Authenticator, deps.UpdateStatusService, deps.InstanceSettingsService).RegisterRoutes(api)
 
 	mcpOAuthHandler := deps.MCPOAuthHandler

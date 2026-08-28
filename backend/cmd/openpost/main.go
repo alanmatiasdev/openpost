@@ -32,6 +32,7 @@ import (
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/queue"
+	"github.com/openpost/backend/internal/services/aiprompts"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
@@ -110,6 +111,7 @@ func main() {
 
 	tokenEncryptor := crypto.NewTokenEncryptor(cfg.EncryptionKey)
 	instanceSettingsService := instancesettings.NewService(db, tokenEncryptor, cfg)
+	aiPromptService := aiprompts.NewService(db, tokenEncryptor)
 	if err := instanceSettingsService.ApplyStored(context.Background(), cfg); err != nil {
 		log.Fatalf("failed to load administrator-managed instance settings: %v", err)
 	}
@@ -490,7 +492,7 @@ func main() {
 		)
 	}
 	if contentGenerator != nil {
-		postBuilder, err = postgeneration.New(contentGenerator, cfg.TextGenerationModel)
+		postBuilder, err = postgeneration.New(contentGenerator, cfg.TextGenerationModel, aiPromptService)
 		if err != nil {
 			log.Fatalf("failed to initialize AI post builder: %v", err)
 		}
@@ -697,6 +699,7 @@ func main() {
 		FeedbackService:              feedbackService,
 		IdentityService:              identityService,
 		InstanceSettingsService:      instanceSettingsService,
+		AIPromptService:              aiPromptService,
 		AnalyticsService:             analyticsService,
 		MessagingService:             messagingService,
 		EngagementService:            engagementService,
