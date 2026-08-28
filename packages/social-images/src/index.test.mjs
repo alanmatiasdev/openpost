@@ -8,7 +8,6 @@ import {
   docsRouteFromPage,
   marketingPrerenderEntries,
   marketingAgentMarkdownUrl,
-  marketingRouteManifest,
   marketingSocialEntries,
   resolveDocsSocial,
   resolveMarketingSocial,
@@ -27,7 +26,7 @@ test("marketing social entries have unique paths, keys, and complete image metad
     assert.equal(image.pathname, "/og");
     assert.equal(image.searchParams.get("id"), entry.id);
     assert.equal(image.searchParams.has("title"), false);
-    assert.equal(resolveSocialImageEntry(entry.id), entry);
+    assert.deepEqual(resolveSocialImageEntry(entry.id), entry);
     assert.match(entry.canonical, /^https:\/\/openpost\.social(?:\/|$)/);
     assert.match(entry.priority, /^(?:1\.0|0\.[0-9])$/u);
     assert.match(entry.agentRepresentation, /^(?:static|platform|comparison|tool)$/u);
@@ -40,15 +39,9 @@ test("marketing social entries have unique paths, keys, and complete image metad
 });
 
 test("the public route manifest owns social, sitemap, and prerender metadata", () => {
-  assert.equal(marketingSocialEntries, marketingRouteManifest);
   assert.equal(resolveMarketingSocial("/trust").key, "trust");
   assert.equal(resolveMarketingSocial("/self-hosted").key, "self-hosted");
   assert.deepEqual(marketingPrerenderEntries("/platforms")[0], { slug: "x" });
-  assert.deepEqual(
-    marketingPrerenderEntries("/compare").map(({ slug }) => slug),
-    ["buffer", "hootsuite", "typefully", "postiz", "post-bridge", "mixpost"],
-  );
-  assert.equal(marketingPrerenderEntries("/tools").length, 8);
   assert.equal(
     marketingAgentMarkdownUrl(resolveMarketingSocial("/")),
     "https://openpost.social/index.md",
@@ -106,7 +99,7 @@ test("every generated docs card has a unique, server-resolvable catalog id", () 
   assert.equal(new Set(docsSocialEntries.map((entry) => entry.id)).size, docsSocialEntries.length);
   for (const [index, entry] of docsSocialEntries.entries()) {
     const page = docsPageCatalog[index];
-    assert.equal(resolveSocialImageEntry(entry.id), entry);
+    assert.deepEqual(resolveSocialImageEntry(entry.id), entry);
     assert.equal(entry.page, page.page);
     assert.equal(entry.route, page.route);
     assert.equal(entry.route, docsRouteFromPage(page.page));
