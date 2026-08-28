@@ -347,6 +347,10 @@ describe('TimelinePanel progressive controls', () => {
 		await expect
 			.element(screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }))
 			.toBeVisible();
+		screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		await expect.element(screen.getByRole('menuitem', { name: /^Fast scan/ })).toBeVisible();
+		await expect.element(screen.getByRole('menuitem', { name: /^Adaptive \+ LFM/ })).toBeVisible();
 		await expect
 			.element(screen.getByRole('menuitem', { name: 'Generate AI captions' }))
 			.toBeVisible();
@@ -360,8 +364,23 @@ describe('TimelinePanel progressive controls', () => {
 
 		await userEvent.click(clip!, { button: 'right' });
 		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
-		screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }).element().click();
-		expect(onsplitscenes).toHaveBeenCalledWith('video');
+		screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		screen
+			.getByRole('menuitem', { name: /^Fast scan/ })
+			.element()
+			.click();
+		expect(onsplitscenes).toHaveBeenCalledWith('video', 'fast');
+
+		await userEvent.click(clip!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());
+		screen.getByRole('menuitem', { name: 'Auto-split at scene changes' }).element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		screen
+			.getByRole('menuitem', { name: /^Adaptive \+ LFM/ })
+			.element()
+			.click();
+		expect(onsplitscenes).toHaveBeenCalledWith('video', 'adaptive-lfm');
 
 		await userEvent.click(clip!, { button: 'right' });
 		await userEvent.hover(screen.getByRole('menuitem', { name: 'Edit' }).element());

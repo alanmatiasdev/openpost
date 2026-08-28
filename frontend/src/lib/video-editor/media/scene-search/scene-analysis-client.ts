@@ -15,6 +15,7 @@ import type {
 	SceneAnalysisWorkerComplete,
 	SceneAnalysisWorkerResponse
 } from './scene-analysis.worker';
+import type { SceneCut } from './scene-types';
 import type { SceneAnalysis, SceneAnalysisProgress } from './types';
 
 export const SCENE_BROWSER_DETECTOR_VERSION = 2;
@@ -69,7 +70,8 @@ async function boundedImageThumbnail(source: Blob, signal?: AbortSignal): Promis
 async function runWorker(
 	media: MediaMetadata,
 	signal: AbortSignal | undefined,
-	onProgress: AnalyzeSceneOptions['onProgress']
+	onProgress: AnalyzeSceneOptions['onProgress'],
+	includeThumbnails = true
 ): Promise<SceneAnalysisWorkerComplete> {
 	const blob = await resolveMediaBlob(media);
 	const worker = new Worker(new URL('./scene-analysis.worker.ts', import.meta.url), {
@@ -107,7 +109,12 @@ async function runWorker(
 				if (message.type === 'error') reject(new Error(message.error));
 				else resolve(message);
 			};
-			worker.postMessage({ type: 'analyze', requestId, blob, method: 'adaptive' });
+			worker.postMessage({
+				type: 'analyze',
+				requestId,
+				blob,
+				includeThumbnails
+			});
 		});
 	} finally {
 		worker.terminate();
@@ -212,4 +219,16 @@ export async function analyzeMediaScenes(
 		}
 	}
 	return analyzeFresh(media, options);
+}
+
+export async function detectAdaptiveSceneCuts(
+	media: MediaMetadata,
+	options: Pick<AnalyzeSceneOptions, 'signal' | 'onProgress'> = {}
+): Promise<SceneCut[]> {
+	if (!isSceneAnalyzableMedia(media) || isImageMedia(media)) {
+		throw new Error(
+			`Adaptive scene detection does not support ${media.mimeType || 'this media type'}`
+		);
+	}
+	return (await runWorker(media, options.signal, options.onProgress, false)).cuts;
 }

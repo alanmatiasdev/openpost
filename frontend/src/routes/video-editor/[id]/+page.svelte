@@ -26,7 +26,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		setItemsReversed
 	} from '$lib/video-editor/timeline/actions/items';
 	import { markerAfter, markerBefore } from '$lib/video-editor/timeline/markers';
-	import { scanSceneCuts } from '$lib/video-editor/media/scene-scan';
+	import { scanSceneCuts, type SceneScanMode } from '$lib/video-editor/media/scene-scan';
 	import { cutFramesForItem } from '$lib/video-editor/media/scene-math';
 	import { insertFreezeFrame } from '$lib/video-editor/media/insert-freeze-frame.svelte';
 	import {
@@ -115,6 +115,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { pasteTimelineItemClipboard } from '$lib/video-editor/timeline/actions/item-clipboard';
 	import { handleTranscriptClipboardCopy } from '$lib/video-editor/transcript/transcript-copy-bridge';
 	import { expandSelectionWithLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
+	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
 	import { snapshotTimelineState } from '$lib/video-editor/timeline/utils/state-snapshot.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { sourceHoverStore } from '$lib/video-editor/source-monitor/source-hover.svelte';
@@ -656,6 +657,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	const selectedIsVideo = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'video'
 	);
+	const selectedTrackLocked = $derived.by(() => {
+		if (!selectedItemId) return false;
+		const item = timelineStore.itemById.get(selectedItemId);
+		return item ? isTrackEffectivelyLocked(item.trackId, timelineStore.tracks) : false;
+	});
 	const selectedIsText = $derived(
 		selectedItemId !== null && timelineStore.itemById.get(selectedItemId)?.type === 'text'
 	);
@@ -765,16 +771,27 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	}
 
 	let scanningScenes = $state(false);
-	async function handleAutoSplitScenes(itemId: string | null = selectedItemId): Promise<void> {
-		if (!itemId || scanningScenes) return;
+	let sceneScanController: AbortController | null = null;
+	async function handleAutoSplitScenes(
+		itemId: string | null = selectedItemId,
+		mode: SceneScanMode = 'fast'
+	): Promise<void> {
+		if (!itemId) return;
 		const item = timelineStore.itemById.get(itemId);
 		const media = item?.mediaId ? mediaPool.get(item.mediaId) : undefined;
-		if (!item || !media) return;
+		if (!item || !media || isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)) return;
+		sceneScanController?.abort();
+		const controller = new AbortController();
+		sceneScanController = controller;
 		scanningScenes = true;
 		try {
 			editorSession.pausePlayback();
 			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : media.fps;
-			const cutFrames = await scanSceneCuts(media, { sourceFps });
+			const cutFrames = await scanSceneCuts(media, {
+				sourceFps,
+				mode,
+				signal: controller.signal
+			});
 			const frames = cutFramesForItem({
 				cutSourceFrames: cutFrames,
 				sourceFps,
@@ -791,11 +808,17 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			editorSession.scheduleAutosave();
 			showToast(m.video_editor_scene_done({ count: frames.length }), 'success');
 		} catch (err) {
+			if (controller.signal.aborted) return;
 			showToast(err instanceof Error ? err.message : String(err), 'error');
 		} finally {
-			scanningScenes = false;
+			if (sceneScanController === controller) {
+				sceneScanController = null;
+				scanningScenes = false;
+			}
 		}
 	}
+
+	$effect(() => () => sceneScanController?.abort());
 
 	function togglePlay(): void {
 		if (editorSession.clock.isPlaying) {
@@ -1398,21 +1421,39 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 										oncreatevoice={openTextVoice}
 									/>
 									{#if selectedIsVideo}
-										<Button
-											size="sm"
-											variant="outline"
-											class="mt-3 min-h-11 w-full lg:min-h-8"
-											disabled={scanningScenes}
-											onclick={() => void handleAutoSplitScenes()}
-										>
-											{#if scanningScenes}
-												<LoaderIcon
-													class="size-3.5 animate-spin motion-reduce:animate-none"
-													aria-hidden="true"
-												/>
-											{/if}
-											{m.video_editor_scene_split()}
-										</Button>
+										<div class="mt-3">
+											<div class="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+												{#if scanningScenes}
+													<LoaderIcon
+														class="size-3.5 animate-spin motion-reduce:animate-none"
+														aria-hidden="true"
+													/>
+												{/if}
+												{m.video_editor_scene_split()}
+											</div>
+											<div class="grid grid-cols-2 gap-1.5">
+												<Button
+													size="sm"
+													variant="outline"
+													class="min-h-11 lg:min-h-8"
+													disabled={scanningScenes || selectedTrackLocked}
+													title={m.video_editor_scene_split_fast_help()}
+													onclick={() => void handleAutoSplitScenes(selectedItemId, 'fast')}
+												>
+													{m.video_editor_scene_split_fast()}
+												</Button>
+												<Button
+													size="sm"
+													variant="outline"
+													class="min-h-11 lg:min-h-8"
+													disabled={scanningScenes || selectedTrackLocked}
+													title={m.video_editor_scene_split_adaptive_help()}
+													onclick={() => void handleAutoSplitScenes(selectedItemId, 'adaptive-lfm')}
+												>
+													{m.video_editor_scene_split_adaptive()}
+												</Button>
+											</div>
+										</div>
 									{/if}
 								{:else if selectedItemId && editInspectorTab === 'motion' && selectedSupportsMotion}
 									<MotionPresetsPanel
@@ -1618,7 +1659,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						onedit={() => editorSession.scheduleAutosave()}
 						onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
 						onreverseitems={handleReverseItems}
-						onsplitscenes={(itemId) => void handleAutoSplitScenes(itemId)}
+						onsplitscenes={(itemId, mode) => void handleAutoSplitScenes(itemId, mode)}
 						onaicaptions={(itemId) => void handleAiCaptions(itemId)}
 						onopenspeechcleanup={openAgentSpeechCleanup}
 						oncreatevoice={openTextVoice}

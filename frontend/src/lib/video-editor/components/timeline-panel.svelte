@@ -319,6 +319,7 @@
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
 	import MusicIcon from '@lucide/svelte/icons/music';
+	import type { SceneScanMode } from '$lib/video-editor/media/scene-scan';
 
 	let {
 		onedit,
@@ -353,7 +354,7 @@
 		onopencomposition?: (compositionId: string) => void;
 		onfreezeframe?: (itemId: string) => void;
 		onreverseitems?: (itemIds: string[], isReversed: boolean) => void;
-		onsplitscenes?: (itemId: string) => void;
+		onsplitscenes?: (itemId: string, mode: SceneScanMode) => void;
 		onaicaptions?: (itemId: string) => void;
 		onopenspeechcleanup?: (mode: 'fillers' | 'silence', itemIds: string[]) => void;
 		oncreatevoice?: (itemId: string, text: string) => void;
@@ -5632,13 +5633,26 @@
 								</ContextMenu.Shortcut>
 							</ContextMenu.Item>
 							{#if contextPrimaryItem?.type === 'video'}
-								<ContextMenu.Item
-									disabled={sceneScanPending ||
-										isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)}
-									onclick={() => onsplitscenes(contextPrimaryItem.id)}
-								>
-									{m.video_editor_scene_split()}
-								</ContextMenu.Item>
+								<ContextMenu.Sub>
+									<ContextMenu.SubTrigger
+										disabled={sceneScanPending ||
+											isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)}
+									>
+										{m.video_editor_scene_split()}
+									</ContextMenu.SubTrigger>
+									<ContextMenu.SubContent class="video-editor-theme w-52">
+										<ContextMenu.Item onclick={() => onsplitscenes(contextPrimaryItem.id, 'fast')}>
+											{m.video_editor_scene_split_fast()}
+											<ContextMenu.Shortcut>4 fps</ContextMenu.Shortcut>
+										</ContextMenu.Item>
+										<ContextMenu.Item
+											onclick={() => onsplitscenes(contextPrimaryItem.id, 'adaptive-lfm')}
+										>
+											{m.video_editor_scene_split_adaptive()}
+											<ContextMenu.Shortcut>Local</ContextMenu.Shortcut>
+										</ContextMenu.Item>
+									</ContextMenu.SubContent>
+								</ContextMenu.Sub>
 							{/if}
 							{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
 								<ContextMenu.Item onclick={() => onaicaptions(contextPrimaryItem.id)}>
