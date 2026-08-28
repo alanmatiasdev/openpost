@@ -97,6 +97,11 @@
 		restoreSnapshot
 	} from '$lib/video-editor/timeline/commands/snapshot.svelte';
 	import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
+	import {
+		sourceTranscriptionTaskId,
+		transcriptionService
+	} from '$lib/video-editor/transcript/transcription-service.svelte';
+	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 
 	let {
 		projectId,
@@ -173,6 +178,15 @@
 
 	$effect(() => {
 		syncThumbnails(mediaPool.thumbnailRevision, mediaPool.order);
+	});
+
+	$effect(() => {
+		const mediaIds = [...mediaPool.order];
+		untrack(() => {
+			for (const mediaId of mediaIds) {
+				void transcriptionService.hydrateSourceTranscript(mediaId).catch(() => undefined);
+			}
+		});
 	});
 
 	interface SequenceThumbnailRequest {
@@ -287,8 +301,67 @@
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
 			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
+			mediaTasks.get(mediaTaskId('proxy', mediaId)) ||
+			sourceTranscriptTask(mediaId)
+		);
+	}
+
+	function sourceTranscriptTask(mediaId: string) {
+		return mediaTasks.get(sourceTranscriptionTaskId(mediaId));
+	}
+
+	function canTranscribeSource(media: MediaMetadata): boolean {
+		return (
+			(media.mimeType.startsWith('audio/') || media.mimeType.startsWith('video/')) &&
+			media.audioCodecSupported !== false
+		);
+	}
+
+	function otherMediaProcessingForTranscript(mediaId: string): boolean {
+		return Boolean(
+			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
+			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
+			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
 			mediaTasks.get(mediaTaskId('proxy', mediaId))
 		);
+	}
+
+	function sourceTranscriptActionLabel(mediaId: string): string {
+		const task = sourceTranscriptTask(mediaId);
+		if (task?.status === 'cancelling') return m.video_editor_task_cancelling();
+		if (task) return m.video_editor_transcribe_cancel();
+		const status = transcriptionService.sourceTranscriptStatus(mediaId);
+		if (status === 'loading') return m.video_editor_source_transcript_loading();
+		return status === 'ready'
+			? m.video_editor_source_transcript_refresh()
+			: m.video_editor_source_transcript_generate();
+	}
+
+	async function runSourceTranscriptAction(media: MediaMetadata): Promise<void> {
+		const task = sourceTranscriptTask(media.id);
+		if (task) {
+			transcriptionService.cancelForMedia(media.id);
+			return;
+		}
+		try {
+			await transcriptionService.enqueueMedia(media.id, {
+				model: editorSettings.defaultTranscriptionModel,
+				language: editorSettings.defaultTranscriptionLanguage || undefined,
+				quantization: editorSettings.defaultTranscriptionQuantization
+			});
+			showToast(m.video_editor_source_transcript_ready({ name: media.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	async function removeSourceTranscript(media: MediaMetadata): Promise<void> {
+		try {
+			await transcriptionService.deleteMediaTranscript(media.id);
+			showToast(m.video_editor_source_transcript_deleted({ name: media.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
 	}
 
 	function canGenerateProxy(media: MediaMetadata): boolean {
@@ -307,7 +380,8 @@
 		return Boolean(
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
-			mediaTasks.get(mediaTaskId('scene-analysis', mediaId))
+			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
+			sourceTranscriptTask(mediaId)
 		);
 	}
 
@@ -863,6 +937,35 @@
 												{/snippet}
 											</DropdownMenu.Trigger>
 											<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+												{#if canTranscribeSource(entry.media)}
+													<DropdownMenu.Item
+														disabled={sourceTranscriptTask(id)?.status === 'cancelling' ||
+															transcriptionService.sourceTranscriptStatus(id) === 'loading' ||
+															(!sourceTranscriptTask(id) && otherMediaProcessingForTranscript(id))}
+														onclick={() => void runSourceTranscriptAction(entry.media)}
+													>
+														{#if sourceTranscriptTask(id)?.status === 'cancelling'}
+															<LoaderIcon
+																class="size-4 animate-spin motion-reduce:animate-none"
+																aria-hidden="true"
+															/>
+														{:else if sourceTranscriptTask(id)}
+															<XIcon class="size-4" aria-hidden="true" />
+														{:else}
+															<CaptionsIcon class="size-4" aria-hidden="true" />
+														{/if}
+														{sourceTranscriptActionLabel(id)}
+													</DropdownMenu.Item>
+													{#if transcriptionService.sourceTranscriptStatus(id) === 'ready' && !sourceTranscriptTask(id)}
+														<DropdownMenu.Item
+															class="text-red-300 focus:text-red-200"
+															onclick={() => void removeSourceTranscript(entry.media)}
+														>
+															<TrashIcon class="size-4" aria-hidden="true" />
+															{m.video_editor_source_transcript_delete()}
+														</DropdownMenu.Item>
+													{/if}
+												{/if}
 												{#if canExtractEmbeddedSubtitles(entry.media)}
 													<DropdownMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
 														<CaptionsIcon class="size-4" aria-hidden="true" />
@@ -903,7 +1006,7 @@
 														{proxyActionLabel(entry.media)}
 													</DropdownMenu.Item>
 												{/if}
-												{#if canExtractEmbeddedSubtitles(entry.media) || isSceneAnalyzableMedia(entry.media) || canGenerateProxy(entry.media)}
+												{#if canTranscribeSource(entry.media) || canExtractEmbeddedSubtitles(entry.media) || isSceneAnalyzableMedia(entry.media) || canGenerateProxy(entry.media)}
 													<DropdownMenu.Separator />
 												{/if}
 												<DropdownMenu.Sub>
@@ -987,8 +1090,40 @@
 									<PlusIcon class="size-4" aria-hidden="true" />
 									{m.video_editor_media_place()}
 								</ContextMenu.Item>
-								{#if canExtractEmbeddedSubtitles(entry.media)}
+								{#if canTranscribeSource(entry.media)}
 									<ContextMenu.Separator />
+									<ContextMenu.Item
+										disabled={sourceTranscriptTask(id)?.status === 'cancelling' ||
+											transcriptionService.sourceTranscriptStatus(id) === 'loading' ||
+											(!sourceTranscriptTask(id) && otherMediaProcessingForTranscript(id))}
+										onclick={() => void runSourceTranscriptAction(entry.media)}
+									>
+										{#if sourceTranscriptTask(id)?.status === 'cancelling'}
+											<LoaderIcon
+												class="size-4 animate-spin motion-reduce:animate-none"
+												aria-hidden="true"
+											/>
+										{:else if sourceTranscriptTask(id)}
+											<XIcon class="size-4" aria-hidden="true" />
+										{:else}
+											<CaptionsIcon class="size-4" aria-hidden="true" />
+										{/if}
+										{sourceTranscriptActionLabel(id)}
+									</ContextMenu.Item>
+									{#if transcriptionService.sourceTranscriptStatus(id) === 'ready' && !sourceTranscriptTask(id)}
+										<ContextMenu.Item
+											variant="destructive"
+											onclick={() => void removeSourceTranscript(entry.media)}
+										>
+											<TrashIcon class="size-4" aria-hidden="true" />
+											{m.video_editor_source_transcript_delete()}
+										</ContextMenu.Item>
+									{/if}
+								{/if}
+								{#if canExtractEmbeddedSubtitles(entry.media)}
+									{#if !canTranscribeSource(entry.media)}
+										<ContextMenu.Separator />
+									{/if}
 									<ContextMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
 										<CaptionsIcon class="size-4" aria-hidden="true" />
 										{m.video_editor_extract_embedded_subtitles()}

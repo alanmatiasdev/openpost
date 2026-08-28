@@ -101,10 +101,16 @@ export async function transcribeClip(
 	const sourceWindow = transcriptionSourceWindow(item);
 	const sourceStartSeconds = options.sourceStartSeconds ?? sourceWindow.sourceStartSeconds;
 	const sourceEndSeconds = options.sourceEndSeconds ?? sourceWindow.sourceEndSeconds;
+	return transcribeSource(file, { ...options, sourceStartSeconds, sourceEndSeconds });
+}
+
+/** Transcribe an explicit source window without requiring a timeline item. */
+export async function transcribeSource(
+	file: File,
+	options: TranscribeOptions = {}
+): Promise<TranscriptWord[]> {
 	const transcriber = new BrowserTranscriber();
-	const segments = await transcriber
-		.transcribe(file, { ...options, sourceStartSeconds, sourceEndSeconds })
-		.collect();
+	const segments = await transcriber.transcribe(file, options).collect();
 	return segments.flatMap((segment) =>
 		(segment.words ?? []).map((word) => ({
 			text: word.text,

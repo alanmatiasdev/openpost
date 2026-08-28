@@ -7,6 +7,7 @@ import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import type { TranscriptWord } from './cues';
 import type { TranscribeOptions, TranscriptionSelection } from './engine/types';
+import type { SourceTranscript } from '../workspace-fs/source-transcripts';
 import {
 	TranscriptionService,
 	type TranscriptionServiceDependencies
@@ -75,7 +76,6 @@ const selection: TranscriptionSelection = {
 };
 
 interface PendingTranscription {
-	itemId: string;
 	options: TranscribeOptions;
 	resolve: (words: TranscriptWord[]) => void;
 	reject: (error: Error) => void;
@@ -84,17 +84,22 @@ interface PendingTranscription {
 interface ControlledDependencies {
 	dependencies: TranscriptionServiceDependencies;
 	pending: PendingTranscription[];
+	get storedTranscript(): SourceTranscript | null;
 }
 
 function controlledDependencies(): ControlledDependencies {
 	const pending: PendingTranscription[] = [];
+	let storedTranscript: SourceTranscript | null = null;
 	return {
 		pending,
+		get storedTranscript() {
+			return storedTranscript;
+		},
 		dependencies: {
 			resolveSource: vi.fn(async () => new Blob(['source'], { type: 'video/mp4' })),
-			transcribe: vi.fn((item, _file, options) => {
+			transcribe: vi.fn((_file, options) => {
 				return new Promise<TranscriptWord[]>((resolve, reject) => {
-					const entry = { itemId: item.id, options, resolve, reject };
+					const entry = { options, resolve, reject };
 					pending.push(entry);
 					options.signal?.addEventListener(
 						'abort',
@@ -102,6 +107,28 @@ function controlledDependencies(): ControlledDependencies {
 						{ once: true }
 					);
 				});
+			}),
+			getSourceTranscript: vi.fn(async () => storedTranscript),
+			saveSourceTranscript: vi.fn(async (input) => {
+				const now = Date.now();
+				storedTranscript = {
+					schemaVersion: 1,
+					mediaId: input.media.id,
+					contentHash: input.media.contentHash,
+					sourceFileSize: input.media.fileSize,
+					sourceLastModified: input.media.fileLastModified,
+					model: input.selection.model,
+					resolvedModel: input.resolvedModel,
+					language: input.selection.language,
+					quantization: input.selection.quantization,
+					words: input.words,
+					createdAt: storedTranscript?.createdAt ?? now,
+					updatedAt: now
+				};
+				return storedTranscript;
+			}),
+			deleteSourceTranscript: vi.fn(async () => {
+				storedTranscript = null;
 			})
 		}
 	};
@@ -130,7 +157,7 @@ describe('TranscriptionService', () => {
 
 		expect(duplicate).toBe(first);
 		await vi.waitFor(() => expect(pending).toHaveLength(1));
-		expect(pending[0]?.itemId).toBe(firstItem.id);
+		expect(pending[0]?.options.sourceStartSeconds).toBe(0);
 		expect(service.jobForItem(firstItem.id)).toMatchObject({ status: 'running' });
 		expect(service.jobForItem(secondItem.id)).toMatchObject({ status: 'queued' });
 		expect(service.queuePosition(service.jobForItem(secondItem.id)!.id)).toBe(1);
@@ -139,7 +166,7 @@ describe('TranscriptionService', () => {
 		await expect(first).resolves.toMatchObject({ sourceItemId: firstItem.id });
 		await expect(duplicate).resolves.toMatchObject({ sourceItemId: firstItem.id });
 		await vi.waitFor(() => expect(pending).toHaveLength(2));
-		expect(pending[1]?.itemId).toBe(secondItem.id);
+		expect(pending[1]?.options.sourceStartSeconds).toBe(3);
 
 		pending[1]!.resolve([{ text: 'Second', startSeconds: 0, endSeconds: 1 }]);
 		await expect(second).resolves.toMatchObject({ sourceItemId: secondItem.id });
@@ -254,5 +281,88 @@ describe('TranscriptionService', () => {
 
 		pending[1]!.resolve([{ text: 'Recovered', startSeconds: 0, endSeconds: 1 }]);
 		await expect(result).resolves.toMatchObject({ sourceItemId: firstItem.id });
+	});
+
+	it('persists a full-source transcript and reuses it for later clip captions', async () => {
+		const controlled = controlledDependencies();
+		const sourceService = new TranscriptionService(controlled.dependencies);
+		const sourceResult = sourceService.enqueueMedia(media.id, selection);
+		await vi.waitFor(() => expect(controlled.pending).toHaveLength(1));
+		expect(controlled.pending[0]?.options).toMatchObject({
+			sourceStartSeconds: 0,
+			sourceEndSeconds: media.duration
+		});
+		controlled.pending[0]!.resolve([
+			{ text: 'First', startSeconds: 0.25, endSeconds: 0.75 },
+			{ text: 'Later', startSeconds: 3.25, endSeconds: 3.75 }
+		]);
+		await expect(sourceResult).resolves.toMatchObject({
+			mediaId: media.id,
+			model: selection.model
+		});
+
+		sourceService.reset();
+		const restoredService = new TranscriptionService(controlled.dependencies);
+		const clipResult = restoredService.enqueue(firstItem.id, selection);
+		await expect(clipResult).resolves.toMatchObject({ sourceItemId: firstItem.id });
+		expect(controlled.dependencies.transcribe).toHaveBeenCalledOnce();
+		const caption = timelineStore.items.find(
+			(item) =>
+				item.captionSource?.type === 'transcript' && item.captionSource.clipId === firstItem.id
+		);
+		expect(caption?.cues?.[0]).toMatchObject({ startFrame: 8, endFrame: 23, text: 'First' });
+	});
+
+	it('refreshes and deletes the reusable source transcript without removing placed captions', async () => {
+		const controlled = controlledDependencies();
+		const service = new TranscriptionService(controlled.dependencies);
+		const generated = service.enqueueMedia(media.id, selection);
+		await vi.waitFor(() => expect(controlled.pending).toHaveLength(1));
+		controlled.pending[0]!.resolve([{ text: 'First', startSeconds: 0, endSeconds: 1 }]);
+		await generated;
+		await service.enqueue(firstItem.id, selection);
+
+		const refreshed = service.enqueueMedia(media.id, selection);
+		await vi.waitFor(() => expect(controlled.pending).toHaveLength(2));
+		controlled.pending[1]!.resolve([{ text: 'Better', startSeconds: 0, endSeconds: 1 }]);
+		await expect(refreshed).resolves.toMatchObject({ words: [{ text: 'Better' }] });
+		expect(controlled.dependencies.saveSourceTranscript).toHaveBeenCalledTimes(2);
+
+		await service.deleteMediaTranscript(media.id);
+		expect(controlled.storedTranscript).toBeNull();
+		expect(
+			timelineStore.items.filter((item) => item.captionSource?.type === 'transcript')
+		).toHaveLength(1);
+		expect(service.sourceTranscriptStatus(media.id)).toBe('idle');
+	});
+
+	it('cancels a source transcription through the shared media task', async () => {
+		const controlled = controlledDependencies();
+		const service = new TranscriptionService(controlled.dependencies);
+		const result = service.enqueueMedia(media.id, selection);
+		await vi.waitFor(() => expect(controlled.pending).toHaveLength(1));
+		expect(service.cancelForMedia(media.id)).toBe(true);
+		await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+		expect(mediaTasks.list).toHaveLength(0);
+		expect(controlled.dependencies.saveSourceTranscript).not.toHaveBeenCalled();
+	});
+
+	it('does not start a clip job after the editor resets during transcript cache lookup', async () => {
+		const controlled = controlledDependencies();
+		let finishLookup!: (transcript: SourceTranscript | null) => void;
+		controlled.dependencies.getSourceTranscript = vi.fn(
+			() =>
+				new Promise<SourceTranscript | null>((resolve) => {
+					finishLookup = resolve;
+				})
+		);
+		const service = new TranscriptionService(controlled.dependencies);
+		const result = service.enqueue(firstItem.id, selection);
+		service.reset();
+		finishLookup(null);
+
+		await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+		expect(controlled.dependencies.transcribe).not.toHaveBeenCalled();
+		expect(mediaTasks.list).toHaveLength(0);
 	});
 });

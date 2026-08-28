@@ -14,6 +14,11 @@ import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { sceneBrowser } from '../media/scene-search/scene-browser.svelte';
 import { cachedProxy, clearProxyCache } from '../media/proxy-client';
 import { mediaTaskId, mediaTasks } from '../media/media-tasks.svelte';
+import {
+	sourceTranscriptionTaskId,
+	transcriptionService
+} from '../transcript/transcription-service.svelte';
+import { editorSettings } from '../settings/editor-settings.svelte';
 import proResFixtureUrl from '../media/fixtures/prores-proxy.mov?url';
 import MediaPoolList from './media-pool-list.svelte';
 import '../../../routes/layout.css';
@@ -65,6 +70,8 @@ beforeEach(() => {
 	mediaRecovery.reset();
 	mediaPlacement.cancel();
 	mediaTasks.reset();
+	transcriptionService.reset();
+	editorSettings.reset();
 	sceneBrowser.reset();
 	sequenceStore.reset();
 	editorSession.project = null;
@@ -151,6 +158,75 @@ describe('MediaPoolList', () => {
 		await screen.getByRole('menuitem', { name: 'Extract embedded subtitles' }).click();
 
 		expect(onextractsubtitles).toHaveBeenCalledExactlyOnceWith(interview);
+	});
+
+	it('manages one reusable source transcript from right-click and overflow menus', async () => {
+		await page.viewport(320, 720);
+		const interview = media('video', 'Interview.mp4', ['video']);
+		mediaPool.loadAll([interview]);
+		let status: 'idle' | 'ready' = 'idle';
+		vi.spyOn(transcriptionService, 'hydrateSourceTranscript').mockResolvedValue(null);
+		vi.spyOn(transcriptionService, 'sourceTranscriptStatus').mockImplementation(() => status);
+		const enqueue = vi.spyOn(transcriptionService, 'enqueueMedia').mockImplementation(async () => {
+			status = 'ready';
+			return {
+				schemaVersion: 1,
+				mediaId: interview.id,
+				sourceFileSize: interview.fileSize,
+				model: 'parakeet-tdt-v3',
+				resolvedModel: 'parakeet-tdt-v3',
+				quantization: 'hybrid',
+				words: [{ text: 'Hello', startSeconds: 0, endSeconds: 1 }],
+				createdAt: 1,
+				updatedAt: 1
+			};
+		});
+		const remove = vi
+			.spyOn(transcriptionService, 'deleteMediaTranscript')
+			.mockImplementation(async () => {
+				status = 'idle';
+			});
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		const row = screen.getByText(interview.fileName).element().closest('li')!;
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Generate transcript' }).click();
+		expect(enqueue).toHaveBeenCalledExactlyOnceWith(interview.id, {
+			model: 'parakeet-tdt-v3',
+			language: undefined,
+			quantization: 'hybrid'
+		});
+
+		await screen.getByRole('button', { name: `More actions for ${interview.fileName}` }).click();
+		await expect
+			.element(screen.getByRole('menuitem', { name: 'Refresh transcript' }))
+			.toBeVisible();
+		await screen.getByRole('menuitem', { name: 'Delete transcript' }).click();
+		expect(remove).toHaveBeenCalledExactlyOnceWith(interview.id);
+	});
+
+	it('cancels source transcription from the same media row', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		mediaPool.loadAll([interview]);
+		vi.spyOn(transcriptionService, 'hydrateSourceTranscript').mockResolvedValue(null);
+		vi.spyOn(transcriptionService, 'sourceTranscriptStatus').mockReturnValue('idle');
+		const cancel = vi.spyOn(transcriptionService, 'cancelForMedia').mockReturnValue(true);
+		mediaTasks.start({
+			id: sourceTranscriptionTaskId(interview.id),
+			kind: 'transcription',
+			mediaId: interview.id,
+			label: interview.fileName,
+			status: 'running',
+			progress: 0.5,
+			onCancel: () => undefined
+		});
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const row = screen.getByText(interview.fileName).element().closest('li')!;
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Cancel transcription' }).click();
+		expect(cancel).toHaveBeenCalledExactlyOnceWith(interview.id);
 	});
 
 	it('generates and removes a real ProRes proxy from the exact media row', async () => {
