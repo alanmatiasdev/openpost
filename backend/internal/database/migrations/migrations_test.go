@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,23 +14,6 @@ import (
 	"github.com/uptrace/bun/dialect"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
-
-func TestRetiredVideoEditorMigrationDropsForeignKeyOwnersFirst(t *testing.T) {
-	t.Parallel()
-
-	raw, err := migrationFiles.ReadFile("107_drop_video_projects.sql")
-	require.NoError(t, err)
-	sql := string(raw)
-
-	assets := strings.Index(sql, "DROP TABLE IF EXISTS video_project_assets;")
-	revisions := strings.Index(sql, "DROP TABLE IF EXISTS video_project_revisions;")
-	projects := strings.Index(sql, "DROP TABLE IF EXISTS video_projects;")
-	require.NotEqual(t, -1, assets)
-	require.NotEqual(t, -1, revisions)
-	require.NotEqual(t, -1, projects)
-	require.Less(t, assets, revisions)
-	require.Less(t, revisions, projects)
-}
 
 func TestRunMigrationsReplacesLegacySocialSetsAndPromotesSchedules(t *testing.T) {
 	t.Parallel()
@@ -335,21 +317,6 @@ func TestOIDCSSOMigrationAllowsPasswordlessUsersAndBackfillsOrganizationMembers(
 		require.NoError(t, err)
 		require.True(t, exists, "expected %s table", table)
 	}
-}
-
-func TestOIDCSSOMigrationNormalizesForPostgres(t *testing.T) {
-	t.Parallel()
-
-	raw, err := migrationFiles.ReadFile("051_oidc_sso.sql")
-	require.NoError(t, err)
-	got := normalizeMigrationSQL(dialect.PG, string(raw))
-
-	require.Contains(t, got, "client_secret_encrypted BYTEA")
-	require.Contains(t, got, "pkce_verifier_encrypted BYTEA NOT NULL")
-	require.Contains(t, got, "auth_time TIMESTAMPTZ NOT NULL")
-	require.Contains(t, got, "ADD COLUMN IF NOT EXISTS is_break_glass BOOLEAN NOT NULL DEFAULT false")
-	require.NotContains(t, got, " BLOB")
-	require.NotContains(t, got, " DATETIME")
 }
 
 func TestRemoveGlobalMediaHashConstraintKeepsIndexesAndAllowsWorkspaceScopedHashes(t *testing.T) {

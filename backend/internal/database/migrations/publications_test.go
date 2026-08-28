@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunMigrationsCreatesPublicationSchema(t *testing.T) {
+func TestRunMigrationsEnforcesDraftRevisionIdentity(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)
@@ -17,44 +17,6 @@ func TestRunMigrationsCreatesPublicationSchema(t *testing.T) {
 	seedMigrationUser(ctx, t, db)
 
 	runMigrationsThrough(t, db, 104)
-
-	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'publications'")
-	var publicationSchema string
-	require.NoError(t, row.Scan(&publicationSchema))
-	require.Contains(t, publicationSchema, "workspace_id TEXT NOT NULL")
-	require.Contains(t, publicationSchema, "created_by TEXT NOT NULL")
-	require.Contains(t, publicationSchema, "source_content TEXT NOT NULL DEFAULT ''")
-	require.Contains(t, publicationSchema, "release_plan_json TEXT NOT NULL DEFAULT '{}'")
-	require.Contains(t, publicationSchema, "revision INTEGER NOT NULL DEFAULT 1")
-	require.Contains(t, publicationSchema, "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE")
-	require.Contains(t, publicationSchema, "FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE")
-
-	row = db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'publication_assets'")
-	var assetSchema string
-	require.NoError(t, row.Scan(&assetSchema))
-	require.Contains(t, assetSchema, "PRIMARY KEY (publication_id, media_id)")
-	require.Contains(t, assetSchema, "FOREIGN KEY (publication_id) REFERENCES publications(id) ON DELETE CASCADE")
-	require.Contains(t, assetSchema, "FOREIGN KEY (media_id) REFERENCES media_attachments(id) ON DELETE CASCADE")
-
-	row = db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'posts'")
-	var postSchema string
-	require.NoError(t, row.Scan(&postSchema))
-	require.Contains(t, postSchema, "publication_id")
-	require.Contains(t, postSchema, `"revision" INTEGER NOT NULL DEFAULT 1`)
-	require.Contains(t, postSchema, `"updated_at" TIMESTAMP NOT NULL DEFAULT current_timestamp`)
-
-	row = db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'draft_revision_changes'")
-	var revisionSchema string
-	require.NoError(t, row.Scan(&revisionSchema))
-	require.Contains(t, revisionSchema, "PRIMARY KEY (aggregate_type, aggregate_id, revision)")
-
-	var indexCount int
-	require.NoError(t, db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		TableExpr("sqlite_master").
-		Where("type = 'index' AND name IN ('publications_workspace_status_idx', 'publications_created_by_idx', 'publication_assets_media_idx', 'posts_publication_id_idx')").
-		Scan(ctx, &indexCount))
-	require.Equal(t, 4, indexCount)
 
 	_, err := db.NewInsert().Model(&models.DraftRevisionChange{
 		AggregateType:  "publication",

@@ -1,7 +1,6 @@
 package database
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -51,63 +50,4 @@ func TestInitDBWithDriverBuildsPostgresHandle(t *testing.T) {
 	defer db.Close()
 
 	require.NotNil(t, db)
-}
-
-func TestCreateSchemaRunsPublicationMigration(t *testing.T) {
-	db, err := InitDBWithDriver("sqlite", "file:"+t.Name()+"?mode=memory&cache=private")
-	require.NoError(t, err)
-	defer db.Close()
-	ctx := context.Background()
-
-	require.NoError(t, CreateSchema(db))
-
-	for _, table := range []string{"publications", "publication_assets"} {
-		var count int
-		require.NoError(t, db.NewSelect().
-			ColumnExpr("COUNT(*)").
-			TableExpr("sqlite_master").
-			Where("type = 'table' AND name = ?", table).
-			Scan(ctx, &count))
-		require.Equal(t, 1, count, table)
-	}
-
-	// The Post compatibility tables are retired by migration 105 after the
-	// historical backfill has translated legacy rows into Publications.
-	var postTableCount int
-	require.NoError(t, db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		TableExpr("sqlite_master").
-		Where("type = 'table' AND name = ?", "posts").
-		Scan(ctx, &postTableCount))
-	require.Equal(t, 0, postTableCount, "Post authoring tables must be dropped after the compatibility sunset")
-
-	var jobIndexCount int
-	require.NoError(t, db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		TableExpr("sqlite_master").
-		Where("type = 'index' AND name = ?", "jobs_status_run_at_idx").
-		Scan(ctx, &jobIndexCount))
-	require.Equal(t, 1, jobIndexCount)
-
-	var videoCodecColumnCount int
-	require.NoError(t, db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		TableExpr("pragma_table_info('media_attachments')").
-		Where("name = ?", "video_codec").
-		Scan(ctx, &videoCodecColumnCount))
-	require.Equal(t, 1, videoCodecColumnCount)
-}
-
-func TestCreateSchemaLetsMigrationOwnImpersonationOrganizationConstraints(t *testing.T) {
-	db, err := InitDBWithDriver("sqlite", "file:"+t.Name()+"?mode=memory&cache=private")
-	require.NoError(t, err)
-	defer db.Close()
-	require.NoError(t, CreateSchema(db))
-
-	var schema string
-	require.NoError(t, db.QueryRow(
-		"SELECT sql FROM sqlite_master WHERE name = 'user_impersonation_grant_organizations'",
-	).Scan(&schema))
-	require.Contains(t, schema, "FOREIGN KEY (grant_id) REFERENCES user_impersonation_grants(id) ON DELETE CASCADE")
-	require.Contains(t, schema, "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE")
 }

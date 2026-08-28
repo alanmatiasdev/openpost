@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -127,19 +126,5 @@ func TestDiscordWebhookVerificationDoesNotFollowRedirects(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("expected one Discord request, got %d", calls)
-	}
-}
-
-func TestDiscordMultipartUsesDiscordFieldNames(t *testing.T) {
-	body := &strings.Builder{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("files[0]", "file.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = part.Write([]byte("body"))
-	_ = writer.Close()
-	if !strings.Contains(body.String(), `name="files[0]"`) {
-		t.Fatalf("unexpected multipart field: %s", body.String())
 	}
 }

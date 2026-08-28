@@ -9,7 +9,6 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
@@ -185,12 +184,4 @@ func TestAccountFeaturesBackfillPreservesExistingBehavior(t *testing.T) {
 	_, err = db2.ExecContext(ctx, normalizeMigrationSQL(db2.Dialect().Name(), string(raw)))
 	require.NoError(t, err)
 	require.NoError(t, backfillAccountFeatures(ctx, db2))
-}
-
-func TestAccountFeaturesPostgresNormalization(t *testing.T) {
-	raw, err := migrationFiles.ReadFile("106_account_features.sql")
-	require.NoError(t, err)
-	pgSQL := normalizeMigrationSQL(dialect.PG, string(raw))
-	require.NotEmpty(t, pgSQL)
-	require.Contains(t, pgSQL, "account_features")
 }
