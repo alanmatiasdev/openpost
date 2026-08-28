@@ -40,6 +40,7 @@
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
 	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
+	import FolderOpenIcon from '@lucide/svelte/icons/folder-open';
 	import ScanLineIcon from '@lucide/svelte/icons/scan-line';
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import { Button } from '$lib/components/ui/button';
@@ -66,6 +67,11 @@
 	import MediaInfoPopover from './media-info-popover.svelte';
 	import MediaUrlImportDialog from './media-url-import-dialog.svelte';
 	import { mediaRecovery } from '$lib/video-editor/media/media-recovery.svelte';
+	import type { MediaSourceIssue } from '$lib/video-editor/media/media-recovery';
+	import {
+		relinkMediaSource,
+		requestMediaSourceAccess
+	} from '$lib/video-editor/media/media-source-recovery';
 	import type { SubComposition } from '$lib/video-editor/project/types';
 	import { upscaleService } from '$lib/video-editor/media/processing/upscale/upscale-service.svelte';
 	import type { UpscaleVariant } from '$lib/video-editor/media/processing/upscale/upscale-variant';
@@ -109,7 +115,10 @@
 		onsourceopen = () => undefined,
 		onextractsubtitles = () => undefined,
 		onUnsupportedAudio,
-		deleteProjectMedia = deleteMediaFromProject
+		deleteProjectMedia = deleteMediaFromProject,
+		requestSourceAccess = requestMediaSourceAccess,
+		pickSourceHandle = async () => (await window.showOpenFilePicker?.({ multiple: false }))?.[0],
+		relinkSourceMedia = relinkMediaSource
 	}: {
 		projectId: string;
 		onsequenceopen?: () => void;
@@ -117,7 +126,14 @@
 		onextractsubtitles?: (media: MediaMetadata) => void;
 		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
 		deleteProjectMedia?: typeof deleteMediaFromProject;
+		requestSourceAccess?: typeof requestMediaSourceAccess;
+		pickSourceHandle?: () => Promise<FileSystemFileHandle | undefined>;
+		relinkSourceMedia?: typeof relinkMediaSource;
 	} = $props();
+	let recoveryBusyIds = $state<Set<string>>(new Set());
+	const sourceIssuesByMediaId = $derived(
+		new Map(mediaRecovery.sourceIssues.map((issue) => [issue.mediaId, issue]))
+	);
 
 	let objectUrls = $state<Record<string, string>>({});
 	let urlImportOpen = $state(false);
@@ -298,12 +314,68 @@
 
 	function mediaProcessing(mediaId: string): boolean {
 		return Boolean(
+			recoveryBusyIds.has(mediaId) ||
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
 			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
 			mediaTasks.get(mediaTaskId('proxy', mediaId)) ||
 			sourceTranscriptTask(mediaId)
 		);
+	}
+
+	function sourceIssue(mediaId: string): MediaSourceIssue | undefined {
+		return sourceIssuesByMediaId.get(mediaId);
+	}
+
+	function sourceIssueLabel(issue: MediaSourceIssue): string {
+		switch (issue.kind) {
+			case 'permission':
+				return m.video_editor_media_recovery_permission();
+			case 'changed':
+				return m.video_editor_media_recovery_changed();
+			default:
+				return m.video_editor_media_recovery_missing();
+		}
+	}
+
+	function setRecoveryBusy(mediaId: string, busy: boolean): void {
+		const next = new Set(recoveryBusyIds);
+		if (busy) next.add(mediaId);
+		else next.delete(mediaId);
+		recoveryBusyIds = next;
+	}
+
+	async function grantSourceAccess(media: MediaMetadata): Promise<void> {
+		if (recoveryBusyIds.has(media.id)) return;
+		setRecoveryBusy(media.id, true);
+		try {
+			if (!(await requestSourceAccess(media))) {
+				showToast(m.video_editor_media_recovery_access_denied(), 'error');
+				return;
+			}
+			await mediaRecovery.refresh();
+			showToast(m.video_editor_media_recovery_restored({ name: media.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		} finally {
+			setRecoveryBusy(media.id, false);
+		}
+	}
+
+	async function locateSourceFile(media: MediaMetadata): Promise<void> {
+		if (recoveryBusyIds.has(media.id)) return;
+		setRecoveryBusy(media.id, true);
+		try {
+			const handle = await pickSourceHandle();
+			if (!handle) return;
+			const restored = await relinkSourceMedia(media, handle);
+			await mediaRecovery.refresh();
+			showToast(m.video_editor_media_recovery_restored({ name: restored.fileName }), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		} finally {
+			setRecoveryBusy(media.id, false);
+		}
 	}
 
 	function sourceTranscriptTask(mediaId: string) {
@@ -319,6 +391,7 @@
 
 	function otherMediaProcessingForTranscript(mediaId: string): boolean {
 		return Boolean(
+			recoveryBusyIds.has(mediaId) ||
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
 			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
@@ -378,6 +451,7 @@
 
 	function otherMediaProcessing(mediaId: string): boolean {
 		return Boolean(
+			recoveryBusyIds.has(mediaId) ||
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
 			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
@@ -864,27 +938,32 @@
 				{#each group.media as media (media.id)}
 					{@const id = media.id}
 					{@const entry = mediaPool.entry(id)}
+					{@const issue = sourceIssue(id)}
 					<ContextMenu.Root>
 						<ContextMenu.Trigger disabled={entry?.status !== 'ready'}>
 							{#snippet child({ props })}
 								<li
 									{...props}
-									draggable={entry?.status === 'ready'}
+									draggable={entry?.status === 'ready' && !issue}
 									ondragstart={(event) =>
-										entry?.status === 'ready' && startMediaDrag(event, entry.media)}
+										entry?.status === 'ready' && !issue && startMediaDrag(event, entry.media)}
 									ondragend={clearActiveMediaDrag}
-									title={entry?.status === 'ready' ? m.video_editor_media_drag_hint() : undefined}
+									title={issue
+										? sourceIssueLabel(issue)
+										: entry?.status === 'ready'
+											? m.video_editor_media_drag_hint()
+											: undefined}
 									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {entry?.status ===
-									'ready'
+										'ready' && !issue
 										? 'cursor-grab active:cursor-grabbing'
-										: ''}"
+										: ''} {issue ? 'bg-amber-400/8 ring-1 ring-amber-400/25' : ''}"
 								>
 									<button
 										type="button"
 										class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
-										disabled={entry?.status !== 'ready'}
+										disabled={entry?.status !== 'ready' || Boolean(issue)}
 										onclick={() => entry && onsourceopen(id)}
-										title={m.video_editor_source_monitor()}
+										title={issue ? sourceIssueLabel(issue) : m.video_editor_source_monitor()}
 									>
 										<span
 											class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)]"
@@ -909,7 +988,19 @@
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-xs font-medium">{entry?.media.fileName}</span
 											>
-											{#if entry?.status === 'ready'}
+											{#if issue}
+												<span class="flex items-center gap-1 text-[11px] text-amber-300">
+													{#if recoveryBusyIds.has(id)}
+														<LoaderIcon
+															class="size-3 animate-spin motion-reduce:animate-none"
+															aria-hidden="true"
+														/>
+													{:else}
+														<AlertTriangleIcon class="size-3" aria-hidden="true" />
+													{/if}
+													<span class="truncate">{sourceIssueLabel(issue)}</span>
+												</span>
+											{:else if entry?.status === 'ready'}
 												<span class="block text-[11px] text-[oklch(0.65_0.015_55)]">
 													{formatMediaListSummary(entry.media)}
 												</span>
@@ -937,9 +1028,29 @@
 												{/snippet}
 											</DropdownMenu.Trigger>
 											<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+												{#if issue}
+													{#if issue.kind === 'permission'}
+														<DropdownMenu.Item
+															disabled={recoveryBusyIds.has(id)}
+															onclick={() => void grantSourceAccess(entry.media)}
+														>
+															<LinkIcon class="size-4" aria-hidden="true" />
+															{m.video_editor_media_recovery_grant()}
+														</DropdownMenu.Item>
+													{/if}
+													<DropdownMenu.Item
+														disabled={recoveryBusyIds.has(id)}
+														onclick={() => void locateSourceFile(entry.media)}
+													>
+														<FolderOpenIcon class="size-4" aria-hidden="true" />
+														{m.video_editor_media_recovery_locate()}
+													</DropdownMenu.Item>
+													<DropdownMenu.Separator />
+												{/if}
 												{#if canTranscribeSource(entry.media)}
 													<DropdownMenu.Item
-														disabled={sourceTranscriptTask(id)?.status === 'cancelling' ||
+														disabled={Boolean(issue) ||
+															sourceTranscriptTask(id)?.status === 'cancelling' ||
 															transcriptionService.sourceTranscriptStatus(id) === 'loading' ||
 															(!sourceTranscriptTask(id) && otherMediaProcessingForTranscript(id))}
 														onclick={() => void runSourceTranscriptAction(entry.media)}
@@ -967,14 +1078,18 @@
 													{/if}
 												{/if}
 												{#if canExtractEmbeddedSubtitles(entry.media)}
-													<DropdownMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
+													<DropdownMenu.Item
+														disabled={Boolean(issue)}
+														onclick={() => openSubtitlePicker(entry.media)}
+													>
 														<CaptionsIcon class="size-4" aria-hidden="true" />
 														{m.video_editor_extract_embedded_subtitles()}
 													</DropdownMenu.Item>
 												{/if}
 												{#if isSceneAnalyzableMedia(entry.media)}
 													<DropdownMenu.Item
-														disabled={mediaProcessing(id) && !sceneBrowser.progress(id)}
+														disabled={Boolean(issue) ||
+															(mediaProcessing(id) && !sceneBrowser.progress(id))}
 														onclick={() => void analyzeMedia(entry.media)}
 													>
 														{#if sceneBrowser.progress(id)}
@@ -987,7 +1102,8 @@
 												{/if}
 												{#if canGenerateProxy(entry.media)}
 													<DropdownMenu.Item
-														disabled={proxyTask(id)?.status === 'cancelling' ||
+														disabled={Boolean(issue) ||
+															proxyTask(id)?.status === 'cancelling' ||
 															(!proxyTask(id) && otherMediaProcessing(id))}
 														onclick={() => runProxyAction(entry.media)}
 													>
@@ -1011,7 +1127,8 @@
 												{/if}
 												<DropdownMenu.Sub>
 													<DropdownMenu.SubTrigger
-														disabled={!upscaleService.canUpscaleMedia(entry.media) ||
+														disabled={Boolean(issue) ||
+															!upscaleService.canUpscaleMedia(entry.media) ||
 															mediaProcessing(id)}
 														aria-label={upscaleActionLabel(entry.media)}
 														title={upscaleActionLabel(entry.media)}
@@ -1037,7 +1154,8 @@
 												</DropdownMenu.Sub>
 												<DropdownMenu.Sub>
 													<DropdownMenu.SubTrigger
-														disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
+														disabled={Boolean(issue) ||
+															!frameInterpolationService.canInterpolateMedia(entry.media) ||
 															mediaProcessing(id)}
 														aria-label={interpolationActionLabel(entry.media)}
 														title={interpolationActionLabel(entry.media)}
@@ -1070,7 +1188,7 @@
 									<button
 										type="button"
 										class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
-										disabled={entry?.status !== 'ready'}
+										disabled={entry?.status !== 'ready' || Boolean(issue)}
 										aria-label={`${m.video_editor_media_place()}: ${entry?.media.fileName ?? ''}`}
 										title={m.video_editor_media_place()}
 										onclick={() => entry && placeMedia(entry.media)}
@@ -1082,18 +1200,38 @@
 						</ContextMenu.Trigger>
 						{#if entry?.status === 'ready'}
 							<ContextMenu.Content class="video-editor-theme w-56">
-								<ContextMenu.Item onclick={() => onsourceopen(id)}>
+								{#if issue}
+									{#if issue.kind === 'permission'}
+										<ContextMenu.Item
+											disabled={recoveryBusyIds.has(id)}
+											onclick={() => void grantSourceAccess(entry.media)}
+										>
+											<LinkIcon class="size-4" aria-hidden="true" />
+											{m.video_editor_media_recovery_grant()}
+										</ContextMenu.Item>
+									{/if}
+									<ContextMenu.Item
+										disabled={recoveryBusyIds.has(id)}
+										onclick={() => void locateSourceFile(entry.media)}
+									>
+										<FolderOpenIcon class="size-4" aria-hidden="true" />
+										{m.video_editor_media_recovery_locate()}
+									</ContextMenu.Item>
+									<ContextMenu.Separator />
+								{/if}
+								<ContextMenu.Item disabled={Boolean(issue)} onclick={() => onsourceopen(id)}>
 									<FilmIcon class="size-4" aria-hidden="true" />
 									{m.video_editor_source_monitor()}
 								</ContextMenu.Item>
-								<ContextMenu.Item onclick={() => placeMedia(entry.media)}>
+								<ContextMenu.Item disabled={Boolean(issue)} onclick={() => placeMedia(entry.media)}>
 									<PlusIcon class="size-4" aria-hidden="true" />
 									{m.video_editor_media_place()}
 								</ContextMenu.Item>
 								{#if canTranscribeSource(entry.media)}
 									<ContextMenu.Separator />
 									<ContextMenu.Item
-										disabled={sourceTranscriptTask(id)?.status === 'cancelling' ||
+										disabled={Boolean(issue) ||
+											sourceTranscriptTask(id)?.status === 'cancelling' ||
 											transcriptionService.sourceTranscriptStatus(id) === 'loading' ||
 											(!sourceTranscriptTask(id) && otherMediaProcessingForTranscript(id))}
 										onclick={() => void runSourceTranscriptAction(entry.media)}
@@ -1124,14 +1262,17 @@
 									{#if !canTranscribeSource(entry.media)}
 										<ContextMenu.Separator />
 									{/if}
-									<ContextMenu.Item onclick={() => openSubtitlePicker(entry.media)}>
+									<ContextMenu.Item
+										disabled={Boolean(issue)}
+										onclick={() => openSubtitlePicker(entry.media)}
+									>
 										<CaptionsIcon class="size-4" aria-hidden="true" />
 										{m.video_editor_extract_embedded_subtitles()}
 									</ContextMenu.Item>
 								{/if}
 								{#if isSceneAnalyzableMedia(entry.media)}
 									<ContextMenu.Item
-										disabled={mediaProcessing(id) && !sceneBrowser.progress(id)}
+										disabled={Boolean(issue) || (mediaProcessing(id) && !sceneBrowser.progress(id))}
 										onclick={() => void analyzeMedia(entry.media)}
 									>
 										{#if sceneBrowser.progress(id)}
@@ -1144,7 +1285,8 @@
 								{/if}
 								{#if canGenerateProxy(entry.media)}
 									<ContextMenu.Item
-										disabled={proxyTask(id)?.status === 'cancelling' ||
+										disabled={Boolean(issue) ||
+											proxyTask(id)?.status === 'cancelling' ||
 											(!proxyTask(id) && otherMediaProcessing(id))}
 										onclick={() => runProxyAction(entry.media)}
 									>
@@ -1166,7 +1308,9 @@
 								<ContextMenu.Separator />
 								<ContextMenu.Sub>
 									<ContextMenu.SubTrigger
-										disabled={!upscaleService.canUpscaleMedia(entry.media) || mediaProcessing(id)}
+										disabled={Boolean(issue) ||
+											!upscaleService.canUpscaleMedia(entry.media) ||
+											mediaProcessing(id)}
 										aria-label={upscaleActionLabel(entry.media)}
 										title={upscaleActionLabel(entry.media)}
 									>
@@ -1187,7 +1331,8 @@
 								</ContextMenu.Sub>
 								<ContextMenu.Sub>
 									<ContextMenu.SubTrigger
-										disabled={!frameInterpolationService.canInterpolateMedia(entry.media) ||
+										disabled={Boolean(issue) ||
+											!frameInterpolationService.canInterpolateMedia(entry.media) ||
 											mediaProcessing(id)}
 										aria-label={interpolationActionLabel(entry.media)}
 										title={interpolationActionLabel(entry.media)}

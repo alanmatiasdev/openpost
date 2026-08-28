@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { tick } from 'svelte';
 import { editorSession } from '../editor.svelte';
 import { mediaPool } from '../media/pool.svelte';
 import { mediaRecovery } from '../media/media-recovery.svelte';
@@ -139,6 +140,64 @@ describe('MediaPoolList', () => {
 			id: 'video'
 		});
 		expect(onsourceopen).not.toHaveBeenCalled();
+	});
+
+	it('repairs the exact broken media row from right-click and overflow menus', async () => {
+		await page.viewport(320, 720);
+		const interview = media('video', 'Interview.mp4', ['video'], {
+			storageType: 'handle'
+		});
+		mediaPool.loadAll([interview]);
+		mediaRecovery.sourceIssues = [
+			{ mediaId: interview.id, fileName: interview.fileName, kind: 'permission' }
+		];
+		const replacementHandle = linkedFileHandle(
+			'Restored.mp4',
+			new File(['restored'], 'Restored.mp4', { type: 'video/mp4' })
+		);
+		const requestSourceAccess = vi.fn(async () => true);
+		const pickSourceHandle = vi
+			.fn<() => Promise<FileSystemFileHandle | undefined>>()
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(replacementHandle);
+		const relinkSourceMedia = vi.fn(async () => ({
+			...interview,
+			fileName: 'Restored.mp4'
+		}));
+		const refresh = vi.spyOn(mediaRecovery, 'refresh').mockImplementation(async () => {
+			mediaRecovery.sourceIssues = [];
+		});
+		const screen = await render(MediaPoolList, {
+			projectId: 'project',
+			requestSourceAccess,
+			pickSourceHandle,
+			relinkSourceMedia
+		});
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+		const row = screen.getByText(interview.fileName).element().closest('li')!;
+		await expect.element(screen.getByText('Access expired')).toBeVisible();
+		await expect
+			.element(screen.getByRole('button', { name: `Place on timeline: ${interview.fileName}` }))
+			.toBeDisabled();
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Locate file' }).click();
+		expect(pickSourceHandle).toHaveBeenCalledTimes(1);
+		expect(relinkSourceMedia).not.toHaveBeenCalled();
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Grant access' }).click();
+		expect(requestSourceAccess).toHaveBeenCalledExactlyOnceWith(interview);
+		expect(refresh).toHaveBeenCalledTimes(1);
+
+		mediaRecovery.sourceIssues = [
+			{ mediaId: interview.id, fileName: interview.fileName, kind: 'changed' }
+		];
+		await tick();
+		await screen.getByRole('button', { name: `More actions for ${interview.fileName}` }).click();
+		await screen.getByRole('menuitem', { name: 'Locate file' }).first().click();
+		expect(relinkSourceMedia).toHaveBeenCalledExactlyOnceWith(interview, replacementHandle);
+		expect(refresh).toHaveBeenCalledTimes(2);
 	});
 
 	it('routes embedded subtitle extraction through the shared picker owner', async () => {
