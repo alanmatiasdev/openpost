@@ -1370,7 +1370,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								: 'hidden'}"
 							aria-label={m.video_editor_tools()}
 						>
-							<div class="flex h-9 shrink-0 items-center px-3">
+							<div class="flex h-8 shrink-0 items-center px-3 lg:h-9">
 								<h2 class="text-xs font-medium text-[oklch(0.72_0.015_55)]">
 									{selectedTransition
 										? m.video_editor_transition()
@@ -1380,7 +1380,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								</h2>
 							</div>
 							<div
-								class="grid shrink-0 grid-cols-2 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
+								class="grid shrink-0 grid-cols-2 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 lg:py-2"
 							>
 								<Button
 									size="sm"
@@ -1614,14 +1614,14 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								{:else if sequenceStore.activeSequenceId === null}
 									<ProjectCanvasPanel onedit={() => editorSession.scheduleAutosave()} />
 								{:else}
-									<p class="px-1 py-3 text-sm text-[oklch(0.62_0.01_55)]">
+									<p class="hidden px-1 py-3 text-sm text-[oklch(0.62_0.01_55)] lg:block">
 										{m.video_editor_select_clip()}
 									</p>
 								{/if}
 							</div>
 
-							<div class="shrink-0 border-t border-[oklch(0.25_0.015_55)] p-2">
-								<div class="grid grid-cols-2 gap-1">
+							<div class="shrink-0 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 lg:py-2">
+								<div class="grid grid-cols-3 gap-1 lg:grid-cols-2">
 									<Button
 										size="sm"
 										class="min-h-11 lg:min-h-8"
@@ -1630,7 +1630,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									>
 										{m.video_editor_export()}
 									</Button>
-									<div>
+									<div class="contents lg:block">
 										{#if renderProject}
 											{#key renderProject.id}
 												<RenderQueueController
@@ -1642,6 +1642,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 										<ExportDialog
 											project={renderProject}
 											disabled={timelineStore.items.length === 0}
+											compactTrigger
 											ondone={(result) =>
 												showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
 											onerror={(error) => showToast(error.message, 'error')}

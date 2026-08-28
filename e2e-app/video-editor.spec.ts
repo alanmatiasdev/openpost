@@ -115,6 +115,17 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
         clientWidth: viewport.width,
         scrollWidth: viewport.width,
       });
+    const inspector = page.getByRole("complementary", { name: "Edit" });
+    const sendBounds = await inspector
+      .getByRole("button", { name: "Send to OpenPost" })
+      .boundingBox();
+    const timelineBounds = await page
+      .getByText("Timeline", { exact: true })
+      .locator("..")
+      .boundingBox();
+    expect(sendBounds).not.toBeNull();
+    expect(timelineBounds).not.toBeNull();
+    expect(sendBounds!.y + sendBounds!.height).toBeLessThanOrEqual(timelineBounds!.y);
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       path: `frontend/.svelte-kit/openpost-video-editor-${viewport.width}.png`,

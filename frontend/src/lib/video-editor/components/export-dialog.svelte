@@ -81,6 +81,7 @@
 	let {
 		project,
 		disabled,
+		compactTrigger = false,
 		ondone,
 		onerror,
 		probeCodec = canEncodeVideo,
@@ -90,6 +91,7 @@
 	}: {
 		project: Project | null;
 		disabled?: boolean;
+		compactTrigger?: boolean;
 		ondone: (result: RenderExportResult) => void;
 		onerror: (error: Error) => void;
 		probeCodec?: typeof canEncodeVideo;
@@ -587,8 +589,20 @@
 	});
 </script>
 
-<Button size="sm" variant="secondary" class="w-full" {disabled} onclick={() => (open = true)}>
-	{m.video_editor_export_render()}
+<Button
+	size="sm"
+	variant="secondary"
+	class="w-full"
+	{disabled}
+	aria-label={m.video_editor_export_render()}
+	onclick={() => (open = true)}
+>
+	{#if compactTrigger}
+		<span class="lg:hidden">{m.video_editor_export_title()}</span>
+		<span class="hidden lg:inline">{m.video_editor_export_render()}</span>
+	{:else}
+		{m.video_editor_export_render()}
+	{/if}
 </Button>
 {#if project}
 	<RenderQueuePanel projectId={project.id} />
