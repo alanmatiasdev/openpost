@@ -1237,4 +1237,97 @@ describe('MediaPoolList', () => {
 		pointer(window, 'pointerup', 290, 170);
 		await expect.element(screen.getByText('3 selected')).not.toBeInTheDocument();
 	});
+
+	it('switches persistent grid density and list layout without losing asset behavior', async () => {
+		await page.viewport(320, 720);
+		const track: TimelineTrack = {
+			id: 'visual',
+			name: 'Visual',
+			kind: 'video',
+			height: 64,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: 0
+		};
+		sequenceStore.load(
+			{
+				...createEmptyTimeline(),
+				compositions: [
+					{
+						id: 'opening',
+						name: 'Opening',
+						items: [],
+						tracks: [track],
+						transitions: [],
+						fps: 30,
+						width: 1920,
+						height: 1080,
+						durationInFrames: 90
+					}
+				]
+			},
+			{ width: 1920, height: 1080, fps: 30 }
+		);
+		mediaPool.loadAll([
+			media('video-a', 'Interview.mp4', ['video']),
+			media('video-b', 'B-roll.mp4', ['video'])
+		]);
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const grid = screen.getByRole('button', { name: 'Grid view' });
+		const list = screen.getByRole('button', { name: 'Compact list view' });
+		await expect.element(grid).toHaveAttribute('aria-pressed', 'true');
+		const size = screen.getByRole('slider', { name: 'Asset card size' });
+		await expect.element(size).toHaveAttribute('aria-valuenow', '2');
+		expect(
+			screen.container.querySelector<HTMLElement>('[data-asset-group="media"]')?.style
+				.gridTemplateColumns
+		).toContain('110px');
+		const sequenceCard = screen.container.querySelector<HTMLElement>(
+			'[data-asset-sequence-id="opening"]'
+		)!;
+		expect(sequenceCard.getBoundingClientRect().width).toBeGreaterThan(100);
+		expect(
+			sequenceCard.querySelector<HTMLElement>(':scope > span')?.getBoundingClientRect().width
+		).toBeGreaterThan(100);
+		await page.screenshot({
+			element: screen.getByTestId('asset-selection-surface').element(),
+			path: '../../../../.svelte-kit/openpost-media-pool-grid-320.png'
+		});
+
+		await screen.getByRole('button', { name: 'Source: Interview.mp4' }).click();
+		await expect.element(screen.getByText('1 selected')).toBeVisible();
+		size.element().focus();
+		await userEvent.keyboard('{ArrowRight>3/}');
+		await expect.element(size).toHaveAttribute('aria-valuenow', '5');
+		expect(
+			screen.container.querySelector<HTMLElement>('[data-asset-group="media"]')?.style
+				.gridTemplateColumns
+		).toContain('280px');
+
+		await list.click();
+		await expect.element(list).toHaveAttribute('aria-pressed', 'true');
+		await expect
+			.element(screen.getByRole('slider', { name: 'Asset card size' }))
+			.not.toBeInTheDocument();
+		await expect.element(screen.getByText('1 selected')).toBeVisible();
+		expect(
+			screen.container.querySelector('[data-asset-media-id="video-a"]')?.getAttribute('data-view')
+		).toBe('list');
+		await page.screenshot({
+			element: screen.getByTestId('asset-selection-surface').element(),
+			path: '../../../../.svelte-kit/openpost-media-pool-list-320.png'
+		});
+
+		const row = screen.getByText('Interview.mp4').element().closest('li')!;
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await expect.element(screen.getByRole('menuitem', { name: 'Source' })).toBeVisible();
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await grid.click();
+		await expect
+			.element(screen.getByRole('slider', { name: 'Asset card size' }))
+			.toHaveAttribute('aria-valuenow', '5');
+		expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	});
 });

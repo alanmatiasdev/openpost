@@ -44,6 +44,21 @@ describe('editor settings', () => {
 		);
 	});
 
+	it('normalizes and persists asset library layout preferences', () => {
+		expect(
+			normalizeEditorSettings({ mediaLibraryViewMode: 'tiles', mediaLibraryItemSize: 99 })
+		).toMatchObject({ mediaLibraryViewMode: 'grid', mediaLibraryItemSize: 5 });
+		expect(normalizeEditorSettings({ mediaLibraryItemSize: -2 }).mediaLibraryItemSize).toBe(1);
+
+		const storage = memoryStorage();
+		const settings = createEditorSettingsStore(storage);
+		settings.set('mediaLibraryViewMode', 'list');
+		settings.set('mediaLibraryItemSize', 4);
+		const restored = createEditorSettingsStore(storage);
+		expect(restored.mediaLibraryViewMode).toBe('list');
+		expect(restored.mediaLibraryItemSize).toBe(4);
+	});
+
 	it('persists changes and resets the complete settings document', () => {
 		const storage = memoryStorage();
 		const first = createEditorSettingsStore(storage);

@@ -5740,6 +5740,8 @@
 	"video_editor_media_sort_name": "Name",
 	"video_editor_media_sort_duration": "Duration",
 	"video_editor_media_sort_size": "File size",
+	"video_editor_media_view": "Asset view",
+	"video_editor_media_card_size": "Asset card size",
 	"video_editor_media_no_results": "No project media matches these filters.",
 	"video_editor_media_info": "Media info",
 	"video_editor_media_info_type": "Type",

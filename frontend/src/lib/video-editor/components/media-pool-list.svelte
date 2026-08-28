@@ -44,11 +44,14 @@
 	import FolderOpenIcon from '@lucide/svelte/icons/folder-open';
 	import ScanLineIcon from '@lucide/svelte/icons/scan-line';
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
+	import GridIcon from '@lucide/svelte/icons/layout-grid';
+	import ListIcon from '@lucide/svelte/icons/list';
 	import { Button } from '$lib/components/ui/button';
 	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import { Input } from '$lib/components/ui/input';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Select from '$lib/components/ui/select';
+	import { Slider } from '$lib/components/ui/slider';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import { canExtractEmbeddedSubtitles } from '$lib/video-editor/media/embedded-subtitle-service';
 	import type { MediaMetadata } from '$lib/video-editor/media/types';
@@ -60,6 +63,7 @@
 		formatMediaBytes,
 		formatMediaListSummary,
 		groupMediaByKind,
+		mediaLibraryGridTemplate,
 		type MediaLibraryFilter,
 		type MediaLibraryKind,
 		type MediaLibrarySort
@@ -164,6 +168,9 @@
 	let mediaDeletePlan = $state<MediaDeletionPlan | null>(null);
 	let mediaDeleteDialogOpen = $state(false);
 	let assetMarqueeSelection = $state<AssetLibrarySelection | null>(null);
+	const assetViewMode = $derived(editorSettings.mediaLibraryViewMode);
+	const assetGridSize = $derived(editorSettings.mediaLibraryItemSize);
+	const assetGridTemplate = $derived(mediaLibraryGridTemplate(assetGridSize));
 	const ownedThumbnailUrls = new Map<string, string>();
 	let loadedThumbnailRevision = -1;
 	const visibleMedia = $derived(filterAndSortMedia(mediaPool.mediaList, query, filter, sort));
@@ -1129,6 +1136,53 @@
 				</Select.Root>
 			</div>
 		</div>
+		<div class="flex min-w-0 items-center justify-end gap-2" data-editor-shortcuts-disabled>
+			{#if assetViewMode === 'grid'}
+				<Slider
+					class="min-w-12 flex-1"
+					min={1}
+					max={5}
+					step={1}
+					value={assetGridSize}
+					ariaLabel={m.video_editor_media_card_size()}
+					onValueChange={(value) => editorSettings.set('mediaLibraryItemSize', value)}
+				/>
+			{/if}
+			<div
+				class="flex shrink-0 overflow-hidden rounded-md border border-[oklch(0.28_0.014_55)] bg-[oklch(0.18_0.008_50)]"
+				role="group"
+				aria-label={m.video_editor_media_view()}
+			>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					class="size-7! rounded-none! {assetViewMode === 'grid'
+						? 'bg-[oklch(0.66_0.14_45_/_0.18)] text-[oklch(0.86_0.08_65)]'
+						: ''}"
+					aria-label={m.media_grid_view()}
+					title={m.media_grid_view()}
+					aria-pressed={assetViewMode === 'grid'}
+					onclick={() => editorSettings.set('mediaLibraryViewMode', 'grid')}
+				>
+					<GridIcon class="size-3.5" aria-hidden="true" />
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					class="size-7! rounded-none! {assetViewMode === 'list'
+						? 'bg-[oklch(0.66_0.14_45_/_0.18)] text-[oklch(0.86_0.08_65)]'
+						: ''}"
+					aria-label={m.media_compact_view()}
+					title={m.media_compact_view()}
+					aria-pressed={assetViewMode === 'list'}
+					onclick={() => editorSettings.set('mediaLibraryViewMode', 'list')}
+				>
+					<ListIcon class="size-3.5" aria-hidden="true" />
+				</Button>
+			</div>
+		</div>
 		{#if selectedAssetCount > 0}
 			<div
 				class="flex min-w-0 items-center gap-1.5 rounded-md border border-[oklch(0.34_0.025_50)] bg-[oklch(0.2_0.012_50)] px-1.5 py-1"
@@ -1208,7 +1262,12 @@
 			>
 				{m.video_editor_sequences()}
 			</h3>
-			<ul class="flex flex-col gap-1">
+			<ul
+				class={assetViewMode === 'grid' ? 'grid gap-1.5' : 'flex flex-col gap-1'}
+				style:grid-template-columns={assetViewMode === 'grid' ? assetGridTemplate : undefined}
+				data-asset-group="sequences"
+				data-view={assetViewMode}
+			>
 				{#each sequenceStore.compositions as sequence (sequence.id)}
 					<ContextMenu.Root>
 						<ContextMenu.Trigger>
@@ -1217,6 +1276,7 @@
 									{...props}
 									data-asset-row
 									data-asset-sequence-id={sequence.id}
+									data-view={assetViewMode}
 									data-marquee-selected={assetMarqueePreviewSelected('sequence', sequence.id)}
 									oncontextmenu={(event) => {
 										prepareSequenceContextSelection(sequence.id);
@@ -1226,14 +1286,19 @@
 									ondragstart={(event) => startCompositionDrag(event, sequence)}
 									ondragend={clearActiveMediaDrag}
 									title={m.video_editor_media_drag_hint()}
-									class="group flex cursor-grab items-center gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing {selectedSequenceIds.has(
-										sequence.id
-									) || assetMarqueePreviewSelected('sequence', sequence.id)
+									class="group cursor-grab gap-2 rounded-md bg-[oklch(0.19_0.01_50)] p-1.5 hover:bg-[oklch(0.22_0.01_50)] active:cursor-grabbing {assetViewMode ===
+									'grid'
+										? 'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] content-start'
+										: 'flex items-center'} {selectedSequenceIds.has(sequence.id) ||
+									assetMarqueePreviewSelected('sequence', sequence.id)
 										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
 										: ''}"
 								>
 									<span
-										class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)]"
+										class="flex shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.26_0.025_250)] {assetViewMode ===
+										'grid'
+											? 'col-span-2 aspect-video w-full'
+											: 'size-10'}"
 									>
 										{#if sequenceThumbnailUrls[sequence.id]}
 											<img
@@ -1366,7 +1431,13 @@
 				<span>{groupLabel(group.kind)}</span>
 				<span class="tabular-nums">{group.media.length}</span>
 			</h3>
-			<ul class="flex flex-col gap-1" role="list">
+			<ul
+				class={assetViewMode === 'grid' ? 'grid gap-1.5' : 'flex flex-col gap-1'}
+				style:grid-template-columns={assetViewMode === 'grid' ? assetGridTemplate : undefined}
+				role="list"
+				data-asset-group="media"
+				data-view={assetViewMode}
+			>
 				{#each group.media as media (media.id)}
 					{@const id = media.id}
 					{@const entry = mediaPool.entry(id)}
@@ -1378,6 +1449,7 @@
 									{...props}
 									data-asset-row
 									data-asset-media-id={id}
+									data-view={assetViewMode}
 									data-marquee-selected={assetMarqueePreviewSelected('media', id)}
 									oncontextmenu={(event) => {
 										prepareMediaContextSelection(id);
@@ -1392,9 +1464,11 @@
 										: entry?.status === 'ready'
 											? m.video_editor_media_drag_hint()
 											: undefined}
-									class="group flex items-center gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {selectedMediaIds.has(
-										id
-									) || assetMarqueePreviewSelected('media', id)
+									class="group gap-1 rounded-md p-1 hover:bg-[oklch(0.22_0.01_50)] {assetViewMode ===
+									'grid'
+										? 'grid min-w-0 grid-cols-3 content-start'
+										: 'flex items-center'} {selectedMediaIds.has(id) ||
+									assetMarqueePreviewSelected('media', id)
 										? 'bg-[oklch(0.25_0.025_50)] ring-1 ring-[oklch(0.66_0.14_45_/_0.7)]'
 										: ''} {entry?.status === 'ready' && !issue
 										? 'cursor-grab active:cursor-grabbing'
@@ -1402,7 +1476,10 @@
 								>
 									<button
 										type="button"
-										class="flex min-w-0 flex-1 items-center gap-2 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60"
+										class="min-w-0 rounded p-0.5 text-left focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-60 {assetViewMode ===
+										'grid'
+											? 'col-span-3 grid w-full grid-cols-1 gap-1'
+											: 'flex flex-1 items-center gap-2'}"
 										disabled={entry?.status !== 'ready' || Boolean(issue)}
 										aria-label={`${m.video_editor_source_monitor()}: ${entry?.media.fileName ?? ''}`}
 										aria-pressed={selectedMediaIds.has(id)}
@@ -1410,7 +1487,10 @@
 										title={issue ? sourceIssueLabel(issue) : m.video_editor_source_monitor()}
 									>
 										<span
-											class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)]"
+											class="flex shrink-0 items-center justify-center overflow-hidden rounded bg-[oklch(0.22_0.01_50)] {assetViewMode ===
+											'grid'
+												? 'aspect-video w-full'
+												: 'size-10'}"
 										>
 											{#if entry?.status === 'importing'}
 												<LoaderIcon
@@ -1452,7 +1532,13 @@
 										</span>
 									</button>
 									{#if entry}
-										<MediaInfoPopover media={entry.media} />
+										{#if assetViewMode === 'grid'}
+											<div class="justify-self-center">
+												<MediaInfoPopover media={entry.media} />
+											</div>
+										{:else}
+											<MediaInfoPopover media={entry.media} />
+										{/if}
 									{/if}
 									{#if entry?.status === 'ready'}
 										<DropdownMenu.Root>
@@ -1462,7 +1548,10 @@
 														{...props}
 														variant="ghost"
 														size="icon-xs"
-														class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7!"
+														class="size-11! text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 sm:size-7! {assetViewMode ===
+														'grid'
+															? 'justify-self-center'
+															: ''}"
 														aria-label={m.video_editor_media_more_actions({
 															name: entry.media.fileName
 														})}
@@ -1634,7 +1723,10 @@
 									{/if}
 									<button
 										type="button"
-										class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7"
+										class="flex size-11 shrink-0 items-center justify-center rounded text-[oklch(0.68_0.015_55)] opacity-70 hover:bg-white/10 hover:text-white hover:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-30 sm:size-7 {assetViewMode ===
+										'grid'
+											? 'justify-self-center'
+											: ''}"
 										disabled={entry?.status !== 'ready' || Boolean(issue)}
 										aria-label={`${m.video_editor_media_place()}: ${entry?.media.fileName ?? ''}`}
 										title={m.video_editor_media_place()}

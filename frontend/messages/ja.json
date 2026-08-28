@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "名前",
 	"video_editor_media_sort_duration": "長さ",
 	"video_editor_media_sort_size": "ファイルサイズ",
+	"video_editor_media_view": "アセット表示",
+	"video_editor_media_card_size": "カードサイズ",
 	"video_editor_media_no_results": "この条件に一致するプロジェクトメディアはありません。",
 	"video_editor_media_info": "メディア情報",
 	"video_editor_media_info_type": "種類",

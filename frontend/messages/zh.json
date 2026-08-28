@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "名称",
 	"video_editor_media_sort_duration": "时长",
 	"video_editor_media_sort_size": "文件大小",
+	"video_editor_media_view": "素材视图",
+	"video_editor_media_card_size": "卡片大小",
 	"video_editor_media_no_results": "没有符合筛选条件的项目媒体。",
 	"video_editor_media_info": "媒体信息",
 	"video_editor_media_info_type": "类型",

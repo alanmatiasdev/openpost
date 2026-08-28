@@ -14,6 +14,8 @@ interface JsonRecord {
 	[key: string]: JsonValue;
 }
 
+export type MediaLibraryViewMode = 'grid' | 'list';
+
 export interface EditorSettingsValue {
 	maxUndoHistory: number;
 	autoSaveIntervalMinutes: number;
@@ -21,6 +23,8 @@ export interface EditorSettingsValue {
 	showWaveforms: boolean;
 	showFilmstrips: boolean;
 	extractFilmstrips: boolean;
+	mediaLibraryViewMode: MediaLibraryViewMode;
+	mediaLibraryItemSize: number;
 	defaultTranscriptionModel: TranscriptionModel;
 	defaultTranscriptionLanguage: string;
 	defaultTranscriptionQuantization: TranscriptionQuantization;
@@ -33,6 +37,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettingsValue = {
 	showWaveforms: true,
 	showFilmstrips: true,
 	extractFilmstrips: true,
+	mediaLibraryViewMode: 'grid',
+	mediaLibraryItemSize: 2,
 	defaultTranscriptionModel: DEFAULT_TRANSCRIPTION_MODEL,
 	defaultTranscriptionLanguage: '',
 	defaultTranscriptionQuantization: 'hybrid'
@@ -78,6 +84,19 @@ function isTranscriptionLanguage(value: JsonValue | undefined): value is string 
 	);
 }
 
+function normalizeMediaLibraryViewMode(value: JsonValue | undefined): MediaLibraryViewMode {
+	return value === 'list' || value === 'grid'
+		? value
+		: DEFAULT_EDITOR_SETTINGS.mediaLibraryViewMode;
+}
+
+function clampMediaLibraryItemSize(value: JsonValue | undefined): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return DEFAULT_EDITOR_SETTINGS.mediaLibraryItemSize;
+	}
+	return Math.max(1, Math.min(5, Math.round(value)));
+}
+
 function isJsonRecord(value: JsonValue): value is JsonRecord {
 	return value !== null && !Array.isArray(value) && typeof value === 'object';
 }
@@ -108,6 +127,8 @@ export function normalizeEditorSettings(value: JsonValue): EditorSettingsValue {
 			typeof record.extractFilmstrips === 'boolean'
 				? record.extractFilmstrips
 				: DEFAULT_EDITOR_SETTINGS.extractFilmstrips,
+		mediaLibraryViewMode: normalizeMediaLibraryViewMode(record.mediaLibraryViewMode),
+		mediaLibraryItemSize: clampMediaLibraryItemSize(record.mediaLibraryItemSize),
 		defaultTranscriptionModel: isTranscriptionModel(record.defaultTranscriptionModel)
 			? record.defaultTranscriptionModel
 			: DEFAULT_EDITOR_SETTINGS.defaultTranscriptionModel,
@@ -175,6 +196,12 @@ export function createEditorSettingsStore(storage: SettingsStorage | null = brow
 		},
 		get extractFilmstrips(): boolean {
 			return state.extractFilmstrips;
+		},
+		get mediaLibraryViewMode(): MediaLibraryViewMode {
+			return state.mediaLibraryViewMode;
+		},
+		get mediaLibraryItemSize(): number {
+			return state.mediaLibraryItemSize;
 		},
 		get defaultTranscriptionModel(): TranscriptionModel {
 			return state.defaultTranscriptionModel;

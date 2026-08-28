@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "이름",
 	"video_editor_media_sort_duration": "길이",
 	"video_editor_media_sort_size": "파일 크기",
+	"video_editor_media_view": "에셋 보기",
+	"video_editor_media_card_size": "카드 크기",
 	"video_editor_media_no_results": "이 필터와 일치하는 프로젝트 미디어가 없습니다.",
 	"video_editor_media_info": "미디어 정보",
 	"video_editor_media_info_type": "유형",

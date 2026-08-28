@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "Ad",
 	"video_editor_media_sort_duration": "Süre",
 	"video_editor_media_sort_size": "Dosya boyutu",
+	"video_editor_media_view": "Varlık görünümü",
+	"video_editor_media_card_size": "Kart boyutu",
 	"video_editor_media_no_results": "Bu filtrelerle eşleşen proje medyası yok.",
 	"video_editor_media_info": "Medya bilgisi",
 	"video_editor_media_info_type": "Tür",

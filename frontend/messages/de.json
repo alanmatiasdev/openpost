@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "Name",
 	"video_editor_media_sort_duration": "Dauer",
 	"video_editor_media_sort_size": "Dateigröße",
+	"video_editor_media_view": "Asset-Ansicht",
+	"video_editor_media_card_size": "Kartengröße",
 	"video_editor_media_no_results": "Kein Projektmedium entspricht diesen Filtern.",
 	"video_editor_media_info": "Medieninformationen",
 	"video_editor_media_info_type": "Typ",

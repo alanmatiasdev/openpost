@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "Nom",
 	"video_editor_media_sort_duration": "Durée",
 	"video_editor_media_sort_size": "Taille du fichier",
+	"video_editor_media_view": "Affichage des éléments",
+	"video_editor_media_card_size": "Taille des cartes",
 	"video_editor_media_no_results": "Aucun média du projet ne correspond à ces filtres.",
 	"video_editor_media_info": "Infos média",
 	"video_editor_media_info_type": "Type",

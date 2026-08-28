@@ -5735,6 +5735,8 @@
 	"video_editor_media_sort_name": "Nombre",
 	"video_editor_media_sort_duration": "Duración",
 	"video_editor_media_sort_size": "Tamaño del archivo",
+	"video_editor_media_view": "Vista de recursos",
+	"video_editor_media_card_size": "Tamaño de tarjeta",
 	"video_editor_media_no_results": "Ningún medio de proyecto coincide con estos filtros.",
 	"video_editor_media_info": "Información para los medios de comunicación",
 	"video_editor_media_info_type": "Tipo",
