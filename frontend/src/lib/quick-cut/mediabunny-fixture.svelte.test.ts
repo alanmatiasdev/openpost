@@ -183,6 +183,25 @@ function expectToneAt(
 }
 
 describe('quick-cut mediabunny fixture', () => {
+	it('keeps unused sources out of merged output decisions and naming', async () => {
+		const unusedFile = await createColorToneWebM('purple', 440);
+		const usedFile = await createColorMp4('green', 1);
+		const unusedSource = await probeSourceFile(unusedFile);
+		const usedSource = await probeSourceFile(usedFile);
+		const segments = [createSegment(0, 0.5, { sourceId: usedSource.id })];
+
+		const [artifact] = await exportSegments({
+			sources: [unusedSource, usedSource],
+			segments,
+			cutMode: 'nearestKeyframe',
+			merge: true
+		});
+
+		expect(artifact?.wasLossless).toBe(true);
+		expect(artifact?.fileName).toMatch(/^green-/);
+		await discardScratchFile(artifact!.scratchPath);
+	}, 30_000);
+
 	it('compatible A/B/A sources with same codec/dimensions/canvas prove packet-copy order', async () => {
 		const fileA = await createColorMp4('red', 2, 128, 72);
 		const fileB = await createColorMp4('blue', 2, 128, 72);

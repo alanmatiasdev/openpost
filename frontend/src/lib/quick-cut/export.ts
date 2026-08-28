@@ -133,8 +133,16 @@ function segmentFileName(base: string, segment: QuickCutSegment, ext: string): s
 	return `${base} [${segment.start.toFixed(2)}-${segment.end.toFixed(2)}].${ext}`;
 }
 
-function mergedFileName(sources: QuickCutSource[], ext: string): string {
-	const base = sources[0] ? safeBaseName(sources[0].name) : 'output';
+function mergedFileName(
+	sources: QuickCutSource[],
+	segments: readonly QuickCutSegment[],
+	ext: string
+): string {
+	const firstSourceId = segments[0]?.sourceId;
+	const firstSource = firstSourceId
+		? sources.find((source) => source.id === firstSourceId)
+		: undefined;
+	const base = firstSource ? safeBaseName(firstSource.name) : 'output';
 	return `${base} [merged ${Date.now()}].${ext}`;
 }
 
@@ -880,7 +888,7 @@ async function exportMergedAudioStreamCopy(
 		for (const src of audioSources) src.close();
 		await output.finalize();
 		const scratchFile = await streaming.file(
-			mergedFileName(sources, extensionForFormat(format)),
+			mergedFileName(sources, segments, extensionForFormat(format)),
 			mimeForFormat(format)
 		);
 		onProgress?.(1, scratchFile.size);
@@ -983,7 +991,10 @@ async function exportMergedStreamCopy(
 			output.addAudioTrack(src);
 		}
 	} else {
-		const anySelectedAudio = sources.some((s) => getSelectedAudioStreams(s).length > 0);
+		const enabledSourceIds = new Set(segments.map((segment) => segment.sourceId));
+		const anySelectedAudio = sources.some(
+			(source) => enabledSourceIds.has(source.id) && getSelectedAudioStreams(source).length > 0
+		);
 		if (anySelectedAudio) {
 			await streaming.discard();
 			firstInput.dispose?.();
@@ -1176,7 +1187,10 @@ async function exportMergedStreamCopy(
 		videoSource.close();
 		for (const src of audioSources) src.close();
 		await output.finalize();
-		const scratchFile = await streaming.file(mergedFileName(sources, ext), mimeForFormat(format));
+		const scratchFile = await streaming.file(
+			mergedFileName(sources, segments, ext),
+			mimeForFormat(format)
+		);
 		onProgress?.(1, scratchFile.size);
 		return {
 			scratchPath: streaming.storageKey ?? scratchFile.name,
@@ -1525,7 +1539,7 @@ async function exportMergedTranscode(
 		for (const src of audioSources) src.close();
 		await finalOutput.finalize();
 		const scratchFile = await finalStreaming.file(
-			mergedFileName(sources, ext),
+			mergedFileName(sources, segments, ext),
 			mimeForFormat(format)
 		);
 		for (const t of tempScratches) await t.discard().catch(() => undefined);
