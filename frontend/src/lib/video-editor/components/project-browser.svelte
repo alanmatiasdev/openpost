@@ -9,6 +9,19 @@
 	import { m } from '$lib/paraglide/messages';
 	import type { BundleProgress } from '$lib/video-editor/project-bundle/bundle-types';
 	import type { Project } from '$lib/video-editor/project/types';
+	import {
+		MAX_PROJECT_HEIGHT,
+		MAX_PROJECT_WIDTH,
+		MIN_PROJECT_HEIGHT,
+		MIN_PROJECT_WIDTH,
+		DEFAULT_PROJECT_CREATION_SETTINGS,
+		PROJECT_FPS_OPTIONS,
+		PROJECT_PRESETS,
+		isValidProjectCreationSettings,
+		projectAspectRatio as formatProjectAspectRatio,
+		type ProjectCreationSettings,
+		type ProjectPresetId
+	} from '$lib/video-editor/project/project-presets';
 	import type { TrashedProjectEntry } from '$lib/video-editor/workspace-fs/trash';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
@@ -77,7 +90,7 @@
 		bundleProgress: BundleProgress | null;
 		bundleOperation: 'import' | 'export' | null;
 		bundleCanceling: boolean;
-		oncreate: (name: string) => Promise<boolean>;
+		oncreate: (name: string, settings: ProjectCreationSettings) => Promise<boolean>;
 		onimportjson: (file: File) => Promise<void>;
 		onimportbundle: (file: File) => Promise<void>;
 		onopen: (project: Project) => void;
@@ -95,6 +108,10 @@
 
 	let showNewProject = $state(false);
 	let newProjectName = $state('');
+	let selectedProjectPreset = $state<ProjectPresetId | 'custom'>('youtube-1080p');
+	let customProjectWidth = $state('1920');
+	let customProjectHeight = $state('1080');
+	let customProjectFps = $state('30');
 	let searchQuery = $state('');
 	let resolutionFilter = $state('all');
 	let fpsFilter = $state('all');
@@ -145,6 +162,19 @@
 		});
 	});
 	const selectedProjects = $derived(projects.filter((project) => selectedIds.has(project.id)));
+	const projectCreationSettings = $derived.by((): ProjectCreationSettings => {
+		if (selectedProjectPreset === 'custom') {
+			return {
+				width: Number(customProjectWidth),
+				height: Number(customProjectHeight),
+				fps: Number(customProjectFps)
+			};
+		}
+		const preset = PROJECT_PRESETS.find((candidate) => candidate.id === selectedProjectPreset);
+		const selected = preset ?? DEFAULT_PROJECT_CREATION_SETTINGS;
+		return { width: selected.width, height: selected.height, fps: selected.fps };
+	});
+	const projectCreationValid = $derived(isValidProjectCreationSettings(projectCreationSettings));
 
 	$effect(() => {
 		const projectIds = new Set(projects.map((project) => project.id));
@@ -172,6 +202,23 @@
 		return `${width}:${height}`;
 	}
 
+	function projectPresetName(id: ProjectPresetId): string {
+		switch (id) {
+			case 'youtube-1080p':
+				return m.video_editor_project_preset_youtube();
+			case 'vertical-9-16':
+				return m.video_editor_project_preset_vertical();
+			case 'instagram-square':
+				return m.video_editor_project_preset_instagram_square();
+			case 'instagram-portrait':
+				return m.video_editor_project_preset_instagram_portrait();
+			case 'x-landscape':
+				return m.video_editor_project_preset_x();
+			case 'linkedin-landscape':
+				return m.video_editor_project_preset_linkedin();
+		}
+	}
+
 	function formatDuration(seconds: number): string {
 		const rounded = Math.max(0, Math.round(seconds));
 		const hours = Math.floor(rounded / 3600);
@@ -183,9 +230,14 @@
 	}
 
 	async function createProject(): Promise<void> {
-		const created = await oncreate(newProjectName.trim());
+		if (!projectCreationValid) return;
+		const created = await oncreate(newProjectName.trim(), projectCreationSettings);
 		if (!created) return;
 		newProjectName = '';
+		selectedProjectPreset = 'youtube-1080p';
+		customProjectWidth = '1920';
+		customProjectHeight = '1080';
+		customProjectFps = '30';
 		showNewProject = false;
 	}
 
@@ -392,26 +444,147 @@
 
 	{#if showNewProject}
 		<form
-			class="mt-4 flex gap-2"
+			class="mt-4 rounded-xl border border-[oklch(0.3_0.025_55)] bg-[oklch(0.16_0.008_55)] p-3"
 			onsubmit={(event) => {
 				event.preventDefault();
 				void createProject();
 			}}
 		>
-			<Input
-				type="text"
-				bind:value={newProjectName}
-				placeholder={m.editors_project_name()}
-				aria-label={m.editors_project_name()}
-				class="bg-[oklch(0.16_0.008_55)] text-[oklch(0.9_0.006_85)] placeholder:text-[oklch(0.58_0.015_55)]"
-			/>
-			<Button type="submit" disabled={creating}>
-				{#if creating}<LoaderIcon
-						class="size-4 animate-spin motion-reduce:animate-none"
-						aria-hidden="true"
-					/>{/if}
-				{m.video_editor_project_create()}
-			</Button>
+			<div class="grid gap-3 lg:grid-cols-[minmax(12rem,0.7fr)_minmax(24rem,1.3fr)]">
+				<label class="grid content-start gap-1.5 text-xs font-medium">
+					<span>{m.video_editor_project_name()}</span>
+					<Input
+						type="text"
+						bind:value={newProjectName}
+						placeholder={m.video_editor_project_untitled()}
+						aria-label={m.video_editor_project_name()}
+						maxlength={100}
+						class="bg-[oklch(0.145_0.008_55)] text-[oklch(0.9_0.006_85)] placeholder:text-[oklch(0.58_0.015_55)]"
+					/>
+					<p class="font-normal text-[oklch(0.64_0.012_70)]">
+						{m.video_editor_project_canvas_hint()}
+					</p>
+				</label>
+
+				<fieldset class="min-w-0">
+					<legend class="mb-1.5 text-xs font-medium">{m.video_editor_project_canvas()}</legend>
+					<div class="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+						{#each PROJECT_PRESETS as preset (preset.id)}
+							{@const name = projectPresetName(preset.id)}
+							{@const ratio = formatProjectAspectRatio(preset.width, preset.height)}
+							<button
+								type="button"
+								class="flex min-h-16 min-w-0 items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+								class:border-[oklch(0.66_0.14_45)]={selectedProjectPreset === preset.id}
+								class:bg-[oklch(0.22_0.025_50)]={selectedProjectPreset === preset.id}
+								class:border-[oklch(0.3_0.025_55)]={selectedProjectPreset !== preset.id}
+								class:bg-[oklch(0.145_0.008_55)]={selectedProjectPreset !== preset.id}
+								aria-pressed={selectedProjectPreset === preset.id}
+								aria-label={m.video_editor_project_preset_label({
+									name,
+									width: preset.width,
+									height: preset.height,
+									ratio,
+									fps: preset.fps
+								})}
+								onclick={() => (selectedProjectPreset = preset.id)}
+							>
+								<span class="flex size-8 shrink-0 items-center justify-center" aria-hidden="true">
+									<span
+										class="max-h-7 max-w-8 rounded-sm border border-current bg-current/10"
+										style={`aspect-ratio: ${preset.width} / ${preset.height}; ${preset.width >= preset.height ? 'width: 2rem' : 'height: 1.75rem'}`}
+									></span>
+								</span>
+								<span class="min-w-0">
+									<span class="block truncate text-xs font-medium">{name}</span>
+									<span class="block text-[10px] text-[oklch(0.64_0.012_70)]"
+										>{preset.width}×{preset.height}</span
+									>
+								</span>
+							</button>
+						{/each}
+						<button
+							type="button"
+							class="flex min-h-16 min-w-0 items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							class:border-[oklch(0.66_0.14_45)]={selectedProjectPreset === 'custom'}
+							class:bg-[oklch(0.22_0.025_50)]={selectedProjectPreset === 'custom'}
+							class:border-[oklch(0.3_0.025_55)]={selectedProjectPreset !== 'custom'}
+							class:bg-[oklch(0.145_0.008_55)]={selectedProjectPreset !== 'custom'}
+							aria-pressed={selectedProjectPreset === 'custom'}
+							onclick={() => (selectedProjectPreset = 'custom')}
+						>
+							<span class="flex size-8 shrink-0 items-center justify-center" aria-hidden="true">
+								<PlusIcon class="size-4" />
+							</span>
+							<span class="text-xs font-medium">{m.video_editor_project_preset_custom()}</span>
+						</button>
+					</div>
+				</fieldset>
+			</div>
+
+			{#if selectedProjectPreset === 'custom'}
+				<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_10rem]">
+					<label class="grid gap-1 text-xs font-medium">
+						<span>{m.video_editor_project_width()}</span>
+						<Input
+							type="number"
+							bind:value={customProjectWidth}
+							min={MIN_PROJECT_WIDTH}
+							max={MAX_PROJECT_WIDTH}
+							step="1"
+							aria-invalid={!Number.isInteger(Number(customProjectWidth)) ||
+								Number(customProjectWidth) < MIN_PROJECT_WIDTH ||
+								Number(customProjectWidth) > MAX_PROJECT_WIDTH}
+						/>
+					</label>
+					<label class="grid gap-1 text-xs font-medium">
+						<span>{m.video_editor_project_height()}</span>
+						<Input
+							type="number"
+							bind:value={customProjectHeight}
+							min={MIN_PROJECT_HEIGHT}
+							max={MAX_PROJECT_HEIGHT}
+							step="1"
+							aria-invalid={!Number.isInteger(Number(customProjectHeight)) ||
+								Number(customProjectHeight) < MIN_PROJECT_HEIGHT ||
+								Number(customProjectHeight) > MAX_PROJECT_HEIGHT}
+						/>
+					</label>
+					<label class="col-span-2 grid gap-1 text-xs font-medium sm:col-span-1">
+						<span>{m.video_editor_project_frame_rate()}</span>
+						<Select.Root
+							type="single"
+							value={customProjectFps}
+							onValueChange={(value) => (customProjectFps = value)}
+						>
+							<Select.Trigger
+								aria-label={`${m.video_editor_project_frame_rate()}: ${customProjectFps} fps`}
+								class="w-full"
+							>
+								{customProjectFps} fps
+							</Select.Trigger>
+							<Select.Content class="video-editor-theme">
+								{#each PROJECT_FPS_OPTIONS as fps (fps)}
+									<Select.Item value={String(fps)}>{fps} fps</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					</label>
+				</div>
+				<p class="mt-1.5 text-[11px] text-[oklch(0.64_0.012_70)]">
+					{m.video_editor_project_canvas_limits()}
+				</p>
+			{/if}
+
+			<div class="mt-3 flex justify-end">
+				<Button type="submit" disabled={creating || !projectCreationValid}>
+					{#if creating}<LoaderIcon
+							class="size-4 animate-spin motion-reduce:animate-none"
+							aria-hidden="true"
+						/>{/if}
+					{m.video_editor_project_create()}
+				</Button>
+			</div>
 		</form>
 	{/if}
 

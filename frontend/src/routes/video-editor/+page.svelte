@@ -21,6 +21,7 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		importProjectSnapshotFile
 	} from '$lib/video-editor/project-bundle/snapshot-service';
 	import { duplicateProjectWithMedia } from '$lib/video-editor/project/project-operations';
+	import type { ProjectCreationSettings } from '$lib/video-editor/project/project-presets';
 	import { permanentlyDeleteProject } from '$lib/video-editor/project/project-trash';
 	import type { Project } from '$lib/video-editor/project/types';
 	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
@@ -147,12 +148,15 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		await goto(`/video-editor/${project.id}`);
 	}
 
-	async function handleCreateProject(name: string): Promise<boolean> {
+	async function handleCreateProject(
+		name: string,
+		settings: ProjectCreationSettings
+	): Promise<boolean> {
 		if (creating || importing || exportingId || bundleOperation) return false;
 		creating = true;
 		try {
 			const { createBlankProject } = await import('$lib/video-editor/project/defaults');
-			const project = createBlankProject(name || m.video_editor_project_untitled());
+			const project = createBlankProject(name || m.video_editor_project_untitled(), settings);
 			await createProject(project);
 			await loadProjects();
 			await openProject(project);

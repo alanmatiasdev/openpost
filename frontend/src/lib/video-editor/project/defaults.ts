@@ -18,6 +18,7 @@ import { mediaTracks, normalizeTrackGroups } from '../timeline/utils/track-group
 import { m } from '$lib/paraglide/messages';
 import { normalizeAudioEffects } from '../audio/audio-effects';
 import { convertFreeCutProjectDocument, isFreeCutProjectDocument } from './freecut-compat';
+import { isValidProjectCreationSettings, type ProjectCreationSettings } from './project-presets';
 
 export { CURRENT_SCHEMA_VERSION } from './migrations';
 
@@ -74,7 +75,13 @@ export function createEmptyTimeline(): ProjectTimeline {
 	};
 }
 
-export function createBlankProject(name: string = m.video_editor_project_untitled()): Project {
+export function createBlankProject(
+	name: string = m.video_editor_project_untitled(),
+	settings?: ProjectCreationSettings
+): Project {
+	if (settings && !isValidProjectCreationSettings(settings)) {
+		throw new RangeError('Project canvas settings are invalid.');
+	}
 	const now = Date.now();
 	return {
 		id: crypto.randomUUID(),
@@ -86,9 +93,9 @@ export function createBlankProject(name: string = m.video_editor_project_untitle
 		schemaVersion: CURRENT_SCHEMA_VERSION,
 		schemaFamily: 'openpost',
 		metadata: {
-			width: DEFAULT_PROJECT_WIDTH,
-			height: DEFAULT_PROJECT_HEIGHT,
-			fps: DEFAULT_PROJECT_FPS,
+			width: settings?.width ?? DEFAULT_PROJECT_WIDTH,
+			height: settings?.height ?? DEFAULT_PROJECT_HEIGHT,
+			fps: settings?.fps ?? DEFAULT_PROJECT_FPS,
 			backgroundColor: '#000000'
 		},
 		timeline: createEmptyTimeline(),

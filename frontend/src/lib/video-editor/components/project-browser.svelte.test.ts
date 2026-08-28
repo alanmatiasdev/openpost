@@ -104,6 +104,59 @@ it('keeps project search and compact actions usable at 320 pixels', async () => 
 	await settleUnmount(screen.unmount);
 });
 
+it('creates a project from a compact canvas preset at 320 pixels', async () => {
+	await page.viewport(320, 760);
+	const oncreate = vi.fn(async () => true);
+	const screen = await render(ProjectBrowser, {
+		...browserProps([]),
+		oncreate
+	});
+	screen.container.style.width = '320px';
+	screen.container.style.padding = '16px';
+
+	await screen.getByRole('button', { name: 'New project' }).click();
+	await screen.getByRole('button', { name: /Shorts, TikTok and Reels.*1080.*1920/ }).click();
+	await screen.getByRole('textbox', { name: 'Project name' }).fill('Launch vertical');
+	await page.screenshot({
+		element: screen.container,
+		path: '../../../../.svelte-kit/openpost-project-create-phone.png'
+	});
+	await screen.getByRole('button', { name: 'Create' }).click();
+
+	expect(oncreate).toHaveBeenCalledWith('Launch vertical', {
+		width: 1080,
+		height: 1920,
+		fps: 30
+	});
+	expect(screen.container.scrollWidth).toBeLessThanOrEqual(screen.container.clientWidth);
+	await settleUnmount(screen.unmount);
+});
+
+it('creates a project with custom canvas settings', async () => {
+	const oncreate = vi.fn(async () => true);
+	const screen = await render(ProjectBrowser, {
+		...browserProps([]),
+		oncreate
+	});
+
+	await screen.getByRole('button', { name: 'New project' }).click();
+	await screen.getByRole('button', { name: /Custom/ }).click();
+	await screen.getByRole('spinbutton', { name: 'Width' }).fill('200');
+	await expect.element(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+	await screen.getByRole('spinbutton', { name: 'Width' }).fill('2048');
+	await screen.getByRole('spinbutton', { name: 'Height' }).fill('858');
+	await screen.getByRole('button', { name: 'Frame rate: 30 fps' }).click();
+	await screen.getByRole('option', { name: '24 fps' }).click();
+	await screen.getByRole('button', { name: 'Create' }).click();
+
+	expect(oncreate).toHaveBeenCalledWith('', {
+		width: 2048,
+		height: 858,
+		fps: 24
+	});
+	await settleUnmount(screen.unmount);
+});
+
 it('reports bundle progress and lets the user cancel at 320 pixels', async () => {
 	await page.viewport(320, 720);
 	const oncancelbundle = vi.fn();

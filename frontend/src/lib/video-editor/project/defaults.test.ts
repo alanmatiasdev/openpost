@@ -30,6 +30,29 @@ describe('createBlankProject', () => {
 		expect(project.animationPresets).toEqual([]);
 	});
 
+	it('creates a project with explicit canvas settings', () => {
+		const project = createBlankProject('Vertical cut', {
+			width: 1080,
+			height: 1920,
+			fps: 60
+		});
+		expect(project.metadata).toMatchObject({
+			width: 1080,
+			height: 1920,
+			fps: 60
+		});
+	});
+
+	it('rejects invalid canvas settings at the project boundary', () => {
+		expect(() =>
+			createBlankProject('Invalid', {
+				width: 200,
+				height: 1080,
+				fps: 29
+			})
+		).toThrow(RangeError);
+	});
+
 	it('generates unique ids', () => {
 		expect(createBlankProject().id).not.toBe(createBlankProject().id);
 	});
