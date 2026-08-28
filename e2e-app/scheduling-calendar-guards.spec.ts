@@ -452,6 +452,19 @@ test("the desktop week grid opens the composer on a 15-minute snapped time", asy
 
   await page.goto("/calendar");
   await page.getByRole("button", { name: "Week", exact: true }).click();
+  const pageHeader = page.getByTestId("page-header");
+  const pageHeading = pageHeader.getByRole("heading", { level: 1 });
+  await expect(pageHeading).toHaveText(/Jun 10\s*–\s*16/);
+  await expect(pageHeader).not.toContainText("Publishing calendar");
+  const pageHeadingBounds = await pageHeading.boundingBox();
+  expect(pageHeadingBounds).not.toBeNull();
+  expect(pageHeadingBounds!.height).toBeLessThanOrEqual(28);
+  expect(await pageHeading.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  );
+  const pageHeaderBounds = await pageHeader.boundingBox();
+  expect(pageHeaderBounds).not.toBeNull();
+  expect(pageHeaderBounds!.height).toBeLessThanOrEqual(64);
   await expect(page.getByRole("region", { name: "Weekly publishing calendar" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Week grid post", exact: true })).toBeVisible();
 

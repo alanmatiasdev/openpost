@@ -49,7 +49,6 @@ const portuguesePortraitRoutes = [
       },
       {
         path: "/calendar",
-        supportingHeading: "Calendário de publicação",
         action: "Hoje",
         actionRole: "button",
       },
@@ -273,8 +272,6 @@ test("Portuguese page chrome stays readable across compact portrait widths", asy
 
         if ("heading" in route) {
           await expect(page.getByRole("heading", { level: 1, name: route.heading })).toBeVisible();
-        } else {
-          await expect(page.getByText(route.supportingHeading)).toBeVisible();
         }
         await expect(
           page.getByRole(route.actionRole, { name: route.action }).first(),

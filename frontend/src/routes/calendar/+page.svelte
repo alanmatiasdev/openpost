@@ -239,12 +239,6 @@
 			emptyMonthDays[0] ??
 			null
 	);
-	const scheduledCount = $derived(
-		visibleItems.filter((item) => item.status === 'scheduled').length
-	);
-	const publishedCount = $derived(
-		visibleItems.filter((item) => item.status === 'published').length
-	);
 	const weekHours = Array.from({ length: 24 }, (_, hour) => hour);
 	const selectedWorkspaceLabel = $derived.by(() => {
 		if (selectedWorkspaceIds.length === 0 || selectedWorkspaceIds.length === workspaces.length) {
@@ -927,7 +921,17 @@
 
 	function formatCalendarTitle() {
 		if (viewMode === 'month') return formatMonth(currentMonth);
-		return `${formatEmptyDate(weekDays[0].date)} – ${formatEmptyDate(weekDays[6].date)}`;
+		const firstDay = weekDays[0].date;
+		const lastDay = weekDays[6].date;
+		const firstYear = formatWorkspaceDate(firstDay, { year: 'numeric' });
+		const lastYear = formatWorkspaceDate(lastDay, { year: 'numeric' });
+		const rangeOptions: Intl.DateTimeFormatOptions = {
+			month: 'short',
+			day: 'numeric',
+			timeZone: viewerTimeZone
+		};
+		if (firstYear !== lastYear) rangeOptions.year = 'numeric';
+		return new Intl.DateTimeFormat(getLocaleTag(), rangeOptions).formatRange(firstDay, lastDay);
 	}
 
 	function statusFilterLabel() {
@@ -1012,19 +1016,12 @@
 		<div class="px-4 py-4 lg:px-6" style="container-type: inline-size;">
 			<PageHeader
 				title={formatCalendarTitle()}
-				eyebrow={m.calendar_kicker()}
-				icon={CalendarDaysIcon}
+				titleClass="whitespace-nowrap"
 				loading={initialLoading}
+				class="gap-2"
 			>
-				{#snippet meta()}
-					<span>{m.calendar_scheduled_summary({ count: scheduledCount })}</span>
-					<span class="text-muted-foreground/40">/</span>
-					<span>{m.calendar_published_summary({ count: publishedCount })}</span>
-					<span class="text-muted-foreground/40">/</span>
-					<span>{viewerTimeZone}</span>
-				{/snippet}
 				{#snippet actions()}
-					<div class="flex flex-wrap items-center gap-2">
+					<div class="flex flex-wrap items-center gap-1.5">
 						<div class="inline-flex rounded-md border bg-card p-1">
 							<Tooltip.Root>
 								<Tooltip.Trigger>

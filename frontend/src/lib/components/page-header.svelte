@@ -13,6 +13,7 @@
 		actions?: Snippet;
 		loading?: boolean;
 		loadingActionCount?: number;
+		titleClass?: string;
 		class?: string;
 	}
 
@@ -25,6 +26,7 @@
 		actions,
 		loading = false,
 		loadingActionCount = 2,
+		titleClass,
 		class: className
 	}: Props = $props();
 
@@ -54,7 +56,7 @@
 			{#if Icon && !eyebrow}
 				<Icon class="size-5 shrink-0 text-primary" />
 			{/if}
-			<span class="min-w-0 break-words">{title}</span>
+			<span class={cn('min-w-0 break-words', titleClass)}>{title}</span>
 		</h1>
 		{#if description}
 			<p class="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">{description}</p>
