@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SubtitleCue } from '../project/types';
-import { correctedCueTiming, correctedSubtitleWord } from './caption-correction';
+import { correctedCueTiming, correctedCueWords, correctedSubtitleWord } from './caption-correction';
 
 const cue: SubtitleCue = {
 	id: 'cue',
@@ -33,6 +33,27 @@ describe('caption correction', () => {
 			startFrame: 4,
 			endFrame: 50
 		});
+	});
+
+	it('keeps word identity and timing when corrected copy has the same word count', () => {
+		expect(correctedCueWords(cue, 'First second')).toEqual([
+			{ id: 'one', startFrame: 10, endFrame: 25, text: 'First' },
+			{ id: 'two', startFrame: 30, endFrame: 50, text: 'second' }
+		]);
+	});
+
+	it('reflows changed word counts across the existing timed span', () => {
+		const corrected = correctedCueWords(cue, 'One small correction');
+
+		expect(corrected?.map((word) => word.text)).toEqual(['One', 'small', 'correction']);
+		expect(corrected?.map((word) => [word.startFrame, word.endFrame])).toEqual([
+			[10, 23],
+			[23, 37],
+			[37, 50]
+		]);
+		expect(corrected?.[0]?.id).toBe('one');
+		expect(new Set(corrected?.map((word) => word.id)).size).toBe(3);
+		expect(correctedCueWords(cue, '   ')).toBeUndefined();
 	});
 
 	it('does not persist NaN, inverted intervals, missing words, or no-op edits', () => {

@@ -110,20 +110,20 @@ describe('TranscriptPanel cue formatting', () => {
 			'{\\an8}<b><i>Ready</i></b>'
 		);
 
-		await cueInput.fill('Ship it');
+		await cueInput.fill('Shipped');
 		cueInput.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
-			'{\\an8}<b><i>Ship it</i></b>'
+			'{\\an8}<b><i>Shipped</i></b>'
 		);
 
 		const wordInput = screen.getByRole('textbox', {
 			name: 'Transcript word',
 			exact: true
 		});
-		await wordInput.fill('Shipped');
+		await wordInput.fill('Delivered');
 		wordInput.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.text).toBe(
-			'{\\an8}<b><i>Shipped</i></b>'
+			'{\\an8}<b><i>Delivered</i></b>'
 		);
 
 		const wordStart = screen.getByRole('spinbutton', { name: 'Word start frame' });
@@ -131,7 +131,7 @@ describe('TranscriptPanel cue formatting', () => {
 		wordStart.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]).toMatchObject({
 			startFrame: 5,
-			words: [{ id: 'word', startFrame: 5, endFrame: 30, text: 'Shipped' }]
+			words: [{ id: 'word', startFrame: 5, endFrame: 30, text: 'Delivered' }]
 		});
 
 		const wordEnd = screen.getByRole('spinbutton', { name: 'Word end frame' });
@@ -140,7 +140,7 @@ describe('TranscriptPanel cue formatting', () => {
 		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]).toMatchObject({
 			startFrame: 5,
 			endFrame: 28,
-			words: [{ id: 'word', startFrame: 5, endFrame: 28, text: 'Shipped' }]
+			words: [{ id: 'word', startFrame: 5, endFrame: 28, text: 'Delivered' }]
 		});
 
 		await wordStart.fill('');
@@ -155,6 +155,55 @@ describe('TranscriptPanel cue formatting', () => {
 
 		screen.container.style.width = '320px';
 		expect(screen.container.scrollWidth).toBeLessThanOrEqual(320);
+	});
+
+	it('keeps corrected caption lines in sync with transcript editing words', async () => {
+		const videoTrack: TimelineTrack = { ...track, id: 'video', name: 'Video', order: 1 };
+		const video: TimelineItem = {
+			id: 'video',
+			trackId: videoTrack.id,
+			from: 0,
+			durationInFrames: 90,
+			label: 'Interview',
+			type: 'video',
+			mediaId: 'media',
+			sourceStart: 0,
+			sourceEnd: 90,
+			sourceFps: 30,
+			speed: 1
+		};
+		timelineStore.setAll({
+			tracks: [track, videoTrack],
+			items: [
+				video,
+				{
+					...item,
+					captionSource: {
+						type: 'transcript',
+						clipId: video.id,
+						mediaId: 'media',
+						sourceStartSeconds: 0,
+						playbackSpeed: 1
+					}
+				}
+			],
+			currentFrame: 0,
+			fps: 30
+		});
+		const screen = await render(TranscriptPanel, { onedit: vi.fn() });
+		const cueInput = screen.getByLabelText('Caption line');
+
+		await cueInput.fill('Corrected');
+		cueInput.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('subtitle')?.cues?.[0]?.words).toMatchObject([
+			{ id: 'word', startFrame: 0, endFrame: 30, text: 'Corrected' }
+		]);
+		await screen.getByRole('button', { name: 'Edit video by transcript' }).click();
+		await expect.element(screen.getByRole('button', { name: 'Select "Corrected"' })).toBeVisible();
+		await expect
+			.element(screen.getByRole('button', { name: 'Select "Ready"' }))
+			.not.toBeInTheDocument();
 	});
 
 	it('stages transcript words for review, then ripple deletes them in one undo step', async () => {

@@ -37,6 +37,7 @@
 	import { findTranscriptWordMatches } from '$lib/video-editor/transcript/fuzzy-search';
 	import {
 		correctedCueTiming,
+		correctedCueWords,
 		correctedSubtitleWord
 	} from '$lib/video-editor/transcript/caption-correction';
 	import {
@@ -184,7 +185,15 @@
 				{
 					id: item.id,
 					patch: {
-						cues: cues.map((cue) => (cue.id === cueId ? { ...cue, text: formattedText } : cue))
+						cues: cues.map((cue) =>
+							cue.id === cueId
+								? {
+										...cue,
+										text: formattedText,
+										words: correctedCueWords(cue, next)
+									}
+								: cue
+						)
 					}
 				}
 			]);

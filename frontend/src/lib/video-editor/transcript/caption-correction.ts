@@ -21,6 +21,46 @@ export interface CorrectedWordPatch {
 	endFrame: number;
 }
 
+function correctionTokens(plainText: string): string[] {
+	const trimmed = plainText.trim();
+	return trimmed ? trimmed.split(/\s+/) : [];
+}
+
+/**
+ * Keep cue-level caption corrections and timed transcript words in sync.
+ * Existing word identity and timing survive copy-only corrections. A changed
+ * word count is spread over the previous timed span so transcript editing does
+ * not keep stale or untimed copy.
+ */
+export function correctedCueWords(cue: SubtitleCue, plainText: string): SubtitleWord[] | undefined {
+	if (!cue.words?.length) return undefined;
+	const tokens = correctionTokens(plainText);
+	if (tokens.length === 0) return undefined;
+	if (tokens.length === cue.words.length) {
+		return cue.words.map((word, index) => ({ ...word, text: tokens[index]! }));
+	}
+
+	const spanStart = Math.min(...cue.words.map((word) => word.startFrame));
+	const spanEnd = Math.max(spanStart + 1, ...cue.words.map((word) => word.endFrame));
+	const span = spanEnd - spanStart;
+	return tokens.map((text, index) => {
+		const startFrame = Math.min(
+			spanEnd - 1,
+			Math.round(spanStart + (span * index) / tokens.length)
+		);
+		const endFrame = Math.max(
+			startFrame + 1,
+			Math.min(spanEnd, Math.round(spanStart + (span * (index + 1)) / tokens.length))
+		);
+		return {
+			id: cue.words?.[index]?.id ?? crypto.randomUUID(),
+			startFrame,
+			endFrame,
+			text
+		};
+	});
+}
+
 /**
  * Apply one word correction without allowing NaN or an inverted word interval
  * into persisted captions. Cue bounds follow the complete corrected word set.
