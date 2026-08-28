@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "選択したクリップのリンクを解除",
 	"video_editor_unlink_selected_hint": "選択したクリップのリンクを解除します（Alt+Shift+L）",
 	"video_editor_join_selected": "選択したクリップを結合",
+	"video_editor_join_previous": "前のクリップと結合",
+	"video_editor_join_next": "次のクリップと結合",
 	"video_editor_join_selected_hint": "分割された連続クリップを1つに戻します（Shift+J）",
 	"video_editor_consolidate_captions": "字幕を統合",
 	"video_editor_consolidate_captions_hint": "字幕クリップを1つの編集可能な字幕アイテムにまとめます",

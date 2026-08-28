@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Desassociar clipes selecionados",
 	"video_editor_unlink_selected_hint": "Desassociar clipes selecionados (Alt+Shift+L)",
 	"video_editor_join_selected": "Unir clipes selecionados",
+	"video_editor_join_previous": "Unir ao clipe anterior",
+	"video_editor_join_next": "Unir ao clipe seguinte",
 	"video_editor_join_selected_hint": "Restaurar clipes contínuos divididos como um só clipe (Shift+J)",
 	"video_editor_consolidate_captions": "Consolidar legendas",
 	"video_editor_consolidate_captions_hint": "Substituir clipes de legenda por um item de legendas editável",

@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Desvincular los clips seleccionados",
 	"video_editor_unlink_selected_hint": "Desvincular los clips seleccionados (Alt+Mayús+L)",
 	"video_editor_join_selected": "Unirse a los clips seleccionados",
+	"video_editor_join_previous": "Unir con el clip anterior",
+	"video_editor_join_next": "Unir con el clip siguiente",
 	"video_editor_join_selected_hint": "Restaurar clips de división continua como un clip (Mayús+J)",
 	"video_editor_consolidate_captions": "Consolidar subtítulos",
 	"video_editor_consolidate_captions_hint": "Reemplazar los clips de subtítulos con un elemento de subtítulos editable",

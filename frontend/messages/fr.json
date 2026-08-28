@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Délier les clips sélectionnés",
 	"video_editor_unlink_selected_hint": "Délie les clips sélectionnés (Alt+Shift+L)",
 	"video_editor_join_selected": "Réunir les clips sélectionnés",
+	"video_editor_join_previous": "Réunir avec le clip précédent",
+	"video_editor_join_next": "Réunir avec le clip suivant",
 	"video_editor_join_selected_hint": "Restaure en un seul clip les clips scindés contigus (Shift+J)",
 	"video_editor_consolidate_captions": "Consolider les sous-titres",
 	"video_editor_consolidate_captions_hint": "Remplace les clips de sous-titres par un seul élément sous-titre modifiable",

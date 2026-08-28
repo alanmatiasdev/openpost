@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Unlink selected clips",
 	"video_editor_unlink_selected_hint": "Unlink selected clips (Alt+Shift+L)",
 	"video_editor_join_selected": "Join selected clips",
+	"video_editor_join_previous": "Join with previous clip",
+	"video_editor_join_next": "Join with next clip",
 	"video_editor_join_selected_hint": "Restore continuous split clips as one clip (Shift+J)",
 	"video_editor_consolidate_captions": "Consolidate captions",
 	"video_editor_consolidate_captions_hint": "Replace caption clips with one editable subtitle item",

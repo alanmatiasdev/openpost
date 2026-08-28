@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Seçili kliplerin bağını kaldır",
 	"video_editor_unlink_selected_hint": "Seçili kliplerin bağını kaldırır (Alt+Shift+L)",
 	"video_editor_join_selected": "Seçili klipleri birleştir",
+	"video_editor_join_previous": "Önceki kliple birleştir",
+	"video_editor_join_next": "Sonraki kliple birleştir",
 	"video_editor_join_selected_hint": "Bölünmüş ardışık klipleri tek klip olarak geri getirir (Shift+J)",
 	"video_editor_consolidate_captions": "Altyazıları birleştir",
 	"video_editor_consolidate_captions_hint": "Altyazı kliplerini düzenlenebilir tek bir altyazı öğesiyle değiştirir",

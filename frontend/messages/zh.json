@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "取消链接所选片段",
 	"video_editor_unlink_selected_hint": "取消链接所选剪辑（Alt+Shift+L）",
 	"video_editor_join_selected": "合并所选片段",
+	"video_editor_join_previous": "与上一个片段合并",
+	"video_editor_join_next": "与下一个片段合并",
 	"video_editor_join_selected_hint": "将分割的连续片段恢复为一个剪辑（Shift+J）",
 	"video_editor_consolidate_captions": "合并字幕",
 	"video_editor_consolidate_captions_hint": "将字幕剪辑合并为一个可编辑的字幕项",

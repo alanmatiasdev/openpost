@@ -4002,6 +4002,8 @@
 	"video_editor_unlink_selected": "Verknüpfung ausgewählter Clips aufheben",
 	"video_editor_unlink_selected_hint": "Verknüpfung ausgewählter Clips aufheben (Alt+Umschalt+L)",
 	"video_editor_join_selected": "Ausgewählte Clips verbinden",
+	"video_editor_join_previous": "Mit vorherigem Clip verbinden",
+	"video_editor_join_next": "Mit nächstem Clip verbinden",
 	"video_editor_join_selected_hint": "Getrennte Clips als durchgehenden Clip wiederherstellen (Umschalt+J)",
 	"video_editor_consolidate_captions": "Untertitel zusammenfassen",
 	"video_editor_consolidate_captions_hint": "Untertitel-Clips durch ein bearbeitbares Untertitelelement ersetzen",

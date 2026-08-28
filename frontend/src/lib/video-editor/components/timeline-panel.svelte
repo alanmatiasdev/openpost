@@ -135,7 +135,10 @@
 		effectPropertyBaseValue,
 		effectPropertyLabel
 	} from '$lib/video-editor/effects/effect-keyframes';
-	import { canJoinMultipleItems } from '$lib/video-editor/timeline/join-items';
+	import {
+		canJoinMultipleItems,
+		joinableItemNeighbors
+	} from '$lib/video-editor/timeline/join-items';
 	import { BEZIER_PRESETS, buildEasingConfig } from '$lib/video-editor/timeline/easing-presets';
 	import {
 		easingConfigFromPreset,
@@ -2586,12 +2589,20 @@
 		onedit();
 	}
 
-	function joinSelection(): void {
-		const joinedIds = joinItems(selectedItemIds);
+	function joinSelectionItems(itemIds: string[]): void {
+		const joinedIds = joinItems(itemIds);
 		if (joinedIds.length === 0) return;
 		selectedItemIds = joinedIds;
 		selectedItemId = joinedIds.at(-1) ?? null;
 		onedit();
+	}
+
+	function joinSelection(): void {
+		joinSelectionItems(selectedItemIds);
+	}
+
+	function joinContextNeighbor(neighborId: string): void {
+		if (contextPrimaryItem) joinSelectionItems([contextPrimaryItem.id, neighborId]);
 	}
 
 	function consolidateSelection(): void {
@@ -3953,6 +3964,15 @@
 			groups.set(key, group);
 		}
 		return [...groups.values()].some(canJoinMultipleItems);
+	});
+	const contextJoinableNeighbors = $derived.by(() => {
+		if (
+			!contextPrimaryItem ||
+			isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)
+		) {
+			return {};
+		}
+		return joinableItemNeighbors(timelineStore.items, contextPrimaryItem);
 	});
 	const captionConsolidationTarget = $derived.by<CaptionConsolidationOptions | null>(() => {
 		const lockedTrackIds = new Set(
@@ -5663,6 +5683,22 @@
 					}}
 				>
 					{m.video_editor_freeze_frame()}
+				</ContextMenu.Item>
+			{/if}
+			{#if contextJoinableNeighbors.previous}
+				<ContextMenu.Item onclick={() => joinContextNeighbor(contextJoinableNeighbors.previous.id)}>
+					{m.video_editor_join_previous()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+			{/if}
+			{#if contextJoinableNeighbors.next}
+				<ContextMenu.Item onclick={() => joinContextNeighbor(contextJoinableNeighbors.next.id)}>
+					{m.video_editor_join_next()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+					>
 				</ContextMenu.Item>
 			{/if}
 			{#if canJoinSelectedItems}

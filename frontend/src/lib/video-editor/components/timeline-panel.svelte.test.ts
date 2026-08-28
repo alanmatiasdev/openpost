@@ -250,6 +250,74 @@ describe('TimelinePanel progressive controls', () => {
 		expect(onedit).toHaveBeenCalledOnce();
 	});
 
+	it('joins either continuous neighbor from one right-clicked split clip', async () => {
+		const left = item({
+			id: 'left',
+			originId: 'origin',
+			mediaId: 'media',
+			durationInFrames: 30,
+			sourceEnd: 30
+		});
+		const middle = item({
+			id: 'middle',
+			originId: 'origin',
+			mediaId: 'media',
+			from: 30,
+			durationInFrames: 30,
+			sourceStart: 30,
+			sourceEnd: 60
+		});
+		const right = item({
+			id: 'right',
+			originId: 'origin',
+			mediaId: 'media',
+			from: 60,
+			durationInFrames: 30,
+			sourceStart: 60,
+			sourceEnd: 90
+		});
+		timelineStore._setItems([left, middle, right]);
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, {
+			onedit,
+			selectedItemId: middle.id,
+			selectedItemIds: [middle.id]
+		});
+		const middleClip = screen.container.querySelector<HTMLButtonElement>(
+			`[data-timeline-item-id="${middle.id}"] > button`
+		);
+		expect(middleClip).not.toBeNull();
+
+		await userEvent.click(middleClip!, { button: 'right' });
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Join with previous clip/ }))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('menuitem', { name: /^Join with next clip/ }))
+			.toBeVisible();
+		screen
+			.getByRole('menuitem', { name: /^Join with previous clip/ })
+			.element()
+			.click();
+		expect(timelineStore.items.map((candidate) => candidate.id)).toEqual(['left', 'right']);
+		expect(timelineStore.itemById.get('left')?.durationInFrames).toBe(60);
+		expect(commandHistory.getLastCommandType()).toBe('JOIN_ITEMS');
+
+		commandHistory.undo();
+		const restoredMiddle = screen.container.querySelector<HTMLButtonElement>(
+			`[data-timeline-item-id="${middle.id}"] > button`
+		);
+		expect(restoredMiddle).not.toBeNull();
+		await userEvent.click(restoredMiddle!, { button: 'right' });
+		screen
+			.getByRole('menuitem', { name: /^Join with next clip/ })
+			.element()
+			.click();
+		expect(timelineStore.items.map((candidate) => candidate.id)).toEqual(['left', 'middle']);
+		expect(timelineStore.itemById.get('middle')?.durationInFrames).toBe(60);
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
+
 	it('routes media tools to the exact clips opened by right click', async () => {
 		await page.viewport(720, 720);
 		const onreverseitems = vi.fn();
