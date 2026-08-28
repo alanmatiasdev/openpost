@@ -6040,6 +6040,7 @@
 	"video_editor_scene_match_signals": "장면 일치 신호",
 	"video_editor_scene_analysis_error": "{name}을(를) 분석하지 못했습니다.",
 	"video_editor_proxy_generate": "프록시 생성",
+	"video_editor_proxy_cancel": "프록시 생성 취소",
 	"video_editor_proxy_done": "더 매끄럽게 스크러빙할 수 있도록 프록시가 준비되었습니다.",
 	"video_editor_export_render": "전체 동영상 렌더링",
 	"video_editor_render_progress": "프레임 렌더링 {done} / {total}",

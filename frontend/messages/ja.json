@@ -6040,6 +6040,7 @@
 	"video_editor_scene_match_signals": "シーン一致の根拠",
 	"video_editor_scene_analysis_error": "{name} を解析できませんでした。",
 	"video_editor_proxy_generate": "プロキシを生成",
+	"video_editor_proxy_cancel": "プロキシ生成をキャンセル",
 	"video_editor_proxy_done": "プロキシが準備でき、軽快にスクラブできます。",
 	"video_editor_export_render": "動画全体をレンダリング",
 	"video_editor_render_progress": "フレームをレンダリング中 {done} / {total}",

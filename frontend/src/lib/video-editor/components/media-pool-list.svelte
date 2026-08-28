@@ -53,6 +53,7 @@
 	import { mediaThumbnailPath } from '$lib/video-editor/workspace-fs/paths';
 	import {
 		filterAndSortMedia,
+		formatMediaBytes,
 		formatMediaListSummary,
 		groupMediaByKind,
 		type MediaLibraryFilter,
@@ -72,7 +73,11 @@
 		type InterpolationFactor
 	} from '$lib/video-editor/media/processing/interpolation/interpolation-factor';
 	import { mediaTaskId, mediaTasks } from '$lib/video-editor/media/media-tasks.svelte';
-	import { clearProxyCache } from '$lib/video-editor/media/proxy-client';
+	import {
+		cachedProxy,
+		clearProxyCache,
+		getAutomaticProxy
+	} from '$lib/video-editor/media/proxy-client';
 	import {
 		MediaImportCancelledError,
 		type UnsupportedAudioImportRequest
@@ -275,8 +280,64 @@
 		return Boolean(
 			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
 			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
+			mediaTasks.get(mediaTaskId('scene-analysis', mediaId)) ||
+			mediaTasks.get(mediaTaskId('proxy', mediaId))
+		);
+	}
+
+	function canGenerateProxy(media: MediaMetadata): boolean {
+		return media.mimeType.startsWith('video/') || media.tags.includes('video');
+	}
+
+	function mediaProxy(mediaId: string): Blob | null {
+		return cachedProxy(mediaId);
+	}
+
+	function proxyTask(mediaId: string) {
+		return mediaTasks.get(mediaTaskId('proxy', mediaId));
+	}
+
+	function otherMediaProcessing(mediaId: string): boolean {
+		return Boolean(
+			mediaTasks.get(mediaTaskId('upscale', mediaId)) ||
+			mediaTasks.get(mediaTaskId('frame-interpolation', mediaId)) ||
 			mediaTasks.get(mediaTaskId('scene-analysis', mediaId))
 		);
+	}
+
+	async function generateProxy(media: MediaMetadata): Promise<void> {
+		try {
+			await getAutomaticProxy(media);
+			showToast(m.video_editor_proxy_done(), 'success');
+		} catch (error) {
+			processFailure(media, error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	function removeProxy(media: MediaMetadata): void {
+		const proxy = mediaProxy(media.id);
+		if (!proxy || !clearProxyCache(media.id)) return;
+		showToast(m.video_editor_proxy_removed({ size: formatMediaBytes(proxy.size) }), 'success');
+	}
+
+	function runProxyAction(media: MediaMetadata): void {
+		const task = proxyTask(media.id);
+		if (task) {
+			mediaTasks.cancel(task.id);
+			return;
+		}
+		if (mediaProxy(media.id)) {
+			removeProxy(media);
+			return;
+		}
+		void generateProxy(media);
+	}
+
+	function proxyActionLabel(media: MediaMetadata): string {
+		const task = proxyTask(media.id);
+		if (task?.status === 'cancelling') return m.video_editor_task_cancelling();
+		if (task) return m.video_editor_proxy_cancel();
+		return mediaProxy(media.id) ? m.video_editor_proxy_remove() : m.video_editor_proxy_generate();
 	}
 
 	function upscaleActionLabel(media: MediaMetadata): string {
@@ -759,7 +820,28 @@
 														{sceneAnalysisLabel(entry.media)}
 													</DropdownMenu.Item>
 												{/if}
-												{#if canExtractEmbeddedSubtitles(entry.media) || isSceneAnalyzableMedia(entry.media)}
+												{#if canGenerateProxy(entry.media)}
+													<DropdownMenu.Item
+														disabled={proxyTask(id)?.status === 'cancelling' ||
+															(!proxyTask(id) && otherMediaProcessing(id))}
+														onclick={() => runProxyAction(entry.media)}
+													>
+														{#if proxyTask(id)?.status === 'cancelling'}
+															<LoaderIcon
+																class="size-4 animate-spin motion-reduce:animate-none"
+																aria-hidden="true"
+															/>
+														{:else if proxyTask(id)}
+															<XIcon class="size-4" aria-hidden="true" />
+														{:else if mediaProxy(id)}
+															<TrashIcon class="size-4" aria-hidden="true" />
+														{:else}
+															<FilmIcon class="size-4" aria-hidden="true" />
+														{/if}
+														{proxyActionLabel(entry.media)}
+													</DropdownMenu.Item>
+												{/if}
+												{#if canExtractEmbeddedSubtitles(entry.media) || isSceneAnalyzableMedia(entry.media) || canGenerateProxy(entry.media)}
 													<DropdownMenu.Separator />
 												{/if}
 												<DropdownMenu.Sub>
@@ -861,6 +943,27 @@
 											<SparklesIcon class="size-4" aria-hidden="true" />
 										{/if}
 										{sceneAnalysisLabel(entry.media)}
+									</ContextMenu.Item>
+								{/if}
+								{#if canGenerateProxy(entry.media)}
+									<ContextMenu.Item
+										disabled={proxyTask(id)?.status === 'cancelling' ||
+											(!proxyTask(id) && otherMediaProcessing(id))}
+										onclick={() => runProxyAction(entry.media)}
+									>
+										{#if proxyTask(id)?.status === 'cancelling'}
+											<LoaderIcon
+												class="size-4 animate-spin motion-reduce:animate-none"
+												aria-hidden="true"
+											/>
+										{:else if proxyTask(id)}
+											<XIcon class="size-4" aria-hidden="true" />
+										{:else if mediaProxy(id)}
+											<TrashIcon class="size-4" aria-hidden="true" />
+										{:else}
+											<FilmIcon class="size-4" aria-hidden="true" />
+										{/if}
+										{proxyActionLabel(entry.media)}
 									</ContextMenu.Item>
 								{/if}
 								<ContextMenu.Separator />

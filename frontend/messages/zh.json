@@ -6040,6 +6040,7 @@
 	"video_editor_scene_match_signals": "场景匹配信号",
 	"video_editor_scene_analysis_error": "分析 {name} 失败。",
 	"video_editor_proxy_generate": "生成代理文件",
+	"video_editor_proxy_cancel": "取消生成代理文件",
 	"video_editor_proxy_done": "代理文件已就绪，拖动预览更流畅。",
 	"video_editor_export_render": "渲染完整视频",
 	"video_editor_render_progress": "正在渲染第 {done} / {total} 帧",

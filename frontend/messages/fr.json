@@ -6040,6 +6040,7 @@
 	"video_editor_scene_match_signals": "Signaux de correspondance de scène",
 	"video_editor_scene_analysis_error": "Impossible d'analyser {name}.",
 	"video_editor_proxy_generate": "Générer un proxy",
+	"video_editor_proxy_cancel": "Annuler le proxy",
 	"video_editor_proxy_done": "Proxy prêt pour un défilement plus fluide.",
 	"video_editor_export_render": "Effectuer le rendu complet",
 	"video_editor_render_progress": "Rendu de l'image {done} / {total}",

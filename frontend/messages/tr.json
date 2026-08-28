@@ -6040,6 +6040,7 @@
 	"video_editor_scene_match_signals": "Sahne eşleşme sinyalleri",
 	"video_editor_scene_analysis_error": "{name} analiz edilemedi.",
 	"video_editor_proxy_generate": "Proxy oluştur",
+	"video_editor_proxy_cancel": "Proxy oluşturmayı iptal et",
 	"video_editor_proxy_done": "Daha akıcı tarama için proxy hazır.",
 	"video_editor_export_render": "Tam videoyu işle",
 	"video_editor_render_progress": "{done} / {total} kare işleniyor",

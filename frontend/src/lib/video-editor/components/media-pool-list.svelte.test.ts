@@ -12,6 +12,9 @@ import type { SubComposition, TimelineItem, TimelineTrack } from '../project/typ
 import { sequenceStore } from '../sequences/sequence-store.svelte';
 import { commandHistory } from '../timeline/commands/command-store.svelte';
 import { sceneBrowser } from '../media/scene-search/scene-browser.svelte';
+import { cachedProxy, clearProxyCache } from '../media/proxy-client';
+import { mediaTaskId, mediaTasks } from '../media/media-tasks.svelte';
+import proResFixtureUrl from '../media/fixtures/prores-proxy.mov?url';
 import MediaPoolList from './media-pool-list.svelte';
 import '../../../routes/layout.css';
 
@@ -38,11 +41,30 @@ function media(
 	};
 }
 
+function linkedFileHandle(name: string, file: File): FileSystemFileHandle {
+	const handle: FileSystemFileHandle = {
+		kind: 'file',
+		name,
+		getFile: async () => file,
+		async createWritable() {
+			throw new Error('This read-only test handle cannot write.');
+		},
+		async createSyncAccessHandle() {
+			throw new Error('This read-only test handle cannot open synchronous access.');
+		},
+		async isSameEntry(other) {
+			return other === handle;
+		}
+	};
+	return handle;
+}
+
 beforeEach(() => {
 	commandHistory.clearHistory();
 	mediaPool.clear();
 	mediaRecovery.reset();
 	mediaPlacement.cancel();
+	mediaTasks.reset();
 	sceneBrowser.reset();
 	sequenceStore.reset();
 	editorSession.project = null;
@@ -50,6 +72,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	clearProxyCache('proxy-video');
+	mediaTasks.reset();
 	sceneBrowser.reset();
 });
 
@@ -127,6 +151,61 @@ describe('MediaPoolList', () => {
 		await screen.getByRole('menuitem', { name: 'Extract embedded subtitles' }).click();
 
 		expect(onextractsubtitles).toHaveBeenCalledExactlyOnceWith(interview);
+	});
+
+	it('generates and removes a real ProRes proxy from the exact media row', async () => {
+		const response = await fetch(proResFixtureUrl);
+		expect(response.ok).toBe(true);
+		const source = await response.blob();
+		const file = new File([source], 'Interview.mov', { type: 'video/quicktime' });
+		const interview = media('proxy-video', file.name, ['video'], {
+			storageType: 'handle',
+			fileHandle: linkedFileHandle(file.name, file),
+			fileSize: file.size,
+			mimeType: file.type,
+			duration: 0.125,
+			width: 64,
+			height: 36,
+			fps: 24,
+			codec: 'prores',
+			bitrate: 90_000,
+			videoCodecSupported: false
+		});
+		mediaPool.loadAll([interview]);
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const row = screen.getByText(interview.fileName).element().closest('li')!;
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Generate proxy' }).click();
+		await vi.waitFor(() => expect(cachedProxy(interview.id)?.size).toBeGreaterThan(0));
+		expect(cachedProxy(interview.id)?.type).toBe('video/webm');
+
+		await screen.getByRole('button', { name: `More actions for ${interview.fileName}` }).click();
+		await screen.getByRole('menuitem', { name: 'Remove proxy' }).click();
+		expect(cachedProxy(interview.id)).toBeNull();
+	});
+
+	it('cancels proxy work from the same media row', async () => {
+		const interview = media('video', 'Interview.mp4', ['video']);
+		mediaPool.loadAll([interview]);
+		const cancel = vi.fn();
+		mediaTasks.start({
+			id: mediaTaskId('proxy', interview.id),
+			kind: 'proxy',
+			mediaId: interview.id,
+			label: interview.fileName,
+			status: 'running',
+			progress: 0.5,
+			onCancel: cancel
+		});
+		const screen = await render(MediaPoolList, { projectId: 'project' });
+		const row = screen.getByText(interview.fileName).element().closest('li')!;
+
+		row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+		await screen.getByRole('menuitem', { name: 'Cancel proxy' }).click();
+
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(mediaTasks.get(mediaTaskId('proxy', interview.id))?.status).toBe('cancelling');
 	});
 
 	it('analyzes and refreshes one media row without touching unrelated media', async () => {

@@ -6045,6 +6045,7 @@
 	"video_editor_scene_match_signals": "Scene match signals",
 	"video_editor_scene_analysis_error": "Could not analyze {name}.",
 	"video_editor_proxy_generate": "Generate proxy",
+	"video_editor_proxy_cancel": "Cancel proxy",
 	"video_editor_proxy_done": "Proxy ready for smoother scrubbing.",
 	"video_editor_export_render": "Render full video",
 	"video_editor_render_progress": "Rendering frame {done} / {total}",
