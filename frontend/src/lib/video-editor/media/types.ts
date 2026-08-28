@@ -45,6 +45,17 @@ export interface RecordingCaptureMetadata {
 	};
 }
 
+export interface VideoFrameRateMetrics {
+	underlyingFrameRate: number | null;
+	bestGuessFrameRate: number;
+	minFrameRate: number;
+	maxFrameRate: number;
+	averageFrameRate: number;
+	medianFrameRate: number;
+	frameRateIsConstant: boolean;
+	probedPacketCount: number;
+}
+
 export interface MediaMetadata {
 	id: string;
 	storageType: MediaStorageType;
@@ -63,6 +74,8 @@ export interface MediaMetadata {
 	width: number;
 	height: number;
 	fps: number;
+	/** Timestamp-derived source frame-rate truth. Absent on media imported before MediaBunny 1.54. */
+	frameRateMetrics?: VideoFrameRateMetrics;
 	codec: string;
 	bitrate: number;
 	audioCodec?: string;
