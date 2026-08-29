@@ -18,6 +18,7 @@ import {
   changedReleasePaths,
   maintainedReleasePaths,
   readReleaseSurfaceManifest,
+  readReleaseSurfaceManifestAtRevision,
   releaseSurfacePlan,
   validateReleaseSurfaceManifest,
 } from "./release-surfaces.mjs";
@@ -68,10 +69,11 @@ async function plan() {
   if (!latestTag) throw new Error("no v* release tags found");
 
   const releaseSurfaceManifest = readReleaseSurfaceManifest(root);
+  const previousReleaseSurfaceManifest = readReleaseSurfaceManifestAtRevision(latestTag, root);
   const changed = changedReleasePaths(latestTag, root);
   const ownershipProblems = validateReleaseSurfaceManifest(
     releaseSurfaceManifest,
-    [...new Set([...maintainedReleasePaths(root), ...changed])],
+    maintainedReleasePaths(root),
     root,
   );
   if (ownershipProblems.length > 0) {
@@ -85,7 +87,21 @@ async function plan() {
       : runCapture(["bun", "scripts/next-release-version.mjs", latestTag], {
           PENDING_COMMIT_MESSAGE: pendingMessage,
         }).trim();
-  const surfacePlan = releaseSurfacePlan(changed, releaseSurfaceManifest);
+  const surfacePlan = releaseSurfacePlan(
+    changed,
+    releaseSurfaceManifest,
+    previousReleaseSurfaceManifest,
+  );
+  const unclassified = surfacePlan.filter(
+    (entry) => entry.surfaces.length === 0 && !entry.exemption,
+  );
+  if (unclassified.length > 0) {
+    throw new Error(
+      `changed release paths have no current or previous owner: ${unclassified
+        .map((entry) => entry.file)
+        .join(", ")}`,
+    );
+  }
   const touchedSurfaces = new Set(surfacePlan.flatMap((entry) => entry.surfaces));
 
   console.log(`Latest release: ${latestTag}`);

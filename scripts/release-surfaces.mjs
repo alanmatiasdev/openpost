@@ -18,6 +18,15 @@ export function readReleaseSurfaceManifest(root = repositoryRoot) {
   return JSON.parse(readFileSync(path.join(root, "release-surfaces.json"), "utf8"));
 }
 
+export function readReleaseSurfaceManifestAtRevision(revision, root = repositoryRoot) {
+  return JSON.parse(
+    execFileSync("git", ["show", `${revision}:release-surfaces.json`], {
+      cwd: root,
+      encoding: "utf8",
+    }),
+  );
+}
+
 export function classifyReleasePath(file, manifest) {
   const surfaces = [];
   for (const [name, owner] of Object.entries(manifest.surfaces ?? {})) {
@@ -123,11 +132,15 @@ export function changedReleasePaths(base, root = repositoryRoot) {
   return [...paths].sort();
 }
 
-export function releaseSurfacePlan(files, manifest) {
-  return files.map((file) => ({
-    file,
-    ...classifyReleasePath(file, manifest),
-  }));
+export function releaseSurfacePlan(files, manifest, previousManifest) {
+  return files.map((file) => {
+    const current = classifyReleasePath(file, manifest);
+    const classification =
+      current.surfaces.length > 0 || current.exemption || !previousManifest
+        ? current
+        : classifyReleasePath(file, previousManifest);
+    return { file, ...classification };
+  });
 }
 
 function main() {
