@@ -126,20 +126,26 @@ async function decodeQuickCutWaveform(source: QuickCutSource, key: string): Prom
 export function sampleWaveformColumns(
 	data: WaveformData,
 	width: number,
-	durationSeconds: number
+	startSeconds: number,
+	endSeconds: number
 ): Float32Array {
 	const columnCount = Math.max(1, Math.round(width));
 	const values = new Float32Array(columnCount);
 	const availableSamples = Math.min(data.loadedSamples, data.peaks.length);
-	const sourceSamples = Math.min(
+	const sourceStart = Math.max(0, Math.floor(startSeconds * data.samplesPerSecond));
+	const sourceEnd = Math.min(
 		data.peaks.length,
-		Math.ceil(Math.max(0, durationSeconds) * data.samplesPerSecond)
+		Math.ceil(Math.max(startSeconds, endSeconds) * data.samplesPerSecond)
 	);
-	if (sourceSamples === 0) return values;
+	const sourceSamples = sourceEnd - sourceStart;
+	if (sourceSamples <= 0) return values;
 
 	for (let column = 0; column < columnCount; column += 1) {
-		const start = Math.floor((column / columnCount) * sourceSamples);
-		const end = Math.max(start + 1, Math.ceil(((column + 1) / columnCount) * sourceSamples));
+		const start = sourceStart + Math.floor((column / columnCount) * sourceSamples);
+		const end = Math.max(
+			start + 1,
+			sourceStart + Math.ceil(((column + 1) / columnCount) * sourceSamples)
+		);
 		if (start >= availableSamples) continue;
 		let peak = 0;
 		for (let sample = start; sample < Math.min(end, availableSamples); sample += 1) {

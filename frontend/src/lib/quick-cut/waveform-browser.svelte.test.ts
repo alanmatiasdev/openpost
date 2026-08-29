@@ -44,6 +44,7 @@ async function twoTrackAudioFixture(): Promise<File> {
 test('decodes and draws the selected audio stream progressively', async () => {
 	const source = await probeSourceFile(await twoTrackAudioFixture());
 	source.selectedAudioTrackIndices = [1];
+	const onSeek = vi.fn();
 
 	const waveform = await getQuickCutWaveform(source);
 	expect(waveform.isComplete).toBe(true);
@@ -56,10 +57,20 @@ test('decodes and draws the selected audio stream progressively', async () => {
 		selectedId: null,
 		inPoint: null,
 		outPoint: null,
-		onSeek: vi.fn(),
+		onSeek,
 		onSelect: vi.fn()
 	});
 	await vi.waitFor(() => expect(screen.container.querySelector('canvas')).not.toBeNull());
 	const canvas = screen.container.querySelector('canvas')!;
 	await vi.waitFor(() => expect(canvas.width).toBeGreaterThan(1));
+
+	await screen.getByRole('button', { name: 'Zoom in timeline' }).click();
+	await expect
+		.element(screen.getByRole('button', { name: 'Reset timeline zoom' }))
+		.toHaveTextContent('200%');
+
+	await screen.getByRole('button', { name: 'Seek in timeline' }).click();
+	expect(onSeek).toHaveBeenCalledOnce();
+	expect(onSeek.mock.calls[0]?.[0]).toBeGreaterThan(0);
+	expect(onSeek.mock.calls[0]?.[0]).toBeLessThan(source.duration);
 });

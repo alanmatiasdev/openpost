@@ -13,6 +13,7 @@ describe('Quick Cut waveform', () => {
 				isComplete: true
 			},
 			4,
+			0,
 			2
 		);
 
@@ -34,10 +35,28 @@ describe('Quick Cut waveform', () => {
 				isComplete: false
 			},
 			4,
+			0,
 			4
 		);
 
 		expect([...values]).toEqual([expect.closeTo(0.8), expect.closeTo(0.4), 0, 0]);
+	});
+
+	it('samples only the visible zoom window', () => {
+		const values = sampleWaveformColumns(
+			{
+				peaks: new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
+				durationSeconds: 8,
+				samplesPerSecond: 1,
+				loadedSamples: 8,
+				isComplete: true
+			},
+			2,
+			4,
+			8
+		);
+
+		expect([...values]).toEqual([expect.closeTo(0.6), expect.closeTo(0.8)]);
 	});
 
 	it('invalidates cache identity when the source bytes or selected audio track change', () => {

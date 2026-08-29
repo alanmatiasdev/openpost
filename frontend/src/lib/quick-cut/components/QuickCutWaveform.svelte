@@ -8,7 +8,11 @@
 		subscribeQuickCutWaveform
 	} from '../waveform';
 
-	let { source }: { source: QuickCutSource } = $props();
+	let {
+		source,
+		viewStartSeconds,
+		viewEndSeconds
+	}: { source: QuickCutSource; viewStartSeconds: number; viewEndSeconds: number } = $props();
 	let root = $state<HTMLDivElement>();
 	let canvas = $state<HTMLCanvasElement>();
 	let waveform = $state<WaveformData | null>(null);
@@ -58,7 +62,7 @@
 		if (!context) return;
 		context.setTransform(dpr, 0, 0, dpr, 0, 0);
 		context.clearRect(0, 0, width, height);
-		const columns = sampleWaveformColumns(waveform, width, source.duration);
+		const columns = sampleWaveformColumns(waveform, width, viewStartSeconds, viewEndSeconds);
 		const center = height / 2;
 		const maximumHeight = Math.max(1, center - 5);
 		context.fillStyle = 'rgba(148, 163, 184, 0.5)';
