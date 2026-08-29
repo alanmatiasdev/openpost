@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Let release planning retain the previous release owner for paths deleted since the last tag.
 - Kept Quick Cut playback on the saved transport shortcut when a non-editable button has focus.
 - Removed the duplicate Quick Cut segment action list while keeping Preview and Export visible on each segment.
 - Restored Quick Cut reconnect, success, and stream-selection reset messages in every supported locale.
