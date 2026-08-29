@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-08-29
+
+### Added
+
+- Added right-click and Shift+F10 segment actions to Quick Cut, including preview, export, enable or disable, ordering, and removal.
+- Added right-click and Shift+F10 actions for selecting, reconnecting, and removing Quick Cut sources.
+
+### Fixed
+
+- Kept Quick Cut playback on the saved transport shortcut when a non-editable button has focus.
+- Removed the duplicate Quick Cut segment action list while keeping Preview and Export visible on each segment.
+- Restored Quick Cut reconnect, success, and stream-selection reset messages in every supported locale.
+- Made the translation gate reject static frontend message calls that are missing from the catalogs.
+- Removed dependent segments, marks, saved handles, and stale preview URLs when a Quick Cut source is removed.
+- Kept source removal atomic when workspace persistence fails and returned cleanly to the empty state after removing the final source.
+- Kept multi-source controls compact by showing stream settings only for the active source.
+- Kept notifications inside narrow mobile viewports instead of extending past the right edge.
+
 ## [4.9.0] - 2026-08-29
 
 ### Added
