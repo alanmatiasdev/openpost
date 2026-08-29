@@ -44,6 +44,7 @@ import {
 	sanitizeWorkspaceFileName
 } from '$lib/video-editor/workspace-fs/paths';
 import { exportSmartCut, nextSmartCutBoundary, UnsupportedSmartCutError } from './smart-cut';
+import { copyContainerMetadata, readTrackMetadata } from './container-metadata';
 
 export class UnsupportedStreamCopyError extends Error {
 	constructor(message: string) {
@@ -807,6 +808,7 @@ async function exportMergedAudioStreamCopy(
 				throw new UnsupportedStreamCopyError(`No audio track selected for ${source.name}.`);
 			const audioTracks = await input.getAudioTracks().catch(() => []);
 			if (!outputStarted) {
+				await copyContainerMetadata(input, output);
 				expectedCodecs = [];
 				sequenceNumbers = [];
 				for (let ai = 0; ai < selectedAudios.length; ai++) {
@@ -826,7 +828,7 @@ async function exportMergedAudioStreamCopy(
 					// SAFETY: codec string from probeSourceFile via mediabunny track codec
 					const src = new EncodedAudioPacketSource(codec as AudioCodec);
 					audioSources.push(src);
-					output.addAudioTrack(src);
+					output.addAudioTrack(src, await readTrackMetadata(track));
 				}
 				await output.start();
 				outputStarted = true;
@@ -973,7 +975,12 @@ async function exportMergedStreamCopy(
 			'Unknown FPS cannot be used for lossless stream-copy; requires re-encode.'
 		);
 	const rotation = videoTrack.rotation;
-	output.addVideoTrack(videoSource, { frameRate: fps, rotation });
+	await copyContainerMetadata(firstInput, output);
+	output.addVideoTrack(videoSource, {
+		...(await readTrackMetadata(videoTrack)),
+		frameRate: fps,
+		rotation
+	});
 	const firstSelAudios = getSelectedAudioStreams(firstSource);
 	let audioTracks: Awaited<ReturnType<Input['getAudioTracks']>> = [];
 	const audioSources: EncodedAudioPacketSource[] = [];
@@ -1000,7 +1007,7 @@ async function exportMergedStreamCopy(
 			const src = new EncodedAudioPacketSource(maybeAudioCodec);
 			audioSources.push(src);
 			audioCodecs.push(codec);
-			output.addAudioTrack(src);
+			output.addAudioTrack(src, await readTrackMetadata(track));
 		}
 	} else {
 		const enabledSourceIds = new Set(segments.map((segment) => segment.sourceId));
@@ -1512,8 +1519,32 @@ async function exportMergedTranscode(
 		0,
 		...segments.map((segment) => getSelectedAudioStreams(sourceById.get(segment.sourceId)!).length)
 	);
+	const metadataFile = await resolveSourceFile(firstOutputSource, signal);
+	const metadataInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(metadataFile) });
+	let videoTrackMetadata = {};
+	let audioTrackMetadata: Awaited<ReturnType<typeof readTrackMetadata>>[] = [];
+	try {
+		await copyContainerMetadata(metadataInput, finalOutput);
+		const selectedVideo = getSelectedVideoStream(firstOutputSource);
+		if (selectedVideo) {
+			const videoTracks = await metadataInput.getVideoTracks().catch(() => []);
+			const track = videoTracks[selectedVideo.index];
+			if (track) videoTrackMetadata = await readTrackMetadata(track);
+		}
+		const selectedAudio = getSelectedAudioStreams(firstOutputSource);
+		const audioTracks = await metadataInput.getAudioTracks().catch(() => []);
+		audioTrackMetadata = await Promise.all(
+			selectedAudio.map(async (stream) => {
+				const track = audioTracks[stream.index];
+				return track ? readTrackMetadata(track) : {};
+			})
+		);
+	} finally {
+		metadataInput.dispose?.();
+	}
 	const videoSource = new EncodedVideoPacketSource(videoCodec);
 	finalOutput.addVideoTrack(videoSource, {
+		...videoTrackMetadata,
 		frameRate: firstFps > 0 ? firstFps : undefined
 	});
 	const audioSources: EncodedAudioPacketSource[] = [];
@@ -1521,7 +1552,7 @@ async function exportMergedTranscode(
 		for (let ai = 0; ai < outputAudioTrackCount; ai++) {
 			const src = new EncodedAudioPacketSource(audioCodec);
 			audioSources.push(src);
-			finalOutput.addAudioTrack(src);
+			finalOutput.addAudioTrack(src, audioTrackMetadata[ai]);
 		}
 	}
 	const startTime = Date.now();

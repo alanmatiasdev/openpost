@@ -20,6 +20,7 @@ import {
 } from './model';
 import { resolveSourceFile } from './source';
 import type { QuickCutScratchArtifact, QuickCutSegment, QuickCutSource } from './types';
+import { copyContainerMetadata, readTrackMetadata } from './container-metadata';
 
 type LocalExportProgress = (fraction: number, bytesWritten: number) => void;
 
@@ -228,7 +229,9 @@ export async function exportSmartCut(options: SmartCutOptions): Promise<QuickCut
 		}
 
 		const videoSource = new EncodedVideoPacketSource(videoCodec);
+		await copyContainerMetadata(originalInput, finalOutput);
 		finalOutput.addVideoTrack(videoSource, {
+			...(await readTrackMetadata(originalTrack)),
 			frameRate: selectedVideo.fps,
 			rotation: originalTrack.rotation
 		});
@@ -237,12 +240,14 @@ export async function exportSmartCut(options: SmartCutOptions): Promise<QuickCut
 		if (audio) {
 			audioInput = new Input({ formats: ALL_FORMATS, source: new BlobSource(audio.file) });
 			audioTracks = await audioInput.getAudioTracks();
+			const originalAudioTracks = await originalInput.getAudioTracks();
 			if (audioTracks.length !== selectedAudios.length) {
 				throw new UnsupportedSmartCutError(
 					'The exact audio render changed the selected track count.'
 				);
 			}
-			for (const track of audioTracks) {
+			for (let index = 0; index < audioTracks.length; index++) {
+				const track = audioTracks[index]!;
 				const codec = (await track.getCodec()) as AudioCodec | null;
 				if (!codec || !probeFormat.getSupportedAudioCodecs().includes(codec)) {
 					throw new UnsupportedSmartCutError(
@@ -251,7 +256,14 @@ export async function exportSmartCut(options: SmartCutOptions): Promise<QuickCut
 				}
 				const source = new EncodedAudioPacketSource(codec);
 				audioSources.push(source);
-				finalOutput.addAudioTrack(source);
+				const selectedTrack = selectedAudios[index];
+				const originalAudioTrack = selectedTrack
+					? originalAudioTracks[selectedTrack.index]
+					: undefined;
+				finalOutput.addAudioTrack(
+					source,
+					originalAudioTrack ? await readTrackMetadata(originalAudioTrack) : undefined
+				);
 			}
 		}
 
