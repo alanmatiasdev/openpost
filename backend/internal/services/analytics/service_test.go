@@ -679,6 +679,13 @@ func TestOverviewAggregatesLatestProviderMetricsWithoutBlendingExposureKinds(t *
 		_, err = db.NewInsert().Model(&snapshot).Exec(ctx)
 		require.NoError(t, err)
 	}
+	for _, snapshot := range []models.AnalyticsRenditionSnapshot{
+		{ID: "rendition-snapshot-1", WorkspaceID: account.WorkspaceID, PublicationID: publication.ID, RenditionID: "rendition-1", SocialAccountID: account.ID, Platform: account.Platform, MetricsJSON: `{"likes":5,"views":40}`, CapturedAt: now.Add(-23 * time.Hour)},
+		{ID: "rendition-snapshot-2", WorkspaceID: account.WorkspaceID, PublicationID: publication.ID, RenditionID: "rendition-1", SocialAccountID: account.ID, Platform: account.Platform, MetricsJSON: `{"likes":7,"comments":1,"views":100}`, CapturedAt: now},
+	} {
+		_, err = db.NewInsert().Model(&snapshot).Exec(ctx)
+		require.NoError(t, err)
+	}
 	for _, state := range []models.AnalyticsSyncState{
 		{
 			ID: stateID(subjectAccount, account.ID), WorkspaceID: account.WorkspaceID,
@@ -711,6 +718,30 @@ func TestOverviewAggregatesLatestProviderMetricsWithoutBlendingExposureKinds(t *
 		{Date: now.Add(-7 * 24 * time.Hour).Format("2006-01-02"), Value: 40},
 		{Date: now.Format("2006-01-02"), Value: 50},
 	}, overview.FollowerSeries)
+	require.Equal(t, []DailyBreakdownPoint{{
+		Date: now.Format("2006-01-02"), Value: 10,
+		Items: []DailyBreakdownItem{{Key: account.ID, Label: account.AccountUsername, Platform: account.Platform, Value: 10}},
+	}}, overview.Trends.Followers)
+	require.Equal(t, []DailyBreakdownPoint{
+		{
+			Date: now.Add(-23 * time.Hour).Format("2006-01-02"), Value: 5,
+			Items: []DailyBreakdownItem{{Key: "rendition-1", Label: "Launch", Platform: account.Platform, PublicationID: publication.ID, Value: 5}},
+		},
+		{
+			Date: now.Format("2006-01-02"), Value: 3,
+			Items: []DailyBreakdownItem{{Key: "rendition-1", Label: "Launch", Platform: account.Platform, PublicationID: publication.ID, Value: 3}},
+		},
+	}, overview.Trends.Engagement)
+	require.Equal(t, []DailyBreakdownPoint{
+		{
+			Date: now.Add(-23 * time.Hour).Format("2006-01-02"), Value: 40,
+			Items: []DailyBreakdownItem{{Key: "rendition-1", Label: "Launch", Platform: account.Platform, PublicationID: publication.ID, Value: 40}},
+		},
+		{
+			Date: now.Format("2006-01-02"), Value: 60,
+			Items: []DailyBreakdownItem{{Key: "rendition-1", Label: "Launch", Platform: account.Platform, PublicationID: publication.ID, Value: 60}},
+		},
+	}, overview.Trends.Views)
 	require.Len(t, overview.Content, 1)
 	require.Len(t, overview.Publications, 1)
 	require.Len(t, overview.Publications[0].Renditions, 1)

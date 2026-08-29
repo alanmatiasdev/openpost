@@ -6360,6 +6360,20 @@ export interface components {
             name: string;
             organization_id: string;
         };
+        DailyBreakdownItem: {
+            key: string;
+            label: string;
+            platform: string;
+            publication_id?: string;
+            /** Format: int64 */
+            value: number;
+        };
+        DailyBreakdownPoint: {
+            date: string;
+            items: components["schemas"]["DailyBreakdownItem"][] | null;
+            /** Format: int64 */
+            value: number;
+        };
         Decision: {
             advertisable: boolean;
             blockers?: components["schemas"]["Blocker"][] | null;
@@ -9100,6 +9114,7 @@ export interface components {
             /** Format: int64 */
             range_days: number;
             summary: components["schemas"]["Summary"];
+            trends: components["schemas"]["TrendSeries"];
         };
         OwnershipTransferResponse: {
             /**
@@ -11312,6 +11327,11 @@ export interface components {
             mute_applies: boolean;
             presentation_key: string;
             transactional: boolean;
+        };
+        TrendSeries: {
+            engagement: components["schemas"]["DailyBreakdownPoint"][] | null;
+            followers: components["schemas"]["DailyBreakdownPoint"][] | null;
+            views: components["schemas"]["DailyBreakdownPoint"][] | null;
         };
         UpdateAccountInputBody: {
             /**

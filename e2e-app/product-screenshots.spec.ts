@@ -368,6 +368,7 @@ function analyticsFixture() {
     generated_at: "2026-08-20T14:20:00Z",
     last_synced_at: "2026-08-20T14:18:00Z",
     range_days: 30,
+    content_total: 49,
     summary: {
       followers: { value: 6901, delta: 157, measured: 5 },
       engagement: { value: 37, measured: 49 },
@@ -377,6 +378,54 @@ function analyticsFixture() {
       published: 15,
     },
     follower_series: followerSeries,
+    trends: {
+      followers: followerSeries.slice(1).map((point, index) => ({
+        date: point.date,
+        value: point.value - followerSeries[index].value,
+        items: [
+          {
+            key: connectedAccounts[index % connectedAccounts.length].id,
+            label: `@${connectedAccounts[index % connectedAccounts.length].account_username}`,
+            platform: connectedAccounts[index % connectedAccounts.length].platform,
+            value: point.value - followerSeries[index].value,
+          },
+        ],
+      })),
+      engagement: [8, 12, 5, 18, 9, 14, 7, 21, 11, 16, 13, 24].map((value, index) => ({
+        date: `2026-08-${String(index + 9).padStart(2, "0")}`,
+        value,
+        items: [
+          {
+            key: `analytics-engagement-${index % 3}`,
+            label: [
+              "The boring part of publishing should stay boring",
+              "A calmer way to run launch week",
+              "What we learned from shipping every day",
+            ][index % 3],
+            platform: ["threads", "linkedin", "x"][index % 3],
+            publication_id: `analytics-publication-${index % 3}`,
+            value,
+          },
+        ],
+      })),
+      views: [180, 260, 145, 410, 320, 510, 280, 640, 430, 720, 560, 810].map((value, index) => ({
+        date: `2026-08-${String(index + 9).padStart(2, "0")}`,
+        value,
+        items: [
+          {
+            key: `analytics-view-${index % 3}`,
+            label: [
+              "The boring part of publishing should stay boring",
+              "A calmer way to run launch week",
+              "What we learned from shipping every day",
+            ][index % 3],
+            platform: ["threads", "youtube", "linkedin"][index % 3],
+            publication_id: `analytics-publication-${index % 3}`,
+            value,
+          },
+        ],
+      })),
+    },
     accounts: connectedAccounts.map((account, index) => ({
       id: account.id,
       platform: account.platform,
@@ -968,7 +1017,7 @@ test.describe("product screenshot capture", () => {
     await expect(page.getByText("6.9K", { exact: true }).first()).toBeVisible();
     await capture(page, "analytics-dark.png", [
       page.getByRole("heading", { name: "Highlights" }),
-      page.getByRole("heading", { name: "Follower trend" }),
+      page.getByRole("heading", { name: "Daily views" }),
     ]);
 
     await page.goto("/settings?tab=accounts");

@@ -1,0 +1,1 @@
+- Analytics can now compare daily views, engagement, and follower changes by post, platform, or account. Summary stats and the publication table are easier to scan.

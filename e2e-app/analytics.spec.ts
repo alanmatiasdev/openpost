@@ -40,6 +40,7 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
         generated_at: "2026-07-26T12:00:00Z",
         last_synced_at: "2026-07-26T11:55:00Z",
         range_days: Number(requestURL.searchParams.get("days") ?? "30"),
+        content_total: 2,
         summary: {
           followers: { value: 1240, delta: 40, measured: 1 },
           engagement: { value: 58, measured: 1 },
@@ -53,6 +54,149 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
           { date: "2026-07-14", value: 1222 },
           { date: "2026-07-26", value: 1240 },
         ],
+        trends: {
+          followers: [
+            {
+              date: "2026-07-14",
+              value: 22,
+              items: [
+                {
+                  key: "account-x",
+                  label: "@openpost",
+                  platform: "x",
+                  value: 22,
+                },
+              ],
+            },
+            {
+              date: "2026-07-26",
+              value: 18,
+              items: [
+                {
+                  key: "account-x",
+                  label: "@openpost",
+                  platform: "x",
+                  value: 18,
+                },
+              ],
+            },
+          ],
+          engagement: [
+            {
+              date: "2026-07-25",
+              value: 58,
+              items: [
+                {
+                  key: "rendition-x",
+                  label: "Launch notes",
+                  platform: "x",
+                  publication_id: "publication-1",
+                  value: 58,
+                },
+              ],
+            },
+          ],
+          views: [
+            {
+              date: "2026-07-20",
+              value: 420,
+              items: [
+                {
+                  key: "rendition-youtube",
+                  label: "Product walkthrough",
+                  platform: "youtube",
+                  publication_id: "publication-2",
+                  value: 420,
+                },
+              ],
+            },
+            {
+              date: "2026-07-21",
+              value: 690,
+              items: [
+                {
+                  key: "rendition-youtube",
+                  label: "Product walkthrough",
+                  platform: "youtube",
+                  publication_id: "publication-2",
+                  value: 690,
+                },
+              ],
+            },
+            {
+              date: "2026-07-22",
+              value: 540,
+              items: [
+                {
+                  key: "rendition-x",
+                  label: "Launch notes",
+                  platform: "x",
+                  publication_id: "publication-1",
+                  value: 540,
+                },
+              ],
+            },
+            {
+              date: "2026-07-23",
+              value: 980,
+              items: [
+                {
+                  key: "rendition-youtube",
+                  label: "Product walkthrough",
+                  platform: "youtube",
+                  publication_id: "publication-2",
+                  value: 980,
+                },
+              ],
+            },
+            {
+              date: "2026-07-24",
+              value: 1210,
+              items: [
+                {
+                  key: "rendition-youtube",
+                  label: "Product walkthrough",
+                  platform: "youtube",
+                  publication_id: "publication-2",
+                  value: 640,
+                },
+                {
+                  key: "rendition-x",
+                  label: "Launch notes",
+                  platform: "x",
+                  publication_id: "publication-1",
+                  value: 570,
+                },
+              ],
+            },
+            {
+              date: "2026-07-25",
+              value: 760,
+              items: [
+                {
+                  key: "rendition-x",
+                  label: "Launch notes",
+                  platform: "x",
+                  publication_id: "publication-1",
+                  value: 760,
+                },
+              ],
+            },
+            {
+              date: "2026-07-26",
+              value: 500,
+              items: [
+                {
+                  key: "rendition-youtube",
+                  label: "Product walkthrough",
+                  platform: "youtube",
+                  publication_id: "publication-2",
+                  value: 500,
+                },
+              ],
+            },
+          ],
+        },
         accounts: [
           {
             id: "account-x",
@@ -281,7 +425,8 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
     });
   const launch = page.getByRole("article").filter({ hasText: "Launch notes" });
   const walkthrough = page.getByRole("article").filter({ hasText: "Product walkthrough" });
-  await expect(launch.getByText("8.8K")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("analytics-1280-overview.png") });
+  await expect(launch.getByText("58", { exact: true })).toBeVisible();
   await expect(walkthrough.getByText("5.1K")).toBeVisible();
   await expect(walkthrough.getByText("—", { exact: true })).toBeVisible();
   await walkthrough.getByRole("button", { name: "Show platform details" }).click();
@@ -297,37 +442,37 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await expect(youtubeNativePost).toHaveAttribute("target", "_blank");
   await expect(youtubeNativePost).toHaveCSS("width", "28px");
   await launch.getByRole("button", { name: "Show platform details" }).click();
+  await expect(launch.getByText(/Impressions: 8\.8K/u)).toBeVisible();
   await expect(launch.getByRole("link", { name: "Open post on platform" })).toHaveAttribute(
     "href",
     "https://x.com/openpost/status/1",
   );
-  await expect(page.getByText("Two measurements are needed to show a trend.")).toHaveCount(0);
-  await expect(page.locator('[data-slot="chart"]')).toBeVisible();
-  await expect(page.locator('[data-slot="chart"]')).toHaveAttribute("data-chart", /^chart-/);
+  await expect(page.getByRole("img", { name: "Daily views" })).toBeVisible();
+  const dailyViews = page.getByRole("button", { name: /Jul 24, 1.2K Daily views/u });
+  await dailyViews.focus();
+  await expect(page.getByText("Product walkthrough").last()).toBeVisible();
+  await expect(
+    page.getByTestId("analytics-tooltip-platform").filter({ hasText: "Youtube" }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "Views are plays or opens reported by the platform. Impressions count how often it showed the post.",
       { exact: false },
     ),
   ).toBeVisible();
-  const accountList = page
-    .locator('section[aria-labelledby="analytics-accounts-heading"]')
-    .locator('[class*="overflow-y-auto"]');
-  await expect(accountList).toBeVisible();
-  await expect
-    .poll(() => accountList.evaluate((element) => element.scrollHeight > element.clientHeight))
-    .toBe(true);
-  await expect(page.getByRole("button", { name: /All accounts/ })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByLabel("Account filter")).toContainText("All accounts");
   await expect(
     page.getByText("@video: Reconnect this account to grant: user.info.stats."),
   ).toBeVisible();
   await page.screenshot({
-    path: testInfo.outputPath("analytics-1280.png"),
-    fullPage: true,
+    path: testInfo.outputPath("analytics-1280-chart.png"),
   });
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({
+    path: testInfo.outputPath("analytics-1280-chart-dark.png"),
+  });
+  await page.emulateMedia({ colorScheme: "light" });
   await page.getByRole("button", { name: /7 days/ }).click();
   await expect.poll(() => requestedRanges.at(-1)).toBe("7");
 
@@ -359,13 +504,15 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
       )
       .toBe(true);
     await expect(page.getByRole("link", { name: /Product walkthrough/ })).toBeVisible();
-    await expect(
-      page.locator('section[aria-labelledby="analytics-content-heading"] table'),
-    ).toBeHidden();
+    await expect(page.getByTestId("analytics-content-table-header")).toBeHidden();
+    await page.getByRole("heading", { name: "Analytics" }).scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: testInfo.outputPath(`analytics-${viewport.width}.png`),
-      fullPage: true,
+      path: testInfo.outputPath(`analytics-${viewport.width}-overview.png`),
     });
+    await page.getByRole("region", { name: "Daily views" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`analytics-${viewport.width}-chart.png`) });
+    await page.getByRole("heading", { name: "Post results" }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`analytics-${viewport.width}-results.png`) });
   }
   await page.getByRole("button", { name: "More" }).click();
   await expect(page.getByRole("menuitem", { name: "Analytics", exact: true })).toBeVisible();
