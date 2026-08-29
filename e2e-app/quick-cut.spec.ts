@@ -148,7 +148,9 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await page.getByLabel("Mark in 1").press("Tab");
   await page.getByRole("radio", { name: /Exact time/i }).click();
   await expect(
-    page.getByText("Some segments require re-encoding; others can be stream copied."),
+    page.getByText(
+      "Exact starts between keyframes use Smart Cut when the source codec is compatible.",
+    ),
   ).toBeVisible();
   await page.getByRole("radio", { name: /Nearest keyframe/i }).click();
   await page.getByLabel("Mark in 1").fill("00:00.00");
