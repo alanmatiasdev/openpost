@@ -13,8 +13,8 @@
 	import { m } from '$lib/paraglide/messages';
 	import {
 		accountManagementReturnHref,
-		accountSetupHref,
-		clearAccountManagementContinuation
+		clearAccountManagementContinuation,
+		continuationHrefForNormalizedConnection
 	} from '$lib/account-management-route';
 	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
 	import { resolveAppPath } from '$lib/app-path';
@@ -157,31 +157,17 @@
 				return;
 			}
 
-			if (data.feature_setup_required && data.new_account_ids?.length) {
-				await navigate(
-					resolveAppPath(
-						accountSetupHref({
-							workspaceID: data.workspace_id,
-							accountIDs: data.account_ids,
-							newAccountIDs: data.new_account_ids,
-							openFreshComposer: data.open_fresh_composer
-						})
-					)
-				);
-				return;
-			}
-
 			viewState = 'loading';
-			if (!data.open_fresh_composer) {
-				await navigate(resolveAppPath(accountManagementReturnHref()));
-				clearAccountManagementContinuation();
-				return;
-			}
-			const query = new URLSearchParams({
-				workspace_id: data.workspace_id,
-				account_ids: data.account_ids.join(',')
-			});
-			await navigate(resolveAppPath(`/?${query.toString()}`));
+			await navigate(
+				resolveAppPath(
+					continuationHrefForNormalizedConnection({
+						workspaceID: data.workspace_id,
+						accountIDs: data.account_ids,
+						openFreshComposer: data.open_fresh_composer
+					})
+				)
+			);
+			clearAccountManagementContinuation();
 		} catch (requestError) {
 			returnToAccounts(selection?.workspace_id ?? '');
 		} finally {

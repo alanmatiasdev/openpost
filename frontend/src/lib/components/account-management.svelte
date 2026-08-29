@@ -21,10 +21,9 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
-	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolveAppPath } from '$lib/app-path';
-	import { accountSetupHref } from '$lib/account-management-route';
+	import { continuationHrefForNormalizedConnection } from '$lib/account-management-route';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
@@ -147,72 +146,6 @@
 	let accountRemovalAction = $state.raw<AccountRemovalAction | null>(null);
 	const accountSlugPattern = '[a-z0-9][a-z0-9-]{0,62}';
 
-	type Feature = components['schemas']['FeatureStateResponse'];
-	let accountFeatures = $state<Feature[]>([]);
-	let accountFeaturesLoading = $state(false);
-	let undecidedAccountIds = $derived.by(() => {
-		const grouped = new Map<string, Feature[]>();
-		for (const f of accountFeatures) {
-			if (!grouped.has(f.social_account_id)) grouped.set(f.social_account_id, []);
-			grouped.get(f.social_account_id)!.push(f);
-		}
-		const ids: string[] = [];
-		for (const [accountId, feats] of grouped) {
-			const hasUndecided = feats.some((f) => f.supported && !f.stored_exists);
-			if (hasUndecided) ids.push(accountId);
-		}
-		return ids;
-	});
-	let showFeatureReminder = $derived(
-		undecidedAccountIds.length > 0 && !accountsLoading && !accountFeaturesLoading
-	);
-
-	async function loadAccountFeatures(workspaceID: string, accountIds: string[]) {
-		if (!workspaceID || accountIds.length === 0) {
-			accountFeatures = [];
-			return;
-		}
-		accountFeaturesLoading = true;
-		try {
-			const { data, error: err } = await client.GET('/account-features', {
-				params: {
-					query: {
-						workspace_id: workspaceID,
-						account_ids: accountIds.join(',')
-					}
-				}
-			});
-			if (err) {
-				accountFeatures = [];
-				return;
-			}
-			accountFeatures = data ?? [];
-		} catch {
-			accountFeatures = [];
-		} finally {
-			accountFeaturesLoading = false;
-		}
-	}
-
-	function reminderAccountName(): string {
-		if (undecidedAccountIds.length === 1) {
-			const id = undecidedAccountIds[0];
-			const acc = accounts.find((a) => a.id === id);
-			if (acc) return formatAccountHandle(acc.account_username) || getPlatformName(acc.platform);
-			return id.slice(0, 8);
-		}
-		return '';
-	}
-
-	function reminderSetupHref(): string {
-		return accountSetupHref({
-			workspaceID: selectedWorkspaceId,
-			accountIDs: accounts.map((a) => a.id),
-			newAccountIDs: undecidedAccountIds,
-			openFreshComposer: false
-		});
-	}
-
 	function clearToast() {
 		toastMessage = '';
 		toastActionHref = '';
@@ -291,14 +224,6 @@
 			if (err) throw new Error(err.detail || m.accounts_load_failed());
 			if (!isCurrentRequest()) return;
 			accounts = data ?? [];
-			if (accounts.length > 0) {
-				void loadAccountFeatures(
-					workspaceID,
-					accounts.map((a) => a.id)
-				);
-			} else {
-				accountFeatures = [];
-			}
 		} catch (e) {
 			if (!isCurrentRequest()) return;
 			console.error('Failed to load accounts:', e);
@@ -666,19 +591,12 @@
 			});
 			if (err) throw new Error(err.detail || m.accounts_login_failed());
 			blueskyModalOpen = false;
-			if (data?.feature_setup_required && data.new_account_ids?.length) {
-				if (browser) {
-					try {
-					} catch {
-						// Storage may be unavailable in hardened browser contexts; navigation still succeeds.
-					}
-				}
+			if (data?.open_fresh_composer) {
 				await goto(
 					resolveAppPath(
-						accountSetupHref({
+						continuationHrefForNormalizedConnection({
 							workspaceID: data.workspace_id,
 							accountIDs: data.account_ids ?? [],
-							newAccountIDs: data.new_account_ids ?? [],
 							openFreshComposer: data.open_fresh_composer
 						})
 					)
@@ -725,19 +643,12 @@
 			});
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			discordModalOpen = false;
-			if (data?.feature_setup_required && data.new_account_ids?.length) {
-				if (browser) {
-					try {
-					} catch {
-						// Storage may be unavailable in hardened browser contexts; navigation still succeeds.
-					}
-				}
+			if (data?.open_fresh_composer) {
 				await goto(
 					resolveAppPath(
-						accountSetupHref({
+						continuationHrefForNormalizedConnection({
 							workspaceID: data.workspace_id,
 							accountIDs: data.account_ids ?? [],
-							newAccountIDs: data.new_account_ids ?? [],
 							openFreshComposer: data.open_fresh_composer
 						})
 					)
@@ -1227,41 +1138,6 @@
 						onDismiss={() => (error = '')}
 						class="mb-6"
 					/>
-				{/if}
-
-				{#if showFeatureReminder}
-					<div
-						data-testid="account-setup-reminder"
-						class="mb-6 rounded-lg border bg-amber-500/5 p-3 sm:p-4"
-					>
-						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-							<div class="space-y-1">
-								<p class="text-sm font-medium">
-									{m.account_features_reminder_title()}
-								</p>
-								<p class="text-xs leading-5 text-muted-foreground">
-									{#if undecidedAccountIds.length === 1}
-										{m.account_features_reminder_body({
-											account: reminderAccountName()
-										})}
-									{:else}
-										{m.account_features_reminder_body_plural({
-											count: undecidedAccountIds.length
-										})}
-									{/if}
-								</p>
-							</div>
-							<div class="flex gap-2">
-								<Button
-									href={resolveAppPath(reminderSetupHref())}
-									size="sm"
-									class="min-h-11 sm:min-h-9"
-								>
-									{m.account_features_reminder_action()}
-								</Button>
-							</div>
-						</div>
-					</div>
 				{/if}
 
 				<!-- Connected Accounts -->

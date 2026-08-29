@@ -57,6 +57,7 @@ test("unknown documents return 404 with a complete recovery page", async ({ page
   expect((await request.get("/calendar-export")).status()).toBe(404);
   for (const retiredPath of [
     "/accounts",
+    "/accounts/setup",
     "/activity",
     "/posts",
     "/engagement",

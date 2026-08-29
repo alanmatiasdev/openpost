@@ -4512,10 +4512,6 @@ export interface components {
             account_id: string;
             /** @description All connected OpenPost account IDs */
             account_ids: string[] | null;
-            /** @description Whether feature setup is required for new accounts */
-            feature_setup_required: boolean;
-            /** @description Genuinely new OpenPost account IDs */
-            new_account_ids: string[] | null;
             /** @description Whether this is the Workspace's first connected destination */
             open_fresh_composer: boolean;
             /** @description Workspace receiving the connected destination */
@@ -4815,8 +4811,6 @@ export interface components {
              * @description When account-specific publishing limits were last verified
              */
             capability_checked_at?: string;
-            /** @description Whether feature setup is required for new accounts */
-            feature_setup_required: boolean;
             /**
              * Format: int64
              * @description Number of active destinations using this provider authorization
@@ -4843,8 +4837,6 @@ export interface components {
              * @description Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.
              */
             messaging_supported: boolean;
-            /** @description Genuinely new OpenPost account IDs */
-            new_account_ids: string[] | null;
             /** @description Whether these are the Workspace's first connected destinations */
             open_fresh_composer: boolean;
             /** @description Platform name */

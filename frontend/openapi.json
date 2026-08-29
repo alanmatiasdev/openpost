@@ -203,17 +203,6 @@
 						},
 						"type": ["array", "null"]
 					},
-					"feature_setup_required": {
-						"description": "Whether feature setup is required for new accounts",
-						"type": "boolean"
-					},
-					"new_account_ids": {
-						"description": "Genuinely new OpenPost account IDs",
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
 					"open_fresh_composer": {
 						"description": "Whether this is the Workspace's first connected destination",
 						"type": "boolean"
@@ -223,14 +212,7 @@
 						"type": "string"
 					}
 				},
-				"required": [
-					"workspace_id",
-					"account_id",
-					"account_ids",
-					"new_account_ids",
-					"open_fresh_composer",
-					"feature_setup_required"
-				],
+				"required": ["workspace_id", "account_id", "account_ids", "open_fresh_composer"],
 				"type": "object"
 			},
 			"AccountDeletionImpact": {
@@ -1055,10 +1037,6 @@
 						"format": "date-time",
 						"type": "string"
 					},
-					"feature_setup_required": {
-						"description": "Whether feature setup is required for new accounts",
-						"type": "boolean"
-					},
 					"grant_destination_count": {
 						"description": "Number of active destinations using this provider authorization",
 						"format": "int64",
@@ -1090,13 +1068,6 @@
 						"deprecated": true,
 						"description": "Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.",
 						"type": "boolean"
-					},
-					"new_account_ids": {
-						"description": "Genuinely new OpenPost account IDs",
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
 					},
 					"open_fresh_composer": {
 						"description": "Whether these are the Workspace's first connected destinations",
@@ -1130,9 +1101,7 @@
 				"required": [
 					"workspace_id",
 					"account_ids",
-					"new_account_ids",
 					"open_fresh_composer",
-					"feature_setup_required",
 					"id",
 					"slug",
 					"platform",

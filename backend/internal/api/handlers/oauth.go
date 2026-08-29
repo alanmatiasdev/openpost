@@ -239,12 +239,10 @@ type ExchangeCodeOutput struct {
 }
 
 type AccountConnectionResponse struct {
-	WorkspaceID          string   `json:"workspace_id" doc:"Workspace receiving the connected destination"`
-	AccountID            string   `json:"account_id" doc:"OpenPost destination account ID"`
-	AccountIDs           []string `json:"account_ids" doc:"All connected OpenPost account IDs"`
-	NewAccountIDs        []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
-	OpenFreshComposer    bool     `json:"open_fresh_composer" doc:"Whether this is the Workspace's first connected destination"`
-	FeatureSetupRequired bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
+	WorkspaceID       string   `json:"workspace_id" doc:"Workspace receiving the connected destination"`
+	AccountID         string   `json:"account_id" doc:"OpenPost destination account ID"`
+	AccountIDs        []string `json:"account_ids" doc:"All connected OpenPost account IDs"`
+	OpenFreshComposer bool     `json:"open_fresh_composer" doc:"Whether this is the Workspace's first connected destination"`
 }
 
 type ListAccountsInput struct {
@@ -305,11 +303,9 @@ type CompleteAccountSelectionOutput struct {
 
 type AccountSelectionCompletionResponse struct {
 	AccountResponse
-	WorkspaceID          string   `json:"workspace_id" doc:"Workspace receiving the connected destinations"`
-	AccountIDs           []string `json:"account_ids" doc:"OpenPost destination account IDs created by this selection"`
-	NewAccountIDs        []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
-	OpenFreshComposer    bool     `json:"open_fresh_composer" doc:"Whether these are the Workspace's first connected destinations"`
-	FeatureSetupRequired bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
+	WorkspaceID       string   `json:"workspace_id" doc:"Workspace receiving the connected destinations"`
+	AccountIDs        []string `json:"account_ids" doc:"OpenPost destination account IDs created by this selection"`
+	OpenFreshComposer bool     `json:"open_fresh_composer" doc:"Whether these are the Workspace's first connected destinations"`
 }
 
 type UpdateAccountInput struct {
@@ -1228,15 +1224,6 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	h.captureDestinationConnected(ctx, userID, workspaceID, platformName, 1, firstConnection)
 
 	log.Printf("[Callback] Account saved successfully: ID=%s", account.ID)
-	// Compute normalized feature setup state
-	var newIDs []string
-	if account.IsNewlyInserted {
-		newIDs = []string{account.ID}
-	}
-	featureSetupRequired := h.isFeatureSetupRequired(ctx, workspaceID, userID, newIDs)
-	if featureSetupRequired && len(newIDs) > 0 {
-		return redirectResponse(h.setupConnectionURL(workspaceID, []string{account.ID}, newIDs, firstConnection)), nil
-	}
 	if firstConnection {
 		return redirectResponse(h.composerConnectionURL(workspaceID, []string{account.ID})), nil
 	}
@@ -1259,63 +1246,24 @@ func (h *OAuthHandler) composerConnectionURL(workspaceID string, accountIDs []st
 	return h.frontendURL + "/?" + query.Encode()
 }
 
-func (h *OAuthHandler) setupConnectionURL(workspaceID string, accountIDs, newAccountIDs []string, openFreshComposer bool) string {
-	query := url.Values{}
-	query.Set("workspace_id", workspaceID)
-	if len(accountIDs) > 0 {
-		query.Set("account_ids", strings.Join(accountIDs, ","))
-	}
-	if len(newAccountIDs) > 0 {
-		query.Set("new_account_ids", strings.Join(newAccountIDs, ","))
-	}
-	if openFreshComposer {
-		query.Set("open_fresh_composer", "true")
-	}
-	return h.frontendURL + "/accounts/setup?" + query.Encode()
-}
-
 func (h *OAuthHandler) accountManagementRedirectURL() string {
 	return h.frontendURL + "/settings?tab=accounts"
 }
 
-func (h *OAuthHandler) isFeatureSetupRequired(ctx context.Context, workspaceID, userID string, newAccountIDs []string) bool {
-	if len(newAccountIDs) == 0 || h.accountFeatures == nil {
-		return false
-	}
-	actor := workspaceActor(ctx, userID)
-	resolved, err := h.accountFeatures.Read(ctx, workspaceID, actor, newAccountIDs)
-	if err != nil {
-		return false
-	}
-	for _, r := range resolved {
-		if r.Supported {
-			return true
-		}
-	}
-	return false
-}
-
-func (h *OAuthHandler) normalizedAccountConnectionResponse(ctx context.Context, workspaceID string, accounts []*models.SocialAccount, openFreshComposer bool, userID string) AccountConnectionResponse {
+func (h *OAuthHandler) normalizedAccountConnectionResponse(workspaceID string, accounts []*models.SocialAccount, openFreshComposer bool) AccountConnectionResponse {
 	accountIDs := make([]string, 0, len(accounts))
-	newIDs := make([]string, 0)
 	for _, a := range accounts {
 		accountIDs = append(accountIDs, a.ID)
-		if a.IsNewlyInserted {
-			newIDs = append(newIDs, a.ID)
-		}
 	}
-	featureSetup := h.isFeatureSetupRequired(ctx, workspaceID, userID, newIDs)
 	firstID := ""
 	if len(accounts) > 0 {
 		firstID = accounts[0].ID
 	}
 	return AccountConnectionResponse{
-		WorkspaceID:          workspaceID,
-		AccountID:            firstID,
-		AccountIDs:           accountIDs,
-		NewAccountIDs:        newIDs,
-		OpenFreshComposer:    openFreshComposer,
-		FeatureSetupRequired: featureSetup,
+		WorkspaceID:       workspaceID,
+		AccountID:         firstID,
+		AccountIDs:        accountIDs,
+		OpenFreshComposer: openFreshComposer,
 	}
 }
 
@@ -1408,7 +1356,7 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		firstConnection := account.ClaimedFirst
 
 		log.Printf("[ExchangeCode] Account saved successfully")
-		resp := h.normalizedAccountConnectionResponse(ctx, input.Body.WorkspaceID, []*models.SocialAccount{account}, firstConnection, userID)
+		resp := h.normalizedAccountConnectionResponse(input.Body.WorkspaceID, []*models.SocialAccount{account}, firstConnection)
 		return &ExchangeCodeOutput{Body: resp}, nil
 	})
 }
@@ -1492,7 +1440,7 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
 
-		resp := h.normalizedAccountConnectionResponse(ctx, input.Body.WorkspaceID, []*models.SocialAccount{account}, account.ClaimedFirst, userID)
+		resp := h.normalizedAccountConnectionResponse(input.Body.WorkspaceID, []*models.SocialAccount{account}, account.ClaimedFirst)
 		return &BlueskyLoginOutput{Body: resp}, nil
 	})
 }
@@ -1562,7 +1510,7 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 		if err != nil {
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
-		resp := h.normalizedAccountConnectionResponse(ctx, input.Body.WorkspaceID, []*models.SocialAccount{account}, account.ClaimedFirst, userID)
+		resp := h.normalizedAccountConnectionResponse(input.Body.WorkspaceID, []*models.SocialAccount{account}, account.ClaimedFirst)
 		return &DiscordWebhookLoginOutput{Body: resp}, nil
 	})
 }
@@ -1718,15 +1666,10 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
 		accountIDs := make([]string, len(accounts))
-		newAccountIDs := make([]string, 0, len(accounts))
 		for index, account := range accounts {
 			accountIDs[index] = account.ID
-			if account.IsNewlyInserted {
-				newAccountIDs = append(newAccountIDs, account.ID)
-			}
 		}
 		firstConnection := accounts[0].ClaimedFirst
-		featureSetupRequired := h.isFeatureSetupRequired(ctx, pending.WorkspaceID, userID, newAccountIDs)
 		h.captureDestinationConnected(ctx, userID, pending.WorkspaceID, pending.Platform, len(accounts), firstConnection)
 		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 			if _, err := tx.NewUpdate().Model((*models.OAuthAccountSelection)(nil)).
@@ -1742,12 +1685,10 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		selectionCompleted = true
 
 		return &CompleteAccountSelectionOutput{Body: AccountSelectionCompletionResponse{
-			AccountResponse:      accountResponse(*accounts[0], h.disableLinkedInThreadReplies),
-			WorkspaceID:          pending.WorkspaceID,
-			AccountIDs:           accountIDs,
-			NewAccountIDs:        newAccountIDs,
-			OpenFreshComposer:    firstConnection,
-			FeatureSetupRequired: featureSetupRequired,
+			AccountResponse:   accountResponse(*accounts[0], h.disableLinkedInThreadReplies),
+			WorkspaceID:       pending.WorkspaceID,
+			AccountIDs:        accountIDs,
+			OpenFreshComposer: firstConnection,
 		}}, nil
 	})
 }

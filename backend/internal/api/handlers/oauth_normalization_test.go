@@ -122,7 +122,7 @@ func (m *normMessagingAdapter) Publish(_ context.Context, _, _ string, _ *platfo
 	return platform.PublishResult{}, nil
 }
 
-func TestNormSetupRedirectForNewAccountWithSupportedFeatures(t *testing.T) {
+func TestNormRoutesNewAccountWithSupportedFeaturesToComposer(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: true}},
@@ -132,26 +132,11 @@ func TestNormSetupRedirectForNewAccountWithSupportedFeatures(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
 	loc := resp.Header.Get("Location")
-	require.Contains(t, loc, "/accounts/setup")
 	u, _ := url.Parse(loc)
+	require.Equal(t, "/", u.Path)
 	require.Equal(t, "ws-1", u.Query().Get("workspace_id"))
 	require.NotEmpty(t, u.Query().Get("account_ids"))
-	require.NotEmpty(t, u.Query().Get("new_account_ids"))
-	require.Equal(t, u.Query().Get("account_ids"), u.Query().Get("new_account_ids"))
 	require.NotContains(t, loc, "access_token")
-}
-
-func TestNormBypassesSetupWhenNoSupportedFeatures(t *testing.T) {
-	t.Parallel()
-	providers := map[string]platform.Adapter{
-		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: false}},
-	}
-	e, _ := newNormServer(t, providers)
-	resp := doNormCallback(t, e)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
-	loc := resp.Header.Get("Location")
-	require.NotContains(t, loc, "/accounts/setup")
 }
 
 func TestNormRoutesFirstAndExistingDestinationsToTheirCanonicalPages(t *testing.T) {
@@ -174,7 +159,7 @@ func TestNormRoutesFirstAndExistingDestinationsToTheirCanonicalPages(t *testing.
 	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp2.Header.Get("Location"))
 }
 
-func TestNormReactivatedDoesNotTriggerSetup(t *testing.T) {
+func TestNormReactivatedAccountReturnsToSettings(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: true}},
@@ -194,7 +179,7 @@ func TestNormReactivatedDoesNotTriggerSetup(t *testing.T) {
 	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp.Header.Get("Location"))
 }
 
-func TestNormContinuationDataInSetupRedirect(t *testing.T) {
+func TestNormComposerRedirectContainsOnlyContinuationData(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: true}},
@@ -203,12 +188,12 @@ func TestNormContinuationDataInSetupRedirect(t *testing.T) {
 	resp := doNormCallback(t, e)
 	defer resp.Body.Close()
 	loc := resp.Header.Get("Location")
-	require.Contains(t, loc, "/accounts/setup")
 	u, _ := url.Parse(loc)
+	require.Equal(t, "/", u.Path)
 	require.Equal(t, "ws-1", u.Query().Get("workspace_id"))
 	require.NotEmpty(t, u.Query().Get("account_ids"))
-	require.NotEmpty(t, u.Query().Get("new_account_ids"))
-	require.Equal(t, "true", u.Query().Get("open_fresh_composer"))
+	require.Empty(t, u.Query().Get("new_account_ids"))
+	require.Empty(t, u.Query().Get("open_fresh_composer"))
 	require.NotContains(t, loc, "code")
 }
 
@@ -241,7 +226,6 @@ func TestNormCompleteSelectionContainsNormalizedFields(t *testing.T) {
 	require.NoError(t, json.Unmarshal(completeResp.Body.Bytes(), &out))
 	require.NotEmpty(t, out.WorkspaceID)
 	require.NotEmpty(t, out.AccountIDs)
-	require.NotEmpty(t, out.NewAccountIDs)
-	require.Contains(t, completeResp.Body.String(), "feature_setup_required")
-	require.Contains(t, completeResp.Body.String(), "new_account_ids")
+	require.NotContains(t, completeResp.Body.String(), "feature_setup_required")
+	require.NotContains(t, completeResp.Body.String(), "new_account_ids")
 }

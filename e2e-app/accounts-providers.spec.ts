@@ -303,9 +303,7 @@ test("accounts page connects an operator-installed custom connector", async ({ p
         workspace_id: workspace.id,
         account_id: "account-directus",
         account_ids: ["account-directus"],
-        new_account_ids: ["account-directus"],
         open_fresh_composer: true,
-        feature_setup_required: false,
       },
     });
   });
