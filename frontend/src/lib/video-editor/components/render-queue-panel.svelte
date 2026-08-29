@@ -87,7 +87,9 @@
 		size="sm"
 		variant="ghost"
 		class={compactTrigger ? 'size-8 px-0' : 'mt-1 w-full'}
-		aria-label={m.video_editor_exports_title()}
+		aria-label={activeCount > 0
+			? `${m.video_editor_exports_title()} (${activeCount})`
+			: m.video_editor_exports_title()}
 		onclick={() => (open = true)}
 	>
 		<ListVideoIcon class="size-3.5" aria-hidden="true" />

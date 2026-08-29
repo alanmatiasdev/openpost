@@ -181,8 +181,8 @@ describe('edit preview overlay pointer integration', () => {
 			urls: {},
 			proxyUrls: {}
 		});
-		const slipBtn = screen.getByRole('button', { name: 'Slip clip source' });
-		await slipBtn.click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await screen.getByRole('menuitemcheckbox', { name: 'Slip clip source' }).click();
 		const clipBtn = screen.getByRole('button', { name: /slip-clip/ }).element();
 		dispatchPointer(clipBtn, 'pointerdown', 200);
 		dispatchPointer(window, 'pointermove', 220);
@@ -245,8 +245,10 @@ describe('edit preview overlay pointer integration', () => {
 			urls: {},
 			proxyUrls: {}
 		});
-		const slideBtn = screen.getByRole('button', { name: 'Slide clip between adjacent edits' });
-		await slideBtn.click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await screen
+			.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' })
+			.click();
 		const centerBtn = screen.getByRole('button', { name: /center/ }).element();
 		dispatchPointer(centerBtn, 'pointerdown', 300);
 		dispatchPointer(window, 'pointermove', 320);
@@ -398,8 +400,8 @@ describe('edit preview overlay pointer integration', () => {
 			urls: {},
 			proxyUrls: {}
 		});
-		const slipBtn = screen.getByRole('button', { name: 'Slip clip source' });
-		await slipBtn.click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await screen.getByRole('menuitemcheckbox', { name: 'Slip clip source' }).click();
 		const clipBtn = screen.getByRole('button', { name: /^clip\./ }).element();
 		dispatchPointer(clipBtn, 'pointerdown', 200);
 		dispatchPointer(window, 'pointermove', 220);
@@ -445,8 +447,10 @@ describe('edit preview overlay pointer integration', () => {
 			urls: {},
 			proxyUrls: {}
 		});
-		const slideBtn = screen.getByRole('button', { name: 'Slide clip between adjacent edits' });
-		await slideBtn.click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await screen
+			.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' })
+			.click();
 		const centerBtn = screen.getByRole('button', { name: /^center\./ }).element();
 		dispatchPointer(centerBtn, 'pointerdown', 300);
 		dispatchPointer(window, 'pointermove', 320);
