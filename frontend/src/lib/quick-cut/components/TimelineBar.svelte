@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { QuickCutSegment, QuickCutSource } from '../types';
 	import { m } from '$lib/paraglide/messages';
+	import QuickCutWaveform from './QuickCutWaveform.svelte';
 
 	let {
 		activeSource,
@@ -45,9 +46,10 @@
 			role="group"
 			aria-label={m.quick_cut_timeline_label()}
 		>
+			<QuickCutWaveform source={activeSource} />
 			<button
 				type="button"
-				class="absolute inset-0"
+				class="absolute inset-0 z-10"
 				aria-label={m.quick_cut_seek_timeline()}
 				onclick={(e) => {
 					const target = e.currentTarget;
@@ -61,7 +63,7 @@
 			{#each visibleSegments as seg (seg.id)}
 				<button
 					type="button"
-					class="absolute top-2 bottom-2 rounded-md border text-left transition {selectedId ===
+					class="absolute top-2 bottom-2 z-20 rounded-md border text-left transition {selectedId ===
 					seg.id
 						? 'border-primary bg-primary/20 shadow'
 						: 'border-primary/30 bg-primary/10 hover:bg-primary/15'}"
@@ -73,19 +75,19 @@
 
 			{#if inPoint && inPoint.sourceId === activeSource.id}
 				<div
-					class="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-amber-500"
+					class="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-amber-500"
 					style={`left:${pct(inPoint.time)}%`}
 				></div>
 			{/if}
 			{#if outPoint && outPoint.sourceId === activeSource.id}
 				<div
-					class="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-emerald-500"
+					class="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-emerald-500"
 					style={`left:${pct(outPoint.time)}%`}
 				></div>
 			{/if}
 
 			<div
-				class="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-foreground shadow"
+				class="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-foreground shadow"
 				style={`left:${pct(currentTime)}%`}
 			>
 				<div
