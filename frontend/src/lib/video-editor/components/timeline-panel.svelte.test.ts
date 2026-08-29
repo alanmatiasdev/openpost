@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
-import { render } from 'vitest-browser-svelte';
+import { cleanup, render } from 'vitest-browser-svelte';
 import '../../../routes/layout.css';
 import type {
 	TimelineItem,
@@ -166,6 +166,8 @@ beforeEach(() => {
 		fps: 30
 	});
 });
+
+afterEach(() => cleanup());
 
 describe('TimelinePanel progressive controls', () => {
 	it('offers target-aware timeline actions by right click and keyboard', async () => {
