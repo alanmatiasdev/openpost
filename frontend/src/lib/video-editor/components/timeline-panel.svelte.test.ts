@@ -842,13 +842,18 @@ describe('TimelinePanel progressive controls', () => {
 		await expect.element(screen.getByRole('menuitem', { name: 'Close all gaps' })).toBeDisabled();
 	});
 
-	it('deletes a marker from its context menu', async () => {
+	it('recolors and deletes a marker from its context menu', async () => {
 		const markerId = addMarker(12);
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const marker = screen.container.querySelector<HTMLButtonElement>(
 			`[data-timeline-marker="${markerId}"]`
 		);
 		expect(marker).not.toBeNull();
+
+		await userEvent.click(marker!, { button: 'right' });
+		await userEvent.hover(screen.getByRole('menuitem', { name: 'Color' }).element());
+		await screen.getByRole('menuitem', { name: 'Color 3' }).click();
+		expect(timelineStore.markers[0]?.color).toBe('#22c55e');
 
 		await userEvent.click(marker!, { button: 'right' });
 		screen.getByRole('menuitem', { name: 'Delete marker' }).element().click();
@@ -1909,16 +1914,22 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(timelineStore.markers[0]?.frame).toBe(33);
 		expect(timelineStore.currentFrame).toBe(33);
 
-		const color = screen.getByLabelText('Color').element();
+		await screen.getByRole('button', { name: 'Color', exact: true }).click();
+		const color = document.querySelector<HTMLInputElement>('input[type="color"]');
 		if (!(color instanceof HTMLInputElement)) throw new Error('Expected marker color input.');
 		color.value = '#22c55e';
 		color.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(timelineStore.markers[0]?.color).toBe('#22c55e');
 
+		await screen.getByRole('button', { name: 'Color 2' }).click();
+		expect(timelineStore.markers[0]?.color).toBe('#ef4444');
+		await screen.getByRole('button', { name: 'Reset color' }).click();
+		expect(timelineStore.markers[0]?.color).toBe('#d97746');
+
 		await screen.getByRole('button', { name: 'Delete marker' }).click();
 		expect(timelineStore.markers).toEqual([]);
 		expect(timelineStore.selectedMarkerId).toBeNull();
-		expect(onedit).toHaveBeenCalledTimes(4);
+		expect(onedit).toHaveBeenCalledTimes(6);
 	});
 
 	it('drags markers atomically and navigates to adjacent markers', async () => {

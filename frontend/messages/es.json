@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "Marco",
 	"video_editor_marker_frame_value": "Fotograma {frame}",
 	"video_editor_marker_color": "Color",
+	"video_editor_marker_color_choice": "Color {number}",
+	"video_editor_marker_reset_color": "Restablecer color",
 	"video_editor_timing_keyboard": "Arrastre para mover. Utilice flecha izquierda y derecha para mover un marco, o mantenga pulsado Shift para mover diez marcos.",
 	"video_editor_adjust_item_start": "Ajustar el inicio del elemento",
 	"video_editor_adjust_item_end": "Ajustar el extremo del elemento",

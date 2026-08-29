@@ -36,6 +36,7 @@ import {
 	sourceToTimelineFrames,
 	timelineToSourceFrames
 } from '../utils/source-calculations';
+import { DEFAULT_MARKER_COLOR } from '../markers';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -762,7 +763,7 @@ export function addMarker(frame: number): string {
 	// SAFETY: execute returns the action's own string id unchanged.
 	return execute('ADD_MARKER', () => {
 		const id = crypto.randomUUID();
-		timelineStore._addMarker({ id, frame, color: '#d97746' });
+		timelineStore._addMarker({ id, frame, color: DEFAULT_MARKER_COLOR });
 		return id;
 	}) as string;
 }

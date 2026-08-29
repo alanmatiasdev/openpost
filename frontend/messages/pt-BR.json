@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "Quadro",
 	"video_editor_marker_frame_value": "Quadro {frame}",
 	"video_editor_marker_color": "Cor",
+	"video_editor_marker_color_choice": "Cor {number}",
+	"video_editor_marker_reset_color": "Redefinir cor",
 	"video_editor_timing_keyboard": "Arraste para mover. Use as teclas de seta para mover um quadro ou mantenha Shift pressionado para mover dez quadros.",
 	"video_editor_adjust_item_start": "Ajustar início do item",
 	"video_editor_adjust_item_end": "Ajustar fim do item",

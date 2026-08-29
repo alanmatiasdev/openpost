@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "帧",
 	"video_editor_marker_frame_value": "第 {frame} 帧",
 	"video_editor_marker_color": "颜色",
+	"video_editor_marker_color_choice": "颜色 {number}",
+	"video_editor_marker_reset_color": "重置颜色",
 	"video_editor_timing_keyboard": "拖动可移动。左右方向键每次移动一帧，按住 Shift 每次移动十帧。",
 	"video_editor_adjust_item_start": "调整片段起始点",
 	"video_editor_adjust_item_end": "调整片段结束点",

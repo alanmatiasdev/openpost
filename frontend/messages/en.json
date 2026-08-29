@@ -4794,6 +4794,8 @@
 	"video_editor_marker_frame": "Frame",
 	"video_editor_marker_frame_value": "Frame {frame}",
 	"video_editor_marker_color": "Color",
+	"video_editor_marker_color_choice": "Color {number}",
+	"video_editor_marker_reset_color": "Reset color",
 	"video_editor_timing_keyboard": "Drag to move. Use Left and Right Arrow to move one frame, or hold Shift to move ten frames.",
 	"video_editor_adjust_item_start": "Adjust item start",
 	"video_editor_adjust_item_end": "Adjust item end",

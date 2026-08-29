@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "Frame",
 	"video_editor_marker_frame_value": "Frame {frame}",
 	"video_editor_marker_color": "Farbe",
+	"video_editor_marker_color_choice": "Farbe {number}",
+	"video_editor_marker_reset_color": "Farbe zurücksetzen",
 	"video_editor_timing_keyboard": "Zum Verschieben ziehen. Pfeil links/rechts bewegt einen Frame, mit Umschalt zehn Frames.",
 	"video_editor_adjust_item_start": "Elementanfang anpassen",
 	"video_editor_adjust_item_end": "Elementende anpassen",

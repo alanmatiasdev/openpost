@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "フレーム",
 	"video_editor_marker_frame_value": "フレーム {frame}",
 	"video_editor_marker_color": "カラー",
+	"video_editor_marker_color_choice": "カラー {number}",
+	"video_editor_marker_reset_color": "カラーをリセット",
 	"video_editor_timing_keyboard": "ドラッグで移動。← → キーで1フレーム、Shift 併用で10フレーム動かせます。",
 	"video_editor_adjust_item_start": "項目の開始位置を変更",
 	"video_editor_adjust_item_end": "項目の終了位置を変更",

@@ -23,7 +23,13 @@
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
 	import { findTrackGapAtFrame } from '$lib/video-editor/timeline/gap-closing';
-	import { markerAfter, markerBefore, markerDisplayName } from '$lib/video-editor/timeline/markers';
+	import {
+		DEFAULT_MARKER_COLOR,
+		MARKER_PRESET_COLORS,
+		markerAfter,
+		markerBefore,
+		markerDisplayName
+	} from '$lib/video-editor/timeline/markers';
 	import { shuttleScrubResume } from '$lib/video-editor/preview/shuttle-scrub-resume.svelte';
 	import {
 		TIMELINE_ZOOM_STEP,
@@ -4879,6 +4885,7 @@
 			<Input
 				class="h-7 w-20 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 font-mono text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
 				type="number"
+				aria-label={m.video_editor_marker_frame()}
 				min="0"
 				step="1"
 				value={selectedMarker.frame}
@@ -4891,19 +4898,76 @@
 					}
 				}}
 			/>
+			<span class="font-mono text-xs tabular-nums">
+				{formatTimelinePreviewTimecode(selectedMarker.frame, timelineStore.fps)}
+			</span>
 		</label>
-		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
-			{m.video_editor_marker_color()}
-			<Input
-				class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
-				type="color"
-				value={markerColorForInput(selectedMarker.color)}
-				onchange={(event) =>
-					commitMarkerPatch(selectedMarker, {
-						color: event.currentTarget.value
-					})}
-			/>
-		</label>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon"
+						class="size-7 rounded border border-[oklch(0.3_0.01_55)]"
+						aria-label={m.video_editor_marker_color()}
+					>
+						<span
+							class="size-4 rounded-full border border-black/30"
+							style={`background:${selectedMarker.color}`}
+						></span>
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content class="video-editor-theme w-48 p-2" align="start">
+				<div class="flex items-center gap-2 px-1 pb-2 text-xs text-[var(--video-editor-muted)]">
+					<Input
+						class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
+						type="color"
+						aria-label={m.video_editor_marker_color()}
+						value={markerColorForInput(selectedMarker.color)}
+						onchange={(event) =>
+							commitMarkerPatch(selectedMarker, {
+								color: event.currentTarget.value
+							})}
+					/>
+					{m.video_editor_marker_color()}
+				</div>
+				<div
+					class="grid grid-cols-6 gap-1 border-t border-[oklch(0.28_0.014_55)] pt-2"
+					role="group"
+					aria-label={m.video_editor_marker_color()}
+				>
+					{#each MARKER_PRESET_COLORS as color, index (color)}
+						<button
+							type="button"
+							class="grid size-6 place-items-center rounded focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							aria-label={m.video_editor_marker_color_choice({ number: index + 1 })}
+							aria-pressed={selectedMarker.color.toLowerCase() === color.toLowerCase()}
+							onclick={() => commitMarkerPatch(selectedMarker, { color })}
+						>
+							<span
+								class="size-4 rounded-full border border-black/30 {selectedMarker.color.toLowerCase() ===
+								color.toLowerCase()
+									? 'ring-2 ring-white/80'
+									: ''}"
+								style={`background:${color}`}
+							></span>
+						</button>
+					{/each}
+				</div>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					class="mt-2 h-7 w-full justify-center text-xs"
+					disabled={selectedMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
+					onclick={() => commitMarkerPatch(selectedMarker, { color: DEFAULT_MARKER_COLOR })}
+				>
+					{m.video_editor_marker_reset_color()}
+				</Button>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
 		<Button
 			variant="ghost"
 			size="icon"
@@ -5955,6 +6019,25 @@
 					frame: contextMarker.frame
 				})}
 			</ContextMenu.Item>
+			<ContextMenu.Sub>
+				<ContextMenu.SubTrigger>{m.video_editor_marker_color()}</ContextMenu.SubTrigger>
+				<ContextMenu.SubContent class="video-editor-theme w-44">
+					{#each MARKER_PRESET_COLORS as color, index (color)}
+						<ContextMenu.Item onclick={() => commitMarkerPatch(contextMarker, { color })}>
+							<span class="size-3 rounded-full border border-black/30" style={`background:${color}`}
+							></span>
+							{m.video_editor_marker_color_choice({ number: index + 1 })}
+						</ContextMenu.Item>
+					{/each}
+					<ContextMenu.Separator />
+					<ContextMenu.Item
+						disabled={contextMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
+						onclick={() => commitMarkerPatch(contextMarker, { color: DEFAULT_MARKER_COLOR })}
+					>
+						{m.video_editor_marker_reset_color()}
+					</ContextMenu.Item>
+				</ContextMenu.SubContent>
+			</ContextMenu.Sub>
 			<ContextMenu.Separator />
 			<ContextMenu.Item
 				variant="destructive"

@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "Kare",
 	"video_editor_marker_frame_value": "{frame}. kare",
 	"video_editor_marker_color": "Renk",
+	"video_editor_marker_color_choice": "Renk {number}",
+	"video_editor_marker_reset_color": "Rengi sıfırla",
 	"video_editor_timing_keyboard": "Taşımak için sürükleyin. Tek kare için Sol ve Sağ Ok tuşlarını, on kare için Shift tuşunu kullanın.",
 	"video_editor_adjust_item_start": "Öğe başlangıcını ayarla",
 	"video_editor_adjust_item_end": "Öğe bitişini ayarla",

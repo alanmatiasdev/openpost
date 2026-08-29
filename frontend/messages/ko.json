@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "프레임",
 	"video_editor_marker_frame_value": "{frame} 프레임",
 	"video_editor_marker_color": "색상",
+	"video_editor_marker_color_choice": "색상 {number}",
+	"video_editor_marker_reset_color": "색상 재설정",
 	"video_editor_timing_keyboard": "드래그해서 이동하세요. 왼쪽·오른쪽 화살표로 한 프레임, Shift를 누르면 10프레임씩 이동합니다.",
 	"video_editor_adjust_item_start": "항목 시작 조정",
 	"video_editor_adjust_item_end": "항목 끝 조정",

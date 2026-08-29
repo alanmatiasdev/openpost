@@ -4789,6 +4789,8 @@
 	"video_editor_marker_frame": "Image",
 	"video_editor_marker_frame_value": "Image {frame}",
 	"video_editor_marker_color": "Couleur",
+	"video_editor_marker_color_choice": "Couleur {number}",
+	"video_editor_marker_reset_color": "Réinitialiser la couleur",
 	"video_editor_timing_keyboard": "Faites glisser pour déplacer. Utilisez les flèches Gauche et Droite pour une image, ou maintenez Maj pour dix images.",
 	"video_editor_adjust_item_start": "Ajuster le début de l'élément",
 	"video_editor_adjust_item_end": "Ajuster la fin de l'élément",
