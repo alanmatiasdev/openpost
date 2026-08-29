@@ -6420,6 +6420,8 @@
 	"video_editor_property_reset_size": "サイズをリセット",
 	"video_editor_property_reset_rotation": "回転をリセット",
 	"video_editor_property_reset_anchor": "アンカーをリセット",
+	"video_editor_property_reset_opacity": "不透明度をリセット",
+	"video_editor_property_reset_radius": "半径をリセット",
 	"video_editor_property_width": "幅",
 	"video_editor_property_height": "高さ",
 	"video_editor_property_radius": "半径",

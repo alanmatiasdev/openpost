@@ -6420,6 +6420,8 @@
 	"video_editor_property_reset_size": "크기 재설정",
 	"video_editor_property_reset_rotation": "회전 재설정",
 	"video_editor_property_reset_anchor": "앵커 재설정",
+	"video_editor_property_reset_opacity": "불투명도 재설정",
+	"video_editor_property_reset_radius": "반경 재설정",
 	"video_editor_property_width": "너비",
 	"video_editor_property_height": "높이",
 	"video_editor_property_radius": "둥글기",

@@ -47,7 +47,7 @@ const items: TimelineItem[] = [
 		sourceFps: 30,
 		sourceWidth: 640,
 		sourceHeight: 360,
-		transform: { x: 100, y: 20, width: 640, height: 360 }
+		transform: { x: 100, y: 20, width: 640, height: 360, opacity: 0.6, cornerRadius: 20 }
 	},
 	{
 		id: 'audio-item',
@@ -79,7 +79,8 @@ const items: TimelineItem[] = [
 			width: 300,
 			height: 100,
 			aspectRatioLocked: false
-		}
+		},
+		blendMode: 'multiply'
 	}
 ];
 
@@ -180,7 +181,7 @@ describe('ClipPropertiesPanel reverse playback', () => {
 
 describe('ClipPropertiesPanel transform workflow', () => {
 	it('edits pixel values across a mixed selection in one undoable operation', async () => {
-		await page.viewport(1000, 900);
+		await page.viewport(420, 900);
 		const onedit = vi.fn();
 		const screen = await render(ClipPropertiesPanel, {
 			itemId: 'video-item',
@@ -194,7 +195,7 @@ describe('ClipPropertiesPanel transform workflow', () => {
 		}
 		const transformPanel = screen.getByTestId('clip-transform-panel').query();
 		transformPanel.style.width = '360px';
-		transformPanel.style.zoom = '2.5';
+		transformPanel.style.background = 'oklch(0.15 0.008 55)';
 
 		await expect.element(screen.getByText('Position', { exact: true })).toBeVisible();
 		await expect.element(screen.getByText('Size', { exact: true })).toBeVisible();
@@ -207,7 +208,6 @@ describe('ClipPropertiesPanel transform workflow', () => {
 			element: screen.getByTestId('clip-transform-panel').element(),
 			path: '../../../../.svelte-kit/openpost-clip-transform-mixed.png'
 		});
-		transformPanel.style.zoom = '1';
 		position.value = '240';
 		position.dispatchEvent(new InputEvent('input', { bubbles: true, data: '240' }));
 		position.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
@@ -220,6 +220,16 @@ describe('ClipPropertiesPanel transform workflow', () => {
 		expect(timelineStore.itemById.get('video-item')?.transform?.x).toBe(100);
 		expect(timelineStore.itemById.get('text-item')?.transform?.x).toBe(-20);
 
+		commandHistory.clearHistory();
+		await screen.getByRole('button', { name: 'Blend mode' }).click();
+		await screen.getByRole('option', { name: 'Contrast: Overlay' }).click();
+		expect(timelineStore.itemById.get('video-item')?.blendMode).toBe('overlay');
+		expect(timelineStore.itemById.get('text-item')?.blendMode).toBe('overlay');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-item')?.blendMode).toBeUndefined();
+		expect(timelineStore.itemById.get('text-item')?.blendMode).toBe('multiply');
+
 		screen.container.style.width = '288px';
 		if (screen.container.firstElementChild instanceof HTMLElement) {
 			screen.container.firstElementChild.style.width = '288px';
@@ -231,7 +241,7 @@ describe('ClipPropertiesPanel transform workflow', () => {
 	});
 
 	it('keeps linked dimensions proportional and resets position as atomic edits', async () => {
-		await page.viewport(1000, 900);
+		await page.viewport(420, 900);
 		const onedit = vi.fn();
 		const screen = await render(ClipPropertiesPanel, {
 			itemId: 'video-item',
@@ -245,6 +255,7 @@ describe('ClipPropertiesPanel transform workflow', () => {
 		}
 		const transformPanel = screen.getByTestId('clip-transform-panel').query();
 		transformPanel.style.width = '360px';
+		transformPanel.style.background = 'oklch(0.15 0.008 55)';
 		await expect
 			.element(screen.getByRole('button', { name: 'Unlock aspect ratio' }))
 			.toHaveAttribute('aria-pressed', 'true');
@@ -259,12 +270,10 @@ describe('ClipPropertiesPanel transform workflow', () => {
 			height: 720
 		});
 		expect(commandHistory.undoStack).toHaveLength(1);
-		transformPanel.style.zoom = '2.5';
 		await page.screenshot({
 			element: screen.getByTestId('clip-transform-panel').element(),
 			path: '../../../../.svelte-kit/openpost-clip-transform-linked.png'
 		});
-		transformPanel.style.zoom = '1';
 
 		commandHistory.clearHistory();
 		await screen.getByRole('button', { name: 'Reset position' }).click();
@@ -278,6 +287,15 @@ describe('ClipPropertiesPanel transform workflow', () => {
 			x: 100,
 			y: 20
 		});
+
+		commandHistory.clearHistory();
+		await screen.getByRole('button', { name: 'Reset opacity' }).click();
+		expect(timelineStore.itemById.get('video-item')?.transform?.opacity).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.clearHistory();
+		await screen.getByRole('button', { name: 'Reset radius' }).click();
+		expect(timelineStore.itemById.get('video-item')?.transform?.cornerRadius).toBe(0);
+		expect(commandHistory.undoStack).toHaveLength(1);
 	});
 });
 

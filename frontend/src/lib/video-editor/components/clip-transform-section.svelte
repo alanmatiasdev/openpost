@@ -4,11 +4,14 @@
 	import MoveIcon from '@lucide/svelte/icons/move';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink-2';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
+	import { ALL_BLEND_MODES, type BlendMode } from '$lib/video-editor/effects/gpu/blend-modes';
+	import { getBlendModeOptions } from '$lib/video-editor/effects/gpu/blend-mode-options';
 	import { resolveAnimatedItemLocalAt } from '$lib/video-editor/timeline/animated-properties';
 	import {
 		beginAnimatedPropertyEdit,
@@ -40,6 +43,7 @@
 			);
 	});
 	const selectedIds = $derived(items.map((item) => item.id));
+	const blendOptions = $derived(getBlendModeOptions());
 	let gesture = $state<TimelineSnapshot | null>(null);
 
 	function valueFor(item: TimelineItem, property: KeyframeProperty): number {
@@ -219,6 +223,30 @@
 			}
 		});
 		onedit();
+	}
+
+	function mixedBlendMode(): BlendMode | undefined {
+		if (items.length === 0) return 'normal';
+		const first = items[0]?.blendMode ?? 'normal';
+		return items.every((item) => (item.blendMode ?? 'normal') === first) ? first : undefined;
+	}
+
+	function hasShapeMask(): boolean {
+		return items.some((item) => item.type === 'shape' && item.isMask === true);
+	}
+
+	function setBlendMode(value: string): void {
+		const mode = ALL_BLEND_MODES.find((candidate) => candidate === value);
+		if (!mode || hasShapeMask()) return;
+		let changed = false;
+		executeAtomic('SET_ITEM_BLEND_MODE', () => {
+			for (const item of items) {
+				if ((item.blendMode ?? 'normal') === mode) continue;
+				changed = true;
+				updateItemProperties(item.id, { blendMode: mode }, 'SET_ITEM_BLEND_MODE');
+			}
+		});
+		if (changed) onedit();
 	}
 </script>
 
@@ -448,41 +476,111 @@
 		</div>
 	</section>
 
-	<section class="rounded-md border border-white/8 bg-white/[0.025] p-2.5">
-		<h3 class="mb-2 text-[10px] font-semibold tracking-wider text-white/58 uppercase">
+	<section class="overflow-hidden rounded-md border border-white/8 bg-white/[0.025]">
+		<h3
+			class="flex h-8 items-center border-b border-white/7 px-2.5 text-[10px] font-semibold tracking-wider text-white/58 uppercase"
+		>
 			{m.video_editor_property_appearance()}
 		</h3>
-		<div class="grid grid-cols-2 gap-2">
-			<div>
-				<label class="mb-1 block text-[10px] text-white/48" for={`clip-property-${itemId}-opacity`}
-					>{m.video_editor_clip_opacity()}</label
+		<div class="divide-y divide-white/6">
+			<div class="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 px-2.5 py-2">
+				<label
+					for={`clip-property-${itemId}-opacity-slider`}
+					class="text-[10px] font-medium text-white/48">{m.video_editor_clip_opacity()}</label
 				>
-				<div class="relative">
-					<ScrubbableNumberInput
-						ariaLabel={m.video_editor_clip_opacity()}
-						value={mixedValue('opacity') === null ? null : (mixedValue('opacity') ?? 1) * 100}
-						placeholder={m.video_editor_property_mixed()}
-						min={0}
-						max={100}
-						step={1}
-						decimals={0}
-						class="h-7 w-full rounded border border-white/8 bg-black/18 py-1 pr-6 pl-2 text-right text-[11px] tabular-nums outline-none"
-						onbegin={beginGesture}
-						onlive={(value) => writeLive('opacity', value / 100)}
-						oncommit={(value) => commitGesture('opacity', value / 100)}
-						oncancel={cancelGesture}
+				<div class="flex min-w-0 items-center gap-1">
+					<input
+						id={`clip-property-${itemId}-opacity-slider`}
+						type="range"
+						class="h-7 min-w-10 flex-1 accent-[oklch(0.72_0.15_50)]"
+						min="0"
+						max="100"
+						step="1"
+						value={(mixedValue('opacity') ?? 1) * 100}
+						onpointerdown={beginGesture}
+						onpointercancel={cancelGesture}
+						oninput={(event) => writeLive('opacity', event.currentTarget.valueAsNumber / 100)}
+						onchange={(event) => commitGesture('opacity', event.currentTarget.valueAsNumber / 100)}
+						onkeydown={(event) => event.stopPropagation()}
 					/>
-					<span
-						class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[9px] text-white/30"
-						>%</span
+					<div class="relative w-[4.5rem] shrink-0">
+						<ScrubbableNumberInput
+							ariaLabel={m.video_editor_clip_opacity()}
+							value={mixedValue('opacity') === null ? null : (mixedValue('opacity') ?? 1) * 100}
+							placeholder={m.video_editor_property_mixed()}
+							min={0}
+							max={100}
+							step={1}
+							decimals={0}
+							class="h-7 w-full rounded border border-white/8 bg-black/18 py-1 pr-5 pl-1.5 text-right text-[11px] tabular-nums outline-none"
+							onbegin={beginGesture}
+							onlive={(value) => writeLive('opacity', value / 100)}
+							oncommit={(value) => commitGesture('opacity', value / 100)}
+							oncancel={cancelGesture}
+						/>
+						<span
+							class="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[9px] text-white/30"
+							>%</span
+						>
+					</div>
+					<button
+						type="button"
+						class:active={autoKeyEnabled('opacity')}
+						class="grid size-6 shrink-0 place-items-center rounded text-white/38 hover:bg-white/8 hover:text-white/72 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:text-[oklch(0.78_0.16_55)]"
+						aria-label={m.video_editor_property_auto_key({
+							property: m.video_editor_clip_opacity()
+						})}
+						aria-pressed={autoKeyEnabled('opacity')}
+						onclick={() => toggleAutoKey('opacity')}
 					>
+						<DiamondIcon
+							class={`size-2.5 ${autoKeyEnabled('opacity') ? 'fill-current' : ''}`}
+							aria-hidden="true"
+						/>
+					</button>
+					<button
+						type="button"
+						class="grid size-7 shrink-0 place-items-center rounded text-white/35 hover:bg-white/8 hover:text-white/72 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+						aria-label={m.video_editor_property_reset_opacity()}
+						onclick={() => reset(() => ({ opacity: 1 }))}
+					>
+						<RotateCcwIcon class="size-3.5" aria-hidden="true" />
+					</button>
 				</div>
 			</div>
-			<div>
-				<label class="mb-1 block text-[10px] text-white/48" for={`clip-property-${itemId}-radius`}
-					>{m.video_editor_property_radius()}</label
+			<div class="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 px-2.5 py-2">
+				<span class="text-[10px] font-medium text-white/48">{m.video_editor_blend_mode()}</span>
+				<AppSelect
+					class="h-7 min-w-0 text-xs"
+					value={hasShapeMask() ? 'normal' : mixedBlendMode()}
+					options={blendOptions}
+					placeholder={m.video_editor_property_mixed()}
+					ariaLabel={m.video_editor_blend_mode()}
+					disabled={hasShapeMask()}
+					onValueChange={setBlendMode}
+				/>
+			</div>
+			<div class="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 px-2.5 py-2">
+				<span class="text-[10px] font-medium text-white/48">{m.video_editor_property_radius()}</span
 				>
-				{@render numberControl('cornerRadius', '', m.video_editor_property_radius(), 'px', 0, 1000)}
+				<div class="flex min-w-0 items-center gap-1">
+					{@render numberControl(
+						'cornerRadius',
+						'',
+						m.video_editor_property_radius(),
+						'px',
+						0,
+						1000
+					)}
+					<button
+						type="button"
+						class="grid size-7 shrink-0 place-items-center rounded text-white/35 hover:bg-white/8 hover:text-white/72 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+						aria-label={m.video_editor_property_reset_radius()}
+						onclick={() => reset(() => ({ cornerRadius: 0 }))}
+					>
+						<RotateCcwIcon class="size-3.5" aria-hidden="true" />
+					</button>
+				</div>
 			</div>
 		</div>
 	</section>

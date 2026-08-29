@@ -6420,6 +6420,8 @@
 	"video_editor_property_reset_size": "Repor tamanho",
 	"video_editor_property_reset_rotation": "Repor rotação",
 	"video_editor_property_reset_anchor": "Repor âncora",
+	"video_editor_property_reset_opacity": "Repor opacidade",
+	"video_editor_property_reset_radius": "Repor raio",
 	"video_editor_property_width": "Largura",
 	"video_editor_property_height": "Altura",
 	"video_editor_property_radius": "Raio",

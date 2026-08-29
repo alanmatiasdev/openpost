@@ -6420,6 +6420,8 @@
 	"video_editor_property_reset_size": "Restablecer tamaño",
 	"video_editor_property_reset_rotation": "Restablecer rotación",
 	"video_editor_property_reset_anchor": "Restablecer anclaje",
+	"video_editor_property_reset_opacity": "Restablecer opacidad",
+	"video_editor_property_reset_radius": "Restablecer radio",
 	"video_editor_property_width": "Ancho",
 	"video_editor_property_height": "Altura",
 	"video_editor_property_radius": "Radio",

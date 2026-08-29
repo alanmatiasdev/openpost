@@ -1,6 +1,6 @@
 <!--
 	Effects panel: per-clip effect stack — CSS-filter color/blur effects plus
-	the GPU catalog (WebGL2 pipeline), and the clip's compositing blend mode.
+	the GPU catalog (WebGL2 pipeline).
 	Sliders draft locally and commit one undoable update on release.
 -->
 <script lang="ts">
@@ -40,7 +40,6 @@
 		setGpuEffectParam,
 		setGpuEffectData,
 		setGpuEffectDataOnItems,
-		setItemBlendMode,
 		updateEffect
 	} from '$lib/video-editor/timeline/actions/effects';
 	import {
@@ -48,11 +47,6 @@
 		getGpuEffect
 	} from '$lib/video-editor/effects/gpu/registry';
 	import { gpuEffectLabel } from '$lib/video-editor/effects/gpu/i18n';
-	import {
-		BLEND_MODE_GROUPS,
-		ALL_BLEND_MODES,
-		type BlendMode
-	} from '$lib/video-editor/effects/gpu/blend-modes';
 	import ColorScopes from './color-scopes.svelte';
 	import ColorWorkspace from './color-workspace.svelte';
 	import GpuCurvesEditor from './gpu-curves-editor.svelte';
@@ -163,42 +157,6 @@
 		faded: m.video_editor_effect_preset_faded()
 	});
 
-	const blendModeLabels = $derived<Record<BlendMode, string>>({
-		normal: m.video_editor_blend_normal(),
-		dissolve: m.video_editor_blend_dissolve(),
-		darken: m.video_editor_blend_darken(),
-		multiply: m.video_editor_blend_multiply(),
-		'color-burn': m.video_editor_blend_color_burn(),
-		'linear-burn': m.video_editor_blend_linear_burn(),
-		lighten: m.video_editor_blend_lighten(),
-		screen: m.video_editor_blend_screen(),
-		'color-dodge': m.video_editor_blend_color_dodge(),
-		'linear-dodge': m.video_editor_blend_linear_dodge(),
-		overlay: m.video_editor_blend_overlay(),
-		'soft-light': m.video_editor_blend_soft_light(),
-		'hard-light': m.video_editor_blend_hard_light(),
-		'vivid-light': m.video_editor_blend_vivid_light(),
-		'linear-light': m.video_editor_blend_linear_light(),
-		'pin-light': m.video_editor_blend_pin_light(),
-		'hard-mix': m.video_editor_blend_hard_mix(),
-		difference: m.video_editor_blend_difference(),
-		exclusion: m.video_editor_blend_exclusion(),
-		subtract: m.video_editor_blend_subtract(),
-		divide: m.video_editor_blend_divide(),
-		hue: m.video_editor_blend_hue(),
-		saturation: m.video_editor_blend_saturation(),
-		color: m.video_editor_blend_color(),
-		luminosity: m.video_editor_blend_luminosity()
-	});
-
-	const blendGroupLabels = $derived<Record<string, string>>({
-		normal: m.video_editor_blend_group_normal(),
-		darken: m.video_editor_blend_group_darken(),
-		lighten: m.video_editor_blend_group_lighten(),
-		contrast: m.video_editor_blend_group_contrast(),
-		inversion: m.video_editor_blend_group_inversion(),
-		component: m.video_editor_blend_group_component()
-	});
 	const effectOptions = $derived<EffectPickerOption[]>([
 		...EFFECT_DEFINITIONS.map((definition) => ({
 			value: definition.type,
@@ -235,14 +193,6 @@
 				removable: true
 			}))
 	]);
-	const blendOptions = $derived(
-		BLEND_MODE_GROUPS.flatMap((group) =>
-			group.modes.map((mode) => ({
-				value: mode,
-				label: `${blendGroupLabels[group.label]}: ${blendModeLabels[mode]}`
-			}))
-		)
-	);
 
 	function definitionFor(type: string) {
 		return EFFECT_DEFINITIONS.find((entry) => entry.type === type);
@@ -461,12 +411,6 @@
 			})
 		)
 			onedit();
-	}
-
-	function commitBlendMode(value: string): void {
-		const mode = ALL_BLEND_MODES.find((entry) => entry === value);
-		if (!itemId || !mode) return;
-		if (setItemBlendMode(itemId, mode)) onedit();
 	}
 
 	function effectLabel(effect: ItemEffect): string {
@@ -873,17 +817,6 @@
 				</li>
 			{/each}
 		</ul>
-	{/if}
-	{#if itemId}
-		<label class="mt-1 flex items-center gap-2 px-1 text-xs">
-			<span class="shrink-0 text-[oklch(0.65_0.015_55)]">{m.video_editor_blend_mode()}</span>
-			<AppSelect
-				class="h-8 min-w-0 flex-1 text-xs"
-				value={item?.blendMode ?? 'normal'}
-				options={blendOptions}
-				onValueChange={commitBlendMode}
-			/>
-		</label>
 	{/if}
 </div>
 {#if itemId && showScopes}<ColorScopes {itemId} />{/if}

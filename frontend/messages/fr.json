@@ -6420,6 +6420,8 @@
 	"video_editor_property_reset_size": "Réinitialiser la taille",
 	"video_editor_property_reset_rotation": "Réinitialiser la rotation",
 	"video_editor_property_reset_anchor": "Réinitialiser le point d’ancrage",
+	"video_editor_property_reset_opacity": "Réinitialiser l’opacité",
+	"video_editor_property_reset_radius": "Réinitialiser le rayon",
 	"video_editor_property_width": "Largeur",
 	"video_editor_property_height": "Hauteur",
 	"video_editor_property_radius": "Rayon",
