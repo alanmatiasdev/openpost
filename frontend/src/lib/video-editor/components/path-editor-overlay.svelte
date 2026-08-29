@@ -19,7 +19,9 @@
 		pathSvgData,
 		pathVertexToBezier,
 		pathVertexToCorner,
-		removePathVertex
+		removePathVertex,
+		reversePathVertices,
+		rotateClosedPathStart
 	} from '$lib/video-editor/shapes/path-edit';
 
 	let {
@@ -392,6 +394,31 @@
 		commitGeometry(vertices);
 	}
 
+	function reversePath(): void {
+		if (topologyLocked || storedVertices.length < 2) return;
+		const reversedSelection = selectedIndices.map((index) => storedVertices.length - 1 - index);
+		const nextSelectedIndex =
+			selectedIndex === null ? null : storedVertices.length - 1 - selectedIndex;
+		selectVertices(reversedSelection, nextSelectedIndex);
+		commitTopology({ pathVertices: reversePathVertices(storedVertices) });
+	}
+
+	function setFirstPoint(): void {
+		if (
+			topologyLocked ||
+			item.pathClosed === false ||
+			selectedIndex === null ||
+			storedVertices.length < 2
+		)
+			return;
+		const offset = selectedIndex;
+		const rotatedSelection = selectedIndices.map(
+			(index) => (index - offset + storedVertices.length) % storedVertices.length
+		);
+		selectVertices(rotatedSelection, 0);
+		commitTopology({ pathVertices: rotateClosedPathStart(storedVertices, offset) });
+	}
+
 	function vertexKeydown(event: KeyboardEvent, index: number): void {
 		if (event.key === 'Delete' || event.key === 'Backspace') {
 			event.preventDefault();
@@ -606,6 +633,16 @@
 						onclick={() => convertSelectedVertices('corner')}
 					>
 						{m.video_editor_path_convert_corner()}
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+					<ContextMenu.Item disabled={topologyLocked} onclick={reversePath}>
+						{m.video_editor_path_reverse()}
+					</ContextMenu.Item>
+					<ContextMenu.Item
+						disabled={topologyLocked || item.pathClosed === false || selectedIndex === 0}
+						onclick={setFirstPoint}
+					>
+						{m.video_editor_path_set_first()}
 					</ContextMenu.Item>
 					<ContextMenu.Separator />
 					<ContextMenu.Item onclick={keySelectedVertices}>

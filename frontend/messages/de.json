@@ -4687,6 +4687,8 @@
 	"video_editor_path_delete_point": "Punkt löschen",
 	"video_editor_path_convert_curve": "In Kurve umwandeln",
 	"video_editor_path_convert_corner": "In Ecke umwandeln",
+	"video_editor_path_reverse": "Pfad umkehren",
+	"video_editor_path_set_first": "Als ersten Punkt festlegen",
 	"video_editor_path_key_selected": "Auswahl keyen",
 	"video_editor_path_key_all": "Alle keyen",
 	"video_editor_path_clear_keys": "Pfad-Keys löschen",

@@ -4687,6 +4687,8 @@
 	"video_editor_path_delete_point": "点を削除",
 	"video_editor_path_convert_curve": "曲線に変換",
 	"video_editor_path_convert_corner": "角に変換",
+	"video_editor_path_reverse": "パスを反転",
+	"video_editor_path_set_first": "最初のポイントに設定",
 	"video_editor_path_key_selected": "選択部分をキーフレーム化",
 	"video_editor_path_key_all": "すべてキーフレーム化",
 	"video_editor_path_clear_keys": "パスのキーフレームを削除",

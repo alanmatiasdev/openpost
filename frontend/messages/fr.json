@@ -4687,6 +4687,8 @@
 	"video_editor_path_delete_point": "Supprimer le point",
 	"video_editor_path_convert_curve": "Convertir en courbe",
 	"video_editor_path_convert_corner": "Convertir en angle",
+	"video_editor_path_reverse": "Inverser le tracé",
+	"video_editor_path_set_first": "Définir comme premier point",
 	"video_editor_path_key_selected": "Animer la sélection",
 	"video_editor_path_key_all": "Tout animer",
 	"video_editor_path_clear_keys": "Effacer les clés du tracé",

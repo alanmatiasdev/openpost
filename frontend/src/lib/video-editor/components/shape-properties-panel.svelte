@@ -3,6 +3,8 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
 	import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
 	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import { hasPathVertexKeyframes } from '$lib/video-editor/timeline/path-vertex-keyframes';
@@ -125,6 +127,13 @@
 			maskFeather: maskType === 'alpha' ? (existingFeather > 0 ? existingFeather : 10) : 0
 		});
 	}
+
+	function swapGradientColors(): void {
+		if (item.fillType !== 'linear') return;
+		const start = item.gradientStartColor ?? item.fillColor ?? '#f97316';
+		const end = item.gradientEndColor ?? '#fb7185';
+		commit({ fillColor: end, gradientStartColor: end, gradientEndColor: start });
+	}
 </script>
 
 <section class="flex flex-col gap-2">
@@ -204,7 +213,7 @@
 				</label>
 			</div>
 			{#if item.fillType === 'linear'}
-				<div class="grid grid-cols-2 gap-1">
+				<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-end gap-1">
 					<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
 						{m.video_editor_shape_gradient_end()}
 						<Input
@@ -226,6 +235,17 @@
 							onchange={(event) => numberPatch('gradientAngle', event.currentTarget.valueAsNumber)}
 						/>
 					</label>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						class="size-8"
+						aria-label={m.video_editor_project_canvas_swap()}
+						title={m.video_editor_project_canvas_swap()}
+						onclick={swapGradientColors}
+					>
+						<ArrowLeftRightIcon class="size-3.5" />
+					</Button>
 				</div>
 			{/if}
 		{/if}

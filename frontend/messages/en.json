@@ -4692,6 +4692,8 @@
 	"video_editor_path_delete_point": "Delete point",
 	"video_editor_path_convert_curve": "Convert to curve",
 	"video_editor_path_convert_corner": "Convert to corner",
+	"video_editor_path_reverse": "Reverse path",
+	"video_editor_path_set_first": "Set as first point",
 	"video_editor_path_key_selected": "Key selected",
 	"video_editor_path_key_all": "Key all",
 	"video_editor_path_clear_keys": "Clear path keys",

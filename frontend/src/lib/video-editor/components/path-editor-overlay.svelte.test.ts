@@ -286,4 +286,78 @@ describe('PathEditorOverlay', () => {
 		await expect.element(screen.getByRole('menuitem', { name: 'Add point' })).toBeDisabled();
 		await expect.element(screen.getByRole('menuitem', { name: 'Delete point' })).toBeDisabled();
 	});
+
+	it('reverses a path or makes the selected closed-path point first from its context menu', async () => {
+		const editable: TimelineItem = {
+			...pathItem(),
+			pathVertices: [
+				{
+					position: [0.1, 0.1],
+					inHandle: [-0.05, 0],
+					outHandle: [0.1, 0.05],
+					tangentMode: 'continuous'
+				},
+				{ position: [0.9, 0.1], inHandle: [0, 0], outHandle: [0, 0], tangentMode: 'corner' },
+				{ position: [0.5, 0.9], inHandle: [0, 0], outHandle: [0, 0], tangentMode: 'corner' }
+			],
+			pathClosed: true
+		};
+		timelineStore.setAll({ fps: 30, currentFrame: 0, tracks: [track], items: [editable] });
+		const onedit = vi.fn();
+		const screen = await render(PathEditorOverlay, {
+			item: timelineStore.itemById.get('path')!,
+			canvasWidth: 400,
+			canvasHeight: 200,
+			currentFrame: 0,
+			boxStyle: 'left:0;top:0;width:400px;height:200px;transform:none',
+			screenScale: 1,
+			onedit
+		});
+		screen.container.style.width = '400px';
+		screen.container.style.height = '300px';
+		screen.container.style.position = 'relative';
+
+		screen
+			.getByRole('button', { name: 'Path point 2' })
+			.element()
+			.dispatchEvent(
+				new MouseEvent('contextmenu', {
+					bubbles: true,
+					cancelable: true,
+					clientX: 360,
+					clientY: 20
+				})
+			);
+		await screen.getByRole('menuitem', { name: 'Set as first point' }).click();
+		expect(
+			timelineStore.itemById.get('path')?.pathVertices?.map((vertex) => vertex.position)
+		).toEqual([
+			[0.9, 0.1],
+			[0.5, 0.9],
+			[0.1, 0.1]
+		]);
+		commandHistory.undo();
+
+		await screen.rerender({ item: timelineStore.itemById.get('path')! });
+		screen
+			.getByRole('button', { name: 'Path point 1' })
+			.element()
+			.dispatchEvent(
+				new MouseEvent('contextmenu', {
+					bubbles: true,
+					cancelable: true,
+					clientX: 40,
+					clientY: 20
+				})
+			);
+		await screen.getByRole('menuitem', { name: 'Reverse path' }).last().click();
+		const reversed = timelineStore.itemById.get('path')?.pathVertices;
+		expect(reversed?.map((vertex) => vertex.position)).toEqual([
+			[0.5, 0.9],
+			[0.9, 0.1],
+			[0.1, 0.1]
+		]);
+		expect(reversed?.[2]?.outHandle).toEqual([-0.05, 0]);
+		expect(onedit).toHaveBeenCalledTimes(2);
+	});
 });

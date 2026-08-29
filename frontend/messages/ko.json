@@ -4687,6 +4687,8 @@
 	"video_editor_path_delete_point": "포인트 삭제",
 	"video_editor_path_convert_curve": "곡선으로 변환",
 	"video_editor_path_convert_corner": "모서리로 변환",
+	"video_editor_path_reverse": "경로 반전",
+	"video_editor_path_set_first": "첫 번째 점으로 설정",
 	"video_editor_path_key_selected": "선택 항목 키 잡기",
 	"video_editor_path_key_all": "전체 키 잡기",
 	"video_editor_path_clear_keys": "경로 키 지우기",

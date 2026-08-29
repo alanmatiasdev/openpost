@@ -4687,6 +4687,8 @@
 	"video_editor_path_delete_point": "Eliminar ponto",
 	"video_editor_path_convert_curve": "Converter em curva",
 	"video_editor_path_convert_corner": "Converter em canto",
+	"video_editor_path_reverse": "Inverter caminho",
+	"video_editor_path_set_first": "Definir como primeiro ponto",
 	"video_editor_path_key_selected": "Animar selecionados",
 	"video_editor_path_key_all": "Animar todos",
 	"video_editor_path_clear_keys": "Limpar animação do caminho",
