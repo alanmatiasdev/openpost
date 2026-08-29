@@ -127,10 +127,11 @@ describe('ClipPropertiesPanel reverse playback', () => {
 			onedit
 		});
 
-		const speed = screen.getByRole('spinbutton', { name: 'Speed' }).query();
+		const speed = screen.getByRole('textbox', { name: 'Speed' }).query();
 		if (!(speed instanceof HTMLInputElement)) throw new Error('Speed control did not render.');
 		speed.value = '2';
-		speed.dispatchEvent(new Event('change', { bubbles: true }));
+		speed.dispatchEvent(new InputEvent('input', { bubbles: true, data: '2' }));
+		speed.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 
 		expect(timelineStore.itemById.get('video-item')).toMatchObject({
 			speed: 2,
@@ -177,6 +178,74 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		await screen.getByRole('button', { name: 'Flip X' }).click();
 		expect(timelineStore.itemById.get('video-item')?.transform?.flipHorizontal).toBe(true);
 		expect(onedit).toHaveBeenCalledTimes(6);
+	});
+
+	it('rate-stretches a mixed multi-clip selection and commits each gesture once', async () => {
+		const secondVideo: TimelineItem = {
+			id: 'video-item-2',
+			trackId: 'video',
+			from: 120,
+			durationInFrames: 180,
+			label: 'B-roll',
+			type: 'video',
+			sourceStart: 0,
+			sourceEnd: 90,
+			sourceFps: 30,
+			speed: 0.5,
+			sourceWidth: 1280,
+			sourceHeight: 720,
+			fadeIn: 0.5
+		};
+		timelineStore.setAll({
+			tracks,
+			items: [...items, secondVideo],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item', 'video-item-2'],
+			onedit
+		});
+		const speed = screen.getByRole('textbox', { name: 'Speed' }).query();
+		if (!(speed instanceof HTMLInputElement)) throw new Error('Speed control did not render.');
+		expect(speed.placeholder).toBe('Mixed');
+		speed.value = '2';
+		speed.dispatchEvent(new InputEvent('input', { bubbles: true, data: '2' }));
+		speed.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('video-item')).toMatchObject({
+			speed: 2,
+			durationInFrames: 45
+		});
+		expect(timelineStore.itemById.get('audio-item')).toMatchObject({
+			speed: 2,
+			durationInFrames: 45
+		});
+		expect(timelineStore.itemById.get('video-item-2')).toMatchObject({
+			speed: 2,
+			durationInFrames: 45
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-item')?.durationInFrames).toBe(90);
+		expect(timelineStore.itemById.get('video-item-2')?.durationInFrames).toBe(180);
+
+		commandHistory.clearHistory();
+		const fadeIn = screen.getByRole('textbox', { name: 'Fade in (s)' }).query();
+		if (!(fadeIn instanceof HTMLInputElement)) throw new Error('Fade control did not render.');
+		expect(fadeIn.placeholder).toBe('Mixed');
+		fadeIn.value = '1';
+		fadeIn.dispatchEvent(new InputEvent('input', { bubbles: true, data: '1' }));
+		fadeIn.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('video-item')?.fadeIn).toBe(1);
+		expect(timelineStore.itemById.get('video-item-2')?.fadeIn).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		const panel = screen.getByTestId('clip-playback-section').query();
+		panel.style.width = '288px';
+		expect(panel.scrollWidth).toBeLessThanOrEqual(288);
 	});
 });
 

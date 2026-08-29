@@ -7,19 +7,7 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { autoKeyframeStore } from '$lib/video-editor/timeline/stores/auto-keyframe-store.svelte';
 	import { setAnimatedProperty } from '$lib/video-editor/timeline/actions/keyframes';
-	import {
-		setItemSpeed,
-		setItemsReversed,
-		updateItemProperties
-	} from '$lib/video-editor/timeline/actions/items';
-	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
-	import {
-		cancelReverseConform,
-		conformReversePreview,
-		reverseConformStatus,
-		subscribeReverseConform,
-		type ReverseConformStatus
-	} from '$lib/video-editor/media/reverse-conform-service';
+	import { updateItemProperties } from '$lib/video-editor/timeline/actions/items';
 	import type { KeyframeProperty, TimelineItem } from '$lib/video-editor/project/types';
 	import ShapePropertiesPanel from './shape-properties-panel.svelte';
 	import BackgroundPropertiesPanel from './background-properties-panel.svelte';
@@ -48,6 +36,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import ClipTransformSection from './clip-transform-section.svelte';
 	import ClipCropSection from './clip-crop-section.svelte';
+	import ClipPlaybackSection from './clip-playback-section.svelte';
 
 	let nrDraftAmount = $state<number | null>(null);
 	// Reset draft when selection or persisted amount changes
@@ -77,20 +66,6 @@
 				(candidate) => candidate.type === 'audio'
 			) ?? item
 		);
-	});
-	let conformStatus = $state<ReverseConformStatus>({
-		state: 'idle',
-		progress: 0
-	});
-
-	$effect(() => {
-		const mediaId = item?.mediaId;
-		if (!mediaId) {
-			conformStatus = { state: 'idle', progress: 0 };
-			return;
-		}
-		conformStatus = reverseConformStatus(mediaId);
-		return subscribeReverseConform(mediaId, (status) => (conformStatus = status));
 	});
 
 	interface NumericField {
@@ -295,24 +270,10 @@
 		onedit();
 	}
 
-	function commitSpeed(value: number): void {
-		if (!item || !Number.isFinite(value)) return;
-		if (setItemSpeed(item.id, Math.min(10, Math.max(0.1, Math.round(value * 100) / 100)))) {
-			onedit();
-		}
-	}
-
 	function commitAudioPatch(patch: Partial<TimelineItem>): void {
 		if (!audioItem) return;
 		updateItemProperties(audioItem.id, patch, 'UPDATE_CLIP_AUDIO');
 		onedit();
-	}
-
-	function commitVisualFade(field: 'fadeIn' | 'fadeOut', value: number): void {
-		if (!item || !Number.isFinite(value)) return;
-		commitText({
-			[field]: Math.min(item.durationInFrames / timelineStore.fps, Math.max(0, value))
-		});
 	}
 
 	function commitAudioFade(field: 'audioFadeIn' | 'audioFadeOut', value: number): void {
@@ -358,16 +319,6 @@
 			}
 		});
 	}
-
-	function toggleReverse(): void {
-		if (!item) return;
-		const willReverse = item.isReversed !== true;
-		if (setItemsReversed([item.id], willReverse).length === 0) return;
-		onedit();
-		if (!willReverse || !item.mediaId) return;
-		const media = mediaPool.get(item.mediaId);
-		if (media?.tags.includes('video')) void conformReversePreview(media).catch(() => undefined);
-	}
 </script>
 
 {#if item}
@@ -402,111 +353,7 @@
 		{/if}
 
 		{#if item.type === 'video' || item.type === 'audio'}
-			<section class="space-y-2">
-				<h3 class="text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase">
-					{m.video_editor_clip_playback()}
-				</h3>
-				<div class="block text-[10px] text-[oklch(0.7_0.01_55)]">
-					<label for={`clip-speed-${item.id}`}>{m.video_editor_clip_speed()}</label>
-					<div class="relative mt-0.5">
-						<Input
-							id={`clip-speed-${item.id}`}
-							class="w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 pr-6 text-xs"
-							type="number"
-							min="0.1"
-							max="10"
-							step="0.05"
-							value={item.speed ?? 1}
-							onchange={(event) => commitSpeed(event.currentTarget.valueAsNumber)}
-						/>
-						<span
-							class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-white/45"
-							>×</span
-						>
-					</div>
-				</div>
-				<Button
-					type="button"
-					size="sm"
-					variant={item.isReversed ? 'secondary' : 'outline'}
-					class="h-8 w-full justify-between text-xs"
-					aria-label={m.video_editor_clip_reverse()}
-					aria-pressed={item.isReversed === true}
-					onclick={toggleReverse}
-				>
-					<span>{m.video_editor_clip_reverse()}</span>
-					<span class="text-[10px] opacity-70">
-						{item.isReversed ? m.video_editor_clip_reverse_on() : m.video_editor_clip_reverse_off()}
-					</span>
-				</Button>
-				{#if item.isReversed && (conformStatus.state === 'preparing' || conformStatus.state === 'rendering')}
-					<div class="rounded border border-white/10 bg-black/20 p-2">
-						<div class="flex items-center justify-between gap-2 text-[10px] text-white/75">
-							<span>{m.video_editor_clip_reverse_preparing()}</span>
-							<span>{Math.round(conformStatus.progress * 100)}%</span>
-						</div>
-						<div class="mt-1 h-1 overflow-hidden rounded bg-white/10">
-							<div
-								class="h-full bg-[oklch(0.66_0.14_45)] transition-[width] motion-reduce:transition-none"
-								style:width={`${Math.round(conformStatus.progress * 100)}%`}
-							></div>
-						</div>
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							class="mt-1 h-6 px-1.5 text-[10px]"
-							onclick={() => item.mediaId && cancelReverseConform(item.mediaId)}
-						>
-							{m.common_cancel()}
-						</Button>
-					</div>
-				{:else if item.isReversed && conformStatus.state === 'ready'}
-					<p class="text-[10px] text-[oklch(0.74_0.1_145)]">
-						{m.video_editor_clip_reverse_ready()}
-					</p>
-				{:else if item.isReversed && (conformStatus.state === 'error' || conformStatus.state === 'canceled')}
-					<p class="text-[10px] text-[oklch(0.72_0.14_30)]">
-						{m.video_editor_clip_reverse_fallback()}
-					</p>
-				{/if}
-			</section>
-
-			{#if item.type === 'video'}
-				<section>
-					<h3
-						class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
-					>
-						{m.video_editor_property_video()}
-					</h3>
-					<div class="grid grid-cols-2 gap-1">
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							{m.video_editor_clip_fade_in_seconds()}
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="0"
-								max={item.durationInFrames / timelineStore.fps}
-								step="0.05"
-								value={item.fadeIn ?? 0}
-								onchange={(event) => commitVisualFade('fadeIn', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							{m.video_editor_clip_fade_out_seconds()}
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="0"
-								max={item.durationInFrames / timelineStore.fps}
-								step="0.05"
-								value={item.fadeOut ?? 0}
-								onchange={(event) => commitVisualFade('fadeOut', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-					</div>
-				</section>
-			{/if}
+			<ClipPlaybackSection itemId={item.id} {itemIds} {onedit} />
 
 			{#if audioItem}
 				<section>

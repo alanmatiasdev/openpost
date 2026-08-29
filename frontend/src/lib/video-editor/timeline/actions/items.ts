@@ -893,6 +893,11 @@ export interface SetItemsSpeedResult {
 }
 
 export function setItemsSpeed(itemIds: string[], speed: number): SetItemsSpeedResult {
+	return execute('SET_ITEMS_SPEED', () => setItemsSpeedLive(itemIds, speed));
+}
+
+/** Apply a rate stretch during an inspector gesture without growing undo history. */
+export function setItemsSpeedLive(itemIds: string[], speed: number): SetItemsSpeedResult {
 	const clamped = clampSpeed(speed);
 	if (!Number.isFinite(clamped)) return { changed: 0, locked: 0, noop: 0 };
 	const expanded = new Map<string, TimelineItem>();
@@ -924,46 +929,44 @@ export function setItemsSpeed(itemIds: string[], speed: number): SetItemsSpeedRe
 	}
 	if (toUpdate.length === 0) return { changed: 0, locked, noop };
 	if (locked > 0) return { changed: 0, locked, noop };
-	execute('SET_ITEMS_SPEED', () => {
-		const updates = toUpdate.map((candidate) => {
-			const sourceFps = candidate.sourceFps ?? timelineStore.fps;
-			const currentSpeed = candidate.speed ?? 1;
-			const sourceFrames =
-				candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
-					? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
-					: timelineToSourceFrames(
-							candidate.durationInFrames,
-							currentSpeed,
-							timelineStore.fps,
-							sourceFps
-						);
-			const durationInFrames = Math.max(
-				1,
-				sourceToTimelineFrames(sourceFrames, clamped, sourceFps, timelineStore.fps)
-			);
-			return {
-				id: candidate.id,
-				patch: {
-					speed: clamped,
-					durationInFrames,
-					keyframes: scaleItemKeyframes(
-						candidate.keyframes,
+	const updates = toUpdate.map((candidate) => {
+		const sourceFps = candidate.sourceFps ?? timelineStore.fps;
+		const currentSpeed = candidate.speed ?? 1;
+		const sourceFrames =
+			candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
+				? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
+				: timelineToSourceFrames(
+						candidate.durationInFrames,
+						currentSpeed,
+						timelineStore.fps,
+						sourceFps
+					);
+		const durationInFrames = Math.max(
+			1,
+			sourceToTimelineFrames(sourceFrames, clamped, sourceFps, timelineStore.fps)
+		);
+		return {
+			id: candidate.id,
+			patch: {
+				speed: clamped,
+				durationInFrames,
+				keyframes: scaleItemKeyframes(
+					candidate.keyframes,
+					candidate.durationInFrames,
+					durationInFrames
+				),
+				...(candidate.vectorKeyframes && {
+					vectorKeyframes: scaleItemVectorKeyframes(
+						candidate.vectorKeyframes,
 						candidate.durationInFrames,
 						durationInFrames
-					),
-					...(candidate.vectorKeyframes && {
-						vectorKeyframes: scaleItemVectorKeyframes(
-							candidate.vectorKeyframes,
-							candidate.durationInFrames,
-							durationInFrames
-						)
-					})
-				} satisfies Partial<TimelineItem>
-			};
-		});
-		timelineStore._updateItems(updates);
-		pruneInvalidTransitions();
+					)
+				})
+			} satisfies Partial<TimelineItem>
+		};
 	});
+	timelineStore._updateItems(updates);
+	pruneInvalidTransitions();
 	return { changed: toUpdate.length, locked, noop };
 }
 
