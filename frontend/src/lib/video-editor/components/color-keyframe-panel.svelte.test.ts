@@ -37,6 +37,7 @@ const item: TimelineItem = {
 };
 
 beforeEach(() => {
+	localStorage.removeItem('timeline:keyframeEditorMode');
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks: [track], items: [item], currentFrame: 15, fps: 30 });
 	commandHistory.clearHistory();
@@ -57,8 +58,11 @@ test('adds an effect keyframe at the playhead and exposes it in the value graph'
 	});
 	expect(onedit).toHaveBeenCalledOnce();
 	expect(commandHistory.undoStack).toHaveLength(1);
+	expect(screen.container.querySelector('[data-keyframe-side-ruler]')).not.toBeNull();
+	expect(screen.container.querySelector('[data-keyframe-side-playhead]')).not.toBeNull();
 
-	await screen.getByRole('button', { name: 'Graph' }).click();
+	await screen.getByRole('tab', { name: 'Graph' }).click();
+	expect(localStorage.getItem('timeline:keyframeEditorMode')).toBe('graph');
 	await expect
 		.element(screen.getByRole('application', { name: /keyframe value graph/i }))
 		.toBeVisible();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -10,22 +11,32 @@
 		isEffectKeyframeProperty
 	} from '$lib/video-editor/effects/effect-keyframes';
 	import { getAnimatablePropertiesForItem } from '$lib/video-editor/timeline/animated-properties';
-	import { editorKeyframes, type EditorKeyframe } from '$lib/video-editor/timeline/keyframe-editor';
+	import {
+		editorKeyframes,
+		keyframeIdentity,
+		type EditorKeyframe
+	} from '$lib/video-editor/timeline/keyframe-editor';
 	import {
 		activeValueAt,
 		removeKeyframes,
 		setKeyframe
 	} from '$lib/video-editor/timeline/actions/keyframes';
 	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
+	import { keyframeSelectionStore } from '$lib/video-editor/timeline/stores/keyframe-selection-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import KeyframeDopesheet from './keyframe-dopesheet.svelte';
 	import KeyframeValueGraph from './keyframe-value-graph.svelte';
 
 	type View = 'sheet' | 'graph';
+	const MODE_STORAGE_KEY = 'timeline:keyframeEditorMode';
+	const SOURCE_PROPERTY_COLUMN_WIDTH = 336;
+	const MIN_TIMELINE_WIDTH = 96;
 
 	let { itemId, onedit }: { itemId: string | null; onedit: () => void } = $props();
-	let view = $state<View>('sheet');
+	let root = $state<HTMLElement | null>(null);
+	let width = $state(440);
+	let view = $state<View>(loadView());
 	let activeProperty = $state<KeyframeProperty | null>(null);
-	let selectedKeyframe = $state<EditorKeyframe | null>(null);
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
 	const properties = $derived.by(() =>
@@ -33,12 +44,57 @@
 			? getAnimatablePropertiesForItem(item).filter(isEffectKeyframeProperty)
 			: ([] as KeyframeProperty[])
 	);
+	const allKeyframes = $derived.by(() =>
+		item ? properties.flatMap((property) => editorKeyframes(item, property)) : []
+	);
+	const selectedIds = $derived(item ? keyframeSelectionStore.forItem(item.id) : new Set<string>());
+	const selectedKeyframes = $derived(
+		allKeyframes.filter((keyframe) => selectedIds.has(keyframeIdentity(keyframe)))
+	);
+	const propertyColumnWidth = $derived(
+		Math.min(SOURCE_PROPERTY_COLUMN_WIDTH, Math.max(136, width - MIN_TIMELINE_WIDTH))
+	);
+	const pixelsPerFrame = $derived(
+		item
+			? Math.max(0.001, (width - propertyColumnWidth - 16) / Math.max(1, item.durationInFrames - 1))
+			: 1
+	);
+
+	$effect(() => {
+		if (!root) return;
+		const observer = new ResizeObserver(([entry]) => {
+			width = Math.max(240, Math.round(entry?.contentRect.width ?? 440));
+		});
+		observer.observe(root);
+		return () => observer.disconnect();
+	});
 
 	$effect(() => {
 		if (activeProperty && properties.includes(activeProperty)) return;
 		activeProperty = properties[0] ?? null;
-		selectedKeyframe = null;
+		keyframeSelectionStore.clear();
 	});
+
+	onDestroy(() => {
+		if (item && keyframeSelectionStore.itemId === item.id) keyframeSelectionStore.clear();
+	});
+
+	function loadView(): View {
+		try {
+			return localStorage.getItem(MODE_STORAGE_KEY) === 'graph' ? 'graph' : 'sheet';
+		} catch {
+			return 'sheet';
+		}
+	}
+
+	function setView(next: View): void {
+		view = next;
+		try {
+			localStorage.setItem(MODE_STORAGE_KEY, next === 'sheet' ? 'dopesheet' : next);
+		} catch {
+			// The editor still works when storage is unavailable.
+		}
+	}
 
 	function label(property: KeyframeProperty): string {
 		return item ? (effectPropertyLabel(item, property) ?? property) : property;
@@ -58,43 +114,51 @@
 		onedit();
 	}
 
-	function seekKeyframe(property: KeyframeProperty, keyframe: EditorKeyframe): void {
-		if (!item) return;
-		activeProperty = property;
-		selectedKeyframe = keyframe;
-		setCurrentFrame(item.from + keyframe.frame);
+	function selectKeyframe(keyframe: EditorKeyframe | null): void {
+		if (keyframe) activeProperty = keyframe.property;
 	}
 
 	function deleteSelected(): void {
-		if (!item || !selectedKeyframe) return;
-		if (!removeKeyframes(item.id, [selectedKeyframe])) return;
-		selectedKeyframe = null;
+		if (!item || selectedKeyframes.length === 0) return;
+		if (!removeKeyframes(item.id, selectedKeyframes)) return;
+		keyframeSelectionStore.clear();
 		onedit();
 	}
 
-	function frameLeft(frame: number): number {
-		if (!item) return 0;
-		return Math.max(0, Math.min(100, (frame / Math.max(1, item.durationInFrames - 1)) * 100));
+	function timelineX(absoluteFrame: number): number {
+		if (!item) return propertyColumnWidth + 8;
+		const relativeFrame = Math.max(
+			0,
+			Math.min(item.durationInFrames - 1, absoluteFrame - item.from)
+		);
+		return propertyColumnWidth + 8 + relativeFrame * pixelsPerFrame;
 	}
 </script>
 
-<section class="flex h-full min-h-0 flex-col" aria-label={m.video_editor_keyframe_sheet_title()}>
+<section
+	bind:this={root}
+	class="flex h-full min-h-0 flex-col"
+	aria-label={m.video_editor_keyframe_sheet_title()}
+>
 	<header
 		class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3"
 	>
 		<div class="min-w-0">
 			<h3 class="truncate text-xs font-semibold">{m.video_editor_keyframe_sheet_title()}</h3>
 			{#if item}
-				<p class="truncate text-[9px] text-white/35">{item.label}</p>
+				<p class="truncate text-[9px] text-white/35">
+					{item.label} <span class="font-mono">({item.id.slice(0, 8)})</span>
+				</p>
 			{/if}
 		</div>
 		<div class="flex shrink-0 items-center gap-1">
-			<div class="flex overflow-hidden rounded-sm border border-white/12">
+			<div class="flex overflow-hidden rounded-sm border border-white/12" role="tablist">
 				<button
 					type="button"
 					class="view-button {view === 'sheet' ? 'view-button-active' : ''}"
-					aria-pressed={view === 'sheet'}
-					onclick={() => (view = 'sheet')}
+					role="tab"
+					aria-selected={view === 'sheet'}
+					onclick={() => setView('sheet')}
 				>
 					{m.video_editor_keyframe_view_dopesheet()}
 				</button>
@@ -103,8 +167,9 @@
 					class="view-button border-l border-white/12 {view === 'graph'
 						? 'view-button-active'
 						: ''}"
-					aria-pressed={view === 'graph'}
-					onclick={() => (view = 'graph')}
+					role="tab"
+					aria-selected={view === 'graph'}
+					onclick={() => setView('graph')}
 				>
 					{m.video_editor_keyframe_view_graph()}
 				</button>
@@ -112,7 +177,7 @@
 			<button
 				type="button"
 				class="icon-button"
-				disabled={!selectedKeyframe}
+				disabled={selectedKeyframes.length === 0}
 				aria-label={m.common_delete()}
 				title={m.common_delete()}
 				onclick={deleteSelected}
@@ -140,7 +205,7 @@
 					value={activeProperty}
 					onchange={(event) => {
 						activeProperty = event.currentTarget.value as KeyframeProperty;
-						selectedKeyframe = null;
+						keyframeSelectionStore.clear();
 					}}
 				>
 					{#each properties as property (property)}
@@ -163,78 +228,28 @@
 					property={activeProperty}
 					currentFrame={timelineStore.currentFrame}
 					onscrub={setCurrentFrame}
-					onselect={(keyframe) => (selectedKeyframe = keyframe)}
+					onselect={selectKeyframe}
 					{onedit}
 				/>
 			</div>
 		</div>
 	{:else}
-		<div class="min-h-0 flex-1 overflow-auto" aria-label={m.video_editor_keyframe_sheet_aria()}>
-			<div
-				class="sticky top-0 z-10 grid h-6 grid-cols-[minmax(7rem,38%)_1fr] border-b border-white/10 bg-[oklch(0.155_0.008_55)] text-[8px] tracking-wider text-white/35 uppercase"
-			>
-				<span class="flex items-center px-2">{m.video_editor_keyframe_property()}</span>
-				<div class="relative border-l border-white/8">
-					<span class="absolute top-1 left-1">0</span>
-					<span class="absolute top-1 right-1">{item.durationInFrames - 1}</span>
-				</div>
-			</div>
-			{#each properties as property (property)}
-				{@const keyframes = editorKeyframes(item, property)}
-				<div
-					class="grid h-8 grid-cols-[minmax(7rem,38%)_1fr] border-b border-white/[0.06] {activeProperty ===
-					property
-						? 'bg-orange-400/[0.06]'
-						: ''}"
-				>
-					<div class="flex min-w-0 items-center text-[9px] text-white/65">
-						<button
-							type="button"
-							class="flex min-w-0 flex-1 items-center gap-1.5 self-stretch px-2 text-left hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-orange-400"
-							title={label(property)}
-							onclick={() => {
-								activeProperty = property;
-								selectedKeyframe = null;
-							}}
-						>
-							<span class="truncate">{label(property)}</span>
-							<span class="ml-auto font-mono text-[8px] text-white/30">{keyframes.length}</span>
-						</button>
-						<button
-							type="button"
-							class="flex size-7 shrink-0 items-center justify-center rounded-sm text-white/35 hover:bg-white/10 hover:text-orange-300 focus-visible:outline-2 focus-visible:outline-orange-400"
-							aria-label={m.video_editor_keyframe_sheet_add({ property: label(property) })}
-							onclick={() => addKeyframe(property)}
-						>
-							<PlusIcon class="size-3" />
-						</button>
-					</div>
-					<div class="relative border-l border-white/8 bg-black/10">
-						{#each keyframes as keyframe (keyframe.id)}
-							<button
-								type="button"
-								class="absolute top-1/2 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-orange-400"
-								style={`left:${frameLeft(keyframe.frame)}%`}
-								aria-label={m.video_editor_keyframe_sheet_point({
-									property: label(property),
-									frame: keyframe.frame
-								})}
-								onclick={() => seekKeyframe(property, keyframe)}
-							>
-								<DiamondIcon
-									class="size-2.5 {selectedKeyframe?.id === keyframe.id
-										? 'fill-orange-300 text-orange-300'
-										: 'fill-white/55 text-white/75'}"
-								/>
-							</button>
-						{/each}
-						<div
-							class="pointer-events-none absolute inset-y-0 w-px bg-orange-300/75"
-							style={`left:${frameLeft(timelineStore.currentFrame - item.from)}%`}
-						></div>
-					</div>
-				</div>
-			{/each}
+		<div class="min-h-0 flex-1 overflow-hidden">
+			<KeyframeDopesheet
+				{item}
+				availableProperties={properties}
+				currentFrame={timelineStore.currentFrame}
+				{pixelsPerFrame}
+				timelineWidth={width}
+				{timelineX}
+				presentation="side"
+				{propertyColumnWidth}
+				initialFilter="all"
+				onscrub={setCurrentFrame}
+				onselect={selectKeyframe}
+				onactiveproperty={(property) => (activeProperty = property)}
+				{onedit}
+			/>
 		</div>
 	{/if}
 </section>

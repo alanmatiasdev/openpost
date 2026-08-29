@@ -20,7 +20,7 @@
 </script>
 
 <section
-	class="flex max-h-[72dvh] min-h-0 shrink-0 flex-col overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.007_55)] lg:h-[min(70dvh,680px)] lg:min-h-[560px]"
+	class="flex max-h-[72dvh] min-h-0 shrink-0 flex-col overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.007_55)] lg:h-[calc(212px+37vh)] lg:max-h-[calc(212px+39vh)] lg:min-h-[500px]"
 	aria-label={m.video_editor_color_dock()}
 >
 	<ColorMiniTimeline selectedItemIds={itemIds} {onselectitem} />

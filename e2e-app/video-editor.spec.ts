@@ -211,7 +211,17 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
   ).toBeVisible();
   await expect(populatedColorDock.getByRole("region", { name: "Curves" })).toBeVisible();
-  await expect(populatedColorDock.getByRole("region", { name: "Keyframes" })).toBeVisible();
+  const colorKeyframes = populatedColorDock.getByRole("region", { name: "Keyframes" });
+  await expect(colorKeyframes).toBeVisible();
+  await expect(colorKeyframes.locator("[data-keyframe-side-ruler]")).toBeVisible();
+  await colorKeyframes
+    .getByRole("button", { name: /^Add Color Wheels: Lift Hue keyframe at playhead$/u })
+    .click();
+  const colorKeyframe = colorKeyframes.locator("[data-dopesheet-keyframe-id]").first();
+  await expect(colorKeyframe).toBeVisible();
+  await colorKeyframe.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: /^Delete/u })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.locator("[data-color-scope-canvas]")).toBeVisible();
   await page.screenshot({
     path: "frontend/.svelte-kit/openpost-video-editor-color-1280.png",

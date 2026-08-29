@@ -51,6 +51,9 @@
 		pixelsPerFrame,
 		timelineWidth,
 		timelineX,
+		presentation = 'timeline',
+		propertyColumnWidth = 180,
+		initialFilter = 'keyframed',
 		onscrub,
 		onselect = () => {},
 		onactiveproperty = () => {},
@@ -62,6 +65,9 @@
 		pixelsPerFrame: number;
 		timelineWidth: number;
 		timelineX: (absoluteFrame: number) => number;
+		presentation?: 'timeline' | 'side';
+		propertyColumnWidth?: number;
+		initialFilter?: 'keyframed' | 'all';
 		onscrub: (absoluteFrame: number) => void;
 		onselect?: (keyframe: EditorKeyframe | null) => void;
 		onactiveproperty?: (property: KeyframeProperty) => void;
@@ -73,6 +79,7 @@
 	const SNAP_THRESHOLD = 8;
 	let root = $state<HTMLDivElement | null>(null);
 	let filter = $state<'keyframed' | 'all'>('keyframed');
+	let initializedFilter = false;
 	let searchQuery = $state('');
 	let groupFilter = $state<PropertyGroup | 'all'>('all');
 	let lockedProperties = $state<Set<KeyframeProperty>>(new Set());
@@ -80,6 +87,12 @@
 	let previewFrames = $state<Map<string, number> | null>(null);
 	let status = $state('');
 	let marquee = $state<{ left: number; top: number; width: number; height: number } | null>(null);
+
+	$effect(() => {
+		if (initializedFilter) return;
+		filter = initialFilter;
+		initializedFilter = true;
+	});
 
 	type KeyframeDrag = {
 		kind: 'keyframe';
@@ -630,13 +643,19 @@
 				role="region"
 				aria-label={m.video_editor_keyframe_sheet_aria()}
 				tabindex="0"
-				class="relative border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+				class="relative flex h-full min-h-0 flex-col bg-[oklch(0.145_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] {presentation ===
+				'side'
+					? ''
+					: 'border-t border-[oklch(0.25_0.015_55)]'}"
 				style="width:{timelineWidth}px"
 				onkeydown={onKeyDown}
 				oncontextmenucapture={prepareContextMenu}
 			>
 				<div
-					class="sticky left-0 z-30 flex h-8 w-fit min-w-[720px] items-center gap-1 border-r border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5 text-[10px]"
+					class="z-30 flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5 text-[10px] {presentation ===
+					'side'
+						? 'w-full'
+						: 'sticky left-0 w-fit min-w-[720px] border-r'}"
 				>
 					<span class="mr-1 font-medium tracking-wide text-[oklch(0.72_0.02_55)] uppercase">
 						{m.video_editor_keyframe_sheet_title()}
@@ -744,11 +763,37 @@
 					</span>
 				</div>
 
+				{#if presentation === 'side'}
+					<div
+						class="grid h-[22px] shrink-0 border-b border-white/10 bg-[oklch(0.155_0.008_55)] text-[8px] tracking-wider text-white/35 uppercase"
+						style="grid-template-columns:{propertyColumnWidth}px minmax(0, 1fr)"
+						data-keyframe-side-ruler
+					>
+						<span class="flex items-center px-2">{m.video_editor_keyframe_property()}</span>
+						<div class="relative border-l border-white/8">
+							<span class="absolute top-1 left-2">0</span>
+							<span class="absolute top-1 left-1/2 -translate-x-1/2"
+								>{Math.round((item.durationInFrames - 1) / 2)}</span
+							>
+							<span class="absolute top-1 right-2">{item.durationInFrames - 1}</span>
+						</div>
+					</div>
+				{/if}
+
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="relative max-h-60 overflow-x-hidden overflow-y-auto"
+					class="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto {presentation === 'side'
+						? ''
+						: 'max-h-60'}"
 					onpointerdown={startMarquee}
 				>
+					{#if presentation === 'side'}
+						<div
+							class="pointer-events-none absolute inset-y-0 z-30 w-px bg-orange-300/80"
+							style="left:{timelineX(item.from + relativeCurrentFrame)}px"
+							data-keyframe-side-playhead
+						></div>
+					{/if}
 					{#each rows as property (property)}
 						<div
 							role="group"
@@ -757,7 +802,8 @@
 							style="height:{ROW_HEIGHT}px"
 						>
 							<div
-								class="sticky left-0 z-20 flex h-full w-[180px] items-center gap-1 border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5"
+								class="sticky left-0 z-20 flex h-full items-center gap-1 border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55_/_0.97)] px-1.5"
+								style="width:{propertyColumnWidth}px"
 								data-marquee-ignore
 							>
 								<button
