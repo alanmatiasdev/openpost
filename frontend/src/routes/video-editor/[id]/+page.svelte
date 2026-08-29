@@ -189,10 +189,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		mobileEditPane = 'assets';
 	}
 
-	function startTimelineResize(event: PointerEvent): void {
+	function startTimelineResize(event: PointerEvent & { currentTarget: HTMLElement }): void {
 		if (event.button !== 0) return;
 		event.preventDefault();
-		const handle = event.currentTarget as HTMLElement;
+		const handle = event.currentTarget;
 		const pointerId = event.pointerId;
 		const startY = event.clientY;
 		const startHeight = timelineHeight;
