@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -62,10 +63,13 @@ import (
 	"github.com/openpost/backend/internal/services/postgeneration"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/services/publicationbuilder"
+	"github.com/openpost/backend/internal/services/publicationdiscovery"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/publisher"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/sessions"
+	"github.com/openpost/backend/internal/services/sourcecontext"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/openpost/backend/internal/services/updatestatus"
 	"github.com/openpost/backend/internal/services/usage"
@@ -76,6 +80,10 @@ import (
 
 var version = "dev"
 var commit = "unknown"
+
+func newWorkerID() string {
+	return "worker-" + uuid.NewString()
+}
 
 //nolint:gocyclo
 func main() {
@@ -504,6 +512,40 @@ func main() {
 		)
 	}
 
+	var publicSourceLoader sourcecontext.Loader
+	var publicationBuilderApplication *publicationbuilder.Application
+	var publicationBuilderService *publicationbuilder.Service
+	var publicationDiscoveryService publicationdiscovery.Discoverer
+	if contentGenerator != nil {
+		publicSourceLoader, err = sourcecontext.New(sourcecontext.Config{})
+		if err != nil {
+			log.Fatalf("failed to initialize public source loader: %v", err)
+		}
+		publicationBuilderService, err = publicationbuilder.New(contentGenerator, publicationbuilder.Config{Model: cfg.TextGenerationModel})
+		if err != nil {
+			log.Fatalf("failed to initialize publication builder: %v", err)
+		}
+		publicationBuilderApplication, err = publicationbuilder.NewApplication(
+			db,
+			publicationBuilderService,
+			publicationbuilder.ApplicationConfig{
+				Model:        cfg.TextGenerationModel,
+				SourceLoader: publicSourceLoader,
+				AssetLoader:  publicationbuilder.NewMediaAssetLoader(db, storage),
+			},
+		)
+		if err != nil {
+			log.Fatalf("failed to initialize durable publication builder: %v", err)
+		}
+		publicationDiscoveryService, err = publicationdiscovery.New(contentGenerator, publicationdiscovery.Config{
+			Model:        cfg.TextGenerationModel,
+			SourceLoader: publicSourceLoader,
+		})
+		if err != nil {
+			log.Fatalf("failed to initialize publication discovery: %v", err)
+		}
+	}
+
 	var memeProvider memes.Provider
 	var memeSuggester memegeneration.Suggester
 	if cfg.MemeGeneratorEnabled {
@@ -538,7 +580,7 @@ func main() {
 		AppVersion: version,
 	}, feedbackDestination)
 
-	worker := queue.NewWorker(db, "worker-1", 1*time.Second, publishSvc, tokenManager, storage)
+	worker := queue.NewWorker(db, newWorkerID(), 1*time.Second, publishSvc, tokenManager, storage)
 	worker.SetFeedbackService(feedbackService)
 	worker.SetAnalyticsService(analyticsService)
 	worker.SetBillingService(billingService)
@@ -550,6 +592,7 @@ func main() {
 	worker.SetRepostService(repostService)
 	worker.SetVideoProcessingService(videoProcessingService)
 	worker.SetGrowthService(growthService)
+	worker.SetPublicationBuilderService(publicationBuilderApplication)
 	worker.SetTelemetry(telemetryRecorder)
 	if err := videoProcessingService.EnqueuePendingAnalysis(context.Background()); err != nil {
 		log.Fatalf("failed to schedule pending video analysis: %v", err)
@@ -643,6 +686,11 @@ func main() {
 		MemeProvider:              memeProvider,
 		MemeSuggester:             memeSuggester,
 		PostBuilder:               postBuilder,
+		ContentBuilderEnabled:     publicationBuilderApplication != nil,
+		ContentDiscoveryEnabled:   publicationDiscoveryService != nil,
+		PublicationBuilder:        publicationBuilderApplication,
+		PublicationPlanner:        publicationBuilderService,
+		PublicationDiscovery:      publicationDiscoveryService,
 		Entitlement:               entitlementService,
 		TokenEncryptor:            tokenEncryptor,
 		TokenSource:               tokenManager,

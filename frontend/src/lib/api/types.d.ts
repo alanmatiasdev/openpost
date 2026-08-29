@@ -3482,6 +3482,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/publication-builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build destination-native posts */
+        post: operations["create-publication-build"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-builds/angles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan creative directions */
+        post: operations["plan-publication-angles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-builds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a publication build */
+        get: operations["get-publication-build"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-builds/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a publication build */
+        post: operations["cancel-publication-build"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-builds/{id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a ready build to the composer */
+        post: operations["commit-publication-build"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-builds/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a failed publication build */
+        post: operations["retry-publication-build"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/publication-opportunities/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover current content opportunities
+         * @description Returns tailored idea cards with selectable angles and platform treatments. It never drafts or publishes a post.
+         */
+        post: operations["discover-publication-opportunities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publications": {
         parameters: {
             query?: never;
@@ -3916,6 +4038,103 @@ export interface paths {
         get: operations["get-running-version"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice-profile-assignments/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set an account Voice Profile override
+         * @description An empty profile ID restores Workspace inheritance.
+         */
+        put: operations["assign-account-voice-profile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Voice Profiles */
+        get: operations["list-voice-profiles"];
+        put?: never;
+        /** Create a Voice Profile */
+        post: operations["create-voice-profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice-profiles/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve effective Voice Profiles
+         * @description Resolves Publication override, account override, then Workspace default in that order.
+         */
+        post: operations["resolve-effective-voice-profiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice-profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Voice Profile */
+        get: operations["get-voice-profile"];
+        /** Replace a Voice Profile */
+        put: operations["update-voice-profile"];
+        post?: never;
+        /**
+         * Delete a Voice Profile
+         * @description The Workspace default cannot be deleted. Assigned accounts return to Workspace inheritance.
+         */
+        delete: operations["delete-voice-profile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice-profiles/{id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set the Workspace default Voice Profile */
+        post: operations["set-default-voice-profile"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4702,6 +4921,23 @@ export interface components {
             revision?: number;
             workspace_activated?: boolean;
         };
+        Angle: {
+            approach: string;
+            id: string;
+            label: string;
+            thesis: string;
+        };
+        AngleOption: {
+            approach: string;
+            desired_reaction: string;
+            evidence: string;
+            hook: string;
+            id: string;
+            label: string;
+            media: components["schemas"]["MediaPlan"];
+            objective: string;
+            thesis: string;
+        };
         AppendProviderApprovalReviewInputBody: {
             /**
              * Format: uri
@@ -4802,6 +5038,18 @@ export interface components {
             title: string;
             /** Format: int64 */
             width: number;
+        };
+        AssignVoiceProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AssignVoiceProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Voice Profile override; empty restores Workspace inheritance */
+            voice_profile_id?: string;
+            /** @description Workspace ID */
+            workspace_id: string;
         };
         AuditChangedField: {
             current?: string;
@@ -5100,6 +5348,54 @@ export interface components {
             /** @description Running OpenPost version */
             version: string;
         };
+        Build: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Build.json
+             */
+            readonly $schema?: string;
+            assets?: components["schemas"]["BuildAsset"][] | null;
+            context_urls?: string[] | null;
+            /** Format: date-time */
+            created_at: string;
+            error_code?: string;
+            error_message?: string;
+            id: string;
+            input: components["schemas"]["BuildInput"];
+            phase: string;
+            publication_id?: string;
+            result?: components["schemas"]["BuildResult"];
+            /** Format: int64 */
+            revision: number;
+            social_set_id?: string;
+            state: string;
+            /** Format: date-time */
+            updated_at: string;
+            voice_profile_id?: string;
+            workspace_id: string;
+        };
+        BuildAsset: {
+            /** @default false */
+            may_publish: boolean;
+            media_id: string;
+            role: string;
+        };
+        BuildInput: {
+            destination_policy: string;
+            destinations: components["schemas"]["Destination"][] | null;
+            direction: components["schemas"]["DirectionInput"];
+            idea: string;
+            sources?: components["schemas"]["SourceMaterial"][] | null;
+        };
+        BuildResult: {
+            canonical_text: string;
+            destinations: components["schemas"]["DestinationPlan"][] | null;
+            direction: components["schemas"]["DirectorPlan"];
+            review_flags: components["schemas"]["ReviewFlag"][] | null;
+            skipped: components["schemas"]["SkippedDestination"][] | null;
+            sources?: components["schemas"]["ResolvedSource"][] | null;
+        };
         CLIAuthDecisionOutputBody: {
             /**
              * Format: uri
@@ -5220,6 +5516,11 @@ export interface components {
             not_applicable_reason?: string;
             outcome: string;
         };
+        Claim: {
+            source_refs?: string[] | null;
+            status: string;
+            text: string;
+        };
         ClientError: {
             message: string;
             name: string;
@@ -5267,6 +5568,18 @@ export interface components {
             provider_comment_id: string;
             rendition_id: string;
             text: string;
+        };
+        CommitPublicationBuildOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CommitPublicationBuildOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Composer path for review and editing */
+            href: string;
+            /** @description Draft Publication created from the approved build */
+            publication_id: string;
         };
         CompleteAccountSelectionInputBody: {
             /**
@@ -5528,6 +5841,14 @@ export interface components {
             sync_states: components["schemas"]["MessageSyncState"][] | null;
             /** Format: int64 */
             total: number;
+        };
+        Correction: {
+            /** @description Optional general lesson from the edit */
+            lesson?: string;
+            /** @description Generated or draft wording that did not fit */
+            original: string;
+            /** @description Accepted replacement wording */
+            preferred: string;
         };
         CreateAPITokenInputBody: {
             /**
@@ -5916,6 +6237,39 @@ export interface components {
             /** @description Workspace ID */
             workspace_id: string;
         };
+        CreatePublicationBuildBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreatePublicationBuildBody.json
+             */
+            readonly $schema?: string;
+            /** @description Candidate connected account IDs */
+            account_ids?: string[] | null;
+            /** @description Stored Workspace media used as source evidence */
+            assets?: components["schemas"]["BuildAsset"][] | null;
+            /** @description Allow text from context notes to appear in generated drafts */
+            context_may_publish?: boolean;
+            /** @description Private planning notes supplied as untrusted source material */
+            context_notes?: string;
+            /** @description Public HTTP or HTTPS sources loaded by the guarded background worker */
+            context_urls?: string[] | null;
+            /**
+             * @description Allow the director to skip weak destinations or require every candidate
+             * @enum {string}
+             */
+            destination_policy?: "recommend" | "require_all";
+            /** @description Optional outcome, audience, angle, tone, and media direction */
+            direction?: components["schemas"]["DirectionInput"];
+            /** @description Idea, note, update, or Markdown source text */
+            idea?: string;
+            /** @description Optional Social Set candidate snapshot */
+            social_set_id?: string;
+            /** @description Optional build-level Voice Profile override */
+            voice_profile_id?: string;
+            /** @description Workspace that owns the source material and destinations */
+            workspace_id: string;
+        };
         CreatePurchaseChoiceInputBody: {
             /**
              * Format: uri
@@ -5960,6 +6314,22 @@ export interface components {
             expires_at: string;
             /** @description One-use private-browser sign-in URL */
             url: string;
+        };
+        CreateVoiceProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateVoiceProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Identity facts and representative writing */
+            definition: components["schemas"]["Definition"];
+            /** @description Make this the Workspace default */
+            is_default?: boolean;
+            /** @description Reusable Voice Profile name */
+            name: string;
+            /** @description Workspace ID */
+            workspace_id: string;
         };
         CreateWorkspaceInputBody: {
             /**
@@ -6012,6 +6382,38 @@ export interface components {
             facts: components["schemas"]["Facts"];
             publishable: boolean;
             state: string;
+        };
+        Definition: {
+            /** @description Tone or identity boundaries */
+            boundaries?: string[] | null;
+            /** @description Accepted edits that explain how the voice should change a draft */
+            corrections?: components["schemas"]["Correction"][] | null;
+            /** @description Writing patterns this voice avoids */
+            disliked_patterns?: string[] | null;
+            /** @description Representative writing examples */
+            examples?: components["schemas"]["Example"][] | null;
+            /** @description Subjects the voice can discuss from experience */
+            expertise?: string[] | null;
+            /** @description Phrases this voice must not use */
+            forbidden_phrases?: string[] | null;
+            /** @description Formality style and limits */
+            formality?: string;
+            /** @description Humor style and limits */
+            humor?: string;
+            /** @description Short description of the person or brand behind the voice */
+            identity_summary?: string;
+            /** @description Optional answers used to learn opinions and phrasing */
+            interview_answers?: components["schemas"]["InterviewAnswer"][] | null;
+            /** @description Established views the builder may draw on */
+            opinions?: string[] | null;
+            /** @description Language or locale this voice normally writes in */
+            preferred_language?: string;
+            /** @description Expressions that sound natural in this voice */
+            recurring_expressions?: string[] | null;
+            /** @description Stable voice traits */
+            traits?: string[] | null;
+            /** @description Words the voice naturally uses */
+            vocabulary?: string[] | null;
         };
         DeleteAccountInputBody: {
             /**
@@ -6106,6 +6508,15 @@ export interface components {
             /** @description Whether the server must restart before adapter changes apply */
             requires_restart: boolean;
         };
+        DeleteVoiceProfileOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteVoiceProfileOutputBody.json
+             */
+            readonly $schema?: string;
+            deleted: boolean;
+        };
         DeleteWorkspaceInputBody: {
             /**
              * Format: uri
@@ -6153,6 +6564,18 @@ export interface components {
             device_code?: string;
             user_code?: string;
         };
+        Destination: {
+            account_id: string;
+            allowed_output_profiles: components["schemas"]["OutputProfile"][] | null;
+            label: string;
+            platform: string;
+            voice: components["schemas"]["VoiceSnapshot"];
+        };
+        DestinationDecision: {
+            account_id: string;
+            include: boolean;
+            reason: string;
+        };
         DestinationFormat: {
             compatible: boolean;
             label: string;
@@ -6173,6 +6596,19 @@ export interface components {
             options: {
                 [key: string]: components["schemas"]["DestinationOption"][] | null;
             };
+        };
+        DestinationPlan: {
+            account_id: string;
+            archetype: string;
+            claims: components["schemas"]["Claim"][] | null;
+            follow_up_notes: string[] | null;
+            media: components["schemas"]["MediaPlan"];
+            objective: string;
+            output_profile: string;
+            platform: string;
+            preview: string;
+            segments: components["schemas"]["SegmentPlan"][] | null;
+            warnings: string[] | null;
         };
         Diagnostics: {
             browser: string;
@@ -6221,6 +6657,25 @@ export interface components {
             updated_at: string;
             workspace_id: string;
         };
+        DirectionInput: {
+            angle?: string;
+            audience?: string;
+            media_preference?: string;
+            outcome?: string;
+            tone_adjustment?: string;
+        };
+        DirectorPlan: {
+            angle: string;
+            audience: string;
+            canonical_text: string;
+            claims: components["schemas"]["Claim"][] | null;
+            destinations: components["schemas"]["DestinationDecision"][] | null;
+            factual_kernel: string[] | null;
+            media: components["schemas"]["MediaPlan"];
+            outcome: string;
+            route: string;
+            thesis: string;
+        };
         DisableTOTPInputBody: {
             /**
              * Format: uri
@@ -6255,6 +6710,44 @@ export interface components {
             /** @description Workspace ID */
             workspace_id: string;
         };
+        DiscoverPublicationOpportunitiesInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DiscoverPublicationOpportunitiesInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description People the opportunities should matter to */
+            audience?: string;
+            /** @description Optional subject, project, niche, or current objective */
+            focus?: string;
+            /**
+             * Format: int64
+             * @description Maximum opportunity cards to return
+             * @default 6
+             */
+            limit: number;
+            /** @description Selected native destination platforms */
+            platforms: string[] | null;
+            /** @description Recent Publications used only to avoid repetition */
+            recent_publications?: components["schemas"]["RecentPublicationSummary"][] | null;
+            /** @description Optional Workspace Voice Profile; defaults to the Workspace identity */
+            voice_profile_id?: string;
+            /** @description Workspace whose editor is requesting opportunities */
+            workspace_id: string;
+        };
+        DiscoveryResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DiscoveryResult.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            generated_at: string;
+            model: string;
+            opportunities: components["schemas"]["Opportunity"][] | null;
+        };
         DismissGrowthInputBody: {
             /**
              * Format: uri
@@ -6278,6 +6771,17 @@ export interface components {
         EditorRevisionActor: {
             is_current_user: boolean;
             name: string;
+        };
+        EffectiveProfile: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EffectiveProfile.json
+             */
+            readonly $schema?: string;
+            account_id: string;
+            profile: components["schemas"]["VoiceProfile"];
+            source: string;
         };
         EmailChangeStatusOutputBody: {
             /**
@@ -6447,6 +6951,14 @@ export interface components {
              * @example https://example.com/errors/example
              */
             type: string;
+        };
+        Example: {
+            /** @description Optional source platform, used as provenance rather than a style rule */
+            platform?: string;
+            /** @description Representative text */
+            text: string;
+            /** @description Why this example represents the voice */
+            why_it_fits?: string;
         };
         ExchangeCodeInputBody: {
             /**
@@ -7535,6 +8047,12 @@ export interface components {
             title: string;
             workspace_id: string;
         };
+        InterviewAnswer: {
+            /** @description Answer in the profile owner's own words */
+            answer: string;
+            /** @description Interview question */
+            question: string;
+        };
         Item: {
             /** @description Account ID */
             account_id: string;
@@ -7900,6 +8418,13 @@ export interface components {
             width: number;
             /** @description Workspace ID */
             workspace_id: string;
+        };
+        MediaPlan: {
+            brief: string;
+            role: string;
+            /** @description Exact source ID for source-bound media treatments */
+            source_ref?: string;
+            treatment: string;
         };
         MediaSummary: {
             alt_text?: string;
@@ -8411,6 +8936,16 @@ export interface components {
             readonly $schema?: string;
             reauth_grant: string;
         };
+        Opportunity: {
+            angles: components["schemas"]["Angle"][] | null;
+            hook: string;
+            id: string;
+            platform_treatments: components["schemas"]["PlatformTreatment"][] | null;
+            signal_date: string;
+            title: string;
+            why_it_fits: string;
+            why_now: string;
+        };
         Option: {
             label: string;
             value: string;
@@ -8539,6 +9074,16 @@ export interface components {
             current_seats: number;
             members: components["schemas"]["OrganizationMemberResponse"][] | null;
         };
+        OutputProfile: {
+            allowed_mimes?: string[] | null;
+            key: string;
+            /** Format: int64 */
+            max_segments: number;
+            /** Format: int64 */
+            media_max_count: number;
+            /** Format: int64 */
+            text_limit: number;
+        };
         Override: {
             /**
              * @description Use workspace rules, disable reposts, or use this post's custom rule
@@ -8639,6 +9184,22 @@ export interface components {
             pending: boolean;
             /** @description Pending transfer when one exists */
             transfer?: components["schemas"]["OwnershipTransferResponse"];
+        };
+        PlanPublicationAnglesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PlanPublicationAnglesOutputBody.json
+             */
+            readonly $schema?: string;
+            angles: components["schemas"]["AngleOption"][] | null;
+        };
+        PlatformTreatment: {
+            format: string;
+            media: string;
+            objective: string;
+            platform: string;
+            rationale: string;
         };
         Policy: {
             /**
@@ -9430,6 +9991,19 @@ export interface components {
             expires_in: number;
             grant: string;
         };
+        RecentPublicationSummary: {
+            /** @description Platforms that received the Publication */
+            platforms?: string[] | null;
+            /**
+             * Format: date-time
+             * @description When this recent Publication was published or created
+             */
+            published_at: string;
+            /** @description Short factual summary of what the Publication said */
+            summary: string;
+            /** @description Topics already covered */
+            topics?: string[] | null;
+        };
         RecommendationView: {
             avatar_url: string;
             bio: string;
@@ -9972,6 +10546,20 @@ export interface components {
             /** @description Canonical segment URL */
             url?: string;
         };
+        ResolveEffectiveVoiceProfilesInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ResolveEffectiveVoiceProfilesInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Connected account IDs in requested order */
+            account_ids: string[] | null;
+            /** @description Temporary Publication-level override */
+            publication_voice_profile_id?: string;
+            /** @description Workspace ID */
+            workspace_id: string;
+        };
         ResolvedAccountCapability: {
             account_id: string;
             active_constraints: {
@@ -10048,6 +10636,12 @@ export interface components {
             key: string;
             settings: components["schemas"]["SettingDefinition"][] | null;
         };
+        ResolvedSource: {
+            id: string;
+            kind: string;
+            label: string;
+            publishable: boolean;
+        };
         RestoreImageEditorRevisionInputBody: {
             /**
              * Format: uri
@@ -10081,6 +10675,12 @@ export interface components {
             media_id: string;
             /** @description Current processing status */
             processing_status: string;
+        };
+        ReviewFlag: {
+            account_id?: string;
+            field: string;
+            message: string;
+            severity: string;
         };
         "Revoke-organization-ownership-transferResponse": {
             /**
@@ -10288,6 +10888,11 @@ export interface components {
             totp_enabled: boolean;
             user: components["schemas"]["UserProfile"];
         };
+        SegmentPlan: {
+            body: string;
+            description?: string;
+            title?: string;
+        };
         SelectStockMediaInputBody: {
             /**
              * Format: uri
@@ -10323,6 +10928,21 @@ export interface components {
             readonly $schema?: string;
             archived?: boolean;
             read?: boolean;
+            workspace_id: string;
+        };
+        SetDefaultVoiceProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetDefaultVoiceProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Revision loaded by the editor
+             */
+            expected_revision: number;
+            /** @description Workspace ID */
             workspace_id: string;
         };
         SetEngagementStateInputBody: {
@@ -10448,6 +11068,11 @@ export interface components {
             otpauth_url: string;
             qr_code_data_url: string;
         };
+        SkippedDestination: {
+            account_id: string;
+            platform: string;
+            reason: string;
+        };
         SocialSetAccountInput: {
             /** @description Optional provider-qualified default format */
             default_output_profile?: string;
@@ -10477,6 +11102,15 @@ export interface components {
             name: string;
             updated_at: string;
             workspace_id: string;
+        };
+        SourceMaterial: {
+            id: string;
+            kind: string;
+            label: string;
+            mime_type?: string;
+            /** @description Whether the user allowed this source asset to appear in the post */
+            publishable?: boolean;
+            text?: string;
         };
         StartCLIAuthInputBody: {
             /**
@@ -10898,6 +11532,25 @@ export interface components {
              */
             state: "current" | "update_available" | "stale" | "unavailable" | "disabled" | "development";
         };
+        UpdateVoiceProfileInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateVoiceProfileInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Replacement identity facts and representative writing */
+            definition: components["schemas"]["Definition"];
+            /**
+             * Format: int64
+             * @description Revision loaded by the editor
+             */
+            expected_revision: number;
+            /** @description Reusable Voice Profile name */
+            name: string;
+            /** @description Workspace ID */
+            workspace_id: string;
+        };
         UpdateWorkspaceMemberInputBody: {
             /**
              * Format: uri
@@ -11136,6 +11789,46 @@ export interface components {
             pixel_ratio: number;
             /** Format: int64 */
             width: number;
+        };
+        VoiceDefinition: {
+            avoidances?: string[] | null;
+            examples?: components["schemas"]["VoiceExample"][] | null;
+            guidance?: string;
+            identity?: string;
+            language?: string;
+        };
+        VoiceExample: {
+            body: string;
+            platform?: string;
+        };
+        VoiceProfile: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VoiceProfile.json
+             */
+            readonly $schema?: string;
+            assigned_account_ids: string[] | null;
+            /** Format: date-time */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            id: string;
+            is_default: boolean;
+            name: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            schema_version: number;
+            /** Format: date-time */
+            updated_at: string;
+            workspace_id: string;
+        };
+        VoiceSnapshot: {
+            definition: components["schemas"]["VoiceDefinition"];
+            id?: string;
+            name?: string;
+            /** Format: int64 */
+            revision?: number;
         };
         WorkspaceAccessAuditResponse: {
             action: string;
@@ -24723,6 +25416,578 @@ export interface operations {
             };
         };
     };
+    "create-publication-build": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable key for one logical build request */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePublicationBuildBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "plan-publication-angles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePublicationBuildBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanPublicationAnglesOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-publication-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication build ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cancel-publication-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication build ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "commit-publication-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication build ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitPublicationBuildOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "retry-publication-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication build ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Build"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "discover-publication-opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverPublicationOpportunitiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-publications": {
         parameters: {
             query: {
@@ -26631,6 +27896,673 @@ export interface operations {
             };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "assign-account-voice-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connected social account ID */
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignVoiceProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-voice-profiles": {
+        parameters: {
+            query: {
+                /** @description Workspace ID */
+                workspace_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceProfile"][] | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-voice-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVoiceProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-effective-voice-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveEffectiveVoiceProfilesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveProfile"][] | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-voice-profile": {
+        parameters: {
+            query: {
+                /** @description Workspace ID */
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Voice Profile ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-voice-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Voice Profile ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVoiceProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-voice-profile": {
+        parameters: {
+            query: {
+                /** @description Workspace ID */
+                workspace_id: string;
+                /** @description Revision loaded by the editor */
+                expected_revision?: number;
+                /** @description Explicit deletion confirmation */
+                confirm?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Voice Profile ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteVoiceProfileOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-default-voice-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Voice Profile ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDefaultVoiceProfileInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

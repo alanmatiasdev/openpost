@@ -5,13 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/publicationbuilder"
 	publicationservice "github.com/openpost/backend/internal/services/publications"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
 type preparedPublicationCreate struct {
@@ -136,6 +139,41 @@ func (command publicationApplication) persistCreateTx(
 		return PublicationResponse{}, errors.New("failed to load created publication")
 	}
 	return responses[0], nil
+}
+
+func validateReadyPublicationMediaTx(
+	ctx context.Context,
+	tx bun.Tx,
+	input CreatePublicationBody,
+	readyMediaIDs []string,
+) error {
+	readyMediaIDs = uniqueNonEmpty(readyMediaIDs)
+	if len(readyMediaIDs) == 0 {
+		return nil
+	}
+	commandMediaIDs := uniqueNonEmpty(allPublicationMediaIDs(input.Media, input.Segments, input.Renditions))
+	for _, mediaID := range readyMediaIDs {
+		if !slices.Contains(commandMediaIDs, mediaID) {
+			return publicationbuilder.ErrBuildSourceUnavailable
+		}
+	}
+	var media []models.MediaAttachment
+	query := tx.NewSelect().Model(&media).
+		Where("workspace_id = ?", input.WorkspaceID).
+		Where("processing_status = ?", "ready").
+		Where("trashed_at IS NULL").
+		Where("id IN (?)", bun.List(readyMediaIDs)).
+		Order("id ASC")
+	if tx.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil {
+		return fmt.Errorf("lock publication build source media: %w", err)
+	}
+	if len(media) != len(readyMediaIDs) {
+		return publicationbuilder.ErrBuildSourceUnavailable
+	}
+	return nil
 }
 
 func normalizePublicationCreateBody(input *CreatePublicationBody) {

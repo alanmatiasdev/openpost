@@ -40,6 +40,8 @@ import (
 	"github.com/openpost/backend/internal/services/postgeneration"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/services/publicationbuilder"
+	"github.com/openpost/backend/internal/services/publicationdiscovery"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/sessions"
@@ -63,6 +65,11 @@ type RouteDeps struct {
 	MemeProvider                 memes.Provider
 	MemeSuggester                memegeneration.Suggester
 	PostBuilder                  postgeneration.Builder
+	ContentBuilderEnabled        bool
+	ContentDiscoveryEnabled      bool
+	PublicationBuilder           *publicationbuilder.Application
+	PublicationPlanner           *publicationbuilder.Service
+	PublicationDiscovery         publicationdiscovery.Discoverer
 	PublicMediaVerifier          *publicurl.MediaVerifier
 	Entitlement                  entitlements.Service
 	TokenEncryptor               *servicecrypto.TokenEncryptor
@@ -259,6 +266,13 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	publicationHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	publicationHandler.SetTelemetry(deps.Telemetry)
 	publicationHandler.RegisterRoutes(api)
+	publicationBuildHandler := handlers.NewPublicationBuildHandler(deps.DB, deps.Authenticator, deps.PublicationBuilder)
+	publicationBuildHandler.SetPublicationApplication(publicationHandler.BuilderApplication())
+	publicationBuildHandler.SetCapabilityResolver(capabilityResolverHandler)
+	publicationBuildHandler.SetPlanner(deps.PublicationPlanner)
+	publicationBuildHandler.RegisterRoutes(api)
+	handlers.NewPublicationDiscoveryHandler(deps.DB, deps.Authenticator, deps.PublicationDiscovery).RegisterRoutes(api)
+	handlers.NewVoiceProfileHandler(deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewPostBuilderHandler(deps.DB, deps.Authenticator, deps.PostBuilder).RegisterRoutes(api)
 	handlers.NewSocialSetHandler(deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewRepostHandler(deps.DB, deps.RepostService, deps.Authenticator).RegisterRoutes(api)

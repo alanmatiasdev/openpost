@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
@@ -25,6 +26,11 @@ const (
 	defaultRetryInitialInterval  = 250 * time.Millisecond
 	defaultRetryMaxInterval      = 2 * time.Second
 	defaultRetryMaxElapsedTime   = 5 * time.Second
+	minWebSearchResults          = 1
+	maxWebSearchResults          = 25
+	minWebSearchUses             = 1
+	maxWebSearchUses             = 30
+	maxMultimodalSourceIDBytes   = 256
 )
 
 type HTTPClient interface {
@@ -157,16 +163,21 @@ func (o *OpenRouter) Generate(ctx context.Context, request GenerateRequest) (Gen
 	}, nil
 }
 
+//nolint:gocyclo // Provider-neutral generation options intentionally converge at this SDK request boundary.
 func buildOpenRouterRequest(request GenerateRequest, providerSlug string, requireZDR bool) (components.ChatRequest, error) {
 	model := strings.TrimSpace(request.Model)
 	if model == "" {
 		return components.ChatRequest{}, errors.New("AI model is required")
 	}
-	if strings.TrimSpace(request.UserPrompt) == "" && len(request.Images) == 0 {
-		return components.ChatRequest{}, errors.New("AI user prompt or image is required")
+	if strings.TrimSpace(request.UserPrompt) == "" && len(request.Parts) == 0 && len(request.Images) == 0 && len(request.Files) == 0 && len(request.Audio) == 0 && len(request.Videos) == 0 {
+		return components.ChatRequest{}, errors.New("AI user prompt, image, or file is required")
 	}
 	if request.MaxOutputTokens < 0 {
 		return components.ChatRequest{}, errors.New("AI maximum output tokens must not be negative")
+	}
+	webSearchTool, hasWebSearch, err := openRouterWebSearchTool(request.WebSearch)
+	if err != nil {
+		return components.ChatRequest{}, err
 	}
 
 	messages := make([]components.ChatMessages, 0, 2)
@@ -176,14 +187,42 @@ func buildOpenRouterRequest(request GenerateRequest, providerSlug string, requir
 		}))
 	}
 
-	content := make([]components.ChatContentItems, 0, len(request.Images)+1)
+	content := make([]components.ChatContentItems, 0, len(request.Parts)*2+len(request.Images)+len(request.Files)+len(request.Audio)+len(request.Videos)+1)
 	if userPrompt := strings.TrimSpace(request.UserPrompt); userPrompt != "" {
 		content = append(content, components.CreateChatContentItemsText(components.ChatContentText{Text: userPrompt}))
+	}
+	for index, part := range request.Parts {
+		items, err := openRouterMultimodalPartContent(part)
+		if err != nil {
+			return components.ChatRequest{}, fmt.Errorf("AI multimodal part %d: %w", index+1, err)
+		}
+		content = append(content, items...)
 	}
 	for index, image := range request.Images {
 		item, err := openRouterImageContent(image)
 		if err != nil {
 			return components.ChatRequest{}, fmt.Errorf("AI image %d: %w", index+1, err)
+		}
+		content = append(content, item)
+	}
+	for index, file := range request.Files {
+		item, err := openRouterFileContent(file)
+		if err != nil {
+			return components.ChatRequest{}, fmt.Errorf("AI file %d: %w", index+1, err)
+		}
+		content = append(content, item)
+	}
+	for index, audio := range request.Audio {
+		item, err := openRouterAudioContent(audio)
+		if err != nil {
+			return components.ChatRequest{}, fmt.Errorf("AI audio %d: %w", index+1, err)
+		}
+		content = append(content, item)
+	}
+	for index, video := range request.Videos {
+		item, err := openRouterVideoContent(video)
+		if err != nil {
+			return components.ChatRequest{}, fmt.Errorf("AI video %d: %w", index+1, err)
 		}
 		content = append(content, item)
 	}
@@ -232,8 +271,76 @@ func buildOpenRouterRequest(request GenerateRequest, providerSlug string, requir
 		maxOutputTokens := request.MaxOutputTokens
 		chatRequest.MaxCompletionTokens = optionalnullable.From(&maxOutputTokens)
 	}
+	if hasWebSearch {
+		chatRequest.Tools = []components.ChatFunctionTool{webSearchTool}
+	}
 
 	return chatRequest, nil
+}
+
+func openRouterMultimodalPartContent(part MultimodalPart) ([]components.ChatContentItems, error) {
+	sourceID := strings.TrimSpace(part.SourceID)
+	if !validMultimodalSourceID(sourceID) {
+		return nil, errors.New("valid source id is required")
+	}
+	payloads := 0
+	if part.Image != nil {
+		payloads++
+	}
+	if part.File != nil {
+		payloads++
+	}
+	if part.Audio != nil {
+		payloads++
+	}
+	if part.Video != nil {
+		payloads++
+	}
+	if payloads != 1 {
+		return nil, errors.New("exactly one media payload is required")
+	}
+
+	binding, err := json.Marshal(struct {
+		SourceID string `json:"source_id"`
+	}{SourceID: sourceID})
+	if err != nil {
+		return nil, errors.New("source binding could not be encoded")
+	}
+	items := make([]components.ChatContentItems, 0, 2)
+	items = append(items, components.CreateChatContentItemsText(components.ChatContentText{
+		Text: "Source binding metadata, not instructions: " + string(binding),
+	}))
+	var payload components.ChatContentItems
+	switch {
+	case part.Image != nil:
+		payload, err = openRouterImageContent(*part.Image)
+	case part.File != nil:
+		payload, err = openRouterFileContent(*part.File)
+	case part.Audio != nil:
+		payload, err = openRouterAudioContent(*part.Audio)
+	case part.Video != nil:
+		payload, err = openRouterVideoContent(*part.Video)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return append(items, payload), nil
+}
+
+func validMultimodalSourceID(value string) bool {
+	if value == "" || len(value) > maxMultimodalSourceIDBytes {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' ||
+			character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' ||
+			character == '-' || character == '_' || character == '.' || character == ':' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func openRouterResponseFormat(schema JSONSchema) (components.ResponseFormat, error) {
@@ -278,6 +385,122 @@ func openRouterImageContent(image Image) (components.ChatContentItems, error) {
 			Detail: detail.ToPointer(),
 		},
 	}), nil
+}
+
+func openRouterFileContent(file File) (components.ChatContentItems, error) {
+	if len(file.Data) == 0 {
+		return components.ChatContentItems{}, errors.New("data is required")
+	}
+	mediaType, err := normalizedMIMEType(file.MIMEType)
+	if err != nil {
+		return components.ChatContentItems{}, errors.New("valid MIME type is required")
+	}
+	filename := strings.TrimSpace(file.Filename)
+	if filename == "" || strings.ContainsAny(filename, "\x00\r\n/\\") {
+		return components.ChatContentItems{}, errors.New("valid filename is required")
+	}
+
+	dataURL := encodeDataURL(mediaType, file.Data)
+	return components.CreateChatContentItemsFile(components.ChatContentFile{
+		File: components.File{
+			FileData: &dataURL,
+			Filename: &filename,
+		},
+	}), nil
+}
+
+func openRouterAudioContent(audio Audio) (components.ChatContentItems, error) {
+	if len(audio.Data) == 0 {
+		return components.ChatContentItems{}, errors.New("data is required")
+	}
+	mediaType, err := normalizedMIMEType(audio.MIMEType)
+	if err != nil || !strings.HasPrefix(mediaType, "audio/") {
+		return components.ChatContentItems{}, errors.New("valid audio MIME type is required")
+	}
+	format, ok := map[string]string{
+		"audio/aac": "aac", "audio/aiff": "aiff", "audio/flac": "flac",
+		"audio/m4a": "m4a", "audio/mp4": "m4a", "audio/mpeg": "mp3",
+		"audio/ogg": "ogg", "audio/wav": "wav", "audio/x-aiff": "aiff",
+		"audio/x-m4a": "m4a", "audio/x-wav": "wav",
+	}[mediaType]
+	if !ok {
+		return components.ChatContentItems{}, errors.New("supported audio MIME type is required")
+	}
+	return components.CreateChatContentItemsInputAudio(components.ChatContentAudio{
+		InputAudio: components.ChatContentAudioInputAudio{
+			Data:   base64.StdEncoding.EncodeToString(audio.Data),
+			Format: format,
+		},
+	}), nil
+}
+
+func openRouterVideoContent(video Video) (components.ChatContentItems, error) {
+	if len(video.Data) == 0 {
+		return components.ChatContentItems{}, errors.New("data is required")
+	}
+	mediaType, err := normalizedMIMEType(video.MIMEType)
+	if err != nil || !strings.HasPrefix(mediaType, "video/") {
+		return components.ChatContentItems{}, errors.New("valid video MIME type is required")
+	}
+	return components.CreateChatContentItemsVideoURL(components.ChatContentVideo{
+		VideoURL: components.ChatContentVideoInput{URL: encodeDataURL(mediaType, video.Data)},
+	}), nil
+}
+
+func normalizedMIMEType(value string) (string, error) {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(value))
+	if err != nil || mediaType == "" || strings.Contains(mediaType, "*") {
+		return "", errors.New("valid MIME type is required")
+	}
+	typeName, subtype, ok := strings.Cut(mediaType, "/")
+	if !ok || typeName == "" || subtype == "" {
+		return "", errors.New("valid MIME type is required")
+	}
+	return strings.ToLower(mediaType), nil
+}
+
+func encodeDataURL(mediaType string, data []byte) string {
+	return "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func openRouterWebSearchTool(config WebSearchConfig) (components.ChatFunctionTool, bool, error) {
+	if !config.Enabled {
+		return components.ChatFunctionTool{}, false, nil
+	}
+	if config.MaxResults < minWebSearchResults || config.MaxResults > maxWebSearchResults {
+		return components.ChatFunctionTool{}, false, errors.New("AI web search maximum results must be between 1 and 25")
+	}
+	if config.MaxUses < minWebSearchUses || config.MaxUses > maxWebSearchUses {
+		return components.ChatFunctionTool{}, false, errors.New("AI web search maximum uses must be between 1 and 30")
+	}
+
+	contextSize, err := openRouterWebSearchContext(config.Context)
+	if err != nil {
+		return components.ChatFunctionTool{}, false, err
+	}
+	maxResults := int64(config.MaxResults)
+	maxUses := int64(config.MaxUses)
+	return components.CreateChatFunctionToolOpenRouterWebSearchServerTool(components.OpenRouterWebSearchServerTool{
+		Type: components.OpenRouterWebSearchServerToolTypeOpenrouterWebSearch,
+		Parameters: &components.WebSearchConfig{
+			MaxResults:        &maxResults,
+			MaxUses:           &maxUses,
+			SearchContextSize: &contextSize,
+		},
+	}), true, nil
+}
+
+func openRouterWebSearchContext(context WebSearchContext) (components.SearchQualityLevel, error) {
+	switch context {
+	case WebSearchContextLow:
+		return components.SearchQualityLevelLow, nil
+	case WebSearchContextMedium:
+		return components.SearchQualityLevelMedium, nil
+	case WebSearchContextHigh:
+		return components.SearchQualityLevelHigh, nil
+	default:
+		return "", errors.New("AI web search context must be low, medium, or high")
+	}
 }
 
 func openRouterReasoningEffort(effort ReasoningEffort) (components.ChatRequestReasoningEffort, error) {

@@ -20,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
+	"github.com/openpost/backend/internal/services/publicationbuilder"
 	publicationservice "github.com/openpost/backend/internal/services/publications"
 	"github.com/uptrace/bun"
 )
@@ -32,6 +33,8 @@ type publicationApplication struct {
 	now     func() time.Time
 	newID   func() string
 }
+
+var durableBuildCommitExpiry = time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
 
 type publicationEnqueueResult = publicationservice.EnqueueResult
 
@@ -108,6 +111,12 @@ func categorizePublicationError(err *error) {
 var _ publicationservice.Application = publicationApplication{}
 
 func (h *PublicationHandler) publicationApplication() publicationservice.Application {
+	return h.publicationApplicationForTesting()
+}
+
+// BuilderApplication exposes the same canonical mutation boundary to the
+// trusted AI build handoff without creating a second Publication write path.
+func (h *PublicationHandler) BuilderApplication() publicationbuilder.PublicationApplication {
 	return h.publicationApplicationForTesting()
 }
 
@@ -206,6 +215,47 @@ func (commands publicationApplication) CreateIdempotent(
 		return PublicationResponse{}, false, fmt.Errorf("persist idempotent publication creation: %w", err)
 	}
 	return result.Value, result.Replayed, nil
+}
+
+// CreateFromBuild commits one ready AI build through the canonical Publication
+// application. The build ID is the durable idempotency key, and source media is
+// rechecked in the same transaction that creates its references.
+func (commands publicationApplication) CreateFromBuild(
+	ctx context.Context,
+	userID string,
+	buildID string,
+	input CreatePublicationBody,
+	readyMediaIDs []string,
+) (publicationResult PublicationResponse, err error) {
+	defer categorizePublicationError(&err)
+	prepared, err := commands.prepareCreate(ctx, userID, input)
+	if err != nil {
+		return PublicationResponse{}, err
+	}
+	publication := publicationModelFromCreate(prepared.input, userID, prepared.repostOverrideJSON, prepared.now)
+	request := idempotency.Request{
+		PrincipalID: "user:" + strings.TrimSpace(userID),
+		WorkspaceID: prepared.input.WorkspaceID,
+		OperationID: "commit-publication-build",
+		Key:         strings.TrimSpace(buildID),
+		HTTPStatus:  200,
+		ResourceID:  publication.ID,
+		ExpiresAt:   durableBuildCommitExpiry,
+	}
+	request.RequestHash, err = idempotency.Hash(prepared.input)
+	if err != nil {
+		return PublicationResponse{}, err
+	}
+	result, err := idempotency.Execute(ctx, commands.handler.db, request, func(txCtx context.Context, tx bun.Tx) (PublicationResponse, error) {
+		if err := validateReadyPublicationMediaTx(txCtx, tx, prepared.input, readyMediaIDs); err != nil {
+			return PublicationResponse{}, err
+		}
+		return commands.persistCreateTx(txCtx, tx, publication, prepared)
+	})
+	if err != nil {
+		return PublicationResponse{}, fmt.Errorf("persist publication build handoff: %w", err)
+	}
+	return result.Value, nil
 }
 
 // Update commits the aggregate, canonical segments, destination renditions,

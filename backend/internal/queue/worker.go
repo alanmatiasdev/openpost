@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/providerwrite"
+	"github.com/openpost/backend/internal/services/publicationbuilder"
 	"github.com/openpost/backend/internal/services/publisher"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/tokenmanager"
@@ -34,17 +36,18 @@ import (
 
 const (
 	// StorageDeleteMaxKeys is the largest storage deletion payload the worker accepts.
-	StorageDeleteMaxKeys      = 10_000
-	jobTypePublishPublication = jobregistry.TypePublishPublication
-	jobTypeMediaCleanup       = jobregistry.TypeMediaCleanup
-	jobTypeStorageDelete      = jobregistry.TypeStorageDelete
-	jobTypeRefreshToken       = jobregistry.TypeRefreshToken
-	jobStatusPending          = jobregistry.StatusPending
-	jobStatusProcessing       = jobregistry.StatusProcessing
-	jobStatusFailed           = jobregistry.StatusFailed
-	jobStatusCompleted        = jobregistry.StatusCompleted
-	staleProcessingJobAge     = 15 * time.Minute
-	processingHeartbeat       = staleProcessingJobAge / 3
+	StorageDeleteMaxKeys               = 10_000
+	jobTypePublishPublication          = jobregistry.TypePublishPublication
+	jobTypeMediaCleanup                = jobregistry.TypeMediaCleanup
+	jobTypeStorageDelete               = jobregistry.TypeStorageDelete
+	jobTypeRefreshToken                = jobregistry.TypeRefreshToken
+	jobStatusPending                   = jobregistry.StatusPending
+	jobStatusProcessing                = jobregistry.StatusProcessing
+	jobStatusFailed                    = jobregistry.StatusFailed
+	jobStatusCompleted                 = jobregistry.StatusCompleted
+	staleProcessingJobAge              = 15 * time.Minute
+	processingHeartbeat                = staleProcessingJobAge / 3
+	publicationBuilderUnavailableRetry = time.Minute
 )
 
 // BackgroundWorker polls the configured database for pending jobs.
@@ -65,6 +68,7 @@ type BackgroundWorker struct {
 	reposts               *repostservice.Service
 	video                 *videoprocessing.Service
 	growth                *growthservice.Service
+	publicationBuilder    *publicationbuilder.Application
 	telemetry             telemetry.Recorder
 	executors             map[jobregistry.ExecutionKind]jobExecutor
 	done                  chan struct{}
@@ -169,6 +173,16 @@ func (w *BackgroundWorker) SetGrowthService(service *growthservice.Service) {
 			return fmt.Errorf("growth is not configured")
 		}
 		return w.growth.HandleJob(ctx, job.Type, job.Payload)
+	}
+}
+
+func (w *BackgroundWorker) SetPublicationBuilderService(service *publicationbuilder.Application) {
+	w.publicationBuilder = service
+	w.executors[jobregistry.ExecutePublicationBuild] = func(ctx context.Context, job *models.Job) error {
+		if w.publicationBuilder == nil {
+			return publicationbuilder.ErrRuntimeUnavailable
+		}
+		return w.publicationBuilder.HandleJob(ctx, job.Type, job.Payload)
 	}
 }
 
@@ -402,24 +416,35 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 		return
 	}
 
-	if _, dbErr := w.db.NewUpdate().Model(job).
+	result, dbErr := w.db.NewUpdate().Model((*models.Job)(nil)).
 		Set("status = ?", jobStatusCompleted).
 		Set("locked_at = NULL").
 		Set("locked_by = ''").
-		Where("id = ?", job.ID).
-		Exec(ctx); dbErr != nil {
+		Where("id = ? AND status = ? AND locked_by = ?", job.ID, jobStatusProcessing, w.workerID).
+		Exec(ctx)
+	if dbErr != nil {
 		log.Printf("[Worker %s] failed to mark job %s as completed: %v\n", w.workerID, job.ID, dbErr)
+		return
 	}
-
-	log.Printf("[Worker %s] job %s completed successfully\n", w.workerID, job.ID)
+	if rows, rowsErr := result.RowsAffected(); rowsErr != nil {
+		log.Printf("[Worker %s] failed to inspect completion of job %s: %v\n", w.workerID, job.ID, rowsErr)
+	} else if rows == 1 {
+		log.Printf("[Worker %s] job %s completed successfully\n", w.workerID, job.ID)
+	}
 }
 
+//nolint:gocyclo // Durable retry, fencing, and terminal persistence share this transaction-aware path.
 func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job, processErr error) {
 	log.Printf("[Worker %s] job %s failed\n", w.workerID, job.ID)
-	job.Attempts++
 	failure := w.classifyJobFailure(ctx, job, processErr)
+	if !failure.preserveAttempts {
+		job.Attempts++
+	}
 	definition, registered := jobregistry.Lookup(job.Type)
 	switch {
+	case failure.preserveAttempts:
+		job.Status = jobStatusPending
+		job.RunAt = time.Now().UTC().Add(failure.retryAfter)
 	case registered && definition.Recurrence > 0 && failure.retryable && job.Attempts >= job.MaxAttempts:
 		job.Status = jobStatusPending
 		job.Attempts = 0
@@ -439,16 +464,41 @@ func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job,
 	}
 	job.LastError = failure.message
 
-	if _, dbErr := w.db.NewUpdate().Model((*models.Job)(nil)).
-		Set("status = ?", job.Status).
-		Set("attempts = ?", job.Attempts).
-		Set("last_error = ?", job.LastError).
-		Set("run_at = ?", job.RunAt).
-		Set("locked_at = NULL").
-		Set("locked_by = ''").
-		Where("id = ?", job.ID).
-		Exec(ctx); dbErr != nil {
+	persistFailure := func(db bun.IDB) (int64, error) {
+		result, err := db.NewUpdate().Model((*models.Job)(nil)).
+			Set("status = ?", job.Status).
+			Set("attempts = ?", job.Attempts).
+			Set("last_error = ?", job.LastError).
+			Set("run_at = ?", job.RunAt).
+			Set("locked_at = NULL").
+			Set("locked_by = ''").
+			Where("id = ? AND status = ? AND locked_by = ?", job.ID, jobStatusProcessing, w.workerID).
+			Exec(ctx)
+		if err != nil {
+			return 0, err
+		}
+		return result.RowsAffected()
+	}
+
+	var rows int64
+	var dbErr error
+	if job.Status == jobStatusFailed && job.Type == jobregistry.TypePublicationBuild && w.publicationBuilder != nil {
+		dbErr = w.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			var err error
+			rows, err = persistFailure(tx)
+			if err != nil || rows == 0 {
+				return err
+			}
+			return w.publicationBuilder.MarkTerminalJobFailure(txCtx, tx, job.Payload)
+		})
+	} else {
+		rows, dbErr = persistFailure(w.db)
+	}
+	if dbErr != nil {
 		log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
+		return
+	}
+	if rows == 0 {
 		return
 	}
 	if job.Status != jobStatusFailed {
@@ -482,12 +532,24 @@ func (w *BackgroundWorker) recordTerminalFailure(ctx context.Context, job *model
 }
 
 type classifiedJobFailure struct {
-	retryable  bool
-	retryAfter time.Duration
-	message    string
+	retryable        bool
+	retryAfter       time.Duration
+	message          string
+	preserveAttempts bool
 }
 
 func (w *BackgroundWorker) classifyJobFailure(ctx context.Context, job *models.Job, processErr error) classifiedJobFailure {
+	if job.Type == jobregistry.TypePublicationBuild {
+		switch {
+		case errors.Is(processErr, publicationbuilder.ErrRuntimeUnavailable):
+			return classifiedJobFailure{retryable: true, retryAfter: publicationBuilderUnavailableRetry, message: "Publication Builder is temporarily unavailable. OpenPost will retry when it is configured.", preserveAttempts: true}
+		case errors.Is(processErr, publicationbuilder.ErrTooManyActiveBuilds):
+			return classifiedJobFailure{retryable: true, retryAfter: publicationBuilderUnavailableRetry, message: "Publication Builder is waiting for an active build slot.", preserveAttempts: true}
+		case errors.Is(processErr, publicationbuilder.ErrBuildLeaseActive):
+			return classifiedJobFailure{retryable: true, retryAfter: publicationBuilderUnavailableRetry, message: "Publication Builder is waiting for the active generation lease.", preserveAttempts: true}
+		}
+		return classifiedJobFailure{retryable: true, message: "Publication Builder could not complete this build. OpenPost will retry when possible."}
+	}
 	result := classifiedJobFailure{retryable: true, message: processErr.Error()}
 	definition, ok := jobregistry.Lookup(job.Type)
 	if !ok {

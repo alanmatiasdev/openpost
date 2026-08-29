@@ -440,6 +440,7 @@ func OrganizationBillingReferences(ctx context.Context, db deletionDB, organizat
 type deletionIDs struct {
 	publications, publicationSegments, renditions, renditionSegments []string
 	accounts, media, conversations, messages, invitations            []string
+	publicationBuilds                                                []string
 }
 
 func loadDeletionIDs(ctx context.Context, db deletionDB, workspaceIDs []string) (deletionIDs, error) {
@@ -448,6 +449,9 @@ func loadDeletionIDs(ctx context.Context, db deletionDB, workspaceIDs []string) 
 		if err := db.NewSelect().Model(scan.model).Column("id").Where("workspace_id IN (?)", bun.List(workspaceIDs)).Scan(ctx, scan.dest); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return ids, err
 		}
+	}
+	if err := db.NewSelect().Table("publication_builds").Column("id").Where("workspace_id IN (?)", bun.List(workspaceIDs)).Scan(ctx, &ids.publicationBuilds); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return ids, err
 	}
 	if len(ids.publications) > 0 {
 		if err := db.NewSelect().Model((*models.PublicationSegment)(nil)).Column("id").Where("publication_id IN (?)", bun.List(ids.publications)).Scan(ctx, &ids.publicationSegments); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -472,7 +476,7 @@ func loadDeletionReferences(ctx context.Context, db deletionDB, workspaceIDs, ob
 		return nil, err
 	}
 	refs := map[string]struct{}{}
-	for _, values := range [][]string{workspaceIDs, ids.publications, ids.publicationSegments, ids.renditions, ids.renditionSegments, ids.accounts, ids.media, ids.conversations, ids.messages, ids.invitations, objectKeys} {
+	for _, values := range [][]string{workspaceIDs, ids.publications, ids.publicationSegments, ids.renditions, ids.renditionSegments, ids.accounts, ids.media, ids.conversations, ids.messages, ids.invitations, ids.publicationBuilds, objectKeys} {
 		for _, id := range values {
 			refs[id] = struct{}{}
 		}
