@@ -81,6 +81,48 @@ async function openHeaderMoreMenu(page: Page): Promise<void> {
   await page.locator("header").getByRole("button", { name: "More actions" }).click();
 }
 
+test("Motion owns an isolated composition session and restores Edit", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Motion workspace proof");
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await page.getByRole("tab", { name: "Motion" }).click();
+  const emptyPreview = page.getByRole("region", { name: "Motion" });
+  await expect(
+    emptyPreview.getByRole("heading", { name: "Start a motion composition" }),
+  ).toBeVisible();
+  await expect(page.locator("[data-motion-timeline-empty]")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Sequences" })).toHaveCount(0);
+
+  await emptyPreview.getByRole("button", { name: "New composition" }).click();
+  const dialog = page.getByRole("dialog", { name: "New composition" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Name").fill("Launch card");
+  await dialog.getByLabel("Width").fill("1080");
+  await dialog.getByLabel("Height").fill("1080");
+  await dialog.getByLabel("Frame rate").fill("60");
+  await dialog.getByLabel("Duration (seconds)").fill("6");
+  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+
+  await expect(page.getByTestId("composition-timeline")).toBeVisible();
+  await expect(page.getByTestId("composition-fps")).toHaveValue("60");
+  await expect(page.getByTestId("composition-duration")).toHaveValue("360");
+  await expect(page.locator("[data-motion-preview-empty]")).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "Edit" }).click();
+  await expect(page.getByRole("navigation", { name: "Sequences" })).toBeVisible();
+  await expect(page.getByTestId("composition-timeline")).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "Motion" }).click();
+  await expect(page.getByTestId("composition-timeline")).toBeVisible();
+  await expect(page.getByTestId("composition-picker")).toContainText("Launch card");
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-motion-1280.png",
+    fullPage: true,
+  });
+});
+
 test("Video Editor project shell stays usable at phone and desktop widths", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleFailures: string[] = [];

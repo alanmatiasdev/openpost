@@ -9,6 +9,7 @@
 		swapProjectCanvasDimensions,
 		updateProjectCanvas
 	} from '$lib/video-editor/project/canvas-settings';
+	import { updateCompositeCompositionCanvas } from '$lib/video-editor/sequences/sequence-actions';
 	import {
 		MAX_PROJECT_HEIGHT,
 		MAX_PROJECT_WIDTH,
@@ -20,7 +21,16 @@
 
 	let { onedit }: { onedit: () => void } = $props();
 
-	const metadata = $derived(editorSession.project ? sequenceStore.rootResolution : null);
+	const activeComposite = $derived(
+		sequenceStore.activeSequence?.editorKind === 'composite-2d'
+			? sequenceStore.activeSequence
+			: undefined
+	);
+	const metadata = $derived(
+		editorSession.project ? (activeComposite ?? sequenceStore.rootResolution) : null
+	);
+	const minimumWidth = $derived(activeComposite ? 1 : MIN_PROJECT_WIDTH);
+	const minimumHeight = $derived(activeComposite ? 1 : MIN_PROJECT_HEIGHT);
 	let widthDraft = $state<number | string>(1920);
 	let heightDraft = $state<number | string>(1080);
 	let backgroundDraft = $state('#000000');
@@ -35,7 +45,9 @@
 	function commitDimension(dimension: 'width' | 'height', input: HTMLInputElement): void {
 		if (!metadata) return;
 		const value = Number(input.value);
-		const changed = updateProjectCanvas({ [dimension]: value });
+		const changed = activeComposite
+			? updateCompositeCompositionCanvas(activeComposite.id, { [dimension]: value })
+			: updateProjectCanvas({ [dimension]: value });
 		if (changed) onedit();
 		else {
 			input.value = String(metadata[dimension]);
@@ -52,22 +64,39 @@
 			backgroundDraft = metadata?.backgroundColor ?? '#000000';
 			return;
 		}
-		if (updateProjectCanvas({ backgroundColor: color })) onedit();
+		const changed = activeComposite
+			? updateCompositeCompositionCanvas(activeComposite.id, { backgroundColor: color })
+			: updateProjectCanvas({ backgroundColor: color });
+		if (changed) onedit();
 		else backgroundDraft = metadata.backgroundColor ?? '#000000';
 	}
 
 	function swapDimensions(): void {
-		if (!swapProjectCanvasDimensions()) return;
+		const changed = activeComposite
+			? updateCompositeCompositionCanvas(activeComposite.id, {
+					width: activeComposite.height,
+					height: activeComposite.width
+				})
+			: swapProjectCanvasDimensions();
+		if (!changed) return;
 		onedit();
 	}
 
 	function resetDimensions(): void {
-		if (!resetProjectCanvasDimensions()) return;
+		const changed = activeComposite
+			? updateCompositeCompositionCanvas(activeComposite.id, {
+					width: sequenceStore.rootResolution.width,
+					height: sequenceStore.rootResolution.height
+				})
+			: resetProjectCanvasDimensions();
+		if (!changed) return;
 		onedit();
 	}
 
 	function resetBackground(): void {
-		commitBackground('#000000');
+		commitBackground(
+			activeComposite ? (sequenceStore.rootResolution.backgroundColor ?? '#000000') : '#000000'
+		);
 	}
 </script>
 
@@ -75,10 +104,14 @@
 	<section aria-labelledby="project-canvas-title" class="space-y-4">
 		<div>
 			<h2 id="project-canvas-title" class="text-sm font-semibold">
-				{m.video_editor_project_canvas_settings()}
+				{activeComposite
+					? m.video_editor_motion_canvas_settings()
+					: m.video_editor_project_canvas_settings()}
 			</h2>
 			<p class="mt-1 text-xs leading-relaxed text-[oklch(0.65_0.015_55)]">
-				{m.video_editor_project_canvas_settings_hint()}
+				{activeComposite
+					? m.video_editor_motion_canvas_settings_hint()
+					: m.video_editor_project_canvas_settings_hint()}
 			</p>
 		</div>
 
@@ -93,7 +126,7 @@
 					<Input
 						type="number"
 						bind:value={widthDraft}
-						min={MIN_PROJECT_WIDTH}
+						min={minimumWidth}
 						max={MAX_PROJECT_WIDTH}
 						step="1"
 						onchange={(event) => commitDimension('width', event.currentTarget)}
@@ -104,7 +137,7 @@
 					<Input
 						type="number"
 						bind:value={heightDraft}
-						min={MIN_PROJECT_HEIGHT}
+						min={minimumHeight}
 						max={MAX_PROJECT_HEIGHT}
 						step="1"
 						onchange={(event) => commitDimension('height', event.currentTarget)}
@@ -112,7 +145,9 @@
 				</label>
 			</div>
 			<p class="mt-1.5 text-[10px] text-[oklch(0.6_0.012_65)]">
-				{m.video_editor_project_canvas_limits()}
+				{activeComposite
+					? m.video_editor_motion_canvas_limits()
+					: m.video_editor_project_canvas_limits()}
 			</p>
 			<div class="mt-3 grid grid-cols-2 gap-2">
 				<Button
@@ -133,7 +168,9 @@
 					onclick={resetDimensions}
 				>
 					<RotateCcwIcon class="size-3.5" aria-hidden="true" />
-					{m.video_editor_project_canvas_reset()}
+					{activeComposite
+						? m.video_editor_motion_canvas_reset()
+						: m.video_editor_project_canvas_reset()}
 				</Button>
 			</div>
 		</div>

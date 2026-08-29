@@ -6,6 +6,7 @@ import { commandHistory, execute } from '../timeline/commands/command-store.svel
 import { setCurrentFrame } from '../timeline/actions/items';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import {
+	createCompositeComposition,
 	createCompoundClip,
 	createSequence,
 	deleteSequence,
@@ -16,7 +17,8 @@ import {
 	nestSequenceOnExactTracks,
 	sequenceDeletionImpact,
 	sequenceDeletionImpactFor,
-	switchSequence
+	switchSequence,
+	updateCompositeCompositionCanvas
 } from './sequence-actions';
 import { sequenceStore } from './sequence-store.svelte';
 
@@ -79,6 +81,59 @@ beforeEach(() => {
 });
 
 describe('sequence navigation', () => {
+	it('creates an isolated empty Motion composition with an editable duration', () => {
+		const id = createCompositeComposition({
+			name: 'Lower third',
+			width: 1080,
+			height: 1080,
+			fps: 60,
+			durationInFrames: 360
+		});
+		const composition = sequenceStore.compositionById.get(id);
+
+		expect(composition).toMatchObject({
+			name: 'Lower third',
+			editorKind: 'composite-2d',
+			width: 1080,
+			height: 1080,
+			fps: 60,
+			durationInFrames: 360,
+			items: [],
+			tracks: []
+		});
+		expect(sequenceStore.topLevelSequenceIds).not.toContain(id);
+		commandHistory.undo();
+		expect(sequenceStore.compositionById.has(id)).toBe(false);
+
+		const reopenedId = createCompositeComposition({
+			name: 'Empty title card',
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			durationInFrames: 300
+		});
+		expect(
+			updateCompositeCompositionCanvas(reopenedId, {
+				width: 1080,
+				height: 1920,
+				backgroundColor: '#123456'
+			})
+		).toBe(true);
+		expect(sequenceStore.compositionById.get(reopenedId)).toMatchObject({
+			width: 1080,
+			height: 1920,
+			backgroundColor: '#123456'
+		});
+		commandHistory.undo();
+		expect(sequenceStore.compositionById.get(reopenedId)).toMatchObject({
+			width: 1920,
+			height: 1080
+		});
+		expect(switchSequence(reopenedId)).toBe(true);
+		expect(switchSequence(null)).toBe(true);
+		expect(sequenceStore.compositionById.get(reopenedId)?.durationInFrames).toBe(300);
+	});
+
 	it('keeps Motion compositions out of editorial tabs while allowing focused editing', () => {
 		const sequence = composition('sequence');
 		const motion = {

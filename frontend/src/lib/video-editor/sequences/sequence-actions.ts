@@ -100,6 +100,71 @@ function assertCompositionCanNest(compositionId: string): SubComposition {
 	return composition;
 }
 
+export interface CreateCompositeCompositionOptions {
+	name: string;
+	width: number;
+	height: number;
+	fps: number;
+	durationInFrames: number;
+	backgroundColor?: string;
+}
+
+export type CompositeCompositionCanvasPatch = Partial<
+	Pick<SubComposition, 'width' | 'height' | 'backgroundColor'>
+>;
+
+/** Create an empty Motion composition without exposing it as an editorial sequence tab. */
+export function createCompositeComposition(options: CreateCompositeCompositionOptions): string {
+	return execute('CREATE_COMPOSITE_COMPOSITION', () => {
+		const id = crypto.randomUUID();
+		const fps = Math.round(Math.min(120, Math.max(1, options.fps)));
+		const composition: SubComposition = {
+			id,
+			name: options.name.trim() || 'Motion composition',
+			editorKind: 'composite-2d',
+			items: [],
+			tracks: [],
+			transitions: [],
+			fps,
+			width: Math.round(Math.min(7680, Math.max(1, options.width))),
+			height: Math.round(Math.min(4320, Math.max(1, options.height))),
+			durationInFrames: Math.round(Math.min(fps * 60 * 60, Math.max(1, options.durationInFrames))),
+			...(options.backgroundColor ? { backgroundColor: options.backgroundColor } : {})
+		};
+		sequenceStore.addComposition(composition);
+		return id;
+	});
+}
+
+export function updateCompositeCompositionCanvas(
+	compositionId: string,
+	patch: CompositeCompositionCanvasPatch
+): boolean {
+	const composition = sequenceStore.compositionById.get(compositionId);
+	if (!composition || composition.editorKind !== 'composite-2d') return false;
+	const normalized: CompositeCompositionCanvasPatch = {
+		...(patch.width !== undefined && {
+			width: Math.round(Math.min(7680, Math.max(1, patch.width)))
+		}),
+		...(patch.height !== undefined && {
+			height: Math.round(Math.min(4320, Math.max(1, patch.height)))
+		}),
+		...(patch.backgroundColor !== undefined && { backgroundColor: patch.backgroundColor })
+	};
+	if (
+		(normalized.width === undefined || normalized.width === composition.width) &&
+		(normalized.height === undefined || normalized.height === composition.height) &&
+		(normalized.backgroundColor === undefined ||
+			normalized.backgroundColor.toLowerCase() ===
+				(composition.backgroundColor ?? '#000000').toLowerCase())
+	) {
+		return false;
+	}
+	return execute('UPDATE_COMPOSITION_CANVAS', () =>
+		sequenceStore.updateComposition(compositionId, normalized)
+	);
+}
+
 function visualTrackFor(items: TimelineItem[], tracks: TimelineTrack[]): TimelineTrack | undefined {
 	const selectedTrackIds = new Set(items.map((item) => item.trackId));
 	return tracks

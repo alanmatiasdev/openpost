@@ -14,6 +14,7 @@
 	import MotionPresetsPanel from './motion-presets-panel.svelte';
 	import TextMotionPanel from './text-motion-panel.svelte';
 	import CompositionControlsAuthoring from './composition-controls-authoring.svelte';
+	import ProjectCanvasPanel from './project-canvas-panel.svelte';
 
 	let {
 		itemId,
@@ -109,41 +110,38 @@
 	<h2 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
 		{m.video_editor_workspace_motion()}
 	</h2>
-	<section class="rounded-md border border-[oklch(0.28_0.015_55)] bg-[oklch(0.16_0.01_55)] p-3">
-		<div class="flex items-start justify-between gap-3">
-			<div class="min-w-0">
-				<h3 class="text-sm font-medium">{m.video_editor_motion_composition_title()}</h3>
-				<p class="mt-1 text-xs leading-5 text-[oklch(0.65_0.015_55)]">
-					{m.video_editor_motion_composition_description()}
-				</p>
+	{#if !activeComposite}
+		<section class="rounded-md border border-[oklch(0.28_0.015_55)] bg-[oklch(0.16_0.01_55)] p-3">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					<h3 class="text-sm font-medium">{m.video_editor_motion_composition_title()}</h3>
+					<p class="mt-1 text-xs leading-5 text-[oklch(0.65_0.015_55)]">
+						{m.video_editor_motion_composition_description()}
+					</p>
+				</div>
 			</div>
-			{#if activeComposite}
-				<span
-					class="shrink-0 rounded-full bg-orange-500/15 px-2 py-1 text-[10px] font-medium text-orange-300"
+			<div class="mt-3 grid grid-cols-2 gap-2">
+				<Button
+					size="sm"
+					variant="secondary"
+					disabled={!canCreateComposition}
+					onclick={oncreatecomposition}
 				>
-					{m.video_editor_motion_composite_badge()}
-				</span>
-			{/if}
-		</div>
-		<div class="mt-3 grid grid-cols-2 gap-2">
-			<Button
-				size="sm"
-				variant="secondary"
-				disabled={!canCreateComposition}
-				onclick={oncreatecomposition}
-			>
-				{m.video_editor_motion_create_composition()}
-			</Button>
-			<Button size="sm" variant="secondary" onclick={createController}>
-				{m.video_editor_motion_add_controller()}
-			</Button>
-		</div>
-		{#if activeComposite && canreturncomposition}
-			<Button class="mt-2 w-full" size="sm" variant="ghost" onclick={onreturncomposition}>
+					{m.video_editor_motion_create_composition()}
+				</Button>
+				<Button size="sm" variant="secondary" onclick={createController}>
+					{m.video_editor_motion_add_controller()}
+				</Button>
+			</div>
+		</section>
+	{:else}
+		<ProjectCanvasPanel {onedit} />
+		{#if canreturncomposition}
+			<Button class="w-full" size="sm" variant="ghost" onclick={onreturncomposition}>
 				{m.video_editor_motion_return_composition()}
 			</Button>
 		{/if}
-	</section>
+	{/if}
 	<CompositionControlsAuthoring {onedit} />
 	{#if supportsMotion}
 		<section class="rounded-md border border-[oklch(0.28_0.015_55)] bg-[oklch(0.16_0.01_55)] p-3">

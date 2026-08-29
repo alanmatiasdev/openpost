@@ -4,6 +4,10 @@ import { render } from 'vitest-browser-svelte';
 import { editorSession } from '$lib/video-editor/editor.svelte';
 import { createBlankProject } from '$lib/video-editor/project/defaults';
 import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
+import {
+	createCompositeComposition,
+	switchSequence
+} from '$lib/video-editor/sequences/sequence-actions';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import ProjectCanvasPanel from './project-canvas-panel.svelte';
@@ -76,5 +80,37 @@ describe('ProjectCanvasPanel', () => {
 		expect(width.element()).toHaveValue(1920);
 		expect(commandHistory.undoStack).toHaveLength(0);
 		expect(onedit).not.toHaveBeenCalled();
+	});
+
+	it('edits the active Motion canvas without changing the project canvas', async () => {
+		const compositionId = createCompositeComposition({
+			name: 'Square card',
+			width: 1080,
+			height: 1080,
+			fps: 30,
+			durationInFrames: 300
+		});
+		switchSequence(compositionId);
+		commandHistory.clearHistory();
+		const onedit = vi.fn();
+		const screen = await render(ProjectCanvasPanel, { onedit });
+
+		await expect.element(screen.getByRole('heading', { name: 'Composition canvas' })).toBeVisible();
+		const width = screen.getByRole('spinbutton', { name: 'Width' });
+		await width.fill('720');
+		width.element().dispatchEvent(new Event('change', { bubbles: true }));
+		const background = screen.getByRole('textbox', { name: 'Background hex value' });
+		await background.fill('#123456');
+		background.element().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(sequenceStore.compositionById.get(compositionId)).toMatchObject({
+			width: 720,
+			backgroundColor: '#123456'
+		});
+		expect(editorSession.project?.metadata).toMatchObject({
+			width: 1920,
+			backgroundColor: '#000000'
+		});
+		expect(onedit).toHaveBeenCalledTimes(2);
 	});
 });

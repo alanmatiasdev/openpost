@@ -154,9 +154,9 @@ function flushActive(): void {
 		masterVolumeDb: snapshot.masterVolumeDb,
 		masterMuted: snapshot.masterMuted,
 		busAudioEq: copy(snapshot.busAudioEq),
-		durationInFrames: snapshot.items.reduce(
-			(max, item) => Math.max(max, item.from + item.durationInFrames),
-			0
+		durationInFrames: Math.max(
+			current.editorKind === 'composite-2d' ? current.durationInFrames : 0,
+			snapshot.items.reduce((max, item) => Math.max(max, item.from + item.durationInFrames), 0)
 		)
 	};
 	if (!equal(current, nextComposition)) state.compositions[index] = nextComposition;

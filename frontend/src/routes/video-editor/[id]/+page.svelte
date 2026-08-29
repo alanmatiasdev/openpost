@@ -80,6 +80,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import ColorGradingDock from '$lib/video-editor/components/color-grading-dock.svelte';
 	import ColorScopes from '$lib/video-editor/components/color-scopes.svelte';
 	import MotionWorkspacePanel from '$lib/video-editor/components/motion-workspace-panel.svelte';
+	import MotionWorkspaceEmpty from '$lib/video-editor/components/motion-workspace-empty.svelte';
 	import MediaRecoveryDialog from '$lib/video-editor/components/media-recovery-dialog.svelte';
 	import UnsupportedAudioImportDialog from '$lib/video-editor/components/unsupported-audio-import-dialog.svelte';
 	import PreviewPlayer from '$lib/video-editor/components/preview-player.svelte';
@@ -92,9 +93,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import SequenceTabs from '$lib/video-editor/components/sequence-tabs.svelte';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import {
+		createCompositeComposition,
 		createCompoundClip,
 		dissolveCompoundClip,
-		switchSequence
+		switchSequence,
+		type CreateCompositeCompositionOptions
 	} from '$lib/video-editor/sequences/sequence-actions';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
@@ -156,6 +159,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	});
 	let freezingItemId = $state<string | null>(null);
 	let motionReturnStack = $state<Array<string | null>>([]);
+	let motionWorkspaceReturnSequenceId = $state<string | null>(null);
+	let motionWorkspaceReturnCaptured = $state(false);
+	let lastMotionCompositionId = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let recordingOpen = $state(false);
 	let unsupportedAudioRequest = $state<UnsupportedAudioImportRequest | null>(null);
@@ -165,6 +171,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	let timelineHeight = $state(260);
 	let textVoiceRequest = $state<TextVoiceRequest | null>(null);
 	const activeWorkspace = $derived(editorWorkspace.current);
+	const activeMotionComposition = $derived(
+		sequenceStore.activeSequence?.editorKind === 'composite-2d'
+			? sequenceStore.activeSequence
+			: undefined
+	);
+	const motionCompositionCount = $derived(
+		sequenceStore.compositions.filter((composition) => composition.editorKind === 'composite-2d')
+			.length
+	);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
 	const selectedTranscriptionJob = $derived(
 		selectedItemId ? transcriptionService.jobForItem(selectedItemId) : undefined
@@ -392,11 +407,59 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		selectedTransitionId = null;
 	}
 
-	function changeEditorWorkspace(workspace: EditorWorkspaceId): void {
-		if (workspace === editorWorkspace.current) return;
+	function switchEditorSequence(sequenceId: string | null): boolean {
 		shuttleScrubResume.cancel();
 		editorSession.pausePlayback();
+		if (!switchSequence(sequenceId)) return false;
+		editorSession.syncTimelineClock();
+		resetTimelineSelection();
+		return true;
+	}
+
+	function preferredMotionComposition(preferredId?: string): string | null {
+		const compositions = sequenceStore.compositions.filter(
+			(composition) => composition.editorKind === 'composite-2d'
+		);
+		return (
+			compositions.find((composition) => composition.id === preferredId)?.id ??
+			compositions.find((composition) => composition.id === lastMotionCompositionId)?.id ??
+			compositions[0]?.id ??
+			null
+		);
+	}
+
+	function enterMotionWorkspace(preferredId?: string): void {
+		const current = sequenceStore.activeSequence;
+		if (!motionWorkspaceReturnCaptured && current?.editorKind !== 'composite-2d') {
+			motionWorkspaceReturnSequenceId = sequenceStore.activeSequenceId;
+			motionWorkspaceReturnCaptured = true;
+		}
+		editorWorkspace.set('motion');
+		const targetId = preferredMotionComposition(preferredId);
+		if (targetId) {
+			lastMotionCompositionId = targetId;
+			switchEditorSequence(targetId);
+		} else resetTimelineSelection();
+	}
+
+	function leaveMotionWorkspace(workspace: Exclude<EditorWorkspaceId, 'motion'>): void {
+		if (activeMotionComposition) lastMotionCompositionId = activeMotionComposition.id;
+		if (motionWorkspaceReturnCaptured) switchEditorSequence(motionWorkspaceReturnSequenceId);
+		motionWorkspaceReturnCaptured = false;
+		motionWorkspaceReturnSequenceId = null;
+		motionReturnStack = [];
 		editorWorkspace.set(workspace);
+	}
+
+	function changeEditorWorkspace(workspace: EditorWorkspaceId): void {
+		if (workspace === editorWorkspace.current) return;
+		if (workspace === 'motion') enterMotionWorkspace();
+		else if (editorWorkspace.current === 'motion') leaveMotionWorkspace(workspace);
+		else {
+			shuttleScrubResume.cancel();
+			editorSession.pausePlayback();
+			editorWorkspace.set(workspace);
+		}
 		emitEditorSound('select', false);
 	}
 
@@ -404,11 +467,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		shuttleScrubResume.cancel();
 		const composition = sequenceStore.compositionById.get(compositionId);
 		if (composition?.editorKind === 'composite-2d') {
-			motionReturnStack = [...motionReturnStack, sequenceStore.activeSequenceId];
-		} else {
-			sequenceStore.promoteToTab(compositionId);
-			motionReturnStack = [];
+			enterMotionWorkspace(compositionId);
+			return;
 		}
+		sequenceStore.promoteToTab(compositionId);
+		motionReturnStack = [];
 		editorSession.pausePlayback();
 		if (!switchSequence(compositionId)) return;
 		editorSession.syncTimelineClock();
@@ -434,6 +497,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		showToast(m.video_editor_compound_created(), 'success');
 	}
 
+	function handleCreateEmptyMotionComposition(options: CreateCompositeCompositionOptions): void {
+		const compositionId = createCompositeComposition({
+			...options,
+			backgroundColor: editorSession.project?.metadata.backgroundColor
+		});
+		lastMotionCompositionId = compositionId;
+		switchEditorSequence(compositionId);
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_motion_composition_created(), 'success');
+	}
+
 	function handleReturnFromMotionComposition(): void {
 		shuttleScrubResume.cancel();
 		const parentSequenceId = motionReturnStack.at(-1);
@@ -450,6 +524,30 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		selectedItemIds = itemId ? [itemId] : [];
 		selectedTransitionId = null;
 	}
+
+	$effect(() => {
+		const workspace = activeWorkspace;
+		const compositions = sequenceStore.compositions;
+		const active = sequenceStore.activeSequence;
+		if (workspace !== 'motion') return;
+		if (active?.editorKind === 'composite-2d') {
+			lastMotionCompositionId = active.id;
+			return;
+		}
+		if (!motionWorkspaceReturnCaptured) {
+			motionWorkspaceReturnSequenceId = sequenceStore.activeSequenceId;
+			motionWorkspaceReturnCaptured = true;
+		}
+		const targetId =
+			compositions.find(
+				(composition) =>
+					composition.editorKind === 'composite-2d' && composition.id === lastMotionCompositionId
+			)?.id ?? compositions.find((composition) => composition.editorKind === 'composite-2d')?.id;
+		if (targetId) {
+			lastMotionCompositionId = targetId;
+			switchEditorSequence(targetId);
+		}
+	});
 
 	$effect(() => {
 		const workspace = activeWorkspace;
@@ -1490,12 +1588,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 										{m.video_editor_program_monitor()}
 									</div>
 								{/if}
-								<PreviewPlayer
-									bind:selectedItemId
-									bind:selectedItemIds
-									onedit={() => editorSession.scheduleAutosave()}
-								/>
-								<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
+								{#if activeWorkspace === 'motion' && !activeMotionComposition}
+									<MotionWorkspaceEmpty
+										width={editorSession.project?.metadata.width ?? 1920}
+										height={editorSession.project?.metadata.height ?? 1080}
+										fps={editorSession.project?.metadata.fps ?? 30}
+										defaultName={`${m.video_editor_motion_composition_title()} ${motionCompositionCount + 1}`}
+										oncreate={handleCreateEmptyMotionComposition}
+									/>
+								{:else}
+									<PreviewPlayer
+										bind:selectedItemId
+										bind:selectedItemIds
+										onedit={() => editorSession.scheduleAutosave()}
+									/>
+									<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
+								{/if}
 							</section>
 							{#if activeWorkspace === 'color'}
 								<aside
@@ -1734,8 +1842,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						</aside>
 					{:else if activeWorkspace === 'motion'}
 						<MotionWorkspacePanel
-							itemId={selectedItemId}
-							itemIds={selectedItemIds}
+							itemId={activeMotionComposition ? selectedItemId : null}
+							itemIds={activeMotionComposition ? selectedItemIds : []}
 							frameWidth={sequenceStore.activeWidth}
 							frameHeight={sequenceStore.activeHeight}
 							fps={timelineStore.fps}
@@ -1780,11 +1888,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						<span class="h-0.5 w-12 rounded-full bg-white/18 transition-colors hover:bg-white/36"
 						></span>
 					</button>
-					<SequenceTabs
-						onswitch={resetTimelineSelection}
-						onedit={() => editorSession.scheduleAutosave()}
-					/>
-					{#if sequenceStore.activeSequence?.editorKind === 'composite-2d'}
+					{#if activeWorkspace === 'edit'}
+						<SequenceTabs
+							onswitch={resetTimelineSelection}
+							onedit={() => editorSession.scheduleAutosave()}
+						/>
+					{/if}
+					{#if activeWorkspace === 'motion' && !activeMotionComposition}
+						<div
+							class="h-full bg-[oklch(0.145_0.008_55)]"
+							data-motion-timeline-empty
+							aria-hidden="true"
+						></div>
+					{:else if sequenceStore.activeSequence?.editorKind === 'composite-2d'}
 						<CompositionTimeline
 							{selectedItemId}
 							onedit={() => editorSession.scheduleAutosave()}
