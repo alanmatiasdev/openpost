@@ -55,6 +55,18 @@ test("unknown documents return 404 with a complete recovery page", async ({ page
 
   expect((await request.get("/publications/example")).status()).toBe(200);
   expect((await request.get("/calendar-export")).status()).toBe(404);
+  for (const retiredPath of [
+    "/accounts",
+    "/activity",
+    "/posts",
+    "/engagement",
+    "/messages",
+    "/notifications",
+    "/studio",
+    "/video-studio",
+  ]) {
+    expect((await request.get(retiredPath)).status(), retiredPath).toBe(404);
+  }
   expect(errors).toEqual([]);
 });
 

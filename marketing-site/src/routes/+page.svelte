@@ -26,7 +26,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Write the idea once. Shape each version, schedule every channel, and see what went live.
+			For solo founders who want one workspace for social publishing. Write the idea once, shape
+			each version, schedule every channel, and see what went live.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
@@ -56,6 +57,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			<p class="marketing-copy mt-5">
 				Write the idea once. Edit the copy, media, and settings for each account before you schedule
 				it.
+			</p>
+			<p class="marketing-copy mt-3">
+				Provider formats, permissions, and limits still vary by network.
 			</p>
 		</ScrollReveal>
 

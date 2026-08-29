@@ -17,7 +17,7 @@ Editing never syncs to OpenPost. Only final exports cross the boundary ("Send to
 - Full editor product name: **OpenPost Video Editor**, route `/video-editor`.
 - Lossless tool: **Quick Cut** (established domain term), route `/quick-cut`. The old in-editor "quick-cut" mode is deleted.
 - Durable domain terms to retain in Hindsight: **Workspace folder** (user-chosen disk folder holding projects/media/caches; source of truth while editing), **Recording** (local capture produced by the recorder).
-- `/video-studio` legacy redirect retargets to `/video-editor`; `/studio` redirect untouched (image editor).
+- `/video-editor`, `/quick-cut`, and `/record` are the only editor routes. The old `/video-studio` and `/studio` aliases do not exist.
 
 ## Architecture
 

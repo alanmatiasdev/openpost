@@ -7,15 +7,10 @@ import { marketingErrorRecovery } from '../src/routes/_error-recovery.ts';
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputRoot = path.join(siteRoot, 'dist');
 
-const redirects = await readFile(path.join(outputRoot, '_redirects'), 'utf8');
-assert.equal(
-	redirects,
-	[
-		'/docs https://docs.openpost.social/ 301',
-		'/docs/* https://docs.openpost.social/:splat 301',
-		''
-	].join('\n'),
-	'marketing build must permanently redirect /docs and every /docs/* suffix to the canonical docs site'
+await assert.rejects(
+	readFile(path.join(outputRoot, '_redirects'), 'utf8'),
+	(error) => error instanceof Error && 'code' in error && error.code === 'ENOENT',
+	'marketing build must not emit compatibility redirects'
 );
 
 const headers = await readFile(path.join(outputRoot, '_headers'), 'utf8');
@@ -80,4 +75,4 @@ assert.doesNotMatch(
 	'top-level 404 must not depend on path-relative application assets'
 );
 
-console.log('Verified marketing discovery, redirect, and top-level 404 build artifacts.');
+console.log('Verified marketing discovery and top-level 404 build artifacts.');

@@ -499,21 +499,6 @@
       "source_refs": ["frontend/src/lib/stores/sound-preferences.svelte.ts"]
     },
     {
-      "id": "local-oauth-account-management-mode",
-      "technology": "localStorage",
-      "owner": "OpenPost social-account connection flow",
-      "identifier_kind": "exact",
-      "identifier": "oauth_account_management_mode",
-      "purpose": "Returns a social-account connection to the direct Accounts page or the embedded Settings account manager that started it.",
-      "scope": "Application origin.",
-      "duration": "Removed after the OAuth return is interpreted or account-data cleanup runs; otherwise retained until another connection replaces it or site data is cleared.",
-      "necessity": "strictly_necessary",
-      "source_refs": [
-        "frontend/src/lib/account-management-route.ts",
-        "frontend/src/lib/components/account-data-card.svelte"
-      ]
-    },
-    {
       "id": "local-oauth-workspace",
       "technology": "localStorage",
       "owner": "OpenPost social-account connection flow",
@@ -524,7 +509,7 @@
       "duration": "Removed after a successful Mastodon exchange or account-data cleanup; otherwise retained until replaced or site data is cleared.",
       "necessity": "strictly_necessary",
       "source_refs": [
-        "frontend/src/routes/accounts/+page.svelte",
+        "frontend/src/lib/account-management-route.ts",
         "frontend/src/routes/accounts/mastodon/callback/+page.svelte",
         "frontend/src/lib/components/account-data-card.svelte"
       ]
@@ -540,7 +525,7 @@
       "duration": "Removed after a successful exchange, when another Mastodon connection mode replaces it, or when account/site data is cleared.",
       "necessity": "strictly_necessary",
       "source_refs": [
-        "frontend/src/routes/accounts/+page.svelte",
+        "frontend/src/lib/account-management-route.ts",
         "frontend/src/routes/accounts/mastodon/callback/+page.svelte"
       ]
     },
@@ -555,7 +540,7 @@
       "duration": "Removed after a successful exchange, when another Mastodon connection mode replaces it, or when account/site data is cleared.",
       "necessity": "strictly_necessary",
       "source_refs": [
-        "frontend/src/routes/accounts/+page.svelte",
+        "frontend/src/lib/account-management-route.ts",
         "frontend/src/routes/accounts/mastodon/callback/+page.svelte"
       ]
     },
@@ -751,30 +736,6 @@
       "purpose": "Restores the composer destination and unsaved snapshot after an Image or Video Editor handoff.",
       "scope": "Application origin and current browser tab session; one random-token suffix per handoff.",
       "duration": "It becomes unusable at its stored expiry and is removed on a later read. Explicit clearing, the end of the tab session, or site-data clearing can remove it sooner.",
-      "necessity": "strictly_necessary",
-      "source_refs": ["frontend/src/lib/editor-handoff.ts"]
-    },
-    {
-      "id": "session-editor-handoff-legacy-image",
-      "technology": "sessionStorage",
-      "owner": "OpenPost editor handoff compatibility layer",
-      "identifier_kind": "prefix",
-      "identifier": "openpost:image-editor:return:",
-      "purpose": "Reads and removes pre-v2 Image Editor handoff recovery written by older OpenPost versions.",
-      "scope": "Application origin and current browser tab session.",
-      "duration": "Removed when consumed or cleared; otherwise ends with the tab session.",
-      "necessity": "strictly_necessary",
-      "source_refs": ["frontend/src/lib/editor-handoff.ts"]
-    },
-    {
-      "id": "session-editor-handoff-legacy-studio",
-      "technology": "sessionStorage",
-      "owner": "OpenPost editor handoff compatibility layer",
-      "identifier_kind": "prefix",
-      "identifier": "openpost:studio:return:",
-      "purpose": "Reads and removes pre-rename Studio handoff recovery written by older OpenPost versions.",
-      "scope": "Application origin and current browser tab session.",
-      "duration": "Removed when consumed or cleared; otherwise ends with the tab session.",
       "necessity": "strictly_necessary",
       "source_refs": ["frontend/src/lib/editor-handoff.ts"]
     },

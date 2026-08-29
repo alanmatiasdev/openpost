@@ -25,11 +25,18 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Create once. OpenPost adapts your post for each platform, then publishes it on schedule.",
+      "For solo founders who want one workspace for social publishing. Write the idea once, shape each version, schedule every channel, and see what went live.",
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Start free", exact: true }).first()).toHaveAttribute(
+  await expect(
+    page.getByText("Provider formats, permissions, and limits still vary by network.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Start for free", exact: true }).first(),
+  ).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
   );
@@ -42,7 +49,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page.getByText(/Fictional stories showing how launches/)).toHaveCount(0);
   await expect(
     page.getByRole("heading", {
-      name: "See OpenPost in four minutes.",
+      name: "See how a post gets published.",
     }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Play the OpenPost product demo" })).toBeVisible();
@@ -75,7 +82,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     }),
   ).toBeVisible();
   await expect(page.getByAltText("OpenPost social accounts page")).toHaveCount(0);
-  await expect(page.getByAltText("OpenPost connected social accounts page")).toHaveAttribute(
+  await expect(page.getByAltText("OpenPost connected account settings")).toHaveAttribute(
     "src",
     "/assets/screenshots/accounts-dark.png",
   );
@@ -90,13 +97,13 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   );
   await expect(page.getByRole("link", { name: "Self-hosting" }).first()).toHaveAttribute(
     "href",
-    "https://docs.openpost.social/self-hosting/",
+    "/self-hosting",
   );
   await expect(page.getByRole("link", { name: "Developer docs" }).first()).toHaveAttribute(
     "href",
     "https://docs.openpost.social/development/",
   );
-  await expect(page.getByRole("link", { name: "GitHub source" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "GitHub source" }).first()).toHaveAttribute(
     "href",
     "https://github.com/getopenpost/openpost",
   );
@@ -104,6 +111,18 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     "href",
     "https://discord.gg/u2QwukmY4W",
   );
+});
+
+test("retired marketing pages and compatibility redirects stay removed", async ({ request }) => {
+  for (const retiredPath of [
+    "/self-hosted",
+    "/open-source",
+    "/compare",
+    "/docs",
+    "/docs/usage/accounts",
+  ]) {
+    expect((await request.get(retiredPath)).status(), retiredPath).toBe(404);
+  }
 });
 
 test("pricing makes every plan selectable for monthly and annual billing", async ({ page }) => {

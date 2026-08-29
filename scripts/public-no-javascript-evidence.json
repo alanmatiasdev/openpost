@@ -1,6 +1,6 @@
 {
   "https://openpost.social": {
-    "audience": "For solo founders evaluating one workspace for social publishing.",
+    "audience": "For solo founders who want one workspace for social publishing.",
     "boundary": "Provider formats, permissions, and limits still vary by network."
   },
   "https://openpost.social/features": {
@@ -32,8 +32,8 @@
     "boundary": "It does not make a certification claim."
   },
   "https://openpost.social/self-hosting": {
-    "audience": "For operators and developers evaluating the self-hosting and source path.",
-    "boundary": "Self-hosting has no software fee. You operate the infrastructure, data, provider projects, upgrades, backups, and support boundary."
+    "audience": "For operators who want to run OpenPost on infrastructure they control.",
+    "boundary": "Self-hosting is not a Hosted service plan or a zero-price Hosted service tier."
   },
   "https://openpost.social/developers": {
     "audience": "OpenPost exposes one publishing system through a typed HTTP API, a CLI, and an MCP server.",
@@ -429,7 +429,7 @@
   },
   "https://docs.openpost.social/usage/communications": {
     "audience": "This page is for people reviewing and responding to saved engagement and messages in a Workspace.",
-    "boundary": "OpenPost checks social networks in the background and saves the results. The Engagement and Messages pages read saved data, so a slow or unavailable network does not block the page."
+    "boundary": "OpenPost checks social networks in the background and saves the results. Engagement at /inbox/engagement and Messages at /inbox/messages read saved data, so a slow or unavailable network does not block either page."
   },
   "https://docs.openpost.social/usage/composing-posts": {
     "audience": "This page is for people creating a Publication in the composer.",
