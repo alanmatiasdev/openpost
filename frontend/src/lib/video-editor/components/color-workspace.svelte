@@ -8,7 +8,6 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import CircleOffIcon from '@lucide/svelte/icons/circle-off';
 	import LayersIcon from '@lucide/svelte/icons/layers';
-	import AppSelect from '$lib/components/app-select.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
 	import { m } from '$lib/paraglide/messages';
@@ -59,8 +58,8 @@
 		oncreateadjustment?: () => void;
 	} = $props();
 	let presets = $state<ColorGradePreset[]>([]);
-	let selectedPresetId = $state('');
 	let presetName = $state('');
+	let showPresetSave = $state(false);
 	let status = $state('');
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
@@ -73,13 +72,8 @@
 			(id) => timelineStore.itemById.get(id)?.type !== 'audio'
 		);
 	});
-	const presetOptions = $derived(
-		presets.map((preset) => ({ value: preset.id, label: preset.name }))
-	);
-
 	onMount(() => {
 		presets = loadColorGradePresets();
-		selectedPresetId = presets[0]?.id ?? '';
 	});
 
 	onDestroy(() => {
@@ -204,27 +198,22 @@
 		const saved = presets.find(
 			(preset) => preset.name.toLocaleLowerCase() === presetName.trim().toLocaleLowerCase()
 		);
-		selectedPresetId = saved?.id ?? selectedPresetId;
 		status = m.video_editor_color_preset_saved({ name: saved?.name ?? presetName.trim() });
 		presetName = '';
+		showPresetSave = false;
 	}
 
-	function applyPreset(): void {
-		const preset = presets.find((entry) => entry.id === selectedPresetId);
-		if (!preset) return;
+	function applyPreset(preset: ColorGradePreset): void {
 		applyGrade(preset.effects, m.video_editor_color_preset_applied({ name: preset.name }));
 	}
 
-	function deletePreset(): void {
-		const preset = presets.find((entry) => entry.id === selectedPresetId);
-		if (!preset) return;
+	function deletePreset(preset: ColorGradePreset): void {
 		const next = removeColorGradePreset(presets, preset.id);
 		if (!persistColorGradePresets(next)) {
 			status = m.video_editor_color_preset_delete_failed();
 			return;
 		}
 		presets = next;
-		selectedPresetId = presets[0]?.id ?? '';
 		status = m.video_editor_color_preset_deleted({ name: preset.name });
 	}
 </script>
@@ -329,70 +318,80 @@
 						<LayersIcon class="size-3.5" />{m.video_editor_adjustment_layer()}
 					</button>
 				{/if}
-				<details class="relative min-w-0">
-					<summary
-						class="color-tool cursor-pointer list-none"
-						title={m.video_editor_color_presets()}
+				<button
+					type="button"
+					class="color-icon"
+					disabled={grade.length === 0}
+					title={m.video_editor_color_presets()}
+					aria-label={m.video_editor_color_presets()}
+					aria-expanded={showPresetSave}
+					onclick={() => (showPresetSave = !showPresetSave)}
+				>
+					<SaveIcon class="size-3.5" />
+				</button>
+			</div>
+			{#if showPresetSave}
+				<div class="mt-1 grid grid-cols-[1fr_auto] gap-1">
+					<Input
+						class="h-7 min-w-0 rounded border border-[oklch(0.32_0.015_55)] bg-[oklch(0.12_0.006_55)] px-2 text-xs"
+						bind:value={presetName}
+						placeholder={m.video_editor_color_preset_name()}
+						aria-label={m.video_editor_color_preset_name()}
+						onkeydown={(event) => {
+							if (event.key === 'Enter') savePreset();
+							if (event.key === 'Escape') showPresetSave = false;
+						}}
+					/>
+					<button
+						type="button"
+						class="color-icon"
+						disabled={!presetName.trim() || grade.length === 0}
+						title={m.video_editor_color_save_preset()}
+						aria-label={m.video_editor_color_save_preset()}
+						onclick={savePreset}
 					>
-						<SaveIcon class="size-3.5" /><span class="sr-only"
-							>{m.video_editor_color_presets()}</span
-						>
-					</summary>
-					<div
-						class="absolute top-8 right-0 z-50 w-72 border border-white/15 bg-[oklch(0.145_0.008_55)] p-2 shadow-xl"
-					>
-						<div class="grid grid-cols-[1fr_auto] gap-1">
-							<Input
-								class="h-7 min-w-0 rounded border border-[oklch(0.32_0.015_55)] bg-[oklch(0.12_0.006_55)] px-2 text-xs"
-								bind:value={presetName}
-								placeholder={m.video_editor_color_preset_name()}
-								aria-label={m.video_editor_color_preset_name()}
-								onkeydown={(event) => {
-									if (event.key === 'Enter') savePreset();
-								}}
-							/>
-							<button
-								type="button"
-								class="color-icon"
-								disabled={!presetName.trim() || grade.length === 0}
-								title={m.video_editor_color_save_preset()}
-								aria-label={m.video_editor_color_save_preset()}
-								onclick={savePreset}
+						<SaveIcon class="size-3.5" />
+					</button>
+				</div>
+			{/if}
+			{#if presets.length > 0}
+				<div class="mt-1" aria-label={m.video_editor_color_presets()}>
+					<div class="mb-1 text-[9px] tracking-wide text-white/40 uppercase">
+						{m.video_editor_color_presets()}
+					</div>
+					<div class="flex gap-1 overflow-x-auto pb-1">
+						{#each presets as preset (preset.id)}
+							<div
+								class="group relative min-w-24 rounded-sm border border-white/10 bg-white/[0.025]"
 							>
-								<SaveIcon class="size-3.5" />
-							</button>
-						</div>
-						{#if presets.length > 0}
-							<div class="mt-1 grid grid-cols-[1fr_auto_auto] gap-1">
-								<AppSelect
-									class="h-7 min-w-0 text-xs"
-									bind:value={selectedPresetId}
-									ariaLabel={m.video_editor_color_presets()}
-									options={presetOptions}
-								/>
 								<button
 									type="button"
-									class="color-tool px-2"
-									disabled={!selectedPresetId}
-									onclick={applyPreset}
+									class="flex h-11 w-full flex-col items-start justify-between rounded-sm px-2 py-1 text-left hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-orange-400"
+									title={preset.name}
+									onclick={() => applyPreset(preset)}
 								>
-									{m.video_editor_color_apply_preset()}
+									<span
+										class="h-1 w-full rounded-full bg-gradient-to-r from-slate-500 via-amber-300 to-sky-400"
+									></span>
+									<span class="max-w-20 truncate text-[10px] font-medium">{preset.name}</span>
 								</button>
 								<button
 									type="button"
-									class="color-icon"
-									disabled={!selectedPresetId}
-									title={m.video_editor_color_delete_preset()}
-									aria-label={m.video_editor_color_delete_preset()}
-									onclick={deletePreset}
+									class="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-black/60 text-white/60 opacity-0 group-hover:opacity-100 hover:text-white focus:opacity-100 focus-visible:outline-2 focus-visible:outline-orange-400"
+									title={`${m.video_editor_color_delete_preset()}: ${preset.name}`}
+									aria-label={`${m.video_editor_color_delete_preset()}: ${preset.name}`}
+									onclick={(event) => {
+										event.stopPropagation();
+										deletePreset(preset);
+									}}
 								>
-									<Trash2Icon class="size-3.5" />
+									<Trash2Icon class="size-3" />
 								</button>
 							</div>
-						{/if}
+						{/each}
 					</div>
-				</details>
-			</div>
+				</div>
+			{/if}
 			{#if status}
 				<p class="mt-0.5 truncate text-[9px] text-[oklch(0.68_0.02_55)]" aria-live="polite">
 					{status}

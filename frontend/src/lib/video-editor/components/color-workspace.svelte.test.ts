@@ -77,7 +77,7 @@ describe('ColorWorkspace', () => {
 	it('saves, applies, and deletes a browser-wide grade preset', async () => {
 		const onedit = vi.fn();
 		const screen = await render(ColorWorkspace, { itemId: 'video', onedit });
-		document.querySelector<HTMLElement>('summary')?.click();
+		await screen.getByRole('button', { name: 'Saved grade presets' }).click();
 		const name = document.querySelector<HTMLInputElement>('[aria-label="Grade preset name"]');
 		expect(name).not.toBeNull();
 		if (!name) return;
@@ -93,12 +93,9 @@ describe('ColorWorkspace', () => {
 			expect(localStorage.getItem(COLOR_GRADE_PRESETS_STORAGE_KEY)).toContain('Warm launch');
 		});
 		await expect.element(screen.getByText('Warm launch', { exact: true })).toBeVisible();
-		const apply = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
-			(button) => button.textContent?.trim() === 'Apply'
-		);
-		apply?.click();
+		await screen.getByRole('button', { name: 'Warm launch', exact: true }).click();
 		await vi.waitFor(() => expect(onedit).toHaveBeenCalledTimes(1));
-		document.querySelector<HTMLButtonElement>('[aria-label="Delete grade preset"]')?.click();
+		await screen.getByRole('button', { name: 'Delete grade preset: Warm launch' }).click();
 		await vi.waitFor(() => {
 			expect(localStorage.getItem(COLOR_GRADE_PRESETS_STORAGE_KEY)).toBe('[]');
 		});
