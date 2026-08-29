@@ -42,7 +42,7 @@ test("authenticated navigation keeps the app shell mounted", async ({ page, requ
   });
 
   const activityRequestStart = shellApiRequests.length;
-  await page.getByRole("button", { name: "Posts", exact: true }).click();
+  await page.getByRole("button", { name: "Publications", exact: true }).click();
   await expect(page).toHaveURL(/\/publications$/);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(page.getByTestId("desktop-sidebar-planner")).toBeVisible();
@@ -314,7 +314,7 @@ test("collapsed sidebar keeps the OpenPost mark without overflowing text", async
   await expect(home.locator("svg")).toBeVisible();
   await expect(home.getByText("OpenPost", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Posts", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publications", exact: true })).toBeVisible();
 });
 
 test("desktop planning sidebar resumes drafts and stays out of mobile navigation", async ({
