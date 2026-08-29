@@ -7,6 +7,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Label } from '$lib/components/ui/label';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
@@ -72,6 +73,13 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		parseSegmentInterchange,
 		type SegmentInterchangeFormat
 	} from '$lib/quick-cut/interchange';
+	import {
+		captureVideoFrame,
+		frameCaptureFileName,
+		type FrameCaptureFormat
+	} from '$lib/quick-cut/frame-capture';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
 
 	let sources = $state<QuickCutSource[]>([]);
 	let sourceUrls = $state<Map<string, string>>(new Map());
@@ -106,8 +114,16 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	let previewWait: AbortController | null = null;
 	let sourceRemovalDialogOpen = $state(false);
 	let pendingSourceRemoval = $state<QuickCutSource | null>(null);
+	let capturingFrame = $state(false);
 
 	const activeSource = $derived(sources.find((s) => s.id === activeSourceId) ?? sources[0] ?? null);
+	const canCaptureFrame = $derived(
+		Boolean(
+			activeSource &&
+			activeSource.videoStreams.length > 0 &&
+			activeSource.selectedVideoTrackIndex !== null
+		)
+	);
 	const selectedSegment = $derived(segments.find((s) => s.id === selectedId) ?? null);
 	const enabledSegments = $derived(segments.filter((segment) => segment.enabled !== false));
 	const segmentsForExport = $derived(
@@ -339,6 +355,48 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 			return;
 		}
 		seekTo(currentTime + deltaFrames / fps);
+	}
+
+	function downloadBlob(blob: Blob, fileName: string): void {
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = fileName;
+		anchor.click();
+		setTimeout(() => URL.revokeObjectURL(url), 5000);
+	}
+
+	async function captureCurrentFrame(
+		format: FrameCaptureFormat,
+		destination: 'download' | 'clipboard' = 'download'
+	): Promise<void> {
+		if (!videoEl || !activeSource || !canCaptureFrame || capturingFrame) return;
+		capturingFrame = true;
+		try {
+			const blob = await captureVideoFrame(videoEl, format);
+			if (destination === 'clipboard') {
+				if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+					throw new Error(m.quick_cut_clipboard_unavailable());
+				}
+				await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+				showToast(m.quick_cut_frame_copied(), 'success');
+			} else {
+				const fileName = frameCaptureFileName(activeSource.name, currentTime, format);
+				downloadBlob(blob, fileName);
+				showToast(m.quick_cut_frame_saved({ name: fileName }), 'success');
+			}
+			soundPreferences.play('success');
+		} catch (error) {
+			showToast(
+				m.quick_cut_frame_capture_failed({
+					message: error instanceof Error ? error.message : String(error)
+				}),
+				'error'
+			);
+			soundPreferences.play('error');
+		} finally {
+			capturingFrame = false;
+		}
 	}
 
 	function markIn(): void {
@@ -1066,17 +1124,58 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 
 			<div class="grid min-w-0 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
 				<div class="flex min-w-0 flex-col gap-3">
-					<!-- svelte-ignore a11y_media_has_caption -- trim preview; captions are not part of lossless cuts -->
-					<video
-						bind:this={videoEl}
-						src={videoSrc}
-						class="max-h-[55dvh] w-full rounded-xl bg-black object-contain shadow"
-						playsinline
-						controls={false}
-						ontimeupdate={onTimeUpdate}
-						onplay={() => (playing = true)}
-						onpause={() => (playing = false)}
-					></video>
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							{#snippet child({ props })}
+								<div
+									{...props}
+									class="overflow-hidden rounded-xl bg-black shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+									tabindex="0"
+									role="application"
+									aria-label={m.quick_cut_preview()}
+								>
+									<!-- svelte-ignore a11y_media_has_caption -- trim preview; captions are not part of lossless cuts -->
+									<video
+										bind:this={videoEl}
+										src={videoSrc}
+										class="block max-h-[55dvh] w-full object-contain"
+										playsinline
+										controls={false}
+										ontimeupdate={onTimeUpdate}
+										onplay={() => (playing = true)}
+										onpause={() => (playing = false)}
+									></video>
+								</div>
+							{/snippet}
+						</ContextMenu.Trigger>
+						<ContextMenu.Content class="w-56">
+							<ContextMenu.Item onclick={togglePlay}>
+								{playing ? m.video_editor_pause() : m.video_editor_play()}
+							</ContextMenu.Item>
+							<ContextMenu.Separator />
+							<ContextMenu.Item onclick={markIn}>{m.video_editor_mark_in()}</ContextMenu.Item>
+							<ContextMenu.Item onclick={markOut}>{m.video_editor_mark_out()}</ContextMenu.Item>
+							<ContextMenu.Separator />
+							<ContextMenu.Item
+								disabled={!canCaptureFrame || capturingFrame}
+								onclick={() => void captureCurrentFrame('png')}
+							>
+								{m.quick_cut_save_frame_png()}
+							</ContextMenu.Item>
+							<ContextMenu.Item
+								disabled={!canCaptureFrame || capturingFrame}
+								onclick={() => void captureCurrentFrame('jpeg')}
+							>
+								{m.quick_cut_save_frame_jpeg()}
+							</ContextMenu.Item>
+							<ContextMenu.Item
+								disabled={!canCaptureFrame || capturingFrame}
+								onclick={() => void captureCurrentFrame('png', 'clipboard')}
+							>
+								{m.quick_cut_copy_frame()}
+							</ContextMenu.Item>
+						</ContextMenu.Content>
+					</ContextMenu.Root>
 
 					<TimelineBar
 						{activeSource}
@@ -1131,6 +1230,19 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								onclick={() => frameStep(1)}
 								class="min-h-11 min-w-11 md:min-h-7 md:min-w-7">▶</Button
 							>
+							<Button
+								size="icon-xs"
+								variant="ghost"
+								disabled={!canCaptureFrame || capturingFrame}
+								aria-label={m.quick_cut_capture_frame()}
+								title={m.quick_cut_capture_frame()}
+								onclick={() => void captureCurrentFrame('png')}
+								class="min-h-11 min-w-11 md:min-h-7 md:min-w-7"
+							>
+								{#if capturingFrame}<LoaderIcon
+										class="size-4 animate-spin motion-reduce:animate-none"
+									/>{:else}<CameraIcon class="size-4" />{/if}
+							</Button>
 						</div>
 					</div>
 
