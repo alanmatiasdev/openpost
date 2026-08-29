@@ -112,10 +112,8 @@ export default function RootLayout() {
                   />
                   <Stack.Screen name="onboarding/login" options={{ headerShown: false }} />
                   <Stack.Screen name="onboarding/pair" options={{ headerShown: false }} />
-                  <Stack.Screen
-                    name="onboarding/workspace"
-                    options={{ headerShown: false, gestureEnabled: false }}
-                  />
+                  <Stack.Screen name="onboarding/workspace" options={{ headerShown: false }} />
+                  <Stack.Screen name="onboarding/destination" options={{ headerShown: false }} />
                   <Stack.Screen
                     name="publications/[id]/edit"
                     options={{

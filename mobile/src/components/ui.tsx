@@ -106,6 +106,9 @@ export function Button({
   variant = "filled",
   disabled,
   loading = false,
+  accessibilityRole = "button",
+  accessibilityHint,
+  accessibilityState,
   style,
 }: {
   title: string;
@@ -113,6 +116,9 @@ export function Button({
   variant?: "filled" | "tinted" | "plain" | "destructive";
   disabled?: boolean;
   loading?: boolean;
+  accessibilityRole?: React.ComponentProps<typeof Pressable>["accessibilityRole"];
+  accessibilityHint?: string;
+  accessibilityState?: React.ComponentProps<typeof Pressable>["accessibilityState"];
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
@@ -127,12 +133,14 @@ export function Button({
   const color =
     variant === "filled" ? colors.onTint : variant === "destructive" ? colors.danger : colors.tint;
   const inactive = disabled || loading;
-  const hasDepth = variant === "filled" || variant === "tinted";
+  const hasDepth = variant === "filled";
+  const hasBorder = hasDepth || variant === "tinted";
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={accessibilityRole}
       accessibilityLabel={title}
-      accessibilityState={{ disabled: inactive, busy: loading }}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ ...accessibilityState, disabled: inactive, busy: loading }}
       disabled={inactive}
       onPressIn={() => void pressHaptic()}
       onPress={onPress}
@@ -140,18 +148,15 @@ export function Button({
         styles.button,
         {
           backgroundColor: background,
-          borderColor: hasDepth
-            ? variant === "filled"
+          borderColor:
+            variant === "filled"
               ? colors.tint
-              : `${colors.tint}66`
-            : "transparent",
-          borderBottomColor: hasDepth
-            ? variant === "filled"
-              ? colors.buttonDepth
-              : colors.tint
-            : "transparent",
-          borderBottomWidth: hasDepth ? (pressed ? 1 : 3) : 0,
-          borderWidth: hasDepth ? 1 : 0,
+              : variant === "tinted"
+                ? `${colors.tint}66`
+                : "transparent",
+          borderBottomColor: hasDepth ? colors.buttonDepth : undefined,
+          borderBottomWidth: hasDepth ? (pressed ? 1 : 3) : undefined,
+          borderWidth: hasBorder ? (hasDepth ? 1 : StyleSheet.hairlineWidth) : 0,
           opacity: inactive ? 0.45 : pressed && !hasDepth ? 0.68 : 1,
           transform: pressed && hasDepth ? [{ translateY: 2 }] : undefined,
         },
@@ -209,7 +214,6 @@ export function IconButton({
         styles.iconButton,
         pressed && {
           backgroundColor: colors.tintSoft,
-          transform: [{ translateY: 1 }],
         },
       ]}
     >
