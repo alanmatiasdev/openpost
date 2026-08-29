@@ -19,11 +19,6 @@
 	import CompositionControlOverrides from './composition-control-overrides.svelte';
 	import { resolveAnimatedItemLocalAt } from '$lib/video-editor/timeline/animated-properties';
 	import { getSynchronizedLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
-	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
-	import {
-		clampAudioPitchCents,
-		clampAudioPitchSemitones
-	} from '$lib/video-editor/audio/audio-pitch';
 	import AudioDuckingPanel from './audio-ducking-panel.svelte';
 	import AudioEffectsPanel from './audio-effects-panel.svelte';
 	import {
@@ -37,6 +32,7 @@
 	import ClipTransformSection from './clip-transform-section.svelte';
 	import ClipCropSection from './clip-crop-section.svelte';
 	import ClipPlaybackSection from './clip-playback-section.svelte';
+	import ClipAudioCoreSection from './clip-audio-core-section.svelte';
 
 	let nrDraftAmount = $state<number | null>(null);
 	// Reset draft when selection or persisted amount changes
@@ -276,38 +272,6 @@
 		onedit();
 	}
 
-	function commitAudioFade(field: 'audioFadeIn' | 'audioFadeOut', value: number): void {
-		if (!audioItem || !Number.isFinite(value)) return;
-		commitAudioPatch({
-			[field]: Math.min(audioItem.durationInFrames / timelineStore.fps, Math.max(0, value))
-		});
-	}
-
-	function commitGainDb(db: number): void {
-		if (!audioItem || !Number.isFinite(db)) return;
-		if (
-			setAnimatedProperty(
-				audioItem.id,
-				'volume',
-				timelineStore.currentFrame,
-				dbToLinearGain(db),
-				autoKeyframeStore.isEnabled(audioItem.id, 'volume')
-			)
-		) {
-			onedit();
-		}
-	}
-
-	function commitPitch(field: 'audioPitchSemitones' | 'audioPitchCents', value: number): void {
-		if (!Number.isFinite(value)) return;
-		commitAudioPatch({
-			[field]:
-				field === 'audioPitchSemitones'
-					? clampAudioPitchSemitones(value)
-					: clampAudioPitchCents(value)
-		});
-	}
-
 	function commitTextShadowColor(color: string): void {
 		const current = itemId ? timelineStore.itemById.get(itemId) : undefined;
 		commitText({
@@ -354,92 +318,10 @@
 
 		{#if item.type === 'video' || item.type === 'audio'}
 			<ClipPlaybackSection itemId={item.id} {itemIds} {onedit} />
+			<ClipAudioCoreSection itemId={item.id} {itemIds} {onedit} />
 
 			{#if audioItem}
 				<section>
-					<h3
-						class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
-					>
-						{m.video_editor_property_audio()}
-					</h3>
-					<div class="grid grid-cols-2 gap-1">
-						<div class="col-span-2 text-[10px] text-[oklch(0.7_0.01_55)]">
-							<span class="flex items-center justify-between gap-1">
-								<label for={`clip-gain-${audioItem.id}`}>{m.video_editor_clip_gain_db()}</label>
-								<button
-									type="button"
-									class:active={autoKeyframeStore.isEnabled(audioItem.id, 'volume')}
-									class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
-									aria-label={m.video_editor_property_auto_key({
-										property: m.video_editor_clip_gain_db()
-									})}
-									onclick={() => autoKeyframeStore.toggle(audioItem.id, 'volume')}>A</button
-								>
-							</span>
-							<Input
-								id={`clip-gain-${audioItem.id}`}
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="-60"
-								max="12"
-								step="0.1"
-								value={Number(linearGainToDb(valueFor(audioItem, 'volume')).toFixed(1))}
-								onchange={(event) => commitGainDb(event.currentTarget.valueAsNumber)}
-							/>
-						</div>
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							Pitch (semitones)
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="-12"
-								max="12"
-								step="1"
-								value={audioItem.audioPitchSemitones ?? 0}
-								onchange={(event) =>
-									commitPitch('audioPitchSemitones', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							Fine pitch (cents)
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="-100"
-								max="100"
-								step="1"
-								value={audioItem.audioPitchCents ?? 0}
-								onchange={(event) =>
-									commitPitch('audioPitchCents', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							{m.video_editor_clip_fade_in_seconds()}
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="0"
-								max={audioItem.durationInFrames / timelineStore.fps}
-								step="0.05"
-								value={audioItem.audioFadeIn ?? 0}
-								onchange={(event) =>
-									commitAudioFade('audioFadeIn', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]">
-							{m.video_editor_clip_fade_out_seconds()}
-							<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min="0"
-								max={audioItem.durationInFrames / timelineStore.fps}
-								step="0.05"
-								value={audioItem.audioFadeOut ?? 0}
-								onchange={(event) =>
-									commitAudioFade('audioFadeOut', event.currentTarget.valueAsNumber)}
-							/>
-						</label>
-					</div>
 					<details class="mt-2 rounded-md border border-white/10 bg-black/10">
 						<summary
 							class="flex min-h-8 cursor-pointer list-none items-center justify-between px-2 text-[10px] text-white/70 focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"

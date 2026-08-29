@@ -148,15 +148,17 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		expect(timelineStore.itemById.get('audio-item')?.volume).toBeCloseTo(0.501187, 5);
 		expect(timelineStore.itemById.get('video-item')?.volume).toBeUndefined();
 
-		const semitones = screen.getByRole('spinbutton', { name: 'Pitch (semitones)' }).query();
-		const cents = screen.getByRole('spinbutton', { name: 'Fine pitch (cents)' }).query();
+		const semitones = screen.getByRole('textbox', { name: 'Semitones' }).query();
+		const cents = screen.getByRole('textbox', { name: 'Cents' }).query();
 		if (!(semitones instanceof HTMLInputElement) || !(cents instanceof HTMLInputElement)) {
 			throw new Error('Pitch controls did not render.');
 		}
 		semitones.value = '3';
-		semitones.dispatchEvent(new Event('change', { bubbles: true }));
+		semitones.dispatchEvent(new InputEvent('input', { bubbles: true, data: '3' }));
+		semitones.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		cents.value = '25';
-		cents.dispatchEvent(new Event('change', { bubbles: true }));
+		cents.dispatchEvent(new InputEvent('input', { bubbles: true, data: '25' }));
+		cents.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		expect(timelineStore.itemById.get('audio-item')).toMatchObject({
 			audioPitchSemitones: 3,
 			audioPitchCents: 25
@@ -233,7 +235,10 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		expect(timelineStore.itemById.get('video-item-2')?.durationInFrames).toBe(180);
 
 		commandHistory.clearHistory();
-		const fadeIn = screen.getByRole('textbox', { name: 'Fade in (s)' }).query();
+		const fadeIn = screen
+			.getByTestId('clip-playback-section')
+			.getByRole('textbox', { name: 'Fade in (s)' })
+			.query();
 		if (!(fadeIn instanceof HTMLInputElement)) throw new Error('Fade control did not render.');
 		expect(fadeIn.placeholder).toBe('Mixed');
 		fadeIn.value = '1';
@@ -452,6 +457,61 @@ describe('ClipPropertiesPanel crop workflow', () => {
 		expect(resolveAnimatedItemAt(timelineStore.itemById.get('video-item')!, 0).crop?.left).toBe(
 			0.25
 		);
+	});
+});
+
+describe('ClipPropertiesPanel audio workflow', () => {
+	it('edits selected audio clips together with mixed values and one undo entry', async () => {
+		const secondAudio: TimelineItem = {
+			id: 'audio-item-2',
+			trackId: 'audio',
+			from: 0,
+			durationInFrames: 90,
+			label: 'Room tone',
+			type: 'audio',
+			volume: 0.5,
+			audioFadeIn: 0.5
+		};
+		timelineStore.setAll({
+			tracks,
+			items: [...items, secondAudio],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'audio-item',
+			itemIds: ['audio-item', 'audio-item-2'],
+			onedit
+		});
+		const panel = screen.getByTestId('clip-audio-core-section');
+		const gain = panel.getByRole('textbox', { name: 'Gain (dB)' }).query();
+		if (!(gain instanceof HTMLInputElement)) throw new Error('Gain control did not render.');
+		expect(gain.placeholder).toBe('Mixed');
+		gain.value = '-6';
+		gain.dispatchEvent(new InputEvent('input', { bubbles: true, data: '-6' }));
+		gain.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('audio-item')?.volume).toBeCloseTo(0.501187, 5);
+		expect(timelineStore.itemById.get('audio-item-2')?.volume).toBeCloseTo(0.501187, 5);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('audio-item')?.volume).toBeUndefined();
+		expect(timelineStore.itemById.get('audio-item-2')?.volume).toBe(0.5);
+
+		commandHistory.clearHistory();
+		const fade = panel.getByRole('textbox', { name: 'Fade in (s)' }).query();
+		if (!(fade instanceof HTMLInputElement)) throw new Error('Audio fade control did not render.');
+		expect(fade.placeholder).toBe('Mixed');
+		fade.value = '1';
+		fade.dispatchEvent(new InputEvent('input', { bubbles: true, data: '1' }));
+		fade.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('audio-item')?.audioFadeIn).toBe(1);
+		expect(timelineStore.itemById.get('audio-item-2')?.audioFadeIn).toBe(1);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		panel.query().style.width = '288px';
+		expect(panel.query().scrollWidth).toBeLessThanOrEqual(288);
 	});
 });
 
