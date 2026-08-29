@@ -632,6 +632,30 @@
       "source_refs": ["frontend/src/lib/video-editor/preview/playback-settings.svelte.ts"]
     },
     {
+      "id": "local-video-color-keyframe-view",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "timeline:keyframeEditorMode",
+      "purpose": "Keeps the user's Color keyframe editor in the dope-sheet or graph view they last selected.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "Until the view is replaced or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/components/color-keyframe-panel.svelte"]
+    },
+    {
+      "id": "local-video-color-scope-view",
+      "technology": "localStorage",
+      "owner": "OpenPost Video Editor",
+      "identifier_kind": "exact",
+      "identifier": "timeline:scopes:stackLayout",
+      "purpose": "Keeps the user's selected Color scope, such as RGB Parade, waveform, vectorscope, or histogram.",
+      "scope": "Application origin and current browser profile.",
+      "duration": "Until the scope is replaced or site data is cleared.",
+      "necessity": "functional",
+      "source_refs": ["frontend/src/lib/video-editor/components/color-scopes.svelte"]
+    },
+    {
       "id": "local-video-grade-presets",
       "technology": "localStorage",
       "owner": "OpenPost Video Editor",
