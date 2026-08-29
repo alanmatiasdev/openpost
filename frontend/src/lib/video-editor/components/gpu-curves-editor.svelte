@@ -423,6 +423,7 @@
 		<svg
 			bind:this={svg}
 			viewBox={`0 0 ${SIZE} ${SIZE}`}
+			preserveAspectRatio={compact ? 'none' : 'xMidYMid meet'}
 			class={gpuEffect.enabled
 				? 'size-full touch-none select-none'
 				: 'pointer-events-none size-full opacity-55'}

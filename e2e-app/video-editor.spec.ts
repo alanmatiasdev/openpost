@@ -206,6 +206,7 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(populatedColorDock.getByRole("textbox", { name: "Saturation" })).toHaveValue(
     "50.00",
   );
+  await expect(page.getByRole("button", { name: "Live color scope" })).toContainText("RGB Parade");
   await expect(
     populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
   ).toBeVisible();

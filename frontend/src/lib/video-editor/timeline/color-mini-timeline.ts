@@ -3,7 +3,7 @@ import type { TimelineItem, TimelineMarker } from '$lib/video-editor/project/typ
 const MIN_OVERVIEW_SECONDS = 10;
 
 export function isColorTimelineItem(item: TimelineItem): boolean {
-	return item.type !== 'audio' && item.type !== 'controller';
+	return item.type !== 'audio' && item.type !== 'subtitle' && item.type !== 'controller';
 }
 
 export function resolveColorTimelineMaxFrame(options: {

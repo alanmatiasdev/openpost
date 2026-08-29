@@ -19,18 +19,18 @@ function item(type: TimelineItem['type']): TimelineItem {
 }
 
 describe('color mini timeline', () => {
-	it('keeps every rendering item while excluding audio and controllers', () => {
+	it('keeps visual grading items while excluding audio, subtitles, and controllers', () => {
 		const visualTypes: TimelineItem['type'][] = [
 			'video',
 			'image',
 			'text',
-			'subtitle',
 			'shape',
 			'adjustment',
 			'composition'
 		];
 		expect(visualTypes.filter((type) => isColorTimelineItem(item(type)))).toEqual(visualTypes);
 		expect(isColorTimelineItem(item('audio'))).toBe(false);
+		expect(isColorTimelineItem(item('subtitle'))).toBe(false);
 		expect(isColorTimelineItem(item('controller'))).toBe(false);
 	});
 

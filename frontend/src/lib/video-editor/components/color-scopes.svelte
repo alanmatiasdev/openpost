@@ -15,6 +15,8 @@
 		b: 3,
 		luma: 4
 	} as const satisfies Readonly<Record<ScopeViewMode, number>>;
+	const SCOPE_STORAGE_KEY = 'timeline:scopes:stackLayout';
+	const SCOPE_OPTIONS: readonly ColorScope[] = ['waveform', 'parade', 'vectorscope', 'histogram'];
 	interface CanvasShape {
 		width: number;
 		height: number;
@@ -38,12 +40,20 @@
 	let gpuReady = $state(false);
 	let gpuFailure = $state('');
 	let canvasRevision = $state(0);
-	let scope = $state<ColorScope>('histogram');
+	let scope = $state<ColorScope>('parade');
 	let viewMode = $state<ScopeViewMode>('rgb');
+	let scopeStorageReady = $state(false);
 	const active = $derived(scopeSamples.current?.itemId === itemId ? scopeSamples.current : null);
 	const showViewModes = $derived(gpuReady && (scope === 'histogram' || scope === 'waveform'));
 
 	onMount(() => {
+		try {
+			const saved = localStorage.getItem(SCOPE_STORAGE_KEY);
+			if (SCOPE_OPTIONS.includes(saved as ColorScope)) scope = saved as ColorScope;
+		} catch {
+			// Storage is optional; RGB Parade remains the source-defined default.
+		}
+		scopeStorageReady = true;
 		if (!itemId) return;
 		let disposed = false;
 		let created: ScopeRenderer | null = null;
@@ -73,6 +83,15 @@
 			created?.destroy();
 			renderer = null;
 		};
+	});
+
+	$effect(() => {
+		if (!scopeStorageReady) return;
+		try {
+			localStorage.setItem(SCOPE_STORAGE_KEY, scope);
+		} catch {
+			// The selected scope still works for this session when storage is unavailable.
+		}
 	});
 
 	$effect(() => {

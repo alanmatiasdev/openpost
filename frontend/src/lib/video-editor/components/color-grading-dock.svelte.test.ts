@@ -79,6 +79,11 @@ test('fits primary wheels, curves, effects, and keyframes into one grading dock'
 	expect(screen.getByRole('slider', { name: /color wheel$/ }).elements()).toHaveLength(4);
 	expect(document.querySelector('[data-color-scope-canvas]')).toBeNull();
 	expect(screen.getByText('Color workspace', { exact: true }).elements()).toHaveLength(1);
+	const navigator = document.querySelector<HTMLElement>('[data-color-mini-timeline]');
+	const filmTile = document.querySelector<HTMLElement>('[data-color-film-tile]');
+	expect(navigator?.getBoundingClientRect().height).toBe(212);
+	expect(filmTile?.getBoundingClientRect().width).toBe(118);
+	expect(filmTile?.getBoundingClientRect().height).toBe(80);
 });
 
 test('selects clips and markers and commits only the final overview scrub frame', async () => {
@@ -117,9 +122,9 @@ test('selects clips and markers and commits only the final overview scrub frame'
 		left: 100,
 		right: 600,
 		top: 0,
-		bottom: 98,
+		bottom: 120,
 		width: 500,
-		height: 98,
+		height: 120,
 		x: 100,
 		y: 0,
 		toJSON: () => ({})
@@ -129,17 +134,17 @@ test('selects clips and markers and commits only the final overview scrub frame'
 	scrubSurface.dispatchEvent(
 		new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 258, pointerId: 7 })
 	);
-	expect(get(timelinePreviewScrub).frame).toBe(75);
+	expect(get(timelinePreviewScrub).frame).toBe(81);
 	expect(timelineStore.currentFrame).toBe(45);
 	scrubSurface.dispatchEvent(
 		new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: 486, pointerId: 7 })
 	);
-	expect(timelineStore.currentFrame).toBe(225);
+	expect(timelineStore.currentFrame).toBe(227);
 	expect(get(timelinePreviewScrub).frame).toBeNull();
 	playheadElement.dispatchEvent(
 		new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft', shiftKey: true })
 	);
-	expect(timelineStore.currentFrame).toBe(215);
+	expect(timelineStore.currentFrame).toBe(217);
 });
 
 test('uses the clip start frame and marks its live grade while the GPU tile renders', async () => {

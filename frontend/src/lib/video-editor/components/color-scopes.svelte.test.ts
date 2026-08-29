@@ -6,6 +6,7 @@ import '../../../routes/layout.css';
 import ColorScopes from './color-scopes.svelte';
 
 beforeEach(() => {
+	localStorage.removeItem('timeline:scopes:stackLayout');
 	scopeSamples.publish(
 		'clip',
 		new ImageData(
@@ -22,6 +23,17 @@ afterEach(async () => {
 });
 
 describe('ColorScopes', () => {
+	it("opens on FreeCut's RGB Parade default and remembers scope changes", async () => {
+		const screen = await render(ColorScopes, { itemId: 'clip' });
+		const picker = screen.getByRole('button', { name: 'Live color scope' });
+		await expect.element(picker).toHaveTextContent('RGB Parade');
+		await picker.click();
+		await screen.getByRole('option', { name: 'Histogram' }).click();
+		await vi.waitFor(() => {
+			expect(localStorage.getItem('timeline:scopes:stackLayout')).toBe('histogram');
+		});
+	});
+
 	it('renders every scope and keeps the grading dock fitted at 320px', async () => {
 		await page.viewport(320, 720);
 		const screen = await render(ColorScopes, { itemId: 'clip' });
