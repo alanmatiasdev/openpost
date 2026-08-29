@@ -199,11 +199,11 @@ type ListMastodonServersOutput struct {
 }
 
 type GetAuthURLInput struct {
-	Platform              string `path:"platform" doc:"Social platform (x, mastodon, bluesky, linkedin, threads, instagram, facebook, tiktok, youtube)"`
-	WorkspaceID           string `query:"workspace_id" required:"true" doc:"Workspace ID to link account to"`
-	ServerName            string `query:"server_name" doc:"Mastodon server name from config (required for mastodon)"`
-	InstanceURL           string `query:"instance_url" doc:"Mastodon instance URL to dynamically register"`
-	Intent                string `query:"intent" enum:"production,certification_test" default:"production" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+	Platform    string `path:"platform" doc:"Social platform (x, mastodon, bluesky, linkedin, threads, instagram, facebook, tiktok, youtube)"`
+	WorkspaceID string `query:"workspace_id" required:"true" doc:"Workspace ID to link account to"`
+	ServerName  string `query:"server_name" doc:"Mastodon server name from config (required for mastodon)"`
+	InstanceURL string `query:"instance_url" doc:"Mastodon instance URL to dynamically register"`
+	Intent      string `query:"intent" enum:"production,certification_test" default:"production" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 }
 
 type GetAuthURLOutput struct {
@@ -1415,10 +1415,10 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 
 type BlueskyLoginInput struct {
 	Body struct {
-		WorkspaceID           string `json:"workspace_id" doc:"Workspace ID"`
-		Handle                string `json:"handle" doc:"Bluesky handle (e.g. user.bsky.social)"`
-		AppPassword           string `json:"app_password" doc:"Bluesky app password (Settings > App Passwords)"`
-		Intent                string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
+		Handle      string `json:"handle" doc:"Bluesky handle (e.g. user.bsky.social)"`
+		AppPassword string `json:"app_password" doc:"Bluesky app password (Settings > App Passwords)"`
+		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 
@@ -1499,9 +1499,9 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 
 type DiscordWebhookLoginInput struct {
 	Body struct {
-		WorkspaceID           string `json:"workspace_id" doc:"Workspace ID"`
-		WebhookURL            string `json:"webhook_url" doc:"Discord incoming webhook URL"`
-		Intent                string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
+		WebhookURL  string `json:"webhook_url" doc:"Discord incoming webhook URL"`
+		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 

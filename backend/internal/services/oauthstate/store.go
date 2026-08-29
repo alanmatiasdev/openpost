@@ -23,11 +23,11 @@ type Store struct {
 }
 
 type Payload struct {
-	UserID                string `json:"user_id"`
-	WorkspaceID           string `json:"workspace_id"`
-	Platform              string `json:"platform"`
-	ServerName            string `json:"server_name,omitempty"`
-	ExecutionIntent       string `json:"execution_intent"`
+	UserID          string `json:"user_id"`
+	WorkspaceID     string `json:"workspace_id"`
+	Platform        string `json:"platform"`
+	ServerName      string `json:"server_name,omitempty"`
+	ExecutionIntent string `json:"execution_intent"`
 }
 
 func NewStore(db *bun.DB) *Store {
