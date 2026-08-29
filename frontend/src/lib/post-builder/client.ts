@@ -7,6 +7,14 @@ export interface PublicationBuildMediaPlan {
 	source_ref?: string;
 }
 
+export interface PublicationBuildDirection {
+	outcome?: string;
+	audience?: string;
+	angle?: string;
+	tone_adjustment?: string;
+	media_preference?: string;
+}
+
 export interface PublicationBuildAngle {
 	id: string;
 	label: string;
@@ -17,6 +25,7 @@ export interface PublicationBuildAngle {
 	desired_reaction: string;
 	evidence: string;
 	media: PublicationBuildMediaPlan;
+	build_direction: PublicationBuildDirection;
 }
 
 export interface PublicationOpportunity {
@@ -52,13 +61,7 @@ export interface PublicationBuildRequest {
 	context_notes?: string;
 	context_may_publish?: boolean;
 	assets?: PublicationBuildAsset[];
-	direction?: {
-		outcome?: string;
-		audience?: string;
-		angle?: string;
-		tone_adjustment?: string;
-		media_preference?: string;
-	};
+	direction?: PublicationBuildDirection;
 	destination_policy?: 'recommend' | 'require_all';
 }
 

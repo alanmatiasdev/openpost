@@ -7,9 +7,10 @@
 		phases: AIGenerationPhase[];
 		copy: AIGenerationProgressCopy;
 		message?: string;
+		active?: boolean;
 	}
 
-	let { phases, copy, message = '' }: Props = $props();
+	let { phases, copy, message = '', active = false }: Props = $props();
 
 	const uid = $props.id();
 </script>
@@ -18,14 +19,16 @@
 	class="mx-auto w-full max-w-2xl py-4 sm:py-8"
 	aria-labelledby={`${uid}-heading`}
 	aria-live="polite"
-	aria-busy="true"
+	aria-busy={active}
 	data-testid="ai-generation-progress"
 >
 	<div class="space-y-1 text-center">
-		<LoaderIcon
-			class="mx-auto mb-3 size-5 animate-spin text-primary motion-reduce:animate-none"
-			aria-hidden="true"
-		/>
+		{#if active}
+			<LoaderIcon
+				class="mx-auto mb-3 size-5 animate-spin text-primary motion-reduce:animate-none"
+				aria-hidden="true"
+			/>
+		{/if}
 		<h2 id={`${uid}-heading`} class="text-base font-semibold tracking-tight">
 			{copy.heading}
 		</h2>

@@ -25,6 +25,11 @@
 	}: Props = $props();
 
 	const uid = $props.id();
+
+	function selectAngle(id: string): void {
+		const angle = angles.find((candidate) => candidate.id === id);
+		if (angle && angle.id !== selectedId) onSelect(angle);
+	}
 </script>
 
 <section class="space-y-4" aria-labelledby={`${uid}-heading`}>
@@ -58,12 +63,10 @@
 		/>
 	{:else}
 		<RadioGroup.Root
-			value={selectedId}
-			onValueChange={(value) => {
-				const angle = angles.find((candidate) => candidate.id === value);
-				if (angle) onSelect(angle);
-			}}
 			class="grid gap-3 md:grid-cols-2"
+			value={selectedId}
+			onValueChange={selectAngle}
+			{disabled}
 			aria-labelledby={`${uid}-heading`}
 			data-testid="ai-angle-grid"
 		>
@@ -74,6 +77,7 @@
 					class="peer sr-only"
 					value={angle.id}
 					{disabled}
+					aria-label={angle.title}
 				/>
 				<label
 					for={`${uid}-angle-${index}`}

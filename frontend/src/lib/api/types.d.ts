@@ -4921,6 +4921,7 @@ export interface components {
         };
         AngleOption: {
             approach: string;
+            build_direction: components["schemas"]["DirectionInput"];
             desired_reaction: string;
             evidence: string;
             hook: string;

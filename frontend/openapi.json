@@ -1274,6 +1274,9 @@
 					"approach": {
 						"type": "string"
 					},
+					"build_direction": {
+						"$ref": "#/components/schemas/DirectionInput"
+					},
 					"desired_reaction": {
 						"type": "string"
 					},
@@ -1308,7 +1311,8 @@
 					"objective",
 					"desired_reaction",
 					"evidence",
-					"media"
+					"media",
+					"build_direction"
 				],
 				"type": "object"
 			},
@@ -5229,18 +5233,23 @@
 				"additionalProperties": false,
 				"properties": {
 					"angle": {
+						"maxLength": 1500,
 						"type": "string"
 					},
 					"audience": {
+						"maxLength": 1000,
 						"type": "string"
 					},
 					"media_preference": {
+						"maxLength": 500,
 						"type": "string"
 					},
 					"outcome": {
+						"maxLength": 200,
 						"type": "string"
 					},
 					"tone_adjustment": {
+						"maxLength": 500,
 						"type": "string"
 					}
 				},

@@ -224,6 +224,7 @@
 	type ProviderSettingValue = SettingDefinition['default'];
 	type ProviderSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 	const AI_BUILD_METADATA_KEY = 'ai_publication_build';
+	const AI_OPPORTUNITY_SLOW_DELAY_MS = 8_000;
 	const aiPlatformStrategySchema = z.object({
 		account_id: z.string().min(1),
 		platform: z.string().min(1),
@@ -378,6 +379,7 @@
 	let aiCancelling = $state(false);
 	let aiObjective = $state('');
 	let aiChangeRequest = $state('');
+	let aiIdeationBrief = $state('');
 	let aiContextNotes = $state('');
 	let aiContextURLs = $state('');
 	let aiContextMayPublish = $state(false);
@@ -392,6 +394,9 @@
 	let aiGenerationIdea = '';
 	let aiBuildPublicationID = '';
 	let aiPollTimer: ReturnType<typeof setTimeout> | null = null;
+	let aiOpportunitySlowTimer: ReturnType<typeof setTimeout> | null = null;
+	let aiOpportunitySlow = $state(false);
+	let aiBuildCreateRejected = $state(false);
 	let aiRequestController: AbortController | null = null;
 	let aiMemeCandidates = $state.raw<AIMemeRecommendationCandidate[]>([]);
 	let aiMemeSelectedID = $state('');
@@ -577,6 +582,9 @@
 		buildTitle: m.compose_ai_angles_title(),
 		buildDescription: m.compose_ai_angles_description(),
 		back: m.compose_ai_back_to_ideas(),
+		dismiss: m.common_dismiss(),
+		getIdeas: m.compose_ai_get_ideas(),
+		continue: m.compose_ai_continue(),
 		findMore: m.compose_ai_find_more(),
 		findingMore: m.compose_ai_finding_more(),
 		buildDrafts: m.compose_ai_build_drafts(),
@@ -688,6 +696,12 @@
 				: aiActiveBuild?.state === 'ready'
 					? m.compose_ai_progress_ready()
 					: m.compose_ai_progress_resumable()
+	);
+	const aiGenerationActive = $derived(
+		Boolean(aiBuildPublicationID) &&
+			(aiActiveBuild === null ||
+				aiActiveBuild.state === 'queued' ||
+				aiActiveBuild.state === 'building')
 	);
 	function localizedAIObjective(objective: string): string {
 		switch (objective) {
@@ -2778,6 +2792,7 @@
 		clearSavedIndicator();
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
 		if (aiPollTimer) clearTimeout(aiPollTimer);
+		if (aiOpportunitySlowTimer) clearTimeout(aiOpportunitySlowTimer);
 		aiRequestController?.abort();
 		capabilityResolveAbortController?.abort();
 		for (const controller of captionRequests.values()) controller.abort();
@@ -3131,6 +3146,9 @@
 		aiRequestController?.abort();
 		if (aiPollTimer) clearTimeout(aiPollTimer);
 		aiPollTimer = null;
+		if (aiOpportunitySlowTimer) clearTimeout(aiOpportunitySlowTimer);
+		aiOpportunitySlowTimer = null;
+		aiOpportunitySlow = false;
 		aiMemeRequestGeneration += 1;
 		buildingPost = false;
 		aiOpportunityLoading = false;
@@ -3141,6 +3159,7 @@
 		aiAppliedResult = null;
 		aiAppliedStrategies = [];
 		aiApplyPending = false;
+		aiBuildCreateRejected = false;
 		aiBuildPublicationID = '';
 		aiVoiceName = m.compose_ai_default_voice();
 		aiVoiceProfileID = '';
@@ -4175,15 +4194,17 @@
 		idea: string,
 		angle?: PublicationBuildAngle
 	): PublicationBuildRequest {
+		const buildDirection = angle?.build_direction;
 		const request: PublicationBuildRequest = {
 			workspace_id: selectedWorkspaceId,
 			idea,
 			account_ids: [...selectedAccountIds],
 			direction: {
-				outcome: aiObjective.trim() || angle?.objective || angle?.desired_reaction,
-				angle: angle ? `${angle.thesis}\n\n${angle.approach}` : undefined,
+				outcome: aiObjective.trim() || buildDirection?.outcome,
+				audience: buildDirection?.audience,
+				angle: buildDirection?.angle,
 				tone_adjustment: aiChangeRequest.trim() || undefined,
-				media_preference: angle?.media.brief
+				media_preference: buildDirection?.media_preference
 			},
 			destination_policy: 'require_all'
 		};
@@ -4224,8 +4245,15 @@
 
 	async function loadPublicationOpportunities(findMore = false): Promise<void> {
 		if (!selectedWorkspaceId || selectedAIPlatforms().length === 0) return;
+		aiBuildCreateRejected = false;
 		aiRequestController?.abort();
-		aiRequestController = new AbortController();
+		const controller = new AbortController();
+		aiRequestController = controller;
+		if (aiOpportunitySlowTimer) clearTimeout(aiOpportunitySlowTimer);
+		aiOpportunitySlow = false;
+		aiOpportunitySlowTimer = setTimeout(() => {
+			if (aiRequestController === controller) aiOpportunitySlow = true;
+		}, AI_OPPORTUNITY_SLOW_DELAY_MS);
 		if (findMore) aiFindingMore = true;
 		else aiOpportunityLoading = true;
 		postBuilderError = '';
@@ -4233,12 +4261,12 @@
 			const result = await discoverPublicationOpportunities(
 				{
 					workspace_id: selectedWorkspaceId,
-					focus: aiContextNotes.trim() || undefined,
+					focus: aiIdeationBrief.trim() || undefined,
 					voice_profile_id: aiVoiceProfileID || undefined,
 					platforms: selectedAIPlatforms().slice(0, 5),
-					limit: 8
+					limit: 4
 				},
-				aiRequestController.signal
+				controller.signal
 			);
 			aiOpportunities = findMore
 				? [
@@ -4246,19 +4274,32 @@
 						...result.opportunities.filter(
 							(candidate) => !aiOpportunities.some((current) => current.id === candidate.id)
 						)
-					].slice(-16)
+					].slice(0, 12)
 				: result.opportunities;
 		} catch (cause) {
 			if (cause instanceof DOMException && cause.name === 'AbortError') return;
 			postBuilderError =
 				cause instanceof Error && cause.message ? cause.message : m.compose_ai_find_ideas_failed();
 		} finally {
-			aiOpportunityLoading = false;
-			aiFindingMore = false;
+			if (aiRequestController === controller) {
+				if (aiOpportunitySlowTimer) clearTimeout(aiOpportunitySlowTimer);
+				aiOpportunitySlowTimer = null;
+				aiOpportunitySlow = false;
+				aiOpportunityLoading = false;
+				aiFindingMore = false;
+			}
 		}
 	}
 
+	async function discoverPublicationIdeas(): Promise<void> {
+		aiWorkspaceStep = 'opportunities';
+		aiSelectedOpportunityID = '';
+		aiGenerationIdea = '';
+		await loadPublicationOpportunities();
+	}
+
 	async function loadPublicationAngles(idea: string): Promise<void> {
+		aiBuildCreateRejected = false;
 		aiRequestController?.abort();
 		aiRequestController = new AbortController();
 		buildingPost = true;
@@ -4272,11 +4313,9 @@
 				aiRequestController.signal
 			);
 			aiAngles = result.angles;
-			aiSelectedAngleID = result.angles.find((angle) => angle.id === 'recommended')?.id ?? '';
-			if (!aiObjective) {
-				aiObjective =
-					result.angles.find((angle) => angle.id === aiSelectedAngleID)?.objective ?? '';
-			}
+			const selectedAngle = result.angles.find((angle) => angle.id === 'recommended');
+			aiSelectedAngleID = selectedAngle?.id ?? '';
+			aiObjective = selectedAngle?.objective ?? '';
 		} catch (cause) {
 			if (cause instanceof DOMException && cause.name === 'AbortError') return;
 			postBuilderError =
@@ -4286,13 +4325,17 @@
 		}
 	}
 
-	async function selectPublicationOpportunity(opportunity: AIOpportunity): Promise<void> {
+	function selectPublicationOpportunity(opportunity: AIOpportunity): void {
 		const selected = aiOpportunities.find((candidate) => candidate.id === opportunity.id);
 		if (!selected) return;
 		aiSelectedOpportunityID = selected.id;
 		aiGenerationIdea = [selected.title, selected.hook, selected.why_now]
 			.filter(Boolean)
 			.join('\n\n');
+	}
+
+	async function continuePublicationOpportunity(): Promise<void> {
+		if (!aiSelectedOpportunityID || !aiGenerationIdea.trim()) return;
 		await loadPublicationAngles(aiGenerationIdea);
 	}
 
@@ -4313,22 +4356,20 @@
 		const workspaceID = selectedWorkspaceId;
 		aiWorkspaceOpen = true;
 		aiWorkspaceEntry = sourcePost.content.trim() ? 'build' : 'ideate';
-		aiWorkspaceStep = aiWorkspaceEntry === 'build' ? 'angles' : 'opportunities';
+		aiWorkspaceStep = aiWorkspaceEntry === 'build' ? 'angles' : 'brief';
 		aiGenerationIdea = sourcePost.content.trim();
+		if (aiWorkspaceEntry === 'ideate') aiIdeationBrief = '';
 		aiSelectedOpportunityID = '';
 		aiSelectedAngleID = '';
 		aiAngles = [];
+		aiBuildCreateRejected = false;
 		postBuilderError = '';
 		if (aiWorkspaceEntry === 'build') buildingPost = true;
-		else aiOpportunityLoading = true;
+		else aiOpportunityLoading = false;
 		await loadAIWorkspaceVoice(workspaceID);
 		if (workspaceID !== selectedWorkspaceId) return;
 		if (aiWorkspaceEntry === 'build') {
 			await loadPublicationAngles(aiGenerationIdea);
-		} else if (aiOpportunities.length === 0) {
-			await loadPublicationOpportunities();
-		} else {
-			aiOpportunityLoading = false;
 		}
 	}
 
@@ -4362,48 +4403,52 @@
 	}
 
 	async function startSelectedPublicationBuild(): Promise<void> {
+		if (buildingPost) return;
 		const angle = aiAngles.find((candidate) => candidate.id === aiSelectedAngleID);
 		if (!angle || !aiGenerationIdea.trim()) return;
 		const buildWorkspaceID = selectedWorkspaceId;
 		buildingPost = true;
 		postBuilderError = '';
+		aiBuildCreateRejected = false;
 		aiApplyPending = false;
 		aiPendingResult = null;
 		const buildPublicationID = await ensureAIBuildPublicationID(buildWorkspaceID);
 		if (!buildPublicationID) {
-			if (selectedWorkspaceId === buildWorkspaceID) buildingPost = false;
+			if (selectedWorkspaceId === buildWorkspaceID) {
+				buildingPost = false;
+				aiBuildCreateRejected = true;
+			}
 			return;
 		}
 		if (selectedWorkspaceId !== buildWorkspaceID) return;
-		aiWorkspaceStep = 'generating';
-		aiBuildPublicationID = buildPublicationID;
-		aiGenerationBaseline = composerAISnapshot();
-		const buildBaseline = aiGenerationBaseline;
+		const buildBaseline = composerAISnapshot();
 		try {
 			const build = await createPublicationBuild(
 				publicationBuildRequest(aiGenerationIdea, angle),
 				`composer-${crypto.randomUUID()}`
 			);
-			persistActivePublicationBuild(build, buildPublicationID, buildBaseline);
 			if (
 				build.workspace_id !== buildWorkspaceID ||
 				selectedWorkspaceId !== buildWorkspaceID ||
-				publicationId !== buildPublicationID ||
-				aiBuildPublicationID !== buildPublicationID
+				publicationId !== buildPublicationID
 			) {
 				return;
 			}
+			aiWorkspaceStep = 'generating';
+			aiBuildPublicationID = buildPublicationID;
+			aiGenerationBaseline = buildBaseline;
 			aiActiveBuild = build;
+			persistActivePublicationBuild(build, buildPublicationID, buildBaseline);
 			await handlePublicationBuildState(build);
 		} catch (cause) {
-			if (
-				selectedWorkspaceId !== buildWorkspaceID ||
-				publicationId !== buildPublicationID ||
-				aiBuildPublicationID !== buildPublicationID
-			) {
+			if (selectedWorkspaceId !== buildWorkspaceID || publicationId !== buildPublicationID) {
 				return;
 			}
 			buildingPost = false;
+			aiWorkspaceStep = 'angles';
+			aiBuildCreateRejected = true;
+			aiBuildPublicationID = '';
+			aiActiveBuild = null;
 			postBuilderError =
 				cause instanceof Error && cause.message ? cause.message : m.compose_ai_build_failed();
 			soundPreferences.play('error');
@@ -6312,20 +6357,28 @@
 		: m.compose_ai_destination_summary_many({ count: selectedAccounts.length })}
 	voiceSummary={m.compose_ai_writing_as({ voice: aiVoiceName })}
 	loadingOpportunities={aiOpportunityLoading}
+	opportunityLoadingMessage={aiOpportunitySlow
+		? m.compose_ai_finding_ideas_slow()
+		: m.compose_ai_finding_ideas()}
 	findingMore={aiFindingMore}
 	generating={buildingPost}
+	generationActive={aiGenerationActive}
 	cancelling={aiCancelling}
+	canCancel={aiActiveBuild?.state === 'queued' || aiActiveBuild?.state === 'building'}
 	applyPending={aiApplyPending}
 	error={postBuilderError}
-	onSelectOpportunity={(opportunity) => void selectPublicationOpportunity(opportunity)}
+	onSelectOpportunity={selectPublicationOpportunity}
 	onSelectAngle={(angle) => {
 		aiSelectedAngleID = angle.id;
 		const selected = aiAngles.find((candidate) => candidate.id === angle.id);
 		if (selected) aiObjective = selected.objective;
 	}}
+	onDiscover={() => void discoverPublicationIdeas()}
+	onContinue={() => void continuePublicationOpportunity()}
 	onFindMore={() => void loadPublicationOpportunities(true)}
 	onBack={aiWorkspaceEntry === 'ideate'
 		? () => {
+				postBuilderError = '';
 				aiWorkspaceStep = 'opportunities';
 				aiAngles = [];
 				aiSelectedAngleID = '';
@@ -6335,67 +6388,84 @@
 	onCancel={() => void cancelActivePublicationBuild()}
 	onRetry={aiActiveBuild?.state === 'failed'
 		? () => void retryActivePublicationBuild()
-		: aiWorkspaceStep === 'opportunities'
-			? () => void loadPublicationOpportunities()
-			: () => void loadPublicationAngles(aiGenerationIdea)}
+		: aiBuildCreateRejected
+			? undefined
+			: aiWorkspaceStep === 'opportunities'
+				? () => void loadPublicationOpportunities()
+				: () => void loadPublicationAngles(aiGenerationIdea)}
 	onApply={applyReadyPublicationBuild}
 	onKeepEditing={keepCurrentComposerEdits}
 	onDismissError={() => (postBuilderError = '')}
 >
 	{#snippet context()}
-		<div class="grid gap-3 rounded-lg border bg-muted/25 p-3 sm:grid-cols-2">
-			<label class="grid gap-1.5 text-xs font-medium">
-				{m.compose_ai_context_objective()}
-				<Input
-					bind:value={aiObjective}
-					placeholder={m.compose_ai_context_objective_placeholder()}
+		{#if aiWorkspaceStep === 'brief'}
+			<label class="mx-auto grid max-w-2xl gap-2 text-sm font-medium">
+				{m.compose_ai_brief()}
+				<Textarea
+					bind:value={aiIdeationBrief}
+					maxlength={1000}
+					rows={5}
+					placeholder={m.compose_ai_brief_placeholder()}
 				/>
 			</label>
-			<label class="grid gap-1.5 text-xs font-medium">
-				{m.compose_ai_context_change()}
-				<Input
-					bind:value={aiChangeRequest}
-					placeholder={m.compose_ai_context_change_placeholder()}
-				/>
-			</label>
-			<details class="sm:col-span-2">
-				<summary class="min-h-8 cursor-pointer text-xs font-medium text-muted-foreground">
-					{m.compose_ai_context_add()}
-				</summary>
-				<div class="mt-2 grid gap-3 sm:grid-cols-2">
-					<label class="grid gap-1.5 text-xs font-medium">
-						{m.compose_ai_context_notes()}
-						<Textarea
-							bind:value={aiContextNotes}
-							rows={3}
-							placeholder={m.compose_ai_context_notes_placeholder()}
-						/>
-					</label>
-					<label class="grid gap-1.5 text-xs font-medium">
-						{m.compose_ai_context_links()}
-						<Textarea
-							bind:value={aiContextURLs}
-							rows={3}
-							placeholder={m.compose_ai_context_links_placeholder()}
-						/>
-					</label>
-					<label class="flex min-h-11 items-center gap-2 text-xs sm:col-span-2">
-						<Checkbox
-							checked={aiContextMayPublish}
-							onCheckedChange={(checked) => (aiContextMayPublish = checked === true)}
-						/>
-						{m.compose_ai_context_allow_notes()}
-					</label>
-					{#if selectedAIAssets().length > 0}
-						<p class="text-xs text-muted-foreground sm:col-span-2">
-							{selectedAIAssets().length === 1
-								? m.compose_ai_context_attachment_one({ count: selectedAIAssets().length })
-								: m.compose_ai_context_attachment_many({ count: selectedAIAssets().length })}
-						</p>
-					{/if}
-				</div>
-			</details>
-		</div>
+		{:else if aiWorkspaceStep === 'angles'}
+			<div class="grid gap-3 rounded-lg border bg-muted/25 p-3 sm:grid-cols-2">
+				<label class="grid gap-1.5 text-xs font-medium">
+					{m.compose_ai_context_objective()}
+					<Input
+						bind:value={aiObjective}
+						maxlength={200}
+						placeholder={m.compose_ai_context_objective_placeholder()}
+					/>
+				</label>
+				<label class="grid gap-1.5 text-xs font-medium">
+					{m.compose_ai_context_change()}
+					<Input
+						bind:value={aiChangeRequest}
+						maxlength={500}
+						placeholder={m.compose_ai_context_change_placeholder()}
+					/>
+				</label>
+				<details class="sm:col-span-2">
+					<summary class="min-h-8 cursor-pointer text-xs font-medium text-muted-foreground">
+						{m.compose_ai_context_add()}
+					</summary>
+					<div class="mt-2 grid gap-3 sm:grid-cols-2">
+						<label class="grid gap-1.5 text-xs font-medium">
+							{m.compose_ai_context_notes()}
+							<Textarea
+								bind:value={aiContextNotes}
+								maxlength={10000}
+								rows={3}
+								placeholder={m.compose_ai_context_notes_placeholder()}
+							/>
+						</label>
+						<label class="grid gap-1.5 text-xs font-medium">
+							{m.compose_ai_context_links()}
+							<Textarea
+								bind:value={aiContextURLs}
+								rows={3}
+								placeholder={m.compose_ai_context_links_placeholder()}
+							/>
+						</label>
+						<label class="flex min-h-11 items-center gap-2 text-xs sm:col-span-2">
+							<Checkbox
+								checked={aiContextMayPublish}
+								onCheckedChange={(checked) => (aiContextMayPublish = checked === true)}
+							/>
+							{m.compose_ai_context_allow_notes()}
+						</label>
+						{#if selectedAIAssets().length > 0}
+							<p class="text-xs text-muted-foreground sm:col-span-2">
+								{selectedAIAssets().length === 1
+									? m.compose_ai_context_attachment_one({ count: selectedAIAssets().length })
+									: m.compose_ai_context_attachment_many({ count: selectedAIAssets().length })}
+							</p>
+						{/if}
+					</div>
+				</details>
+			</div>
+		{/if}
 	{/snippet}
 </AIWorkspaceDialog>
 

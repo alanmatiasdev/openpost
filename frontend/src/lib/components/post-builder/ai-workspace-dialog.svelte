@@ -32,14 +32,19 @@
 		destinationSummary?: string;
 		voiceSummary?: string;
 		loadingOpportunities?: boolean;
+		opportunityLoadingMessage?: string;
 		findingMore?: boolean;
 		generating?: boolean;
+		generationActive?: boolean;
 		cancelling?: boolean;
+		canCancel?: boolean;
 		applyPending?: boolean;
 		error?: string;
 		context?: Snippet;
 		onSelectOpportunity: (opportunity: AIOpportunity) => void;
 		onSelectAngle: (angle: AIAngle) => void;
+		onDiscover?: () => void;
+		onContinue?: () => void;
 		onFindMore?: () => void;
 		onBack?: () => void;
 		onBuild: () => void;
@@ -64,14 +69,19 @@
 		destinationSummary = '',
 		voiceSummary = '',
 		loadingOpportunities = false,
+		opportunityLoadingMessage = '',
 		findingMore = false,
 		generating = false,
+		generationActive = false,
 		cancelling = false,
+		canCancel = false,
 		applyPending = false,
 		error = '',
 		context,
 		onSelectOpportunity,
 		onSelectAngle,
+		onDiscover,
+		onContinue,
 		onFindMore,
 		onBack,
 		onBuild,
@@ -110,14 +120,20 @@
 					{/if}
 				</div>
 			</div>
-			{#if context}
-				<div class="mt-3">{@render context()}</div>
-			{/if}
 		</Dialog.Header>
 
 		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+			{#if context}
+				<div class="mb-4">{@render context()}</div>
+			{/if}
 			{#if error}
-				<InlineNotice tone="error" message={error} class="mb-4" onDismiss={onDismissError}>
+				<InlineNotice
+					tone="error"
+					message={error}
+					class="mb-4"
+					onDismiss={onRetry ? undefined : onDismissError}
+					dismissLabel={copy.dismiss}
+				>
 					{#snippet actions()}
 						{#if onRetry}
 							<Button type="button" variant="ghost" size="sm" onclick={onRetry}>
@@ -128,12 +144,13 @@
 				</InlineNotice>
 			{/if}
 
-			{#if step === 'opportunities'}
+			{#if step === 'opportunities' && !error}
 				<AIOpportunityGrid
 					{opportunities}
 					selectedId={selectedOpportunityId}
 					copy={copy.opportunities}
 					loading={loadingOpportunities}
+					loadingMessage={opportunityLoadingMessage}
 					disabled={findingMore}
 					onSelect={onSelectOpportunity}
 				/>
@@ -146,11 +163,12 @@
 					disabled={generating}
 					onSelect={onSelectAngle}
 				/>
-			{:else}
+			{:else if step === 'generating'}
 				<AIGenerationProgress
 					phases={generationPhases}
 					copy={copy.progress}
 					message={generationMessage}
+					active={generationActive}
 				/>
 			{/if}
 		</div>
@@ -163,14 +181,10 @@
 							<ArrowLeftIcon class="size-4" />
 							{copy.back}
 						</Button>
-					{/if}
-				</div>
-
-				{#if step === 'opportunities'}
-					{#if onFindMore}
+					{:else if step === 'opportunities' && !error && opportunities.length > 0 && onFindMore}
 						<Button
 							type="button"
-							variant="outline"
+							variant="ghost"
 							disabled={loadingOpportunities || findingMore}
 							onclick={onFindMore}
 							aria-busy={findingMore}
@@ -181,6 +195,30 @@
 							{findingMore ? copy.findingMore : copy.findMore}
 						</Button>
 					{/if}
+				</div>
+
+				{#if step === 'brief' && onDiscover}
+					<Button type="button" onclick={onDiscover}>{copy.getIdeas}</Button>
+				{:else if step === 'opportunities' && !error && opportunities.length > 0 && onContinue}
+					<Button
+						type="button"
+						disabled={!selectedOpportunityId || loadingOpportunities || findingMore}
+						onclick={onContinue}
+					>
+						{copy.continue}
+					</Button>
+				{:else if step === 'opportunities' && !error && opportunities.length === 0 && onFindMore}
+					<Button
+						type="button"
+						disabled={loadingOpportunities || findingMore}
+						onclick={onFindMore}
+						aria-busy={loadingOpportunities || findingMore}
+					>
+						{#if loadingOpportunities || findingMore}<LoaderIcon
+								class="size-4 animate-spin motion-reduce:animate-none"
+							/>{/if}
+						{findingMore ? copy.findingMore : copy.retry}
+					</Button>
 				{:else if step === 'angles'}
 					<Button type="button" disabled={!canBuild} onclick={onBuild} aria-busy={generating}>
 						{copy.buildDrafts}
@@ -193,7 +231,7 @@
 						{/if}
 						<Button type="button" onclick={onApply}>{copy.reviewApply}</Button>
 					</div>
-				{:else if onCancel}
+				{:else if canCancel && onCancel}
 					<Button
 						type="button"
 						variant="outline"

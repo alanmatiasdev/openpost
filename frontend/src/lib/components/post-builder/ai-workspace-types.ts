@@ -1,6 +1,6 @@
 export type AIWorkspaceEntry = 'ideate' | 'build';
 
-export type AIWorkspaceStep = 'opportunities' | 'angles' | 'generating';
+export type AIWorkspaceStep = 'brief' | 'opportunities' | 'angles' | 'generating';
 
 export interface AIOpportunity {
 	id: string;
@@ -68,6 +68,9 @@ export interface AIWorkspaceDialogCopy {
 	buildTitle: string;
 	buildDescription: string;
 	back: string;
+	dismiss: string;
+	getIdeas: string;
+	continue: string;
 	findMore: string;
 	findingMore: string;
 	buildDrafts: string;

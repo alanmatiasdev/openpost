@@ -34,11 +34,11 @@ const (
 	maxPublicationBuildURLCharacters   = 8_192
 	maxPublicationBuildIDCharacters    = 128
 	maxPublicationBuildThreadSegments  = 10
-	maxPublicationBuildOutcome         = 200
-	maxPublicationBuildAudience        = 1_000
-	maxPublicationBuildAngle           = 1_500
-	maxPublicationBuildTone            = 500
-	maxPublicationBuildMediaPreference = 500
+	maxPublicationBuildOutcome         = publicationbuilder.MaxDirectionOutcomeCharacters
+	maxPublicationBuildAudience        = publicationbuilder.MaxDirectionAudienceCharacters
+	maxPublicationBuildAngle           = publicationbuilder.MaxDirectionAngleCharacters
+	maxPublicationBuildTone            = publicationbuilder.MaxDirectionToneCharacters
+	maxPublicationBuildMediaPreference = publicationbuilder.MaxDirectionMediaPreferenceCharacters
 	publicationBuildRequestsPerMinute  = 12
 )
 
@@ -334,7 +334,7 @@ func (h *PublicationBuildHandler) preparePublicationBuildSource(
 	if err != nil {
 		return preparedPublicationBuildSource{}, err
 	}
-	contextNotes, err := boundedBuildText(body.ContextNotes, 10_000, false, "context_notes")
+	contextNotes, err := boundedBuildText(body.ContextNotes, publicationbuilder.MaxContextNotesCharacters, true, "context_notes")
 	if err != nil {
 		return preparedPublicationBuildSource{}, err
 	}

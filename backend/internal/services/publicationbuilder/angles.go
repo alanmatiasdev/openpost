@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openpost/backend/internal/ai"
 )
@@ -39,6 +41,23 @@ type AngleInput struct {
 }
 
 type AngleOption struct {
+	ID              string         `json:"id"`
+	Label           string         `json:"label"`
+	Hook            string         `json:"hook"`
+	Thesis          string         `json:"thesis"`
+	Approach        string         `json:"approach"`
+	Objective       string         `json:"objective"`
+	DesiredReaction string         `json:"desired_reaction"`
+	Evidence        string         `json:"evidence"`
+	Media           MediaPlan      `json:"media"`
+	BuildDirection  DirectionInput `json:"build_direction"`
+}
+
+type anglePlanResult struct {
+	Angles []generatedAngleOption `json:"angles"`
+}
+
+type generatedAngleOption struct {
 	ID              string    `json:"id"`
 	Label           string    `json:"label"`
 	Hook            string    `json:"hook"`
@@ -48,10 +67,6 @@ type AngleOption struct {
 	DesiredReaction string    `json:"desired_reaction"`
 	Evidence        string    `json:"evidence"`
 	Media           MediaPlan `json:"media"`
-}
-
-type anglePlanResult struct {
-	Angles []AngleOption `json:"angles"`
 }
 
 const anglePlannerSystemPrompt = `ROLE: creative route planner
@@ -114,10 +129,23 @@ func (service *Service) PlanAngles(ctx context.Context, input AngleInput) ([]Ang
 	if err := validateAngleOptions(result.Angles); err != nil {
 		return nil, fmt.Errorf("validate publication angles: %w", err)
 	}
-	return result.Angles, nil
+	angles := make([]AngleOption, 0, len(result.Angles))
+	for _, generated := range result.Angles {
+		direction, err := generated.buildDirection()
+		if err != nil {
+			return nil, fmt.Errorf("validate publication angle %q: %w", generated.ID, err)
+		}
+		angles = append(angles, AngleOption{
+			ID: generated.ID, Label: generated.Label, Hook: generated.Hook,
+			Thesis: generated.Thesis, Approach: generated.Approach,
+			Objective: generated.Objective, DesiredReaction: generated.DesiredReaction,
+			Evidence: generated.Evidence, Media: generated.Media, BuildDirection: direction,
+		})
+	}
+	return angles, nil
 }
 
-func validateAngleOptions(angles []AngleOption) error {
+func validateAngleOptions(angles []generatedAngleOption) error {
 	if len(angles) != len(requiredAngleIDs) {
 		return fmt.Errorf("expected %d angles", len(requiredAngleIDs))
 	}
@@ -137,8 +165,42 @@ func validateAngleOptions(angles []AngleOption) error {
 		if strings.TrimSpace(angle.Media.Treatment) == "" || strings.TrimSpace(angle.Media.Role) == "" || strings.TrimSpace(angle.Media.Brief) == "" {
 			return fmt.Errorf("angle %q requires a complete media plan", angle.ID)
 		}
+		if utf8.RuneCountInString(angle.Thesis) > 700 || utf8.RuneCountInString(angle.Approach) > 700 {
+			return fmt.Errorf("angle %q exceeds the build direction limit", angle.ID)
+		}
+		if utf8.RuneCountInString(angle.Media.Brief) > MaxDirectionMediaPreferenceCharacters {
+			return fmt.Errorf("angle %q media brief exceeds the build direction limit", angle.ID)
+		}
 	}
 	return nil
+}
+
+func (angle generatedAngleOption) buildDirection() (DirectionInput, error) {
+	direction := DirectionInput{
+		Outcome:         strings.Join(strings.Fields(angle.Objective), " "),
+		Angle:           strings.Join(strings.Fields(angle.Thesis+" "+angle.Approach), " "),
+		MediaPreference: strings.Join(strings.Fields(angle.Media.Brief), " "),
+	}
+	for _, bounded := range []struct {
+		label string
+		value string
+		max   int
+	}{
+		{"outcome", direction.Outcome, MaxDirectionOutcomeCharacters},
+		{"angle", direction.Angle, MaxDirectionAngleCharacters},
+		{"media_preference", direction.MediaPreference, MaxDirectionMediaPreferenceCharacters},
+	} {
+		if bounded.value == "" {
+			return DirectionInput{}, fmt.Errorf("%s is required", bounded.label)
+		}
+		if utf8.RuneCountInString(bounded.value) > bounded.max {
+			return DirectionInput{}, fmt.Errorf("%s exceeds its safe text limit", bounded.label)
+		}
+		if strings.ContainsFunc(bounded.value, unicode.IsControl) {
+			return DirectionInput{}, fmt.Errorf("%s contains unsupported control characters", bounded.label)
+		}
+	}
+	return direction, nil
 }
 
 func anglePlanResponseSchema() *ai.JSONSchema {
@@ -151,7 +213,7 @@ func anglePlanResponseSchema() *ai.JSONSchema {
 		"properties": map[string]any{
 			"treatment":  stringField(80),
 			"role":       stringField(80),
-			"brief":      stringField(800),
+			"brief":      stringField(MaxDirectionMediaPreferenceCharacters),
 			"source_ref": map[string]any{"type": "string", "maxLength": 160},
 		},
 		"required": []string{"treatment", "role", "brief", "source_ref"},
@@ -163,8 +225,8 @@ func anglePlanResponseSchema() *ai.JSONSchema {
 			"id":               map[string]any{"type": "string", "enum": requiredAngleIDs},
 			"label":            stringField(80),
 			"hook":             stringField(500),
-			"thesis":           stringField(1_200),
-			"approach":         stringField(1_200),
+			"thesis":           stringField(700),
+			"approach":         stringField(700),
 			"objective":        stringField(120),
 			"desired_reaction": stringField(160),
 			"evidence":         map[string]any{"type": "string", "maxLength": 800},

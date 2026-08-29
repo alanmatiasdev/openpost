@@ -6,9 +6,9 @@ OpenPost keeps the existing composer as the only editing and review surface. AI 
 
 ## User flow
 
-1. An empty composer shows `Ideate`. It opens a large workspace with eight ranked ideas tailored to the selected destinations and default Workspace voice.
+1. An empty composer shows `Ideate`. It opens with one optional brief and an explicit `Get ideas` action. OpenPost then shows four ranked ideas tailored to the brief, selected destinations, and default Workspace voice. `Find more` adds another bounded set on request.
 2. A composer with text shows `Build with AI`. It opens five selectable directions: keep the current angle, strongest recommendation, evidence-led, personal or opinion-led, and contrarian or unexpected.
-3. Choosing an idea leads to the same direction grid. Choosing a card does not mutate the composer. The explicit `Build` action starts generation.
+3. Choosing an idea only selects it. `Continue` opens the direction grid. Choosing a direction does not mutate the composer. The explicit `Build` action submits the server-provided, bounded build direction and starts generation only after the build is accepted.
 4. OpenPost returns to the composer with one canonical draft and account-specific Renditions. The user edits the result in place, can switch destination tabs, restore the original, or collapse an earned thread into one post.
 5. The applied result shows a compact strategy summary for each destination, including the objective, format, media recommendation, and any safety or basic-adaptation warning.
 
@@ -28,7 +28,7 @@ Every direction recommends a concrete media job or explicitly recommends no medi
 
 ## Durable behavior
 
-Publication Builds persist in the Workspace and run through the durable job queue. The composer stores the active build ID, resumes it after reload, and continues polling when the workspace closes. Users can cancel a running build or retry a failed one.
+Publication Builds persist in the Workspace and run through the durable job queue. The composer stores an accepted build ID, resumes it after reload, and continues polling when the workspace closes. Users can cancel an accepted queued or running build or retry a failed one. A rejected create request stays on direction selection and never appears as a running build.
 
 Applying a result is conflict-safe. If the composer changed after generation began, OpenPost does not overwrite it and instead offers `Review and apply` or `Keep my edits`. Creating a Publication from a ready build uses the existing idempotent Publication creation boundary and validates publishable media in the same transaction.
 
@@ -38,6 +38,6 @@ Each Workspace receives a default voice profile. The workspace shows `Writing as
 
 ## Verification
 
-- Backend tests cover migrations, Workspace isolation, source handling, native and basic platform policies, durable job state, retries, fencing, cancellation, build application, and idempotent Publication creation.
-- Frontend tests cover result application, media preservation, account-specific Renditions, thread shape, meme previews, and Meme Maker handoff.
+- Backend tests cover migrations, Workspace isolation, bounded build directions, multiline source handling, native and basic platform policies, durable job state, retries, fencing, cancellation, build application, and idempotent Publication creation.
+- Frontend tests cover explicit idea continuation, create-rejection presentation, result application, media preservation, account-specific Renditions, thread shape, meme previews, and Meme Maker handoff.
 - UI acceptance covers desktop and phone widths, keyboard focus, reduced motion, dark mode, loading, empty, failure, conflict, and resumed-build states.

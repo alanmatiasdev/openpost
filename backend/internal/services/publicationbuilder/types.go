@@ -7,14 +7,21 @@ type DestinationPolicy string
 const (
 	DestinationPolicyRecommend  DestinationPolicy = "recommend"
 	DestinationPolicyRequireAll DestinationPolicy = "require_all"
+
+	MaxDirectionOutcomeCharacters         = 200
+	MaxDirectionAudienceCharacters        = 1_000
+	MaxDirectionAngleCharacters           = 1_500
+	MaxDirectionToneCharacters            = 500
+	MaxDirectionMediaPreferenceCharacters = 500
+	MaxContextNotesCharacters             = 10_000
 )
 
 type DirectionInput struct {
-	Outcome         string `json:"outcome,omitempty"`
-	Audience        string `json:"audience,omitempty"`
-	Angle           string `json:"angle,omitempty"`
-	ToneAdjustment  string `json:"tone_adjustment,omitempty"`
-	MediaPreference string `json:"media_preference,omitempty"`
+	Outcome         string `json:"outcome,omitempty" maxLength:"200"`
+	Audience        string `json:"audience,omitempty" maxLength:"1000"`
+	Angle           string `json:"angle,omitempty" maxLength:"1500"`
+	ToneAdjustment  string `json:"tone_adjustment,omitempty" maxLength:"500"`
+	MediaPreference string `json:"media_preference,omitempty" maxLength:"500"`
 }
 
 type VoiceDefinition struct {

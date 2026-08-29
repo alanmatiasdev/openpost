@@ -353,6 +353,22 @@ func TestPublicationBuildCreateStoresReferencesWithoutFetchingThem(t *testing.T)
 	require.Equal(t, http.StatusBadRequest, foreign.Code, foreign.Body.String())
 }
 
+func TestPublicationBuildCreateAcceptsMultilineContextNotes(t *testing.T) {
+	server := newPublicationBuildTestServer(t)
+	contextNotes := "What changed:\n- Removed the setup step\n- Kept the existing workflow"
+
+	response := server.request(t, http.MethodPost, "/api/v1/publication-builds", publicationBuildRequest(map[string]any{
+		"context_notes":       contextNotes,
+		"context_may_publish": true,
+	}), "multiline-context-notes", "web-token")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	build := decodePublicationBuild(t, response)
+	require.Equal(t, []publicationbuilder.SourceMaterial{{
+		ID: "context:notes", Kind: "text", Label: "Additional context", Text: contextNotes, Publishable: true,
+	}}, build.Input.Sources)
+}
+
 func TestPublicationBuildGetRequiresCreatorOwnership(t *testing.T) {
 	server := newPublicationBuildTestServer(t)
 	created := server.request(
