@@ -7,6 +7,7 @@
 	import Columns2Icon from '@lucide/svelte/icons/columns-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import CircleOffIcon from '@lucide/svelte/icons/circle-off';
+	import LayersIcon from '@lucide/svelte/icons/layers';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
@@ -49,8 +50,14 @@
 	let {
 		itemId,
 		itemIds = [],
-		onedit
-	}: { itemId: string | null; itemIds?: string[]; onedit: () => void } = $props();
+		onedit,
+		oncreateadjustment
+	}: {
+		itemId: string | null;
+		itemIds?: string[];
+		onedit: () => void;
+		oncreateadjustment?: () => void;
+	} = $props();
 	let presets = $state<ColorGradePreset[]>([]);
 	let selectedPresetId = $state('');
 	let presetName = $state('');
@@ -292,25 +299,36 @@
 			{/if}
 
 			<div
-				class="mt-1 grid grid-cols-3 gap-1"
+				class="mt-1 flex flex-wrap gap-1"
 				role="group"
 				aria-label={m.video_editor_color_balance()}
 			>
-				<button type="button" class="color-tool" disabled={grade.length === 0} onclick={copyGrade}>
-					<CopyIcon class="size-3.5" /><span class="sr-only"
-						>{m.video_editor_color_copy_grade()}</span
-					>
+				<button
+					type="button"
+					class="color-tool min-w-24 flex-1"
+					disabled={grade.length === 0}
+					onclick={copyGrade}
+				>
+					<CopyIcon class="size-3.5" />{m.video_editor_color_copy_grade()}
 				</button>
 				<button
 					type="button"
-					class="color-tool"
+					class="color-tool min-w-24 flex-1"
 					disabled={!colorPreviewStore.gradeClipboard?.length}
 					onclick={pasteGrade}
 				>
-					<ClipboardPasteIcon class="size-3.5" /><span class="sr-only"
-						>{m.video_editor_color_paste_grade()}</span
-					>
+					<ClipboardPasteIcon class="size-3.5" />{m.video_editor_color_paste_grade()}
 				</button>
+				{#if oncreateadjustment}
+					<button
+						type="button"
+						class="color-tool min-w-28 flex-1"
+						title={m.video_editor_adjustment_layer_hint()}
+						onclick={oncreateadjustment}
+					>
+						<LayersIcon class="size-3.5" />{m.video_editor_adjustment_layer()}
+					</button>
+				{/if}
 				<details class="relative min-w-0">
 					<summary
 						class="color-tool cursor-pointer list-none"

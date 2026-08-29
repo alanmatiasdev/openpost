@@ -1930,6 +1930,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						itemId={selectedSupportsEffects ? selectedItemId : null}
 						itemIds={selectedItemIds}
 						onselectitem={handleSelectItem}
+						oncreateadjustment={handleAddAdjustmentLayer}
 						onedit={() => editorSession.scheduleAutosave()}
 					/>
 				{/if}

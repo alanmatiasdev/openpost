@@ -68,6 +68,26 @@ describe('ColorScopes', () => {
 		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
 	});
 
+	it('keeps the source-defined measurement guides visible across scope renderers', async () => {
+		const screen = await render(ColorScopes, { itemId: 'clip' });
+		const picker = screen.getByRole('button', { name: 'Live color scope' });
+
+		await expect.element(screen.getByText('R', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('G', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('B', { exact: true })).toBeVisible();
+
+		await picker.click();
+		await screen.getByRole('option', { name: 'Histogram' }).click();
+		await expect.element(screen.getByText('255', { exact: true })).toBeVisible();
+
+		await picker.click();
+		await screen.getByRole('option', { name: 'Vectorscope' }).click();
+		await expect.element(screen.getByText('skin', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('Mg', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('Cy', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('Yl', { exact: true })).toBeVisible();
+	});
+
 	it('exposes the FreeCut channel modes when WebGPU is active', async () => {
 		const screen = await render(ColorScopes, { itemId: 'clip' });
 		const section = screen.container.querySelector<HTMLElement>('[data-scope-backend]');

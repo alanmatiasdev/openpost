@@ -155,3 +155,30 @@ test('uses Resolve display units for dock parameters and resets the stored grade
 	expect(onedit).toHaveBeenCalledTimes(3);
 	expect(commandHistory.undoStack).toHaveLength(3);
 });
+
+test('resets, bypasses, and removes the wheel grade from the panel header', async () => {
+	const onedit = vi.fn();
+	const screen = await render(ColorPrimaryControls, { itemId: item.id, onedit });
+	const wheel = screen.getByRole('slider', { name: 'Lift color wheel' });
+	wheel.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+	await vi.waitFor(() =>
+		expect(screen.getByRole('button', { name: 'Disable effect' })).toBeEnabled()
+	);
+
+	await screen.getByRole('button', { name: 'Reset effect to defaults' }).click();
+	let effect = timelineStore.itemById.get(item.id)?.effects?.[0];
+	expect(effect?.type === 'gpu' ? effect.params.shadowsAmount : null).toBe(0);
+
+	await screen.getByRole('button', { name: 'Disable effect' }).click();
+	effect = timelineStore.itemById.get(item.id)?.effects?.[0];
+	expect(effect?.enabled).toBe(false);
+	await expect.element(screen.getByRole('button', { name: 'Enable effect' })).toBeVisible();
+	wheel.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+	effect = timelineStore.itemById.get(item.id)?.effects?.[0];
+	expect(effect?.type === 'gpu' ? effect.params.shadowsAmount : null).toBe(0);
+
+	await screen.getByRole('button', { name: 'Remove effect' }).click();
+	expect(timelineStore.itemById.get(item.id)?.effects).toBeUndefined();
+	expect(onedit).toHaveBeenCalledTimes(4);
+	expect(commandHistory.undoStack).toHaveLength(4);
+});

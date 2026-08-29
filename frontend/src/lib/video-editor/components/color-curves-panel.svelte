@@ -6,6 +6,7 @@
 	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { upsertGpuEffectParamsOnItems } from '$lib/video-editor/timeline/actions/effects';
+	import ColorEffectHeader from './color-effect-header.svelte';
 	import GpuCurvesEditor from './gpu-curves-editor.svelte';
 
 	const EFFECT_ID = 'gpu-curves';
@@ -65,10 +66,14 @@
 	class="flex h-full min-h-0 flex-col"
 	aria-label={m['video_editor_gpu_effect_gpu-curves']()}
 >
-	<header class="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
-		<h3 class="text-xs font-semibold">{m['video_editor_gpu_effect_gpu-curves']()}</h3>
-		<span class="font-mono text-[9px] tracking-wide text-white/35">RGB</span>
-	</header>
+	<ColorEffectHeader
+		{itemId}
+		{itemIds}
+		effectId={EFFECT_ID}
+		label={m['video_editor_gpu_effect_gpu-curves']()}
+		badge="RGB"
+		{onedit}
+	/>
 	<div class="min-h-0 flex-1 overflow-auto p-2">
 		<GpuCurvesEditor compact gpuEffect={displayEffect} ondraft={draft} oncommit={commit} />
 	</div>

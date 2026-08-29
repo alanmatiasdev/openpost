@@ -5,6 +5,7 @@
 	import { drawCpuScope, type ColorScope } from '$lib/video-editor/effects/scope-cpu-renderer';
 	import { ScopeRenderer } from '$lib/video-editor/effects/gpu-scopes';
 	import { scopeSamples, type ScopeSample } from '$lib/video-editor/effects/scope-samples.svelte';
+	import ColorScopeOverlay from './color-scope-overlay.svelte';
 
 	type ScopeViewMode = 'rgb' | 'r' | 'g' | 'b' | 'luma';
 
@@ -253,25 +254,28 @@
 		</div>
 	{/if}
 
-	{#if gpuReady}
-		<canvas
-			bind:this={gpuCanvas}
-			data-color-scope-canvas
-			class="min-h-0 rounded bg-black {embedded ? 'flex-1 object-contain' : ''} {canvasClass(
-				scope
-			)}"
-			aria-label={m.video_editor_scope_live()}
-		></canvas>
-	{:else}
-		<canvas
-			bind:this={cpuCanvas}
-			data-color-scope-canvas
-			class="min-h-0 rounded bg-black {embedded ? 'flex-1 object-contain' : ''} {canvasClass(
-				scope
-			)}"
-			aria-label={m.video_editor_scope_live()}
-		></canvas>
-	{/if}
+	<div
+		class="relative min-h-0 overflow-hidden rounded border border-white/10 bg-black/80 {embedded
+			? 'flex-1'
+			: ''} {canvasClass(scope)}"
+	>
+		{#if gpuReady}
+			<canvas
+				bind:this={gpuCanvas}
+				data-color-scope-canvas
+				class="size-full object-contain"
+				aria-label={m.video_editor_scope_live()}
+			></canvas>
+		{:else}
+			<canvas
+				bind:this={cpuCanvas}
+				data-color-scope-canvas
+				class="size-full object-contain"
+				aria-label={m.video_editor_scope_live()}
+			></canvas>
+		{/if}
+		<ColorScopeOverlay {scope} />
+	</div>
 </section>
 
 <style>

@@ -15,6 +15,7 @@
 	import type { ColorPickerKind } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { upsertGpuEffectParamsOnItems } from '$lib/video-editor/timeline/actions/effects';
+	import ColorEffectHeader from './color-effect-header.svelte';
 	import ScrubbableNumberInput from './scrubbable-number-input.svelte';
 
 	const EFFECT_ID = 'gpu-color-wheels';
@@ -153,6 +154,7 @@
 			(effect): effect is GpuEffect => effect.type === 'gpu' && effect.effectId === EFFECT_ID
 		)
 	);
+	const controlsEnabled = $derived(wheelEffect?.enabled !== false);
 	const targetItemIds = $derived.by(() => {
 		const requested = itemId && itemIds.includes(itemId) ? itemIds : itemId ? [itemId] : [];
 		return [...new Set(requested)].filter((id) => timelineStore.itemById.get(id)?.type !== 'audio');
@@ -188,7 +190,7 @@
 	}
 
 	function preview(updates: Record<string, number>): void {
-		if (!itemId || !wheelEffect) return;
+		if (!itemId || !wheelEffect || !controlsEnabled) return;
 		const effectIds = targetItemIds.flatMap((id) => {
 			const effect = timelineStore.itemById
 				.get(id)
@@ -201,7 +203,7 @@
 	}
 
 	function commit(updates: Record<string, number>): void {
-		if (!itemId) return;
+		if (!itemId || !controlsEnabled) return;
 		colorPreviewStore.clearEffectDraft(itemId);
 		if (upsertGpuEffectParamsOnItems(targetItemIds, EFFECT_ID, updates)) onedit();
 	}
@@ -227,7 +229,7 @@
 	}
 
 	function startWheel(event: PointerEvent, descriptor: (typeof wheelDescriptors)[number]): void {
-		if (event.button !== 0 || pointerWheel) return;
+		if (!controlsEnabled || event.button !== 0 || pointerWheel) return;
 		event.preventDefault();
 		pointerWheel = descriptor.hue;
 		event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -261,6 +263,7 @@
 		event: KeyboardEvent,
 		descriptor: (typeof wheelDescriptors)[number]
 	): void {
+		if (!controlsEnabled) return;
 		const current = wheelValue(descriptor);
 		let hue = current.hue;
 		let amount = current.amount;
@@ -286,11 +289,13 @@
 	}
 
 	function updateParameter(name: string, value: number): void {
+		if (!controlsEnabled) return;
 		parameterDrafts[name] = value;
 		preview({ [name]: value });
 	}
 
 	function commitParameter(name: string, value: number): void {
+		if (!controlsEnabled) return;
 		delete parameterDrafts[name];
 		commit({ [name]: value });
 	}
@@ -414,10 +419,14 @@
 </script>
 
 <section class="flex h-full min-h-0 flex-col" aria-label={gpuEffectLabel(definition)}>
-	<header class="flex h-8 shrink-0 items-center justify-between border-b border-white/10 px-3">
-		<h3 class="text-xs font-semibold">{gpuEffectLabel(definition)}</h3>
-		<span class="font-mono text-[9px] tracking-wide text-white/35">PRIMARIES</span>
-	</header>
+	<ColorEffectHeader
+		{itemId}
+		{itemIds}
+		effectId={EFFECT_ID}
+		label={gpuEffectLabel(definition)}
+		badge="PRIMARIES"
+		{onedit}
+	/>
 
 	<div
 		class="grid shrink-0 grid-cols-[auto_repeat(5,minmax(0,1fr))] items-center gap-x-1 border-b border-white/10 px-2 py-1.5 2xl:gap-x-3 2xl:px-4"
@@ -426,7 +435,7 @@
 			<button
 				type="button"
 				class="parameter-tool"
-				disabled={!itemId || !onautobalance}
+				disabled={!itemId || !onautobalance || !controlsEnabled}
 				title={m.video_editor_color_auto_balance()}
 				aria-label={m.video_editor_color_auto_balance()}
 				onclick={() => onautobalance?.()}
@@ -439,7 +448,7 @@
 			<button
 				type="button"
 				class="parameter-tool"
-				disabled={!itemId || !onpick}
+				disabled={!itemId || !onpick || !controlsEnabled}
 				title={m.video_editor_color_pick_white_balance()}
 				aria-label={m.video_editor_color_pick_white_balance()}
 				onclick={() => onpick?.('white-balance')}
@@ -449,7 +458,7 @@
 			<button
 				type="button"
 				class="parameter-tool"
-				disabled={!itemId || !onpick}
+				disabled={!itemId || !onpick || !controlsEnabled}
 				title={m.video_editor_color_pick_black_point()}
 				aria-label={m.video_editor_color_pick_black_point()}
 				onclick={() => onpick?.('black-point')}
@@ -464,7 +473,7 @@
 			<button
 				type="button"
 				class="parameter-tool"
-				disabled={!itemId || !onpick}
+				disabled={!itemId || !onpick || !controlsEnabled}
 				title={m.video_editor_color_pick_white_point()}
 				aria-label={m.video_editor_color_pick_white_point()}
 				onclick={() => onpick?.('white-point')}
@@ -486,6 +495,7 @@
 					<span class="parameter-label" title={gpuParamLabel(param)}>{gpuParamLabel(param)}</span>
 					<span class="flex min-w-0 flex-col items-center">
 						<ScrubbableNumberInput
+							disabled={!controlsEnabled}
 							ariaLabel={gpuParamLabel(param)}
 							value={displayParameter(name)}
 							min={range.min}
@@ -502,7 +512,8 @@
 					<button
 						type="button"
 						class="parameter-reset"
-						disabled={Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
+						disabled={!controlsEnabled ||
+							Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
 						title={`Reset ${gpuParamLabel(param)}`}
 						aria-label={`Reset ${gpuParamLabel(param)}`}
 						onclick={() => resetParameter(name)}
@@ -528,6 +539,7 @@
 					<span class="truncate text-[10px] font-semibold">{label(descriptor.level)}</span>
 					<button
 						type="button"
+						disabled={!controlsEnabled}
 						class="flex size-5 items-center justify-center rounded text-white/45 hover:bg-white/8 hover:text-white focus-visible:outline-2 focus-visible:outline-orange-400"
 						aria-label={`Reset ${label(descriptor.level)}`}
 						title={`Reset ${label(descriptor.level)}`}
@@ -543,7 +555,8 @@
 				>
 					<button
 						type="button"
-						class="color-wheel absolute inset-2 touch-none rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400"
+						disabled={!controlsEnabled}
+						class="color-wheel absolute inset-2 touch-none rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400 disabled:cursor-not-allowed disabled:opacity-45"
 						style:--wheel-hue={`${value.hue}deg`}
 						style:--wheel-amount={value.amount}
 						style:--ring-fill={`${ringFill(descriptor) * 360}deg`}
@@ -574,6 +587,7 @@
 						{#if descriptor.masterChip}
 							<span class="flex min-w-0 flex-col items-center">
 								<ScrubbableNumberInput
+									disabled={!controlsEnabled}
 									ariaLabel={`${label(descriptor.level)} master`}
 									value={displayLevel(descriptor)}
 									min={levelRange.min}
@@ -592,6 +606,7 @@
 						{#each channelIndices as channelIndex (channelIndex)}
 							<span class="flex min-w-0 flex-col items-center">
 								<ScrubbableNumberInput
+									disabled={!controlsEnabled}
 									ariaLabel={`${label(descriptor.level)} ${channelLabels[channelIndex]}`}
 									value={channels[channelIndex]}
 									min={levelRange.min - descriptor.display.scale}
@@ -608,6 +623,7 @@
 					</div>
 					<input
 						type="range"
+						disabled={!controlsEnabled}
 						class="wheel-thumb"
 						min={levelRange.min}
 						max={levelRange.max}
@@ -642,6 +658,7 @@
 					<span class="parameter-label" title={gpuParamLabel(param)}>{gpuParamLabel(param)}</span>
 					<span class="flex min-w-0 flex-col items-center">
 						<ScrubbableNumberInput
+							disabled={!controlsEnabled}
 							ariaLabel={gpuParamLabel(param)}
 							value={displayParameter(name)}
 							min={range.min}
@@ -658,7 +675,8 @@
 					<button
 						type="button"
 						class="parameter-reset"
-						disabled={Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
+						disabled={!controlsEnabled ||
+							Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
 						title={`Reset ${gpuParamLabel(param)}`}
 						aria-label={`Reset ${gpuParamLabel(param)}`}
 						onclick={() => resetParameter(name)}

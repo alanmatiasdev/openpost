@@ -10,12 +10,14 @@
 		itemId,
 		itemIds = [],
 		onedit,
-		onselectitem = () => undefined
+		onselectitem = () => undefined,
+		oncreateadjustment
 	}: {
 		itemId: string | null;
 		itemIds?: string[];
 		onedit: () => void;
 		onselectitem?: (itemId: string) => void;
+		oncreateadjustment?: () => void;
 	} = $props();
 </script>
 
@@ -32,21 +34,28 @@
 			class="grid min-h-[520px] min-w-0 grid-cols-1 overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.5fr)]"
 		>
 			<div class="min-h-0 min-w-0 overflow-hidden lg:border-r lg:border-white/10">
-				<ColorWorkspace {itemId} {itemIds} {onedit} />
+				<ColorWorkspace {itemId} {itemIds} {onedit} {oncreateadjustment} />
 			</div>
 			<div class="min-h-0 min-w-0 overflow-hidden border-t border-white/10 lg:border-t-0">
 				<ColorCurvesPanel {itemId} {itemIds} {onedit} />
 			</div>
 		</div>
 		<div
-			class="min-h-[280px] min-w-0 overflow-y-auto border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0"
+			class="flex min-h-[280px] min-w-0 flex-col overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0"
 		>
-			<EffectsPanel
-				{itemId}
-				{itemIds}
-				{onedit}
-				hiddenGpuEffectIds={['gpu-color-wheels', 'gpu-curves']}
-			/>
+			<h3
+				class="flex h-8 shrink-0 items-center border-b border-white/10 bg-white/[0.025] px-2 text-xs font-medium text-white/90"
+			>
+				{m.video_editor_effects()}
+			</h3>
+			<div class="min-h-0 flex-1 overflow-y-auto">
+				<EffectsPanel
+					{itemId}
+					{itemIds}
+					{onedit}
+					hiddenGpuEffectIds={['gpu-color-wheels', 'gpu-curves']}
+				/>
+			</div>
 		</div>
 		<div
 			class="min-h-[300px] min-w-0 overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0"

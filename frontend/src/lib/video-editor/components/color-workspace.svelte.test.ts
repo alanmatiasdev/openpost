@@ -115,4 +115,18 @@ describe('ColorWorkspace', () => {
 		expect(JSON.stringify(timelineStore.items)).toBe(before);
 		expect(commandHistory.undoStack).toHaveLength(0);
 	});
+
+	it('surfaces the grading actions and delegates adjustment-layer creation', async () => {
+		const oncreateadjustment = vi.fn();
+		const screen = await render(ColorWorkspace, {
+			itemId: 'video',
+			onedit: vi.fn(),
+			oncreateadjustment
+		});
+
+		await expect.element(screen.getByRole('button', { name: 'Copy grade' })).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: 'Paste grade' })).toBeVisible();
+		await screen.getByRole('button', { name: 'Adjustment layer' }).click();
+		expect(oncreateadjustment).toHaveBeenCalledOnce();
+	});
 });
