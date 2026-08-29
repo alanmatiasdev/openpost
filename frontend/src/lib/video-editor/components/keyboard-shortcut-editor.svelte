@@ -75,6 +75,8 @@
 		MARK_IN: m.video_editor_mark_in,
 		MARK_OUT: m.video_editor_mark_out,
 		CLEAR_IN_OUT: m.video_editor_source_clear_marks,
+		QUICK_CUT_ADD_SEGMENT: m.quick_cut_add_segment,
+		QUICK_CUT_TOGGLE_LOOP: m.quick_cut_loop_label,
 		INSERT_EDIT: m.video_editor_source_insert,
 		OVERWRITE_EDIT: m.video_editor_source_overwrite,
 		SPLIT_AT_PLAYHEAD: m.video_editor_shortcuts_command_split,

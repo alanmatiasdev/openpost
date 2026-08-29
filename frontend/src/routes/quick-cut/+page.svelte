@@ -65,7 +65,11 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
-	import { handleGlobalPlayPauseShortcut } from '$lib/video-editor/settings/keyboard-shortcuts';
+	import {
+		editorShortcutTargetIsDisabled,
+		formatShortcutBinding,
+		handleGlobalPlayPauseShortcut
+	} from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import {
 		formatSegmentInterchange,
@@ -80,6 +84,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	} from '$lib/quick-cut/frame-capture';
 	import CameraIcon from '@lucide/svelte/icons/camera';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
+	import { quickCutShortcutAction } from '$lib/quick-cut/shortcuts';
 
 	let sources = $state<QuickCutSource[]>([]);
 	let sourceUrls = $state<Map<string, string>>(new Map());
@@ -614,6 +619,14 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		void videoEl.play();
 	}
 
+	function toggleLoopMode(): void {
+		loopMode = loopMode === 'off' ? 'segment' : loopMode === 'segment' ? 'all' : 'off';
+	}
+
+	function shortcutLabel(binding: string): string {
+		return binding ? formatShortcutBinding(binding) : m.video_editor_shortcuts_unassigned();
+	}
+
 	function previewSegment(id: string): void {
 		const seg = segments.find((s) => s.id === id);
 		if (!seg || seg.enabled === false) return;
@@ -1027,31 +1040,25 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	function onKeydown(event: KeyboardEvent): void {
 		if (handleGlobalPlayPauseShortcut(event, keyboardShortcuts.bindings.PLAY_PAUSE, togglePlay))
 			return;
-		const target = event.target instanceof HTMLElement ? event.target : null;
-		if (!target) return;
-		if (
-			target.matches('input, textarea, select, button, [contenteditable="true"], [role="textbox"]')
-		)
+		if (event.repeat || event.defaultPrevented || editorShortcutTargetIsDisabled(event.target))
 			return;
-		if (event.key === 'i' || event.key === 'I') {
-			event.preventDefault();
-			markIn();
-		} else if (event.key === 'o' || event.key === 'O') {
-			event.preventDefault();
-			markOut();
-		} else if (event.key === 'Enter') {
-			event.preventDefault();
-			addSegment();
-		} else if (event.key === 'ArrowLeft') {
-			event.preventDefault();
-			frameStep(event.shiftKey ? -30 : -1);
-		} else if (event.key === 'ArrowRight') {
-			event.preventDefault();
-			frameStep(event.shiftKey ? 30 : 1);
-		} else if (event.key === 'l' || event.key === 'L') {
-			event.preventDefault();
-			loopMode = loopMode === 'off' ? 'segment' : loopMode === 'segment' ? 'all' : 'off';
-		}
+		const action = quickCutShortcutAction(event, keyboardShortcuts.bindings);
+		if (!action) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+		if (action === 'previous-frame') frameStep(-1);
+		else if (action === 'next-frame') frameStep(1);
+		else if (action === 'go-to-start') seekTo(0);
+		else if (action === 'go-to-end') seekTo(activeSource?.duration ?? 0);
+		else if (action === 'mark-in') markIn();
+		else if (action === 'mark-out') markOut();
+		else if (action === 'clear-marks') {
+			inPoint = null;
+			outPoint = null;
+		} else if (action === 'add-segment') addSegment();
+		else if (action === 'delete-segment' && selectedId) removeSegment(selectedId);
+		else if (action === 'toggle-loop') toggleLoopMode();
 	}
 
 	onDestroy(() => {
@@ -1151,10 +1158,23 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 						<ContextMenu.Content class="w-56">
 							<ContextMenu.Item onclick={togglePlay}>
 								{playing ? m.video_editor_pause() : m.video_editor_play()}
+								<ContextMenu.Shortcut
+									>{shortcutLabel(keyboardShortcuts.bindings.PLAY_PAUSE)}</ContextMenu.Shortcut
+								>
 							</ContextMenu.Item>
 							<ContextMenu.Separator />
-							<ContextMenu.Item onclick={markIn}>{m.video_editor_mark_in()}</ContextMenu.Item>
-							<ContextMenu.Item onclick={markOut}>{m.video_editor_mark_out()}</ContextMenu.Item>
+							<ContextMenu.Item onclick={markIn}>
+								{m.video_editor_mark_in()}
+								<ContextMenu.Shortcut
+									>{shortcutLabel(keyboardShortcuts.bindings.MARK_IN)}</ContextMenu.Shortcut
+								>
+							</ContextMenu.Item>
+							<ContextMenu.Item onclick={markOut}>
+								{m.video_editor_mark_out()}
+								<ContextMenu.Shortcut
+									>{shortcutLabel(keyboardShortcuts.bindings.MARK_OUT)}</ContextMenu.Shortcut
+								>
+							</ContextMenu.Item>
 							<ContextMenu.Separator />
 							<ContextMenu.Item
 								disabled={!canCaptureFrame || capturingFrame}
@@ -1194,13 +1214,13 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 						>
 
 						<Button size="xs" variant="outline" onclick={markIn} class="min-h-11 md:min-h-7"
-							>I · {m.quick_cut_in()}</Button
+							>{shortcutLabel(keyboardShortcuts.bindings.MARK_IN)} · {m.quick_cut_in()}</Button
 						>
 						{#if inPoint}<span class="font-mono text-xs text-amber-600"
 								>{formatTimecode(inPoint.time)}</span
 							>{/if}
 						<Button size="xs" variant="outline" onclick={markOut} class="min-h-11 md:min-h-7"
-							>O · {m.quick_cut_out()}</Button
+							>{shortcutLabel(keyboardShortcuts.bindings.MARK_OUT)} · {m.quick_cut_out()}</Button
 						>
 						{#if outPoint}<span class="font-mono text-xs text-emerald-600"
 								>{formatTimecode(outPoint.time)}</span
@@ -1467,8 +1487,33 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		{/if}
 	</main>
 
-	<footer class="border-t px-3 py-2 text-center text-xs text-muted-foreground">
-		{m.quick_cut_keyboard_hint()}
+	<footer
+		class="flex flex-wrap justify-center gap-x-3 gap-y-1 border-t px-3 py-2 text-xs text-muted-foreground"
+	>
+		<span
+			><kbd>{shortcutLabel(keyboardShortcuts.bindings.MARK_IN)}</kbd>/<kbd
+				>{shortcutLabel(keyboardShortcuts.bindings.MARK_OUT)}</kbd
+			>
+			{m.quick_cut_in()}/{m.quick_cut_out()}</span
+		>
+		<span
+			><kbd>{shortcutLabel(keyboardShortcuts.bindings.PLAY_PAUSE)}</kbd>
+			{m.video_editor_shortcuts_command_play_pause()}</span
+		>
+		<span
+			><kbd>{shortcutLabel(keyboardShortcuts.bindings.PREVIOUS_FRAME)}</kbd>/<kbd
+				>{shortcutLabel(keyboardShortcuts.bindings.NEXT_FRAME)}</kbd
+			>
+			{m.quick_cut_frame_back()}/{m.quick_cut_frame_forward()}</span
+		>
+		<span
+			><kbd>{shortcutLabel(keyboardShortcuts.bindings.QUICK_CUT_TOGGLE_LOOP)}</kbd>
+			{m.quick_cut_loop_label()}</span
+		>
+		<span
+			><kbd>{shortcutLabel(keyboardShortcuts.bindings.QUICK_CUT_ADD_SEGMENT)}</kbd>
+			{m.quick_cut_add_segment()}</span
+		>
 	</footer>
 
 	<DestructiveConfirmDialog
