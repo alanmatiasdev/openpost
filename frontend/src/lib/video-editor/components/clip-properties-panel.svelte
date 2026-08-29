@@ -444,7 +444,7 @@
 				>
 					{m.video_editor_tool_text()}
 				</h3>
-				<TextPropertiesPanel {item} {onedit} {oncreatevoice} />
+				<TextPropertiesPanel {item} {itemIds} {onedit} {oncreatevoice} />
 				<div class="mt-2 grid grid-cols-2 gap-1">
 					{#each textFields as field (field.property)}
 						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"

@@ -9,9 +9,11 @@
 	import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 	import { updateItemProperties } from '../timeline/actions/items';
 	import {
+		applyTextEffectPreset,
 		applyTextStylePreset,
 		setTextItemLayout,
-		updateTextSpan
+		updateTextSpan,
+		type TextEffectPresetId
 	} from '../timeline/actions/text-layout';
 	import { getTextItemLayoutMode, type TextLayoutMode } from '../typography/text-layout-drafts';
 	import { buildTextItemLabelFromText } from '../typography/text-item-spans';
@@ -20,14 +22,21 @@
 
 	let {
 		item,
+		itemIds = [],
 		onedit,
 		oncreatevoice
 	}: {
 		item: TimelineItem;
+		itemIds?: string[];
 		onedit: () => void;
 		oncreatevoice?: (itemId: string, text: string) => void;
 	} = $props();
 	const activeItem = $derived(timelineStore.itemById.get(item.id) ?? item);
+	const selectedTextItemIds = $derived.by(() => {
+		const selectedIds = itemIds.length > 0 ? itemIds : [activeItem.id];
+		const textIds = selectedIds.filter((id) => timelineStore.itemById.get(id)?.type === 'text');
+		return textIds.length > 0 ? [...new Set(textIds)] : [activeItem.id];
+	});
 	const speakableText = $derived(getTextItemPlainText(activeItem).trim());
 	const layout = $derived(getTextItemLayoutMode(activeItem));
 	const canvas = $derived({
@@ -211,6 +220,23 @@
 			onedit();
 	}
 
+	function effectPresetLabel(id: TextEffectPresetId): string {
+		switch (id) {
+			case 'none':
+				return m.video_editor_text_effect_none();
+			case 'shadow':
+				return m.video_editor_text_effect_shadow();
+			case 'outline':
+				return m.video_editor_text_effect_outline();
+			case 'glow':
+				return m.video_editor_text_effect_glow();
+		}
+	}
+
+	function commitEffectPreset(presetId: TextEffectPresetId): void {
+		if (applyTextEffectPreset(selectedTextItemIds, presetId) > 0) onedit();
+	}
+
 	function commitItem(patch: Partial<TimelineItem>): void {
 		updateItemProperties(activeItem.id, patch, 'UPDATE_TEXT_CONTENT');
 		onedit();
@@ -296,6 +322,25 @@
 			/>
 		</label>
 	{/if}
+
+	<div class="space-y-1">
+		<span id={`text-effects-${activeItem.id}`} class="field-label">
+			{m.video_editor_effects()}
+		</span>
+		<div class="grid grid-cols-4 gap-1" aria-labelledby={`text-effects-${activeItem.id}`}>
+			{#each ['none', 'shadow', 'outline', 'glow'] as presetId (presetId)}
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					class="h-7 min-w-0 px-1 text-xs"
+					onclick={() => commitEffectPreset(presetId as TextEffectPresetId)}
+				>
+					<span class="truncate">{effectPresetLabel(presetId as TextEffectPresetId)}</span>
+				</Button>
+			{/each}
+		</div>
+	</div>
 
 	{#if activeItem.textSpans?.length}
 		<div class="space-y-2">

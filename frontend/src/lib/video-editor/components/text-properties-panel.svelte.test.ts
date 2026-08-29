@@ -138,4 +138,19 @@ describe('TextPropertiesPanel', () => {
 		expect(oncreatevoice).toHaveBeenCalledOnce();
 		expect(oncreatevoice).toHaveBeenCalledWith('text', 'Launch\nBuilt for small teams');
 	});
+
+	it('exposes FreeCut text effect presets and commits the selected look', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TextPropertiesPanel, {
+			item: timelineStore.itemById.get('text')!,
+			onedit
+		});
+
+		await screen.getByRole('button', { name: 'Shadow' }).click();
+		expect(timelineStore.itemById.get('text')).toMatchObject({
+			textShadow: { offsetX: 4, offsetY: 6, blur: 12, color: '#000000' }
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
 });
