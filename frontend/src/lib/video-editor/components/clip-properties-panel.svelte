@@ -54,15 +54,24 @@
 		oncreatevoice?: (itemId: string, text: string) => void;
 	} = $props();
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
-	const audioItem = $derived.by(() => {
-		if (!item || (item.type !== 'video' && item.type !== 'audio')) return undefined;
-		if (item.type === 'audio') return item;
-		return (
-			getSynchronizedLinkedItems(timelineStore.items, item.id).find(
-				(candidate) => candidate.type === 'audio'
-			) ?? item
-		);
+	const audioItems = $derived.by(() => {
+		const selectedIds = itemIds.length > 0 ? itemIds : itemId ? [itemId] : [];
+		const selected = [...new Set(selectedIds)]
+			.map((id) => timelineStore.itemById.get(id))
+			.filter((candidate): candidate is TimelineItem => candidate !== undefined);
+		const selectedAudio = selected.filter((candidate) => candidate.type === 'audio');
+		if (selectedAudio.length > 0) return selectedAudio;
+		const resolved = new Map<string, TimelineItem>();
+		for (const candidate of selected) {
+			if (candidate.type !== 'video') continue;
+			const companion = getSynchronizedLinkedItems(timelineStore.items, candidate.id).find(
+				(linked) => linked.type === 'audio'
+			);
+			resolved.set((companion ?? candidate).id, companion ?? candidate);
+		}
+		return [...resolved.values()];
 	});
+	const audioItem = $derived(audioItems[0]);
 
 	interface NumericField {
 		property: KeyframeProperty;
@@ -354,7 +363,7 @@
 						</div>
 					</details>
 					<div class="mt-2 space-y-2">
-						<AudioEqPanel item={audioItem} {onedit} />
+						<AudioEqPanel items={audioItems} {onedit} />
 						<AudioEffectsPanel item={audioItem} />
 						<AudioDuckingPanel item={audioItem} {onedit} />
 					</div>
