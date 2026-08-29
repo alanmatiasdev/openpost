@@ -7,10 +7,23 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type deadlineOnceHTTPClient struct {
+	delegate HTTPClient
+	calls    atomic.Int32
+}
+
+func (c *deadlineOnceHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	if c.calls.Add(1) == 1 {
+		return nil, context.DeadlineExceeded
+	}
+	return c.delegate.Do(request)
+}
 
 func TestOpenRouterGenerateSendsPrivateMultimodalRequest(t *testing.T) {
 	var received map[string]any
@@ -171,6 +184,40 @@ func TestOpenRouterGenerateRejectsEmptyResponse(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, ErrEmptyResponse)
+}
+
+func TestOpenRouterGenerateRetriesAnInternalDeadlineWhileCallerIsActive(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"gen-after-deadline",
+			"object":"chat.completion",
+			"created":1730000000,
+			"model":"openai/gpt-5.6-luna",
+			"choices":[{
+				"index":0,
+				"message":{"role":"assistant","content":"recovered"},
+				"finish_reason":"stop"
+			}]
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	client := &deadlineOnceHTTPClient{delegate: server.Client()}
+	generator, err := NewOpenRouter(OpenRouterConfig{
+		APIKey:     "test-api-key",
+		BaseURL:    server.URL,
+		HTTPClient: client,
+	})
+	require.NoError(t, err)
+
+	result, err := generator.Generate(context.Background(), GenerateRequest{
+		Model:      "openai/gpt-5.6-luna",
+		UserPrompt: "Return one word.",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "recovered", result.Text)
+	require.Equal(t, int32(2), client.calls.Load())
 }
 
 func TestOpenRouterGenerateSanitizesProviderErrors(t *testing.T) {

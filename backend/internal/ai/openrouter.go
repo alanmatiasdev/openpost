@@ -127,6 +127,11 @@ func (o *OpenRouter) Generate(ctx context.Context, request GenerateRequest) (Gen
 	}
 
 	response, err := o.client.Chat.Send(ctx, chatRequest, nil, operations.WithSetHeaders(o.headers))
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		// The SDK can exhaust its internal retry deadline before the feature's
+		// request budget. Give a read-only generation one fresh attempt.
+		response, err = o.client.Chat.Send(ctx, chatRequest, nil, operations.WithSetHeaders(o.headers))
+	}
 	if err != nil {
 		return GenerateResult{}, sanitizeOpenRouterError(err)
 	}
