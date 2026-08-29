@@ -50,13 +50,13 @@ export default function ServerScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Brand style={styles.brand} />
           <Text style={[styles.title, { color: colors.text }]}>Sign in to OpenPost</Text>
-          <BodyText style={styles.subtitle}>OpenPost Hosted is ready to use.</BodyText>
+          <BodyText style={styles.subtitle}>Choose where to sign in.</BodyText>
 
           <Card style={styles.hostedCard}>
             <Text style={[styles.hostedTitle, { color: colors.text }]}>OpenPost Hosted</Text>
             <BodyText>Managed at {HOSTED_URL.replace("https://", "")}</BodyText>
             <Button
-              title="Use OpenPost Hosted"
+              title="Continue to sign in"
               disabled={busy !== null}
               loading={busy === "hosted"}
               onPress={() => void choose(HOSTED_URL, "hosted")}
@@ -71,7 +71,7 @@ export default function ServerScreen() {
           ) : null}
 
           <Button
-            title={showSelfHosted ? "Hide server setup" : "Use your own server"}
+            title={showSelfHosted ? "Hide self-hosted setup" : "Connect a self-hosted server"}
             variant="plain"
             accessibilityHint={`${showSelfHosted ? "Hides" : "Shows"} the self-hosted server address field`}
             accessibilityState={{ expanded: showSelfHosted }}

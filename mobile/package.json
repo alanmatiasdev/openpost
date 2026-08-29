@@ -6,7 +6,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios",
+    "ios": "env -u CC -u CXX -u LD -u AR -u NM -u STRIP -u RANLIB expo run:ios",
     "lint": "expo lint",
     "test": "bun test src plugins",
     "check": "bunx tsc --noEmit && expo lint && bunx expo-doctor && bun test src plugins",
@@ -62,5 +62,9 @@
     "expo-constants": "$expo-constants",
     "expo-linking": "$expo-linking"
   },
-  "packageManager": "bun@1.3.13"
+  "packageManager": "bun@1.3.13",
+  "patchedDependencies": {
+    "expo-modules-jsi@57.0.6": "patches/expo-modules-jsi@57.0.6.patch",
+    "expo-modules-core@57.0.14": "patches/expo-modules-core@57.0.14.patch"
+  }
 }

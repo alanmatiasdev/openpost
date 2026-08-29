@@ -155,7 +155,7 @@ export function Button({
                 ? `${colors.tint}66`
                 : "transparent",
           borderBottomColor: hasDepth ? colors.buttonDepth : undefined,
-          borderBottomWidth: hasDepth ? (pressed ? 1 : 3) : undefined,
+          borderBottomWidth: hasDepth ? (pressed ? 1 : 2) : undefined,
           borderWidth: hasBorder ? (hasDepth ? 1 : StyleSheet.hairlineWidth) : 0,
           opacity: inactive ? 0.45 : pressed && !hasDepth ? 0.68 : 1,
           transform: pressed && hasDepth ? [{ translateY: 2 }] : undefined,
