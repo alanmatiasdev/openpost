@@ -2,6 +2,8 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { ArrowRight, Menu, Moon, Sun, X } from '@lucide/svelte';
+	import Clapperboard from '@lucide/svelte/icons/clapperboard';
+	import Images from '@lucide/svelte/icons/images';
 	import { mode, toggleMode } from 'mode-watcher';
 	import Logo from '$lib/components/Logo.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
@@ -22,12 +24,11 @@
 
 	let mobileOpen = $state(false);
 	const currentPath = $derived(page.url.pathname);
-	const primaryNavItems = navItems.filter((item) => item.href !== '/tools');
+	const primaryNavItems = navItems;
 	const resourceGroups: readonly ResourceGroup[] = [
 		{
 			label: 'Learn',
 			items: [
-				{ label: 'Free tools', href: '/tools' },
 				{ label: 'FAQ', href: '/faq' },
 				{ label: 'Compare', href: '/compare' },
 				{ label: 'Changelog', href: '/changelog' }
@@ -55,7 +56,6 @@
 	];
 	const navigationResourceItems = resourceGroups.flatMap((group) => group.items);
 	const mobileResourceItems = [
-		{ label: 'Free tools', href: '/tools' },
 		{ label: 'User docs', href: docsUrl },
 		{ label: 'Developers', href: '/developers' },
 		{ label: 'Self-hosted', href: '/self-hosted' },
@@ -159,6 +159,88 @@
 								</ul>
 							</NavigationMenu.Content>
 						</NavigationMenu.Item>
+					{:else if item.href === '/tools'}
+						<NavigationMenu.Item>
+							<NavigationMenu.Trigger
+								aria-current={isActive(item.href) ? 'page' : undefined}
+								class="focus-ring h-11 min-h-11 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted/70 hover:text-foreground data-open:bg-muted data-open:text-foreground"
+							>
+								{item.label}
+							</NavigationMenu.Trigger>
+							<NavigationMenu.Content class="tool-menu left-1/2 -translate-x-1/2 p-3">
+								<div class="grid grid-cols-2 gap-3">
+									<NavigationMenu.Link
+										href="/tools/social-media-video-editor"
+										active={isActive('/tools/social-media-video-editor')}
+										class="group/tool focus-ring block overflow-hidden rounded-xl border bg-card p-0"
+									>
+										<div class="h-24 overflow-hidden bg-black">
+											<img
+												src="/assets/screenshots/main-dark.png"
+												alt=""
+												width="1440"
+												height="960"
+												class="size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
+											/>
+										</div>
+										<span class="flex items-start gap-3 p-3">
+											<span
+												class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover/tool:bg-primary group-hover/tool:text-primary-foreground group-focus-visible/tool:bg-primary group-focus-visible/tool:text-primary-foreground"
+											>
+												<Clapperboard class="size-4" aria-hidden="true" />
+											</span>
+											<span>
+												<span class="block text-sm font-semibold text-foreground">Video Editor</span
+												>
+												<span class="mt-0.5 block text-xs leading-5 text-muted-foreground"
+													>Cut, caption, record, and export for social video.</span
+												>
+											</span>
+										</span>
+									</NavigationMenu.Link>
+
+									<NavigationMenu.Link
+										href="/tools/social-media-image-editor"
+										active={isActive('/tools/social-media-image-editor')}
+										class="group/tool focus-ring block overflow-hidden rounded-xl border bg-card p-0"
+									>
+										<div class="h-24 overflow-hidden bg-black">
+											<img
+												src="/assets/screenshots/media-dark.png"
+												alt=""
+												width="1440"
+												height="960"
+												class="size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
+											/>
+										</div>
+										<span class="flex items-start gap-3 p-3">
+											<span
+												class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover/tool:bg-primary group-hover/tool:text-primary-foreground group-focus-visible/tool:bg-primary group-focus-visible/tool:text-primary-foreground"
+											>
+												<Images class="size-4" aria-hidden="true" />
+											</span>
+											<span>
+												<span class="block text-sm font-semibold text-foreground">Image Editor</span
+												>
+												<span class="mt-0.5 block text-xs leading-5 text-muted-foreground"
+													>Create posts, carousels, stories, and thumbnails.</span
+												>
+											</span>
+										</span>
+									</NavigationMenu.Link>
+								</div>
+								<div class="mt-3 border-t pt-2">
+									<NavigationMenu.Link
+										href="/tools"
+										active={isActive('/tools')}
+										class="focus-ring min-h-10 w-full justify-between rounded-md px-3 text-sm font-semibold text-foreground"
+									>
+										All free tools
+										<ArrowRight class="size-3.5" aria-hidden="true" />
+									</NavigationMenu.Link>
+								</div>
+							</NavigationMenu.Content>
+						</NavigationMenu.Item>
 					{:else}
 						<NavigationMenu.Item>
 							<NavigationMenu.Link
@@ -220,7 +302,7 @@
 			</Button>
 			<Button href={`${appUrl}/login`} variant="ghost" size="sm">Sign in</Button>
 			<Button href={managedSignupUrl} size="sm">
-				Start free trial
+				Get started
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
@@ -282,7 +364,7 @@
 					>
 						{#if mode.current === 'dark'}<Sun />{:else}<Moon />{/if}
 					</Button>
-					<Button href={managedSignupUrl} size="sm">Start free trial</Button>
+					<Button href={managedSignupUrl} size="sm">Get started</Button>
 				</div>
 			</div>
 		</nav>
@@ -303,5 +385,9 @@
 
 	:global(.resource-menu.resource-menu) {
 		width: min(42rem, calc(100vw - 2rem));
+	}
+
+	:global(.tool-menu.tool-menu) {
+		width: min(38rem, calc(100vw - 2rem));
 	}
 </style>

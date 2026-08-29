@@ -99,7 +99,7 @@
 				<Button
 					href={`${appUrl}/register?plan=${plan.id}&billing_period=${billingPeriod}`}
 					variant={plan.featured ? 'default' : 'outline'}
-					class="w-full"
+					class="plan-button w-full"
 					aria-describedby={`plan-${plan.id}-purchase-note`}
 				>
 					Start {plan.name}
@@ -299,9 +299,13 @@
 	.pricing-card ul {
 		display: grid;
 		gap: 0.85rem;
-		margin-block: 1.5rem auto;
+		margin-block: 1.5rem;
 		padding: 0;
 		list-style: none;
+	}
+
+	:global(.plan-button) {
+		margin-top: auto;
 	}
 
 	.pricing-card li {

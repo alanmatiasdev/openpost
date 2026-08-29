@@ -313,7 +313,7 @@
 
 	@media (max-width: 47.99rem) {
 		.floating-network-field {
-			inset: 16rem 0 0;
+			inset: 28rem 0 0;
 		}
 
 		.network-orbit {
@@ -371,6 +371,19 @@
 		.network-orbit:nth-child(12) {
 			top: 3%;
 			left: 76%;
+		}
+	}
+
+	@media (min-width: 48rem) {
+		.network-orbit:nth-child(3),
+		.network-orbit:nth-child(4),
+		.network-orbit:nth-child(7),
+		.network-orbit:nth-child(8),
+		.network-orbit:nth-child(9),
+		.network-orbit:nth-child(10),
+		.network-orbit:nth-child(11),
+		.network-orbit:nth-child(12) {
+			display: none;
 		}
 	}
 

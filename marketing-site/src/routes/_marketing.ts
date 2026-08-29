@@ -36,8 +36,8 @@ export const demoVideoEmbedUrl =
 export const navItems = [
 	{ label: 'Features', href: '/features' },
 	{ label: 'Platforms', href: '/platforms' },
-	{ label: 'Pricing', href: '/pricing' },
-	{ label: 'Free tools', href: '/tools' }
+	{ label: 'Tools', href: '/tools' },
+	{ label: 'Pricing', href: '/pricing' }
 ] as const;
 
 export const resourceItems = [

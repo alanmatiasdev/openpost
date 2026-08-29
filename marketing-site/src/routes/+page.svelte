@@ -2,66 +2,35 @@
 THESIS: OpenPost gives solo founders one content team for turning company work into destination-specific publishing without reopening every network.
 OWN-WORLD: A dark launch stage gives way to a warm working page, with raised workshop-orange controls, framed product surfaces, and precise editorial pacing.
 STORY: Understand the promise, inspect the result views, watch the real demo, see the product, choose a plan, and start.
-FIRST VIEWPORT: One centered promise, one raised action, all supported networks in motion, and three overlapping result screens with no carousel chrome.
+FIRST VIEWPORT: One centered promise, one raised action, edge-held network marks, and three overlapping result screens with no carousel chrome.
 FORM: A focused product demonstration paced between dark studio stages, light working surfaces, and real product screenshots.
 -->
 <script lang="ts">
-	import { resolve } from '$app/paths';
-	import { ArrowRight, CalendarRange, Layers3, LockKeyhole } from '@lucide/svelte';
+	import { ArrowRight } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
 	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
-	import PostizSocialLogo from './_components/PostizSocialLogo.svelte';
 	import PricingShowcase from './_components/PricingShowcase.svelte';
+	import ProductFeatureGrid from './_components/ProductFeatureGrid.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
-	import { faqs, managedSignupUrl, platforms } from './_marketing';
-
-	const productStories = [
-		{
-			title: 'Create in one place.',
-			description:
-				'Write posts, threads, stories, and videos. Schedule them and see what published.',
-			image: '/assets/screenshots/main-dark.png',
-			alt: 'OpenPost publication composer with destination-specific versions',
-			icon: Layers3
-		},
-		{
-			title: 'Adapt every post.',
-			description: 'Edit the copy, media, and settings for each account before it goes live.',
-			image: '/assets/screenshots/accounts-dark.png',
-			alt: 'OpenPost connected social accounts page',
-			icon: LockKeyhole
-		},
-		{
-			title: 'Reuse your media.',
-			description: 'Keep images, videos, captions, and alt text ready for your next post.',
-			image: '/assets/screenshots/media-dark.png',
-			alt: 'OpenPost media library with reusable assets',
-			icon: CalendarRange
-		}
-	] as const;
+	import { faqs, managedSignupUrl } from './_marketing';
 
 	const shortFaqs = faqs.slice(0, 4);
 </script>
 
 <section class="hero overflow-hidden">
-	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
-		<p
-			class="hero-enter hero-enter-1 mx-auto mb-5 text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase"
-		>
-			For solo founders evaluating one workspace for social publishing.
-		</p>
+	<div class="marketing-shell relative pt-16 pb-16 text-center sm:pt-24 sm:pb-20 lg:pt-28">
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
 			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create once. OpenPost adapts your post for each platform, then publishes it on schedule.
+			Write the idea once. Shape each version, schedule every channel, and see what went live.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
-				Start free
+				Start for free
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
@@ -71,20 +40,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		<div class="hero-enter hero-enter-4 relative z-10 mx-auto mt-10 max-w-5xl sm:mt-12">
 			<HeroResultsCarousel />
 		</div>
-	</div>
-
-	<div class="customer-proof border-t py-5 sm:py-6">
-		<p>Built for the networks you use</p>
-		<div class="supported-marks" aria-label="Implemented social platform adapters">
-			{#each platforms as platform (platform.slug)}
-				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
-					<PostizSocialLogo platform={platform.slug} />
-				</a>
-			{/each}
-		</div>
-		<p class="mt-3 text-xs text-muted-foreground">
-			Provider formats, permissions, and limits still vary by network.
-		</p>
 	</div>
 </section>
 
@@ -108,38 +63,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			<DestinationComposerDemo />
 		</ScrollReveal>
 
-		<div class="mt-20 grid gap-20 lg:gap-28">
-			{#each productStories as story, index (story.title)}
-				{@const Icon = story.icon}
-				<article class="product-story" class:product-story-reverse={index % 2 === 1}>
-					<ScrollReveal class="product-copy" delay={70}>
-						<div
-							class="grid size-10 place-items-center rounded-xl border bg-background text-primary shadow-sm"
-						>
-							<Icon class="size-5" aria-hidden="true" />
-						</div>
-						<h3
-							class="mt-6 max-w-lg text-3xl leading-[1.04] font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
-						>
-							{story.title}
-						</h3>
-						<p class="mt-5 max-w-xl leading-7 text-muted-foreground">
-							{story.description}
-						</p>
-					</ScrollReveal>
-					<ScrollReveal class="product-shot" delay={index % 2 === 0 ? 140 : 60}>
-						<img
-							src={story.image}
-							alt={story.alt}
-							width="1440"
-							height="960"
-							loading="lazy"
-							decoding="async"
-						/>
-					</ScrollReveal>
-				</article>
-			{/each}
-		</div>
+		<ScrollReveal class="mt-20" delay={80}>
+			<ProductFeatureGrid />
+		</ScrollReveal>
 	</div>
 </section>
 
@@ -312,91 +238,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			0 0.5rem 1.2rem oklch(0.55 0.17 45 / 0.18) !important;
 	}
 
-	.customer-proof {
-		position: relative;
-		display: grid;
-		gap: 0.8rem;
-		text-align: center;
-	}
-
-	.customer-proof > p {
-		color: var(--muted-foreground);
-		font-size: 0.68rem;
-		font-weight: 650;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.supported-marks {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.35rem;
-		width: min(100% - 2rem, 38rem);
-		margin: 0.3rem auto 0;
-		padding-top: 1rem;
-		border-top: 1px solid var(--border);
-	}
-
-	.supported-marks a {
-		position: relative;
-		display: grid;
-		width: 2.75rem;
-		height: 2.75rem;
-		place-items: center;
-		border-radius: 0.8rem;
-		color: var(--muted-foreground);
-		transition:
-			color 120ms ease,
-			background 120ms ease,
-			transform 120ms ease;
-	}
-
-	.supported-marks a::after {
-		position: absolute;
-		inset-inline: 0;
-		bottom: -0.375rem;
-		content: '';
-	}
-
-	.supported-marks a:hover {
-		transform: translateY(-2px);
-		background: var(--muted);
-		color: var(--foreground);
-	}
-
-	.supported-marks :global(img) {
-		display: block;
-		width: 2rem;
-		height: 2rem;
-		object-fit: contain;
-	}
-
-	.product-story {
-		display: grid;
-		gap: 2.5rem;
-		align-items: center;
-	}
-
-	:global(.product-shot) {
-		min-width: 0;
-		overflow: hidden;
-		padding: clamp(0.55rem, 1.4vw, 0.9rem);
-		border: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
-		border-radius: 1.35rem;
-		background: oklch(0.13 0.01 52);
-		box-shadow: 0 1.6rem 4.5rem color-mix(in oklch, var(--foreground) 12%, transparent);
-	}
-
-	:global(.product-shot) img {
-		display: block;
-		width: 100%;
-		aspect-ratio: 3 / 2;
-		border-radius: 0.8rem;
-		object-fit: contain;
-		object-position: top;
-	}
-
 	:global(.dark) .hero {
 		background:
 			radial-gradient(circle at 50% 43%, oklch(0.5 0.15 45 / 0.2), transparent 31rem),
@@ -412,23 +253,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	}
 
 	:global(.dark) .hero-title {
-		color: white;
-	}
-
-	:global(.dark) .customer-proof > p {
-		color: rgb(255 255 255 / 0.4);
-	}
-
-	:global(.dark) .supported-marks {
-		border-color: rgb(255 255 255 / 0.08);
-	}
-
-	:global(.dark) .supported-marks a {
-		color: rgb(255 255 255 / 0.5);
-	}
-
-	:global(.dark) .supported-marks a:hover {
-		background: rgb(255 255 255 / 0.06);
 		color: white;
 	}
 
@@ -458,22 +282,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			opacity: 1;
 			transform: none;
 			filter: none;
-		}
-	}
-
-	@media (min-width: 64rem) {
-		.product-story {
-			grid-template-columns: 0.75fr 1.25fr;
-			gap: 5rem;
-		}
-		.product-story-reverse {
-			grid-template-columns: 1.25fr 0.75fr;
-		}
-		.product-story-reverse :global(.product-copy) {
-			order: 2;
-		}
-		.product-story-reverse :global(.product-shot) {
-			order: 1;
 		}
 	}
 

@@ -91,7 +91,7 @@
 				</a>
 			</div>
 			<div
-				class="mt-6 flex flex-wrap items-center gap-1 text-muted-foreground"
+				class="platform-guides mt-6 text-muted-foreground"
 				aria-label="Platform publishing guides"
 			>
 				{#each platforms as platform (platform.slug)}
@@ -140,9 +140,9 @@
 		<div
 			class="marketing-shell flex flex-col gap-3 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
 		>
-			<span>© 2026 OpenPost Contributors · AGPL-3.0-only</span>
+			<span>© 2026 OpenPost</span>
 			<span class="flex flex-wrap items-center gap-x-5 gap-y-1">
-				<span class="hidden sm:inline">Made for companies of one</span>
+				<span class="hidden sm:inline">Made for YOUR company</span>
 				<button
 					type="button"
 					class="focus-ring inline-flex min-h-11 items-center gap-1.5 rounded-md transition-colors hover:text-foreground"
@@ -177,3 +177,17 @@
 		</div>
 	</div>
 </footer>
+
+<style>
+	.platform-guides {
+		display: grid;
+		grid-template-columns: repeat(5, 2.75rem);
+		gap: 0.25rem;
+	}
+
+	@media (min-width: 30rem) {
+		.platform-guides {
+			grid-template-columns: repeat(7, 2.75rem);
+		}
+	}
+</style>

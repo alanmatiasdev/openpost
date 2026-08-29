@@ -13,8 +13,8 @@
 	<div class="marketing-shell demo-shell">
 		<div class="demo-copy">
 			<p class="demo-kicker">Product tour</p>
-			<h2 id="demo-title">See OpenPost in four minutes.</h2>
-			<p>Watch one post move from draft to every platform.</p>
+			<h2 id="demo-title">See how a post gets published.</h2>
+			<p>Draft it, tailor each account version, and schedule it.</p>
 			<Button
 				href={demoVideoUrl}
 				target="_blank"
