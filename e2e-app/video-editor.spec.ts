@@ -105,6 +105,8 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     await expect(colorDock).toBeVisible();
     await expect(colorDock.getByRole("region", { name: "Timeline overview" })).toBeVisible();
     await expect(colorDock.getByRole("slider", { name: "Timeline playhead" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Scopes" })).toBeVisible();
+    await expect(page.locator("footer")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
     await page.getByRole("tab", { name: "Edit" }).click();
@@ -150,6 +152,8 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(colorDock).toBeVisible();
   await expect(colorDock.getByRole("region", { name: "Timeline overview" })).toBeVisible();
   await expect(colorDock.getByRole("slider", { name: "Timeline playhead" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Scopes" })).toBeVisible();
+  await expect(page.locator("footer")).toHaveCount(0);
   await page.getByRole("tab", { name: "Edit" }).click();
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
@@ -186,7 +190,29 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     path: "frontend/.svelte-kit/openpost-video-editor-1280.png",
     fullPage: true,
   });
-  expect(consoleFailures).toEqual([]);
+  await page.getByRole("tab", { name: "Color" }).click();
+  const populatedColorDock = page.getByRole("region", { name: "Color grading" });
+  const colorWheels = populatedColorDock.getByRole("slider", { name: /color wheel$/u });
+  await expect(colorWheels).toHaveCount(4);
+  await colorWheels.first().focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
+  ).toBeVisible();
+  await expect(populatedColorDock.getByRole("region", { name: "Curves" })).toBeVisible();
+  await expect(populatedColorDock.getByRole("region", { name: "Keyframes" })).toBeVisible();
+  await expect(page.locator("[data-color-scope-canvas]")).toBeVisible();
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-color-1280.png",
+    fullPage: true,
+  });
+  expect(
+    consoleFailures.filter(
+      (failure) =>
+        failure !== "warning: No available adapters." &&
+        !failure.includes("GPU stall due to ReadPixels"),
+    ),
+  ).toEqual([]);
 });
 
 test("Video Editor keyboard transport and delete commands survive focused controls", async ({

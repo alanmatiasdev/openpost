@@ -77,6 +77,7 @@ describe('ColorWorkspace', () => {
 	it('saves, applies, and deletes a browser-wide grade preset', async () => {
 		const onedit = vi.fn();
 		const screen = await render(ColorWorkspace, { itemId: 'video', onedit });
+		document.querySelector<HTMLElement>('summary')?.click();
 		const name = document.querySelector<HTMLInputElement>('[aria-label="Grade preset name"]');
 		expect(name).not.toBeNull();
 		if (!name) return;

@@ -62,13 +62,16 @@ afterEach(async () => {
 	await page.viewport(1280, 900);
 });
 
-test('fits grade tools, the effect stack, and live scopes into one dock', async () => {
+test('fits primary wheels, curves, effects, and keyframes into one grading dock', async () => {
 	const screen = await render(ColorGradingDock, { itemId: item.id, onedit: vi.fn() });
 
 	await expect.element(screen.getByRole('region', { name: 'Color grading' })).toBeVisible();
 	await expect.element(screen.getByRole('region', { name: 'Timeline overview' })).toBeVisible();
 	await expect.element(screen.getByText('Effects', { exact: true })).toBeVisible();
-	expect(document.querySelector('[data-color-scope-canvas]')).not.toBeNull();
+	await expect.element(screen.getByRole('region', { name: 'Curves' })).toBeVisible();
+	await expect.element(screen.getByRole('region', { name: 'Keyframes' })).toBeVisible();
+	expect(screen.getByRole('slider', { name: /color wheel$/ }).elements()).toHaveLength(4);
+	expect(document.querySelector('[data-color-scope-canvas]')).toBeNull();
 	expect(screen.getByText('Color workspace', { exact: true }).elements()).toHaveLength(1);
 });
 

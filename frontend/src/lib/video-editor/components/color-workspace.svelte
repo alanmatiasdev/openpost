@@ -46,6 +46,7 @@
 		copyColorGradeFromItem,
 		pasteColorGradeToItems
 	} from '$lib/video-editor/effects/color-grade-clipboard';
+	import ColorPrimaryControls from './color-primary-controls.svelte';
 
 	let {
 		itemId,
@@ -225,184 +226,207 @@
 
 {#if isVisual}
 	<section
-		class="mb-2 rounded border border-[oklch(0.3_0.015_55)] bg-[oklch(0.18_0.01_55)] p-2"
+		class="flex h-full min-h-0 flex-col overflow-hidden bg-[oklch(0.16_0.009_55)]"
 		aria-label={m.video_editor_color_workspace()}
 	>
-		<div class="mb-2 flex items-center justify-between gap-2">
-			<h3 class="text-xs font-semibold tracking-wide text-[oklch(0.78_0.03_55)] uppercase">
-				{m.video_editor_color_workspace()}
-			</h3>
+		<div class="shrink-0 border-b border-white/10 px-2 py-1.5">
+			<div class="flex items-center justify-between gap-2">
+				<h3 class="text-xs font-semibold tracking-wide text-[oklch(0.78_0.03_55)] uppercase">
+					{m.video_editor_color_workspace()}
+				</h3>
+				<div
+					class="grid grid-cols-3 overflow-hidden rounded border border-[oklch(0.32_0.015_55)]"
+					role="group"
+					aria-label={m.video_editor_color_compare_mode()}
+				>
+					<button
+						type="button"
+						class="flex h-7 items-center gap-1 px-2 text-[10px] {colorPreviewStore.comparisonMode ===
+						'after'
+							? 'bg-[oklch(0.62_0.13_45)] text-black'
+							: 'hover:bg-[oklch(0.25_0.015_55)]'}"
+						aria-pressed={colorPreviewStore.comparisonMode === 'after'}
+						onclick={() => setComparison('after')}
+					>
+						<EyeIcon class="size-3" />{m.video_editor_color_after()}
+					</button>
+					<button
+						type="button"
+						class="flex h-7 items-center gap-1 border-l border-[oklch(0.32_0.015_55)] px-2 text-[10px] {colorPreviewStore.comparisonMode ===
+						'before'
+							? 'bg-[oklch(0.62_0.13_45)] text-black'
+							: 'hover:bg-[oklch(0.25_0.015_55)]'}"
+						disabled={!hasGrade}
+						aria-pressed={colorPreviewStore.comparisonMode === 'before'}
+						onclick={() => setComparison('before')}
+					>
+						<CircleOffIcon class="size-3" />{m.video_editor_color_before()}
+					</button>
+					<button
+						type="button"
+						class="flex h-7 items-center gap-1 border-l border-[oklch(0.32_0.015_55)] px-2 text-[10px] {colorPreviewStore.comparisonMode ===
+						'split'
+							? 'bg-[oklch(0.62_0.13_45)] text-black'
+							: 'hover:bg-[oklch(0.25_0.015_55)]'}"
+						disabled={!hasGrade}
+						aria-pressed={colorPreviewStore.comparisonMode === 'split'}
+						onclick={() => setComparison('split')}
+					>
+						<Columns2Icon class="size-3" />{m.video_editor_color_split()}
+					</button>
+				</div>
+			</div>
+
+			{#if colorPreviewStore.comparisonMode === 'split'}
+				<label class="mt-1 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[10px]">
+					<span>{m.video_editor_color_before()}</span>
+					<Slider
+						min={0.05}
+						max={0.95}
+						step={0.01}
+						value={colorPreviewStore.splitPosition}
+						ariaLabel={m.video_editor_color_split_position()}
+						onValueChange={(value) => colorPreviewStore.setSplitPosition(value)}
+						onValueCommit={(value) => colorPreviewStore.setSplitPosition(value)}
+					/>
+					<span>{m.video_editor_color_after()}</span>
+				</label>
+			{/if}
+
 			<div
-				class="grid grid-cols-3 overflow-hidden rounded border border-[oklch(0.32_0.015_55)]"
+				class="mt-1 grid grid-cols-7 gap-1"
 				role="group"
-				aria-label={m.video_editor_color_compare_mode()}
+				aria-label={m.video_editor_color_balance()}
 			>
 				<button
 					type="button"
-					class="flex h-7 items-center gap-1 px-2 text-[10px] {colorPreviewStore.comparisonMode ===
-					'after'
-						? 'bg-[oklch(0.62_0.13_45)] text-black'
-						: 'hover:bg-[oklch(0.25_0.015_55)]'}"
-					aria-pressed={colorPreviewStore.comparisonMode === 'after'}
-					onclick={() => setComparison('after')}
+					class="color-tool"
+					title={m.video_editor_color_auto_balance()}
+					onclick={() => void autoBalance()}
 				>
-					<EyeIcon class="size-3" />{m.video_editor_color_after()}
+					<WandSparklesIcon class="size-3.5" />{m.video_editor_color_auto()}
 				</button>
 				<button
 					type="button"
-					class="flex h-7 items-center gap-1 border-l border-[oklch(0.32_0.015_55)] px-2 text-[10px] {colorPreviewStore.comparisonMode ===
-					'before'
-						? 'bg-[oklch(0.62_0.13_45)] text-black'
-						: 'hover:bg-[oklch(0.25_0.015_55)]'}"
-					disabled={!hasGrade}
-					aria-pressed={colorPreviewStore.comparisonMode === 'before'}
-					onclick={() => setComparison('before')}
+					class="color-tool"
+					title={m.video_editor_color_pick_white_balance()}
+					onclick={() => void pick('white-balance')}
 				>
-					<CircleOffIcon class="size-3" />{m.video_editor_color_before()}
+					<PipetteIcon class="size-3.5" />{m.video_editor_color_white_balance_short()}
 				</button>
 				<button
 					type="button"
-					class="flex h-7 items-center gap-1 border-l border-[oklch(0.32_0.015_55)] px-2 text-[10px] {colorPreviewStore.comparisonMode ===
-					'split'
-						? 'bg-[oklch(0.62_0.13_45)] text-black'
-						: 'hover:bg-[oklch(0.25_0.015_55)]'}"
-					disabled={!hasGrade}
-					aria-pressed={colorPreviewStore.comparisonMode === 'split'}
-					onclick={() => setComparison('split')}
+					class="color-tool"
+					title={m.video_editor_color_pick_black_point()}
+					onclick={() => void pick('black-point')}
 				>
-					<Columns2Icon class="size-3" />{m.video_editor_color_split()}
+					<span class="relative"
+						><PipetteIcon class="size-3.5" /><span
+							class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-white bg-black"
+						></span></span
+					>{m.video_editor_color_black_short()}
 				</button>
+				<button
+					type="button"
+					class="color-tool"
+					title={m.video_editor_color_pick_white_point()}
+					onclick={() => void pick('white-point')}
+				>
+					<span class="relative"
+						><PipetteIcon class="size-3.5" /><span
+							class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-black bg-white"
+						></span></span
+					>{m.video_editor_color_white_short()}
+				</button>
+
+				<button type="button" class="color-tool" disabled={grade.length === 0} onclick={copyGrade}>
+					<CopyIcon class="size-3.5" /><span class="sr-only"
+						>{m.video_editor_color_copy_grade()}</span
+					>
+				</button>
+				<button
+					type="button"
+					class="color-tool"
+					disabled={!colorPreviewStore.gradeClipboard?.length}
+					onclick={pasteGrade}
+				>
+					<ClipboardPasteIcon class="size-3.5" /><span class="sr-only"
+						>{m.video_editor_color_paste_grade()}</span
+					>
+				</button>
+				<details class="relative min-w-0">
+					<summary
+						class="color-tool cursor-pointer list-none"
+						title={m.video_editor_color_presets()}
+					>
+						<SaveIcon class="size-3.5" /><span class="sr-only"
+							>{m.video_editor_color_presets()}</span
+						>
+					</summary>
+					<div
+						class="absolute top-8 right-0 z-50 w-72 border border-white/15 bg-[oklch(0.145_0.008_55)] p-2 shadow-xl"
+					>
+						<div class="grid grid-cols-[1fr_auto] gap-1">
+							<Input
+								class="h-7 min-w-0 rounded border border-[oklch(0.32_0.015_55)] bg-[oklch(0.12_0.006_55)] px-2 text-xs"
+								bind:value={presetName}
+								placeholder={m.video_editor_color_preset_name()}
+								aria-label={m.video_editor_color_preset_name()}
+								onkeydown={(event) => {
+									if (event.key === 'Enter') savePreset();
+								}}
+							/>
+							<button
+								type="button"
+								class="color-icon"
+								disabled={!presetName.trim() || grade.length === 0}
+								title={m.video_editor_color_save_preset()}
+								aria-label={m.video_editor_color_save_preset()}
+								onclick={savePreset}
+							>
+								<SaveIcon class="size-3.5" />
+							</button>
+						</div>
+						{#if presets.length > 0}
+							<div class="mt-1 grid grid-cols-[1fr_auto_auto] gap-1">
+								<AppSelect
+									class="h-7 min-w-0 text-xs"
+									bind:value={selectedPresetId}
+									ariaLabel={m.video_editor_color_presets()}
+									options={presetOptions}
+								/>
+								<button
+									type="button"
+									class="color-tool px-2"
+									disabled={!selectedPresetId}
+									onclick={applyPreset}
+								>
+									{m.video_editor_color_apply_preset()}
+								</button>
+								<button
+									type="button"
+									class="color-icon"
+									disabled={!selectedPresetId}
+									title={m.video_editor_color_delete_preset()}
+									aria-label={m.video_editor_color_delete_preset()}
+									onclick={deletePreset}
+								>
+									<Trash2Icon class="size-3.5" />
+								</button>
+							</div>
+						{/if}
+					</div>
+				</details>
 			</div>
+			{#if status}
+				<p class="mt-0.5 truncate text-[9px] text-[oklch(0.68_0.02_55)]" aria-live="polite">
+					{status}
+				</p>
+			{/if}
 		</div>
-
-		{#if colorPreviewStore.comparisonMode === 'split'}
-			<label class="mb-2 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[10px]">
-				<span>{m.video_editor_color_before()}</span>
-				<Slider
-					min={0.05}
-					max={0.95}
-					step={0.01}
-					value={colorPreviewStore.splitPosition}
-					ariaLabel={m.video_editor_color_split_position()}
-					onValueChange={(value) => colorPreviewStore.setSplitPosition(value)}
-					onValueCommit={(value) => colorPreviewStore.setSplitPosition(value)}
-				/>
-				<span>{m.video_editor_color_after()}</span>
-			</label>
-		{/if}
-
-		<div
-			class="mb-2 grid grid-cols-4 gap-1"
-			role="group"
-			aria-label={m.video_editor_color_balance()}
-		>
-			<button
-				type="button"
-				class="color-tool"
-				title={m.video_editor_color_auto_balance()}
-				onclick={() => void autoBalance()}
-			>
-				<WandSparklesIcon class="size-3.5" />{m.video_editor_color_auto()}
-			</button>
-			<button
-				type="button"
-				class="color-tool"
-				title={m.video_editor_color_pick_white_balance()}
-				onclick={() => void pick('white-balance')}
-			>
-				<PipetteIcon class="size-3.5" />{m.video_editor_color_white_balance_short()}
-			</button>
-			<button
-				type="button"
-				class="color-tool"
-				title={m.video_editor_color_pick_black_point()}
-				onclick={() => void pick('black-point')}
-			>
-				<span class="relative"
-					><PipetteIcon class="size-3.5" /><span
-						class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-white bg-black"
-					></span></span
-				>{m.video_editor_color_black_short()}
-			</button>
-			<button
-				type="button"
-				class="color-tool"
-				title={m.video_editor_color_pick_white_point()}
-				onclick={() => void pick('white-point')}
-			>
-				<span class="relative"
-					><PipetteIcon class="size-3.5" /><span
-						class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-black bg-white"
-					></span></span
-				>{m.video_editor_color_white_short()}
-			</button>
+		<div class="min-h-0 flex-1 overflow-hidden">
+			<ColorPrimaryControls {itemId} {itemIds} {onedit} />
 		</div>
-
-		<div class="mb-2 grid grid-cols-2 gap-1">
-			<button type="button" class="color-tool" disabled={grade.length === 0} onclick={copyGrade}>
-				<CopyIcon class="size-3.5" />{m.video_editor_color_copy_grade()}
-			</button>
-			<button
-				type="button"
-				class="color-tool"
-				disabled={!colorPreviewStore.gradeClipboard?.length}
-				onclick={pasteGrade}
-			>
-				<ClipboardPasteIcon class="size-3.5" />{m.video_editor_color_paste_grade()}
-			</button>
-		</div>
-
-		<div class="grid grid-cols-[1fr_auto_auto] gap-1">
-			<Input
-				class="h-7 min-w-0 rounded border border-[oklch(0.32_0.015_55)] bg-[oklch(0.14_0.008_55)] px-2 text-xs"
-				bind:value={presetName}
-				placeholder={m.video_editor_color_preset_name()}
-				aria-label={m.video_editor_color_preset_name()}
-				onkeydown={(event) => {
-					if (event.key === 'Enter') savePreset();
-				}}
-			/>
-			<button
-				type="button"
-				class="color-icon"
-				disabled={!presetName.trim() || grade.length === 0}
-				title={m.video_editor_color_save_preset()}
-				aria-label={m.video_editor_color_save_preset()}
-				onclick={savePreset}
-			>
-				<SaveIcon class="size-3.5" />
-			</button>
-			<span class="w-7"></span>
-		</div>
-		{#if presets.length > 0}
-			<div class="mt-1 grid grid-cols-[1fr_auto_auto] gap-1">
-				<AppSelect
-					class="h-7 min-w-0 text-xs"
-					bind:value={selectedPresetId}
-					ariaLabel={m.video_editor_color_presets()}
-					options={presetOptions}
-				/>
-				<button
-					type="button"
-					class="color-tool px-2"
-					disabled={!selectedPresetId}
-					onclick={applyPreset}
-				>
-					{m.video_editor_color_apply_preset()}
-				</button>
-				<button
-					type="button"
-					class="color-icon"
-					disabled={!selectedPresetId}
-					title={m.video_editor_color_delete_preset()}
-					aria-label={m.video_editor_color_delete_preset()}
-					onclick={deletePreset}
-				>
-					<Trash2Icon class="size-3.5" />
-				</button>
-			</div>
-		{/if}
-		<p class="mt-1 min-h-4 text-[10px] text-[oklch(0.68_0.02_55)]" aria-live="polite">{status}</p>
 	</section>
 {/if}
 

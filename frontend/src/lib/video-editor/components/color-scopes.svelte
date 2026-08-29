@@ -31,7 +31,7 @@
 		{ value: 'luma', label: 'Y', color: '#ccccaa' }
 	];
 
-	let { itemId }: { itemId: string | null } = $props();
+	let { itemId, embedded = false }: { itemId: string | null; embedded?: boolean } = $props();
 	let gpuCanvas = $state<HTMLCanvasElement | null>(null);
 	let cpuCanvas = $state<HTMLCanvasElement | null>(null);
 	let renderer = $state.raw<ScopeRenderer | null>(null);
@@ -44,6 +44,7 @@
 	const showViewModes = $derived(gpuReady && (scope === 'histogram' || scope === 'waveform'));
 
 	onMount(() => {
+		if (!itemId) return;
 		let disposed = false;
 		let created: ScopeRenderer | null = null;
 		void ScopeRenderer.create((message) => {
@@ -183,7 +184,9 @@
 </script>
 
 <section
-	class="mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2"
+	class="flex min-h-0 flex-col {embedded
+		? 'h-full p-2'
+		: 'mt-2 border-t border-[oklch(0.25_0.015_55)] pt-2'}"
 	data-scope-backend={gpuReady ? 'webgpu' : 'cpu'}
 	data-scope-error={gpuFailure || undefined}
 >
@@ -235,14 +238,18 @@
 		<canvas
 			bind:this={gpuCanvas}
 			data-color-scope-canvas
-			class="rounded bg-black {canvasClass(scope)}"
+			class="min-h-0 rounded bg-black {embedded ? 'flex-1 object-contain' : ''} {canvasClass(
+				scope
+			)}"
 			aria-label={m.video_editor_scope_live()}
 		></canvas>
 	{:else}
 		<canvas
 			bind:this={cpuCanvas}
 			data-color-scope-canvas
-			class="rounded bg-black {canvasClass(scope)}"
+			class="min-h-0 rounded bg-black {embedded ? 'flex-1 object-contain' : ''} {canvasClass(
+				scope
+			)}"
 			aria-label={m.video_editor_scope_live()}
 		></canvas>
 	{/if}

@@ -1,7 +1,10 @@
 <!--
-OpenPost Video Editor workspace for one project.
-LAYOUT: header / left media pool / center preview + transport / bottom timeline.
-OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only signal color.
+THESIS: One editor changes layout for Edit, Color, and Motion; it refuses a one-size inspector.
+OWN-WORLD: warm-black production chrome, dense measured controls, and orange only for action, selection, and the playhead.
+STORY: Import, assemble, grade, animate, inspect, and export without leaving the project or losing timeline context.
+FIRST VIEWPORT: persistent project bar above a task-specific workspace; Edit centers preview and timeline, Color pairs program scopes with filmstrip and grading lanes, Motion pairs layer controls with keyframe editing.
+FORM: FreeCut studio-workspace grammar, pinned by the user; seed freecut-parity-2026-08-29.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
@@ -75,6 +78,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import PreviewDiagnosticsPanel from '$lib/video-editor/components/preview-diagnostics-panel.svelte';
 	import EditorWorkspaceSwitcher from '$lib/video-editor/components/editor-workspace-switcher.svelte';
 	import ColorGradingDock from '$lib/video-editor/components/color-grading-dock.svelte';
+	import ColorScopes from '$lib/video-editor/components/color-scopes.svelte';
 	import MotionWorkspacePanel from '$lib/video-editor/components/motion-workspace-panel.svelte';
 	import MediaRecoveryDialog from '$lib/video-editor/components/media-recovery-dialog.svelte';
 	import UnsupportedAudioImportDialog from '$lib/video-editor/components/unsupported-audio-import-dialog.svelte';
@@ -102,6 +106,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		editorWorkspace,
 		type EditorWorkspaceId
 	} from '$lib/video-editor/workspaces/editor-workspace.svelte';
+	import {
+		colorGradeTargetAtFrame,
+		colorSelectionSpansFrame
+	} from '$lib/video-editor/timeline/color-playhead-selection';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { editorSettings } from '$lib/video-editor/settings/editor-settings.svelte';
 	import {
@@ -442,6 +450,23 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		selectedItemIds = itemId ? [itemId] : [];
 		selectedTransitionId = null;
 	}
+
+	$effect(() => {
+		const workspace = activeWorkspace;
+		const frame = timelineStore.currentFrame;
+		const items = timelineStore.items;
+		const tracks = timelineStore.tracks;
+		const selection =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		if (
+			workspace !== 'color' ||
+			colorSelectionSpansFrame(selection, timelineStore.itemById, frame)
+		) {
+			return;
+		}
+		const target = colorGradeTargetAtFrame(items, tracks, frame);
+		if (target) handleSelectItem(target.id);
+	});
 
 	function createCompoundForItems(ids: string[]): void {
 		const compositionId = createCompoundClip(ids, m.video_editor_compound_default());
@@ -1435,11 +1460,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							: 'hidden'}"
 					>
 						<div
-							class:grid={showSourceMonitor}
-							class:flex={!showSourceMonitor}
-							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] {showSourceMonitor
-								? 'grid-cols-1 md:grid-cols-2'
-								: ''}"
+							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] {activeWorkspace === 'color'
+								? 'grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]'
+								: showSourceMonitor
+									? 'grid grid-cols-1 md:grid-cols-2'
+									: 'flex'}"
 						>
 							{#if showSourceMonitor && sourceMediaId}
 								{#key sourceMediaId}
@@ -1458,7 +1483,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								data-video-preview
 								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.205_0.008_55)]"
 							>
-								{#if showSourceMonitor}
+								{#if showSourceMonitor || activeWorkspace === 'color'}
 									<div
 										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
 									>
@@ -1472,6 +1497,24 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 								/>
 								<TransportBar {projectId} onvoiceoverinserted={handleVoiceoverInserted} />
 							</section>
+							{#if activeWorkspace === 'color'}
+								<aside
+									class="flex min-h-[180px] min-w-0 flex-col border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.007_55)] lg:min-h-0 lg:border-t-0 lg:border-l"
+									aria-label={m.video_editor_scopes()}
+								>
+									<div
+										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+									>
+										{m.video_editor_scopes()}
+									</div>
+									<div class="min-h-0 flex-1 overflow-hidden">
+										<ColorScopes
+											embedded
+											itemId={selectedSupportsEffects ? selectedItemId : null}
+										/>
+									</div>
+								</aside>
+							{/if}
 						</div>
 					</div>
 
@@ -1718,69 +1761,71 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				{/if}
 			</div>
 
-			<footer
-				class="relative h-[42dvh] shrink-0 overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] lg:h-[var(--timeline-height)]"
-				style={`--timeline-height:${timelineHeight}px`}
-			>
-				<button
-					type="button"
-					class="absolute inset-x-0 top-0 z-[80] hidden h-2 cursor-row-resize touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] lg:flex"
-					aria-label={m.video_editor_timeline()}
-					aria-valuemin="180"
-					aria-valuemax="620"
-					aria-valuenow={timelineHeight}
-					role="separator"
-					onpointerdown={startTimelineResize}
-					onkeydown={resizeTimelineFromKeyboard}
+			{#if activeWorkspace !== 'color'}
+				<footer
+					class="relative h-[42dvh] shrink-0 overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] lg:h-[var(--timeline-height)]"
+					style={`--timeline-height:${timelineHeight}px`}
 				>
-					<span class="h-0.5 w-12 rounded-full bg-white/18 transition-colors hover:bg-white/36"
-					></span>
-				</button>
-				<SequenceTabs
-					onswitch={resetTimelineSelection}
-					onedit={() => editorSession.scheduleAutosave()}
-				/>
-				{#if sequenceStore.activeSequence?.editorKind === 'composite-2d'}
-					<CompositionTimeline
-						{selectedItemId}
+					<button
+						type="button"
+						class="absolute inset-x-0 top-0 z-[80] hidden h-2 cursor-row-resize touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] lg:flex"
+						aria-label={m.video_editor_timeline()}
+						aria-valuemin="180"
+						aria-valuemax="620"
+						aria-valuenow={timelineHeight}
+						role="separator"
+						onpointerdown={startTimelineResize}
+						onkeydown={resizeTimelineFromKeyboard}
+					>
+						<span class="h-0.5 w-12 rounded-full bg-white/18 transition-colors hover:bg-white/36"
+						></span>
+					</button>
+					<SequenceTabs
+						onswitch={resetTimelineSelection}
 						onedit={() => editorSession.scheduleAutosave()}
-						onselectitem={handleSelectItem}
 					/>
-				{:else}
-					<TimelinePanel
-						bind:selectedItemId
-						bind:selectedItemIds
-						bind:selectedTransitionId
-						freezeFramePending={freezingItemId !== null}
-						sceneScanPending={scanningScenes}
-						{transcriptionPendingItemIds}
-						{aiCaptionPendingItemIds}
-						canvasWidth={renderProject?.metadata.width ?? 1920}
-						canvasHeight={renderProject?.metadata.height ?? 1080}
-						onedit={() => editorSession.scheduleAutosave()}
-						onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
-						onreverseitems={handleReverseItems}
-						onsplitscenes={(itemId, mode) => void handleAutoSplitScenes(itemId, mode)}
-						ontranscribecaptions={handleDefaultCaptions}
-						onaicaptions={(itemId) => void handleAiCaptions(itemId)}
-						onextractsubtitles={openEmbeddedSubtitlesForItem}
-						onopenspeechcleanup={openAgentSpeechCleanup}
-						oncreatevoice={openTextVoice}
-						oncreatecompound={createCompoundForItems}
-						ondissolvecompound={dissolveCompoundItem}
-						oncopygrade={handleCopyColorGrade}
-						onpastegrade={handlePasteColorGrade}
-						oncopyselection={() => copyTimelineSelection(false)}
-						oncutselection={() => copyTimelineSelection(true)}
-						onpasteat={(frame, trackId) => pasteTimelineClipboard(frame, trackId)}
-						onsplitselection={handleSplit}
-						ondeleteselection={() => handleDelete(false)}
-						onrippledeleteselection={() => handleDelete(true)}
-						onopencomposition={handleOpenSequence}
-						ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
-					/>
-				{/if}
-			</footer>
+					{#if sequenceStore.activeSequence?.editorKind === 'composite-2d'}
+						<CompositionTimeline
+							{selectedItemId}
+							onedit={() => editorSession.scheduleAutosave()}
+							onselectitem={handleSelectItem}
+						/>
+					{:else}
+						<TimelinePanel
+							bind:selectedItemId
+							bind:selectedItemIds
+							bind:selectedTransitionId
+							freezeFramePending={freezingItemId !== null}
+							sceneScanPending={scanningScenes}
+							{transcriptionPendingItemIds}
+							{aiCaptionPendingItemIds}
+							canvasWidth={renderProject?.metadata.width ?? 1920}
+							canvasHeight={renderProject?.metadata.height ?? 1080}
+							onedit={() => editorSession.scheduleAutosave()}
+							onfreezeframe={(itemId) => void handleFreezeFrame(itemId)}
+							onreverseitems={handleReverseItems}
+							onsplitscenes={(itemId, mode) => void handleAutoSplitScenes(itemId, mode)}
+							ontranscribecaptions={handleDefaultCaptions}
+							onaicaptions={(itemId) => void handleAiCaptions(itemId)}
+							onextractsubtitles={openEmbeddedSubtitlesForItem}
+							onopenspeechcleanup={openAgentSpeechCleanup}
+							oncreatevoice={openTextVoice}
+							oncreatecompound={createCompoundForItems}
+							ondissolvecompound={dissolveCompoundItem}
+							oncopygrade={handleCopyColorGrade}
+							onpastegrade={handlePasteColorGrade}
+							oncopyselection={() => copyTimelineSelection(false)}
+							oncutselection={() => copyTimelineSelection(true)}
+							onpasteat={(frame, trackId) => pasteTimelineClipboard(frame, trackId)}
+							onsplitselection={handleSplit}
+							ondeleteselection={() => handleDelete(false)}
+							onrippledeleteselection={() => handleDelete(true)}
+							onopencomposition={handleOpenSequence}
+							ontransitionbreak={() => showToast(m.video_editor_transition_removed(), 'info')}
+						/>
+					{/if}
+				</footer>
+			{/if}
 		{/key}
 	{/if}
 </div>
