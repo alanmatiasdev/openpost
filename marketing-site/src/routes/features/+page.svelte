@@ -55,6 +55,9 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 				Create a source idea, adapt it for each account, prepare the media, schedule the work,
 				inspect the result, and keep the same boundaries when a teammate or tool helps.
 			</p>
+			<p class="mt-3 text-sm font-medium text-foreground/75">
+				This page is for founders and teams evaluating the complete OpenPost workflow.
+			</p>
 			<div class="mt-8 flex flex-wrap gap-3">
 				<Button href={managedSignupUrl} size="lg">
 					Start 14-day trial

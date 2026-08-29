@@ -42,6 +42,9 @@
 					{platform.heroTitle}
 				</h1>
 				<p class="marketing-copy mt-5">{platform.description}</p>
+				<p class="mt-3 text-sm font-medium text-foreground/75">
+					This page is for people deciding whether OpenPost fits their {platform.name} publishing workflow.
+				</p>
 				<div class="mt-5 grid gap-2 text-sm text-muted-foreground">
 					<p class="inline-flex items-start gap-2">
 						<Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
