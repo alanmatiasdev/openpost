@@ -266,7 +266,7 @@ const mediaFixtures = [
 
 const artwork = {
   workflow: `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200">
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
       <rect width="1200" height="1200" fill="#f3efe8"/><g fill="none" stroke="#292524" stroke-width="18"><path d="M215 330h770M215 600h770M215 870h770"/></g>
       <g fill="#ea580c"><circle cx="300" cy="330" r="68"/><circle cx="600" cy="600" r="68"/><circle cx="900" cy="870" r="68"/></g>
       <text x="160" y="1080" fill="#292524" font-family="system-ui,sans-serif" font-size="64" font-weight="700">Draft · Adapt · Schedule</text>
@@ -474,6 +474,62 @@ function analyticsFixture() {
       },
     ],
   };
+}
+
+async function installLocalVideoWorkspace(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ source }) => {
+      Object.defineProperty(window, "showDirectoryPicker", {
+        configurable: true,
+        value: async () => {
+          const handle = await navigator.storage.getDirectory();
+          const prototype = Object.getPrototypeOf(handle);
+          if (!("queryPermission" in prototype)) {
+            Object.defineProperty(prototype, "queryPermission", {
+              configurable: true,
+              value: async () => "granted",
+            });
+          }
+          if (!("requestPermission" in prototype)) {
+            Object.defineProperty(prototype, "requestPermission", {
+              configurable: true,
+              value: async () => "granted",
+            });
+          }
+          return handle;
+        },
+      });
+      Object.defineProperty(window, "showOpenFilePicker", {
+        configurable: true,
+        value: async () => {
+          const file = new File([source], "openpost-workflow.svg", {
+            type: "image/svg+xml",
+            lastModified: Date.parse("2026-08-20T14:00:00.000Z"),
+          });
+          return [
+            {
+              kind: "file",
+              name: file.name,
+              getFile: async () => file,
+            },
+          ];
+        },
+      });
+    },
+    { source: artwork.workflow },
+  );
+}
+
+async function createVideoEditorProject(page: Page, name: string): Promise<void> {
+  await page.goto("/video-editor");
+  await page.getByRole("button", { name: "Choose folder" }).click();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByRole("textbox", { name: "Project name" }).fill(name);
+  await page.getByRole("button", { name: /Instagram square, 1080 × 1080/u }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/video-editor\/[0-9a-f-]+$/u);
+  await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 }
 
 test.describe("product screenshot capture", () => {
@@ -1038,6 +1094,82 @@ test.describe("product screenshot capture", () => {
     await capture(page, "media-dark.png", [
       page.getByRole("heading", { name: "Media", level: 1 }),
       page.getByText("media-library.png"),
+    ]);
+
+    await page.evaluate(() => {
+      localStorage.setItem("openpost-image-editor-first-edit-v1", "1");
+    });
+    await page.goto(`/image-editor/new?workspace=${workspace.id}`);
+    await page
+      .getByRole("region", { name: "Starter templates" })
+      .getByRole("button", { name: /How-to carousel/u })
+      .click();
+    await expect(page).toHaveURL(/\/image-editor\/[0-9a-f-]+$/u);
+    const imageEditorStage = page.getByTestId("image-editor-stage");
+    await expect(imageEditorStage).toBeVisible();
+    await page.getByRole("textbox", { name: "Design title" }).fill("Launch carousel");
+    const imageHeadline = page.getByRole("treeitem", {
+      name: /How to get it done, text/u,
+    });
+    await imageHeadline.click();
+    const imageProperties = page.locator(".image-editor-inspector");
+    await imageProperties.locator("textarea").fill("Publish clearly.");
+    const imageSubline = page.getByRole("treeitem", {
+      name: /A focused five-page walkthrough\., text/u,
+    });
+    await imageSubline.click();
+    await imageProperties.locator("textarea").fill("Create once. Adapt each version.");
+    await imageHeadline.click();
+    const expandPages = page.getByRole("button", { name: "Expand pages" });
+    if (await expandPages.isVisible()) await expandPages.click();
+    await expect(page.getByTestId("image-editor-save-indicator")).toHaveAttribute(
+      "data-state",
+      "saved",
+      { timeout: 15_000 },
+    );
+    await expect(page.getByText("Start with the headline.")).toHaveCount(0);
+    await capture(page, "image-editor-dark.png", [
+      imageEditorStage,
+      imageHeadline,
+      page.getByRole("button", { name: /Page 5:/u }),
+    ]);
+
+    await installLocalVideoWorkspace(page);
+    await createVideoEditorProject(page, "Launch video");
+    await page.getByRole("button", { name: "Import media" }).click();
+    const placeWorkflow = page.getByRole("button", {
+      name: /Place on timeline: openpost-workflow\.png/u,
+    });
+    await expect(placeWorkflow).toBeVisible({ timeout: 30_000 });
+    const videoMediaPool = page.getByRole("complementary", { name: "Media pool" });
+    await expect(videoMediaPool.getByText("1200 × 1200", { exact: true })).toBeVisible();
+    await placeWorkflow.click();
+    await expect(page.locator("[data-media-placement-status]")).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    const timelineItems = page.locator("[data-timeline-item-id]");
+    await expect(timelineItems).toHaveCount(1);
+    await videoMediaPool.getByRole("button", { name: "Add layer" }).click();
+    await page.getByRole("menuitem", { name: "Add text", exact: true }).click();
+    await expect(timelineItems).toHaveCount(2);
+    const videoInspector = page.getByRole("complementary", { name: "Edit" });
+    const videoText = videoInspector.locator("textarea").first();
+    await expect(videoText).toHaveValue("Your text");
+    await videoText.fill("Publish clearly.");
+    await videoText.press("Tab");
+    await videoInspector.getByRole("button", { name: "Apply Launch" }).click();
+    const videoTextSpans = videoInspector.locator("textarea");
+    await expect(videoTextSpans).toHaveCount(3);
+    await videoTextSpans.nth(0).fill("OPENPOST");
+    await videoTextSpans.nth(1).fill("Publish clearly.");
+    await videoTextSpans.nth(2).fill("Create once. Adapt each version.");
+    await videoTextSpans.nth(2).press("Tab");
+    await expect(page.locator("[data-program-monitor]")).toBeVisible();
+    await capture(page, "video-editor-dark.png", [
+      page.locator("[data-program-monitor]"),
+      timelineItems.first(),
+      timelineItems.last(),
+      videoInspector.getByRole("heading", { name: "Properties" }),
     ]);
 
     await page.goto("/settings?tab=general");

@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <strong>Write once. Shape every channel. Know what shipped.</strong>
+  <strong>Publish clearly.</strong>
   <br>
-  One social publishing workspace for founders, creators, teams, and agencies.
+  Create, adapt, schedule, and track social content from one workspace.
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 </p>
 
 <p align="center">
-  <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start a 14-day trial</strong></a>
+  <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start 14-day trial</strong></a>
   ·
   <a href="https://docs.openpost.social/guide/quickstart"><strong>Self-host</strong></a>
   ·
@@ -40,43 +40,43 @@
 </p>
 
 <p align="center">
-  <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
+  <img alt="OpenPost composer with channel-specific versions, media, scheduling, and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
 </p>
 
-You already have the material. A launch. An update. Something you learned the hard way. OpenPost takes that and makes it fit each channel. It shows you what each destination allows before you publish, lets you schedule it, and then shows you what actually happened. No hidden rules.
+Turn a launch, update, or lesson into destination-specific content, schedule it, and track what shipped. OpenPost shows each provider's limits and publishing state.
 
 <table>
   <tr>
     <td width="50%" align="center">
       <img alt="OpenPost monthly publishing calendar with published and scheduled posts" src="./assets/screenshots/calendar-dark.webp" width="100%">
-      <br><strong>Plan the month</strong><br><sub>Drafts, scheduled posts, and published work stay in one calendar.</sub>
+      <br><sub>Calendar</sub>
     </td>
     <td width="50%" align="center">
       <img alt="OpenPost analytics with account growth, content results, and follower trend" src="./assets/screenshots/analytics-dark.webp" width="100%">
-      <br><strong>See what worked</strong><br><sub>Track real provider metrics without mixing views, impressions, and reach.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img alt="OpenPost media library with reusable branded assets" src="./assets/screenshots/media-dark.webp" width="100%">
-      <br><strong>Reuse your brand</strong><br><sub>Keep images, videos, designs, and their usage in the shared library.</sub>
-    </td>
-    <td width="50%" align="center">
-      <img alt="OpenPost connected social channels and available provider connections" src="./assets/screenshots/accounts-dark.webp" width="100%">
-      <br><strong>Keep provider truth visible</strong><br><sub>Connect each channel once, then see its real setup and publishing state.</sub>
+      <br><sub>Analytics</sub>
     </td>
   </tr>
 </table>
 
+<p align="center">
+  <img alt="OpenPost Image Editor with a five-page carousel, layers, and text controls" src="./assets/screenshots/image-editor-dark.webp" width="94%">
+  <br><sub>OpenPost Image Editor</sub>
+</p>
+
+<p align="center">
+  <img alt="OpenPost Video Editor with a populated preview, media pool, inspector, and multitrack timeline" src="./assets/screenshots/video-editor-dark.webp" width="94%">
+  <br><sub>OpenPost Video Editor</sub>
+</p>
+
 ## What you get
 
-- **A composer that respects each channel.** Write once, then fix the text, media, and timing for each account. It will not let you push a 280-character thread to LinkedIn and pretend it worked.
-- **A queue that remembers.** Everything scheduled lives in the database. Restart the server and it is still there. You see if it is queued, published, failed, or waiting to retry.
-- **One place for your work.** Publications, media, calendar, analytics, and comments live in the same workspace. Not five tabs pretending to be one product.
-- **Tools where you need them.** Edit an image. Cut a short video. Make a meme. Write alt text. It saves back to your library. No need to open another app.
-- **Same app everywhere.** Web, Android, API, CLI, MCP. Same words, same permissions, same state. I built it that way because different behavior on different surfaces breaks trust.
+- **Channel-specific versions.** Adapt text, media, format, and timing for each account while keeping one source publication.
+- **A durable queue.** Scheduled work stays in the database, with clear queued, published, failed, and retrying states.
+- **One workspace.** Publications, media, calendar, analytics, and comments stay together.
+- **Built-in creative tools.** Edit images, cut videos, make memes, and save the result to the Media library.
+- **Consistent access.** The web app, HTTP API, CLI, and MCP use the same permissions within each workspace.
 
-You will not find a CRM, ad manager, or social listening here. There are better tools for that. I run the hosted version for you. Self-hosting is there if you want to own the box, the backups, and the provider setup yourself.
+OpenPost focuses on publishing. It does not include a CRM, ad manager, or social listening. Hosted manages the service for you. Self-hosting leaves the server, backups, and provider setup to you.
 
 ## Get started
 
@@ -98,9 +98,9 @@ Open `http://localhost:8080`, create the first account, and connect a social acc
 
 ## Providers
 
-OpenPost talks to X, Mastodon, Bluesky, LinkedIn profiles and company pages, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord webhooks.
+OpenPost has adapters for X, Mastodon, Bluesky, LinkedIn profiles and company pages, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord webhooks.
 
-An adapter means I built it, not that it is ready on the hosted service. Some need app review. Some need the right account type or scopes. Those checks stay separate so you see the real state before you publish.
+An adapter means the integration exists. It does not mean it is ready on Hosted. Some need app review, a specific account type, or extra scopes. OpenPost shows that state before you publish.
 
 <!-- provider-certification:begin -->
 
@@ -113,7 +113,7 @@ No Hosted service provider-format certification claim is current. Implementation
 
 ## Automate it
 
-Give a token to the API, CLI, or MCP server and it works like you do. Same workspace. Same permissions. You can automate a post without handing over your social logins. I use one permission model everywhere. Separate models are where things quietly break.
+API, CLI, and MCP tokens use the same workspace permissions as the web app. They never expose social account credentials.
 
 [CLI guide](https://docs.openpost.social/cli/) · [MCP guide](https://docs.openpost.social/mcp/) · [API reference](https://docs.openpost.social/development/api-reference)
 
