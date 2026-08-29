@@ -28,4 +28,14 @@
 	:global([data-sonner-toaster][data-sonner-theme='dark']) {
 		--success-text: var(--success-foreground);
 	}
+
+	@media (max-width: 600px) {
+		:global([data-sonner-toaster]) {
+			width: auto;
+		}
+
+		:global([data-sonner-toaster]) :global([data-sonner-toast]) {
+			width: 100%;
+		}
+	}
 </style>
