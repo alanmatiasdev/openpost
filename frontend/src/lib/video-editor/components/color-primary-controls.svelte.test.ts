@@ -113,3 +113,45 @@ test('scrubs the master with Shift precision and decomposes an edited RGB channe
 	expect(onedit).toHaveBeenCalledTimes(2);
 	expect(commandHistory.undoStack).toHaveLength(2);
 });
+
+test('uses Resolve display units for dock parameters and resets the stored grade', async () => {
+	const onedit = vi.fn();
+	const screen = await render(ColorPrimaryControls, { itemId: item.id, onedit });
+	const temperature = screen.getByRole('textbox', { name: 'Temperature' }).element();
+	const saturation = screen.getByRole('textbox', { name: 'Saturation' }).element();
+
+	expect(temperature.value).toBe('0.0');
+	expect(saturation.value).toBe('50.00');
+
+	temperature.focus();
+	temperature.value = '400.0';
+	temperature.dispatchEvent(new InputEvent('input', { bubbles: true }));
+	temperature.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+	saturation.focus();
+	saturation.value = '75.00';
+	saturation.dispatchEvent(new InputEvent('input', { bubbles: true }));
+	saturation.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+
+	await vi.waitFor(() => {
+		const effect = timelineStore.itemById
+			.get(item.id)
+			?.effects?.find(
+				(candidate) => candidate.type === 'gpu' && candidate.effectId === 'gpu-color-wheels'
+			);
+		if (effect?.type !== 'gpu') throw new Error('Color wheels effect missing');
+		expect(effect.params.temperature).toBe(10);
+		expect(effect.params.saturation).toBe(50);
+	});
+
+	screen.getByRole('button', { name: 'Reset Temperature' }).element().click();
+	await vi.waitFor(() => {
+		const effect = timelineStore.itemById
+			.get(item.id)
+			?.effects?.find(
+				(candidate) => candidate.type === 'gpu' && candidate.effectId === 'gpu-color-wheels'
+			);
+		expect(effect?.type === 'gpu' ? effect.params.temperature : null).toBe(0);
+	});
+	expect(onedit).toHaveBeenCalledTimes(3);
+	expect(commandHistory.undoStack).toHaveLength(3);
+});

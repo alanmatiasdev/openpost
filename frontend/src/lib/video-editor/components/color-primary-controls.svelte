@@ -1,7 +1,8 @@
 <script lang="ts">
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import PipetteIcon from '@lucide/svelte/icons/pipette';
 	import { onMount } from 'svelte';
-	import { Slider } from '$lib/components/ui/slider';
+	import { m } from '$lib/paraglide/messages';
 	import {
 		hueAmountFromWheelChannels,
 		wheelChannelsFromHueAmount,
@@ -11,6 +12,7 @@
 	import { gpuEffectLabel, gpuParamLabel } from '$lib/video-editor/effects/gpu/i18n';
 	import type { GpuEffect } from '$lib/video-editor/effects/types';
 	import { colorPreviewStore } from '$lib/video-editor/effects/color-preview-store.svelte';
+	import type { ColorPickerKind } from '$lib/video-editor/effects/color-preview-store.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { upsertGpuEffectParamsOnItems } from '$lib/video-editor/timeline/actions/effects';
 	import ScrubbableNumberInput from './scrubbable-number-input.svelte';
@@ -70,12 +72,46 @@
 		'hue',
 		'lumMix'
 	] as const;
+	const parameterDisplays: Record<
+		string,
+		{ scale: number; bias: number; step: number; decimals: number }
+	> = {
+		temperature: { scale: 40, bias: 0, step: 10, decimals: 1 },
+		tint: { scale: 1, bias: 0, step: 0.1, decimals: 2 },
+		contrast: { scale: 1, bias: 0, step: 0.005, decimals: 3 },
+		pivot: { scale: 1, bias: 0, step: 0.005, decimals: 3 },
+		midDetail: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
+		colorBoost: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
+		shadows: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
+		highlights: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
+		saturation: { scale: 0.5, bias: 50, step: 0.5, decimals: 2 },
+		hue: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
+		lumMix: { scale: 1, bias: 0, step: 0.5, decimals: 2 }
+	};
+	const parameterAccents: Record<string, string> = {
+		temperature: 'neutral',
+		contrast: 'neutral',
+		pivot: 'neutral',
+		lumMix: 'neutral',
+		tint: 'hue',
+		hue: 'hue',
+		saturation: 'rgb',
+		colorBoost: 'rgb'
+	};
 
 	let {
 		itemId,
 		itemIds = [],
-		onedit
-	}: { itemId: string | null; itemIds?: string[]; onedit: () => void } = $props();
+		onedit,
+		onautobalance,
+		onpick
+	}: {
+		itemId: string | null;
+		itemIds?: string[];
+		onedit: () => void;
+		onautobalance?: () => void;
+		onpick?: (kind: ColorPickerKind) => void;
+	} = $props();
 
 	let wheelDrafts = $state<Record<string, { hue: number; amount: number }>>({});
 	let parameterDrafts = $state<Record<string, number>>({});
@@ -259,6 +295,41 @@
 		commit({ [name]: value });
 	}
 
+	function parameterDisplay(name: string) {
+		const param = schema(name);
+		return (
+			parameterDisplays[name] ?? {
+				scale: 1,
+				bias: 0,
+				step: Number(param?.step ?? 1),
+				decimals: Number(param?.step ?? 1) >= 1 ? 0 : 2
+			}
+		);
+	}
+
+	function displayParameter(name: string): number {
+		const display = parameterDisplay(name);
+		return parameterValue(name) * display.scale + display.bias;
+	}
+
+	function parameterFromDisplay(name: string, value: number): number {
+		const display = parameterDisplay(name);
+		return normalizeLevel(name, (value - display.bias) / display.scale);
+	}
+
+	function parameterDisplayRange(name: string): { min: number; max: number } {
+		const param = schema(name);
+		const display = parameterDisplay(name);
+		return {
+			min: Number(param?.min ?? 0) * display.scale + display.bias,
+			max: Number(param?.max ?? 0) * display.scale + display.bias
+		};
+	}
+
+	function resetParameter(name: string): void {
+		commitParameter(name, Number(defaults[name] ?? 0));
+	}
+
 	function normalizeLevel(name: string, value: number): number {
 		const param = schema(name);
 		if (!param) return value;
@@ -348,26 +419,97 @@
 		<span class="font-mono text-[9px] tracking-wide text-white/35">PRIMARIES</span>
 	</header>
 
-	<div class="grid shrink-0 grid-cols-5 gap-2 border-b border-white/10 px-3 py-1">
+	<div
+		class="grid shrink-0 grid-cols-[auto_repeat(5,minmax(0,1fr))] items-center gap-x-1 border-b border-white/10 px-2 py-1.5 2xl:gap-x-3 2xl:px-4"
+	>
+		<div class="flex items-center gap-0.5 pr-1">
+			<button
+				type="button"
+				class="parameter-tool"
+				disabled={!itemId || !onautobalance}
+				title={m.video_editor_color_auto_balance()}
+				aria-label={m.video_editor_color_auto_balance()}
+				onclick={() => onautobalance?.()}
+			>
+				<span
+					class="flex size-3.5 items-center justify-center rounded-full border border-current text-[8px] leading-none font-semibold"
+					>A</span
+				>
+			</button>
+			<button
+				type="button"
+				class="parameter-tool"
+				disabled={!itemId || !onpick}
+				title={m.video_editor_color_pick_white_balance()}
+				aria-label={m.video_editor_color_pick_white_balance()}
+				onclick={() => onpick?.('white-balance')}
+			>
+				<PipetteIcon class="size-3.5" />
+			</button>
+			<button
+				type="button"
+				class="parameter-tool"
+				disabled={!itemId || !onpick}
+				title={m.video_editor_color_pick_black_point()}
+				aria-label={m.video_editor_color_pick_black_point()}
+				onclick={() => onpick?.('black-point')}
+			>
+				<span class="relative">
+					<PipetteIcon class="size-3.5" />
+					<span
+						class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-zinc-500 bg-black"
+					></span>
+				</span>
+			</button>
+			<button
+				type="button"
+				class="parameter-tool"
+				disabled={!itemId || !onpick}
+				title={m.video_editor_color_pick_white_point()}
+				aria-label={m.video_editor_color_pick_white_point()}
+				onclick={() => onpick?.('white-point')}
+			>
+				<span class="relative">
+					<PipetteIcon class="size-3.5" />
+					<span
+						class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-zinc-600 bg-white"
+					></span>
+				</span>
+			</button>
+		</div>
 		{#each topParameters as name (name)}
 			{@const param = schema(name)}
+			{@const display = parameterDisplay(name)}
+			{@const range = parameterDisplayRange(name)}
 			{#if param}
-				<label class="grid min-w-0 grid-cols-[1fr_auto] items-center text-[8px] text-white/45">
-					<span class="truncate">{gpuParamLabel(param)}</span>
-					<output class="font-mono text-[8px] text-white/75">
-						{parameterValue(name).toFixed(param.step < 0.1 ? 2 : 0)}
-					</output>
-					<Slider
-						class="col-span-2 mt-0.5"
-						min={param.min}
-						max={param.max}
-						step={param.step}
-						value={parameterValue(name)}
-						ariaLabel={gpuParamLabel(param)}
-						onValueChange={(value) => updateParameter(name, value)}
-						onValueCommit={(value) => commitParameter(name, value)}
-					/>
-				</label>
+				<div class="parameter-control">
+					<span class="parameter-label" title={gpuParamLabel(param)}>{gpuParamLabel(param)}</span>
+					<span class="flex min-w-0 flex-col items-center">
+						<ScrubbableNumberInput
+							ariaLabel={gpuParamLabel(param)}
+							value={displayParameter(name)}
+							min={range.min}
+							max={range.max}
+							step={display.step}
+							decimals={display.decimals}
+							class="parameter-chip"
+							onlive={(next) => updateParameter(name, parameterFromDisplay(name, next))}
+							oncommit={(next) => commitParameter(name, parameterFromDisplay(name, next))}
+						/>
+						<span class="parameter-accent {parameterAccents[name] ?? 'tonal'}" aria-hidden="true"
+						></span>
+					</span>
+					<button
+						type="button"
+						class="parameter-reset"
+						disabled={Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
+						title={`Reset ${gpuParamLabel(param)}`}
+						aria-label={`Reset ${gpuParamLabel(param)}`}
+						onclick={() => resetParameter(name)}
+					>
+						<RotateCcwIcon class="size-2.5" />
+					</button>
+				</div>
 			{/if}
 		{/each}
 	</div>
@@ -488,34 +630,157 @@
 		{/each}
 	</div>
 
-	<div class="grid shrink-0 grid-cols-6 gap-2 border-t border-white/10 px-3 py-1">
+	<div
+		class="grid shrink-0 grid-cols-6 items-center gap-x-1 border-t border-white/10 px-2 py-1.5 2xl:gap-x-3 2xl:px-4"
+	>
 		{#each bottomParameters as name (name)}
 			{@const param = schema(name)}
+			{@const display = parameterDisplay(name)}
+			{@const range = parameterDisplayRange(name)}
 			{#if param}
-				<label class="min-w-0 text-[8px] text-white/45">
-					<span class="flex items-center justify-between gap-1">
-						<span class="truncate">{gpuParamLabel(param)}</span>
-						<output class="font-mono text-[8px] text-white/75">
-							{parameterValue(name).toFixed(param.step < 0.1 ? 2 : 0)}
-						</output>
+				<div class="parameter-control">
+					<span class="parameter-label" title={gpuParamLabel(param)}>{gpuParamLabel(param)}</span>
+					<span class="flex min-w-0 flex-col items-center">
+						<ScrubbableNumberInput
+							ariaLabel={gpuParamLabel(param)}
+							value={displayParameter(name)}
+							min={range.min}
+							max={range.max}
+							step={display.step}
+							decimals={display.decimals}
+							class="parameter-chip"
+							onlive={(next) => updateParameter(name, parameterFromDisplay(name, next))}
+							oncommit={(next) => commitParameter(name, parameterFromDisplay(name, next))}
+						/>
+						<span class="parameter-accent {parameterAccents[name] ?? 'tonal'}" aria-hidden="true"
+						></span>
 					</span>
-					<Slider
-						class="mt-0.5"
-						min={param.min}
-						max={param.max}
-						step={param.step}
-						value={parameterValue(name)}
-						ariaLabel={gpuParamLabel(param)}
-						onValueChange={(value) => updateParameter(name, value)}
-						onValueCommit={(value) => commitParameter(name, value)}
-					/>
-				</label>
+					<button
+						type="button"
+						class="parameter-reset"
+						disabled={Object.is(parameterValue(name), Number(defaults[name] ?? 0))}
+						title={`Reset ${gpuParamLabel(param)}`}
+						aria-label={`Reset ${gpuParamLabel(param)}`}
+						onclick={() => resetParameter(name)}
+					>
+						<RotateCcwIcon class="size-2.5" />
+					</button>
+				</div>
 			{/if}
 		{/each}
 	</div>
 </section>
 
 <style>
+	.parameter-tool {
+		display: flex;
+		height: 1.5rem;
+		width: 1.5rem;
+		align-items: center;
+		justify-content: center;
+		color: rgb(255 255 255 / 50%);
+	}
+
+	.parameter-tool:hover:not(:disabled),
+	.parameter-reset:hover:not(:disabled) {
+		background: rgb(255 255 255 / 8%);
+		color: white;
+	}
+
+	.parameter-tool:focus-visible,
+	.parameter-reset:focus-visible {
+		outline: 2px solid rgb(251 146 60);
+		outline-offset: 1px;
+	}
+
+	.parameter-tool:disabled,
+	.parameter-reset:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
+
+	.parameter-control {
+		display: grid;
+		min-width: 0;
+		grid-template-columns: minmax(0, 1fr) 1rem;
+		align-items: center;
+		column-gap: 0.125rem;
+	}
+
+	.parameter-label {
+		grid-column: 1 / -1;
+		min-width: 0;
+		overflow: hidden;
+		color: rgb(255 255 255 / 45%);
+		font-size: 0.5rem;
+		text-align: center;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.parameter-reset {
+		display: flex;
+		height: 1rem;
+		width: 1rem;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		color: rgb(255 255 255 / 42%);
+	}
+
+	:global(.parameter-chip) {
+		height: 1.5rem;
+		width: 100%;
+		min-width: 0;
+		border: 1px solid rgb(0 0 0 / 80%);
+		border-radius: 2px;
+		background: rgb(0 0 0 / 75%);
+		padding-inline: 0.125rem;
+		color: rgb(255 255 255 / 82%);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+		font-size: 0.625rem;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+		outline: none;
+	}
+
+	:global(.parameter-chip:focus-visible) {
+		border-color: rgb(251 146 60);
+		box-shadow: 0 0 0 1px rgb(251 146 60 / 55%);
+	}
+
+	.parameter-accent {
+		margin-top: 0.125rem;
+		height: 0.125rem;
+		width: 2rem;
+		border-radius: 999px;
+		background: linear-gradient(90deg, #d4d4d8, #ef4444, #3b82f6);
+	}
+
+	.parameter-accent.neutral {
+		background: linear-gradient(90deg, #e4e4e7, #71717a, #18181b);
+	}
+
+	.parameter-accent.hue {
+		background: linear-gradient(90deg, #22d3ee, #d946ef, #fcd34d);
+	}
+
+	.parameter-accent.rgb {
+		background: linear-gradient(90deg, #ef4444, #22c55e, #3b82f6);
+	}
+
+	@media (min-width: 1536px) {
+		.parameter-control {
+			grid-template-columns: minmax(3.75rem, 1fr) 3.75rem 1rem;
+		}
+
+		.parameter-label {
+			grid-column: auto;
+			font-size: 0.625rem;
+			text-align: right;
+		}
+	}
+
 	.color-wheel {
 		background:
 			radial-gradient(

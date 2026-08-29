@@ -200,6 +200,13 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(populatedColorDock.getByRole("textbox", { name: "Lift Red" })).toBeVisible();
   await expect(populatedColorDock.getByRole("slider", { name: "Lift thumb wheel" })).toBeVisible();
   await expect(
+    populatedColorDock.getByRole("button", { name: "Auto balance from the current frame" }),
+  ).toBeVisible();
+  await expect(populatedColorDock.getByRole("textbox", { name: "Temperature" })).toHaveValue("0.0");
+  await expect(populatedColorDock.getByRole("textbox", { name: "Saturation" })).toHaveValue(
+    "50.00",
+  );
+  await expect(
     populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
   ).toBeVisible();
   await expect(populatedColorDock.getByRole("region", { name: "Curves" })).toBeVisible();

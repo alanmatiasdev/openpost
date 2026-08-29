@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import WandSparklesIcon from '@lucide/svelte/icons/wand-sparkles';
-	import PipetteIcon from '@lucide/svelte/icons/pipette';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import ClipboardPasteIcon from '@lucide/svelte/icons/clipboard-paste';
 	import SaveIcon from '@lucide/svelte/icons/save';
@@ -294,51 +292,10 @@
 			{/if}
 
 			<div
-				class="mt-1 grid grid-cols-7 gap-1"
+				class="mt-1 grid grid-cols-3 gap-1"
 				role="group"
 				aria-label={m.video_editor_color_balance()}
 			>
-				<button
-					type="button"
-					class="color-tool"
-					title={m.video_editor_color_auto_balance()}
-					onclick={() => void autoBalance()}
-				>
-					<WandSparklesIcon class="size-3.5" />{m.video_editor_color_auto()}
-				</button>
-				<button
-					type="button"
-					class="color-tool"
-					title={m.video_editor_color_pick_white_balance()}
-					onclick={() => void pick('white-balance')}
-				>
-					<PipetteIcon class="size-3.5" />{m.video_editor_color_white_balance_short()}
-				</button>
-				<button
-					type="button"
-					class="color-tool"
-					title={m.video_editor_color_pick_black_point()}
-					onclick={() => void pick('black-point')}
-				>
-					<span class="relative"
-						><PipetteIcon class="size-3.5" /><span
-							class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-white bg-black"
-						></span></span
-					>{m.video_editor_color_black_short()}
-				</button>
-				<button
-					type="button"
-					class="color-tool"
-					title={m.video_editor_color_pick_white_point()}
-					onclick={() => void pick('white-point')}
-				>
-					<span class="relative"
-						><PipetteIcon class="size-3.5" /><span
-							class="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full border border-black bg-white"
-						></span></span
-					>{m.video_editor_color_white_short()}
-				</button>
-
 				<button type="button" class="color-tool" disabled={grade.length === 0} onclick={copyGrade}>
 					<CopyIcon class="size-3.5" /><span class="sr-only"
 						>{m.video_editor_color_copy_grade()}</span
@@ -425,7 +382,13 @@
 			{/if}
 		</div>
 		<div class="min-h-0 flex-1 overflow-hidden">
-			<ColorPrimaryControls {itemId} {itemIds} {onedit} />
+			<ColorPrimaryControls
+				{itemId}
+				{itemIds}
+				{onedit}
+				onautobalance={() => void autoBalance()}
+				onpick={(kind) => void pick(kind)}
+			/>
 		</div>
 	</section>
 {/if}
