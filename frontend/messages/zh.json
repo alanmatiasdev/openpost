@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "上移",
 	"quick_cut_move_down": "下移",
 	"quick_cut_remove_segment": "移除片段",
+	"quick_cut_enable_segment": "启用片段",
+	"quick_cut_disable_segment": "停用片段",
 	"quick_cut_timeline_label": "时间线",
 	"quick_cut_seek_timeline": "在时间线上定位",
 	"quick_cut_frame_back": "上一帧",

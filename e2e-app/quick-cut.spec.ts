@@ -2,6 +2,16 @@ import { expect, test } from "@playwright/test";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
+declare global {
+  interface Window {
+    __quickCutPlayback: {
+      plays: number;
+      pauses: number;
+      focusedButtonClicks: number;
+    };
+  }
+}
+
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
   const { documentOverflows, offenders } = await page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;
@@ -62,6 +72,24 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
       configurable: true,
       value: undefined,
     });
+    Object.assign(window, {
+      __quickCutPlayback: { plays: 0, pauses: 0, focusedButtonClicks: 0 },
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value(this: HTMLMediaElement) {
+        window.__quickCutPlayback.plays += 1;
+        this.dispatchEvent(new Event("play"));
+        return Promise.resolve();
+      },
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value(this: HTMLMediaElement) {
+        window.__quickCutPlayback.pauses += 1;
+        this.dispatchEvent(new Event("pause"));
+      },
+    });
   });
   await page.goto("/quick-cut");
   const chooserPromise = page.waitForEvent("filechooser");
@@ -72,6 +100,28 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   );
 
   await expect(page.getByText(/prores-proxy\.mov/i).first()).toBeVisible();
+  const addSource = page.getByRole("button", { name: /Add source/i });
+  await addSource.evaluate((button) => {
+    button.addEventListener("click", () => {
+      window.__quickCutPlayback.focusedButtonClicks += 1;
+    });
+  });
+  await addSource.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__quickCutPlayback)).toEqual({
+    plays: 1,
+    pauses: 0,
+    focusedButtonClicks: 0,
+  });
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__quickCutPlayback)).toEqual({
+    plays: 1,
+    pauses: 1,
+    focusedButtonClicks: 0,
+  });
+
   await page.locator("video").evaluate((video: HTMLVideoElement) => {
     video.currentTime = Math.min(0.02, video.duration || 0.02);
     video.dispatchEvent(new Event("timeupdate"));

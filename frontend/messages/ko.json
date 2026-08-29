@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "위로 이동",
 	"quick_cut_move_down": "아래로 이동",
 	"quick_cut_remove_segment": "구간 삭제",
+	"quick_cut_enable_segment": "구간 활성화",
+	"quick_cut_disable_segment": "구간 비활성화",
 	"quick_cut_timeline_label": "타임라인",
 	"quick_cut_seek_timeline": "타임라인에서 찾기",
 	"quick_cut_frame_back": "이전 프레임",

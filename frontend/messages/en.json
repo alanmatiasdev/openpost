@@ -7009,6 +7009,8 @@
 	"quick_cut_move_up": "Move up",
 	"quick_cut_move_down": "Move down",
 	"quick_cut_remove_segment": "Remove segment",
+	"quick_cut_enable_segment": "Enable segment",
+	"quick_cut_disable_segment": "Disable segment",
 	"quick_cut_timeline_label": "Timeline",
 	"quick_cut_seek_timeline": "Seek in timeline",
 	"quick_cut_frame_back": "Previous frame",

@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "上へ移動",
 	"quick_cut_move_down": "下へ移動",
 	"quick_cut_remove_segment": "セグメントを削除",
+	"quick_cut_enable_segment": "セグメントを有効にする",
+	"quick_cut_disable_segment": "セグメントを無効にする",
 	"quick_cut_timeline_label": "タイムライン",
 	"quick_cut_seek_timeline": "タイムラインでシーク",
 	"quick_cut_frame_back": "前のフレーム",

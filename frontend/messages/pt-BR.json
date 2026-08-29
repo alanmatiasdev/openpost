@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "Mover para cima",
 	"quick_cut_move_down": "Mover para baixo",
 	"quick_cut_remove_segment": "Remover segmento",
+	"quick_cut_enable_segment": "Ativar segmento",
+	"quick_cut_disable_segment": "Desativar segmento",
 	"quick_cut_timeline_label": "Linha do tempo",
 	"quick_cut_seek_timeline": "Buscar na linha do tempo",
 	"quick_cut_frame_back": "Quadro anterior",

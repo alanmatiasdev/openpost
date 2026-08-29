@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { QuickCutSource } from '../types';
 import { createSegment } from '../model';
@@ -38,7 +38,10 @@ test('edits one segment cut strategy without changing the project default', asyn
 		onSelect: vi.fn(),
 		onRemove: vi.fn(),
 		onUpdate,
-		onMove: vi.fn()
+		onMove: vi.fn(),
+		exporting: false,
+		onPreview: vi.fn(),
+		onExport: vi.fn()
 	});
 
 	const strategy = screen.getByRole('button', { name: 'Cut mode 1' });
@@ -58,7 +61,10 @@ test('keeps the per-segment strategy usable without phone overflow', async () =>
 		onSelect: vi.fn(),
 		onRemove: vi.fn(),
 		onUpdate: vi.fn(),
-		onMove: vi.fn()
+		onMove: vi.fn(),
+		exporting: false,
+		onPreview: vi.fn(),
+		onExport: vi.fn()
 	});
 
 	await expect.element(screen.getByRole('button', { name: 'Cut mode 1' })).toBeVisible();
@@ -74,11 +80,51 @@ test('renders timecode inputs with shared Input primitive and preserves bindings
 		onSelect: vi.fn(),
 		onRemove: vi.fn(),
 		onUpdate: vi.fn(),
-		onMove: vi.fn()
+		onMove: vi.fn(),
+		exporting: false,
+		onPreview: vi.fn(),
+		onExport: vi.fn()
 	});
 
 	await expect.element(screen.getByRole('textbox', { name: 'In 1' })).toBeVisible();
 	await expect.element(screen.getByRole('textbox', { name: 'Out 1' })).toBeVisible();
 	await expect.element(screen.getByRole('textbox', { name: 'In 1' })).toHaveValue('00:01.25');
 	await expect.element(screen.getByRole('textbox', { name: 'Out 1' })).toHaveValue('00:03.50');
+});
+
+test('offers segment actions by right click and keyboard context menu', async () => {
+	const onRemove = vi.fn();
+	const onUpdate = vi.fn();
+	const screen = await render(SegmentList, {
+		segments: [createSegment(1.25, 3.5, { id: 'range', sourceId: source.id })],
+		sources: [source],
+		selectedId: 'range',
+		defaultCutMode: 'nearestKeyframe',
+		onSelect: vi.fn(),
+		onRemove,
+		onUpdate,
+		onMove: vi.fn(),
+		exporting: false,
+		onPreview: vi.fn(),
+		onExport: vi.fn()
+	});
+
+	const segment = screen.getByRole('button', { name: 'Segment 1' }).element();
+	segment.dispatchEvent(
+		new MouseEvent('contextmenu', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 240,
+			clientY: 120
+		})
+	);
+	await expect.element(screen.getByRole('menuitem', { name: 'Disable segment' })).toBeVisible();
+	await screen.getByRole('menuitem', { name: 'Disable segment' }).click();
+	expect(onUpdate).toHaveBeenCalledWith('range', { enabled: false });
+
+	segment.focus();
+	await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+	await expect.element(screen.getByRole('menuitem', { name: 'Remove segment' })).toBeVisible();
+	await screen.getByRole('menuitem', { name: 'Remove segment' }).click();
+	expect(onRemove).toHaveBeenCalledWith('range');
 });

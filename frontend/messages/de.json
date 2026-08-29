@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "Nach oben",
 	"quick_cut_move_down": "Nach unten",
 	"quick_cut_remove_segment": "Segment entfernen",
+	"quick_cut_enable_segment": "Segment aktivieren",
+	"quick_cut_disable_segment": "Segment deaktivieren",
 	"quick_cut_timeline_label": "Zeitleiste",
 	"quick_cut_seek_timeline": "In Zeitleiste suchen",
 	"quick_cut_frame_back": "Vorheriges Bild",

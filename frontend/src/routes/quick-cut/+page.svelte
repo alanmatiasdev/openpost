@@ -55,6 +55,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
+	import { handleGlobalPlayPauseShortcut } from '$lib/video-editor/settings/keyboard-shortcuts';
+	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 
 	let sources = $state<QuickCutSource[]>([]);
 	let sourceUrls = $state<Map<string, string>>(new Map());
@@ -793,6 +795,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
+		if (handleGlobalPlayPauseShortcut(event, keyboardShortcuts.bindings.PLAY_PAUSE, togglePlay))
+			return;
 		const target = event.target instanceof HTMLElement ? event.target : null;
 		if (!target) return;
 		if (
@@ -808,9 +812,6 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		} else if (event.key === 'Enter') {
 			event.preventDefault();
 			addSegment();
-		} else if (event.code === 'Space') {
-			event.preventDefault();
-			togglePlay();
 		} else if (event.key === 'ArrowLeft') {
 			event.preventDefault();
 			frameStep(event.shiftKey ? -30 : -1);
@@ -1091,6 +1092,9 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								onRemove={removeSegment}
 								onUpdate={updateSegment}
 								onMove={moveSegment}
+								{exporting}
+								onPreview={previewSegment}
+								onExport={(segment) => void handleExportOne(segment)}
 							/>
 						</div>
 
@@ -1139,46 +1143,6 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 							>
 						{/if}
 					</div>
-
-					{#if segments.length === 1}
-						<Button
-							size="sm"
-							disabled={exporting ||
-								segments[0]!.enabled === false ||
-								!individualPreflight?.eligible}
-							onclick={() => handleExportOne(segments[0]!)}
-							class="min-h-11">{m.quick_cut_export()}</Button
-						>
-					{/if}
-
-					<ul class="space-y-2">
-						{#each segments as seg, idx (seg.id)}
-							{@const src = sources.find((s) => s.id === seg.sourceId)}
-							<li
-								class="flex min-w-0 flex-col gap-2 rounded-lg border bg-card p-2 sm:flex-row sm:items-center sm:justify-between"
-							>
-								<span class="min-w-0 font-mono text-xs break-all"
-									>{idx + 1}. {src?.name ?? ''}
-									{formatTimecode(seg.start)} → {formatTimecode(seg.end)}</span
-								>
-								<div class="flex shrink-0 gap-1">
-									<Button
-										size="xs"
-										variant="ghost"
-										onclick={() => previewSegment(seg.id)}
-										disabled={seg.enabled === false}
-										class="min-h-11 md:min-h-7">{m.quick_cut_preview()}</Button
-									>
-									<Button
-										size="xs"
-										disabled={exporting || seg.enabled === false}
-										onclick={() => handleExportOne(seg)}
-										class="min-h-11 md:min-h-7">{m.quick_cut_export()}</Button
-									>
-								</div>
-							</li>
-						{/each}
-					</ul>
 				</div>
 			</div>
 		{/if}

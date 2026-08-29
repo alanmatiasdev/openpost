@@ -6995,6 +6995,8 @@
 	"quick_cut_move_up": "Yukarı taşı",
 	"quick_cut_move_down": "Aşağı taşı",
 	"quick_cut_remove_segment": "Bölümü kaldır",
+	"quick_cut_enable_segment": "Bölümü etkinleştir",
+	"quick_cut_disable_segment": "Bölümü devre dışı bırak",
 	"quick_cut_timeline_label": "Zaman çizelgesi",
 	"quick_cut_seek_timeline": "Zaman çizelgesinde ara",
 	"quick_cut_frame_back": "Önceki kare",
