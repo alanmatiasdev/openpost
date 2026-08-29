@@ -111,7 +111,7 @@ describe('quick-cut preflight', () => {
 
 		const merged = await preflightExport([src], [exact, lossless], 'nearestKeyframe', true);
 		expect(merged.requiresTranscode).toBe(true);
-		expect(merged.reason).toMatch(/one or more segments/iu);
+		expect(merged.reason).toMatch(/smart cut/iu);
 	});
 
 	it('detects incompatible codecs for merge', async () => {

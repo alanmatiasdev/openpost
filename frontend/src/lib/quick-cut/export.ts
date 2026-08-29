@@ -43,6 +43,7 @@ import {
 	EXPORTS_DIR,
 	sanitizeWorkspaceFileName
 } from '$lib/video-editor/workspace-fs/paths';
+import { exportSmartCut, nextSmartCutBoundary, UnsupportedSmartCutError } from './smart-cut';
 
 export class UnsupportedStreamCopyError extends Error {
 	constructor(message: string) {
@@ -71,6 +72,8 @@ export interface QuickCutExportOptions {
 }
 
 type LocalExportProgress = (fraction: number, bytesWritten: number) => void;
+
+const TRANSCODE_STORAGE_MULTIPLIER = 2;
 
 export interface QuickCutScratchArtifact {
 	scratchPath: string;
@@ -494,7 +497,8 @@ export async function preflightExport(
 		// Also if any per-segment requires transcode for exact, merged requires transcode
 		if (!requiresTranscode && perSegment.some((p) => p.requiresTranscode)) {
 			requiresTranscode = true;
-			reason = 'One or more segments not on keyframe; merged exact cut requires re-encoding.';
+			reason =
+				'One or more segments start between keyframes; merged export will use Smart Cut when the source codec is compatible.';
 		}
 		if (
 			!requiresTranscode &&
@@ -513,8 +517,13 @@ export async function preflightExport(
 		// If any perSegment requires transcode, we don't force all to transcode; caller will handle per segment
 		const anyNeedsTranscode = perSegment.some((p) => p.requiresTranscode);
 		if (anyNeedsTranscode) {
-			// For individual, not merged, we don't set global requiresTranscode; each segment will be handled individually
-			reason = 'Some segments require re-encoding; others can be stream copied.';
+			const smartCutOnly = perSegment.every(
+				(segment) =>
+					!segment.requiresTranscode || segment.reason.toLowerCase().includes('not on keyframe')
+			);
+			reason = smartCutOnly
+				? 'Exact starts between keyframes use Smart Cut when the source codec is compatible.'
+				: 'Some segments require re-encoding; others can be stream copied.';
 		}
 	}
 	// Storage estimate with fixed reserve and explicit state
@@ -528,7 +537,10 @@ export async function preflightExport(
 			if (quota === 0) storageState = 'unknown';
 			else {
 				const reserve = 50 * 1024 * 1024;
-				const headroom = estimatedBytes + reserve;
+				const needsWorkingArtifacts =
+					requiresTranscode || perSegment.some((segment) => segment.requiresTranscode);
+				const headroom =
+					estimatedBytes * (needsWorkingArtifacts ? TRANSCODE_STORAGE_MULTIPLIER : 1) + reserve;
 				if (usage + headroom > quota) storageState = 'insufficient';
 				else storageState = 'ok';
 			}
@@ -1330,6 +1342,147 @@ async function exportMergedAudioTranscode(
 	}
 }
 
+function canUseMergedSmartCut(preflight: PreflightResult, segmentCount: number): boolean {
+	return (
+		segmentCount > 1 &&
+		preflight.requiresTranscode &&
+		preflight.perSegment.some((segment) => segment.requiresTranscode) &&
+		preflight.perSegment.every(
+			(segment) =>
+				!segment.requiresTranscode || segment.reason.toLowerCase().includes('not on keyframe')
+		)
+	);
+}
+
+async function exportMergedSmartCut(
+	sources: QuickCutSource[],
+	segments: QuickCutSegment[],
+	cutMode: CutMode,
+	preflight: PreflightResult,
+	signal?: AbortSignal,
+	onProgress?: LocalExportProgress
+): Promise<QuickCutScratchArtifact> {
+	const sourceById = new Map(sources.map((source) => [source.id, source]));
+	const temporaryArtifacts: QuickCutScratchArtifact[] = [];
+	try {
+		const temporarySources: QuickCutSource[] = [];
+		const temporarySegments: QuickCutSegment[] = [];
+		for (let index = 0; index < segments.length; index++) {
+			throwIfAborted(signal);
+			const segment = segments[index]!;
+			const source = sourceById.get(segment.sourceId);
+			if (!source) throw new UnsupportedSmartCutError(`Source missing for ${segment.id}.`);
+			const decision = preflight.perSegment.find((candidate) => candidate.segmentId === segment.id);
+			const progress = (fraction: number, bytesWritten: number): void =>
+				onProgress?.(((index + fraction) / segments.length) * 0.8, bytesWritten);
+			let artifact: QuickCutScratchArtifact;
+			if (decision?.requiresTranscode) {
+				const video = getSelectedVideoStream(source);
+				const boundary = video ? nextSmartCutBoundary(segment, video.keyframeTimestamps) : null;
+				if (boundary === null || resolveSegmentCutMode(segment, cutMode) !== 'exact') {
+					throw new UnsupportedSmartCutError(
+						`No stream-copy boundary is available for ${source.name}.`
+					);
+				}
+				const format = outputFormatForSource(source);
+				artifact = await exportSmartCut({
+					source,
+					segment,
+					boundary,
+					createFormat: () => outputFormatForSource(source),
+					fileName: segmentFileName(safeBaseName(source.name), segment, extensionForFormat(format)),
+					mimeType: mimeForFormat(format),
+					signal,
+					onProgress: progress
+				});
+			} else {
+				try {
+					artifact = await exportSingleStreamCopy(
+						source,
+						segment,
+						getSnapForSegment(preflight, segment.id),
+						signal,
+						progress
+					);
+				} catch (error) {
+					if (!(error instanceof UnsupportedStreamCopyError)) throw error;
+					throw new UnsupportedSmartCutError(error.message);
+				}
+			}
+			temporaryArtifacts.push(artifact);
+			const temporarySource = await probeSourceFile(
+				artifact.scratchFile,
+				undefined,
+				undefined,
+				signal
+			);
+			const selectedVideo = getSelectedVideoStream(source);
+			if (selectedVideo && temporarySource.videoStreams[0]) {
+				temporarySource.fps = selectedVideo.fps;
+				temporarySource.width = selectedVideo.width;
+				temporarySource.height = selectedVideo.height;
+				temporarySource.rotation = selectedVideo.rotation;
+				temporarySource.videoStreams[0] = {
+					...temporarySource.videoStreams[0],
+					fps: selectedVideo.fps,
+					width: selectedVideo.width,
+					height: selectedVideo.height,
+					rotation: selectedVideo.rotation
+				};
+			}
+			const expectedDuration = segment.end - segment.start;
+			const duration = Math.min(expectedDuration, temporarySource.duration);
+			if (duration <= 0) {
+				throw new UnsupportedSmartCutError(`Smart Cut produced no duration for ${source.name}.`);
+			}
+			temporarySources.push(temporarySource);
+			temporarySegments.push({
+				id: `smart-merge:${segment.id}`,
+				sourceId: temporarySource.id,
+				start: 0,
+				end: duration,
+				enabled: true
+			});
+		}
+
+		const mergePreflight = await preflightExport(
+			temporarySources,
+			temporarySegments,
+			'nearestKeyframe',
+			true
+		);
+		if (!mergePreflight.eligible || mergePreflight.requiresTranscode) {
+			throw new UnsupportedSmartCutError(
+				mergePreflight.eligible
+					? `Smart Cut outputs cannot be stream-concatenated: ${mergePreflight.reason}`
+					: mergePreflight.reason
+			);
+		}
+		const artifact = await exportMergedStreamCopy(
+			temporarySources,
+			temporarySegments,
+			mergePreflight,
+			signal,
+			(fraction, bytesWritten) => onProgress?.(0.8 + fraction * 0.2, bytesWritten)
+		);
+		const format = preflight.outputFormat;
+		const fileName = mergedFileName(sources, segments, extensionForFormat(format));
+		artifact.fileName = fileName;
+		artifact.scratchFile = new File([artifact.scratchFile], fileName, {
+			type: mimeForFormat(format),
+			lastModified: Date.now()
+		});
+		artifact.wasLossless = false;
+		artifact.reason =
+			'Merged with Smart Cut: boundary GOPs were re-encoded and untouched video packets were copied.';
+		return artifact;
+	} finally {
+		for (const artifact of temporaryArtifacts) {
+			await discardScratchFile(artifact.scratchPath).catch(() => undefined);
+		}
+	}
+}
+
 async function exportMergedTranscode(
 	sources: QuickCutSource[],
 	segments: QuickCutSegment[],
@@ -1636,13 +1789,37 @@ export async function exportSegments(
 					progress.bytesWritten
 				);
 			if (preflight.requiresTranscode) {
-				const art = await exportMergedTranscode(
-					sources,
-					enabled,
-					preflight,
-					signal,
-					detailedMergedProgress
-				);
+				let art: QuickCutScratchArtifact;
+				if (canUseMergedSmartCut(preflight, enabled.length)) {
+					try {
+						art = await exportMergedSmartCut(
+							sources,
+							enabled,
+							cutMode,
+							preflight,
+							signal,
+							mergedProgress('transcoding')
+						);
+					} catch (error) {
+						if (!(error instanceof UnsupportedSmartCutError)) throw error;
+						art = await exportMergedTranscode(
+							sources,
+							enabled,
+							preflight,
+							signal,
+							detailedMergedProgress
+						);
+						art.reason = `Re-encoded the merged output because Smart Cut was unavailable: ${error.message}`;
+					}
+				} else {
+					art = await exportMergedTranscode(
+						sources,
+						enabled,
+						preflight,
+						signal,
+						detailedMergedProgress
+					);
+				}
 				artifacts.push(art);
 			} else if (
 				sources.find((source) => source.id === enabled[0]!.sourceId)?.keyframeState === 'audio-only'
@@ -1720,7 +1897,35 @@ export async function exportSegments(
 					);
 			let art: QuickCutScratchArtifact;
 			if (needsTranscode) {
-				art = await exportSingleTranscode(src, seg, signal, localProgress('transcoding'));
+				const selectedVideo = getSelectedVideoStream(src);
+				const smartBoundary = selectedVideo
+					? nextSmartCutBoundary(seg, selectedVideo.keyframeTimestamps)
+					: null;
+				const shouldTrySmartCut =
+					resolveSegmentCutMode(seg, cutMode) === 'exact' &&
+					smartBoundary !== null &&
+					per?.reason.toLowerCase().includes('not on keyframe') === true;
+				if (shouldTrySmartCut) {
+					try {
+						const format = outputFormatForSource(src);
+						art = await exportSmartCut({
+							source: src,
+							segment: seg,
+							boundary: smartBoundary,
+							createFormat: () => outputFormatForSource(src),
+							fileName: segmentFileName(safeBaseName(src.name), seg, extensionForFormat(format)),
+							mimeType: mimeForFormat(format),
+							signal,
+							onProgress: localProgress('transcoding')
+						});
+					} catch (error) {
+						if (!(error instanceof UnsupportedSmartCutError)) throw error;
+						art = await exportSingleTranscode(src, seg, signal, localProgress('transcoding'));
+						art.reason = `Re-encoded the full range because Smart Cut was unavailable: ${error.message}`;
+					}
+				} else {
+					art = await exportSingleTranscode(src, seg, signal, localProgress('transcoding'));
+				}
 			} else {
 				try {
 					art = await exportSingleStreamCopy(src, seg, snap, signal, localProgress('copying'));
