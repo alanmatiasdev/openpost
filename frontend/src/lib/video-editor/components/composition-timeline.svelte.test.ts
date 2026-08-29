@@ -1070,13 +1070,11 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		});
 	});
 
-	it('adds generated layers only to an unlocked visual track', async () => {
-		const lockedTrack = { ...track, id: 'locked', locked: true, order: 0 };
-		const openTrack = { ...track, id: 'open', locked: false, order: 1 };
+	it('gives each generated layer a dedicated track in an empty composition', async () => {
 		sequenceStore.load(
 			{
 				...createEmptyTimeline(),
-				compositions: [composition({ items: [], tracks: [lockedTrack, openTrack, audioTrack] })]
+				compositions: [composition({ items: [], tracks: [] })]
 			},
 			{ width: 1920, height: 1080, fps: 30 }
 		);
@@ -1085,17 +1083,24 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		const screen = await render(CompositionTimeline, { onedit });
 		await screen.getByTestId('add-layer-text').click();
 		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(1));
-		expect(timelineStore.items[0]).toMatchObject({ trackId: 'open', type: 'text', label: 'Text' });
+		expect(timelineStore.tracks).toHaveLength(1);
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: timelineStore.tracks[0]?.id,
+			type: 'text',
+			label: 'Text'
+		});
 		expect(commandHistory.undoStack).toHaveLength(1);
 		expect(onedit).toHaveBeenCalledOnce();
 
-		timelineStore._setTracks(
-			timelineStore.tracks.map((candidate) => ({ ...candidate, locked: true }))
-		);
 		await screen.getByTestId('add-layer-solid').click();
+		expect(timelineStore.items).toHaveLength(2);
+		expect(timelineStore.tracks).toHaveLength(2);
+		expect(timelineStore.items[1]?.trackId).toBe(timelineStore.tracks[1]?.id);
+		expect(commandHistory.undoStack).toHaveLength(2);
+		expect(onedit).toHaveBeenCalledTimes(2);
+		commandHistory.undo();
 		expect(timelineStore.items).toHaveLength(1);
-		expect(commandHistory.undoStack).toHaveLength(1);
-		expect(onedit).toHaveBeenCalledOnce();
+		expect(timelineStore.tracks).toHaveLength(1);
 	});
 
 	it('offers every compositor blend mode, persists one exact choice, and disables locked edits', async () => {

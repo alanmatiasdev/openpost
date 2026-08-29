@@ -62,6 +62,19 @@ beforeEach(() => {
 });
 
 describe('MotionPresetsPanel', () => {
+	it('offers the Edit workspace Motion clip action through the supplied workflow', async () => {
+		const onmotionclip = vi.fn();
+		const screen = await render(MotionPresetsPanel, {
+			...props(),
+			variant: 'edit',
+			onmotionclip
+		});
+
+		await expect.element(screen.getByRole('heading', { name: 'Motion clip' })).toBeVisible();
+		await screen.getByRole('button', { name: 'Create motion clip' }).click();
+		expect(onmotionclip).toHaveBeenCalledOnce();
+	});
+
 	it('groups presets without auto-playing thumbnails', async () => {
 		const screen = await render(MotionPresetsPanel, props());
 		expect(screen.getByText('Entrance', { exact: true })).toBeVisible();
@@ -70,6 +83,36 @@ describe('MotionPresetsPanel', () => {
 		const glyph = document.querySelector<HTMLElement>('.motion-glyph');
 		expect(glyph).not.toBeNull();
 		expect(getComputedStyle(glyph!).animationName).toBe('none');
+	});
+
+	it('searches the whole animation catalog and can hide incompatible results', async () => {
+		const screen = await render(MotionPresetsPanel, props());
+		const search = screen.getByRole('searchbox', { name: 'Search animation' });
+		await search.fill('fade');
+		expect(screen.getByRole('button', { name: 'Replace Fade in' }).query()).not.toBeNull();
+		expect(document.querySelectorAll('[aria-label="Replace Slide left"]')).toHaveLength(0);
+		await screen.getByRole('button', { name: 'Clear animation search' }).click();
+		expect(document.querySelectorAll('[aria-label="Replace Slide left"]')).toHaveLength(2);
+
+		timelineStore.setAll({ items: [item('one', { type: 'controller' })] });
+		await screen.getByRole('button', { name: 'Compatible' }).click();
+		await expect.element(screen.getByText('No matching animation.')).toBeVisible();
+	});
+
+	it('summarizes and clears applied keyframes as one undoable edit', async () => {
+		const input = props();
+		const screen = await render(MotionPresetsPanel, input);
+		await screen.getByRole('button', { name: 'Replace Fade in' }).click();
+		await expect
+			.element(screen.getByRole('heading', { name: 'Applied to this clip' }))
+			.toBeVisible();
+		await expect.element(screen.getByText('Keyframes to remove: 2.')).toBeVisible();
+		await screen.getByRole('button', { name: 'Clear 2' }).click();
+		expect(timelineStore.itemById.get('one')?.keyframes).toBeUndefined();
+		expect(commandHistory.undoStack).toHaveLength(2);
+		expect(input.onedit).toHaveBeenCalledTimes(2);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('one')?.keyframes?.opacity?.frames).toEqual([0, 15]);
 	});
 
 	it('attaches deterministic staggered live behavior to every selected clip', async () => {

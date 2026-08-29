@@ -109,6 +109,12 @@ test("Motion owns an isolated composition session and restores Edit", async ({ p
   await expect(page.getByTestId("composition-duration")).toHaveValue("360");
   await expect(page.locator("[data-motion-preview-empty]")).toHaveCount(0);
 
+  await page.getByTestId("add-layer-text").click();
+  const motionInspector = page.getByRole("complementary", { name: "Motion" });
+  await expect(motionInspector.getByRole("searchbox", { name: "Search animation" })).toBeVisible();
+  await expect(motionInspector.getByRole("button", { name: "Compatible" })).toBeVisible();
+  await expect(motionInspector.getByRole("heading", { name: "Entrance" })).toBeVisible();
+
   await page.getByRole("tab", { name: "Edit" }).click();
   await expect(page.getByRole("navigation", { name: "Sequences" })).toBeVisible();
   await expect(page.getByTestId("composition-timeline")).toHaveCount(0);
@@ -116,9 +122,54 @@ test("Motion owns an isolated composition session and restores Edit", async ({ p
   await page.getByRole("tab", { name: "Motion" }).click();
   await expect(page.getByTestId("composition-timeline")).toBeVisible();
   await expect(page.getByTestId("composition-picker")).toContainText("Launch card");
+  const reopenedMotionInspector = page.getByRole("complementary", { name: "Motion" });
+  const animationSearch = reopenedMotionInspector.getByRole("searchbox", {
+    name: "Search animation",
+  });
+  await expect(animationSearch).toBeAttached();
+  await expect(page.getByText("Composition created", { exact: true })).toBeHidden({
+    timeout: 6_000,
+  });
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
-    path: "frontend/.svelte-kit/openpost-video-editor-motion-1280.png",
+    path: "frontend/.svelte-kit/openpost-video-editor-motion-canvas-1280.png",
+    fullPage: true,
+  });
+  await animationSearch.scrollIntoViewIfNeeded();
+  await expect(animationSearch).toBeVisible();
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-motion-animations-1280.png",
+    fullPage: true,
+  });
+});
+
+test("Edit creates and reopens a selected Motion clip", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Motion clip proof");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await addTextItem(page);
+
+  const editInspector = page.getByRole("complementary", { name: "Edit" });
+  await editInspector.getByRole("tab", { name: "Motion" }).click();
+  await expect(editInspector.getByRole("heading", { name: "Motion clip" })).toBeVisible();
+  await editInspector.getByRole("button", { name: "Create motion clip" }).click();
+
+  await expect(page.getByRole("tab", { name: "Motion" }).first()).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByTestId("composition-timeline")).toBeVisible();
+  await expect(page.getByTestId("composition-picker")).toContainText("Your text Motion");
+
+  await page.getByRole("tab", { name: "Edit" }).click();
+  const restoredInspector = page.getByRole("complementary", { name: "Edit" });
+  await restoredInspector.getByRole("tab", { name: "Motion" }).click();
+  await restoredInspector.getByRole("button", { name: "Open in Motion" }).click();
+  await expect(page.getByTestId("composition-timeline")).toBeVisible();
+  await expect(page.getByTestId("composition-picker")).toContainText("Your text Motion");
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-motion-clip-1280.png",
     fullPage: true,
   });
 });

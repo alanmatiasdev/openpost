@@ -300,10 +300,12 @@
 	let {
 		onedit,
 		onselectitem,
+		oncompositionchange,
 		selectedItemId: externalSelectedId = null
 	}: {
 		onedit: () => void;
 		onselectitem?: (id: string | null) => void;
+		oncompositionchange?: (id: string) => void;
 		selectedItemId?: string | null;
 	} = $props();
 
@@ -539,6 +541,10 @@
 		selectedItemIds = new Set();
 		lastSelectedId = null;
 		onselectitem?.(null);
+	}
+	function switchComposition(id: string): void {
+		if (oncompositionchange) oncompositionchange(id);
+		else sequenceStore.switchTo(id);
 	}
 	function prepareCompositionContextMenu(event: MouseEvent): void {
 		const target = event.target;
@@ -1119,27 +1125,18 @@
 			durationInFrames: dur
 		};
 		sequenceStore.addComposition(comp, true);
-		sequenceStore.switchTo(id);
+		switchComposition(id);
 		showNewDialog = false;
 		newName = '';
 		status = m.video_editor_motion_composition_created();
 		onedit();
 	}
 	function addGeneratedLayer(kind: 'text' | 'solid' | 'gradient' | 'shape' | 'controller'): void {
-		const track = timelineStore.tracks.find(
-			(candidate) =>
-				candidate.kind !== 'audio' &&
-				!candidate.isGroup &&
-				!isTrackEffectivelyLocked(candidate.id, timelineStore.tracks)
-		);
-		if (!track) {
-			status = m.video_editor_motion_track_locked();
-			return;
-		}
 		const before = captureSnapshot();
+		const trackId = crypto.randomUUID();
 		const base: TimelineItem = {
 			id: crypto.randomUUID(),
-			trackId: track.id,
+			trackId,
 			from: timelineStore.currentFrame,
 			durationInFrames: Math.max(30, Math.min(300, durationFrames - timelineStore.currentFrame)),
 			label:
@@ -1183,7 +1180,20 @@
 			base.transformParent = undefined;
 			// controller is non-rendering: participates in transforms but never renders (preview/export filter by type)
 		}
+		const track: TimelineTrack = {
+			id: trackId,
+			name: base.label,
+			kind: 'video',
+			height: 34,
+			locked: false,
+			visible: true,
+			muted: false,
+			solo: false,
+			order: timelineStore.tracks.reduce((max, candidate) => Math.max(max, candidate.order), -1) + 1
+		};
+		timelineStore._setTracks([...timelineStore.tracks, track]);
 		timelineStore._setItems([...timelineStore.items, base]);
+		selectItem(base.id, false, false);
 		commandHistory.addUndoEntry({ type: 'ADD_LAYER' }, before);
 		onedit();
 	}
@@ -2199,7 +2209,7 @@
 				<Select.Root
 					type="single"
 					value={composition.id}
-					onValueChange={(value) => value && sequenceStore.switchTo(value)}
+					onValueChange={(value) => value && switchComposition(value)}
 				>
 					<Select.Trigger
 						id="composition-picker"
@@ -3658,7 +3668,7 @@
 				<Select.Root
 					type="single"
 					value=""
-					onValueChange={(value) => value && sequenceStore.switchTo(value)}
+					onValueChange={(value) => value && switchComposition(value)}
 				>
 					<Select.Trigger id="empty-picker-select" data-testid="empty-composition-picker">
 						<span class="truncate">{m.video_editor_composition_timeline_choose()}</span>

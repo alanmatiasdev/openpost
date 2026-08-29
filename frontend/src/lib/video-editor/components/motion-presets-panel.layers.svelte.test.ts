@@ -45,16 +45,17 @@ beforeEach(() => {
 });
 
 describe('MotionPresetsPanel layers', () => {
-	it('exposes additive layer section with 44 px targets and keyboard access', async () => {
+	it('moves an added layer into the applied summary with 44 px controls', async () => {
 		await page.viewport(320, 720);
 		const screen = await render(MotionPresetsPanel, props(['one']));
-		await expect.element(screen.getByRole('heading', { name: 'Additive layers' })).toBeVisible();
-		await expect.element(screen.getByText('No additive layers on the selection.')).toBeVisible();
+		expect(screen.getByRole('heading', { name: 'Applied to this clip' }).query()).toBeNull();
 		const add = screen.getByRole('button', { name: /^Add .* as additive layer$/ }).nth(0);
 		expect(add.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 		await add.click();
 		expect(timelineStore.itemById.get('one')?.motionLayers).toHaveLength(1);
-		await expect.element(screen.getByRole('heading', { name: 'Additive layers' })).toBeVisible();
+		await expect
+			.element(screen.getByRole('heading', { name: 'Applied to this clip' }))
+			.toBeVisible();
 		const toggle = screen.getByRole('checkbox');
 		expect(
 			toggle.element().closest('label')?.getBoundingClientRect().height

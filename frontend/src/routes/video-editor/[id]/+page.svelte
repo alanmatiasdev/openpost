@@ -160,8 +160,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	let freezingItemId = $state<string | null>(null);
 	let motionReturnStack = $state<Array<string | null>>([]);
 	let motionWorkspaceReturnSequenceId = $state<string | null>(null);
+	let motionWorkspaceReturnSelectionIds = $state<string[]>([]);
 	let motionWorkspaceReturnCaptured = $state(false);
 	let lastMotionCompositionId = $state<string | null>(null);
+	let motionSelectionByCompositionId = $state<Record<string, string[]>>({});
 	let settingsOpen = $state(false);
 	let recordingOpen = $state(false);
 	let unsupportedAudioRequest = $state<UnsupportedAudioImportRequest | null>(null);
@@ -428,25 +430,55 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		);
 	}
 
+	function rememberActiveMotionSelection(): void {
+		const active = sequenceStore.activeSequence;
+		if (active?.editorKind !== 'composite-2d') return;
+		motionSelectionByCompositionId = {
+			...motionSelectionByCompositionId,
+			[active.id]: [...selectedItemIds]
+		};
+	}
+
+	function switchMotionComposition(compositionId: string): boolean {
+		rememberActiveMotionSelection();
+		if (!switchEditorSequence(compositionId)) return false;
+		lastMotionCompositionId = compositionId;
+		const restoredIds = (motionSelectionByCompositionId[compositionId] ?? []).filter((id) =>
+			timelineStore.itemById.has(id)
+		);
+		selectedItemIds = restoredIds;
+		selectedItemId = restoredIds[0] ?? null;
+		return true;
+	}
+
 	function enterMotionWorkspace(preferredId?: string): void {
 		const current = sequenceStore.activeSequence;
 		if (!motionWorkspaceReturnCaptured && current?.editorKind !== 'composite-2d') {
 			motionWorkspaceReturnSequenceId = sequenceStore.activeSequenceId;
+			motionWorkspaceReturnSelectionIds = [...selectedItemIds];
 			motionWorkspaceReturnCaptured = true;
 		}
 		editorWorkspace.set('motion');
 		const targetId = preferredMotionComposition(preferredId);
 		if (targetId) {
-			lastMotionCompositionId = targetId;
-			switchEditorSequence(targetId);
+			switchMotionComposition(targetId);
 		} else resetTimelineSelection();
 	}
 
 	function leaveMotionWorkspace(workspace: Exclude<EditorWorkspaceId, 'motion'>): void {
+		rememberActiveMotionSelection();
 		if (activeMotionComposition) lastMotionCompositionId = activeMotionComposition.id;
-		if (motionWorkspaceReturnCaptured) switchEditorSequence(motionWorkspaceReturnSequenceId);
+		if (motionWorkspaceReturnCaptured) {
+			switchEditorSequence(motionWorkspaceReturnSequenceId);
+			const restoredIds = motionWorkspaceReturnSelectionIds.filter((id) =>
+				timelineStore.itemById.has(id)
+			);
+			selectedItemIds = restoredIds;
+			selectedItemId = restoredIds[0] ?? null;
+		}
 		motionWorkspaceReturnCaptured = false;
 		motionWorkspaceReturnSequenceId = null;
+		motionWorkspaceReturnSelectionIds = [];
 		motionReturnStack = [];
 		editorWorkspace.set(workspace);
 	}
@@ -497,13 +529,45 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		showToast(m.video_editor_compound_created(), 'success');
 	}
 
+	function handleEditMotionClip(): void {
+		const selected =
+			selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : [];
+		if (selected.length === 1) {
+			const item = timelineStore.itemById.get(selected[0]!);
+			const composition = item?.compositionId
+				? sequenceStore.compositionById.get(item.compositionId)
+				: undefined;
+			if (composition?.editorKind === 'composite-2d') {
+				enterMotionWorkspace(composition.id);
+				return;
+			}
+		}
+		const sourceLabel = selectedItemId
+			? timelineStore.itemById.get(selectedItemId)?.label.trim()
+			: '';
+		const compositionId = createCompoundClip(
+			selected,
+			sourceLabel ? `${sourceLabel} Motion` : m.video_editor_motion_composition_title(),
+			'composite-2d'
+		);
+		if (!compositionId) return;
+		const wrapperIds = timelineStore.items
+			.filter((item) => item.compositionId === compositionId)
+			.map((item) => item.id);
+		selectedItemIds = wrapperIds;
+		selectedItemId = wrapperIds[0] ?? null;
+		enterMotionWorkspace(compositionId);
+		editorSession.scheduleAutosave();
+		showToast(m.video_editor_motion_composition_created(), 'success');
+	}
+
 	function handleCreateEmptyMotionComposition(options: CreateCompositeCompositionOptions): void {
 		const compositionId = createCompositeComposition({
 			...options,
 			backgroundColor: editorSession.project?.metadata.backgroundColor
 		});
 		lastMotionCompositionId = compositionId;
-		switchEditorSequence(compositionId);
+		switchMotionComposition(compositionId);
 		editorSession.scheduleAutosave();
 		showToast(m.video_editor_motion_composition_created(), 'success');
 	}
@@ -544,8 +608,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					composition.editorKind === 'composite-2d' && composition.id === lastMotionCompositionId
 			)?.id ?? compositions.find((composition) => composition.editorKind === 'composite-2d')?.id;
 		if (targetId) {
-			lastMotionCompositionId = targetId;
-			switchEditorSequence(targetId);
+			switchMotionComposition(targetId);
 		}
 	});
 
@@ -1754,6 +1817,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 										animationPresets={editorSession.project?.animationPresets ?? []}
 										onsavepreset={(preset) => editorSession.saveAnimationPreset(preset)}
 										ondeletepreset={(presetId) => editorSession.deleteAnimationPreset(presetId)}
+										variant="edit"
+										onmotionclip={handleEditMotionClip}
 										onedit={() => editorSession.scheduleAutosave()}
 									/>
 									{#if selectedIsText}
@@ -1905,6 +1970,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 							{selectedItemId}
 							onedit={() => editorSession.scheduleAutosave()}
 							onselectitem={handleSelectItem}
+							oncompositionchange={switchMotionComposition}
 						/>
 					{:else}
 						<TimelinePanel

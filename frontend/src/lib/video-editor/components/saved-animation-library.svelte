@@ -15,6 +15,9 @@
 		itemIds = [],
 		presets = [],
 		mode,
+		query: externalQuery,
+		compatibleOnly = false,
+		showFilters = true,
 		onsavepreset = () => {},
 		ondeletepreset = () => {},
 		onedit
@@ -23,12 +26,15 @@
 		itemIds?: string[];
 		presets?: AnimationPreset[];
 		mode: 'replace' | 'add';
+		query?: string;
+		compatibleOnly?: boolean;
+		showFilters?: boolean;
 		onsavepreset?: (preset: AnimationPreset) => void;
 		ondeletepreset?: (presetId: string) => void;
 		onedit: () => void;
 	} = $props();
 
-	let query = $state('');
+	let localQuery = $state('');
 	let saveOpen = $state(false);
 	let presetName = $state('');
 	let deletePresetId = $state<string | null>(null);
@@ -43,6 +49,7 @@
 		})
 	);
 	const sourceItem = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
+	const query = $derived(externalQuery ?? localQuery);
 	const canSave = $derived(
 		Boolean(
 			sourceItem &&
@@ -52,8 +59,10 @@
 		)
 	);
 	const filteredPresets = $derived(
-		presets.filter((preset) =>
-			preset.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+		presets.filter(
+			(preset) =>
+				preset.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) &&
+				(!compatibleOnly || compatibilityReason(preset) === null)
 		)
 	);
 
@@ -154,15 +163,17 @@
 
 	{#if presets.length > 0}
 		<div class="library-controls">
-			<label>
-				<span>{m.video_editor_saved_animation_search()}</span>
-				<Input
-					type="search"
-					bind:value={query}
-					placeholder={m.video_editor_saved_animation_search()}
-					class="h-7 min-h-0 rounded border border-[oklch(0.31_0.018_55)] bg-[oklch(0.135_0.01_55)] px-2 text-[0.6rem] text-[oklch(0.9_0.012_65)]"
-				/>
-			</label>
+			{#if showFilters}
+				<label>
+					<span>{m.video_editor_saved_animation_search()}</span>
+					<Input
+						type="search"
+						bind:value={localQuery}
+						placeholder={m.video_editor_saved_animation_search()}
+						class="h-7 min-h-0 rounded border border-[oklch(0.31_0.018_55)] bg-[oklch(0.135_0.01_55)] px-2 text-[0.6rem] text-[oklch(0.9_0.012_65)]"
+					/>
+				</label>
+			{/if}
 			<label class="retime-toggle">
 				<Checkbox bind:checked={retime} aria-label={m.video_editor_saved_animation_fit()} />
 				<span>{m.video_editor_saved_animation_fit()}</span>
