@@ -5307,10 +5307,6 @@ export interface components {
              * @example https://example.com/schemas/BlueskyLoginInputBody.json
              */
             readonly $schema?: string;
-            /**
-             * @description Where the user started the connection flow
-             * @enum {string}
-             */
             /** @description Bluesky app password (Settings > App Passwords) */
             app_password: string;
             /** @description Bluesky handle (e.g. user.bsky.social) */
@@ -6694,10 +6690,6 @@ export interface components {
              * @example https://example.com/schemas/DiscordWebhookLoginInputBody.json
              */
             readonly $schema?: string;
-            /**
-             * @description Where the user started the connection flow
-             * @enum {string}
-             */
             /**
              * @description Typed execution intent; certification_test requires an unscoped instance administrator
              * @enum {string}
@@ -13036,7 +13028,6 @@ export interface operations {
                 instance_url?: string;
                 /** @description Typed execution intent; certification_test requires an unscoped instance administrator */
                 intent?: "production" | "certification_test";
-                /** @description Where the user started the connection flow */
             };
             header?: never;
             path: {

@@ -184,10 +184,10 @@ func filterAccountsByPlatform(accounts []api.SocialAccount, platform string) []a
 	return out
 }
 
-// accountsWebURL resolves <instance>/accounts. Returns "" when the
+// accountSettingsURL resolves <instance>/settings?tab=accounts. Returns "" when the
 // instance is empty or unparseable so the caller can fall back to a
 // generic message.
-func accountsWebURL(instance string) string {
+func accountSettingsURL(instance string) string {
 	base := strings.TrimRight(strings.TrimSpace(instance), "/")
 	if base == "" {
 		return ""
@@ -196,8 +196,8 @@ func accountsWebURL(instance string) string {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ""
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/accounts"
-	u.RawQuery = ""
+	u.Path = strings.TrimRight(u.Path, "/") + "/settings"
+	u.RawQuery = "tab=accounts"
 	u.Fragment = ""
 	return u.String()
 }
@@ -206,7 +206,7 @@ func accountsWebURL(instance string) string {
 // has no matching accounts. It points the user at the web UI so the
 // absence of `account connect` in the CLI is discoverable.
 func emptyAccountsMessage(platform, instance string) string {
-	u := accountsWebURL(instance)
+	u := accountSettingsURL(instance)
 	switch {
 	case platform != "" && u != "":
 		return fmt.Sprintf("No %s accounts are connected for this workspace. Connect one in the web UI: %s", platform, u)

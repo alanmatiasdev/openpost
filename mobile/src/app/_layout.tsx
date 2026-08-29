@@ -117,14 +117,14 @@ export default function RootLayout() {
                     options={{ headerShown: false, gestureEnabled: false }}
                   />
                   <Stack.Screen
-                    name="compose/[id]"
+                    name="publications/[id]/edit"
                     options={{
                       presentation: "modal",
-                      title: "Compose",
+                      title: "Edit publication",
                       headerShown: false,
                     }}
                   />
-                  <Stack.Screen name="post/[id]" options={{ title: "Post" }} />
+                  <Stack.Screen name="publications/[id]" options={{ title: "Publication" }} />
                 </Stack>
               </ThemeProvider>
             </ShareIntentProvider>

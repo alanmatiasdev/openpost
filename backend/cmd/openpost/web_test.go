@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -258,7 +256,6 @@ func TestManagedSpaRootUsesTheApplicationForTheRoot(t *testing.T) {
 	e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "app")
-	require.NotContains(t, rec.Body.String(), "openpost-managed-public-home")
 }
 
 func TestManagedSpaHeadMatchesGetHeadersWithoutBody(t *testing.T) {
@@ -333,29 +330,6 @@ func TestSelfHostedSpaRootDoesNotAdvertiseManagedPlans(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.NotContains(t, rec.Body.String(), `name="openpost-edition"`)
-	require.NotContains(t, rec.Body.String(), `id="openpost-managed-public-home"`)
-}
-
-func TestManagedSpaRootPricingMatchesFrontendCatalog(t *testing.T) {
-	catalogSource, err := os.ReadFile("../../../packages/plan-catalog/src/catalog.json")
-	require.NoError(t, err)
-	var catalog struct {
-		Plans []struct {
-			Name            string `json:"name"`
-			MonthlyPriceUSD int    `json:"monthly_price_usd"`
-		} `json:"plans"`
-	}
-	require.NoError(t, json.Unmarshal(catalogSource, &catalog))
-	require.NotEmpty(t, catalog.Plans)
-
-	rendered := string(renderManagedPublicHomeHTML(
-		[]byte(`<html><head></head><body><div id="app">app</div></body></html>`),
-		"https://app.openpost.social",
-	))
-	require.Equal(t, len(catalog.Plans), strings.Count(rendered, `class="oph-plan"`))
-	for _, plan := range catalog.Plans {
-		require.Contains(t, rendered, "<h3>"+plan.Name+"</h3><p>$"+strconv.Itoa(plan.MonthlyPriceUSD)+"<span>/month")
-	}
 }
 
 func TestRenderPublicProfileHTMLAddsEscapedShareMetadata(t *testing.T) {

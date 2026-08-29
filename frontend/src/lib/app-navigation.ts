@@ -8,7 +8,6 @@ export type PrimaryNavigationItem = {
 		| 'analytics'
 		| 'media'
 		| 'editors'
-		| 'accounts'
 		| 'settings';
 	label: string;
 	href: string;
@@ -44,7 +43,13 @@ export const appRouteFamilies: Record<AppRouteFamily, readonly string[]> = {
 export const primaryNavigation: PrimaryNavigationItem[] = [
 	{ id: 'new', label: 'New post', href: '/', family: 'root', mobile: true },
 	{ id: 'calendar', label: 'Calendar', href: '/calendar', family: 'calendar', mobile: true },
-	{ id: 'publications', label: 'Posts', href: '/publications', family: 'publications', mobile: true },
+	{
+		id: 'publications',
+		label: 'Publications',
+		href: '/publications',
+		family: 'publications',
+		mobile: true
+	},
 	{
 		id: 'communications',
 		label: 'Inbox',
@@ -88,8 +93,8 @@ export function isNavigationItemActive(item: PrimaryNavigationItem, pathname: st
 }
 
 export function isAppRouteInFamily(pathname: string, family: AppRouteFamily): boolean {
-	return appRouteFamilies[family].some(
-		(path) => path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`)
+	return appRouteFamilies[family].some((path) =>
+		path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`)
 	);
 }
 

@@ -1,6 +1,4 @@
----
-title: Consolidate application routes
----
+### Changed
 
-- Consolidate publications, Inbox communications, and account management on their canonical routes.
-- Remove the legacy Studio, Video Studio, activity, posts, and standalone account routes without redirects.
+- Consolidated Publications, Inbox communications, and account management on their canonical routes across the web and mobile apps.
+- Removed the public app homepage and the legacy Studio, Video Studio, Activity, Posts, and standalone Accounts routes without redirects.

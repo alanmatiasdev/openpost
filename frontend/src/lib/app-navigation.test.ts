@@ -6,11 +6,13 @@ import {
 } from './app-navigation';
 
 describe('primary application navigation', () => {
-	it('treats publication details as part of Posts without claiming the composer root', () => {
+	it('treats publication details as part of Publications without claiming the composer root', () => {
 		const publications = primaryNavigation.find((item) => item.id === 'publications');
 		const composer = primaryNavigation.find((item) => item.id === 'new');
 
-		expect(publications && isNavigationItemActive(publications, '/publications/pub-123')).toBe(true);
+		expect(publications && isNavigationItemActive(publications, '/publications/pub-123')).toBe(
+			true
+		);
 		expect(composer && isNavigationItemActive(composer, '/publications/pub-123')).toBe(false);
 		expect(composer && isNavigationItemActive(composer, '/')).toBe(true);
 	});

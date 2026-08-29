@@ -175,7 +175,7 @@ test.describe("account setup", () => {
     await expect(page.getByLabel("Analytics")).toBeChecked();
 
     await page.getByRole("button", { name: "Save and continue" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/);
     const captured = mocks.getCaptured();
     expect(captured?.choices).toEqual(
       expect.arrayContaining([
@@ -218,7 +218,7 @@ test.describe("account setup", () => {
     await page.getByLabel("Direct messages").check();
     await page.getByLabel("Grow").check();
     await page.getByRole("button", { name: "Save and continue" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/);
     const captured = mocks.getCaptured();
     expect(captured?.choices).toEqual(
       expect.arrayContaining([
@@ -264,8 +264,8 @@ test.describe("account setup", () => {
     await page.goto(
       `/accounts/setup?workspace_id=${ws.id}&account_ids=${accountId}&new_account_ids=${accountId}`,
     );
-    // Should auto-continue to /accounts without showing feature UI
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/, { timeout: 5000 });
+    // Should auto-continue to Settings without showing feature UI.
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/, { timeout: 5000 });
   });
 
   test("Keep all off writes disabled rows atomically", async ({ page, request }) => {
@@ -292,7 +292,7 @@ test.describe("account setup", () => {
     );
     // Explicit Keep all off without checking anything
     await page.getByRole("button", { name: "Keep all off" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/);
     const captured = mocks.getCaptured();
     expect(captured?.choices.every((c) => c.enabled === false)).toBe(true);
     expect(captured?.choices.length).toBe(4);
@@ -314,7 +314,7 @@ test.describe("account setup", () => {
     );
     await expect(page.getByLabel("Direct messages")).toBeVisible();
     await page.getByRole("button", { name: "Save and continue" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/);
     const captured2 = mocks2.getCaptured();
     expect(captured2?.choices.every((c) => c.enabled === false)).toBe(true);
   });
@@ -400,29 +400,6 @@ test.describe("account setup", () => {
     );
     await page.getByRole("button", { name: "Save and continue" }).click();
     await expect(page).toHaveURL(new RegExp(`\\/\\?workspace_id=${ws.id}`));
-  });
-
-  test("later direct Accounts continuation returns to /accounts", async ({ page, request }) => {
-    const unique = Date.now().toString(36);
-    const auth = await registerUser(request, `setup-direct-${unique}@example.com`);
-    const ws = await createWorkspace(request, auth.token, "Direct");
-    await authenticatePage(page, auth.token);
-    await page.goto("/settings?tab=accounts");
-    await page.evaluate(() => localStorage.setItem("oauth_account_management_mode", "direct"));
-    const accountId = "acc-direct";
-    setupMocks(page, {
-      workspaceId: ws.id,
-      accountIds: [accountId],
-      newAccountIds: [accountId],
-      featureMap: {
-        [accountId]: [featureResponse(accountId, "x", "analytics", { supported: true })],
-      },
-    });
-    await page.goto(
-      `/accounts/setup?workspace_id=${ws.id}&account_ids=${accountId}&new_account_ids=${accountId}`,
-    );
-    await page.getByRole("button", { name: "Save and continue" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
   });
 
   test("routine reauth no prompt and explicit off suppresses reminder", async ({
@@ -615,7 +592,7 @@ test.describe("account setup", () => {
     await firstSection.getByLabel("Direct messages").check();
     await secondSection.getByLabel("Grow").check();
     await page.getByRole("button", { name: "Save and continue" }).click();
-    await expect(page).toHaveURL(/\/(accounts|settings\?tab=accounts)/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts/);
     const captured = mocks.getCaptured();
     expect(captured?.choices).toEqual(
       expect.arrayContaining([

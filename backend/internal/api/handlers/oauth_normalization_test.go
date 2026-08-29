@@ -72,7 +72,9 @@ func doNormCallback(t *testing.T, e *echo.Echo) *http.Response {
 	q := "/api/v1/accounts/" + provider + "/auth-url?workspace_id=ws-1"
 	authResp := oauthSelectionRequest(t, e, http.MethodGet, q, nil, true)
 	require.Equal(t, http.StatusOK, authResp.Code, authResp.Body.String())
-	var body struct { URL string `json:"url"` }
+	var body struct {
+		URL string `json:"url"`
+	}
 	require.NoError(t, json.Unmarshal(authResp.Body.Bytes(), &body))
 	u, _ := url.Parse(body.URL)
 	state := u.Query().Get("state")
@@ -152,31 +154,24 @@ func TestNormBypassesSetupWhenNoSupportedFeatures(t *testing.T) {
 	require.NotContains(t, loc, "/accounts/setup")
 }
 
-func TestNormPreservesFirstDestination(t *testing.T) {
+func TestNormRoutesFirstAndExistingDestinationsToTheirCanonicalPages(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: false}},
 	}
 	e1, _ := newNormServer(t, providers)
-	resp1 := doNormCallback(t, e1, "direct")
+	resp1 := doNormCallback(t, e1)
 	defer resp1.Body.Close()
 	require.Contains(t, resp1.Header.Get("Location"), "workspace_id=ws-1")
 	require.Contains(t, resp1.Header.Get("Location"), "account_ids=")
 	require.NotContains(t, resp1.Header.Get("Location"), "settings")
 
 	e2, _ := newNormServer(t, providers)
-	respDiscard := doNormCallback(t, e2, "direct")
+	respDiscard := doNormCallback(t, e2)
 	respDiscard.Body.Close()
-	resp2 := doNormCallback(t, e2, "direct")
+	resp2 := doNormCallback(t, e2)
 	defer resp2.Body.Close()
-	require.Equal(t, "https://app.openpost.test/accounts", resp2.Header.Get("Location"))
-
-	e3, _ := newNormServer(t, providers)
-	respDiscard2 := doNormCallback(t, e3, "settings")
-	respDiscard2.Body.Close()
-	resp3 := doNormCallback(t, e3, "settings")
-	defer resp3.Body.Close()
-	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp3.Header.Get("Location"))
+	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp2.Header.Get("Location"))
 }
 
 func TestNormReactivatedDoesNotTriggerSetup(t *testing.T) {

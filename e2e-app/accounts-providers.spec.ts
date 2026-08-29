@@ -387,7 +387,7 @@ for (const viewport of [
   { name: "phone", width: 390, height: 844 },
   { name: "compact phone", width: 320, height: 568 },
 ] as const) {
-  test(`direct and Settings account management keep navigation and feedback stable on ${viewport.name}`, async ({
+  test(`Settings account management keeps navigation and feedback stable on ${viewport.name}`, async ({
     page,
     request,
   }) => {
@@ -406,8 +406,8 @@ for (const viewport of [
       await page.addInitScript(() => localStorage.setItem("mode-watcher-mode", "dark"));
     }
 
-    await page.goto(`/accounts?oauth_status=cancelled&workspace_id=${workspace.id}`);
-    await expect(page).toHaveURL(/\/accounts$/);
+    await page.goto(`/settings?tab=accounts&oauth_status=cancelled&workspace_id=${workspace.id}`);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
     await expect(page.getByRole("heading", { level: 1, name: "Social accounts" })).toBeVisible();
     await expect(
       page.getByText("Connection cancelled. Choose a destination to try again."),
@@ -415,7 +415,7 @@ for (const viewport of [
     await page.waitForLoadState("networkidle");
 
     await page.reload();
-    await expect(page).toHaveURL(/\/accounts$/);
+    await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
     await expect(page.getByText(/Connection cancelled/)).toHaveCount(0);
     await page.waitForLoadState("networkidle");
 
@@ -428,14 +428,6 @@ for (const viewport of [
       ),
     ).toBeVisible();
     await expect(page.locator("h1")).toHaveCount(1);
-    await page.waitForLoadState("networkidle");
-
-    await page.goBack();
-    await expect(page).toHaveURL(/\/accounts$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Social accounts" })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-    await page.goForward();
-    await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
     await page.waitForLoadState("networkidle");
 
     const settingsNavigation = page.getByTestId("settings-navigation");

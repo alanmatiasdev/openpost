@@ -399,7 +399,7 @@ export function docsSectionForPage(page) {
   if (route.startsWith("/installation/")) return "Installation";
   if (route.startsWith("/configuration/")) return "Configuration";
   if (route.startsWith("/operations/")) return "Operations";
-  if (route.startsWith("/self-hosting/") || route === "/guide/why-selfhost") {
+  if (route.startsWith("/self-hosting/")) {
     return "Self-hosting";
   }
   if (route.startsWith("/cli/")) return "CLI guide";

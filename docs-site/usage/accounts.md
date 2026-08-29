@@ -6,14 +6,14 @@ Connected accounts are the social accounts inside a workspace.
 
 ## Common flow
 
-1. Open the accounts screen.
+1. Open **Settings → Social accounts**.
 2. Choose a platform.
 3. Sign in to that platform and approve access.
 4. Return to OpenPost. A successful first connection opens a fresh composer with the new destination selected.
 
 If you cancel authorization or the provider cannot finish the connection, OpenPost returns to account management with a retry message. Refreshing or signing in again does not create a separate setup state; the Workspace setup guide reads current subscription, destination, first-composition, and Publication data.
 
-Account management is available directly at `/accounts` and inside **Settings → Social accounts**. Both views use the same Workspace-scoped controls and preserve the current URL while you work. OAuth cancellation and error feedback is shown once on the view you return to, then removed from the URL so refresh and browser history do not repeat stale feedback.
+**Settings → Social accounts** is the account-management screen. OAuth cancellation and error feedback appears there once, then OpenPost removes it from the URL so refresh and browser history do not repeat stale feedback.
 
 ## Optional features per connected account
 
