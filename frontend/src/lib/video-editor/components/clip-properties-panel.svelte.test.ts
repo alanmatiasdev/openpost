@@ -5,6 +5,7 @@ import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/type
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
+import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import ClipPropertiesPanel from './clip-properties-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -86,6 +87,7 @@ const items: TimelineItem[] = [
 ];
 
 beforeEach(() => {
+	mediaPool.clear();
 	timelineStore.__resetForTesting();
 	timelineStore.setAll({ tracks, items, currentFrame: 0, fps: 30 });
 	commandHistory.clearHistory();
@@ -93,6 +95,70 @@ beforeEach(() => {
 
 afterEach(async () => {
 	await page.viewport(1280, 900);
+});
+
+describe('ClipPropertiesPanel animated image playback', () => {
+	it('changes GIF speed without stretching the clip and reverses the loop', async () => {
+		mediaPool.loadAll([
+			{
+				id: 'animated-media',
+				storageType: 'workspace',
+				fileName: 'reaction.gif',
+				fileSize: 1024,
+				mimeType: 'image/gif',
+				duration: 0.6,
+				width: 320,
+				height: 180,
+				fps: 10,
+				codec: '',
+				bitrate: 0,
+				animationFrameCount: 6,
+				tags: ['image']
+			}
+		]);
+		timelineStore._addItem({
+			id: 'animated-image',
+			trackId: 'video',
+			from: 0,
+			durationInFrames: 150,
+			label: 'reaction.gif',
+			type: 'image',
+			mediaId: 'animated-media',
+			sourceWidth: 320,
+			sourceHeight: 180
+		});
+		commandHistory.clearHistory();
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'animated-image',
+			onedit
+		});
+
+		const speed = screen.getByRole('textbox', { name: 'Speed' }).query();
+		if (!(speed instanceof HTMLInputElement)) throw new Error('GIF speed control did not render.');
+		speed.value = '2.5';
+		speed.dispatchEvent(new InputEvent('input', { bubbles: true, data: '2.5' }));
+		speed.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('animated-image')).toMatchObject({
+			speed: 2.5,
+			durationInFrames: 150
+		});
+		expect(commandHistory.getLastCommandType()).toBe('SET_ANIMATED_IMAGE_SPEED');
+
+		await screen.getByRole('button', { name: 'Reverse clip' }).click();
+		expect(timelineStore.itemById.get('animated-image')?.isReversed).toBe(true);
+		expect(commandHistory.getLastCommandType()).toBe('SET_ANIMATED_IMAGES_REVERSED');
+		expect(onedit).toHaveBeenCalledTimes(2);
+
+		const panel = screen.getByTestId('animated-image-playback-section').query();
+		panel.style.width = '320px';
+		panel.style.background = 'oklch(0.15 0.008 55)';
+		expect(panel.scrollWidth).toBeLessThanOrEqual(320);
+		await page.screenshot({
+			element: panel,
+			path: '../../../../.svelte-kit/openpost-animated-image-playback.png'
+		});
+	});
 });
 
 describe('ClipPropertiesPanel reverse playback', () => {

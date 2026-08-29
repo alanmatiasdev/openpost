@@ -33,6 +33,7 @@
 	import ClipCropSection from './clip-crop-section.svelte';
 	import ClipPlaybackSection from './clip-playback-section.svelte';
 	import ClipAudioCoreSection from './clip-audio-core-section.svelte';
+	import AnimatedImagePlaybackSection from './animated-image-playback-section.svelte';
 
 	let nrDraftAmount = $state<number | null>(null);
 	// Reset draft when selection or persisted amount changes
@@ -308,6 +309,10 @@
 		{/if}
 
 		<ClipCropSection itemId={item.id} {itemIds} {onedit} />
+
+		{#if item.type === 'image'}
+			<AnimatedImagePlaybackSection itemId={item.id} {itemIds} {onedit} />
+		{/if}
 
 		{#if item.type === 'shape'}
 			<ShapePropertiesPanel {item} {onedit} />
