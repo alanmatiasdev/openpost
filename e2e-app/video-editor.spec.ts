@@ -77,6 +77,10 @@ async function addTextItem(page: Page): Promise<void> {
   await page.getByRole("menuitem", { name: "Add text", exact: true }).click();
 }
 
+async function openHeaderMoreMenu(page: Page): Promise<void> {
+  await page.locator("header").getByRole("button", { name: "More actions" }).click();
+}
+
 test("Video Editor project shell stays usable at phone and desktop widths", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleFailures: string[] = [];
@@ -266,10 +270,10 @@ test("Video Editor quick export saves an MP4 in the workspace", async ({ page })
   test.setTimeout(90_000);
   const projectName = "Quick export proof";
   await createProject(page, projectName);
-  await page.getByRole("button", { name: "Add text" }).click();
+  await addTextItem(page);
 
-  const exportButton = page.getByRole("button", { name: "Export MP4" });
-  await exportButton.click();
+  await openHeaderMoreMenu(page);
+  await page.getByRole("menuitem", { name: "Export MP4" }).click();
   await expect(page.getByText(`Saved ${projectName}.mp4 to the exports folder.`)).toBeVisible({
     timeout: 60_000,
   });
@@ -286,9 +290,10 @@ test("Video Editor sends a rendered export into a new composer", async ({ page, 
   await createWorkspace(request, auth.token, "Video Editor send E2E");
   await authenticatePage(page, auth.token);
   await createProject(page, "Composer send proof");
-  await page.getByRole("button", { name: "Add text" }).click();
+  await addTextItem(page);
 
-  await page.getByRole("button", { name: "Send to OpenPost" }).click();
+  await openHeaderMoreMenu(page);
+  await page.getByRole("menuitem", { name: "Send to OpenPost" }).click();
   await expect(
     page.getByRole("status").getByText("Sent to your OpenPost media library."),
   ).toBeVisible({
