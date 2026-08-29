@@ -566,7 +566,7 @@
 				params: {
 					path: { platform: 'x' },
 					query: {
-						workspace_id: selectedWorkspaceId,
+						workspace_id: selectedWorkspaceId
 					}
 				}
 			});
@@ -604,7 +604,7 @@
 				query: {
 					workspace_id: selectedWorkspaceId,
 					server_name: options.serverName,
-					instance_url: options.instanceURL,
+					instance_url: options.instanceURL
 				}
 			}
 		});
@@ -661,7 +661,7 @@
 				body: {
 					workspace_id: selectedWorkspaceId,
 					handle: blueskyHandle.trim(),
-					app_password: blueskyAppPassword.trim(),
+					app_password: blueskyAppPassword.trim()
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_login_failed());
@@ -720,7 +720,7 @@
 			const { data, error: err } = await client.POST('/accounts/discord/webhook', {
 				body: {
 					workspace_id: selectedWorkspaceId,
-					webhook_url: discordWebhookUrl.trim(),
+					webhook_url: discordWebhookUrl.trim()
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
@@ -768,7 +768,7 @@
 				params: {
 					path: { platform },
 					query: {
-						workspace_id: selectedWorkspaceId,
+						workspace_id: selectedWorkspaceId
 					}
 				}
 			});
@@ -1028,7 +1028,7 @@
 		const query = {
 			workspace_id: selectedWorkspaceId,
 			server_name: options.serverName,
-			instance_url: options.instanceURL,
+			instance_url: options.instanceURL
 		};
 
 		try {

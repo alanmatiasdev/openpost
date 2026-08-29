@@ -6,7 +6,14 @@ const tinyPNG = Buffer.from(
   "base64",
 );
 
-const coreRoutes = ["/publications", "/settings?tab=accounts", "/media", "/prompts", "/settings", "/calendar"];
+const coreRoutes = [
+  "/publications",
+  "/settings?tab=accounts",
+  "/media",
+  "/prompts",
+  "/settings",
+  "/calendar",
+];
 const viewports = [
   { name: "compact phone portrait", width: 320, height: 568 },
   { name: "phone portrait", width: 390, height: 844 },

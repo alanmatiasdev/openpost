@@ -13,7 +13,10 @@
 
 	let { active }: Props = $props();
 
-	function navigate(event: MouseEvent, href: '/inbox/engagement' | '/inbox/messages' | '/inbox/notifications') {
+	function navigate(
+		event: MouseEvent,
+		href: '/inbox/engagement' | '/inbox/messages' | '/inbox/notifications'
+	) {
 		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
 			return;
 		event.preventDefault();

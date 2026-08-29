@@ -61,12 +61,16 @@
 	);
 	const sidebarNavigationItems = $derived(
 		navigationItems.filter((item) =>
-			['calendar', 'publications', 'communications', 'growth', 'analytics', 'media'].includes(item.id)
+			['calendar', 'publications', 'communications', 'growth', 'analytics', 'media'].includes(
+				item.id
+			)
 		)
 	);
 	const workspaceNavigationItems = $derived([
 		...navigationItems.filter((item) =>
-			['calendar', 'publications', 'communications', 'growth', 'analytics', 'media'].includes(item.id)
+			['calendar', 'publications', 'communications', 'growth', 'analytics', 'media'].includes(
+				item.id
+			)
 		)
 	]);
 	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');

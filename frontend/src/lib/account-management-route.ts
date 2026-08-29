@@ -47,9 +47,7 @@ export function presentAccountManagementFeedback(
 	return { tone: 'error', message: m.accounts_oauth_failed() };
 }
 
-export function rememberAccountManagementContinuation(
-	continuation: AccountManagementContinuation
-) {
+export function rememberAccountManagementContinuation(continuation: AccountManagementContinuation) {
 	if (typeof localStorage === 'undefined') return;
 	try {
 		localStorage.setItem('oauth_workspace_id', continuation.workspaceID);

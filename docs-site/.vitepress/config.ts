@@ -158,9 +158,7 @@ const selfHostingSidebar = [
   {
     text: "Reference",
     collapsed: false,
-    items: [
-      { text: "Callback URLs", link: "/reference/callback-urls" },
-    ],
+    items: [{ text: "Callback URLs", link: "/reference/callback-urls" }],
   },
 ];
 
