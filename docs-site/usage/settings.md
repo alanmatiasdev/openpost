@@ -18,9 +18,9 @@ Use this tab when the setting should differ between brands, clients, or projects
 
 The media lifecycle information is not a workspace control. Temporary post-specific media moves to Trash after its final successful publication or 14 days without use, and Trash is permanently removed after seven days. Favorites, organized media, active work, and editor projects remain protected. OpenPost keeps the periods fixed so an old client or stored workspace value cannot weaken the policy.
 
-## Account
+## Personal
 
-Account settings follow your user login across every workspace.
+Personal settings follow your user login across every workspace.
 
 - Display name and profile picture
 - Appearance, language, and interface sounds saved in the current browser
@@ -38,7 +38,7 @@ The Notifications page shows the same active Mutes and end-now action, so you ca
 
 Use an `mcp:read` token limited to one workspace when an AI tool only needs to read OpenPost. Use `mcp:full` only when it must create or change drafts and account versions, upload media, schedule, publish, cancel, reply, or moderate. You can remove either token. Check recent activity and remove access when the tool no longer needs it.
 
-Use this tab when the setting is about you, not a workspace.
+Use this group when the setting is about you, not a workspace.
 
 Settings labels each boundary. Profile and security follow your account. Appearance, language, and sounds are saved in the current browser and apply to any workspace opened there; they do not sync to another browser or device. Timezone, week start, scheduling, and workspace identity stay with the selected workspace.
 
@@ -46,7 +46,7 @@ Authenticator setup does not finish until you save and acknowledge the one-time 
 
 OpenPost keeps account linking explicit. If a Google or organization account
 uses the same email as an existing OpenPost user, sign in with the existing
-method first. Open **Settings → Account → Security**, confirm your current
+method first. Open **Settings → Personal → Security**, confirm your current
 method, and link the external account there. You can then use either method to
 sign in. OpenPost blocks unlinking the last usable sign-in method.
 

@@ -1,6 +1,6 @@
 # What Is OpenPost?
 
-OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content for their connected destinations. Start with one shared draft, then change the text, media, format, and settings for each account.
+OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content for supported destinations. Start with one shared draft, then change the text, media, format, and settings for each connected account.
 
 OpenPost includes the complete publishing workflow.
 
@@ -36,7 +36,7 @@ Teams that need to operate their own infrastructure can also run the AGPL produc
 
 The list below describes implemented product adapters. Hosted service certification is tracked separately in the [provider launch matrix](/operations/provider-launch-matrix).
 
-- **Publishing:** X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks
+- **Publishing adapters:** X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks
 - **Content types:** posts, threads, Stories, short videos, and videos, based on each platform
 - **Results:** account and post analytics when the platform grants access
 - **Replies:** comments, replies, and moderation for supported platforms
@@ -44,7 +44,7 @@ The list below describes implemented product adapters. Hosted service certificat
 - **Workspaces:** separate accounts, media, schedules, members, and tool access
 - **Tools:** web app, HTTP API, CLI, and MCP
 
-App review, account access, API limits, public media links, or a failed live test can still block an account or format. See [Supported Platforms & Limitations](/providers/).
+Implemented adapters do not prove current Hosted service availability. App review, account access, API limits, public media links, or a failed live test can still block an account or format. See [Supported Platforms & Limitations](/providers/).
 
 ## What OpenPost is not
 

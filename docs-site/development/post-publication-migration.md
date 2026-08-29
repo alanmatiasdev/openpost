@@ -32,10 +32,10 @@ Post HTTP routes, post-named MCP tools, and the legacy Post authoring model are 
 | `POST /posts`                  | `POST /publications`, then `POST /publications/{id}/schedule` when scheduling.     |
 | `GET /posts`                   | `GET /publications`.                                                               |
 | `GET /posts/{id}`              | Use the migrated `publication_id`, then `GET /publications/{id}`.                  |
-| `PATCH /posts/{id}`            | `PATCH /publications/{id}` or schedule and cancel endpoints.                       |
+| `PATCH /posts/{id}`            | `PUT /publications/{id}` or schedule and cancel endpoints.                         |
 | `DELETE /posts/{id}`           | `DELETE /publications/{id}` with `expected_revision`.                              |
 | `POST /posts/draft`            | `POST /publications`.                                                              |
-| `PUT /posts/{id}/draft`        | `PATCH /publications/{id}`.                                                        |
+| `PUT /posts/{id}/draft`        | `PUT /publications/{id}`.                                                          |
 | `/posts/{id}/variants`         | `GET /publications/{id}` and `PUT /publications/{id}/renditions`.                  |
 | `GET /posts/schedule-overview` | `GET /publications` with `calendar_from` and `calendar_before`, then group by day. |
 
