@@ -20,7 +20,7 @@
 </script>
 
 <section
-	class="flex max-h-[72dvh] min-h-0 shrink-0 flex-col overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.007_55)] lg:h-[min(55dvh,540px)] lg:min-h-[430px]"
+	class="flex max-h-[72dvh] min-h-0 shrink-0 flex-col overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.007_55)] lg:h-[min(62dvh,600px)] lg:min-h-[500px]"
 	aria-label={m.video_editor_color_dock()}
 >
 	<ColorMiniTimeline selectedItemIds={itemIds} {onselectitem} />
@@ -29,7 +29,7 @@
 		data-color-dock-panels
 	>
 		<div
-			class="grid min-h-[520px] min-w-0 grid-cols-1 overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.5fr)]"
+			class="grid min-h-[520px] min-w-0 grid-cols-1 overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0 lg:grid-cols-[minmax(0,1.65fr)_minmax(6.5rem,0.35fr)] 2xl:grid-cols-[minmax(0,1.5fr)_minmax(0,0.5fr)]"
 		>
 			<div class="min-h-0 min-w-0 overflow-hidden lg:border-r lg:border-white/10">
 				<ColorWorkspace {itemId} {itemIds} {onedit} />

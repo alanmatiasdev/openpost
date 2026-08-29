@@ -196,6 +196,9 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(colorWheels).toHaveCount(4);
   await colorWheels.first().focus();
   await page.keyboard.press("ArrowUp");
+  await expect(populatedColorDock.getByRole("textbox", { name: "Lift master" })).toBeVisible();
+  await expect(populatedColorDock.getByRole("textbox", { name: "Lift Red" })).toBeVisible();
+  await expect(populatedColorDock.getByRole("slider", { name: "Lift thumb wheel" })).toBeVisible();
   await expect(
     populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
   ).toBeVisible();
