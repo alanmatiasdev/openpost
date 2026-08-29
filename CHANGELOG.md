@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-08-29
+
+### Added
+
+- Add direct right-click actions for reordering, resetting, toggling, and removing Video Editor effects.
+- Add transcript word context actions for copying, cutting, staging, restoring, and committing edits.
+- Add right-click actions for opening, renaming, duplicating, reordering, and closing Video Editor sequence tabs.
+- Add right-click Download and Delete actions to Video Editor saved export rows.
+- Add state-aware right-click actions to Video Editor render queue jobs.
+
+### Fixed
+
+- Stop context-menu listeners from surviving Video Editor navigation and reading stale interface state.
+- Reject static images before animated-frame extraction without logging an expected decode warning.
+
 ## [4.8.0] - 2026-08-28
 
 ### Fixed
