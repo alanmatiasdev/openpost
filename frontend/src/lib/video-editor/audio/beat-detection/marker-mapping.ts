@@ -55,6 +55,8 @@ export function beatsToMarkers(
 		markers.push({
 			id: crypto.randomUUID(),
 			frame,
+			kind: effectiveDownbeat ? 'downbeat' : 'beat',
+			...(options.item && { sourceItemId: options.item.id }),
 			label: effectiveDownbeat
 				? (m.video_editor_downbeat_marker_label?.({ number: bar }) ?? `Downbeat ${bar}`)
 				: (m.video_editor_beat_marker_label?.({ number: beatInBar }) ?? `Beat ${beatInBar}`),

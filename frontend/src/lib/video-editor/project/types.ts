@@ -840,6 +840,8 @@ export interface TimelineMarker {
 	frame: number;
 	label?: string;
 	color: string;
+	kind?: 'beat' | 'downbeat';
+	sourceItemId?: string;
 }
 
 export type TransitionPropertyValue = number | [number, number, number];

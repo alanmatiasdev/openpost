@@ -131,6 +131,69 @@ describe('beat detection panel - browser UI cancellation / error / success', () 
 		expect(commandHistory.getLastCommandType()).toBe('ADD_BEAT_MARKERS');
 	});
 
+	it('selects a target track and applies the detected beat grid through the rendered controls', async () => {
+		timelineStore._setTracks([
+			...timelineStore.tracks,
+			{
+				id: 'track-visual',
+				name: 'Visuals',
+				kind: 'video',
+				height: 96,
+				locked: false,
+				visible: true,
+				muted: false,
+				solo: false,
+				order: 1
+			}
+		]);
+		timelineStore._setItems([
+			...timelineStore.items,
+			clip({
+				id: 'visual-a',
+				trackId: 'track-visual',
+				type: 'video',
+				from: 12,
+				durationInFrames: 30,
+				label: 'Visual A'
+			}),
+			clip({
+				id: 'visual-b',
+				trackId: 'track-visual',
+				type: 'video',
+				from: 90,
+				durationInFrames: 30,
+				label: 'Visual B'
+			})
+		]);
+		const service = createBeatDetectionService({
+			resolveMediaBlob: async () => new Blob([new Uint8Array(100)]),
+			analyzeBlob: async () => ({
+				bpm: 120,
+				confidence: 0.9,
+				beats: [
+					{ time: 0, strength: 1, index: 0 },
+					{ time: 1, strength: 1, index: 1 },
+					{ time: 2, strength: 1, index: 2 }
+				],
+				duration: 3,
+				downbeats: [0]
+			})
+		});
+
+		render(BeatDetectionPanel, { props: { selectedItemId: 'clip-1', service } });
+		await page.getByRole('button', { name: /Detect beats/ }).click();
+		await page.getByRole('checkbox', { name: 'Visuals' }).click();
+		await page.getByRole('button', { name: 'Sync clips (2)' }).click();
+
+		expect(timelineStore.itemById.get('visual-a')).toMatchObject({ from: 0, durationInFrames: 30 });
+		expect(timelineStore.itemById.get('visual-b')).toMatchObject({
+			from: 30,
+			durationInFrames: 30
+		});
+		await expect.element(page.getByText('Synced clips: 2.')).toBeInTheDocument();
+		expect(commandHistory.getLastCommandType()).toBe('SYNC_CLIPS_TO_BEATS');
+	});
+
 	it('surfaces decode failure as an error alert without markers', async () => {
 		const service = createBeatDetectionService({
 			resolveMediaBlob: async () => {

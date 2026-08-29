@@ -55,6 +55,8 @@ export class BeatDetectionService {
 	error = $state<string | null>(null);
 	progress = $state<string | null>(null);
 	lastResult = $state<BeatDetectionProgress | null>(null);
+	beatFrames = $state<number[]>([]);
+	beatSourceItemId = $state<string | null>(null);
 	private controller: AbortController | null = null;
 	private readonly dependencies: BeatDetectionDependencies;
 
@@ -82,6 +84,8 @@ export class BeatDetectionService {
 		this.error = null;
 		this.progress = null;
 		this.lastResult = null;
+		this.beatFrames = [];
+		this.beatSourceItemId = null;
 	}
 
 	async analyzeSelectedClip(clipId?: string | null): Promise<BeatDetectionProgress> {
@@ -144,6 +148,8 @@ export class BeatDetectionService {
 			this.progress = m.video_editor_beat_mapping?.() ?? 'Placing markers…';
 			const fps = timelineStore.fps;
 			const markers = beatsToMarkers(result.beats, result.downbeats, { fps, item });
+			this.beatFrames = markers.map((marker) => marker.frame);
+			this.beatSourceItemId = item.id;
 			const inserted = addBeatMarkersAtomic(markers);
 			this.status = 'success';
 			this.progress = null;
