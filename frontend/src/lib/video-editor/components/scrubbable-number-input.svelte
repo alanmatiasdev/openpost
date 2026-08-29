@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Input } from '$lib/components/ui/input';
 	const SCRUB_THRESHOLD_PX = 3;
 
 	let {
@@ -31,7 +32,7 @@
 		oncancel?: () => void;
 	} = $props();
 
-	let input: HTMLInputElement;
+	let input = $state<HTMLInputElement | null>(null);
 	let draft = $state<string | null>(null);
 	let drag: { pointerId: number; startX: number; startValue: number; scrubbed: boolean } | null =
 		null;
@@ -103,8 +104,8 @@
 		}
 		if (scrubbed) commit();
 		else {
-			input.focus();
-			input.select();
+			input?.focus();
+			input?.select();
 		}
 	}
 
@@ -144,8 +145,8 @@
 	}
 </script>
 
-<input
-	bind:this={input}
+<Input
+	bind:ref={input}
 	type="text"
 	inputmode="decimal"
 	autocomplete="off"

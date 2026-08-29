@@ -6,6 +6,7 @@
 	import UnlinkIcon from '@lucide/svelte/icons/unlink-2';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Slider } from '$lib/components/ui/slider';
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
@@ -381,24 +382,22 @@
 			</div>
 
 			<div class="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 px-2.5 py-2">
-				<label
-					for={`clip-property-${itemId}-rotation-slider`}
-					class="pt-1.5 text-[10px] font-medium text-white/48">{m.video_editor_rotation()}</label
+				<span class="pt-1.5 text-[10px] font-medium text-white/48">{m.video_editor_rotation()}</span
 				>
 				<div class="flex min-w-0 items-center gap-1">
-					<input
-						id={`clip-property-${itemId}-rotation-slider`}
-						type="range"
+					<Slider
 						class="h-7 min-w-10 flex-1 accent-[oklch(0.72_0.15_50)]"
-						min="-180"
-						max="180"
-						step="1"
+						min={-180}
+						max={180}
+						step={1}
 						value={mixedValue('rotation') ?? 0}
-						onpointerdown={beginGesture}
-						onpointercancel={cancelGesture}
-						oninput={(event) => writeLive('rotation', event.currentTarget.valueAsNumber)}
-						onchange={(event) => commitGesture('rotation', event.currentTarget.valueAsNumber)}
-						onkeydown={(event) => event.stopPropagation()}
+						ariaLabel={m.video_editor_rotation()}
+						onValueChange={(nextValue) => {
+							beginGesture();
+							writeLive('rotation', nextValue);
+						}}
+						onValueCommit={(nextValue) => commitGesture('rotation', nextValue)}
+						onValueCancel={cancelGesture}
 					/>
 					<div class="w-[5.6rem] shrink-0">
 						{@render numberControl('rotation', '', m.video_editor_rotation(), '°', -360, 360)}
@@ -484,24 +483,21 @@
 		</h3>
 		<div class="divide-y divide-white/6">
 			<div class="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 px-2.5 py-2">
-				<label
-					for={`clip-property-${itemId}-opacity-slider`}
-					class="text-[10px] font-medium text-white/48">{m.video_editor_clip_opacity()}</label
-				>
+				<span class="text-[10px] font-medium text-white/48">{m.video_editor_clip_opacity()}</span>
 				<div class="flex min-w-0 items-center gap-1">
-					<input
-						id={`clip-property-${itemId}-opacity-slider`}
-						type="range"
+					<Slider
 						class="h-7 min-w-10 flex-1 accent-[oklch(0.72_0.15_50)]"
-						min="0"
-						max="100"
-						step="1"
+						min={0}
+						max={100}
+						step={1}
 						value={(mixedValue('opacity') ?? 1) * 100}
-						onpointerdown={beginGesture}
-						onpointercancel={cancelGesture}
-						oninput={(event) => writeLive('opacity', event.currentTarget.valueAsNumber / 100)}
-						onchange={(event) => commitGesture('opacity', event.currentTarget.valueAsNumber / 100)}
-						onkeydown={(event) => event.stopPropagation()}
+						ariaLabel={m.video_editor_clip_opacity()}
+						onValueChange={(nextValue) => {
+							beginGesture();
+							writeLive('opacity', nextValue / 100);
+						}}
+						onValueCommit={(nextValue) => commitGesture('opacity', nextValue / 100)}
+						onValueCancel={cancelGesture}
 					/>
 					<div class="relative w-[4.5rem] shrink-0">
 						<ScrubbableNumberInput

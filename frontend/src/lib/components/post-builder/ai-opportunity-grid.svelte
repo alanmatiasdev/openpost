@@ -2,6 +2,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
 	import EmptyState from '$lib/components/empty-state.svelte';
+	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { AIOpportunity, AIOpportunityGridCopy } from './ai-workspace-types';
 
@@ -58,23 +59,23 @@
 			variant="muted"
 		/>
 	{:else}
-		<div
+		<RadioGroup.Root
+			value={selectedId}
+			onValueChange={(value) => {
+				const opportunity = opportunities.find((candidate) => candidate.id === value);
+				if (opportunity) onSelect(opportunity);
+			}}
 			class="grid gap-3 md:grid-cols-2"
-			role="radiogroup"
 			aria-labelledby={`${uid}-heading`}
 			data-testid="ai-opportunity-grid"
 		>
 			{#each opportunities as opportunity, index (opportunity.id)}
 				{@const selected = opportunity.id === selectedId}
-				<input
+				<RadioGroup.Item
 					id={`${uid}-opportunity-${index}`}
 					class="peer sr-only"
-					type="radio"
-					name={`${uid}-opportunity`}
 					value={opportunity.id}
-					checked={selected}
 					{disabled}
-					onchange={() => onSelect(opportunity)}
 				/>
 				<label
 					for={`${uid}-opportunity-${index}`}
@@ -125,6 +126,6 @@
 					{/if}
 				</label>
 			{/each}
-		</div>
+		</RadioGroup.Root>
 	{/if}
 </section>

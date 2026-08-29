@@ -2,6 +2,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import EmptyState from '$lib/components/empty-state.svelte';
+	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { AIAngle, AIAngleGridCopy } from './ai-workspace-types';
 
@@ -56,23 +57,23 @@
 			variant="muted"
 		/>
 	{:else}
-		<div
+		<RadioGroup.Root
+			value={selectedId}
+			onValueChange={(value) => {
+				const angle = angles.find((candidate) => candidate.id === value);
+				if (angle) onSelect(angle);
+			}}
 			class="grid gap-3 md:grid-cols-2"
-			role="radiogroup"
 			aria-labelledby={`${uid}-heading`}
 			data-testid="ai-angle-grid"
 		>
 			{#each angles as angle, index (angle.id)}
 				{@const selected = angle.id === selectedId}
-				<input
+				<RadioGroup.Item
 					id={`${uid}-angle-${index}`}
 					class="peer sr-only"
-					type="radio"
-					name={`${uid}-angle`}
 					value={angle.id}
-					checked={selected}
 					{disabled}
-					onchange={() => onSelect(angle)}
 				/>
 				<label
 					for={`${uid}-angle-${index}`}
@@ -123,6 +124,6 @@
 					{/if}
 				</label>
 			{/each}
-		</div>
+		</RadioGroup.Root>
 	{/if}
 </section>

@@ -2,6 +2,7 @@
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import PipetteIcon from '@lucide/svelte/icons/pipette';
 	import { onMount } from 'svelte';
+	import { Slider } from '$lib/components/ui/slider';
 	import { m } from '$lib/paraglide/messages';
 	import {
 		hueAmountFromWheelChannels,
@@ -621,25 +622,20 @@
 							</span>
 						{/each}
 					</div>
-					<input
-						type="range"
+					<Slider
 						disabled={!controlsEnabled}
-						class="wheel-thumb"
+						class="mt-0.5 h-3 w-full cursor-ew-resize"
+						trackClass="h-2.5 border border-black/80 bg-zinc-800"
+						rangeClass="bg-transparent"
 						min={levelRange.min}
 						max={levelRange.max}
 						step={descriptor.display.step}
 						value={displayLevel(descriptor)}
-						aria-label={`${label(descriptor.level)} thumb wheel`}
-						oninput={(event) =>
-							updateParameter(
-								descriptor.level,
-								levelFromDisplay(descriptor, Number(event.currentTarget.value))
-							)}
-						onchange={(event) =>
-							commitParameter(
-								descriptor.level,
-								levelFromDisplay(descriptor, Number(event.currentTarget.value))
-							)}
+						ariaLabel={`${label(descriptor.level)} thumb wheel`}
+						onValueChange={(nextValue) =>
+							updateParameter(descriptor.level, levelFromDisplay(descriptor, nextValue))}
+						onValueCommit={(nextValue) =>
+							commitParameter(descriptor.level, levelFromDisplay(descriptor, nextValue))}
 					/>
 				{/if}
 			</div>
@@ -888,38 +884,6 @@
 	:global(.wheel-chip:focus-visible) {
 		border-color: rgb(251 146 60);
 		box-shadow: 0 0 0 1px rgb(251 146 60 / 55%);
-	}
-
-	.wheel-thumb {
-		margin-top: 0.125rem;
-		height: 0.65rem;
-		width: 100%;
-		cursor: ew-resize;
-		appearance: none;
-		border: 1px solid rgb(0 0 0 / 80%);
-		border-radius: 999px;
-		background: repeating-linear-gradient(
-			90deg,
-			rgb(255 255 255 / 22%) 0 1px,
-			rgb(0 0 0 / 65%) 1px 5px
-		);
-	}
-
-	.wheel-thumb::-webkit-slider-thumb {
-		height: 0.7rem;
-		width: 0.7rem;
-		appearance: none;
-		border: 1px solid rgb(0 0 0 / 80%);
-		border-radius: 999px;
-		background: rgb(228 228 231);
-	}
-
-	.wheel-thumb::-moz-range-thumb {
-		height: 0.7rem;
-		width: 0.7rem;
-		border: 1px solid rgb(0 0 0 / 80%);
-		border-radius: 999px;
-		background: rgb(228 228 231);
 	}
 
 	@media (pointer: coarse) {

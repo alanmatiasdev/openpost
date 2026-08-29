@@ -207,10 +207,11 @@ describe('ClipPropertiesPanel reverse playback', () => {
 			speed: 2,
 			durationInFrames: 45
 		});
-		const gain = screen.container.querySelector('input[min="-60"]');
+		const gain = screen.getByRole('textbox', { name: 'Gain (dB)' }).query();
 		if (!(gain instanceof HTMLInputElement)) throw new Error('Gain control did not render.');
 		gain.value = '-6';
-		gain.dispatchEvent(new Event('change', { bubbles: true }));
+		gain.dispatchEvent(new InputEvent('input', { bubbles: true, data: '-6' }));
+		gain.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
 		expect(timelineStore.itemById.get('audio-item')?.volume).toBeCloseTo(0.501187, 5);
 		expect(timelineStore.itemById.get('video-item')?.volume).toBeUndefined();
 

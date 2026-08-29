@@ -3,6 +3,7 @@
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import AppSelect from '$lib/components/app-select.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type { KeyframeProperty } from '$lib/video-editor/project/types';
 	import {
@@ -43,6 +44,9 @@
 		item
 			? getAnimatablePropertiesForItem(item).filter(isEffectKeyframeProperty)
 			: ([] as KeyframeProperty[])
+	);
+	const propertyOptions = $derived(
+		properties.map((property) => ({ value: property, label: label(property) }))
 	);
 	const allKeyframes = $derived.by(() =>
 		item ? properties.flatMap((property) => editorKeyframes(item, property)) : []
@@ -196,22 +200,20 @@
 		</div>
 	{:else if view === 'graph' && activeProperty}
 		<div class="flex min-h-0 flex-1 flex-col">
-			<label
+			<div
 				class="flex h-8 shrink-0 items-center gap-2 border-b border-white/8 px-2 text-[10px] text-white/50"
 			>
 				<span class="shrink-0">{m.video_editor_keyframe_property()}</span>
-				<select
+				<AppSelect
 					class="h-6 min-w-0 flex-1 rounded-sm border border-white/10 bg-black/35 px-1 text-[10px] text-white/80 outline-none focus:border-orange-400"
 					value={activeProperty}
-					onchange={(event) => {
-						activeProperty = event.currentTarget.value as KeyframeProperty;
+					options={propertyOptions}
+					ariaLabel={m.video_editor_keyframe_property()}
+					onValueChange={(value) => {
+						activeProperty = value as KeyframeProperty;
 						keyframeSelectionStore.clear();
 					}}
-				>
-					{#each properties as property (property)}
-						<option value={property}>{label(property)}</option>
-					{/each}
-				</select>
+				/>
 				<button
 					type="button"
 					class="icon-button"
@@ -221,7 +223,7 @@
 				>
 					<PlusIcon class="size-3" />
 				</button>
-			</label>
+			</div>
 			<div class="min-h-0 flex-1 overflow-hidden">
 				<KeyframeValueGraph
 					{item}
