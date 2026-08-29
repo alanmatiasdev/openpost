@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import {
+	colorClipStartFrameIndex,
 	colorTimelineFrameFromClientX,
 	isColorTimelineItem,
 	resolveColorTimelineMaxFrame
@@ -52,5 +53,18 @@ describe('color mini timeline', () => {
 		expect(colorTimelineFrameFromClientX({ ...input, clientX: 150 })).toBe(0);
 		expect(colorTimelineFrameFromClientX({ ...input, clientX: 375 })).toBe(450);
 		expect(colorTimelineFrameFromClientX({ ...input, clientX: 700 })).toBe(900);
+	});
+
+	it('uses the clip source start for its film tile instead of the import poster frame', () => {
+		expect(
+			colorClipStartFrameIndex({
+				sourceStart: 450,
+				sourceDuration: 900,
+				mediaDuration: 30,
+				sourceFps: 30
+			})
+		).toBe(15);
+		expect(colorClipStartFrameIndex({ sourceStart: 179, sourceFps: 30 })).toBe(5);
+		expect(colorClipStartFrameIndex({ sourceStart: -30, sourceFps: 30 })).toBe(0);
 	});
 });

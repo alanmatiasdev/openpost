@@ -2,6 +2,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import { get } from 'svelte/store';
+import { getGpuEffectDefaultParams } from '$lib/video-editor/effects/gpu/registry';
+import { filmstripCache } from '$lib/video-editor/media/filmstrip-client';
+import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
@@ -48,6 +51,7 @@ const cutaway: TimelineItem = {
 beforeEach(() => {
 	timelineStore.__resetForTesting();
 	timelinePreviewScrub.__resetForTesting();
+	mediaPool.clear();
 	timelineStore.setAll({
 		tracks: [track, cutawayTrack],
 		items: [item, cutaway],
@@ -59,6 +63,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+	vi.restoreAllMocks();
+	mediaPool.clear();
 	await page.viewport(1280, 900);
 });
 
@@ -134,6 +140,70 @@ test('selects clips and markers and commits only the final overview scrub frame'
 		new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft', shiftKey: true })
 	);
 	expect(timelineStore.currentFrame).toBe(215);
+});
+
+test('uses the clip start frame and marks its live grade while the GPU tile renders', async () => {
+	const frameUrl =
+		'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="160" height="90"%3E%3Cpath fill="%23555" d="M0 0h160v90H0z"/%3E%3C/svg%3E';
+	const gradedItem: TimelineItem = {
+		...item,
+		mediaId: 'media',
+		sourceStart: 450,
+		sourceDuration: 900,
+		sourceFps: 30,
+		effects: [
+			{
+				id: 'wheels',
+				type: 'gpu',
+				effectId: 'gpu-color-wheels',
+				enabled: true,
+				params: { ...getGpuEffectDefaultParams('gpu-color-wheels'), temperature: 40 }
+			}
+		]
+	};
+	mediaPool.loadAll([
+		{
+			id: 'media',
+			storageType: 'workspace',
+			fileName: 'graded.mp4',
+			fileSize: 1,
+			mimeType: 'video/mp4',
+			duration: 30,
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			codec: 'h264',
+			bitrate: 1,
+			tags: ['video']
+		}
+	]);
+	timelineStore.setAll({ tracks: [track], items: [gradedItem], fps: 30 });
+	vi.spyOn(filmstripCache, 'subscribe').mockImplementation((_mediaId, callback) => {
+		callback({
+			frames: [{ index: 15, url: frameUrl }],
+			isComplete: true,
+			isExtracting: false,
+			progress: 1
+		});
+		return () => undefined;
+	});
+	const getFilmstrip = vi.spyOn(filmstripCache, 'getFilmstrip').mockResolvedValue({
+		frames: [{ index: 15, url: frameUrl }],
+		isComplete: true,
+		isExtracting: false,
+		progress: 1
+	});
+
+	await render(ColorGradingDock, { itemId: gradedItem.id, onedit: vi.fn() });
+	await vi.waitFor(() => {
+		expect(getFilmstrip).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'media' }),
+			expect.objectContaining({ targetFrameIndices: [15] })
+		);
+	});
+	const tile = document.querySelector('[data-color-film-tile="video"]');
+	expect(tile?.querySelector('[data-graded-thumbnail="true"]')).not.toBeNull();
+	expect(tile?.querySelector('[data-color-grade-indicator]')).not.toBeNull();
 });
 
 test('uses a fitted three-column grading surface at desktop width', async () => {
