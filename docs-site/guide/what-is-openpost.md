@@ -1,6 +1,6 @@
 # What Is OpenPost?
 
-OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then publish it everywhere from one place. Start with one shared draft, then change the text, media, format, and settings for each connected account.
+OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content for their connected destinations. Start with one shared draft, then change the text, media, format, and settings for each account.
 
 OpenPost includes the complete publishing workflow.
 
@@ -32,7 +32,9 @@ See the [canonical Hosted service pricing](https://openpost.social/pricing) for 
 
 Teams that need to operate their own infrastructure can also run the AGPL product on their server. The default setup uses one Go binary or container, SQLite, and local media storage. The operator manages TLS, backups, updates, social apps, and secrets.
 
-## What OpenPost supports
+## Implemented provider adapters
+
+The list below describes implemented product adapters. Hosted service certification is tracked separately in the [provider launch matrix](/operations/provider-launch-matrix).
 
 - **Publishing:** X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks
 - **Content types:** posts, threads, Stories, short videos, and videos, based on each platform

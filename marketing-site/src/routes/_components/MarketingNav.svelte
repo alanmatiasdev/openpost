@@ -258,7 +258,7 @@
 			</Button>
 			<Button href={`${appUrl}/login`} variant="ghost" size="sm">Sign in</Button>
 			<Button href={managedSignupUrl} size="sm">
-				Get started
+				Start 14-day trial
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
@@ -320,7 +320,7 @@
 					>
 						{#if mode.current === 'dark'}<Sun />{:else}<Moon />{/if}
 					</Button>
-					<Button href={managedSignupUrl} size="sm">Get started</Button>
+					<Button href={managedSignupUrl} size="sm">Start 14-day trial</Button>
 				</div>
 			</div>
 		</nav>

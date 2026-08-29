@@ -87,7 +87,7 @@
 			name: 'Hosted service',
 			bestFor: 'People who want to publish without operating a server.',
 			items: ['We handle hosting and updates for you', managedAccessSummary],
-			cta: 'Try OpenPost',
+			cta: 'Start 14-day trial',
 			href: managedSignupUrl
 		},
 		{

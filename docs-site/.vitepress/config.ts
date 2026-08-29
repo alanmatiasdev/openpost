@@ -285,13 +285,23 @@ export default defineConfig({
   themeConfig: {
     logo: "/assets/brand/icon.svg",
     nav: [
-      { text: "Home", link: "https://openpost.social" },
-      { text: "User Docs", link: "/usage/" },
-      { text: "CLI", link: "/cli/" },
-      { text: "MCP", link: "/mcp/" },
+      { text: "Website", link: "https://openpost.social" },
+      {
+        text: "Use",
+        items: [
+          { text: "User guide", link: "/usage/" },
+          { text: "Providers", link: "/providers/" },
+        ],
+      },
+      {
+        text: "Automate",
+        items: [
+          { text: "CLI", link: "/cli/" },
+          { text: "MCP", link: "/mcp/" },
+        ],
+      },
       { text: "Self-Hosting", link: "/self-hosting/" },
-      { text: "Providers", link: "/providers/" },
-      { text: "Developer Docs", link: "/development/" },
+      { text: "Develop", link: "/development/" },
       { text: "Community", link: "https://discord.gg/u2QwukmY4W" },
     ],
     socialLinks: [

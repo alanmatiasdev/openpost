@@ -31,7 +31,7 @@
 				For operators deciding which social accounts to connect.
 			</p>
 			<div class="mt-7 flex flex-wrap gap-3">
-				<Button href={managedSignupUrl} size="lg">Try OpenPost</Button>
+				<Button href={managedSignupUrl} size="lg">Start 14-day trial</Button>
 				<Button href="/tools/post-preview-generator" variant="outline" size="lg">
 					Open the preview tool
 				</Button>

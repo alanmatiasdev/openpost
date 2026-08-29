@@ -93,13 +93,13 @@
 							<span class="video-card">
 								<span class="video-art" aria-hidden="true">
 									<span class="video-art-brand"><i>OP</i> OpenPost</span>
-									<strong>Build once.</strong>
-									<strong>Publish everywhere.</strong>
+									<strong>Create once.</strong>
+									<strong>Adapt each version.</strong>
 									<span class="publishing-path"><i></i><i></i><i></i><i></i><i></i></span>
 								</span>
 								<span class="video-shade"></span>
 								<span class="video-copy">
-									<strong>One idea. Every destination.</strong>
+									<strong>One publication. Each destination.</strong>
 									<span>@openpost · Product update</span>
 								</span>
 								<span class="video-actions" aria-hidden="true">

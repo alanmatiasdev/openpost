@@ -50,8 +50,8 @@
 				>
 			</a>
 			<p class="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
-				The content workspace for solo founders. Create once, adapt for every platform, stay visible
-				everywhere.
+				The content workspace for solo founders. Create once, adapt for each destination, and keep
+				publishing state clear.
 			</p>
 			<div class="mt-5 flex flex-wrap gap-x-5">
 				<a

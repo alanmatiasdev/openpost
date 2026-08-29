@@ -23,17 +23,20 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-16 text-center sm:pt-24 sm:pb-20 lg:pt-28">
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
-			Your socials, <span>on steroids.</span>
+			Publish <span>clearly.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create once. Adapt for every channel, then publish on schedule.
+			Create one publication, adapt it for each destination, and schedule it from one workspace.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
-				Start for free
+				Start 14-day trial
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
+		<p class="hero-enter hero-enter-3 mt-3 text-xs text-muted-foreground">
+			$0 today. Card required.
+		</p>
 
 		<FloatingNetworkField />
 
@@ -52,7 +55,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 >
 	<div class="marketing-shell">
 		<ScrollReveal class="max-w-3xl">
-			<h2 id="product-title" class="marketing-heading">Everything you need to publish.</h2>
+			<h2 id="product-title" class="marketing-heading">
+				One publication, shaped for each destination.
+			</h2>
 			<p class="marketing-copy mt-5">
 				Write the idea once. Edit the copy, media, and settings for each account before you schedule
 				it.
@@ -129,14 +134,14 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			id="closing-title"
 			class="mx-auto max-w-4xl text-4xl leading-[0.98] font-semibold tracking-[-0.045em] text-balance sm:text-6xl"
 		>
-			Start publishing.
+			Ready to publish?
 		</h2>
 		<p class="mx-auto mt-6 max-w-xl leading-7 text-white/62">
-			One idea. Every platform. Your first 14 days are free.
+			Your first 14 days are free. $0 today, card required.
 		</p>
 		<div class="mt-8 flex flex-wrap justify-center gap-3">
 			<Button href={managedSignupUrl} size="lg">
-				Start your 14-day trial
+				Start 14-day trial
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 			<Button href="/pricing" variant="secondary" size="lg">See pricing</Button>
