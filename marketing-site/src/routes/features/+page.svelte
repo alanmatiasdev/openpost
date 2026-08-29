@@ -62,7 +62,7 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 				</Button>
 				<Button href="/pricing" variant="outline" size="lg">Compare plans</Button>
 			</div>
-			<p class="mt-3 text-xs text-muted-foreground">$0 today. Card required.</p>
+			<p class="mt-3 text-sm font-medium text-foreground/75">$0 today. Card required.</p>
 		</div>
 
 		<aside class="feature-index" aria-labelledby="feature-index-title">

@@ -218,6 +218,7 @@
 	let exportDialogOpen = $state(false);
 	let exportToastVisible = $state(false);
 	let firstEditHintVisible = $state(false);
+	let firstEditActionLabel = $state<string | undefined>();
 	let helpDialogOpen = $state(false);
 	let conflictDialogOpen = $state(false);
 	let conflictBusy = $state(false);
@@ -546,8 +547,25 @@
 			toolPreferencesReady = true;
 		}
 		try {
+			firstEditActionLabel =
+				window.innerWidth < 1024 ? m.image_editor_open_properties() : undefined;
 			if (!localStorage.getItem('openpost-image-editor-first-edit-v1')) {
-				const firstTextLayer = editor.activePage?.layers.find((layer) => layer.type === 'text');
+				const textLayers =
+					editor.activePage?.layers.filter(
+						(layer) => layer.type === 'text' && Boolean(layer.text?.text.trim())
+					) ?? [];
+				const editableTextLayers = textLayers.filter(
+					(layer) => (layer.text?.text.trim().length ?? 0) > 2
+				);
+				const firstTextLayer = (
+					editableTextLayers.length > 0 ? editableTextLayers : textLayers
+				).reduce<ImageEditorLayer | undefined>(
+					(largest, layer) =>
+						!largest || (layer.text?.fontSize ?? 0) > (largest.text?.fontSize ?? 0)
+							? layer
+							: largest,
+					undefined
+				);
 				if (firstTextLayer) {
 					editor.selectLayer(firstTextLayer.id);
 					firstEditHintVisible = true;
@@ -4307,8 +4325,8 @@
 		message={m.image_editor_first_edit_hint()}
 		dismissLabel={m.common_dismiss()}
 		onDismiss={dismissFirstEditHint}
-		actionLabel={m.image_editor_open_properties()}
-		onAction={openFirstEditProperties}
+		actionLabel={firstEditActionLabel}
+		onAction={firstEditActionLabel ? openFirstEditProperties : undefined}
 	/>
 {/if}
 

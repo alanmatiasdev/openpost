@@ -34,6 +34,7 @@
 	let enabled = $state(true);
 	let presets = $state<ImageEditorPreset[]>([]);
 	let templates = $state<ImageEditorTemplate[]>([]);
+	let showAllTemplates = $state(false);
 	let customWidth = $state(1080);
 	let customHeight = $state(1080);
 	let workspaceID = $derived(
@@ -45,6 +46,18 @@
 	let sourceWidth = $derived(Number($page.url.searchParams.get('width') || 0));
 	let sourceHeight = $derived(Number($page.url.searchParams.get('height') || 0));
 	let initialAction = $derived($page.url.searchParams.get('action') || '');
+	const featuredTemplateIDs = new Set([
+		'builtin-quick-announcement',
+		'builtin-photo-caption',
+		'builtin-quote-card',
+		'builtin-how-to-carousel',
+		'builtin-story-prompt',
+		'builtin-linkedin-insight'
+	]);
+	let featuredTemplates = $derived(
+		templates.filter((template) => featuredTemplateIDs.has(template.id))
+	);
+	let visibleTemplates = $derived(showAllTemplates ? templates : featuredTemplates);
 
 	onMount(() => {
 		void initialize();
@@ -234,28 +247,6 @@
 				return template.name;
 		}
 	}
-
-	function templateCategory(template: ImageEditorTemplate): string {
-		if (!template.built_in) return template.category;
-		switch (template.category) {
-			case 'Announcements':
-				return m.image_editor_template_category_announcements();
-			case 'Photo-led':
-				return m.image_editor_template_category_photo();
-			case 'Quotes':
-				return m.image_editor_template_category_quotes();
-			case 'Education':
-				return m.image_editor_template_category_education();
-			case 'Stories':
-				return m.image_editor_template_category_stories();
-			case 'Professional':
-				return m.image_editor_template_category_professional();
-			case 'Thumbnails':
-				return m.image_editor_template_category_thumbnails();
-			default:
-				return template.category;
-		}
-	}
 </script>
 
 <svelte:head><title>{m.image_editor_new_design()} · {m.image_editor_title()}</title></svelte:head>
@@ -307,7 +298,7 @@
 					</p>
 				</div>
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-					{#each templates as template (template.id)}
+					{#each visibleTemplates as template (template.id)}
 						<button
 							type="button"
 							class="rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/2 focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:outline-none"
@@ -327,12 +318,20 @@
 								>
 								{#if creating === template.id}<LoaderIcon class="size-4 animate-spin" />{/if}
 							</div>
-							<p class="mt-0.5 truncate text-xs text-muted-foreground">
-								{templateCategory(template)}
-							</p>
 						</button>
 					{/each}
 				</div>
+				{#if templates.length > featuredTemplates.length}
+					<Button
+						class="mt-4"
+						variant="outline"
+						onclick={() => (showAllTemplates = !showAllTemplates)}
+					>
+						{showAllTemplates
+							? m.image_editor_show_fewer_templates()
+							: m.image_editor_show_all_templates({ count: templates.length })}
+					</Button>
+				{/if}
 			</section>
 
 			<section class="mt-10" aria-labelledby="preset-heading">

@@ -275,7 +275,7 @@
 		border-radius: 1.1rem;
 		background: color-mix(in oklch, var(--card) 92%, transparent);
 		color: var(--brand);
-		box-shadow: 0 1.2rem 2.8rem color-mix(in oklch, var(--foreground) 22%, transparent);
+		box-shadow: 0 0.55rem 1.6rem color-mix(in oklch, var(--foreground) 14%, transparent);
 		animation: drift 6.8s ease-in-out var(--delay) infinite;
 		transform: rotate(var(--turn));
 		will-change: transform;
@@ -292,7 +292,7 @@
 	:global(.dark) .network-card {
 		border-color: rgb(255 255 255 / 0.13);
 		background: oklch(0.2 0.012 52 / 0.92);
-		box-shadow: 0 1.2rem 2.8rem rgb(0 0 0 / 0.38);
+		box-shadow: 0 0.55rem 1.6rem rgb(0 0 0 / 0.26);
 	}
 
 	.network-card img {

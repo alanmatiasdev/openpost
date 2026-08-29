@@ -1,8 +1,8 @@
 <!--
 THESIS: OpenPost gives solo founders one content team for turning company work into destination-specific publishing without reopening every network.
-OWN-WORLD: A dark launch stage gives way to a warm working page, with raised workshop-orange controls, framed product surfaces, and precise editorial pacing.
+OWN-WORLD: A dark launch stage gives way to a warm working page, with focused orange controls, framed product surfaces, and precise editorial pacing.
 STORY: Understand the promise, inspect the result views, watch the real demo, see the product, choose a plan, and start.
-FIRST VIEWPORT: One centered promise, one raised action, edge-held network marks, and three overlapping result screens with no carousel chrome.
+FIRST VIEWPORT: One centered promise, one clear action, edge-held network marks, and three overlapping result screens with no carousel chrome.
 FORM: A focused product demonstration paced between dark studio stages, light working surfaces, and real product screenshots.
 -->
 <script lang="ts">
@@ -34,7 +34,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
-		<p class="hero-enter hero-enter-3 mt-3 text-xs text-muted-foreground">
+		<p class="hero-enter hero-enter-3 mt-3 text-sm font-medium text-foreground/75">
 			$0 today. Card required.
 		</p>
 
@@ -222,9 +222,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		background: oklch(0.65 0.18 45) !important;
 		color: oklch(0.13 0.01 52) !important;
 		font-weight: 750 !important;
-		box-shadow:
-			0 5px 0 oklch(0.4 0.13 43),
-			0 1rem 2.4rem oklch(0.55 0.17 45 / 0.26) !important;
+		box-shadow: 0 0.45rem 1.3rem oklch(0.4 0.13 43 / 0.24) !important;
 		transition:
 			transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
 			box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -232,18 +230,13 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	}
 
 	:global(.hero-cta:hover) {
-		transform: translateY(-2px) !important;
 		background: oklch(0.69 0.18 45) !important;
-		box-shadow:
-			0 7px 0 oklch(0.4 0.13 43),
-			0 1.2rem 2.8rem oklch(0.55 0.17 45 / 0.32) !important;
+		box-shadow: 0 0.55rem 1.5rem oklch(0.4 0.13 43 / 0.28) !important;
 	}
 
 	:global(.hero-cta:active) {
-		transform: translateY(4px) !important;
-		box-shadow:
-			0 1px 0 oklch(0.4 0.13 43),
-			0 0.5rem 1.2rem oklch(0.55 0.17 45 / 0.18) !important;
+		transform: translateY(1px) !important;
+		box-shadow: 0 0.25rem 0.75rem oklch(0.4 0.13 43 / 0.2) !important;
 	}
 
 	:global(.dark) .hero {

@@ -10,11 +10,11 @@ hero:
     alt: OpenPost logo
   actions:
     - theme: brand
-      text: Start 14-day trial
-      link: https://app.openpost.social/register?plan=founder&billing_period=monthly
-    - theme: alt
       text: Read the user guide
       link: /usage/
+    - theme: alt
+      text: Start 14-day trial
+      link: https://app.openpost.social/register?plan=founder&billing_period=monthly
 
 features:
   - title: Use OpenPost
