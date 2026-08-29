@@ -30,16 +30,23 @@ function source(id = 'source-a'): QuickCutSourceMetadata {
 describe('quick-cut project parsing', () => {
 	it('round-trips an ordered multi-source edit', () => {
 		const project = createNewProject([source('a'), source('b')]);
+		project.removeMarkedRanges = true;
 		project.segments = [
 			createSegment(0, 1, { id: 'a1', sourceId: 'a' }),
 			createSegment(0, 1, { id: 'b1', sourceId: 'b' }),
 			createSegment(1, 2, { id: 'a2', sourceId: 'a' })
 		];
-		expect(parseProject(serializeProject(project)).segments.map((segment) => segment.id)).toEqual([
-			'a1',
-			'b1',
-			'a2'
-		]);
+		const parsed = parseProject(serializeProject(project));
+		expect(parsed.removeMarkedRanges).toBe(true);
+		expect(parsed.segments.map((segment) => segment.id)).toEqual(['a1', 'b1', 'a2']);
+	});
+
+	it('keeps older projects in keep-ranges mode', () => {
+		const project = createNewProject([source()]);
+		const serialized = JSON.parse(serializeProject(project)) as Record<string, unknown>;
+		delete serialized.removeMarkedRanges;
+
+		expect(parseProject(JSON.stringify(serialized)).removeMarkedRanges).toBe(false);
 	});
 
 	it('takes a validated plain snapshot of a proxied editor project', () => {

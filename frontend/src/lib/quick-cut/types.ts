@@ -92,6 +92,8 @@ export interface QuickCutProject {
 	segments: QuickCutSegment[];
 	cutMode: CutMode;
 	merge: boolean;
+	/** Export the material outside the enabled marked ranges. */
+	removeMarkedRanges: boolean;
 	createdAt: number;
 	updatedAt: number;
 }

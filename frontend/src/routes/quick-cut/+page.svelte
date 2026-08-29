@@ -26,7 +26,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		hasOverlap,
 		normalizeSegments,
 		reorderSegment,
-		formatTimecode
+		formatTimecode,
+		segmentsOutsideMarkedRanges
 	} from '$lib/quick-cut/model';
 	import { probeSourceFile } from '$lib/quick-cut/source';
 	import {
@@ -72,6 +73,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	let selectedId = $state<string | null>(null);
 	let cutMode = $state<CutMode>('nearestKeyframe');
 	let merge = $state(false);
+	let removeMarkedRanges = $state(false);
 	let loopMode = $state<LoopMode>('off');
 	let inPoint = $state<{ sourceId: string; time: number } | null>(null);
 	let outPoint = $state<{ sourceId: string; time: number } | null>(null);
@@ -101,6 +103,9 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	const activeSource = $derived(sources.find((s) => s.id === activeSourceId) ?? sources[0] ?? null);
 	const selectedSegment = $derived(segments.find((s) => s.id === selectedId) ?? null);
 	const enabledSegments = $derived(segments.filter((segment) => segment.enabled !== false));
+	const segmentsForExport = $derived(
+		removeMarkedRanges ? segmentsOutsideMarkedRanges(segments, sources) : enabledSegments
+	);
 	const validationErrors = $derived(validateSegments(enabledSegments, 0, sources));
 	const hasOverlapError = $derived(validationErrors.some((e) => e.kind === 'overlap'));
 	const preflight = $derived(merge ? mergedPreflight : individualPreflight);
@@ -112,7 +117,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 
 	$effect(() => {
 		const requestSources = sources.slice();
-		const requestSegments = enabledSegments.map((segment) => ({ ...segment }));
+		const requestSegments = segmentsForExport.map((segment) => ({ ...segment }));
 		const requestCutMode = cutMode;
 		const generation = ++preflightGeneration;
 		individualPreflight = null;
@@ -655,18 +660,18 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	}
 
 	async function handleExportOne(seg: QuickCutSegment): Promise<void> {
-		if (exporting) return;
+		if (exporting || removeMarkedRanges) return;
 		await runExport([seg], false);
 	}
 
 	async function handleExportAll(): Promise<void> {
 		if (exporting) return;
-		await runExport(enabledSegments, false);
+		await runExport(segmentsForExport, false);
 	}
 
 	async function handleExportMerged(): Promise<void> {
 		if (exporting) return;
-		await runExport(enabledSegments, true);
+		await runExport(segmentsForExport, true);
 	}
 
 	function cancelExport(): void {
@@ -682,6 +687,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		project.segments = segments;
 		project.cutMode = cutMode;
 		project.merge = merge;
+		project.removeMarkedRanges = removeMarkedRanges;
 		project.sources = sources.map((s) => {
 			const { handle: _h, file: _f, ...m } = s;
 			return m;
@@ -793,6 +799,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 			segments = parsed.segments;
 			cutMode = parsed.cutMode;
 			merge = parsed.merge;
+			removeMarkedRanges = parsed.removeMarkedRanges;
 			project = parsed;
 			// Sources are metadata only; need to reconnect handles
 			const { restoreSourceHandles } = await import('$lib/quick-cut/project');
@@ -842,6 +849,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 			segments,
 			cutMode,
 			merge,
+			removeMarkedRanges,
 			sources: sources.map((s) => {
 				const { handle: _h, file: _f, ...m } = s;
 				return m;
@@ -859,8 +867,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	}
 
 	async function handleSendToOpenPost(): Promise<void> {
-		if (enabledSegments.length === 0 || sources.length === 0 || exporting) return;
-		await runExport(enabledSegments, merge, 'send');
+		if (segmentsForExport.length === 0 || sources.length === 0 || exporting) return;
+		await runExport(segmentsForExport, merge, 'send');
 	}
 
 	function onTimeUpdate(): void {
@@ -1095,11 +1103,28 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 				<div class="flex min-w-0 flex-col gap-4">
 					<div class="rounded-xl border bg-card p-4 shadow-sm">
 						<h2 class="text-sm font-semibold">
-							{m.quick_cut_segments_label()} · {enabledSegments.length}
+							{removeMarkedRanges
+								? m.quick_cut_remove_ranges_label()
+								: m.quick_cut_segments_label()} · {enabledSegments.length}
 						</h2>
-						<p class="mt-1 text-xs text-muted-foreground">{m.quick_cut_segments_hint()}</p>
+						<p class="mt-1 text-xs text-muted-foreground">
+							{removeMarkedRanges
+								? m.quick_cut_remove_ranges_hint({ count: segmentsForExport.length })
+								: m.quick_cut_segments_hint()}
+						</p>
 
 						<div class="mt-3 flex flex-wrap items-center gap-2">
+							<Label class="flex items-center gap-2 text-xs font-normal">
+								<Checkbox
+									checked={removeMarkedRanges}
+									onCheckedChange={(checked) => {
+										removeMarkedRanges = checked === true;
+										syncProject();
+									}}
+									aria-label={m.quick_cut_remove_marked_ranges()}
+								/>
+								{m.quick_cut_remove_marked_ranges()}
+							</Label>
 							<Label class="flex items-center gap-2 text-xs font-normal">
 								<Checkbox
 									checked={merge}
@@ -1158,6 +1183,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								onUpdate={updateSegment}
 								onMove={moveSegment}
 								{exporting}
+								canExportIndividually={!removeMarkedRanges}
 								onPreview={previewSegment}
 								onExport={(segment) => void handleExportOne(segment)}
 							/>
@@ -1194,7 +1220,9 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 					<div class="flex flex-wrap gap-2">
 						<Button
 							size="sm"
-							disabled={exporting || !individualPreflight?.eligible}
+							disabled={exporting ||
+								segmentsForExport.length === 0 ||
+								!individualPreflight?.eligible}
 							onclick={handleExportAll}
 							class="min-h-11 flex-1">{m.quick_cut_export_all()}</Button
 						>
@@ -1202,7 +1230,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 							<Button
 								size="sm"
 								variant="secondary"
-								disabled={exporting || enabledSegments.length < 2 || !mergedPreflight?.eligible}
+								disabled={exporting || segmentsForExport.length < 2 || !mergedPreflight?.eligible}
 								onclick={handleExportMerged}
 								class="min-h-11 flex-1">{m.quick_cut_export_merged()}</Button
 							>

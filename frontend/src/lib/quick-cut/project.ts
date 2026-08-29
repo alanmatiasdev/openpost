@@ -82,6 +82,7 @@ const projectSchema = z.object({
 	segments: z.array(segmentSchema).max(MAX_SEGMENTS),
 	cutMode: z.enum(['nearestKeyframe', 'exact']),
 	merge: z.boolean(),
+	removeMarkedRanges: z.boolean().default(false),
 	createdAt: z.number(),
 	updatedAt: z.number()
 });
@@ -107,6 +108,7 @@ const legacyProjectSchema = z.object({
 	segments: z.array(legacySegmentSchema).optional(),
 	cutMode: z.enum(['nearestKeyframe', 'exact']).optional(),
 	merge: z.boolean().optional(),
+	removeMarkedRanges: z.boolean().optional(),
 	createdAt: z.number().optional(),
 	updatedAt: z.number().optional()
 });
@@ -284,6 +286,7 @@ export function parseProject(json: string): QuickCutProject {
 				segments: migratedSegments,
 				cutMode: o.cutMode ?? 'nearestKeyframe',
 				merge: o.merge ?? false,
+				removeMarkedRanges: o.removeMarkedRanges ?? false,
 				createdAt: o.createdAt ?? Date.now(),
 				updatedAt: o.updatedAt ?? Date.now()
 			};
@@ -392,6 +395,7 @@ export function createNewProject(
 		segments: [],
 		cutMode,
 		merge: false,
+		removeMarkedRanges: false,
 		createdAt: now,
 		updatedAt: now
 	};

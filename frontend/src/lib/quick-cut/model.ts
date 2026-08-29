@@ -80,6 +80,78 @@ export function normalizeSegments(segments: QuickCutSegment[]): QuickCutSegment[
 	return merged;
 }
 
+export function segmentsOutsideMarkedRanges(
+	segments: QuickCutSegment[],
+	sources: ReadonlyArray<Pick<QuickCutSource | QuickCutSourceMetadata, 'id' | 'duration'>>
+): QuickCutSegment[] {
+	const enabledBySource = new Map<string, QuickCutSegment[]>();
+	for (const segment of segments) {
+		if (segment.enabled === false) continue;
+		const sourceSegments = enabledBySource.get(segment.sourceId) ?? [];
+		sourceSegments.push(segment);
+		enabledBySource.set(segment.sourceId, sourceSegments);
+	}
+
+	const outside: QuickCutSegment[] = [];
+	for (const source of sources) {
+		const marked = enabledBySource.get(source.id);
+		if (source.duration < MIN_SEGMENT_DURATION_SECONDS) continue;
+		if (!marked || marked.length === 0) {
+			outside.push(
+				createSegment(0, source.duration, {
+					id: `outside:${source.id}:0`,
+					sourceId: source.id
+				})
+			);
+			continue;
+		}
+
+		const clamped = marked
+			.map((segment) => ({
+				start: Math.max(0, Math.min(source.duration, segment.start)),
+				end: Math.max(0, Math.min(source.duration, segment.end))
+			}))
+			.filter((segment) => segment.end > segment.start)
+			.sort((a, b) => a.start - b.start || a.end - b.end);
+		if (clamped.length === 0) continue;
+
+		const removed: Array<{ start: number; end: number }> = [];
+		for (const range of clamped) {
+			const previous = removed.at(-1);
+			if (previous && range.start <= previous.end + KEYFRAME_TOLERANCE_SECONDS) {
+				previous.end = Math.max(previous.end, range.end);
+			} else {
+				removed.push({ ...range });
+			}
+		}
+
+		let cursor = 0;
+		let outputIndex = 0;
+		for (const range of removed) {
+			if (range.start - cursor >= MIN_SEGMENT_DURATION_SECONDS) {
+				outside.push(
+					createSegment(cursor, range.start, {
+						id: `outside:${source.id}:${outputIndex}`,
+						sourceId: source.id
+					})
+				);
+				outputIndex += 1;
+			}
+			cursor = Math.max(cursor, range.end);
+		}
+		if (source.duration - cursor >= MIN_SEGMENT_DURATION_SECONDS) {
+			outside.push(
+				createSegment(cursor, source.duration, {
+					id: `outside:${source.id}:${outputIndex}`,
+					sourceId: source.id
+				})
+			);
+		}
+	}
+
+	return outside;
+}
+
 export function validateSegment(
 	segment: QuickCutSegment,
 	duration: number

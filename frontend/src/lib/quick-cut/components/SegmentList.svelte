@@ -17,6 +17,7 @@
 		onUpdate,
 		onMove,
 		exporting,
+		canExportIndividually,
 		onPreview,
 		onExport
 	}: {
@@ -29,6 +30,7 @@
 		onUpdate: (id: string, patch: Partial<QuickCutSegment>) => void;
 		onMove: (from: number, to: number) => void;
 		exporting: boolean;
+		canExportIndividually: boolean;
 		onPreview: (id: string) => void;
 		onExport: (segment: QuickCutSegment) => void;
 	} = $props();
@@ -172,7 +174,7 @@
 							</Button>
 							<Button
 								size="xs"
-								disabled={exporting || seg.enabled === false}
+								disabled={exporting || seg.enabled === false || !canExportIndividually}
 								onclick={() => onExport(seg)}
 								class="min-h-11 md:min-h-7"
 							>
@@ -215,7 +217,7 @@
 						{m.quick_cut_preview()}
 					</ContextMenu.Item>
 					<ContextMenu.Item
-						disabled={exporting || seg.enabled === false}
+						disabled={exporting || seg.enabled === false || !canExportIndividually}
 						onclick={() => onExport(seg)}
 					>
 						{m.quick_cut_export()}
