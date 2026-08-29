@@ -46,6 +46,8 @@ func TestDiscoverReturnsCitedPlanningCardsWithBoundedWebSearch(t *testing.T) {
 			Enabled: true, MaxResults: webSearchMaxResults, MaxUses: webSearchMaxUses,
 			Context: ai.WebSearchContextLow,
 		}, request.WebSearch)
+		require.NotNil(t, request.ResponseSchema)
+		require.Equal(t, "publication_opportunities", request.ResponseSchema.Name)
 		require.Empty(t, request.Images)
 		require.Empty(t, request.Files)
 		require.Contains(t, request.SystemPrompt, "Do not write a post")

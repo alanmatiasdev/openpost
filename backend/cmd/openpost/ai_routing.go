@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	contentAIRequestTimeout      = 25 * time.Second
-	contentAIRetryMaxElapsedTime = 20 * time.Second
+	contentAIRequestTimeout = 60 * time.Second
+	contentAIMaxRetries     = 12
 )
 
 func openRouterConfigs(cfg *config.Config) (ai.OpenRouterConfig, ai.OpenRouterConfig) {
@@ -23,8 +23,8 @@ func openRouterConfigs(cfg *config.Config) (ai.OpenRouterConfig, ai.OpenRouterCo
 	imageConfig.RequireZDR = cfg.ImageCaptionRequireZDR
 	contentConfig := base
 	contentConfig.Timeout = contentAIRequestTimeout
+	contentConfig.MaxRetries = contentAIMaxRetries
 	contentConfig.Provider = cfg.ContentAIProvider
 	contentConfig.RequireZDR = cfg.ContentAIRequireZDR
-	contentConfig.RetryMaxElapsedTime = contentAIRetryMaxElapsedTime
 	return imageConfig, contentConfig
 }

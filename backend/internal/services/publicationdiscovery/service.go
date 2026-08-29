@@ -77,6 +77,7 @@ func (service *Service) Discover(ctx context.Context, input Input) (Result, erro
 		Model:           service.model,
 		SystemPrompt:    discoverySystemPrompt,
 		UserPrompt:      prompt,
+		ResponseSchema:  discoveryResponseSchema(normalized),
 		MaxOutputTokens: maxOutputTokens,
 		ReasoningEffort: ai.ReasoningEffortMedium,
 		WebSearch: ai.WebSearchConfig{
