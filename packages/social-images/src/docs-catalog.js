@@ -632,7 +632,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "guide/what-is-openpost.md",
     "title": "What Is OpenPost?",
-    "description": "OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then publish it everywhere from one place.",
+    "description": "OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content for supported destinations.",
     "route": "/guide/what-is-openpost",
     "agentRepresentation": {
       "membership": "ordinary"
@@ -648,7 +648,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "index.md",
     "title": "OpenPost",
-    "description": "The all-in-one content team for solo founders, from first draft to every destination.",
+    "description": "Create, adapt, schedule, and track work from one workspace.",
     "route": "/",
     "agentRepresentation": {
       "membership": "ordinary"
@@ -1165,7 +1165,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "usage/account-security.md",
     "title": "Account Security",
-    "description": "Open Settings → Account → Security to manage your password, authenticator app, recovery codes, passkeys, linked sign-in identities, and active browser sessions.",
+    "description": "Web sign-in creates a persistent, HTTP-only session cookie that expires after seven days.",
     "route": "/usage/account-security",
     "agentRepresentation": {
       "membership": "ordinary"
