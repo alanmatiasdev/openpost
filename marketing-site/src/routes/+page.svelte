@@ -26,7 +26,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			Publish <span>clearly.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create one publication, adapt it for each destination, and schedule it from one workspace.
+			For solo founders who want one workspace for social publishing. Create one publication, adapt
+			it for each destination, and schedule it from one workspace.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
