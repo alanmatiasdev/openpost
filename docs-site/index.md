@@ -37,6 +37,8 @@ features:
     link: /guide/concepts
 ---
 
+The all-in-one content team for solo founders, from first draft to every destination.
+
 ::: info Hosted service plans
 See the [canonical Hosted service pricing](https://openpost.social/pricing) for current plans, trial terms, and limits. Self-hosting is a separate operator-run deployment.
 :::

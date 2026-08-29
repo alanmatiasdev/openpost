@@ -284,7 +284,7 @@
     "boundary": "The published image and maintained Dockerfile support linux/amd64 only. Other host architectures need amd64 emulation. A native image requires a downstream Dockerfile/source change and complete runtime validation."
   },
   "https://docs.openpost.social/guide/what-is-openpost": {
-    "audience": "OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then publish it everywhere from one place. Start with one shared draft, then change the text, media, format, and settings for each connected account.",
+    "audience": "OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content for supported destinations. Start with one shared draft, then change the text, media, format, and settings for each connected account.",
     "boundary": "An active or trialing Hosted service plan is required to connect social accounts, upload media, schedule, or publish on that service."
   },
   "https://docs.openpost.social": {
@@ -408,8 +408,8 @@
     "boundary": "A self-hosted operator handles deployment availability, user support, incidents, and operator-specific configuration."
   },
   "https://docs.openpost.social/usage/account-security": {
-    "audience": "Open Settings → Account → Security to manage your password, authenticator app, recovery codes, passkeys, linked sign-in identities, and active browser sessions. These settings belong to your login and apply in every workspace.",
-    "boundary": "Web sign-in creates a persistent, HTTP-only session cookie that expires after seven days. OpenPost does not show a cosmetic “Remember me” option because there is currently one server-enforced lifetime. Sign out when you finish on a shared device. You can review and revoke active browser sessions from Settings → Account → Security; revocation invalidates that session before its normal expiry."
+    "audience": "Open Settings → Personal → Security to manage your password, authenticator app, recovery codes, passkeys, linked sign-in identities, and active browser sessions. These settings belong to your login and apply in every workspace.",
+    "boundary": "Web sign-in creates a persistent, HTTP-only session cookie that expires after seven days. OpenPost does not show a cosmetic “Remember me” option because there is currently one server-enforced lifetime. Sign out when you finish on a shared device. You can review and revoke active browser sessions from Settings → Personal → Security; revocation invalidates that session before its normal expiry."
   },
   "https://docs.openpost.social/usage/accounts": {
     "audience": "Use this page when you want to connect or manage social accounts in a Workspace.",
