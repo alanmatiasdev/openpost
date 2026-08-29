@@ -87,12 +87,12 @@
 				>
 					<span
 						class={item.id === 'new'
-							? 'flex size-9 -translate-y-0.5 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground shadow-[0_3px_0_color-mix(in_oklch,var(--primary)_68%,black)] transition-[transform,box-shadow] duration-100 active:translate-y-0.5 active:shadow-[0_1px_0_color-mix(in_oklch,var(--primary)_68%,black)]'
+							? 'flex size-9 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground shadow-[0_4px_12px_-6px_color-mix(in_oklch,var(--primary)_80%,black)] transition-[transform,box-shadow] duration-100 active:translate-y-px active:shadow-sm'
 							: 'flex size-5 items-center justify-center'}
 					>
 						<Icon class={item.id === 'new' ? 'size-5' : 'size-4'} />
 					</span>
-					<span class="sr-only">{labelFor(item.id)}</span>
+					<span class="max-w-full truncate leading-none">{labelFor(item.id)}</span>
 				</button>
 			</li>
 		{/each}
@@ -113,7 +113,7 @@
 							<span class="flex size-5 items-center justify-center">
 								<MoreIcon class="size-4" />
 							</span>
-							<span class="sr-only">{m.sidebar_more()}</span>
+							<span class="max-w-full truncate leading-none">{m.sidebar_more()}</span>
 						</button>
 					{/snippet}
 				</DropdownMenu.Trigger>

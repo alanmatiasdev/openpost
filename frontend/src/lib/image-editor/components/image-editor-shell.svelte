@@ -2806,6 +2806,7 @@
 				</Button>
 			{/if}
 			<Button
+				variant="focal"
 				size="sm"
 				class="h-11 md:h-11 lg:h-8"
 				onclick={() => openExport(returnToken && editor.canEdit ? 'attach' : 'download')}

@@ -87,7 +87,12 @@
 						})}
 					</p>
 				</div>
-				<Button href={setup.action_href} size="sm" class="min-h-11 shrink-0 sm:min-h-9">
+				<Button
+					href={setup.action_href}
+					variant="focal"
+					size="sm"
+					class="min-h-11 shrink-0 sm:min-h-9"
+				>
 					{actionLabel}
 				</Button>
 			</section>
@@ -110,7 +115,7 @@
 						</h2>
 						<p class="text-sm/6 text-muted-foreground">{description}</p>
 					</div>
-					<Button href={setup.action_href} class="min-h-11 shrink-0 sm:min-h-9"
+					<Button href={setup.action_href} variant="focal" class="min-h-11 shrink-0 sm:min-h-9"
 						>{actionLabel}</Button
 					>
 				</div>

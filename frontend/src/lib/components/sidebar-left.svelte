@@ -68,9 +68,15 @@
 	);
 	const workspaceNavigationItems = $derived([
 		...navigationItems.filter((item) =>
-			['calendar', 'publications', 'communications', 'growth', 'analytics', 'media'].includes(
-				item.id
-			)
+			[
+				'calendar',
+				'publications',
+				'communications',
+				'growth',
+				'analytics',
+				'media',
+				'editors'
+			].includes(item.id)
 		)
 	]);
 	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');
@@ -219,6 +225,7 @@
 
 		<Button
 			href={resolve('/')}
+			variant={currentPath === '/' ? 'secondary' : 'default'}
 			size="sm"
 			class="h-10 w-full gap-2 group-data-[collapsible=icon]:px-0"
 			aria-label={m.sidebar_new_post()}
@@ -259,16 +266,17 @@
 	<Sidebar.Footer class="border-t border-sidebar-border p-2" data-testid="sidebar-workspace-footer">
 		{#if showDesktopPlanner}
 			<div class="pb-1">
-				<div class="flex items-center justify-center">
+				<div class="flex items-center">
 					<button
 						type="button"
-						class="inline-flex size-6 items-center justify-center rounded-md text-sidebar-foreground/48 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+						class="inline-flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
 						aria-expanded={workspaceNavigationExpanded}
 						aria-controls="sidebar-workspace-navigation"
 						aria-label={workspaceNavigationToggleLabel}
 						title={workspaceNavigationToggleLabel}
 						onclick={() => (workspaceNavigationExpanded = !workspaceNavigationExpanded)}
 					>
+						<span class="flex-1 text-left">{m.sidebar_workspace()}</span>
 						<ChevronDownIcon
 							class={[
 								'size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] motion-reduce:transition-none',
