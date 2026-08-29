@@ -115,6 +115,7 @@
 	} from '$lib/video-editor/timeline/track-resize';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Input } from '$lib/components/ui/input';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import {
 		activeValueAt,
@@ -306,30 +307,17 @@
 	import { wouldCreateCompositionCycle } from '$lib/video-editor/sequences/composition-graph';
 	import { Button } from '$lib/components/ui/button';
 	import * as ContextMenu from '$lib/components/ui/context-menu';
-	import BetweenHorizontalEndIcon from '@lucide/svelte/icons/between-horizontal-end';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import DiamondIcon from '@lucide/svelte/icons/diamond';
-	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import MagnetIcon from '@lucide/svelte/icons/magnet';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
 	import CombineIcon from '@lucide/svelte/icons/combine';
-	import CaptionsIcon from '@lucide/svelte/icons/captions';
-	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
-	import SnowflakeIcon from '@lucide/svelte/icons/snowflake';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
-	import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal';
-	import MoveRightIcon from '@lucide/svelte/icons/move-right';
-	import PlusIcon from '@lucide/svelte/icons/plus';
-	import VideoIcon from '@lucide/svelte/icons/video';
-	import AudioLinesIcon from '@lucide/svelte/icons/audio-lines';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import FlagIcon from '@lucide/svelte/icons/flag';
-	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
-	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
 	import MusicIcon from '@lucide/svelte/icons/music';
 	import type { SceneScanMode } from '$lib/video-editor/media/scene-scan';
@@ -4539,70 +4527,11 @@
 			variant="ghost"
 			size="icon"
 			class="size-7 rounded"
-			aria-label={m.video_editor_track_add_video()}
-			title={m.video_editor_track_add_video()}
-			onclick={() => addNamedTrack('video')}
-		>
-			<VideoIcon class="size-3.5" />
-			<PlusIcon class="-ml-1 size-2.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
-			aria-label={m.video_editor_track_add_audio()}
-			title={m.video_editor_track_add_audio()}
-			onclick={() => addNamedTrack('audio')}
-		>
-			<AudioLinesIcon class="size-3.5" />
-			<PlusIcon class="-ml-1 size-2.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
-			disabled={selectedTrackIds.length === 0}
-			aria-label={m.video_editor_track_group_selected()}
-			title={selectedTrackIds.length === 0
-				? m.video_editor_track_group_select_hint()
-				: m.video_editor_track_group_selected_count({
-						count: selectedTrackIds.length
-					})}
-			onclick={createGroupFromSelection}
-		>
-			<FolderPlusIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
-			disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
-			aria-label={m.video_editor_previous_marker()}
-			title={`${m.video_editor_previous_marker()} ([)`}
-			onclick={() => jumpToMarker(markerBefore(timelineStore.markers, timelineStore.currentFrame))}
-		>
-			<ChevronLeftIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
 			aria-label={m.video_editor_add_marker()}
 			title={`${m.video_editor_add_marker()} (M)`}
 			onclick={addMarkerAtPlayhead}
 		>
 			<FlagIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
-			disabled={!markerAfter(timelineStore.markers, timelineStore.currentFrame)}
-			aria-label={m.video_editor_next_marker()}
-			title={`${m.video_editor_next_marker()} (])`}
-			onclick={() => jumpToMarker(markerAfter(timelineStore.markers, timelineStore.currentFrame))}
-		>
-			<ChevronRightIcon class="size-3.5" />
 		</Button>
 		<MarkerListPopover {onedit} onselect={selectMarker} />
 		<Button
@@ -4621,158 +4550,120 @@
 		>
 			<MagnetIcon class="size-3.5" />
 		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={previewPlaybackSettings.audioSkimmingEnabled}
-			aria-pressed={previewPlaybackSettings.audioSkimmingEnabled}
-			aria-label={previewPlaybackSettings.audioSkimmingEnabled
-				? m.video_editor_audio_skimming_disable()
-				: m.video_editor_audio_skimming_enable()}
-			title={m.video_editor_audio_skimming_hint()}
-			onclick={toggleAudioSkimming}
-		>
-			<AudioLinesIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={timelineStore.linkedSelectionEnabled}
-			aria-pressed={timelineStore.linkedSelectionEnabled}
-			aria-label={timelineStore.linkedSelectionEnabled
-				? m.video_editor_linked_selection_disable()
-				: m.video_editor_linked_selection_enable()}
-			title={m.video_editor_linked_selection_hint()}
-			onclick={toggleLinkedSelection}
-		>
-			<Link2Icon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={activeEditTool === 'slip'}
-			aria-pressed={activeEditTool === 'slip'}
-			aria-label={m.video_editor_slip()}
-			title={m.video_editor_slip()}
-			onclick={() => toggleEditTool('slip')}
-		>
-			<MoveHorizontalIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={activeEditTool === 'slide'}
-			aria-pressed={activeEditTool === 'slide'}
-			aria-label={m.video_editor_slide()}
-			title={m.video_editor_slide()}
-			onclick={() => toggleEditTool('slide')}
-		>
-			<BetweenHorizontalEndIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={activeEditTool === 'rate-stretch'}
-			aria-pressed={activeEditTool === 'rate-stretch'}
-			aria-label={m.video_editor_rate_stretch()}
-			title={m.video_editor_rate_stretch()}
-			onclick={() => toggleEditTool('rate-stretch')}
-		>
-			<GaugeIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)] [@media(pointer:coarse)]:size-11"
-			data-active={activeEditTool === 'track-push'}
-			aria-pressed={activeEditTool === 'track-push'}
-			aria-label={m.video_editor_track_push()}
-			title={`${m.video_editor_track_push()}: ${m.video_editor_track_push_hint()}`}
-			onclick={() => toggleEditTool('track-push')}
-		>
-			<MoveRightIcon class="size-3.5" />
-		</Button>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon"
+						class="size-7 rounded"
+						aria-label={m.image_editor_more_actions()}
+					>
+						<MoreHorizontalIcon class="size-3.5" />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content class="video-editor-theme w-60" align="start">
+				<DropdownMenu.Item onclick={() => addNamedTrack('video')}>
+					{m.video_editor_track_add_video()}
+				</DropdownMenu.Item>
+				<DropdownMenu.Item onclick={() => addNamedTrack('audio')}>
+					{m.video_editor_track_add_audio()}
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item
+					disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
+					onclick={() =>
+						jumpToMarker(markerBefore(timelineStore.markers, timelineStore.currentFrame))}
+				>
+					{m.video_editor_previous_marker()}
+				</DropdownMenu.Item>
+				<DropdownMenu.Item
+					disabled={!markerAfter(timelineStore.markers, timelineStore.currentFrame)}
+					onclick={() =>
+						jumpToMarker(markerAfter(timelineStore.markers, timelineStore.currentFrame))}
+				>
+					{m.video_editor_next_marker()}
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item
+					disabled={selectedTrackIds.length === 0}
+					onclick={createGroupFromSelection}
+				>
+					{m.video_editor_track_group_selected()}
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator />
+				<DropdownMenu.CheckboxItem
+					checked={previewPlaybackSettings.audioSkimmingEnabled}
+					onCheckedChange={toggleAudioSkimming}
+				>
+					{m.video_editor_audio_skimming_hint()}
+				</DropdownMenu.CheckboxItem>
+				<DropdownMenu.CheckboxItem
+					checked={timelineStore.linkedSelectionEnabled}
+					onCheckedChange={toggleLinkedSelection}
+				>
+					{m.video_editor_linked_selection_enable()}
+				</DropdownMenu.CheckboxItem>
+				<DropdownMenu.Separator />
+				{#each [['slip', m.video_editor_slip()], ['slide', m.video_editor_slide()], ['rate-stretch', m.video_editor_rate_stretch()], ['track-push', m.video_editor_track_push()]] as tool}
+					<DropdownMenu.CheckboxItem
+						checked={activeEditTool === tool[0]}
+						onCheckedChange={() => toggleEditTool(tool[0] as AdvancedEditTool)}
+					>
+						{tool[1]}
+					</DropdownMenu.CheckboxItem>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
 	</div>
 	<div class="ml-auto flex items-center gap-1">
 		{#if selectedItem}
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-7 rounded"
-				disabled={bentoEligibleIds.length < 2}
-				aria-label={m.video_editor_bento_open()}
-				title={bentoEligibleIds.length < 2
-					? m.video_editor_bento_open_hint()
-					: m.video_editor_bento_open_count({ count: bentoEligibleIds.length })}
-				onclick={() => (bentoLayoutOpen = true)}
-			>
-				<LayoutGridIcon class="size-3.5" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-7 rounded"
-				disabled={!canFreezeSelectedItem || freezeFramePending}
-				aria-label={m.video_editor_freeze_frame()}
-				title={m.video_editor_freeze_frame_hint()}
-				onclick={() => onfreezeframe(selectedItem.id)}
-			>
-				{#if freezeFramePending}
-					<LoaderCircleIcon class="size-3.5 animate-spin motion-reduce:animate-none" />
-				{:else}
-					<SnowflakeIcon class="size-3.5" />
-				{/if}
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-7 rounded"
-				disabled={!canJoinSelectedItems}
-				aria-label={m.video_editor_join_selected()}
-				title={m.video_editor_join_selected_hint()}
-				onclick={joinSelection}
-			>
-				<CombineIcon class="size-3.5" />
-			</Button>
-			{#if captionConsolidationTarget}
-				<Button
-					variant="ghost"
-					size="icon"
-					class="size-7 rounded"
-					aria-label={m.video_editor_consolidate_captions()}
-					title={m.video_editor_consolidate_captions_hint()}
-					onclick={consolidateSelection}
-				>
-					<CaptionsIcon class="size-3.5" />
-				</Button>
-			{/if}
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-7 rounded"
-				disabled={!canLinkSelectedItems}
-				aria-label={m.video_editor_link_selected()}
-				title={m.video_editor_link_selected_hint()}
-				onclick={linkSelection}
-			>
-				<Link2Icon class="size-3.5" />
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="size-7 rounded"
-				disabled={!canUnlinkSelectedItems}
-				aria-label={m.video_editor_unlink_selected()}
-				title={m.video_editor_unlink_selected_hint()}
-				onclick={unlinkSelection}
-			>
-				<UnlinkIcon class="size-3.5" />
-			</Button>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon"
+							class="size-7 rounded"
+							aria-label={m.image_editor_more_actions()}
+						>
+							<MoreHorizontalIcon class="size-3.5" />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content class="video-editor-theme w-60" align="end">
+					<DropdownMenu.Item
+						disabled={bentoEligibleIds.length < 2}
+						onclick={() => (bentoLayoutOpen = true)}
+					>
+						{m.video_editor_bento_open()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						disabled={!canFreezeSelectedItem || freezeFramePending}
+						onclick={() => onfreezeframe(selectedItem.id)}
+					>
+						{m.video_editor_freeze_frame()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item disabled={!canJoinSelectedItems} onclick={joinSelection}>
+						{m.video_editor_join_selected()}
+					</DropdownMenu.Item>
+					{#if captionConsolidationTarget}
+						<DropdownMenu.Item onclick={consolidateSelection}>
+							{m.video_editor_consolidate_captions()}
+						</DropdownMenu.Item>
+					{/if}
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item disabled={!canLinkSelectedItems} onclick={linkSelection}>
+						{m.video_editor_link_selected()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item disabled={!canUnlinkSelectedItems} onclick={unlinkSelection}>
+						{m.video_editor_unlink_selected()}
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
 				{selectedItemIds.length > 1
 					? m.video_editor_items_selected({ count: selectedItemIds.length })
@@ -5054,7 +4945,7 @@
 				onpointermove={rememberTimelinePointer}
 				onpointerleave={forgetTimelinePointer}
 				onwheel={onTimelineWheel}
-				class="relative max-h-72 min-h-32 overflow-auto pb-2"
+				class="relative h-[calc(100%-5.75rem)] min-h-24 overflow-auto pb-2"
 				role="region"
 				aria-label={m.video_editor_timeline()}
 			>

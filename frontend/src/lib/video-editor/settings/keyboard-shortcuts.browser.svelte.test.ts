@@ -18,17 +18,18 @@ describe('global playback shortcut', () => {
 		const onclick = vi.fn();
 		const onToggle = vi.fn();
 		button.addEventListener('click', onclick);
+		button.addEventListener('keydown', (event) => event.preventDefault());
 		const onKeydown = (event: KeyboardEvent) => {
 			handleGlobalPlayPauseShortcut(event, DEFAULT_EDITOR_SHORTCUTS.PLAY_PAUSE, onToggle);
 		};
-		window.addEventListener('keydown', onKeydown);
+		window.addEventListener('keydown', onKeydown, { capture: true });
 		button.focus();
 
 		await userEvent.keyboard(' ');
 
 		expect(onToggle).toHaveBeenCalledOnce();
 		expect(onclick).not.toHaveBeenCalled();
-		window.removeEventListener('keydown', onKeydown);
+		window.removeEventListener('keydown', onKeydown, { capture: true });
 	});
 
 	it('leaves Space available to text fields and explicit shortcut-disabled surfaces', async () => {

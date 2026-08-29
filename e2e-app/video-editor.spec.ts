@@ -69,6 +69,14 @@ async function createProject(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 }
 
+async function addTextItem(page: Page): Promise<void> {
+  await page
+    .getByRole("complementary", { name: "Media pool" })
+    .getByRole("button", { name: "Add layer" })
+    .click();
+  await page.getByRole("menuitem", { name: "Add text", exact: true }).click();
+}
+
 test("Video Editor project shell stays usable at phone and desktop widths", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleFailures: string[] = [];
@@ -115,17 +123,16 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
         clientWidth: viewport.width,
         scrollWidth: viewport.width,
       });
-    const inspector = page.getByRole("complementary", { name: "Edit" });
-    const sendBounds = await inspector
-      .getByRole("button", { name: "Send to OpenPost" })
+    const exportBounds = await page
+      .getByRole("button", { name: "Render full video" })
       .boundingBox();
     const timelineBounds = await page
       .getByText("Timeline", { exact: true })
       .locator("..")
       .boundingBox();
-    expect(sendBounds).not.toBeNull();
+    expect(exportBounds).not.toBeNull();
     expect(timelineBounds).not.toBeNull();
-    expect(sendBounds!.y + sendBounds!.height).toBeLessThanOrEqual(timelineBounds!.y);
+    expect(exportBounds!.y + exportBounds!.height).toBeLessThanOrEqual(timelineBounds!.y);
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       path: `frontend/.svelte-kit/openpost-video-editor-${viewport.width}.png`,
@@ -143,11 +150,23 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Add text" }).click();
+  await addTextItem(page);
   const inspector = page.getByRole("complementary", { name: "Edit" });
   await expect(inspector.getByRole("heading", { name: "Properties" })).toBeVisible();
   const inspectorBounds = await inspector.boundingBox();
   expect(inspectorBounds).not.toBeNull();
+
+  const pasteboardBounds = await page.locator("[data-program-pasteboard]").boundingBox();
+  const monitorBounds = await page.locator("[data-program-monitor]").boundingBox();
+  expect(pasteboardBounds).not.toBeNull();
+  expect(monitorBounds).not.toBeNull();
+  expect(monitorBounds!.x).toBeGreaterThan(pasteboardBounds!.x);
+  expect(monitorBounds!.y).toBeGreaterThan(pasteboardBounds!.y);
+  expect(monitorBounds!.x + monitorBounds!.width).toBeLessThan(
+    pasteboardBounds!.x + pasteboardBounds!.width,
+  );
+
+  await inspector.getByRole("button", { name: "More actions" }).click();
   for (const name of [
     "Split at playhead (B)",
     "Delete and leave gap",
@@ -155,23 +174,9 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     "Create compound clip",
     "Add crossfade",
   ]) {
-    const button = inspector.getByRole("button", { name });
-    const bounds = await button.boundingBox();
-    expect(bounds, `${name} should be visible inside the inspector`).not.toBeNull();
-    expect(bounds!.x).toBeGreaterThanOrEqual(inspectorBounds!.x);
-    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
-      inspectorBounds!.x + inspectorBounds!.width,
-    );
-    await expect
-      .poll(() =>
-        button.evaluate(
-          (element) =>
-            element.scrollWidth <= element.clientWidth &&
-            element.scrollHeight <= element.clientHeight,
-        ),
-      )
-      .toBe(true);
+    await expect(page.getByRole("menuitem", { name })).toBeVisible();
   }
+  await page.keyboard.press("Escape");
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     path: "frontend/.svelte-kit/openpost-video-editor-1280.png",
@@ -186,12 +191,14 @@ test("Video Editor keyboard transport and delete commands survive focused contro
   test.setTimeout(60_000);
   await createProject(page, "Keyboard route proof");
 
-  const addText = page.getByRole("button", { name: "Add text" });
   const clips = page.locator("[data-timeline-item-id]");
-  await addText.click();
+  await addTextItem(page);
   await expect(clips).toHaveCount(1);
 
-  await addText.focus();
+  await page
+    .getByRole("complementary", { name: "Media pool" })
+    .getByRole("button", { name: "Add layer" })
+    .focus();
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await expect(clips).toHaveCount(1);
@@ -202,14 +209,14 @@ test("Video Editor keyboard transport and delete commands survive focused contro
   const playhead = page.getByRole("slider", { name: "Timeline playhead" });
   await playhead.focus();
   await page.keyboard.press("End");
-  await addText.click();
+  await addTextItem(page);
   await expect(clips).toHaveCount(2);
 
   await clips.nth(1).locator(":scope > button").first().click();
   await page.keyboard.press("Backspace");
   await expect(clips).toHaveCount(1);
 
-  await addText.click();
+  await addTextItem(page);
   await expect(clips).toHaveCount(2);
   const firstLeft = await clips
     .nth(0)

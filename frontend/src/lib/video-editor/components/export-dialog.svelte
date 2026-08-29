@@ -3,7 +3,7 @@
 	import { onDestroy } from 'svelte';
 	import { canEncodeVideo, type VideoCodec } from 'mediabunny';
 	import { m } from '$lib/paraglide/messages';
-	import { Button } from '$lib/components/ui/button';
+	import { Button, type ButtonVariant } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -44,6 +44,7 @@
 	import RenderQueuePanel from './render-queue-panel.svelte';
 	import { captureSnapshot } from '../timeline/commands/snapshot.svelte';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import RenderProgress from './render-progress.svelte';
 	import {
@@ -82,6 +83,11 @@
 		project,
 		disabled,
 		compactTrigger = false,
+		triggerClass = 'w-full',
+		triggerLabel,
+		responsiveTrigger = false,
+		compactQueueTrigger = false,
+		triggerVariant = 'secondary',
 		ondone,
 		onerror,
 		probeCodec = canEncodeVideo,
@@ -92,6 +98,11 @@
 		project: Project | null;
 		disabled?: boolean;
 		compactTrigger?: boolean;
+		triggerClass?: string;
+		triggerLabel?: string;
+		responsiveTrigger?: boolean;
+		compactQueueTrigger?: boolean;
+		triggerVariant?: ButtonVariant;
 		ondone: (result: RenderExportResult) => void;
 		onerror: (error: Error) => void;
 		probeCodec?: typeof canEncodeVideo;
@@ -591,13 +602,18 @@
 
 <Button
 	size="sm"
-	variant="secondary"
-	class="w-full"
+	variant={triggerVariant}
+	class={triggerClass}
 	{disabled}
 	aria-label={m.video_editor_export_render()}
 	onclick={() => (open = true)}
 >
-	{#if compactTrigger}
+	{#if responsiveTrigger}
+		<DownloadIcon aria-hidden="true" />
+		<span class="hidden sm:inline">{triggerLabel ?? m.video_editor_export_title()}</span>
+	{:else if triggerLabel}
+		{triggerLabel}
+	{:else if compactTrigger}
 		<span class="lg:hidden">{m.video_editor_export_title()}</span>
 		<span class="hidden lg:inline">{m.video_editor_export_render()}</span>
 	{:else}
@@ -605,7 +621,7 @@
 	{/if}
 </Button>
 {#if project}
-	<RenderQueuePanel projectId={project.id} />
+	<RenderQueuePanel projectId={project.id} compactTrigger={compactQueueTrigger} />
 {/if}
 
 <Dialog.Root bind:open>

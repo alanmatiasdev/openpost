@@ -1296,7 +1296,8 @@
 <svelte:window onkeydown={handleVisualNudgeShortcut} />
 
 <div
-	class="fullscreen:p-6 [container-type:size] flex min-h-0 flex-1 overflow-auto bg-[oklch(0.12_0.008_55)] p-4"
+	class="fullscreen:p-6 [container-type:size] flex min-h-0 flex-1 overflow-auto bg-[oklch(0.205_0.008_55)] p-4 sm:p-5 xl:p-7"
+	data-program-pasteboard
 >
 	<ContextMenu.Root open={canvasContextOpen} onOpenChange={setCanvasContextOpen}>
 		<ContextMenu.Trigger disabled={canvasContextDisabled}>
@@ -1305,7 +1306,7 @@
 				<div
 					{...props}
 					bind:this={viewport}
-					class="[container-type:size] relative m-auto shrink-0 overflow-hidden rounded-md bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+					class="[container-type:size] relative m-auto shrink-0 overflow-hidden rounded-sm bg-black shadow-[0_14px_42px_oklch(0.04_0.01_55_/_0.62)] ring-1 ring-white/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
 					data-program-monitor
 					tabindex="0"
 					role="application"

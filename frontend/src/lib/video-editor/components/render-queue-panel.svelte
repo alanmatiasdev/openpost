@@ -19,7 +19,8 @@
 	import type { RenderExportProgress } from '../media/render-export';
 	import { completedExportRefreshKey } from './render-queue-panel';
 
-	let { projectId }: { projectId: string } = $props();
+	let { projectId, compactTrigger = false }: { projectId: string; compactTrigger?: boolean } =
+		$props();
 	let open = $state(false);
 	let activeTab = $state<'queue' | 'saved'>('queue');
 	let wasOpen = false;
@@ -82,9 +83,17 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Button size="sm" variant="ghost" class="mt-1 w-full" onclick={() => (open = true)}>
+	<Button
+		size="sm"
+		variant="ghost"
+		class={compactTrigger ? 'size-8 px-0' : 'mt-1 w-full'}
+		aria-label={m.video_editor_exports_title()}
+		onclick={() => (open = true)}
+	>
 		<ListVideoIcon class="size-3.5" aria-hidden="true" />
-		{m.video_editor_exports_title()}{activeCount > 0 ? ` (${activeCount})` : ''}
+		{#if !compactTrigger}{m.video_editor_exports_title()}{/if}{activeCount > 0
+			? ` (${activeCount})`
+			: ''}
 	</Button>
 	<Dialog.Content
 		class="video-editor-theme flex max-h-[calc(100dvh-2rem)] flex-col gap-0 border border-[var(--video-editor-border)] bg-[var(--video-editor-panel)] text-[var(--video-editor-text)] sm:max-w-lg"

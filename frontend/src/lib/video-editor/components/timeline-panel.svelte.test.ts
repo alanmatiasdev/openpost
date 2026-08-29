@@ -1403,6 +1403,12 @@ describe('TimelinePanel Bento layout entry', () => {
 
 		try {
 			const screen = await render(TimelinePanel, { onedit: vi.fn() });
+			screen.container.style.height = '320px';
+			await nextAnimationFrame();
+			await nextAnimationFrame();
+			getFilmstrip.mockClear();
+			const region = screen.getByRole('region', { name: 'Timeline' }).element();
+			region.dispatchEvent(new Event('scroll'));
 			await vi.waitFor(() => expect(getFilmstrip).toHaveBeenCalled());
 			expect(getFilmstrip.mock.calls.map(([media]) => media.id)).not.toContain(offscreenMedia.id);
 
@@ -1414,7 +1420,6 @@ describe('TimelinePanel Bento layout entry', () => {
 			expect(firstTargets.length).toBeGreaterThan(0);
 			expect(firstTargets.length).toBeLessThan(40);
 
-			const region = screen.getByRole('region', { name: 'Timeline' }).element();
 			const callCountBeforeScroll = getFilmstrip.mock.calls.length;
 			region.scrollLeft = 2_000;
 			region.dispatchEvent(new Event('scroll'));
@@ -1467,11 +1472,10 @@ describe('TimelinePanel Bento layout entry', () => {
 			canvasHeight: 720
 		});
 
-		const arrange = screen.getByRole('button', {
-			name: 'Arrange selected clips'
-		});
+		await screen.getByRole('button', { name: 'More actions' }).last().click();
+		const arrange = screen.getByRole('menuitem', { name: 'Arrange selected clips' });
 		await expect.element(arrange).toBeEnabled();
-		await arrange.click();
+		arrange.element().click();
 		await expect.element(screen.getByRole('dialog', { name: 'Arrange clips' })).toBeVisible();
 	});
 });
@@ -1487,27 +1491,31 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			selectedItemIds: ['video']
 		});
 
-		const freeze = screen.getByRole('button', { name: 'Freeze frame' });
+		await screen.getByRole('button', { name: 'More actions' }).last().click();
+		const freeze = screen.getByRole('menuitem', { name: 'Freeze frame' });
 		await expect.element(freeze).toBeEnabled();
-		await freeze.click();
+		freeze.element().click();
 		expect(onfreezeframe).toHaveBeenCalledWith('video');
 
 		timelineStore._setCurrentFrame(0);
-		await expect.element(freeze).toBeDisabled();
+		await screen.getByRole('button', { name: 'More actions' }).last().click();
+		await expect.element(screen.getByRole('menuitem', { name: 'Freeze frame' })).toBeDisabled();
 	});
 
 	it('exposes the persisted audio-skimming control', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
-		const enabled = screen.getByRole('button', {
-			name: 'Disable audio skimming'
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		const enabled = screen.getByRole('menuitemcheckbox', {
+			name: 'Hear short audio samples while dragging the playhead'
 		});
-		await expect.element(enabled).toHaveAttribute('aria-pressed', 'true');
-		await enabled.click();
-		const disabled = screen.getByRole('button', {
-			name: 'Enable audio skimming'
+		await expect.element(enabled).toHaveAttribute('aria-checked', 'true');
+		enabled.element().click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		const disabled = screen.getByRole('menuitemcheckbox', {
+			name: 'Hear short audio samples while dragging the playhead'
 		});
-		await expect.element(disabled).toHaveAttribute('aria-pressed', 'false');
-		await disabled.click();
+		await expect.element(disabled).toHaveAttribute('aria-checked', 'false');
+		disabled.element().click();
 	});
 
 	it('opens and closes the integrated audio mixer without replacing the timeline', async () => {
@@ -1638,17 +1646,23 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			);
 
 		key('y', 'KeyY');
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('button', { name: 'Slip clip source' }))
-			.toHaveAttribute('aria-pressed', 'true');
+			.element(screen.getByRole('menuitemcheckbox', { name: 'Slip clip source' }))
+			.toHaveAttribute('aria-checked', 'true');
+		await userEvent.keyboard('{Escape}');
 		key('u', 'KeyU');
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('button', { name: 'Slide clip between adjacent edits' }))
-			.toHaveAttribute('aria-pressed', 'true');
+			.element(screen.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' }))
+			.toHaveAttribute('aria-checked', 'true');
+		await userEvent.keyboard('{Escape}');
 		key('v', 'KeyV');
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('button', { name: 'Slide clip between adjacent edits' }))
-			.toHaveAttribute('aria-pressed', 'false');
+			.element(screen.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' }))
+			.toHaveAttribute('aria-checked', 'false');
+		await userEvent.keyboard('{Escape}');
 
 		setCurrentFrame(61);
 		key('ArrowDown', 'ArrowDown');
@@ -1667,9 +1681,10 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		input.focus();
 		key('y', 'KeyY', false, input);
 		key('ArrowUp', 'ArrowUp', false, input);
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('button', { name: 'Slip clip source' }))
-			.toHaveAttribute('aria-pressed', 'false');
+			.element(screen.getByRole('menuitemcheckbox', { name: 'Slip clip source' }))
+			.toHaveAttribute('aria-checked', 'false');
 		expect(timelineStore.currentFrame).toBe(75);
 	});
 
@@ -1929,10 +1944,12 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(onedit).toHaveBeenCalledOnce();
 
 		timelineStore._setCurrentFrame(50);
-		await screen.getByRole('button', { name: 'Previous marker' }).click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		screen.getByRole('menuitem', { name: 'Previous marker' }).element().click();
 		expect(timelineStore.currentFrame).toBe(40);
 		expect(timelineStore.selectedMarkerId).toBe('middle');
-		await screen.getByRole('button', { name: 'Next marker' }).click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		screen.getByRole('menuitem', { name: 'Next marker' }).element().click();
 		expect(timelineStore.currentFrame).toBe(90);
 
 		const last = screen.getByRole('button', { name: 'Marker 3, Frame 90' });
@@ -1981,9 +1998,10 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 			selectedItemId: 'right',
 			selectedItemIds: ['left', 'right']
 		});
-		const join = screen.getByRole('button', { name: 'Join selected clips' });
+		await screen.getByRole('button', { name: 'More actions' }).last().click();
+		const join = screen.getByRole('menuitem', { name: 'Join selected clips' });
 		await expect.element(join).toBeEnabled();
-		await join.click();
+		join.element().click();
 		expect(timelineStore.items).toHaveLength(1);
 		expect(timelineStore.items[0]).toMatchObject({
 			id: 'left',
@@ -2748,7 +2766,8 @@ describe('TimelinePanel track groups', () => {
 		videoName.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		audioName.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
 
-		await screen.getByRole('button', { name: 'Group selected tracks' }).click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		screen.getByRole('menuitem', { name: 'Group selected tracks' }).element().click();
 		expect(timelineStore.tracks.filter((track) => track.isGroup)).toHaveLength(1);
 		expect(timelineStore.tracks.filter((track) => track.parentTrackId)).toHaveLength(2);
 		await expect.element(screen.getByText('Track group 1')).toBeVisible();
@@ -2844,7 +2863,10 @@ describe('TimelinePanel track push', () => {
 		const onedit = vi.fn();
 		const ontransitionbreak = vi.fn();
 		const screen = await render(TimelinePanel, { onedit, ontransitionbreak });
-		await screen.getByRole('button', { name: 'Push or pull tracks' }).click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await userEvent.click(
+			screen.getByRole('menuitemcheckbox', { name: 'Push or pull tracks' }).element()
+		);
 		const anchor = document.querySelector<HTMLButtonElement>(
 			'[data-timeline-item-id="anchor"] > button'
 		);
@@ -2893,7 +2915,10 @@ describe('TimelinePanel track push', () => {
 		configureTrackPushTimeline();
 		const onedit = vi.fn();
 		const screen = await render(TimelinePanel, { onedit });
-		await screen.getByRole('button', { name: 'Push or pull tracks' }).click();
+		await screen.getByRole('button', { name: 'More actions' }).first().click();
+		await userEvent.click(
+			screen.getByRole('menuitemcheckbox', { name: 'Push or pull tracks' }).element()
+		);
 		const anchor = document.querySelector<HTMLButtonElement>(
 			'[data-timeline-item-id="anchor"] > button'
 		)!;

@@ -8,6 +8,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { page } from '$app/state';
 	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import Logo from '$lib/components/Logo.svelte';
 	import { showToast } from '$lib/toast';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
@@ -91,13 +92,10 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		switchSequence
 	} from '$lib/video-editor/sequences/sequence-actions';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
-	import BlendIcon from '@lucide/svelte/icons/blend';
-	import CombineIcon from '@lucide/svelte/icons/combine';
-	import RippleDeleteIcon from '@lucide/svelte/icons/between-horizontal-end';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
-	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import {
 		editorWorkspace,
@@ -155,6 +153,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	let unsupportedAudioResolve: ((decision: 'import' | 'cancel') => void) | null = null;
 	let assetPanel = $state<'media' | 'assets' | 'scenes' | 'ai'>('media');
 	let mobileEditPane = $state<'assets' | 'program' | 'tools'>('program');
+	let timelineHeight = $state(260);
 	let textVoiceRequest = $state<TextVoiceRequest | null>(null);
 	const activeWorkspace = $derived(editorWorkspace.current);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
@@ -188,6 +187,39 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		};
 		assetPanel = 'ai';
 		mobileEditPane = 'assets';
+	}
+
+	function startTimelineResize(event: PointerEvent): void {
+		if (event.button !== 0) return;
+		event.preventDefault();
+		const handle = event.currentTarget as HTMLElement;
+		const pointerId = event.pointerId;
+		const startY = event.clientY;
+		const startHeight = timelineHeight;
+		handle.setPointerCapture(pointerId);
+
+		const move = (moveEvent: PointerEvent): void => {
+			const maximum = Math.min(window.innerHeight * 0.72, 620);
+			timelineHeight = Math.round(
+				Math.min(maximum, Math.max(180, startHeight + startY - moveEvent.clientY))
+			);
+		};
+		const stop = (): void => {
+			handle.removeEventListener('pointermove', move);
+			handle.removeEventListener('pointerup', stop);
+			handle.removeEventListener('pointercancel', stop);
+		};
+
+		handle.addEventListener('pointermove', move);
+		handle.addEventListener('pointerup', stop);
+		handle.addEventListener('pointercancel', stop);
+	}
+
+	function resizeTimelineFromKeyboard(event: KeyboardEvent): void {
+		if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+		event.preventDefault();
+		const delta = event.key === 'ArrowUp' ? 24 : -24;
+		timelineHeight = Math.min(620, Math.max(180, timelineHeight + delta));
 	}
 
 	$effect(() => {
@@ -938,12 +970,6 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		const bindings = keyboardShortcuts.bindings;
 		const matches = (...ids: EditorShortcutId[]) =>
 			ids.some((id) => eventMatchesShortcut(event, bindings[id]));
-		if (
-			!sourceHoverStore.isActive &&
-			handleGlobalPlayPauseShortcut(event, bindings.PLAY_PAUSE, togglePlay)
-		) {
-			return;
-		}
 		if (editorShortcutTargetIsDisabled(event.target)) return;
 		const sourceLocalPlayback = matches(
 			'PLAY_PAUSE',
@@ -1089,7 +1115,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		}
 	}
 
-	function onSceneBrowserShortcut(event: KeyboardEvent): void {
+	function onGlobalShortcutCapture(event: KeyboardEvent): void {
+		if (
+			!sourceHoverStore.isActive &&
+			handleGlobalPlayPauseShortcut(event, keyboardShortcuts.bindings.PLAY_PAUSE, togglePlay)
+		) {
+			return;
+		}
 		handleOpenSceneBrowserShortcut(event, keyboardShortcuts.bindings.OPEN_SCENE_BROWSER, () => {
 			assetPanel = 'scenes';
 			requestAnimationFrame(() =>
@@ -1103,13 +1135,13 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	<title>{editorSession.project?.name ?? m.video_editor_title()}</title>
 </svelte:head>
 
-<svelte:window onkeydowncapture={onSceneBrowserShortcut} onkeydown={onKeydown} />
+<svelte:window onkeydowncapture={onGlobalShortcutCapture} onkeydown={onKeydown} />
 
 <div
 	class="video-editor-theme flex h-dvh flex-col bg-[oklch(0.145_0.008_55)] text-[oklch(0.92_0.005_85)]"
 >
 	<header
-		class="grid grid-cols-[auto_1fr_auto] items-center border-b border-[oklch(0.25_0.015_55)] px-2 py-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:px-3"
+		class="grid h-12 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.008_55)] px-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:px-3"
 	>
 		<div class="flex min-w-0 items-center gap-2">
 			<a
@@ -1124,7 +1156,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			</span>
 		</div>
 		<EditorWorkspaceSwitcher value={activeWorkspace} onchange={changeEditorWorkspace} />
-		<div class="flex min-w-0 items-center justify-end gap-2 text-xs text-[oklch(0.65_0.015_55)]">
+		<div class="flex min-w-0 items-center justify-end gap-1 text-xs text-[oklch(0.65_0.015_55)]">
 			{#if editorSession.saving}
 				<span class="hidden sm:inline">{m.video_editor_saving()}</span>
 			{:else if editorSession.saveError}
@@ -1138,7 +1170,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				type="button"
 				variant="outline"
 				size="icon-sm"
-				class="lg:w-auto lg:px-2.5"
+				class="hidden 2xl:inline-flex 2xl:w-auto 2xl:px-2.5"
 				aria-label={m.video_editor_record_screen()}
 				title={m.video_editor_record_screen()}
 				onclick={() => (recordingOpen = true)}
@@ -1146,17 +1178,80 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				<VideoIcon class="size-3.5" aria-hidden="true" />
 				<span class="hidden lg:inline">{m.video_editor_record()}</span>
 			</Button>
-			<div class="hidden sm:block"><PreviewDiagnosticsPanel /></div>
+			<div class="hidden 2xl:block"><PreviewDiagnosticsPanel /></div>
 			<Button
 				type="button"
 				variant="ghost"
 				size="icon-xs"
+				class="hidden 2xl:inline-flex"
 				aria-label={m.video_editor_settings_title()}
 				title={m.video_editor_settings_title()}
 				onclick={() => (settingsOpen = true)}
 			>
 				<SettingsIcon class="size-3.5" aria-hidden="true" />
 			</Button>
+			{#if renderProject}
+				{#key renderProject.id}
+					<RenderQueueController
+						projectId={renderProject.id}
+						onerror={(error) => showToast(error.message, 'error')}
+					/>
+				{/key}
+			{/if}
+			<ExportDialog
+				project={renderProject}
+				disabled={timelineStore.items.length === 0}
+				triggerLabel={m.video_editor_export_title()}
+				responsiveTrigger
+				compactQueueTrigger
+				triggerVariant="default"
+				triggerClass="size-8 px-0 sm:w-auto sm:px-2.5"
+				ondone={(result) =>
+					showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
+				onerror={(error) => showToast(error.message, 'error')}
+			/>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							aria-label={m.image_editor_more_actions()}
+						>
+							<MoreHorizontalIcon aria-hidden="true" />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+					<DropdownMenu.Item class="2xl:hidden" onclick={() => (recordingOpen = true)}>
+						{m.video_editor_record_screen()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item class="2xl:hidden" onclick={() => (settingsOpen = true)}>
+						{m.video_editor_settings_title()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator class="2xl:hidden" />
+					<DropdownMenu.Item
+						disabled={exporting || timelineStore.items.length === 0}
+						onclick={() => void handleExport()}
+					>
+						{m.video_editor_export()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+						disabled={sending || timelineStore.items.length === 0 || !workspaceCtx.currentWorkspace}
+						onclick={() => void handleSendToOpenPost()}
+					>
+						{m.video_editor_send_to_openpost()}
+					</DropdownMenu.Item>
+					{#if sentExport}
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item href={sentExport.composerHref}>
+							{m.video_editor_open_composer()}
+						</DropdownMenu.Item>
+					{/if}
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		</div>
 	</header>
 
@@ -1178,10 +1273,6 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 		</main>
 	{:else}
 		{#key projectId}
-			<SequenceTabs
-				onswitch={resetTimelineSelection}
-				onedit={() => editorSession.scheduleAutosave()}
-			/>
 			{#if activeWorkspace === 'edit'}
 				<nav
 					class="grid shrink-0 grid-cols-3 border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_50)] p-1 lg:hidden"
@@ -1224,7 +1315,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				>
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="min-h-0 w-full flex-1 flex-col border-b border-[oklch(0.25_0.015_55)] lg:flex lg:w-72 lg:flex-none lg:border-r lg:border-b-0 {mobileEditPane ===
+							class="min-h-0 w-full flex-1 flex-col border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:w-72 lg:flex-none lg:border-r lg:border-b-0 {mobileEditPane ===
 							'assets'
 								? 'flex'
 								: 'hidden'}"
@@ -1274,9 +1365,31 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 										aria-label={m.video_editor_import_media()}
 										onclick={handleImport}
 									>
-										<PlusIcon />
+										<UploadIcon />
 									</Button>
 								{/if}
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												size="icon-xs"
+												variant="ghost"
+												aria-label={m.image_editor_add_layer()}
+											>
+												<PlusIcon aria-hidden="true" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content class="video-editor-theme w-52" align="end">
+										<DropdownMenu.Item onclick={handleAddText}>
+											{m.video_editor_add_text()}
+										</DropdownMenu.Item>
+										<DropdownMenu.Item onclick={handleAddAdjustmentLayer}>
+											{m.video_editor_add_adjustment_layer()}
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
 							</div>
 							{#if assetPanel === 'media'}
 								<MediaPoolList
@@ -1315,7 +1428,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					{/if}
 
 					<div
-						class="min-h-0 w-full min-w-0 flex-1 bg-[oklch(0.12_0.008_55)] lg:flex {activeWorkspace !==
+						class="min-h-0 w-full min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] lg:flex {activeWorkspace !==
 							'edit' || mobileEditPane === 'program'
 							? 'flex'
 							: 'hidden'}"
@@ -1323,7 +1436,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 						<div
 							class:grid={showSourceMonitor}
 							class:flex={!showSourceMonitor}
-							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.12_0.008_55)] {showSourceMonitor
+							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] {showSourceMonitor
 								? 'grid-cols-1 md:grid-cols-2'
 								: ''}"
 						>
@@ -1342,7 +1455,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 							{/if}
 							<section
 								data-video-preview
-								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.12_0.008_55)]"
+								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.205_0.008_55)]"
 							>
 								{#if showSourceMonitor}
 									<div
@@ -1364,13 +1477,15 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					<!-- Tools -->
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="min-h-0 w-full flex-1 flex-col border-t border-[oklch(0.25_0.015_55)] lg:flex lg:w-80 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
+							class="min-h-0 w-full flex-1 flex-col border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:w-72 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
 							'tools'
 								? 'flex'
 								: 'hidden'}"
 							aria-label={m.video_editor_tools()}
 						>
-							<div class="flex h-8 shrink-0 items-center px-3 lg:h-9">
+							<div
+								class="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[oklch(0.25_0.015_55)] px-3"
+							>
 								<h2 class="text-xs font-medium text-[oklch(0.72_0.015_55)]">
 									{selectedTransition
 										? m.video_editor_transition()
@@ -1378,100 +1493,53 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 											? m.video_editor_inspector()
 											: m.video_editor_tools()}
 								</h2>
+								{#if selectedItemId || selectedTransition}
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													size="icon-xs"
+													variant="ghost"
+													aria-label={m.image_editor_more_actions()}
+												>
+													<MoreHorizontalIcon aria-hidden="true" />
+												</Button>
+											{/snippet}
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content class="video-editor-theme w-56" align="end">
+											{#if selectedTransition}
+												<DropdownMenu.Item onclick={handleRemoveTransition}>
+													{m.video_editor_break_transition()}
+												</DropdownMenu.Item>
+											{:else}
+												<DropdownMenu.Item onclick={handleSplit}>
+													{m.video_editor_split()}
+												</DropdownMenu.Item>
+												<DropdownMenu.Item onclick={handleAddCrossfade}>
+													{m.video_editor_crossfade()}
+												</DropdownMenu.Item>
+												<DropdownMenu.Item
+													onclick={selectedIsCompound
+														? handleDissolveCompound
+														: handleCreateCompound}
+												>
+													{selectedIsCompound
+														? m.video_editor_dissolve_compound()
+														: m.video_editor_create_compound()}
+												</DropdownMenu.Item>
+												<DropdownMenu.Separator />
+												<DropdownMenu.Item onclick={() => handleDelete(false)}>
+													{m.video_editor_delete_leave_gap()}
+												</DropdownMenu.Item>
+												<DropdownMenu.Item variant="destructive" onclick={() => handleDelete(true)}>
+													{m.video_editor_ripple_delete()}
+												</DropdownMenu.Item>
+											{/if}
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+								{/if}
 							</div>
-							<div
-								class="grid shrink-0 grid-cols-2 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 lg:py-2"
-							>
-								<Button
-									size="sm"
-									variant="outline"
-									class="min-h-11 px-2 text-xs lg:min-h-8"
-									onclick={handleAddText}
-								>
-									{m.video_editor_add_text()}
-								</Button>
-								<Button
-									size="sm"
-									variant="outline"
-									class="min-h-11 px-2 text-xs lg:min-h-8"
-									onclick={handleAddAdjustmentLayer}
-								>
-									{m.video_editor_add_adjustment_layer()}
-								</Button>
-							</div>
-
-							{#if selectedItemId || selectedTransition}
-								<div
-									class="grid shrink-0 grid-cols-5 gap-1 border-t border-[oklch(0.25_0.015_55)] px-2 py-2"
-									role="toolbar"
-									aria-label={m.video_editor_inspector()}
-								>
-									{#if selectedTransition}
-										<Button
-											size="sm"
-											variant="outline"
-											class="col-span-5 min-h-11 lg:min-h-8"
-											onclick={handleRemoveTransition}
-										>
-											{m.video_editor_break_transition()}
-										</Button>
-									{:else}
-										<Button
-											size="icon-sm"
-											variant="outline"
-											aria-label={m.video_editor_split()}
-											title={m.video_editor_split()}
-											data-cuelume-toggle={undefined}
-											onclick={handleSplit}
-										>
-											<ScissorsIcon aria-hidden="true" />
-										</Button>
-										<Button
-											size="icon-sm"
-											variant="outline"
-											aria-label={m.video_editor_delete_leave_gap()}
-											title={m.video_editor_delete_leave_gap_hint()}
-											data-cuelume-toggle={undefined}
-											onclick={() => handleDelete(false)}
-										>
-											<TrashIcon aria-hidden="true" />
-										</Button>
-										<Button
-											size="icon-sm"
-											variant="outline"
-											aria-label={m.video_editor_ripple_delete()}
-											title={m.video_editor_ripple_delete_hint()}
-											data-cuelume-toggle={undefined}
-											onclick={() => handleDelete(true)}
-										>
-											<RippleDeleteIcon aria-hidden="true" />
-										</Button>
-										<Button
-											size="icon-sm"
-											variant="ghost"
-											aria-label={selectedIsCompound
-												? m.video_editor_dissolve_compound()
-												: m.video_editor_create_compound()}
-											title={selectedIsCompound
-												? m.video_editor_dissolve_compound()
-												: m.video_editor_create_compound()}
-											onclick={selectedIsCompound ? handleDissolveCompound : handleCreateCompound}
-										>
-											<CombineIcon aria-hidden="true" />
-										</Button>
-										<Button
-											size="icon-sm"
-											variant="ghost"
-											aria-label={m.video_editor_crossfade()}
-											title={m.video_editor_crossfade()}
-											onclick={handleAddCrossfade}
-										>
-											<BlendIcon aria-hidden="true" />
-										</Button>
-									{/if}
-								</div>
-							{/if}
-
 							{#if editInspectorTabs.length > 0}
 								<EditInspectorTabs tabs={editInspectorTabs} bind:value={editInspectorTab} />
 							{/if}
@@ -1619,67 +1687,6 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 									</p>
 								{/if}
 							</div>
-
-							<div class="shrink-0 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 lg:py-2">
-								<div class="grid grid-cols-3 gap-1 lg:grid-cols-2">
-									<Button
-										size="sm"
-										class="min-h-11 lg:min-h-8"
-										disabled={exporting || timelineStore.items.length === 0}
-										onclick={handleExport}
-									>
-										{m.video_editor_export()}
-									</Button>
-									<div class="contents lg:block">
-										{#if renderProject}
-											{#key renderProject.id}
-												<RenderQueueController
-													projectId={renderProject.id}
-													onerror={(error) => showToast(error.message, 'error')}
-												/>
-											{/key}
-										{/if}
-										<ExportDialog
-											project={renderProject}
-											disabled={timelineStore.items.length === 0}
-											compactTrigger
-											ondone={(result) =>
-												showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
-											onerror={(error) => showToast(error.message, 'error')}
-										/>
-									</div>
-								</div>
-								<Button
-									size="sm"
-									variant="secondary"
-									class="mt-1 min-h-11 w-full lg:min-h-8"
-									disabled={sending ||
-										timelineStore.items.length === 0 ||
-										!workspaceCtx.currentWorkspace}
-									onclick={handleSendToOpenPost}
-								>
-									{m.video_editor_send_to_openpost()}
-								</Button>
-								{#if sentExport}
-									<div
-										class="mt-1 flex items-center justify-between gap-2 rounded-md border border-[oklch(0.38_0.06_145)] bg-[oklch(0.2_0.025_145)] px-2 py-1.5"
-										role="status"
-										aria-live="polite"
-									>
-										<p class="min-w-0 text-xs leading-5 text-[oklch(0.78_0.06_145)]">
-											{m.video_editor_sent()}
-										</p>
-										<Button
-											size="xs"
-											variant="ghost"
-											class="shrink-0 text-[oklch(0.86_0.07_145)] hover:bg-[oklch(0.27_0.04_145)] hover:text-[oklch(0.94_0.04_145)]"
-											href={sentExport.composerHref}
-										>
-											{m.video_editor_open_composer()}
-										</Button>
-									</div>
-								{/if}
-							</div>
 						</aside>
 					{:else if activeWorkspace === 'motion'}
 						<MotionWorkspacePanel
@@ -1710,7 +1717,28 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 				{/if}
 			</div>
 
-			<footer class="border-t border-[oklch(0.25_0.015_55)]">
+			<footer
+				class="relative h-[42dvh] shrink-0 overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] lg:h-[var(--timeline-height)]"
+				style={`--timeline-height:${timelineHeight}px`}
+			>
+				<button
+					type="button"
+					class="absolute inset-x-0 top-0 z-[80] hidden h-2 cursor-row-resize touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] lg:flex"
+					aria-label={m.video_editor_timeline()}
+					aria-valuemin="180"
+					aria-valuemax="620"
+					aria-valuenow={timelineHeight}
+					role="separator"
+					onpointerdown={startTimelineResize}
+					onkeydown={resizeTimelineFromKeyboard}
+				>
+					<span class="h-0.5 w-12 rounded-full bg-white/18 transition-colors hover:bg-white/36"
+					></span>
+				</button>
+				<SequenceTabs
+					onswitch={resetTimelineSelection}
+					onedit={() => editorSession.scheduleAutosave()}
+				/>
 				{#if sequenceStore.activeSequence?.editorKind === 'composite-2d'}
 					<CompositionTimeline
 						{selectedItemId}
