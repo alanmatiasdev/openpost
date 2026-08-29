@@ -1,0 +1,213 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import AIAngleGrid from './ai-angle-grid.svelte';
+	import AIGenerationProgress from './ai-generation-progress.svelte';
+	import AIOpportunityGrid from './ai-opportunity-grid.svelte';
+	import type {
+		AIAngle,
+		AIGenerationPhase,
+		AIOpportunity,
+		AIWorkspaceDialogCopy,
+		AIWorkspaceEntry,
+		AIWorkspaceStep
+	} from './ai-workspace-types';
+
+	interface Props {
+		open?: boolean;
+		entry: AIWorkspaceEntry;
+		step: AIWorkspaceStep;
+		copy: AIWorkspaceDialogCopy;
+		opportunities?: AIOpportunity[];
+		selectedOpportunityId?: string;
+		angles?: AIAngle[];
+		selectedAngleId?: string;
+		generationPhases?: AIGenerationPhase[];
+		generationMessage?: string;
+		destinationSummary?: string;
+		voiceSummary?: string;
+		loadingOpportunities?: boolean;
+		findingMore?: boolean;
+		generating?: boolean;
+		cancelling?: boolean;
+		applyPending?: boolean;
+		error?: string;
+		context?: Snippet;
+		onSelectOpportunity: (opportunity: AIOpportunity) => void;
+		onSelectAngle: (angle: AIAngle) => void;
+		onFindMore?: () => void;
+		onBack?: () => void;
+		onBuild: () => void;
+		onCancel?: () => void;
+		onRetry?: () => void;
+		onApply?: () => void;
+		onKeepEditing?: () => void;
+		onDismissError?: () => void;
+	}
+
+	let {
+		open = $bindable(false),
+		entry,
+		step,
+		copy,
+		opportunities = [],
+		selectedOpportunityId = '',
+		angles = [],
+		selectedAngleId = '',
+		generationPhases = [],
+		generationMessage = '',
+		destinationSummary = '',
+		voiceSummary = '',
+		loadingOpportunities = false,
+		findingMore = false,
+		generating = false,
+		cancelling = false,
+		applyPending = false,
+		error = '',
+		context,
+		onSelectOpportunity,
+		onSelectAngle,
+		onFindMore,
+		onBack,
+		onBuild,
+		onCancel,
+		onRetry,
+		onApply,
+		onKeepEditing,
+		onDismissError
+	}: Props = $props();
+
+	const title = $derived(entry === 'ideate' ? copy.ideateTitle : copy.buildTitle);
+	const description = $derived(entry === 'ideate' ? copy.ideateDescription : copy.buildDescription);
+	const canBuild = $derived(Boolean(selectedAngleId) && !generating && !cancelling);
+</script>
+
+<Dialog.Root bind:open>
+	<Dialog.Content
+		class="top-0 left-0 flex h-dvh max-h-dvh max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:top-1/2 sm:left-1/2 sm:h-[min(760px,calc(100dvh-2rem))] sm:w-[min(96vw,90rem)] sm:max-w-[90rem] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl"
+		data-testid="ai-workspace-dialog"
+	>
+		<Dialog.Header class="shrink-0 border-b px-4 py-3 pr-14 text-left sm:px-6 sm:py-4">
+			<div class="flex items-start gap-3">
+				<span
+					class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+					aria-hidden="true"
+				>
+					<SparklesIcon class="size-4" />
+				</span>
+				<div class="min-w-0 flex-1">
+					<Dialog.Title>{title}</Dialog.Title>
+					<Dialog.Description class="mt-1 max-w-3xl">{description}</Dialog.Description>
+					{#if destinationSummary || voiceSummary}
+						<p class="mt-2 text-xs text-muted-foreground">
+							{[destinationSummary, voiceSummary].filter(Boolean).join(' · ')}
+						</p>
+					{/if}
+				</div>
+			</div>
+			{#if context}
+				<div class="mt-3">{@render context()}</div>
+			{/if}
+		</Dialog.Header>
+
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+			{#if error}
+				<InlineNotice tone="error" message={error} class="mb-4" onDismiss={onDismissError}>
+					{#snippet actions()}
+						{#if onRetry}
+							<Button type="button" variant="ghost" size="sm" onclick={onRetry}>
+								{copy.retry}
+							</Button>
+						{/if}
+					{/snippet}
+				</InlineNotice>
+			{/if}
+
+			{#if step === 'opportunities'}
+				<AIOpportunityGrid
+					{opportunities}
+					selectedId={selectedOpportunityId}
+					copy={copy.opportunities}
+					loading={loadingOpportunities}
+					disabled={findingMore}
+					onSelect={onSelectOpportunity}
+				/>
+			{:else if step === 'angles'}
+				<AIAngleGrid
+					{angles}
+					selectedId={selectedAngleId}
+					copy={copy.angles}
+					loading={generating}
+					disabled={generating}
+					onSelect={onSelectAngle}
+				/>
+			{:else}
+				<AIGenerationProgress
+					phases={generationPhases}
+					copy={copy.progress}
+					message={generationMessage}
+				/>
+			{/if}
+		</div>
+
+		<div class="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
+			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					{#if step === 'angles' && onBack}
+						<Button type="button" variant="ghost" onclick={onBack} disabled={generating}>
+							<ArrowLeftIcon class="size-4" />
+							{copy.back}
+						</Button>
+					{/if}
+				</div>
+
+				{#if step === 'opportunities'}
+					{#if onFindMore}
+						<Button
+							type="button"
+							variant="outline"
+							disabled={loadingOpportunities || findingMore}
+							onclick={onFindMore}
+							aria-busy={findingMore}
+						>
+							{#if findingMore}<LoaderIcon
+									class="size-4 animate-spin motion-reduce:animate-none"
+								/>{/if}
+							{findingMore ? copy.findingMore : copy.findMore}
+						</Button>
+					{/if}
+				{:else if step === 'angles'}
+					<Button type="button" disabled={!canBuild} onclick={onBuild} aria-busy={generating}>
+						{copy.buildDrafts}
+					</Button>
+				{:else if applyPending && onApply}
+					<div class="flex flex-col-reverse gap-2 sm:flex-row">
+						{#if onKeepEditing}
+							<Button type="button" variant="ghost" onclick={onKeepEditing}>{copy.keepEdits}</Button
+							>
+						{/if}
+						<Button type="button" onclick={onApply}>{copy.reviewApply}</Button>
+					</div>
+				{:else if onCancel}
+					<Button
+						type="button"
+						variant="outline"
+						disabled={cancelling}
+						onclick={onCancel}
+						aria-busy={cancelling}
+					>
+						{#if cancelling}<LoaderIcon
+								class="size-4 animate-spin motion-reduce:animate-none"
+							/>{/if}
+						{cancelling ? copy.cancelling : copy.cancel}
+					</Button>
+				{/if}
+			</div>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

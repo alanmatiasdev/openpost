@@ -25,7 +25,8 @@
 	import type {
 		MemeGeneratorAPI,
 		MemeOverlaySelection,
-		MemeRenderResult
+		MemeRenderResult,
+		MemeSuggestionCandidate
 	} from '$lib/meme-generator/types';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import UploadIcon from '@lucide/svelte/icons/upload';
@@ -58,6 +59,9 @@
 		desktopSize = 'default',
 		presentation = 'dialog',
 		initialMode = 'library',
+		memeInitialIdea = '',
+		memeInitialCandidate,
+		memeInitialPreview = '',
 		initialFiles = [],
 		autoConfirmUploads = false,
 		videoConstraints = [],
@@ -87,10 +91,16 @@
 		desktopSize?: 'default' | 'compact';
 		presentation?: 'dialog' | 'sheet';
 		initialMode?: 'library' | 'upload' | 'stock' | 'meme';
+		memeInitialIdea?: string;
+		memeInitialCandidate?: MemeSuggestionCandidate;
+		memeInitialPreview?: string;
 		initialFiles?: File[];
 		autoConfirmUploads?: boolean;
 		videoConstraints?: VideoConstraint[];
-		onConfirm: (mediaIDs: string[], media: ImageEditorMediaItem[]) => void | Promise<void>;
+		onConfirm: (
+			mediaIDs: string[],
+			media: ImageEditorMediaItem[]
+		) => void | boolean | Promise<void | boolean>;
 		onInitialFilesConsumed?: () => void;
 		onCreate?: () => void | Promise<void>;
 		onCreateVideo?: (media?: MediaPickerVideoSelection) => void | Promise<void>;
@@ -110,6 +120,7 @@
 	let error = $state('');
 	let loadedForWorkspace = $state('');
 	let pickerMode = $state<'library' | 'device' | 'camera' | 'stock' | 'meme'>('library');
+	let pendingInitialMeme = $state(false);
 	let overlayPickerOpen = $state(false);
 	let overlayPickerLoading = $state(false);
 	let overlayPickerError = $state('');
@@ -178,7 +189,8 @@
 			error = '';
 			const requestedMode =
 				initialFiles.length > 0 ? 'device' : initialMode === 'upload' ? 'device' : initialMode;
-			pickerMode = requestedMode === 'meme' && !canUseMeme ? 'library' : requestedMode;
+			pendingInitialMeme = requestedMode === 'meme' && !canUseMeme;
+			pickerMode = pendingInitialMeme ? 'library' : requestedMode;
 			if (loadedForWorkspace !== workspaceId) {
 				selectedTagIDs = [];
 				showUntagged = false;
@@ -196,13 +208,21 @@
 			return;
 		}
 		cancelMemeAvailabilityProbe();
+		pendingInitialMeme = false;
 		if (resolveOverlaySelection) settleOverlayPicker(null);
+	}
+
+	function selectPickerMode(nextMode: typeof pickerMode): void {
+		pendingInitialMeme = false;
+		pickerMode = nextMode;
+		if (nextMode === 'library') void loadMedia();
 	}
 
 	async function probeMemeAvailability(): Promise<void> {
 		cancelMemeAvailabilityProbe();
 		if (!canProbeMeme || !workspaceId) {
 			memeAvailability = 'unavailable';
+			pendingInitialMeme = false;
 			if (pickerMode === 'meme') pickerMode = 'library';
 			return;
 		}
@@ -220,10 +240,14 @@
 			});
 			if (controller.signal.aborted || memeAvailabilityController !== controller) return;
 			memeAvailability = result.configured ? 'available' : 'unavailable';
+			if (result.configured && pendingInitialMeme) pickerMode = 'meme';
+			pendingInitialMeme = false;
 			if (!result.configured && pickerMode === 'meme') pickerMode = 'library';
 		} catch {
 			if (controller.signal.aborted || memeAvailabilityController !== controller) return;
 			memeAvailability = 'degraded';
+			if (pendingInitialMeme) pickerMode = 'meme';
+			pendingInitialMeme = false;
 		} finally {
 			if (memeAvailabilityController === controller) memeAvailabilityController = undefined;
 		}
@@ -337,12 +361,16 @@
 		actionLoading = true;
 		error = '';
 		try {
-			await onConfirm(
+			const confirmed = await onConfirm(
 				selectedIDs,
 				selectedIDs
 					.map((id) => media.find((item) => item.id === id))
 					.filter((item): item is ImageEditorMediaItem => Boolean(item))
 			);
+			if (confirmed === false) {
+				error = m.media_picker_add_failed();
+				return;
+			}
 			open = false;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.media_picker_add_failed();
@@ -360,12 +388,16 @@
 		if (!autoConfirmUploads) {
 			return;
 		}
-		await onConfirm(
+		const confirmed = await onConfirm(
 			selectedIDs,
 			selectedIDs
 				.map((id) => media.find((item) => item.id === id))
 				.filter((item): item is ImageEditorMediaItem => Boolean(item))
 		);
+		if (confirmed === false) {
+			error = m.media_picker_add_failed();
+			return;
+		}
 		open = false;
 		return;
 	}
@@ -402,18 +434,24 @@
 		};
 	}
 
-	async function handleMemeAttached(result: MemeRenderResult): Promise<void> {
+	async function handleMemeAttached(result: MemeRenderResult): Promise<boolean> {
 		const generated = memeMediaItem(result.media);
+		if (multiple && selectedIDs.length >= maxSelection && !selectedIDs.includes(generated.id)) {
+			error = m.media_picker_selection_limit({ maximum: maxSelection });
+			return false;
+		}
 		const nextIDs = multiple
 			? [...new Set([...selectedIDs, generated.id])].slice(0, maxSelection)
 			: [generated.id];
 		const selectedMedia = nextIDs
 			.map((id) => (id === generated.id ? generated : media.find((item) => item.id === id)))
 			.filter((item): item is ImageEditorMediaItem => Boolean(item));
-		await onConfirm(nextIDs, selectedMedia);
+		const confirmed = await onConfirm(nextIDs, selectedMedia);
+		if (confirmed === false) return false;
 		selectedIDs = nextIDs;
 		open = false;
 		void Promise.all([loadMedia(), loadTags()]);
+		return true;
 	}
 
 	async function pickMemeOverlay(
@@ -548,8 +586,7 @@
 				role="tab"
 				aria-selected={pickerMode === 'library'}
 				onclick={() => {
-					pickerMode = 'library';
-					void loadMedia();
+					selectPickerMode('library');
 				}}
 			>
 				<LibraryIcon />
@@ -562,7 +599,7 @@
 				role="tab"
 				aria-selected={pickerMode === 'device'}
 				disabled={actionLoading || selectedIDs.length >= maxSelection}
-				onclick={() => (pickerMode = 'device')}
+				onclick={() => selectPickerMode('device')}
 			>
 				<UploadIcon />
 				{m.media_upload_device()}
@@ -575,7 +612,7 @@
 					role="tab"
 					aria-selected={pickerMode === 'camera'}
 					disabled={actionLoading || selectedIDs.length >= maxSelection}
-					onclick={() => (pickerMode = 'camera')}
+					onclick={() => selectPickerMode('camera')}
 				>
 					<CameraIcon />
 					{m.media_camera()}
@@ -589,7 +626,7 @@
 					role="tab"
 					aria-selected={pickerMode === 'stock'}
 					disabled={actionLoading || selectedIDs.length >= maxSelection}
-					onclick={() => (pickerMode = 'stock')}
+					onclick={() => selectPickerMode('stock')}
 				>
 					<ImageIcon />
 					{m.stock_media()}
@@ -603,7 +640,7 @@
 					role="tab"
 					aria-selected={pickerMode === 'meme'}
 					disabled={actionLoading || selectedIDs.length >= maxSelection}
-					onclick={() => (pickerMode = 'meme')}
+					onclick={() => selectPickerMode('meme')}
 				>
 					<LaughIcon />
 					{m.media_picker_meme()}
@@ -653,7 +690,7 @@
 					{#if canUseCamera}
 						<DropdownMenu.Item
 							disabled={actionLoading || selectedIDs.length >= maxSelection}
-							onclick={() => (pickerMode = 'camera')}
+							onclick={() => selectPickerMode('camera')}
 						>
 							<CameraIcon class="size-4" />
 							{m.media_camera()}
@@ -662,7 +699,7 @@
 					{#if canUseStock}
 						<DropdownMenu.Item
 							disabled={actionLoading || selectedIDs.length >= maxSelection}
-							onclick={() => (pickerMode = 'stock')}
+							onclick={() => selectPickerMode('stock')}
 						>
 							<ImageIcon class="size-4" />
 							{m.stock_media()}
@@ -671,7 +708,7 @@
 					{#if canUseMeme}
 						<DropdownMenu.Item
 							disabled={actionLoading || selectedIDs.length >= maxSelection}
-							onclick={() => (pickerMode = 'meme')}
+							onclick={() => selectPickerMode('meme')}
 						>
 							<LaughIcon class="size-4" />
 							{m.media_picker_meme()}
@@ -868,6 +905,9 @@
 				{workspaceId}
 				api={services.memeAPI}
 				language={getLocaleTag()}
+				initialIdea={memeInitialIdea}
+				initialCandidate={memeInitialCandidate}
+				initialPreview={memeInitialPreview}
 				onPickOverlay={pickMemeOverlay}
 				onAttach={handleMemeAttached}
 			/>

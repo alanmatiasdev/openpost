@@ -265,6 +265,39 @@ describe('MemeGenerator', () => {
 		expectNoVisibleComponentOverflow(generator, 390);
 	});
 
+	it('opens a seeded recommendation without requesting another suggestion or preview', async () => {
+		const api = mockAPI();
+		const initialCandidate = {
+			template_id: template.id,
+			caption_lines: ['The plan', 'What production did'],
+			rationale: 'The contrast carries the joke.',
+			alt_text: 'Futurama Fry meme. Text: The plan; What production did.',
+			template
+		};
+		const screen = await render(MemeGenerator, {
+			props: {
+				workspaceId: 'workspace-1',
+				api,
+				onAttach: vi.fn(),
+				initialIdea: 'A release that ignored the plan',
+				initialCandidate,
+				initialPreview: `data:image/svg+xml;base64,${memeImageBase64(initialCandidate.caption_lines)}`
+			}
+		});
+
+		await expect
+			.element(screen.getByLabelText(m.meme_generator_caption_label({ number: 1 })))
+			.toHaveValue('The plan');
+		await expect
+			.element(screen.getByLabelText(m.meme_generator_caption_label({ number: 2 })))
+			.toHaveValue('What production did');
+		expect(api.suggest).not.toHaveBeenCalled();
+		expect(api.preview).not.toHaveBeenCalled();
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
+			.toBeEnabled();
+	});
+
 	it('keeps candidate and template cards usable at desktop size', async () => {
 		await page.viewport(1280, 900);
 		const target = widthConstrainedTarget(1200);
@@ -553,6 +586,36 @@ describe('MemeGenerator', () => {
 				)
 			)
 			.toBeVisible();
+		const retryButton = screen.getByRole('button', {
+			name: m.meme_generator_attach_retry()
+		});
+		await expect.element(retryButton).toBeEnabled();
+		expect(api.render).toHaveBeenCalledTimes(1);
+		expect(onAttach).toHaveBeenCalledTimes(1);
+
+		await retryButton.click();
+		await expect.element(screen.getByText(m.meme_generator_attached()).first()).toBeVisible();
+		expect(api.render).toHaveBeenCalledTimes(1);
+		expect(onAttach).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps the rendered meme for retry when attachment is explicitly rejected', async () => {
+		await page.viewport(900, 800);
+		const api = mockAPI();
+		const onAttach = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+		const screen = await render(MemeGenerator, {
+			props: { workspaceId: 'workspace-1', api, onAttach }
+		});
+
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', {
+				name: m.meme_generator_template_select({ name: template.name })
+			})
+			.click();
+		await screen.getByRole('button', { name: m.meme_generator_render_attach() }).click();
+
+		await expect.element(screen.getByText(m.meme_generator_attach_failed())).toBeVisible();
 		const retryButton = screen.getByRole('button', {
 			name: m.meme_generator_attach_retry()
 		});

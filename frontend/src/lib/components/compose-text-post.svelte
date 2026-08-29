@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { z } from 'zod';
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
@@ -14,7 +15,43 @@
 	} from '$lib/api/client';
 	import { loadCapabilityCatalog, loadWorkspaceAccounts } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
-	import { buildGeneratedPublicationDraft } from '$lib/composer/post-builder';
+	import AIWorkspaceDialog from '$lib/components/post-builder/ai-workspace-dialog.svelte';
+	import type {
+		AIAngle,
+		AIGenerationPhase,
+		AIOpportunity,
+		AIWorkspaceDialogCopy,
+		AIWorkspaceEntry,
+		AIWorkspaceStep
+	} from '$lib/components/post-builder/ai-workspace-types';
+	import {
+		cancelPublicationBuild,
+		createPublicationBuild,
+		discoverPublicationOpportunities,
+		getPublicationBuild,
+		listVoiceProfiles,
+		planPublicationAngles,
+		retryPublicationBuild,
+		type PublicationBuild,
+		type PublicationBuildAngle,
+		type PublicationBuildRequest,
+		type PublicationBuildResult,
+		type PublicationOpportunity
+	} from '$lib/post-builder/client';
+	import { applyPublicationBuildResult } from '$lib/post-builder/apply';
+	import { composerBuildFingerprint } from '$lib/post-builder/composer-state';
+	import AIMemeRecommendation from '$lib/components/post-builder/ai-meme-recommendation.svelte';
+	import type {
+		AIMemeRecommendationCandidate,
+		AIMemeRecommendationCopy
+	} from '$lib/components/post-builder/ai-meme-recommendation';
+	import {
+		memePreviewDataURL,
+		previewMeme,
+		renderMeme,
+		suggestMemes
+	} from '$lib/meme-generator/api';
+	import type { MemeSuggestionCandidate } from '$lib/meme-generator/types';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';
 	import {
 		MAX_COMPOSER_DRAFT_MEDIA,
@@ -186,6 +223,33 @@
 	>[number];
 	type ProviderSettingValue = SettingDefinition['default'];
 	type ProviderSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
+	const AI_BUILD_METADATA_KEY = 'ai_publication_build';
+	const aiPlatformStrategySchema = z.object({
+		account_id: z.string().min(1),
+		platform: z.string().min(1),
+		objective: z.string(),
+		archetype: z.string(),
+		media: z.object({
+			treatment: z.string(),
+			role: z.string(),
+			brief: z.string(),
+			source_ref: z.string().optional()
+		}),
+		warnings: z.array(z.string()).optional()
+	});
+	const aiBuildMetadataSchema = z.object({
+		version: z.literal(1),
+		strategies: z.array(aiPlatformStrategySchema)
+	});
+	type AIPlatformStrategy = z.infer<typeof aiPlatformStrategySchema>;
+	interface AIComposerCheckpoint {
+		posts: PostItem[];
+		variants: Array<[string, Record<string, VariantPost>]>;
+		linkUrl: string;
+		requestedOutputProfiles: Record<string, string>;
+		formatLockedByAccount: Record<string, boolean>;
+		strategies: AIPlatformStrategy[];
+	}
 
 	interface Props {
 		initialPublication?: Publication | null;
@@ -302,11 +366,43 @@
 
 	let buildingPost = $state(false);
 	let postBuilderError = $state('');
-	let generationUndo = $state.raw<{
-		posts: PostItem[];
-		variants: Array<[string, Record<string, VariantPost>]>;
-		linkUrl: string;
-	} | null>(null);
+	let aiWorkspaceOpen = $state(false);
+	let aiWorkspaceEntry = $state<AIWorkspaceEntry>('build');
+	let aiWorkspaceStep = $state<AIWorkspaceStep>('angles');
+	let aiOpportunities = $state.raw<PublicationOpportunity[]>([]);
+	let aiSelectedOpportunityID = $state('');
+	let aiAngles = $state.raw<PublicationBuildAngle[]>([]);
+	let aiSelectedAngleID = $state('');
+	let aiOpportunityLoading = $state(false);
+	let aiFindingMore = $state(false);
+	let aiCancelling = $state(false);
+	let aiObjective = $state('');
+	let aiChangeRequest = $state('');
+	let aiContextNotes = $state('');
+	let aiContextURLs = $state('');
+	let aiContextMayPublish = $state(false);
+	let aiVoiceName = $state(m.compose_ai_default_voice());
+	let aiVoiceProfileID = $state('');
+	let aiActiveBuild = $state.raw<PublicationBuild | null>(null);
+	let aiPendingResult = $state.raw<PublicationBuildResult | null>(null);
+	let aiAppliedResult = $state.raw<PublicationBuildResult | null>(null);
+	let aiAppliedStrategies = $state.raw<AIPlatformStrategy[]>([]);
+	let aiApplyPending = $state(false);
+	let aiGenerationBaseline = '';
+	let aiGenerationIdea = '';
+	let aiBuildPublicationID = '';
+	let aiPollTimer: ReturnType<typeof setTimeout> | null = null;
+	let aiRequestController: AbortController | null = null;
+	let aiMemeCandidates = $state.raw<AIMemeRecommendationCandidate[]>([]);
+	let aiMemeSelectedID = $state('');
+	let aiMemeError = $state('');
+	let aiMemeTargetAccountIDs = $state.raw<string[]>([]);
+	let aiMemeWorkspaceID = '';
+	let aiMemeRequestGeneration = 0;
+	let mediaPickerMemeTargetAccountIDs: string[] = [];
+	let mediaPickerMemeRequestGeneration = 0;
+	let generationUndo = $state.raw<AIComposerCheckpoint | null>(null);
+	let latestGenerationUndo = $state.raw<AIComposerCheckpoint | null>(null);
 
 	let variants = $state<Map<string, Record<string, VariantPost>>>(new Map());
 	let activeVariantAccountId = $state<string | null>(null);
@@ -351,6 +447,10 @@
 	let mediaPickerOpen = $state(false);
 	let mediaPickerPostIndex = $state(0);
 	let mediaPickerInitialFiles = $state.raw<File[]>([]);
+	let mediaPickerInitialMode = $state<'upload' | 'meme'>('upload');
+	let mediaPickerMemeIdea = $state('');
+	let mediaPickerMemeCandidate = $state.raw<MemeSuggestionCandidate | undefined>(undefined);
+	let mediaPickerMemePreview = $state('');
 	let resolvedCapabilities = $state<Record<string, ResolvedAccountCapabilityWithReadiness>>({});
 	let capabilityResolveLoading = $state(false);
 	let capabilityResolveError = $state('');
@@ -465,12 +565,197 @@
 	const canBuildPost = $derived(
 		!isThread &&
 			!activeVariantAccountId &&
-			posts[0]?.content.trim().length > 0 &&
 			selectedAccountIds.length > 0 &&
 			!isSubmitting &&
 			!isSaving &&
 			!buildingPost &&
 			!hasPendingPasteMediaUploads
+	);
+	const aiWorkspaceCopy: AIWorkspaceDialogCopy = {
+		ideateTitle: m.compose_ai_ideate_title(),
+		ideateDescription: m.compose_ai_ideate_description(),
+		buildTitle: m.compose_ai_angles_title(),
+		buildDescription: m.compose_ai_angles_description(),
+		back: m.compose_ai_back_to_ideas(),
+		findMore: m.compose_ai_find_more(),
+		findingMore: m.compose_ai_finding_more(),
+		buildDrafts: m.compose_ai_build_drafts(),
+		cancel: m.compose_ai_cancel_build(),
+		cancelling: m.compose_ai_cancelling(),
+		retry: m.common_retry(),
+		keepEdits: m.compose_ai_keep_edits(),
+		reviewApply: m.compose_ai_review_apply(),
+		opportunities: {
+			heading: m.compose_ai_opportunities_heading(),
+			description: m.compose_ai_opportunities_description(),
+			whyItFits: m.compose_ai_why_it_fits(),
+			bestFor: m.compose_ai_best_for(),
+			media: m.compose_ai_media(),
+			noMedia: m.compose_ai_no_media_needed(),
+			loading: m.compose_ai_finding_ideas(),
+			emptyTitle: m.compose_ai_no_ideas_title(),
+			emptyDescription: m.compose_ai_no_ideas_description(),
+			selected: m.compose_ai_selected_idea()
+		},
+		angles: {
+			heading: m.compose_ai_five_angles_heading(),
+			description: m.compose_ai_five_angles_description(),
+			loading: m.compose_ai_planning_angles(),
+			emptyTitle: m.compose_ai_no_angles_title(),
+			emptyDescription: m.compose_ai_no_angles_description(),
+			recommended: m.compose_ai_recommended(),
+			bestFor: m.compose_ai_aim(),
+			evidence: m.compose_ai_uses(),
+			media: m.compose_ai_media(),
+			noMedia: m.compose_ai_no_media_needed(),
+			selected: m.compose_ai_selected_angle()
+		},
+		progress: {
+			heading: m.compose_ai_progress_heading(),
+			description: m.compose_ai_progress_description()
+		}
+	};
+	const aiMemeCopy: AIMemeRecommendationCopy = {
+		title: m.compose_ai_meme_title(),
+		description: m.compose_ai_meme_description(),
+		recommendedLabel: m.compose_ai_meme_best_fit(),
+		alternativesLabel: m.compose_ai_meme_alternatives(),
+		useLabel: m.compose_ai_meme_use(),
+		usingLabel: m.compose_ai_meme_adding(),
+		editLabel: m.compose_ai_meme_edit(),
+		editingLabel: m.compose_ai_meme_opening(),
+		retryLabel: m.compose_ai_meme_retry_preview(),
+		retryingLabel: m.compose_ai_meme_rendering_preview(),
+		previewLoading: m.compose_ai_meme_preview_loading(),
+		previewUnavailable: m.compose_ai_meme_preview_unavailable(),
+		emptyTitle: m.compose_ai_meme_empty_title(),
+		emptyDescription: m.compose_ai_meme_empty_description(),
+		actionFailed: m.compose_ai_meme_action_failed(),
+		selectAlternative: (templateName, position) =>
+			m.compose_ai_meme_select_alternative({ templateName, position })
+	};
+	const aiWorkspaceOpportunities = $derived<AIOpportunity[]>(
+		aiOpportunities.map((opportunity) => ({
+			id: opportunity.id,
+			title: opportunity.title,
+			premise: opportunity.hook || opportunity.why_now,
+			whyItFits: opportunity.why_it_fits,
+			objective: opportunity.platform_treatments[0]?.objective,
+			media: opportunity.platform_treatments[0]?.media,
+			mediaRecommendation: opportunity.platform_treatments[0]?.media
+		}))
+	);
+	const aiWorkspaceAngles = $derived<AIAngle[]>(
+		aiAngles.map((angle) => ({
+			id: angle.id,
+			title: angle.label,
+			premise: angle.hook,
+			objective: angle.desired_reaction || angle.objective,
+			evidence: angle.evidence,
+			mediaRecommendation: angle.media.treatment === 'none' ? '' : angle.media.brief,
+			recommended: angle.id === 'recommended',
+			preservesCurrentAngle: angle.id === 'keep_current'
+		}))
+	);
+	const aiGenerationPhases = $derived.by<AIGenerationPhase[]>(() => {
+		const phase = aiActiveBuild?.phase ?? 'queued';
+		const reachedCreation = ['drafting', 'reviewing', 'ready', 'committed'].includes(phase);
+		const reachedReview = ['reviewing', 'ready', 'committed'].includes(phase);
+		const finished = ['ready', 'committed'].includes(phase);
+		return [
+			{
+				id: 'understanding',
+				label: m.compose_ai_phase_understanding(),
+				status: reachedCreation ? 'complete' : 'active'
+			},
+			{
+				id: 'creating',
+				label: m.compose_ai_phase_creating(),
+				status: reachedReview ? 'complete' : reachedCreation ? 'active' : 'pending'
+			},
+			{
+				id: 'checking',
+				label: m.compose_ai_phase_checking(),
+				status: finished ? 'complete' : reachedReview ? 'active' : 'pending'
+			}
+		];
+	});
+	const aiGenerationMessage = $derived(
+		aiApplyPending
+			? m.compose_ai_progress_conflict()
+			: aiActiveBuild?.state === 'failed'
+				? aiActiveBuild.error_message || m.compose_ai_progress_stopped()
+				: aiActiveBuild?.state === 'ready'
+					? m.compose_ai_progress_ready()
+					: m.compose_ai_progress_resumable()
+	);
+	function localizedAIObjective(objective: string): string {
+		switch (objective) {
+			case 'reach':
+				return m.compose_ai_objective_reach();
+			case 'comments':
+				return m.compose_ai_objective_comments();
+			case 'reposts':
+				return m.compose_ai_objective_reposts();
+			case 'authority':
+				return m.compose_ai_objective_authority();
+			case 'trust':
+				return m.compose_ai_objective_trust();
+			case 'shares':
+				return m.compose_ai_objective_shares();
+			case 'conversation':
+				return m.compose_ai_objective_conversation();
+			case 'follows':
+				return m.compose_ai_objective_follows();
+			case 'clicks':
+				return m.compose_ai_objective_clicks();
+			case 'boosts':
+				return m.compose_ai_objective_boosts();
+			case 'hashtag_discovery':
+				return m.compose_ai_objective_hashtag_discovery();
+			case 'following':
+				return m.compose_ai_objective_following_feed();
+			case 'discover':
+				return m.compose_ai_objective_discover();
+			case 'target_feed':
+				return m.compose_ai_objective_target_feed();
+			case 'quotes':
+				return m.compose_ai_objective_quotes();
+			case 'community_growth':
+				return m.compose_ai_objective_community_growth();
+			case 'cross_meta_reach':
+				return m.compose_ai_objective_cross_meta_reach();
+			default:
+				return m.compose_ai_objective_platform_goal();
+		}
+	}
+
+	function localizedAIMediaTreatment(treatment: string): string {
+		switch (treatment) {
+			case 'use_source':
+				return m.compose_ai_media_use_source();
+			case 'annotate_source':
+				return m.compose_ai_media_annotate_source();
+			case 'meme':
+				return m.compose_ai_media_meme();
+			case 'statement_card':
+				return m.compose_ai_media_statement_card();
+			case 'carousel':
+				return m.compose_ai_media_carousel();
+			case 'concept_image':
+				return m.compose_ai_media_concept_image();
+			case 'short_video_script':
+				return m.compose_ai_media_short_video();
+			case 'edit_existing_video':
+				return m.compose_ai_media_edit_video();
+			default:
+				return m.compose_ai_media_recommended();
+		}
+	}
+	const visibleAIStrategies = $derived(
+		aiAppliedStrategies.filter(
+			(destination) => !activeVariantAccountId || destination.account_id === activeVariantAccountId
+		)
 	);
 	const totalChars = $derived(posts.reduce((sum, p) => sum + p.content.length, 0));
 	const isThread = $derived(posts.length > 1);
@@ -868,6 +1153,7 @@
 			settingsByAccount,
 			segmentSettingsByPost,
 			mediaSettingsByAccount,
+			aiAppliedStrategies,
 			scheduledDate: selectedDate?.toString() ?? null,
 			selectedTime,
 			randomDelayOverride,
@@ -1479,6 +1765,12 @@
 				rendition.media = first.media.map(({ media_id, role }) => ({ media_id, role }));
 			}
 		}
+		if (aiAppliedStrategies.length > 0) {
+			payload.metadata[AI_BUILD_METADATA_KEY] = {
+				version: 1,
+				strategies: aiAppliedStrategies
+			};
+		}
 		return payload;
 	}
 
@@ -1486,6 +1778,10 @@
 		publicationId = publication.id;
 		revision = publication.revision;
 		repostOverride = publication.repost_override ?? { mode: 'inherit' };
+		const builderMetadata = aiBuildMetadataSchema.safeParse(
+			publication.metadata?.[AI_BUILD_METADATA_KEY]
+		);
+		aiAppliedStrategies = builderMetadata.success ? builderMetadata.data.strategies : [];
 		selectedSocialSetId = publication.social_set_id ?? '';
 		requestedOutputProfiles = Object.fromEntries(
 			(publication.renditions ?? [])
@@ -1992,6 +2288,10 @@
 		const target = post ? pasteMediaTargetForPost(post) : null;
 		if (target && pasteMediaUploadsForTarget(target).length > 0) return;
 		mediaPickerInitialFiles = [];
+		mediaPickerInitialMode = 'upload';
+		mediaPickerMemeIdea = '';
+		mediaPickerMemeCandidate = undefined;
+		mediaPickerMemePreview = '';
 		mediaPickerPostIndex = postIndex;
 		mediaPickerOpen = true;
 	}
@@ -2245,6 +2545,9 @@
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		generationUndo = null;
+		latestGenerationUndo = null;
+		aiAppliedResult = null;
+		aiAppliedStrategies = [];
 		postBuilderError = '';
 		publicationId = '';
 		selectedSocialSetId = '';
@@ -2287,6 +2590,8 @@
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		generationUndo = null;
+		latestGenerationUndo = null;
+		aiAppliedResult = null;
 		postBuilderError = '';
 		publicationId = publication.id;
 		revision = publication.revision;
@@ -2446,6 +2751,7 @@
 		void (async () => {
 			await initializeComposer();
 			await restoreImageEditorReturn();
+			await restoreActivePublicationBuild();
 		})();
 		return () => {
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -2471,6 +2777,8 @@
 		clearAutoSaveTimer();
 		clearSavedIndicator();
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
+		if (aiPollTimer) clearTimeout(aiPollTimer);
+		aiRequestController?.abort();
 		capabilityResolveAbortController?.abort();
 		for (const controller of captionRequests.values()) controller.abort();
 		captionRequests.clear();
@@ -2820,6 +3128,26 @@
 		unsubscribeComposerSession = null;
 		composerSession = null;
 		clearAutoSaveTimer();
+		aiRequestController?.abort();
+		if (aiPollTimer) clearTimeout(aiPollTimer);
+		aiPollTimer = null;
+		aiMemeRequestGeneration += 1;
+		buildingPost = false;
+		aiOpportunityLoading = false;
+		aiFindingMore = false;
+		aiWorkspaceOpen = false;
+		aiActiveBuild = null;
+		aiPendingResult = null;
+		aiAppliedResult = null;
+		aiAppliedStrategies = [];
+		aiApplyPending = false;
+		aiBuildPublicationID = '';
+		aiVoiceName = m.compose_ai_default_voice();
+		aiVoiceProfileID = '';
+		aiMemeCandidates = [];
+		aiMemeTargetAccountIDs = [];
+		aiMemeWorkspaceID = '';
+		aiMemeError = '';
 		saveGeneration += 1;
 		nextSlotRequestSequence += 1;
 		suggestingSlot = false;
@@ -2850,6 +3178,7 @@
 		resolvedCapabilities = {};
 		validationIssues = [];
 		generationUndo = null;
+		latestGenerationUndo = null;
 		postBuilderError = '';
 		settingsDialogOpen = false;
 		settingsAccountId = '';
@@ -3631,6 +3960,10 @@
 		const pasteTarget = pasteMediaTargetForPost(targetPost);
 		if (pasteTarget && pasteMediaUploadsForTarget(pasteTarget).length > 0) return;
 		mediaPickerPostIndex = targetPostIndex;
+		mediaPickerInitialMode = 'upload';
+		mediaPickerMemeIdea = '';
+		mediaPickerMemeCandidate = undefined;
+		mediaPickerMemePreview = '';
 		mediaPickerInitialFiles = Array.from(files).slice(
 			0,
 			Math.max(0, composerMediaLimit - getEditorMediaIdsForPost(targetPost).length)
@@ -3800,14 +4133,172 @@
 	// --------------------------------------------------------------------------
 	// AI post builder
 	// --------------------------------------------------------------------------
+	function aiBuildStorageKey(workspaceID: string): string {
+		return `openpost:publication-build:${workspaceID}`;
+	}
+
+	function composerAISnapshot(): string {
+		return composerBuildFingerprint({
+			posts,
+			variants,
+			linkUrl,
+			accountIds: selectedAccountIds,
+			requestedOutputProfiles,
+			formatLockedByAccount
+		});
+	}
+
+	function selectedAIPlatforms(): string[] {
+		return [...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))];
+	}
+
+	function selectedAIAssets(): PublicationBuildRequest['assets'] {
+		return [...new Set(posts.flatMap((post) => post.mediaIds))].slice(0, 10).map((mediaID) => ({
+			media_id: mediaID,
+			role: 'context' as const,
+			may_publish: true
+		}));
+	}
+
+	function parsedAIContextURLs(): string[] {
+		return [
+			...new Set(
+				aiContextURLs
+					.split(/\s+/)
+					.map((value) => value.trim())
+					.filter(Boolean)
+			)
+		].slice(0, 10);
+	}
+
+	function publicationBuildRequest(
+		idea: string,
+		angle?: PublicationBuildAngle
+	): PublicationBuildRequest {
+		const request: PublicationBuildRequest = {
+			workspace_id: selectedWorkspaceId,
+			idea,
+			account_ids: [...selectedAccountIds],
+			direction: {
+				outcome: aiObjective.trim() || angle?.objective || angle?.desired_reaction,
+				angle: angle ? `${angle.thesis}\n\n${angle.approach}` : undefined,
+				tone_adjustment: aiChangeRequest.trim() || undefined,
+				media_preference: angle?.media.brief
+			},
+			destination_policy: 'require_all'
+		};
+		if (selectedSocialSetId) request.social_set_id = selectedSocialSetId;
+		if (aiVoiceProfileID) request.voice_profile_id = aiVoiceProfileID;
+		const contextURLs = parsedAIContextURLs();
+		if (contextURLs.length > 0) request.context_urls = contextURLs;
+		const contextNotes = aiContextNotes.trim();
+		if (contextNotes) {
+			request.context_notes = contextNotes;
+			request.context_may_publish = aiContextMayPublish;
+		}
+		const assets = selectedAIAssets();
+		if (assets.length > 0) request.assets = assets;
+		return request;
+	}
+
+	async function loadAIWorkspaceVoice(workspaceID: string): Promise<void> {
+		if (!workspaceID) return;
+		if (workspaceID === selectedWorkspaceId) {
+			aiVoiceName = m.compose_ai_default_voice();
+			aiVoiceProfileID = '';
+		}
+		try {
+			const profiles = await listVoiceProfiles(workspaceID);
+			if (workspaceID !== selectedWorkspaceId) return;
+			const profile = profiles.find((candidate) => candidate.is_default) ?? profiles[0];
+			if (profile) {
+				aiVoiceName = profile.name;
+				aiVoiceProfileID = profile.id;
+			}
+		} catch {
+			if (workspaceID !== selectedWorkspaceId) return;
+			aiVoiceName = m.compose_ai_default_voice();
+			aiVoiceProfileID = '';
+		}
+	}
+
+	async function loadPublicationOpportunities(findMore = false): Promise<void> {
+		if (!selectedWorkspaceId || selectedAIPlatforms().length === 0) return;
+		aiRequestController?.abort();
+		aiRequestController = new AbortController();
+		if (findMore) aiFindingMore = true;
+		else aiOpportunityLoading = true;
+		postBuilderError = '';
+		try {
+			const result = await discoverPublicationOpportunities(
+				{
+					workspace_id: selectedWorkspaceId,
+					focus: aiContextNotes.trim() || undefined,
+					voice_profile_id: aiVoiceProfileID || undefined,
+					platforms: selectedAIPlatforms().slice(0, 5),
+					limit: 8
+				},
+				aiRequestController.signal
+			);
+			aiOpportunities = findMore
+				? [
+						...aiOpportunities,
+						...result.opportunities.filter(
+							(candidate) => !aiOpportunities.some((current) => current.id === candidate.id)
+						)
+					].slice(-16)
+				: result.opportunities;
+		} catch (cause) {
+			if (cause instanceof DOMException && cause.name === 'AbortError') return;
+			postBuilderError =
+				cause instanceof Error && cause.message ? cause.message : m.compose_ai_find_ideas_failed();
+		} finally {
+			aiOpportunityLoading = false;
+			aiFindingMore = false;
+		}
+	}
+
+	async function loadPublicationAngles(idea: string): Promise<void> {
+		aiRequestController?.abort();
+		aiRequestController = new AbortController();
+		buildingPost = true;
+		postBuilderError = '';
+		aiWorkspaceStep = 'angles';
+		aiAngles = [];
+		aiSelectedAngleID = '';
+		try {
+			const result = await planPublicationAngles(
+				publicationBuildRequest(idea),
+				aiRequestController.signal
+			);
+			aiAngles = result.angles;
+			aiSelectedAngleID = result.angles.find((angle) => angle.id === 'recommended')?.id ?? '';
+			if (!aiObjective) {
+				aiObjective =
+					result.angles.find((angle) => angle.id === aiSelectedAngleID)?.objective ?? '';
+			}
+		} catch (cause) {
+			if (cause instanceof DOMException && cause.name === 'AbortError') return;
+			postBuilderError =
+				cause instanceof Error && cause.message ? cause.message : m.compose_ai_plan_angles_failed();
+		} finally {
+			buildingPost = false;
+		}
+	}
+
+	async function selectPublicationOpportunity(opportunity: AIOpportunity): Promise<void> {
+		const selected = aiOpportunities.find((candidate) => candidate.id === opportunity.id);
+		if (!selected) return;
+		aiSelectedOpportunityID = selected.id;
+		aiGenerationIdea = [selected.title, selected.hook, selected.why_now]
+			.filter(Boolean)
+			.join('\n\n');
+		await loadPublicationAngles(aiGenerationIdea);
+	}
+
 	async function buildPostWithAI() {
 		if (buildingPost || isThread || activeVariantAccountId) return;
 		const sourcePost = posts[0];
-		const idea = generationUndo?.posts[0]?.content.trim() || sourcePost?.content.trim();
-		if (!idea) {
-			postBuilderError = m.compose_ai_idea_required();
-			return;
-		}
 		if (!selectedWorkspaceId || selectedAccountIds.length === 0) {
 			postBuilderError = m.compose_ai_destinations_required();
 			return;
@@ -3819,58 +4310,504 @@
 			return;
 		}
 
+		const workspaceID = selectedWorkspaceId;
+		aiWorkspaceOpen = true;
+		aiWorkspaceEntry = sourcePost.content.trim() ? 'build' : 'ideate';
+		aiWorkspaceStep = aiWorkspaceEntry === 'build' ? 'angles' : 'opportunities';
+		aiGenerationIdea = sourcePost.content.trim();
+		aiSelectedOpportunityID = '';
+		aiSelectedAngleID = '';
+		aiAngles = [];
+		postBuilderError = '';
+		if (aiWorkspaceEntry === 'build') buildingPost = true;
+		else aiOpportunityLoading = true;
+		await loadAIWorkspaceVoice(workspaceID);
+		if (workspaceID !== selectedWorkspaceId) return;
+		if (aiWorkspaceEntry === 'build') {
+			await loadPublicationAngles(aiGenerationIdea);
+		} else if (aiOpportunities.length === 0) {
+			await loadPublicationOpportunities();
+		} else {
+			aiOpportunityLoading = false;
+		}
+	}
+
+	function persistActivePublicationBuild(
+		build: PublicationBuild,
+		publicationID = aiBuildPublicationID,
+		baseline = aiGenerationBaseline
+	): void {
+		if (!publicationID) return;
+		localStorage.setItem(
+			aiBuildStorageKey(build.workspace_id),
+			JSON.stringify({ id: build.id, publication_id: publicationID, baseline })
+		);
+	}
+
+	function clearActivePublicationBuild(): void {
+		if (selectedWorkspaceId) localStorage.removeItem(aiBuildStorageKey(selectedWorkspaceId));
+		if (aiPollTimer) clearTimeout(aiPollTimer);
+		aiPollTimer = null;
+		aiBuildPublicationID = '';
+		aiActiveBuild = null;
+	}
+
+	async function ensureAIBuildPublicationID(workspaceID: string): Promise<string | null> {
+		if (publicationId) return publicationId;
+		const savedPublicationID = await saveDraft({ allowEmpty: true });
+		if (savedPublicationID) return savedPublicationID;
+		if (selectedWorkspaceId !== workspaceID) return null;
+		postBuilderError = error || m.compose_save_draft_failed();
+		return null;
+	}
+
+	async function startSelectedPublicationBuild(): Promise<void> {
+		const angle = aiAngles.find((candidate) => candidate.id === aiSelectedAngleID);
+		if (!angle || !aiGenerationIdea.trim()) return;
+		const buildWorkspaceID = selectedWorkspaceId;
 		buildingPost = true;
 		postBuilderError = '';
+		aiApplyPending = false;
+		aiPendingResult = null;
+		const buildPublicationID = await ensureAIBuildPublicationID(buildWorkspaceID);
+		if (!buildPublicationID) {
+			if (selectedWorkspaceId === buildWorkspaceID) buildingPost = false;
+			return;
+		}
+		if (selectedWorkspaceId !== buildWorkspaceID) return;
+		aiWorkspaceStep = 'generating';
+		aiBuildPublicationID = buildPublicationID;
+		aiGenerationBaseline = composerAISnapshot();
+		const buildBaseline = aiGenerationBaseline;
 		try {
-			const { data, error: generateError } = await client.POST('/post-builder/generate', {
-				body: {
-					workspace_id: selectedWorkspaceId,
-					idea,
-					social_account_ids: selectedAccountIds
-				}
-			});
-			if (generateError || !data) {
-				throw new Error(generateError?.detail || m.compose_ai_build_failed());
+			const build = await createPublicationBuild(
+				publicationBuildRequest(aiGenerationIdea, angle),
+				`composer-${crypto.randomUUID()}`
+			);
+			persistActivePublicationBuild(build, buildPublicationID, buildBaseline);
+			if (
+				build.workspace_id !== buildWorkspaceID ||
+				selectedWorkspaceId !== buildWorkspaceID ||
+				publicationId !== buildPublicationID ||
+				aiBuildPublicationID !== buildPublicationID
+			) {
+				return;
 			}
-			if (!generationUndo) {
-				generationUndo = {
-					posts: posts.map((post) => ({ ...post, mediaIds: [...post.mediaIds] })),
-					variants: Array.from(variants.entries()).map(([accountID, record]) => [
-						accountID,
-						structuredClone(record)
-					]),
-					linkUrl
-				};
-			}
-			const generated = buildGeneratedPublicationDraft(data, sourcePost);
-			posts = [generated.sourcePost];
-			variants = new SvelteMap(Object.entries(generated.variants));
-			activePostIndex = 0;
-			activeVariantAccountId = null;
-			linkUrl = firstComposerURL(generated.sourcePost.content);
-			void startFirstComposition('text');
-			soundPreferences.play('success');
-			scheduleAutoSave();
+			aiActiveBuild = build;
+			await handlePublicationBuildState(build);
 		} catch (cause) {
+			if (
+				selectedWorkspaceId !== buildWorkspaceID ||
+				publicationId !== buildPublicationID ||
+				aiBuildPublicationID !== buildPublicationID
+			) {
+				return;
+			}
+			buildingPost = false;
 			postBuilderError =
 				cause instanceof Error && cause.message ? cause.message : m.compose_ai_build_failed();
 			soundPreferences.play('error');
+		}
+	}
+
+	async function pollPublicationBuild(id: string): Promise<void> {
+		if (aiPollTimer) clearTimeout(aiPollTimer);
+		aiPollTimer = setTimeout(async () => {
+			try {
+				await handlePublicationBuildState(await getPublicationBuild(id));
+			} catch (cause) {
+				buildingPost = false;
+				postBuilderError =
+					cause instanceof Error && cause.message
+						? cause.message
+						: m.compose_ai_check_build_failed();
+			}
+		}, 1200);
+	}
+
+	async function handlePublicationBuildState(build: PublicationBuild): Promise<void> {
+		if (
+			build.workspace_id !== selectedWorkspaceId ||
+			!aiBuildPublicationID ||
+			aiBuildPublicationID !== publicationId
+		) {
+			return;
+		}
+		aiActiveBuild = build;
+		if (build.state === 'queued' || build.state === 'building') {
+			buildingPost = true;
+			persistActivePublicationBuild(build);
+			await pollPublicationBuild(build.id);
+			return;
+		}
+		buildingPost = false;
+		if (build.state === 'ready' && build.result) {
+			aiPendingResult = build.result;
+			if (aiGenerationBaseline && composerAISnapshot() !== aiGenerationBaseline) {
+				aiApplyPending = true;
+				aiWorkspaceOpen = true;
+				aiWorkspaceStep = 'generating';
+				return;
+			}
+			applyReadyPublicationBuild();
+			return;
+		}
+		if (build.state === 'failed') {
+			postBuilderError = build.error_message || m.compose_ai_build_failed();
+			soundPreferences.play('error');
+			return;
+		}
+		if (build.state === 'cancelled') {
+			clearActivePublicationBuild();
+			aiWorkspaceOpen = false;
+		}
+	}
+
+	function captureAIComposerCheckpoint(): AIComposerCheckpoint {
+		return {
+			posts: posts.map((post) => ({ ...post, mediaIds: [...post.mediaIds] })),
+			variants: Array.from(variants.entries()).map(([accountID, record]) => [
+				accountID,
+				structuredClone(record)
+			]),
+			linkUrl,
+			requestedOutputProfiles: { ...requestedOutputProfiles },
+			formatLockedByAccount: { ...formatLockedByAccount },
+			strategies: structuredClone(aiAppliedStrategies)
+		};
+	}
+
+	function restoreAIComposerCheckpoint(checkpoint: AIComposerCheckpoint): void {
+		posts = checkpoint.posts.map((post) => ({ ...post, mediaIds: [...post.mediaIds] }));
+		variants = new SvelteMap(
+			checkpoint.variants.map(([accountID, record]) => [accountID, structuredClone(record)])
+		);
+		linkUrl = checkpoint.linkUrl;
+		requestedOutputProfiles = { ...checkpoint.requestedOutputProfiles };
+		formatLockedByAccount = { ...checkpoint.formatLockedByAccount };
+		aiAppliedStrategies = structuredClone(checkpoint.strategies);
+		aiAppliedResult = null;
+		aiMemeCandidates = [];
+		aiMemeError = '';
+		postBuilderError = '';
+		activePostIndex = 0;
+		activeVariantAccountId = null;
+		void resolveCapabilities();
+		scheduleAutoSave();
+	}
+
+	function applyReadyPublicationBuild(): void {
+		const result = aiPendingResult;
+		const sourcePost = posts[0];
+		if (!result || !sourcePost) return;
+		const checkpoint = captureAIComposerCheckpoint();
+		if (!generationUndo) generationUndo = checkpoint;
+		latestGenerationUndo = checkpoint;
+		const applied = applyPublicationBuildResult(result, sourcePost);
+		posts = applied.posts;
+		variants = new SvelteMap(Object.entries(applied.variants));
+		requestedOutputProfiles = {
+			...requestedOutputProfiles,
+			...applied.requestedOutputProfiles
+		};
+		formatLockedByAccount = { ...formatLockedByAccount, ...applied.formatLockedByAccount };
+		activePostIndex = 0;
+		activeVariantAccountId = null;
+		linkUrl = firstComposerURL(posts[0]?.content ?? '');
+		aiAppliedResult = result;
+		aiAppliedStrategies = result.destinations.map((destination) => ({
+			account_id: destination.account_id,
+			platform: destination.platform,
+			objective: destination.objective,
+			archetype: destination.archetype,
+			media: structuredClone(destination.media),
+			warnings: destination.warnings ? [...destination.warnings] : undefined
+		}));
+		aiApplyPending = false;
+		aiPendingResult = null;
+		aiWorkspaceOpen = false;
+		clearActivePublicationBuild();
+		postBuilderError = (result.skipped ?? [])
+			.map((destination) => `${getPlatformName(destination.platform)}: ${destination.reason}`)
+			.join(' ');
+		void loadAIMemeRecommendations(result);
+		void startFirstComposition('text');
+		void resolveCapabilities();
+		soundPreferences.play('success');
+		scheduleAutoSave();
+	}
+
+	function aiMemeRecipe(candidate: AIMemeRecommendationCandidate) {
+		return {
+			workspaceId: selectedWorkspaceId,
+			templateId: candidate.suggestion.template_id,
+			captions: candidate.suggestion.caption_lines,
+			overlayMediaIds: [],
+			format: 'png' as const,
+			altText: candidate.suggestion.alt_text
+		};
+	}
+
+	async function previewAIMemeCandidate(
+		candidate: AIMemeRecommendationCandidate,
+		generation = aiMemeRequestGeneration,
+		workspaceID = aiMemeWorkspaceID
+	): Promise<void> {
+		if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+		aiMemeCandidates = aiMemeCandidates.map((current) =>
+			current.id === candidate.id ? { ...current, previewState: 'loading' } : current
+		);
+		try {
+			const preview = await previewMeme(aiMemeRecipe(candidate));
+			if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+			aiMemeCandidates = aiMemeCandidates.map((current) =>
+				current.id === candidate.id
+					? { ...current, previewUrl: memePreviewDataURL(preview), previewState: 'ready' }
+					: current
+			);
+		} catch {
+			if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+			aiMemeCandidates = aiMemeCandidates.map((current) =>
+				current.id === candidate.id ? { ...current, previewState: 'failed' } : current
+			);
+		}
+	}
+
+	async function loadAIMemeRecommendations(result: PublicationBuildResult): Promise<void> {
+		const generation = ++aiMemeRequestGeneration;
+		const workspaceID = selectedWorkspaceId;
+		const memeDestinations = result.destinations.filter(
+			(destination) => destination.media.treatment === 'meme'
+		);
+		aiMemeCandidates = [];
+		aiMemeTargetAccountIDs = [];
+		aiMemeWorkspaceID = '';
+		aiMemeError = '';
+		if (memeDestinations.length === 0) {
+			return;
+		}
+		const targetAccountIDs = memeDestinations.map((destination) => destination.account_id);
+		aiMemeTargetAccountIDs = targetAccountIDs;
+		aiMemeWorkspaceID = workspaceID;
+		try {
+			const suggestions = await suggestMemes({
+				workspaceId: workspaceID,
+				idea: [result.direction.angle, memeDestinations[0]?.media.brief]
+					.filter(Boolean)
+					.join('\n\n'),
+				tone: 'balanced',
+				language: getLocaleTag(),
+				count: 3
+			});
+			if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+			aiMemeCandidates = suggestions.candidates.slice(0, 3).map((suggestion, index) => ({
+				id: `${suggestion.template_id}:${index}`,
+				suggestion,
+				previewState: 'loading'
+			}));
+			aiMemeSelectedID = aiMemeCandidates[0]?.id ?? '';
+			for (let index = 0; index < aiMemeCandidates.length; index += 2) {
+				await Promise.all(
+					aiMemeCandidates
+						.slice(index, index + 2)
+						.map((candidate) => previewAIMemeCandidate(candidate, generation, workspaceID))
+				);
+			}
+		} catch (cause) {
+			if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+			aiMemeError = cause instanceof Error ? cause.message : m.compose_ai_meme_unavailable();
+		}
+	}
+
+	function canAttachAIMemeToTargets(
+		targetAccountIDs = aiMemeTargetAccountIDs,
+		workspaceID = aiMemeWorkspaceID,
+		mediaID = ''
+	): boolean {
+		aiMemeError = '';
+		const post = posts[0];
+		if (
+			!post ||
+			targetAccountIDs.length === 0 ||
+			workspaceID !== selectedWorkspaceId ||
+			targetAccountIDs.some((accountID) => !selectedAccountIds.includes(accountID))
+		) {
+			aiMemeError = aiMemeCopy.actionFailed;
+			return false;
+		}
+		for (const accountID of targetAccountIDs) {
+			const record = normalizeVariantRecord(variants.get(accountID), posts);
+			const current = record[post.key];
+			const currentMediaIDs = current?.mediaInherited === false ? current.mediaIds : post.mediaIds;
+			if (!currentMediaIDs.includes(mediaID) && currentMediaIDs.length >= composerMediaLimit) {
+				const account = accounts.find((candidate) => candidate.id === accountID);
+				aiMemeError = m.compose_ai_meme_remove_media({
+					account: account ? accountLabel(account) : m.compose_ai_this_destination()
+				});
+				return false;
+			}
+		}
+		return true;
+	}
+
+	async function attachAIMemeToTargets(
+		mediaID: string,
+		targetAccountIDs = aiMemeTargetAccountIDs,
+		workspaceID = aiMemeWorkspaceID
+	): Promise<boolean> {
+		if (!mediaID || !canAttachAIMemeToTargets(targetAccountIDs, workspaceID, mediaID)) return false;
+		const post = posts[0];
+		if (!post) return false;
+		const nextVariants = new SvelteMap(variants);
+		for (const accountID of targetAccountIDs) {
+			const record = normalizeVariantRecord(nextVariants.get(accountID), posts);
+			const current = record[post.key];
+			const currentMediaIDs = current?.mediaInherited === false ? current.mediaIds : post.mediaIds;
+			record[post.key] = {
+				...current,
+				mediaIds: [...new Set([...currentMediaIDs, mediaID])],
+				mediaInherited: false
+			};
+			nextVariants.set(accountID, record);
+		}
+		variants = nextVariants;
+		await hydrateMediaMetadata(selectedWorkspaceId, [mediaID], true);
+		void generateMissingMediaAltText([mediaID], post.content);
+		scheduleAutoSave();
+		return true;
+	}
+
+	async function useAIMeme(candidate: AIMemeRecommendationCandidate): Promise<void> {
+		const generation = aiMemeRequestGeneration;
+		const workspaceID = aiMemeWorkspaceID;
+		const targetAccountIDs = [...aiMemeTargetAccountIDs];
+		if (!canAttachAIMemeToTargets(targetAccountIDs, workspaceID)) return;
+		const rendered = await renderMeme(aiMemeRecipe(candidate));
+		if (generation !== aiMemeRequestGeneration || workspaceID !== selectedWorkspaceId) return;
+		if (!(await attachAIMemeToTargets(rendered.media.id, targetAccountIDs, workspaceID))) return;
+		aiMemeCandidates = [];
+		soundPreferences.play('success');
+	}
+
+	function editAIMeme(candidate: AIMemeRecommendationCandidate): void {
+		if (!canAttachAIMemeToTargets(aiMemeTargetAccountIDs, aiMemeWorkspaceID)) return;
+		mediaPickerPostIndex = 0;
+		mediaPickerInitialFiles = [];
+		mediaPickerInitialMode = 'meme';
+		mediaPickerMemeIdea = aiGenerationIdea;
+		mediaPickerMemeCandidate = candidate.suggestion;
+		mediaPickerMemePreview = candidate.previewUrl ?? '';
+		mediaPickerMemeTargetAccountIDs = [...aiMemeTargetAccountIDs];
+		mediaPickerMemeRequestGeneration = aiMemeRequestGeneration;
+		mediaPickerOpen = true;
+	}
+
+	function keepCurrentComposerEdits(): void {
+		aiApplyPending = false;
+		aiPendingResult = null;
+		aiWorkspaceOpen = false;
+		clearActivePublicationBuild();
+	}
+
+	async function cancelActivePublicationBuild(): Promise<void> {
+		if (!aiActiveBuild) return;
+		aiCancelling = true;
+		try {
+			await handlePublicationBuildState(await cancelPublicationBuild(aiActiveBuild.id));
+		} catch (cause) {
+			postBuilderError =
+				cause instanceof Error ? cause.message : m.compose_ai_cancel_build_failed();
 		} finally {
+			aiCancelling = false;
+		}
+	}
+
+	async function retryActivePublicationBuild(): Promise<void> {
+		if (!aiActiveBuild) return;
+		postBuilderError = '';
+		buildingPost = true;
+		try {
+			await handlePublicationBuildState(await retryPublicationBuild(aiActiveBuild.id));
+		} catch (cause) {
 			buildingPost = false;
+			postBuilderError = cause instanceof Error ? cause.message : m.compose_ai_build_failed();
+		}
+	}
+
+	async function restoreActivePublicationBuild(): Promise<void> {
+		if (!selectedWorkspaceId) return;
+		const saved = localStorage.getItem(aiBuildStorageKey(selectedWorkspaceId));
+		if (!saved) return;
+		try {
+			const parsed = z
+				.object({
+					id: z.string().min(1),
+					publication_id: z.string().min(1),
+					baseline: z.string().optional()
+				})
+				.safeParse(JSON.parse(saved));
+			if (!parsed.success) {
+				localStorage.removeItem(aiBuildStorageKey(selectedWorkspaceId));
+				return;
+			}
+			if (parsed.data.publication_id !== publicationId) return;
+			aiBuildPublicationID = parsed.data.publication_id;
+			aiGenerationBaseline = parsed.data.baseline ?? '';
+			aiWorkspaceEntry = posts[0]?.content.trim() ? 'build' : 'ideate';
+			aiWorkspaceStep = 'generating';
+			aiWorkspaceOpen = true;
+			await handlePublicationBuildState(await getPublicationBuild(parsed.data.id));
+		} catch {
+			clearActivePublicationBuild();
 		}
 	}
 
 	function restoreIdea() {
 		if (!generationUndo) return;
-		posts = generationUndo.posts.map((post) => ({ ...post, mediaIds: [...post.mediaIds] }));
-		variants = new SvelteMap(
-			generationUndo.variants.map(([accountID, record]) => [accountID, structuredClone(record)])
-		);
-		linkUrl = generationUndo.linkUrl;
+		restoreAIComposerCheckpoint(generationUndo);
 		generationUndo = null;
-		postBuilderError = '';
+		latestGenerationUndo = null;
+	}
+
+	function undoLatestGenerationApply() {
+		if (!latestGenerationUndo) return;
+		const restoresOriginalIdea = latestGenerationUndo === generationUndo;
+		restoreAIComposerCheckpoint(latestGenerationUndo);
+		latestGenerationUndo = null;
+		if (restoresOriginalIdea) generationUndo = null;
+	}
+
+	function convertGeneratedThreadToPost(): void {
+		if (!generationUndo || posts.length < 2) return;
+		const source = posts[0];
+		const joinedSource: PostItem = {
+			...source,
+			content: posts
+				.map((post) => post.content.trim())
+				.filter(Boolean)
+				.join('\n\n'),
+			mediaIds: [...new Set(posts.flatMap((post) => post.mediaIds))]
+		};
+		const nextVariants = new SvelteMap<string, Record<string, VariantPost>>();
+		for (const [accountID, record] of variants.entries()) {
+			const values = posts.map((post) => record[post.key]).filter(Boolean);
+			nextVariants.set(accountID, {
+				[joinedSource.key]: {
+					content: values
+						.map((value) => value.content.trim())
+						.filter(Boolean)
+						.join('\n\n'),
+					mediaIds: [...new Set(values.flatMap((value) => value.mediaIds))],
+					contentInherited: false,
+					mediaInherited: values.every((value) => value.mediaInherited)
+				}
+			});
+		}
+		posts = [joinedSource];
+		variants = nextVariants;
 		activePostIndex = 0;
-		activeVariantAccountId = null;
+		linkUrl = firstComposerURL(joinedSource.content);
+		void resolveCapabilities();
 		scheduleAutoSave();
 	}
 
@@ -4246,6 +5183,9 @@
 		resolvedCapabilities = {};
 		validationIssues = [];
 		generationUndo = null;
+		latestGenerationUndo = null;
+		aiAppliedResult = null;
+		aiAppliedStrategies = [];
 		postBuilderError = '';
 		selectedDate = undefined;
 		selectedTime = null;
@@ -4766,6 +5706,34 @@
 					/>
 				{/if}
 
+				{#if visibleAIStrategies.length > 0}
+					<div
+						class="mb-3 flex gap-2 overflow-x-auto border-y py-3"
+						aria-label={m.compose_ai_strategy_label()}
+					>
+						{#each visibleAIStrategies as destination (destination.account_id)}
+							<div class="min-w-48 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+								<p class="font-medium text-foreground">
+									{getPlatformName(destination.platform)} · {localizedAIObjective(
+										destination.objective
+									)}
+								</p>
+								<p class="mt-1 text-muted-foreground">
+									{destination.media.treatment === 'none'
+										? m.compose_ai_no_media_recommended()
+										: destination.media.brief ||
+											localizedAIMediaTreatment(destination.media.treatment)}
+								</p>
+								{#if destination.warnings?.length}
+									<p class="mt-1 text-amber-700 dark:text-amber-300">
+										{destination.warnings.join(' ')}
+									</p>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+
 				<!-- Posts -->
 				<div class="space-y-0" use:exposeReorderHandles>
 					<ReorderableList
@@ -5230,16 +6198,18 @@
 													aria-busy={buildingPost}
 													title={selectedAccountIds.length === 0
 														? m.compose_ai_destinations_required()
-														: posts[0]?.content.trim()
-															? undefined
-															: m.compose_ai_idea_required()}
+														: undefined}
 												>
 													{#if buildingPost}
 														<LoaderIcon class="size-3.5 animate-spin" />
 														{m.compose_ai_building()}
 													{:else}
 														<SparklesIcon class="size-3.5" />
-														{generationUndo ? m.compose_ai_build_again() : m.compose_ai_build()}
+														{posts[0]?.content.trim()
+															? generationUndo
+																? m.compose_ai_build_again()
+																: m.compose_ai_build()
+															: m.compose_ai_ideate()}
 													{/if}
 												</Button>
 											{/if}
@@ -5249,24 +6219,61 @@
 											<p class="border-t py-3 text-sm text-destructive" role="alert">
 												{postBuilderError}
 											</p>
-										{:else if i === 0 && !activeVariantAccountId && !isThread && generationUndo}
-											<div class="flex flex-wrap items-center gap-2 border-t py-3">
-												<p class="min-w-0 flex-1 text-sm text-muted-foreground">
-													{m.compose_ai_ready({ count: selectedAccounts.length })}
-												</p>
-												<Button
-													type="button"
-													variant="ghost"
-													size="sm"
-													class="min-h-11 gap-1.5 md:min-h-8"
-													onclick={restoreIdea}
-												>
-													<Undo2Icon class="size-3.5" />
-													{m.compose_ai_restore_idea()}
-												</Button>
+										{:else if i === 0 && !activeVariantAccountId && generationUndo}
+											<div class="space-y-3 border-t py-3">
+												<div class="flex flex-wrap items-center gap-2">
+													<p class="min-w-0 flex-1 text-sm text-muted-foreground">
+														{m.compose_ai_ready({ count: selectedAccounts.length })}
+													</p>
+													{#if isThread}
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															class="min-h-11 md:min-h-8"
+															onclick={convertGeneratedThreadToPost}
+														>
+															{m.compose_ai_convert_to_post()}
+														</Button>
+													{/if}
+													{#if latestGenerationUndo && latestGenerationUndo !== generationUndo}
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															class="min-h-11 gap-1.5 md:min-h-8"
+															onclick={undoLatestGenerationApply}
+														>
+															<Undo2Icon class="size-3.5" />
+															{m.image_editor_undo()}
+														</Button>
+													{/if}
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														class="min-h-11 gap-1.5 md:min-h-8"
+														onclick={restoreIdea}
+													>
+														<Undo2Icon class="size-3.5" />
+														{m.compose_ai_restore_idea()}
+													</Button>
+												</div>
 											</div>
+											{#if aiMemeCandidates.length > 0 || aiMemeError}
+												<div class="border-t py-4">
+													<AIMemeRecommendation
+														candidates={aiMemeCandidates}
+														copy={aiMemeCopy}
+														bind:selectedCandidateId={aiMemeSelectedID}
+														error={aiMemeError}
+														onUse={useAIMeme}
+														onEdit={editAIMeme}
+														onRetry={previewAIMemeCandidate}
+													/>
+												</div>
+											{/if}
 										{/if}
-
 										{#if isThread}
 											<button
 												type="button"
@@ -5288,6 +6295,109 @@
 		</div>
 	</div>
 </div>
+
+<AIWorkspaceDialog
+	bind:open={aiWorkspaceOpen}
+	entry={aiWorkspaceEntry}
+	step={aiWorkspaceStep}
+	copy={aiWorkspaceCopy}
+	opportunities={aiWorkspaceOpportunities}
+	selectedOpportunityId={aiSelectedOpportunityID}
+	angles={aiWorkspaceAngles}
+	selectedAngleId={aiSelectedAngleID}
+	generationPhases={aiGenerationPhases}
+	generationMessage={aiGenerationMessage}
+	destinationSummary={selectedAccounts.length === 1
+		? m.compose_ai_destination_summary_one({ count: selectedAccounts.length })
+		: m.compose_ai_destination_summary_many({ count: selectedAccounts.length })}
+	voiceSummary={m.compose_ai_writing_as({ voice: aiVoiceName })}
+	loadingOpportunities={aiOpportunityLoading}
+	findingMore={aiFindingMore}
+	generating={buildingPost}
+	cancelling={aiCancelling}
+	applyPending={aiApplyPending}
+	error={postBuilderError}
+	onSelectOpportunity={(opportunity) => void selectPublicationOpportunity(opportunity)}
+	onSelectAngle={(angle) => {
+		aiSelectedAngleID = angle.id;
+		const selected = aiAngles.find((candidate) => candidate.id === angle.id);
+		if (selected) aiObjective = selected.objective;
+	}}
+	onFindMore={() => void loadPublicationOpportunities(true)}
+	onBack={aiWorkspaceEntry === 'ideate'
+		? () => {
+				aiWorkspaceStep = 'opportunities';
+				aiAngles = [];
+				aiSelectedAngleID = '';
+			}
+		: undefined}
+	onBuild={() => void startSelectedPublicationBuild()}
+	onCancel={() => void cancelActivePublicationBuild()}
+	onRetry={aiActiveBuild?.state === 'failed'
+		? () => void retryActivePublicationBuild()
+		: aiWorkspaceStep === 'opportunities'
+			? () => void loadPublicationOpportunities()
+			: () => void loadPublicationAngles(aiGenerationIdea)}
+	onApply={applyReadyPublicationBuild}
+	onKeepEditing={keepCurrentComposerEdits}
+	onDismissError={() => (postBuilderError = '')}
+>
+	{#snippet context()}
+		<div class="grid gap-3 rounded-lg border bg-muted/25 p-3 sm:grid-cols-2">
+			<label class="grid gap-1.5 text-xs font-medium">
+				{m.compose_ai_context_objective()}
+				<Input
+					bind:value={aiObjective}
+					placeholder={m.compose_ai_context_objective_placeholder()}
+				/>
+			</label>
+			<label class="grid gap-1.5 text-xs font-medium">
+				{m.compose_ai_context_change()}
+				<Input
+					bind:value={aiChangeRequest}
+					placeholder={m.compose_ai_context_change_placeholder()}
+				/>
+			</label>
+			<details class="sm:col-span-2">
+				<summary class="min-h-8 cursor-pointer text-xs font-medium text-muted-foreground">
+					{m.compose_ai_context_add()}
+				</summary>
+				<div class="mt-2 grid gap-3 sm:grid-cols-2">
+					<label class="grid gap-1.5 text-xs font-medium">
+						{m.compose_ai_context_notes()}
+						<Textarea
+							bind:value={aiContextNotes}
+							rows={3}
+							placeholder={m.compose_ai_context_notes_placeholder()}
+						/>
+					</label>
+					<label class="grid gap-1.5 text-xs font-medium">
+						{m.compose_ai_context_links()}
+						<Textarea
+							bind:value={aiContextURLs}
+							rows={3}
+							placeholder={m.compose_ai_context_links_placeholder()}
+						/>
+					</label>
+					<label class="flex min-h-11 items-center gap-2 text-xs sm:col-span-2">
+						<Checkbox
+							checked={aiContextMayPublish}
+							onCheckedChange={(checked) => (aiContextMayPublish = checked === true)}
+						/>
+						{m.compose_ai_context_allow_notes()}
+					</label>
+					{#if selectedAIAssets().length > 0}
+						<p class="text-xs text-muted-foreground sm:col-span-2">
+							{selectedAIAssets().length === 1
+								? m.compose_ai_context_attachment_one({ count: selectedAIAssets().length })
+								: m.compose_ai_context_attachment_many({ count: selectedAIAssets().length })}
+						</p>
+					{/if}
+				</div>
+			</details>
+		</div>
+	{/snippet}
+</AIWorkspaceDialog>
 
 <Dialog.Root bind:open={destinationActionOpen}>
 	<Dialog.Content class="sm:max-w-md">
@@ -5358,9 +6468,11 @@
 <MediaPicker
 	bind:open={mediaPickerOpen}
 	workspaceId={selectedWorkspaceId}
-	currentSelection={posts[mediaPickerPostIndex]
-		? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
-		: []}
+	currentSelection={mediaPickerInitialMode === 'meme'
+		? []
+		: posts[mediaPickerPostIndex]
+			? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
+			: []}
 	currentMediaMimeTypes={Object.fromEntries(mediaMimeTypes)}
 	maxSelection={composerMediaLimit}
 	multiple={composerMediaLimit > 1}
@@ -5368,7 +6480,10 @@
 	enableMeme
 	compactNavigation
 	autoConfirmUploads
-	initialMode="upload"
+	initialMode={mediaPickerInitialMode}
+	memeInitialIdea={mediaPickerMemeIdea}
+	memeInitialCandidate={mediaPickerMemeCandidate}
+	memeInitialPreview={mediaPickerMemePreview}
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}
 	onConfirm={async (ids) => {
@@ -5378,6 +6493,27 @@
 		const previousIds = posts[mediaPickerPostIndex]
 			? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
 			: [];
+		if (mediaPickerInitialMode === 'meme' && mediaPickerMemeCandidate) {
+			let attached = false;
+			if (mediaPickerMemeRequestGeneration === aiMemeRequestGeneration) {
+				for (const mediaID of ids) {
+					attached =
+						(await attachAIMemeToTargets(
+							mediaID,
+							mediaPickerMemeTargetAccountIDs,
+							selectedWorkspaceId
+						)) || attached;
+				}
+			}
+			if (!attached) return false;
+			mediaPickerInitialMode = 'upload';
+			mediaPickerMemeIdea = '';
+			mediaPickerMemeCandidate = undefined;
+			mediaPickerMemePreview = '';
+			mediaPickerMemeTargetAccountIDs = [];
+			aiMemeCandidates = [];
+			return true;
+		}
 		const addedIds = ids.filter((id) => !previousIds.includes(id));
 		setEditorMediaIds(mediaPickerPostIndex, ids);
 		await hydrateMediaMetadata(selectedWorkspaceId, addedIds, true);
