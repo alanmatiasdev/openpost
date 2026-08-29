@@ -66,6 +66,8 @@ describe('keyboard shortcuts', () => {
 	it('includes FreeCut-compatible timeline tool and edit-point navigation bindings', () => {
 		const bindings = resolveEditorShortcuts();
 		expect(bindings.SELECTION_TOOL).toBe('v');
+		expect(bindings.RAZOR_TOOL).toBe('c');
+		expect(bindings.SPLIT_AT_CURSOR).toBe('shift+c');
 		expect(bindings.SLIP_TOOL).toBe('y');
 		expect(bindings.SLIDE_TOOL).toBe('u');
 		expect(bindings.PREVIOUS_SNAP_POINT).toBe('up');

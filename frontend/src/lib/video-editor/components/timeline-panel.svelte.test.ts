@@ -890,6 +890,76 @@ describe('TimelinePanel progressive controls', () => {
 		await expect.element(beats).toHaveAttribute('aria-pressed', 'true');
 	});
 
+	it('splits the clicked clip with the remappable razor tool', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const region = screen.getByRole('region', { name: 'Timeline' }).element();
+		vi.spyOn(region, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 300));
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'c',
+				code: 'KeyC',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		const video = screen.container.querySelector<HTMLElement>('[data-timeline-item-id="video"]');
+		expect(video).not.toBeNull();
+		const button = video!.querySelector<HTMLButtonElement>('button');
+		expect(button).not.toBeNull();
+
+		dispatchPointer(button!, 'pointerdown', 180 + 30 * 4);
+
+		const videoPieces = timelineStore.items
+			.filter((candidate) => candidate.trackId === 'video-track')
+			.toSorted((left, right) => left.from - right.from);
+		expect(videoPieces).toHaveLength(2);
+		expect(videoPieces.map(({ from, durationInFrames }) => ({ from, durationInFrames }))).toEqual([
+			{ from: 0, durationInFrames: 30 },
+			{ from: 30, durationInFrames: 30 }
+		]);
+		expect(
+			timelineStore.items.find((candidate) => candidate.id === 'music-bed')?.durationInFrames
+		).toBe(120);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('splits the hovered clip at the preview cursor with Shift+C', async () => {
+		const onedit = vi.fn();
+		const screen = await render(TimelinePanel, { onedit });
+		const region = screen.getByRole('region', { name: 'Timeline' }).element();
+		vi.spyOn(region, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 300));
+		const video = screen.container.querySelector<HTMLElement>('[data-timeline-item-id="video"]');
+		expect(video).not.toBeNull();
+		video!.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				clientX: 180 + 40 * 4,
+				pointerType: 'mouse'
+			})
+		);
+		await nextAnimationFrame();
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'C',
+				code: 'KeyC',
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		const videoPieces = timelineStore.items
+			.filter((candidate) => candidate.trackId === 'video-track')
+			.toSorted((left, right) => left.from - right.from);
+		expect(videoPieces.map(({ from, durationInFrames }) => ({ from, durationInFrames }))).toEqual([
+			{ from: 0, durationInFrames: 40 },
+			{ from: 40, durationInFrames: 20 }
+		]);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('scopes remappable FreeCut keyframe commands to the active editor', async () => {
 		timelineStore._setItems(
 			timelineStore.items.map((candidate) =>

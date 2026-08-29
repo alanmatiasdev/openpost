@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Point de montage suivant",
 	"video_editor_shortcuts_command_split": "Scinder à la tête de lecture",
 	"video_editor_shortcuts_command_split_alt": "Scinder à la tête de lecture, variante",
+	"video_editor_shortcuts_command_split_cursor": "Scinder le plan sous le pointeur",
+	"video_editor_shortcuts_command_razor_tool": "Outil lame",
 	"video_editor_shortcuts_command_join": "Réunir les clips sélectionnés",
 	"video_editor_shortcuts_command_delete": "Supprimer les éléments sélectionnés et laisser un espace",
 	"video_editor_shortcuts_command_delete_alt": "Supprimer et laisser un espace, variante",

@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Sonraki kurgu noktası",
 	"video_editor_shortcuts_command_split": "Oynatma imlecinde böl",
 	"video_editor_shortcuts_command_split_alt": "Oynatma imlecinde böl, alternatif",
+	"video_editor_shortcuts_command_split_cursor": "İmleç altındaki klibi böl",
+	"video_editor_shortcuts_command_razor_tool": "Jilet aracı",
 	"video_editor_shortcuts_command_join": "Seçili klipleri birleştir",
 	"video_editor_shortcuts_command_delete": "Seçili öğeleri sil ve boşluk bırak",
 	"video_editor_shortcuts_command_delete_alt": "Sil ve boşluk bırak, alternatif",

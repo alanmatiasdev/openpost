@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "下一个编辑点",
 	"video_editor_shortcuts_command_split": "在播放头处分割",
 	"video_editor_shortcuts_command_split_alt": "在播放头分割（备用）",
+	"video_editor_shortcuts_command_split_cursor": "拆分指针下的片段",
+	"video_editor_shortcuts_command_razor_tool": "剃刀工具",
 	"video_editor_shortcuts_command_join": "合并所选片段",
 	"video_editor_shortcuts_command_delete": "删除所选项目并保留空隙",
 	"video_editor_shortcuts_command_delete_alt": "删除并保留空隙（备用）",

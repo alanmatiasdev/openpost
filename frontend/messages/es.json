@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Punto de edición siguiente",
 	"video_editor_shortcuts_command_split": "Dividir en el cabezal de juego",
 	"video_editor_shortcuts_command_split_alt": "Dividir en playhead, alternar",
+	"video_editor_shortcuts_command_split_cursor": "Dividir clip bajo el cursor",
+	"video_editor_shortcuts_command_razor_tool": "Herramienta cuchilla",
 	"video_editor_shortcuts_command_join": "Unirse a los clips seleccionados",
 	"video_editor_shortcuts_command_delete": "Eliminar los elementos seleccionados y dejar un hueco",
 	"video_editor_shortcuts_command_delete_alt": "Eliminar y dejar un hueco, alternativa",

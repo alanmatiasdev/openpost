@@ -17,6 +17,7 @@
 		setCurrentFrame,
 		removeMarker,
 		selectMarker as selectMarkerAction,
+		splitItemsAtFrame,
 		updateMarker,
 		joinItems,
 		linkItems,
@@ -697,8 +698,9 @@
 		| 'rate-stretch'
 		| 'rate-stretch-start'
 		| 'rate-stretch-end';
-	type AdvancedEditTool = 'slip' | 'slide' | 'rate-stretch' | 'track-push';
+	type AdvancedEditTool = 'razor' | 'slip' | 'slide' | 'rate-stretch' | 'track-push';
 	let activeEditTool = $state<AdvancedEditTool | null>(null);
+	let hoveredTimelineItemId = $state<string | null>(null);
 	let drag: null | {
 		kind: TimelineDragKind;
 		id: string;
@@ -2594,6 +2596,47 @@
 		}
 	}
 
+	function splitTimelineItemAtFrame(itemId: string, frame: number): boolean {
+		const targetIds = timelineStore.linkedSelectionEnabled
+			? expandSelectionWithLinkedItems(timelineStore.items, [itemId])
+			: [itemId];
+		const result = splitItemsAtFrame(frame, targetIds);
+		if (result.left.length === 0) return false;
+		selectedItemIds = result.left;
+		selectedItemId = result.left.includes(itemId) ? itemId : (result.left.at(-1) ?? null);
+		selectedTransitionId = null;
+		onedit();
+		return true;
+	}
+
+	function razorSplitTimelineItem(event: PointerEvent, itemId: string): void {
+		if (event.button !== 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const frame = frameFromClientX(event.clientX);
+		if (frame !== undefined) splitTimelineItemAtFrame(itemId, frame);
+	}
+
+	function splitHoveredTimelineItem(): void {
+		if (!hoveredTimelineItemId) return;
+		const frame = $timelinePreviewScrub.frame ?? timelineStore.currentFrame;
+		splitTimelineItemAtFrame(hoveredTimelineItemId, frame);
+	}
+
+	function handleTimelineItemKeydown(
+		event: KeyboardEvent,
+		item: TimelineItem,
+		tool: AdvancedEditTool | null
+	): void {
+		if (tool === 'razor') {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			splitTimelineItemAtFrame(item.id, timelineStore.currentFrame);
+			return;
+		}
+		applyKeyboardEdit(event, item, tool ?? 'move');
+	}
+
 	function linkSelection(): void {
 		if (!linkItems(selectedItemIds)) return;
 		selectedItemIds = expandSelectionWithLinkedItems(timelineStore.items, selectedItemIds);
@@ -2672,6 +2715,12 @@
 		} else if (matches('CLEAR_KEYFRAMES')) {
 			event.preventDefault();
 			openClearKeyframesDialog();
+		} else if (matches('SPLIT_AT_CURSOR')) {
+			event.preventDefault();
+			splitHoveredTimelineItem();
+		} else if (matches('RAZOR_TOOL')) {
+			event.preventDefault();
+			toggleEditTool('razor');
 		} else if (matches('RATE_STRETCH_TOOL')) {
 			event.preventDefault();
 			toggleEditTool('rate-stretch');
@@ -3805,6 +3854,7 @@
 
 	function clearHoverPreview(): void {
 		pendingHoverPreviewClientX = null;
+		hoveredTimelineItemId = null;
 		if (hoverPreviewAnimationFrame !== null) {
 			cancelAnimationFrame(hoverPreviewAnimationFrame);
 			hoverPreviewAnimationFrame = null;
@@ -3835,6 +3885,9 @@
 			clearHoverPreview();
 			return;
 		}
+		const target = event.target instanceof Element ? event.target : null;
+		hoveredTimelineItemId =
+			target?.closest<HTMLElement>('[data-timeline-item-id]')?.dataset.timelineItemId ?? null;
 		pendingHoverPreviewClientX = event.clientX;
 		if (hoverPreviewAnimationFrame === null) {
 			hoverPreviewAnimationFrame = requestAnimationFrame(flushHoverPreview);
@@ -4613,7 +4666,7 @@
 					{m.video_editor_linked_selection_enable()}
 				</DropdownMenu.CheckboxItem>
 				<DropdownMenu.Separator />
-				{#each [['slip', m.video_editor_slip()], ['slide', m.video_editor_slide()], ['rate-stretch', m.video_editor_rate_stretch()], ['track-push', m.video_editor_track_push()]] as tool}
+				{#each [['razor', m.video_editor_shortcuts_command_razor_tool()], ['slip', m.video_editor_slip()], ['slide', m.video_editor_slide()], ['rate-stretch', m.video_editor_rate_stretch()], ['track-push', m.video_editor_track_push()]] as tool}
 					<DropdownMenu.CheckboxItem
 						checked={activeEditTool === tool[0]}
 						onCheckedChange={() => toggleEditTool(tool[0] as AdvancedEditTool)}
@@ -5264,7 +5317,9 @@
 									{timelineX}
 									{frameToPx}
 									onpointeritem={(event, item) =>
-										startDrag(event, item.id, activeEditTool ?? 'move')}
+										activeEditTool === 'razor'
+											? razorSplitTimelineItem(event, item.id)
+											: startDrag(event, item.id, activeEditTool ?? 'move')}
 									onselectitem={(event, item) => selectItem(event, item.id)}
 								/>
 							{/if}
@@ -5315,11 +5370,13 @@
 										<button
 											type="button"
 											class="absolute inset-0 flex min-w-0 items-center overflow-hidden text-left {activeEditTool ===
-											'track-push'
-												? pushAvailability === 'ready'
-													? 'cursor-col-resize'
-													: 'cursor-not-allowed'
-												: 'cursor-grab active:cursor-grabbing'}"
+											'razor'
+												? 'cursor-crosshair'
+												: activeEditTool === 'track-push'
+													? pushAvailability === 'ready'
+														? 'cursor-col-resize'
+														: 'cursor-not-allowed'
+													: 'cursor-grab active:cursor-grabbing'}"
 											aria-label={activeEditTool === 'track-push'
 												? `${item.label}. ${m.video_editor_track_push_handle()}`
 												: timelineItemAriaLabel(item, syncOffsetFrames)}
@@ -5335,9 +5392,11 @@
 												event.stopPropagation();
 												onopencomposition(item.compositionId);
 											}}
-											onkeydown={(event) =>
-												applyKeyboardEdit(event, item, activeEditTool ?? 'move')}
-											onpointerdown={(event) => startDrag(event, item.id, activeEditTool ?? 'move')}
+											onkeydown={(event) => handleTimelineItemKeydown(event, item, activeEditTool)}
+											onpointerdown={(event) =>
+												activeEditTool === 'razor'
+													? razorSplitTimelineItem(event, item.id)
+													: startDrag(event, item.id, activeEditTool ?? 'move')}
 										>
 											{#if editorSettings.showFilmstrips && item.type === 'video'}
 												{@const filmstripTiles = filmstripTilesFor(displayItem)}

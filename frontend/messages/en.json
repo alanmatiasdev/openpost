@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Next edit point",
 	"video_editor_shortcuts_command_split": "Split at playhead",
 	"video_editor_shortcuts_command_split_alt": "Split at playhead, alternate",
+	"video_editor_shortcuts_command_split_cursor": "Split clip under the pointer",
+	"video_editor_shortcuts_command_razor_tool": "Razor tool",
 	"video_editor_shortcuts_command_join": "Join selected clips",
 	"video_editor_shortcuts_command_delete": "Delete selected items and leave a gap",
 	"video_editor_shortcuts_command_delete_alt": "Delete and leave a gap, alternate",

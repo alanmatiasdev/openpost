@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Nächster Schnittpunkt",
 	"video_editor_shortcuts_command_split": "Am Abspielkopf teilen",
 	"video_editor_shortcuts_command_split_alt": "Am Abspielkopf teilen, alternativ",
+	"video_editor_shortcuts_command_split_cursor": "Clip unter dem Zeiger teilen",
+	"video_editor_shortcuts_command_razor_tool": "Rasierklingen-Werkzeug",
 	"video_editor_shortcuts_command_join": "Ausgewählte Clips verbinden",
 	"video_editor_shortcuts_command_delete": "Ausgewählte Elemente löschen und Lücke lassen",
 	"video_editor_shortcuts_command_delete_alt": "Löschen und Lücke lassen, alternativ",

@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "Próximo ponto de edição",
 	"video_editor_shortcuts_command_split": "Dividir no cabeçote de reprodução",
 	"video_editor_shortcuts_command_split_alt": "Dividir no cabeçote de reprodução, alternativo",
+	"video_editor_shortcuts_command_split_cursor": "Dividir clipe sob o cursor",
+	"video_editor_shortcuts_command_razor_tool": "Ferramenta de corte",
 	"video_editor_shortcuts_command_join": "Unir clipes selecionados",
 	"video_editor_shortcuts_command_delete": "Excluir itens selecionados e deixar um espaço",
 	"video_editor_shortcuts_command_delete_alt": "Excluir e deixar um espaço, alternativo",

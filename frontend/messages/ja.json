@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "次の編集点",
 	"video_editor_shortcuts_command_split": "再生ヘッド位置で分割",
 	"video_editor_shortcuts_command_split_alt": "再生ヘッド位置で分割（予備）",
+	"video_editor_shortcuts_command_split_cursor": "ポインター下のクリップを分割",
+	"video_editor_shortcuts_command_razor_tool": "レーザーツール",
 	"video_editor_shortcuts_command_join": "選択したクリップを結合",
 	"video_editor_shortcuts_command_delete": "選択した項目を削除して空白を残す",
 	"video_editor_shortcuts_command_delete_alt": "削除して空白を残す（予備）",

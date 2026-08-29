@@ -4537,6 +4537,8 @@
 	"video_editor_shortcuts_command_next_edit_point": "다음 편집점",
 	"video_editor_shortcuts_command_split": "재생 헤드에서 분할",
 	"video_editor_shortcuts_command_split_alt": "재생 헤드에서 분할 (대체)",
+	"video_editor_shortcuts_command_split_cursor": "포인터 아래 클립 분할",
+	"video_editor_shortcuts_command_razor_tool": "자르기 도구",
 	"video_editor_shortcuts_command_join": "선택한 클립 결합",
 	"video_editor_shortcuts_command_delete": "선택한 항목을 삭제하고 빈 공간 유지",
 	"video_editor_shortcuts_command_delete_alt": "삭제하고 빈 공간 유지 (대체)",
