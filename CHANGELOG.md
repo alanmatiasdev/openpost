@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-08-29
+
+### Changed
+
+- Simplified the Video Editor workspace around the preview, contextual inspector, and resizable timeline while keeping advanced actions in focused menus.
+
+### Fixed
+
+- Made Space control playback even when a menu button has focus, with Backspace lift delete and Delete ripple delete preserved.
+- AI generation now retries once when the provider SDK reaches its internal deadline before the feature request budget is exhausted.
+
 ## [4.10.0] - 2026-08-29
 
 ### Added
