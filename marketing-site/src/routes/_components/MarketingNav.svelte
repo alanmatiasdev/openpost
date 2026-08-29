@@ -9,61 +9,17 @@
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as NavigationMenu from '$lib/components/ui/navigation-menu';
-	import {
-		appUrl,
-		discordCommunityUrl,
-		docsUrl,
-		githubUrl,
-		managedSignupUrl,
-		navItems,
-		platforms
-	} from '../_marketing';
+	import { appUrl, managedSignupUrl, marketingNavigation, platforms } from '../_marketing';
 
 	type NavigationItem = { label: string; href: string };
 	type ResourceGroup = { label: string; items: readonly NavigationItem[] };
 
 	let mobileOpen = $state(false);
 	const currentPath = $derived(page.url.pathname);
-	const primaryNavItems = navItems;
-	const resourceGroups: readonly ResourceGroup[] = [
-		{
-			label: 'Learn',
-			items: [
-				{ label: 'FAQ', href: '/faq' },
-				{ label: 'Compare', href: '/compare' },
-				{ label: 'Changelog', href: '/changelog' }
-			]
-		},
-		{
-			label: 'Build',
-			items: [
-				{ label: 'User docs', href: docsUrl },
-				{ label: 'Developers', href: '/developers' },
-				{ label: 'Self-hosted', href: '/self-hosted' },
-				{ label: 'GitHub source', href: githubUrl }
-			]
-		},
-		{
-			label: 'OpenPost',
-			items: [
-				{ label: 'About', href: '/about' },
-				{ label: 'Contact', href: '/contact' },
-				{ label: 'Security', href: '/security' },
-				{ label: 'Trust register', href: '/trust' },
-				{ label: 'Discord community', href: discordCommunityUrl }
-			]
-		}
-	];
+	const primaryNavItems = marketingNavigation.primary;
+	const resourceGroups: readonly ResourceGroup[] = marketingNavigation.resourceGroups;
 	const navigationResourceItems = resourceGroups.flatMap((group) => group.items);
-	const mobileResourceItems = [
-		{ label: 'User docs', href: docsUrl },
-		{ label: 'Developers', href: '/developers' },
-		{ label: 'Self-hosted', href: '/self-hosted' },
-		{ label: 'Security', href: '/security' },
-		{ label: 'Changelog', href: '/changelog' },
-		{ label: 'Discord community', href: discordCommunityUrl },
-		{ label: 'Contact', href: '/contact' }
-	] as const;
+	const mobileNavItems = marketingNavigation.mobile;
 
 	function isActive(href: string): boolean {
 		if (href.startsWith('http')) return false;
@@ -343,7 +299,7 @@
 
 				<p class="mt-3 px-3 pt-3 text-xs font-semibold text-muted-foreground">Resources</p>
 				<div class="grid grid-cols-2 gap-1">
-					{#each mobileResourceItems as item (item.href)}
+					{#each mobileNavItems as item (item.href)}
 						<a
 							{...navigationHref(item.href)}
 							class="focus-ring flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground"
