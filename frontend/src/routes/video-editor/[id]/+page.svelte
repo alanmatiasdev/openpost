@@ -5,6 +5,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
@@ -1246,7 +1247,7 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 					</DropdownMenu.Item>
 					{#if sentExport}
 						<DropdownMenu.Separator />
-						<DropdownMenu.Item href={sentExport.composerHref}>
+						<DropdownMenu.Item onclick={() => void goto(sentExport.composerHref)}>
 							{m.video_editor_open_composer()}
 						</DropdownMenu.Item>
 					{/if}

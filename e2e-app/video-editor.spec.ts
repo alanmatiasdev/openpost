@@ -294,13 +294,12 @@ test("Video Editor sends a rendered export into a new composer", async ({ page, 
 
   await openHeaderMoreMenu(page);
   await page.getByRole("menuitem", { name: "Send to OpenPost" }).click();
-  await expect(
-    page.getByRole("status").getByText("Sent to your OpenPost media library."),
-  ).toBeVisible({
+  const openComposer = page.getByRole("menuitem", { name: "Open composer" });
+  await expect(openComposer).toBeVisible({
     timeout: 60_000,
   });
 
-  await page.getByRole("link", { name: "Open composer" }).click();
+  await openComposer.click();
   await expect(page.locator("[data-composer-media-id]")).toHaveCount(1);
   await expect(page).toHaveURL(/\/$/u);
 });
