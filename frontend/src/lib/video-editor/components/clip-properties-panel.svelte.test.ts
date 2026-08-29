@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import ClipPropertiesPanel from './clip-properties-panel.svelte';
+import '../../../routes/layout.css';
 
 const tracks: TimelineTrack[] = [
 	{
@@ -42,7 +44,10 @@ const items: TimelineItem[] = [
 		linkedGroupId: 'linked',
 		sourceStart: 30,
 		sourceEnd: 120,
-		sourceFps: 30
+		sourceFps: 30,
+		sourceWidth: 640,
+		sourceHeight: 360,
+		transform: { x: 100, y: 20, width: 640, height: 360 }
 	},
 	{
 		id: 'audio-item',
@@ -67,7 +72,14 @@ const items: TimelineItem[] = [
 		type: 'text',
 		backgroundColor: '#221100',
 		fontSize: 84,
-		fontWeight: 700
+		fontWeight: 700,
+		transform: {
+			x: -20,
+			y: 20,
+			width: 300,
+			height: 100,
+			aspectRatioLocked: false
+		}
 	}
 ];
 
@@ -77,10 +89,17 @@ beforeEach(() => {
 	commandHistory.clearHistory();
 });
 
+afterEach(async () => {
+	await page.viewport(1280, 900);
+});
+
 describe('ClipPropertiesPanel reverse playback', () => {
 	it('shows the playback state and reverses linked A/V in one undoable edit', async () => {
 		const onedit = vi.fn();
-		const screen = await render(ClipPropertiesPanel, { itemId: 'video-item', onedit });
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			onedit
+		});
 		const reverse = screen.getByRole('button', { name: 'Reverse clip' });
 
 		await expect.element(reverse).toHaveAttribute('aria-pressed', 'false');
@@ -101,7 +120,10 @@ describe('ClipPropertiesPanel reverse playback', () => {
 
 	it('retimes linked media and edits the audible companion from the video inspector', async () => {
 		const onedit = vi.fn();
-		const screen = await render(ClipPropertiesPanel, { itemId: 'video-item', onedit });
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			onedit
+		});
 
 		const speed = screen.getByRole('spinbutton', { name: 'Speed' }).query();
 		if (!(speed instanceof HTMLInputElement)) throw new Error('Speed control did not render.');
@@ -156,10 +178,116 @@ describe('ClipPropertiesPanel reverse playback', () => {
 	});
 });
 
+describe('ClipPropertiesPanel transform workflow', () => {
+	it('edits pixel values across a mixed selection in one undoable operation', async () => {
+		await page.viewport(1000, 900);
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item', 'text-item'],
+			onedit
+		});
+		screen.container.style.width = '360px';
+		screen.container.style.background = 'oklch(0.15 0.008 55)';
+		if (screen.container.firstElementChild instanceof HTMLElement) {
+			screen.container.firstElementChild.style.width = '360px';
+		}
+		const transformPanel = screen.getByTestId('clip-transform-panel').query();
+		transformPanel.style.width = '360px';
+		transformPanel.style.zoom = '2.5';
+
+		await expect.element(screen.getByText('Position', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('Size', { exact: true })).toBeVisible();
+		await expect.element(screen.getByText('Anchor', { exact: true })).toBeVisible();
+		const position = screen.getByRole('textbox', { name: 'Horizontal position' }).query();
+		if (!(position instanceof HTMLInputElement))
+			throw new Error('Position control did not render.');
+		expect(position.placeholder).toBe('Mixed');
+		await page.screenshot({
+			element: screen.getByTestId('clip-transform-panel').element(),
+			path: '../../../../.svelte-kit/openpost-clip-transform-mixed.png'
+		});
+		transformPanel.style.zoom = '1';
+		position.value = '240';
+		position.dispatchEvent(new InputEvent('input', { bubbles: true, data: '240' }));
+		position.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('video-item')?.transform?.x).toBe(240);
+		expect(timelineStore.itemById.get('text-item')?.transform?.x).toBe(240);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('SET_ANIMATED_PROPERTIES');
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-item')?.transform?.x).toBe(100);
+		expect(timelineStore.itemById.get('text-item')?.transform?.x).toBe(-20);
+
+		screen.container.style.width = '288px';
+		if (screen.container.firstElementChild instanceof HTMLElement) {
+			screen.container.firstElementChild.style.width = '288px';
+		}
+		screen.getByTestId('clip-transform-panel').query().style.width = '288px';
+		expect(screen.getByTestId('clip-transform-section').query().scrollWidth).toBeLessThanOrEqual(
+			288
+		);
+	});
+
+	it('keeps linked dimensions proportional and resets position as atomic edits', async () => {
+		await page.viewport(1000, 900);
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item'],
+			onedit
+		});
+		screen.container.style.width = '360px';
+		screen.container.style.background = 'oklch(0.15 0.008 55)';
+		if (screen.container.firstElementChild instanceof HTMLElement) {
+			screen.container.firstElementChild.style.width = '360px';
+		}
+		const transformPanel = screen.getByTestId('clip-transform-panel').query();
+		transformPanel.style.width = '360px';
+		await expect
+			.element(screen.getByRole('button', { name: 'Unlock aspect ratio' }))
+			.toHaveAttribute('aria-pressed', 'true');
+
+		const width = screen.getByRole('textbox', { name: 'Width' }).query();
+		if (!(width instanceof HTMLInputElement)) throw new Error('Width control did not render.');
+		width.value = '1280';
+		width.dispatchEvent(new InputEvent('input', { bubbles: true, data: '1280' }));
+		width.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(timelineStore.itemById.get('video-item')?.transform).toMatchObject({
+			width: 1280,
+			height: 720
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		transformPanel.style.zoom = '2.5';
+		await page.screenshot({
+			element: screen.getByTestId('clip-transform-panel').element(),
+			path: '../../../../.svelte-kit/openpost-clip-transform-linked.png'
+		});
+		transformPanel.style.zoom = '1';
+
+		commandHistory.clearHistory();
+		await screen.getByRole('button', { name: 'Reset position' }).click();
+		expect(timelineStore.itemById.get('video-item')?.transform).toMatchObject({
+			x: 0,
+			y: 0
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-item')?.transform).toMatchObject({
+			x: 100,
+			y: 20
+		});
+	});
+});
+
 describe('ClipPropertiesPanel noise reduction draft/commit', () => {
 	it('keeps slider drags as draft and commits exactly one undoable action on release', async () => {
 		const onedit = vi.fn();
-		const screen = await render(ClipPropertiesPanel, { itemId: 'audio-item', onedit });
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'audio-item',
+			onedit
+		});
 		const panel = screen.getByTestId('noise-reduction-panel');
 		await expect.element(panel).toBeInTheDocument();
 		// SAFETY: checkbox is bits-ui primitive rendered as button
@@ -171,7 +299,9 @@ describe('ClipPropertiesPanel noise reduction draft/commit', () => {
 		expect(timelineStore.itemById.get('audio-item')?.audioNoiseReductionEnabled).toBe(true);
 		expect(commandHistory.undoStack.length).toBe(1);
 		commandHistory.clearHistory();
-		const slider = screen.getByRole('slider', { name: 'Noise reduction strength' });
+		const slider = screen.getByRole('slider', {
+			name: 'Noise reduction strength'
+		});
 		await expect.element(slider).toBeInTheDocument();
 		await expect.element(slider).toBeEnabled();
 		slider.element().focus();
@@ -190,7 +320,10 @@ describe('ClipPropertiesPanel noise reduction draft/commit', () => {
 describe('ClipPropertiesPanel text styling', () => {
 	it('edits complete block typography without losing related shadow values', async () => {
 		const onedit = vi.fn();
-		const screen = await render(ClipPropertiesPanel, { itemId: 'text-item', onedit });
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'text-item',
+			onedit
+		});
 
 		const shadowX = screen.getByRole('spinbutton', { name: 'Shadow X' }).query();
 		if (!(shadowX instanceof HTMLInputElement)) {

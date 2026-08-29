@@ -178,7 +178,7 @@
 				<p class="mt-2 text-xs text-red-300" role="alert">{parentError}</p>
 			{/if}
 		</section>
-		<ClipPropertiesPanel {itemId} {onedit} />
+		<ClipPropertiesPanel {itemId} {itemIds} {onedit} />
 		<MotionPresetsPanel
 			{itemId}
 			{itemIds}

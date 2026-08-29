@@ -8,48 +8,70 @@
 		max,
 		step = 1,
 		decimals = 2,
+		placeholder = '',
 		disabled = false,
 		class: className = '',
+		onbegin,
 		onlive,
-		oncommit
+		oncommit,
+		oncancel
 	}: {
 		ariaLabel: string;
-		value: number;
+		value: number | null;
 		min?: number;
 		max?: number;
 		step?: number;
 		decimals?: number;
+		placeholder?: string;
 		disabled?: boolean;
 		class?: string;
+		onbegin?: () => void;
 		onlive: (value: number) => void;
 		oncommit: (value: number) => void;
+		oncancel?: () => void;
 	} = $props();
 
 	let input: HTMLInputElement;
 	let draft = $state<string | null>(null);
 	let drag: { pointerId: number; startX: number; startValue: number; scrubbed: boolean } | null =
 		null;
-	const displayValue = $derived(draft ?? value.toFixed(decimals));
+	let gestureActive = false;
+	const displayValue = $derived(draft ?? (value === null ? '' : value.toFixed(decimals)));
 
 	function clamp(next: number): number {
 		return Math.min(max ?? next, Math.max(min ?? next, next));
 	}
 
+	function beginGesture(): void {
+		if (gestureActive) return;
+		gestureActive = true;
+		onbegin?.();
+	}
+
 	function setLive(next: number): void {
+		beginGesture();
 		const safe = clamp(next);
 		draft = safe.toFixed(decimals);
 		onlive(safe);
 	}
 
 	function commit(raw = displayValue): void {
+		if (raw.trim() === '') {
+			draft = null;
+			gestureActive = false;
+			return;
+		}
 		const parsed = Number(raw);
 		draft = null;
 		if (Number.isFinite(parsed)) oncommit(clamp(parsed));
+		gestureActive = false;
 	}
 
 	function revert(): void {
 		draft = null;
-		onlive(value);
+		if (value !== null) onlive(value);
+		oncancel?.();
+		gestureActive = false;
 	}
 
 	function startScrub(event: PointerEvent): void {
@@ -59,7 +81,7 @@
 		drag = {
 			pointerId: event.pointerId,
 			startX: event.clientX,
-			startValue: value,
+			startValue: value ?? 0,
 			scrubbed: false
 		};
 	}
@@ -110,7 +132,7 @@
 			event.currentTarget.blur();
 		} else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
 			event.preventDefault();
-			const current = Number(draft ?? value);
+			const current = Number(draft ?? value ?? 0);
 			const direction = event.key === 'ArrowUp' ? 1 : -1;
 			setLive(current + direction * step * (event.shiftKey ? 10 : 1));
 		}
@@ -129,6 +151,7 @@
 	autocomplete="off"
 	{disabled}
 	aria-label={ariaLabel}
+	{placeholder}
 	value={displayValue}
 	class="cursor-ew-resize touch-none select-none focus:cursor-text focus:select-auto {className}"
 	onpointerdown={startScrub}

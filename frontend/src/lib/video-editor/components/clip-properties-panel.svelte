@@ -46,6 +46,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Label } from '$lib/components/ui/label';
+	import ClipTransformSection from './clip-transform-section.svelte';
 
 	let nrDraftAmount = $state<number | null>(null);
 	// Reset draft when selection or persisted amount changes
@@ -57,10 +58,12 @@
 
 	let {
 		itemId,
+		itemIds = [],
 		onedit,
 		oncreatevoice
 	}: {
 		itemId: string | null;
+		itemIds?: string[];
 		onedit: () => void;
 		oncreatevoice?: (itemId: string, text: string) => void;
 	} = $props();
@@ -96,60 +99,6 @@
 		max: number;
 		step: number;
 	}
-
-	const transformFields: NumericField[] = [
-		{ property: 'x', label: 'X', min: -2, max: 2, step: 0.01 },
-		{ property: 'y', label: 'Y', min: -2, max: 2, step: 0.01 },
-		{
-			property: 'width',
-			label: m.video_editor_property_width(),
-			min: 1,
-			max: 7680,
-			step: 1
-		},
-		{
-			property: 'height',
-			label: m.video_editor_property_height(),
-			min: 1,
-			max: 4320,
-			step: 1
-		},
-		{
-			property: 'anchorX',
-			label: m.video_editor_property_anchor_x(),
-			min: -7680,
-			max: 7680,
-			step: 1
-		},
-		{
-			property: 'anchorY',
-			label: m.video_editor_property_anchor_y(),
-			min: -4320,
-			max: 4320,
-			step: 1
-		},
-		{
-			property: 'rotation',
-			label: m.video_editor_rotation(),
-			min: -360,
-			max: 360,
-			step: 1
-		},
-		{
-			property: 'opacity',
-			label: m.video_editor_clip_opacity(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		},
-		{
-			property: 'cornerRadius',
-			label: m.video_editor_property_radius(),
-			min: 0,
-			max: 1000,
-			step: 1
-		}
-	];
 
 	const cropFields: NumericField[] = [
 		{
@@ -383,16 +332,6 @@
 		onedit();
 	}
 
-	function commitTransformPatch(patch: NonNullable<TimelineItem['transform']>): void {
-		if (!item) return;
-		updateItemProperties(
-			item.id,
-			{ transform: { ...item.transform, ...patch } },
-			'UPDATE_CLIP_TRANSFORM'
-		);
-		onedit();
-	}
-
 	function commitSpeed(value: number): void {
 		if (!item || !Number.isFinite(value)) return;
 		if (setItemSpeed(item.id, Math.min(10, Math.max(0.1, Math.round(value * 100) / 100)))) {
@@ -478,70 +417,7 @@
 			{#if item.type === 'composition'}
 				<CompositionControlOverrides {item} {onedit} />
 			{/if}
-			<section>
-				<h3
-					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
-				>
-					{m.video_editor_property_transform()}
-				</h3>
-				<div class="grid grid-cols-2 gap-1">
-					{#each transformFields as field (field.property)}
-						<div class="min-w-0 text-[10px] text-[oklch(0.7_0.01_55)]">
-							<span class="flex items-center justify-between gap-1">
-								<label for={`clip-property-${item.id}-${field.property}`}>{field.label}</label>
-								<button
-									type="button"
-									class:active={autoKeyframeStore.isEnabled(item.id, field.property)}
-									class="rounded px-1 text-[9px] text-[oklch(0.58_0.01_55)] hover:bg-[oklch(0.28_0.015_50)] [&.active]:bg-[oklch(0.66_0.14_45)] [&.active]:text-black"
-									aria-label={m.video_editor_property_auto_key({
-										property: field.label
-									})}
-									onclick={() => autoKeyframeStore.toggle(item.id, field.property)}>A</button
-								>
-							</span>
-							<Input
-								id={`clip-property-${item.id}-${field.property}`}
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
-								type="number"
-								min={field.min}
-								max={field.max}
-								step={field.step}
-								value={valueFor(item, field.property)}
-								onchange={(event) =>
-									commitNumeric(field.property, event.currentTarget.valueAsNumber)}
-							/>
-						</div>
-					{/each}
-				</div>
-				<div class="mt-1 grid grid-cols-2 gap-1">
-					<Button
-						type="button"
-						size="sm"
-						variant={item.transform?.flipHorizontal ? 'secondary' : 'outline'}
-						class="h-8 justify-between px-2 text-xs"
-						aria-pressed={item.transform?.flipHorizontal === true}
-						onclick={() =>
-							commitTransformPatch({
-								flipHorizontal: !item.transform?.flipHorizontal
-							})}
-					>
-						<span>{m.video_editor_property_flip_x()}</span>
-					</Button>
-					<Button
-						type="button"
-						size="sm"
-						variant={item.transform?.flipVertical ? 'secondary' : 'outline'}
-						class="h-8 justify-between px-2 text-xs"
-						aria-pressed={item.transform?.flipVertical === true}
-						onclick={() =>
-							commitTransformPatch({
-								flipVertical: !item.transform?.flipVertical
-							})}
-					>
-						<span>{m.video_editor_property_flip_y()}</span>
-					</Button>
-				</div>
-			</section>
+			<ClipTransformSection itemId={item.id} {itemIds} {onedit} />
 		{/if}
 
 		{#if item.type === 'video' || item.type === 'image' || item.type === 'lottie'}

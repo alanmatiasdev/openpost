@@ -25,7 +25,9 @@ import type {
 } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { keyframeSelectionStore } from '../stores/keyframe-selection-store.svelte';
-import { execute } from '../commands/command-store.svelte';
+import { commandHistory, execute } from '../commands/command-store.svelte';
+import { captureSnapshot, restoreSnapshot } from '../commands/snapshot.svelte';
+import type { TimelineSnapshot } from '../commands/types';
 import { isFrameInTransitionRegion } from '../edit-constraints';
 import { transitionsStore } from './transitions-store.svelte';
 import { legacyKeyframeId, trackEntryAt, type KeyframeRef } from '../keyframe-editor';
@@ -204,85 +206,123 @@ export function setAnimatedProperties(
 	values: Partial<Record<KeyframeProperty, number>>,
 	isAutoKeyEnabled: (property: KeyframeProperty) => boolean
 ): boolean {
-	return execute('SET_ANIMATED_PROPERTIES', () => {
-		const item = timelineStore.itemById.get(itemId);
-		if (!item || absoluteFrame < item.from || absoluteFrame >= item.from + item.durationInFrames) {
-			return false;
+	return execute('SET_ANIMATED_PROPERTIES', () =>
+		writeAnimatedProperties(itemId, absoluteFrame, values, isAutoKeyEnabled)
+	);
+}
+
+function writeAnimatedProperties(
+	itemId: string,
+	absoluteFrame: number,
+	values: Partial<Record<KeyframeProperty, number>>,
+	isAutoKeyEnabled: (property: KeyframeProperty) => boolean
+): boolean {
+	const item = timelineStore.itemById.get(itemId);
+	if (!item) return false;
+	let keyframes = item.keyframes;
+	let patch: Partial<TimelineItem> = {};
+	const relativeFrame = absoluteFrame - item.from;
+	const vectorWrites = new Set<VectorKeyframeProperty>();
+	for (const vectorProperty of ['position', 'scale', 'anchor'] as const) {
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
+		const hasValue = values[xProperty] !== undefined || values[yProperty] !== undefined;
+		if (!hasValue || !vectorProxyForItem(item, xProperty)) continue;
+		if (
+			activeVectorKeyframes(item, vectorProperty) ||
+			item.keyframes?.[xProperty] ||
+			item.keyframes?.[yProperty] ||
+			(values[xProperty] !== undefined && isAutoKeyEnabled(xProperty)) ||
+			(values[yProperty] !== undefined && isAutoKeyEnabled(yProperty))
+		) {
+			vectorWrites.add(vectorProperty);
 		}
-		let keyframes = item.keyframes;
-		let patch: Partial<TimelineItem> = {};
-		const relativeFrame = absoluteFrame - item.from;
-		const vectorWrites = new Set<VectorKeyframeProperty>();
-		for (const vectorProperty of ['position', 'scale', 'anchor'] as const) {
-			const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
-			const hasValue = values[xProperty] !== undefined || values[yProperty] !== undefined;
-			if (!hasValue || !vectorProxyForItem(item, xProperty)) continue;
-			if (
-				activeVectorKeyframes(item, vectorProperty) ||
-				item.keyframes?.[xProperty] ||
-				item.keyframes?.[yProperty] ||
-				(values[xProperty] !== undefined && isAutoKeyEnabled(xProperty)) ||
-				(values[yProperty] !== undefined && isAutoKeyEnabled(yProperty))
-			) {
-				vectorWrites.add(vectorProperty);
-			}
-		}
-		const shouldWriteKey = Object.entries(values).some(([rawProperty, value]) => {
-			if (value === undefined) return false;
-			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
-			const property = rawProperty as KeyframeProperty;
-			const vector = vectorProxyForItem(item, property);
-			return (
-				Boolean(vector && vectorWrites.has(vector.property)) ||
-				item.keyframes?.[property] !== undefined ||
-				isAutoKeyEnabled(property)
-			);
-		});
-		if (shouldWriteKey && !canWriteKeyframe(item, relativeFrame)) return false;
-		let workingItem = item;
-		for (const vectorProperty of vectorWrites) {
-			const promoted = promoteVectorKeyframes(workingItem, vectorProperty, relativeFrame);
-			if (!promoted) return false;
-			remapPromotedSelection(itemId, promoted.identityRemap);
-			const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
-			const current =
-				interpolateVector(promoted.keyframes, relativeFrame) ??
-				baseVectorValue(workingItem, vectorProperty);
-			const vectorKeyframes = upsertVectorKeyframe(promoted.keyframes, relativeFrame, {
-				x:
-					values[xProperty] === undefined
-						? current.x
-						: scalarToVectorComponent(workingItem, vectorProperty, 'x', values[xProperty]),
-				y:
-					values[yProperty] === undefined
-						? current.y
-						: scalarToVectorComponent(workingItem, vectorProperty, 'y', values[yProperty])
-			});
-			const vectorPatch = vectorPropertyKeyframesPatch(
-				workingItem,
-				vectorProperty,
-				vectorKeyframes
-			);
-			patch = { ...patch, ...vectorPatch };
-			workingItem = { ...item, ...patch };
-			keyframes = patch.keyframes;
-		}
-		for (const [rawProperty, value] of Object.entries(values)) {
-			if (value === undefined) continue;
-			// SAFETY: values is keyed by KeyframeProperty at the public boundary.
-			const property = rawProperty as KeyframeProperty;
-			const vector = vectorProxyForItem(item, property);
-			if (vector && vectorWrites.has(vector.property)) continue;
-			if (item.keyframes?.[property] || isAutoKeyEnabled(property)) {
-				keyframes = upsertTrack(keyframes ?? {}, property, relativeFrame, value);
-			} else {
-				patch = mergeItemPatches(patch, basePropertyPatch({ ...item, ...patch }, property, value));
-			}
-		}
-		if (keyframes !== item.keyframes) patch.keyframes = keyframes;
-		timelineStore._updateItems([{ id: itemId, patch }]);
-		return true;
+	}
+	const shouldWriteKey = Object.entries(values).some(([rawProperty, value]) => {
+		if (value === undefined) return false;
+		// SAFETY: values is keyed by KeyframeProperty at the public boundary.
+		const property = rawProperty as KeyframeProperty;
+		const vector = vectorProxyForItem(item, property);
+		return (
+			Boolean(vector && vectorWrites.has(vector.property)) ||
+			item.keyframes?.[property] !== undefined ||
+			isAutoKeyEnabled(property)
+		);
 	});
+	if (shouldWriteKey && !canWriteKeyframe(item, relativeFrame)) return false;
+	let workingItem = item;
+	for (const vectorProperty of vectorWrites) {
+		const promoted = promoteVectorKeyframes(workingItem, vectorProperty, relativeFrame);
+		if (!promoted) return false;
+		remapPromotedSelection(itemId, promoted.identityRemap);
+		const [xProperty, yProperty] = VECTOR_COMPONENTS[vectorProperty];
+		const current =
+			interpolateVector(promoted.keyframes, relativeFrame) ??
+			baseVectorValue(workingItem, vectorProperty);
+		const vectorKeyframes = upsertVectorKeyframe(promoted.keyframes, relativeFrame, {
+			x:
+				values[xProperty] === undefined
+					? current.x
+					: scalarToVectorComponent(workingItem, vectorProperty, 'x', values[xProperty]),
+			y:
+				values[yProperty] === undefined
+					? current.y
+					: scalarToVectorComponent(workingItem, vectorProperty, 'y', values[yProperty])
+		});
+		const vectorPatch = vectorPropertyKeyframesPatch(workingItem, vectorProperty, vectorKeyframes);
+		patch = { ...patch, ...vectorPatch };
+		workingItem = { ...item, ...patch };
+		keyframes = patch.keyframes;
+	}
+	for (const [rawProperty, value] of Object.entries(values)) {
+		if (value === undefined) continue;
+		// SAFETY: values is keyed by KeyframeProperty at the public boundary.
+		const property = rawProperty as KeyframeProperty;
+		const vector = vectorProxyForItem(item, property);
+		if (vector && vectorWrites.has(vector.property)) continue;
+		if (item.keyframes?.[property] || isAutoKeyEnabled(property)) {
+			keyframes = upsertTrack(keyframes ?? {}, property, relativeFrame, value);
+		} else {
+			patch = mergeItemPatches(patch, basePropertyPatch({ ...item, ...patch }, property, value));
+		}
+	}
+	if (keyframes !== item.keyframes) patch.keyframes = keyframes;
+	timelineStore._updateItems([{ id: itemId, patch }]);
+	return true;
+}
+
+/** Update several inspector values during a gesture without growing undo history. */
+export function updateAnimatedPropertiesLive(
+	itemId: string,
+	absoluteFrame: number,
+	values: Partial<Record<KeyframeProperty, number>>,
+	isAutoKeyEnabled: (property: KeyframeProperty) => boolean
+): boolean {
+	return writeAnimatedProperties(itemId, absoluteFrame, values, isAutoKeyEnabled);
+}
+
+/** Capture the start of a live inspector gesture. */
+export function beginAnimatedPropertyEdit(): TimelineSnapshot {
+	return captureSnapshot();
+}
+
+/** Collapse all live inspector writes since `before` into one undo entry. */
+export function commitAnimatedPropertyEdit(
+	before: TimelineSnapshot,
+	itemIds: string[],
+	properties: KeyframeProperty[]
+): void {
+	commandHistory.addUndoEntry(
+		{
+			type: 'SET_ANIMATED_PROPERTIES',
+			payload: { ids: itemIds, properties }
+		},
+		before
+	);
+}
+
+/** Restore the exact pre-gesture state when a live inspector edit is cancelled. */
+export function cancelAnimatedPropertyEdit(before: TimelineSnapshot): void {
+	restoreSnapshot(before);
 }
 
 /**

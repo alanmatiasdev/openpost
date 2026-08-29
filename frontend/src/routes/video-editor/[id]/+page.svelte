@@ -1769,6 +1769,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 								{:else if selectedItemId && editInspectorTab === 'properties'}
 									<ClipPropertiesPanel
 										itemId={selectedItemId}
+										itemIds={selectedItemIds}
 										onedit={() => editorSession.scheduleAutosave()}
 										oncreatevoice={openTextVoice}
 									/>
