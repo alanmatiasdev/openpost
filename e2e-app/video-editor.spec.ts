@@ -223,6 +223,24 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("menuitem", { name: /^Delete/u })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("[data-color-scope-canvas]")).toBeVisible();
+  const effects = populatedColorDock.getByRole("region", { name: "Effects" });
+  await expect(effects.getByRole("button", { name: "Add effect" })).toBeVisible();
+  await expect(effects.getByRole("button", { name: "Color Wheels" })).toHaveCount(0);
+  await effects.getByRole("button", { name: "Add effect" }).click();
+  await page.locator('[data-effect-option="brightness"]').click();
+  const brightnessEffect = effects
+    .getByRole("button", { name: "Brightness", exact: true })
+    .locator("xpath=ancestor::li[@data-effect-id]");
+  await expect(brightnessEffect).toBeVisible();
+  await brightnessEffect.getByRole("button", { name: "Brightness", exact: true }).click();
+  await expect(brightnessEffect.getByRole("slider", { name: "Brightness — Amount" })).toBeHidden();
+  await brightnessEffect.getByRole("button", { name: "Brightness", exact: true }).click();
+  await expect(brightnessEffect.getByRole("slider", { name: "Brightness — Amount" })).toBeVisible();
+  await brightnessEffect.locator("[data-effect-context-trigger]").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Remove effect" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await effects.getByRole("button", { name: "Disable all effects" }).click();
+  await expect(effects.getByRole("button", { name: "Enable all effects" })).toBeVisible();
   await page.screenshot({
     path: "frontend/.svelte-kit/openpost-video-editor-color-1280.png",
     fullPage: true,

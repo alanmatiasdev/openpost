@@ -10,9 +10,9 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Slider } from '$lib/components/ui/slider';
 	import AppSelect from '$lib/components/app-select.svelte';
-	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
@@ -36,6 +36,7 @@
 		removeEffectOnItems,
 		resetEffectOnItems,
 		setEffectEnabledOnItems,
+		setAllEffectsEnabledOnItems,
 		setGpuEffectParam,
 		setGpuEffectData,
 		setGpuEffectDataOnItems,
@@ -93,18 +94,28 @@
 		itemId,
 		itemIds = [],
 		onedit,
-		showColorTools = true,
-		showScopes = true
+		showColorTools = false,
+		showScopes = false,
+		hiddenGpuEffectIds = []
 	}: {
 		itemId: string | null;
 		itemIds?: string[];
 		onedit: () => void;
 		showColorTools?: boolean;
 		showScopes?: boolean;
+		hiddenGpuEffectIds?: readonly string[];
 	} = $props();
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
-	const effects = $derived(item?.effects ?? []);
+	const hiddenGpuEffects = $derived(new Set(hiddenGpuEffectIds));
+	const effects = $derived(
+		(item?.effects ?? []).filter(
+			(effect) => effect.type !== 'gpu' || !hiddenGpuEffects.has(effect.effectId)
+		)
+	);
+	const allEffectsEnabled = $derived(
+		effects.length > 0 && effects.every((effect) => effect.enabled)
+	);
 	const resolvedEffects = $derived(
 		item ? (resolveAnimatedEffectsAt(item, timelineStore.currentFrame) ?? []) : []
 	);
@@ -118,9 +129,8 @@
 	let userPresets = $state<EffectPreset[]>([]);
 	let presetName = $state('');
 	let showPresetSave = $state(false);
+	let collapsedEffects = $state<Set<string>>(new Set());
 	let presetStatus = $state('');
-	let suppressAddAfterDrag = false;
-	let dragResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const typeLabels = $derived<Record<Exclude<ItemType, 'gpu'>, string>>({
 		brightness: m.video_editor_effects_brightness(),
@@ -198,26 +208,32 @@
 			cssAmount: definition.defaultAmount
 		})),
 		...gpuCategories.flatMap((group) =>
-			group.effects.map((definition) => ({
-				value: `gpu:${definition.id}`,
-				label: gpuEffectLabel(definition),
-				group: gpuCategoryLabels[group.category],
-				gpuEffectId: definition.id
-			}))
+			group.effects
+				.filter((definition) => !hiddenGpuEffects.has(definition.id))
+				.map((definition) => ({
+					value: `gpu:${definition.id}`,
+					label: gpuEffectLabel(definition),
+					group: gpuCategoryLabels[group.category],
+					gpuEffectId: definition.id
+				}))
 		),
-		...BUILT_IN_EFFECT_PRESETS.map((preset) => ({
-			value: `preset:${preset.id}`,
-			label: builtInPresetLabels[preset.id] ?? preset.name,
-			group: m.video_editor_effects_presets(),
-			previewEffects: preset.effects
-		})),
-		...userPresets.map((preset) => ({
-			value: `user-preset:${preset.id}`,
-			label: preset.name,
-			group: m.video_editor_effects_my_presets(),
-			previewEffects: preset.effects,
-			removable: true
-		}))
+		...BUILT_IN_EFFECT_PRESETS.filter((preset) => presetIsVisible(preset.effects)).map(
+			(preset) => ({
+				value: `preset:${preset.id}`,
+				label: builtInPresetLabels[preset.id] ?? preset.name,
+				group: m.video_editor_effects_presets(),
+				previewEffects: preset.effects
+			})
+		),
+		...userPresets
+			.filter((preset) => presetIsVisible(preset.effects))
+			.map((preset) => ({
+				value: `user-preset:${preset.id}`,
+				label: preset.name,
+				group: m.video_editor_effects_my_presets(),
+				previewEffects: preset.effects,
+				removable: true
+			}))
 	]);
 	const blendOptions = $derived(
 		BLEND_MODE_GROUPS.flatMap((group) =>
@@ -232,31 +248,34 @@
 		return EFFECT_DEFINITIONS.find((entry) => entry.type === type);
 	}
 
-	function handleAdd(): void {
-		if (suppressAddAfterDrag) {
-			suppressAddAfterDrag = false;
-			return;
-		}
-		const templates = pendingEffectTemplates();
+	function presetIsVisible(templates: readonly EffectTemplate[]): boolean {
+		return templates.every(
+			(template) => template.kind !== 'gpu' || !hiddenGpuEffects.has(template.effectId)
+		);
+	}
+
+	function addSelectedEffect(kind: string): void {
+		pendingKind = kind;
+		const templates = pendingEffectTemplates(kind);
 		if (templates.length > 0 && addEffectTemplates(selectedEffectItemIds, templates)) onedit();
 	}
 
-	function pendingEffectTemplates(): EffectTemplate[] {
-		if (pendingKind.startsWith('gpu:')) {
-			const effectId = pendingKind.slice(4);
+	function pendingEffectTemplates(kind = pendingKind): EffectTemplate[] {
+		if (kind.startsWith('gpu:')) {
+			const effectId = kind.slice(4);
 			return getGpuEffect(effectId) ? [{ kind: 'gpu', effectId }] : [];
 		}
-		if (pendingKind.startsWith('preset:')) {
+		if (kind.startsWith('preset:')) {
 			return (
-				BUILT_IN_EFFECT_PRESETS.find((preset) => preset.id === pendingKind.slice(7))?.effects ?? []
+				BUILT_IN_EFFECT_PRESETS.find((preset) => preset.id === kind.slice(7))?.effects ?? []
 			).map(cloneTemplate);
 		}
-		if (pendingKind.startsWith('user-preset:')) {
-			return (userPresets.find((preset) => preset.id === pendingKind.slice(12))?.effects ?? []).map(
+		if (kind.startsWith('user-preset:')) {
+			return (userPresets.find((preset) => preset.id === kind.slice(12))?.effects ?? []).map(
 				cloneTemplate
 			);
 		}
-		const definition = definitionFor(pendingKind);
+		const definition = definitionFor(kind);
 		return definition ? [{ kind: 'css', effectType: definition.type }] : [];
 	}
 
@@ -275,7 +294,6 @@
 			label: pendingEffectLabel(),
 			effects: templates
 		};
-		suppressAddAfterDrag = true;
 		event.dataTransfer.effectAllowed = 'copy';
 		event.dataTransfer.setData('application/json', JSON.stringify(payload));
 		setEffectDragData(payload);
@@ -325,18 +343,12 @@
 
 	function finishEffectDrag(): void {
 		clearEffectDragData();
-		if (dragResetTimer) clearTimeout(dragResetTimer);
-		dragResetTimer = setTimeout(() => {
-			suppressAddAfterDrag = false;
-			dragResetTimer = null;
-		}, 0);
 	}
 
 	onDestroy(() => {
 		clearEffectDragData();
 		if (itemId) colorPreviewStore.clearEffectDraft(itemId);
 		if (spatialEffectEditorStore.editingItemId === itemId) stopSpatialEditing();
-		if (dragResetTimer) clearTimeout(dragResetTimer);
 	});
 
 	function commitAmount(effectId: string, amount: number): void {
@@ -465,7 +477,20 @@
 
 	function moveStackEffect(effectId: string, direction: -1 | 1): void {
 		if (!itemId) return;
-		if (moveEffectOnItems(itemId, selectedEffectItemIds, effectId, direction)) onedit();
+		if (moveEffectOnItems(itemId, selectedEffectItemIds, effectId, direction, hiddenGpuEffectIds))
+			onedit();
+	}
+
+	function toggleAllEffects(): void {
+		if (setAllEffectsEnabledOnItems(selectedEffectItemIds, !allEffectsEnabled, hiddenGpuEffectIds))
+			onedit();
+	}
+
+	function toggleEffectCollapsed(effectId: string): void {
+		const next = new Set(collapsedEffects);
+		if (next.has(effectId)) next.delete(effectId);
+		else next.add(effectId);
+		collapsedEffects = next;
 	}
 
 	function toggleStackEffect(effect: ItemEffect): void {
@@ -477,7 +502,15 @@
 		) {
 			stopSpatialEditing();
 		}
-		if (setEffectEnabledOnItems(itemId, selectedEffectItemIds, effect.id, !effect.enabled)) {
+		if (
+			setEffectEnabledOnItems(
+				itemId,
+				selectedEffectItemIds,
+				effect.id,
+				!effect.enabled,
+				hiddenGpuEffectIds
+			)
+		) {
 			onedit();
 			emitEditorSound(effect.enabled ? 'toggleOff' : 'toggleOn', editorSession.clock.isPlaying);
 		}
@@ -485,7 +518,7 @@
 
 	function resetStackEffect(effectId: string): void {
 		if (!itemId) return;
-		if (resetEffectOnItems(itemId, selectedEffectItemIds, effectId)) onedit();
+		if (resetEffectOnItems(itemId, selectedEffectItemIds, effectId, hiddenGpuEffectIds)) onedit();
 	}
 
 	function removeStackEffect(effectId: string): void {
@@ -496,7 +529,7 @@
 		) {
 			stopSpatialEditing();
 		}
-		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId)) {
+		if (removeEffectOnItems(itemId, selectedEffectItemIds, effectId, hiddenGpuEffectIds)) {
 			onedit();
 			emitEditorSound('delete', editorSession.clock.isPlaying);
 		}
@@ -538,34 +571,56 @@
 	});
 </script>
 
-<div class="flex flex-col gap-1">
+<div
+	class="flex h-full min-h-0 w-full max-w-full flex-col gap-1 overflow-x-hidden"
+	role="region"
+	aria-label={m.video_editor_effects()}
+>
 	{#if showColorTools}<ColorWorkspace {itemId} {itemIds} {onedit} />{/if}
-	<h3 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
-		{m.video_editor_effects()}
-	</h3>
-	<div class="flex items-center gap-1">
+	<div class="flex h-8 shrink-0 items-center gap-1 border-b border-white/10 px-1">
 		<EffectPicker
 			bind:value={pendingKind}
 			options={effectOptions}
 			ariaLabel={m.video_editor_effects_add()}
+			triggerLabel={m.video_editor_effects_add()}
 			searchPlaceholder={m.video_editor_effects_search()}
 			emptyLabel={m.video_editor_effects_no_results()}
+			disabled={!itemId}
+			draggable={itemId !== null}
+			dragTitle={itemId ? m.video_editor_effects_add_or_drag() : m.video_editor_effects_add()}
+			onSelect={addSelectedEffect}
+			onDragStart={startEffectDrag}
+			onDragEnd={finishEffectDrag}
 			onRemoveOption={deleteUserPreset}
 			removeOptionLabel={(name) => m.video_editor_effects_preset_delete_named({ name })}
 		/>
-		<button
-			type="button"
-			class="flex items-center gap-1 rounded bg-[oklch(0.22_0.01_50)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] enabled:cursor-grab enabled:active:cursor-grabbing disabled:cursor-not-allowed"
-			disabled={!itemId}
-			draggable={itemId !== null}
-			title={itemId ? m.video_editor_effects_add_or_drag() : m.video_editor_effects_add()}
-			onclick={handleAdd}
-			ondragstart={startEffectDrag}
-			ondragend={finishEffectDrag}
-		>
-			<GripVerticalIcon class="size-3" />
-			{m.video_editor_effects_add()}
-		</button>
+		{#if effects.length > 0}
+			<button
+				type="button"
+				class="flex size-7 shrink-0 items-center justify-center rounded border border-white/10 bg-[oklch(0.22_0.01_50)] hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				aria-label={m.video_editor_effects_preset_save_current()}
+				title={m.video_editor_effects_preset_save_current()}
+				aria-expanded={showPresetSave}
+				onclick={() => (showPresetSave = !showPresetSave)}
+			>
+				<SaveIcon class="size-3.5" />
+			</button>
+			<button
+				type="button"
+				class="flex size-7 shrink-0 items-center justify-center rounded border border-white/10 bg-[oklch(0.22_0.01_50)] hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				aria-label={allEffectsEnabled
+					? m.video_editor_effects_disable_all()
+					: m.video_editor_effects_enable_all()}
+				title={allEffectsEnabled
+					? m.video_editor_effects_disable_all()
+					: m.video_editor_effects_enable_all()}
+				onclick={toggleAllEffects}
+			>
+				{#if allEffectsEnabled}<EyeOffIcon class="size-3.5" />{:else}<EyeIcon
+						class="size-3.5"
+					/>{/if}
+			</button>
+		{/if}
 	</div>
 	{#if showPresetSave}
 		<div class="flex items-center gap-1 px-1">
@@ -598,16 +653,6 @@
 				<XIcon class="size-3" />
 			</button>
 		</div>
-	{:else}
-		<button
-			type="button"
-			class="mx-1 flex h-7 items-center justify-center gap-1 rounded border border-[oklch(0.3_0.015_55)] text-xs text-[oklch(0.72_0.02_55)] hover:bg-[oklch(0.24_0.012_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:opacity-40"
-			disabled={effects.length === 0}
-			aria-expanded={showPresetSave}
-			onclick={() => (showPresetSave = true)}
-		>
-			<SaveIcon class="size-3" />{m.video_editor_effects_preset_save_current()}
-		</button>
 	{/if}
 	{#if presetStatus}<p class="px-1 text-[10px] text-[oklch(0.7_0.02_55)]" role="status">
 			{presetStatus}
@@ -615,12 +660,12 @@
 	{#if !itemId || effects.length === 0}
 		<p class="px-1 text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_effects_none()}</p>
 	{:else}
-		<ul class="flex flex-col gap-1">
+		<ul class="min-h-0 flex-1 overflow-y-auto">
 			{#each effects as effect, index (effect.id)}
 				{@const definition = definitionFor(effect.type)}
 				{@const gpuDefinition = effect.type === 'gpu' ? getGpuEffect(effect.effectId) : undefined}
 				<li
-					class="rounded bg-[oklch(0.22_0.01_50)] px-2 py-1.5"
+					class="border-b border-white/10 bg-[oklch(0.18_0.008_50)]"
 					data-effect-id={effect.id}
 					data-enabled={effect.enabled}
 				>
@@ -629,12 +674,32 @@
 							{#snippet child({ props })}
 								<div
 									{...props}
-									class="flex items-center justify-between gap-1"
+									class="flex min-h-8 items-center justify-between gap-1 bg-white/[0.025] px-1"
 									data-effect-context-trigger
 								>
-									<span class="min-w-0 flex-1 truncate text-xs" class:opacity-55={!effect.enabled}
-										>{effectLabel(effect)}</span
+									<button
+										type="button"
+										class="flex min-w-0 flex-1 items-center gap-1 px-1 text-left text-xs text-white/70 hover:text-white"
+										class:opacity-55={!effect.enabled}
+										aria-expanded={!collapsedEffects.has(effect.id)}
+										onclick={() => toggleEffectCollapsed(effect.id)}
 									>
+										{#if collapsedEffects.has(effect.id)}
+											<ChevronRightIcon class="size-3.5 shrink-0" />
+										{:else}
+											<ChevronDownIcon class="size-3.5 shrink-0" />
+										{/if}
+										<span class="truncate">{effectLabel(effect)}</span>
+										{#if collapsedEffects.has(effect.id) && !isEffectAtDefaults(effect)}
+											<span
+												class="inline-flex size-4 shrink-0 items-center justify-center"
+												aria-label={m.video_editor_effects_modified()}
+												data-effect-modified
+											>
+												<span class="size-1.5 rounded-full bg-orange-400" aria-hidden="true"></span>
+											</span>
+										{/if}
+									</button>
 									<div class="flex shrink-0 items-center">
 										<button
 											type="button"
@@ -732,77 +797,79 @@
 							</ContextMenu.Content>
 						</ContextMenu.Portal>
 					</ContextMenu.Root>
-					<div class:opacity-55={!effect.enabled}>
-						{#if definition && effect.type !== 'gpu'}
-							<Slider
-								class="mt-1"
-								min={definition.min}
-								max={definition.max}
-								step={definition.step}
-								value={draftAmounts[effect.id] ?? effect.amount}
-								ariaLabel={`${typeLabels[effect.type]} — ${m.video_editor_effects_amount()}`}
-								onValueChange={(value) => {
-									draftAmounts[effect.id] = value;
-								}}
-								onValueCommit={(value) => commitAmount(effect.id, value)}
-							/>
-						{/if}
-						{#if gpuDefinition && effect.type === 'gpu'}
-							{@const resolvedEffect = resolvedGpuEffect(effect)}
-							{#if getSpatialPointEffectConfig(effect.effectId)}
-								<button
-									type="button"
-									class="mt-1 flex h-7 w-full items-center justify-center gap-1.5 rounded border border-[oklch(0.32_0.015_55)] px-2 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:h-11 {isSpatialEditing(
-										effect.id
-									)
-										? 'border-[oklch(0.66_0.14_45)] bg-[oklch(0.66_0.14_45)] text-black hover:bg-[oklch(0.72_0.14_45)]'
-										: ''}"
-									disabled={!effect.enabled || selectedEffectItemIds.length !== 1}
-									aria-pressed={isSpatialEditing(effect.id)}
-									aria-label={isSpatialEditing(effect.id)
-										? m.video_editor_spatial_stop_editing({ effect: effectLabel(effect) })
-										: m.video_editor_spatial_edit_center({ effect: effectLabel(effect) })}
-									onclick={() => toggleSpatialEditing(effect)}
-								>
-									<CrosshairIcon class="size-3.5" />
-									{isSpatialEditing(effect.id)
-										? m.video_editor_spatial_editing_center()
-										: m.video_editor_spatial_edit_center_short()}
-								</button>
-							{/if}
-							{#if effect.effectId === 'gpu-lut'}
-								<button
-									type="button"
-									class="mt-1 w-full rounded border border-[oklch(0.32_0.015_55)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)]"
-									onclick={() => importLut(effect)}
-									>{typeof effect.params.lutName === 'string'
-										? effect.params.lutName
-										: m.video_editor_effects_choose_lut()}</button
-								>
-							{/if}
-							{#if effect.effectId === 'gpu-curves'}
-								<GpuCurvesEditor
-									gpuEffect={resolvedEffect}
-									ondraft={(params) => draftCurveParams(resolvedEffect, params)}
-									oncommit={(params) => commitCurveParams(effect, params)}
+					{#if !collapsedEffects.has(effect.id)}
+						<div class="px-2 pb-1.5" class:opacity-55={!effect.enabled}>
+							{#if definition && effect.type !== 'gpu'}
+								<Slider
+									class="mt-1"
+									min={definition.min}
+									max={definition.max}
+									step={definition.step}
+									value={draftAmounts[effect.id] ?? effect.amount}
+									ariaLabel={`${typeLabels[effect.type]} — ${m.video_editor_effects_amount()}`}
+									onValueChange={(value) => {
+										draftAmounts[effect.id] = value;
+									}}
+									onValueCommit={(value) => commitAmount(effect.id, value)}
 								/>
-							{:else}
-								<div class="mt-1 flex flex-col gap-1">
-									{#each gpuDefinition.schema as param (param.name)}
-										{#if !param.visibleWhen || param.visibleWhen(effect.params)}
-											<GpuParamControl
-												{param}
-												value={resolvedEffect.params[param.name]}
-												effectLabel={effectLabel(effect)}
-												oncommit={(value) => commitGpuParam(effect, param.name, value)}
-												keyframe={effectKeyframeControl(effect, param.name)}
-											/>
-										{/if}
-									{/each}
-								</div>
 							{/if}
-						{/if}
-					</div>
+							{#if gpuDefinition && effect.type === 'gpu'}
+								{@const resolvedEffect = resolvedGpuEffect(effect)}
+								{#if getSpatialPointEffectConfig(effect.effectId)}
+									<button
+										type="button"
+										class="mt-1 flex h-7 w-full items-center justify-center gap-1.5 rounded border border-[oklch(0.32_0.015_55)] px-2 text-xs hover:bg-[oklch(0.28_0.015_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:h-11 {isSpatialEditing(
+											effect.id
+										)
+											? 'border-[oklch(0.66_0.14_45)] bg-[oklch(0.66_0.14_45)] text-black hover:bg-[oklch(0.72_0.14_45)]'
+											: ''}"
+										disabled={!effect.enabled || selectedEffectItemIds.length !== 1}
+										aria-pressed={isSpatialEditing(effect.id)}
+										aria-label={isSpatialEditing(effect.id)
+											? m.video_editor_spatial_stop_editing({ effect: effectLabel(effect) })
+											: m.video_editor_spatial_edit_center({ effect: effectLabel(effect) })}
+										onclick={() => toggleSpatialEditing(effect)}
+									>
+										<CrosshairIcon class="size-3.5" />
+										{isSpatialEditing(effect.id)
+											? m.video_editor_spatial_editing_center()
+											: m.video_editor_spatial_edit_center_short()}
+									</button>
+								{/if}
+								{#if effect.effectId === 'gpu-lut'}
+									<button
+										type="button"
+										class="mt-1 w-full rounded border border-[oklch(0.32_0.015_55)] px-2 py-1 text-xs hover:bg-[oklch(0.28_0.015_50)]"
+										onclick={() => importLut(effect)}
+										>{typeof effect.params.lutName === 'string'
+											? effect.params.lutName
+											: m.video_editor_effects_choose_lut()}</button
+									>
+								{/if}
+								{#if effect.effectId === 'gpu-curves'}
+									<GpuCurvesEditor
+										gpuEffect={resolvedEffect}
+										ondraft={(params) => draftCurveParams(resolvedEffect, params)}
+										oncommit={(params) => commitCurveParams(effect, params)}
+									/>
+								{:else}
+									<div class="mt-1 flex flex-col gap-1">
+										{#each gpuDefinition.schema as param (param.name)}
+											{#if !param.visibleWhen || param.visibleWhen(effect.params)}
+												<GpuParamControl
+													{param}
+													value={resolvedEffect.params[param.name]}
+													effectLabel={effectLabel(effect)}
+													oncommit={(value) => commitGpuParam(effect, param.name, value)}
+													keyframe={effectKeyframeControl(effect, param.name)}
+												/>
+											{/if}
+										{/each}
+									</div>
+								{/if}
+							{/if}
+						</div>
+					{/if}
 				</li>
 			{/each}
 		</ul>

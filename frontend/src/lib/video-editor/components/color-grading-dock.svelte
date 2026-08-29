@@ -41,7 +41,12 @@
 		<div
 			class="min-h-[280px] min-w-0 overflow-y-auto border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0"
 		>
-			<EffectsPanel {itemId} {itemIds} {onedit} showColorTools={false} showScopes={false} />
+			<EffectsPanel
+				{itemId}
+				{itemIds}
+				{onedit}
+				hiddenGpuEffectIds={['gpu-color-wheels', 'gpu-curves']}
+			/>
 		</div>
 		<div
 			class="min-h-[300px] min-w-0 overflow-hidden border border-white/10 bg-[oklch(0.16_0.008_55)] lg:min-h-0"
