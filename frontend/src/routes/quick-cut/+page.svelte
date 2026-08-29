@@ -10,12 +10,14 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { Label } from '$lib/components/ui/label';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import Logo from '$lib/components/Logo.svelte';
+	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import { showToast } from '$lib/toast';
 	import { onDestroy, tick } from 'svelte';
 	import SegmentList from '$lib/quick-cut/components/SegmentList.svelte';
 	import TimelineBar from '$lib/quick-cut/components/TimelineBar.svelte';
 	import ExportPanel from '$lib/quick-cut/components/ExportPanel.svelte';
 	import StreamSelector from '$lib/quick-cut/components/StreamSelector.svelte';
+	import SourceBar from '$lib/quick-cut/components/SourceBar.svelte';
 	import {
 		createSegment,
 		MIN_SEGMENT_DURATION_SECONDS,
@@ -46,12 +48,17 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		saveProjectToWorkspace,
 		serializeProject,
 		deserializeProject,
+		deleteProjectFromWorkspace,
 		projectFileName,
 		persistSourceHandles,
-		reconcileSourceAfterProbe
+		reconcileSourceAfterProbe,
+		snapshotProject
 	} from '$lib/quick-cut/project';
+	import { prepareSourceRemoval, type SourceRemovalPlan } from '$lib/quick-cut/source-removal';
 	import type { QuickCutProject } from '$lib/quick-cut/types';
 	import { getWorkspaceRoot } from '$lib/video-editor/workspace-fs/root';
+	import { deleteHandle } from '$lib/video-editor/workspace-fs/handles-db';
+	import type { DestructiveActionOutcome } from '$lib/destructive-action-outcome';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
@@ -88,6 +95,8 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	let mergedPreflight = $state<PreflightResult | null>(null);
 	let preflightGeneration = 0;
 	let previewWait: AbortController | null = null;
+	let sourceRemovalDialogOpen = $state(false);
+	let pendingSourceRemoval = $state<QuickCutSource | null>(null);
 
 	const activeSource = $derived(sources.find((s) => s.id === activeSourceId) ?? sources[0] ?? null);
 	const selectedSegment = $derived(segments.find((s) => s.id === selectedId) ?? null);
@@ -95,6 +104,11 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	const validationErrors = $derived(validateSegments(enabledSegments, 0, sources));
 	const hasOverlapError = $derived(validationErrors.some((e) => e.kind === 'overlap'));
 	const preflight = $derived(merge ? mergedPreflight : individualPreflight);
+	const pendingSourceSegmentCount = $derived(
+		pendingSourceRemoval
+			? segments.filter((segment) => segment.sourceId === pendingSourceRemoval?.id).length
+			: 0
+	);
 
 	$effect(() => {
 		const requestSources = sources.slice();
@@ -223,6 +237,82 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		if (!preservePreview) stopPreview();
 		activeSourceId = id;
 		currentTime = 0;
+	}
+
+	function requestSourceRemoval(id: string): void {
+		const source = sources.find((candidate) => candidate.id === id);
+		if (!source || exporting) return;
+		pendingSourceRemoval = source;
+		sourceRemovalDialogOpen = true;
+	}
+
+	function sourceRemovalDescription(): string {
+		if (!pendingSourceRemoval) return '';
+		const name = pendingSourceRemoval.name;
+		const removal =
+			pendingSourceSegmentCount === 0
+				? m.quick_cut_remove_source_no_segments({ name })
+				: pendingSourceSegmentCount === 1
+					? m.quick_cut_remove_source_one_segment({ name })
+					: m.quick_cut_remove_source_segments({ name, count: pendingSourceSegmentCount });
+		return sources.length === 1 ? `${removal} ${m.quick_cut_remove_last_source_note()}` : removal;
+	}
+
+	async function confirmSourceRemoval(): Promise<DestructiveActionOutcome> {
+		const target = pendingSourceRemoval;
+		if (!target) return { ok: false, message: m.app_destructive_action_failed() };
+		let removal: SourceRemovalPlan | null;
+		try {
+			removal = await prepareSourceRemoval(
+				{
+					sources,
+					segments,
+					project,
+					targetId: target.id,
+					activeSourceId,
+					selectedSegmentId: selectedId,
+					inPoint,
+					outPoint
+				},
+				async (plan) => {
+					await saveQueue;
+					if (!getWorkspaceRoot() || !project) return;
+					if (plan.project) await saveProjectToWorkspace(plan.project);
+					else await deleteProjectFromWorkspace(project.id);
+				}
+			);
+		} catch (error) {
+			return {
+				ok: false,
+				message: error instanceof Error && error.message ? error.message : m.quick_cut_save_failed()
+			};
+		}
+		if (!removal) return { ok: false, message: m.app_destructive_action_failed() };
+
+		videoEl?.pause();
+		stopPreview();
+		const removedUrl = sourceUrls.get(removal.removedSource.id);
+		if (removedUrl) URL.revokeObjectURL(removedUrl);
+		const nextUrls = new Map(sourceUrls);
+		nextUrls.delete(removal.removedSource.id);
+		sourceUrls = nextUrls;
+		sources = removal.sources;
+		segments = removal.segments;
+		project = removal.project;
+		if (activeSourceId !== removal.activeSourceId) currentTime = 0;
+		activeSourceId = removal.activeSourceId;
+		selectedId = removal.selectedSegmentId;
+		inPoint = removal.inPoint;
+		outPoint = removal.outPoint;
+		saveRevision += 1;
+		saveState = removal.sources.length === 0 ? 'idle' : 'saved';
+		pendingSourceRemoval = null;
+		void deleteHandle('media', `quick-cut:${removal.removedSource.id}`).catch(() => undefined);
+		soundPreferences.play('success');
+		return {
+			ok: true,
+			successMessage: m.quick_cut_source_removed({ name: removal.removedSource.name })
+		};
 	}
 
 	function seekTo(seconds: number): void {
@@ -599,7 +689,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		if (!getWorkspaceRoot()) return;
 		const revision = ++saveRevision;
 		saveState = 'saving';
-		const toSave = structuredClone(project);
+		const toSave = snapshotProject(project);
 		saveQueue = saveQueue
 			.then(() => saveProjectToWorkspace(toSave))
 			.then(() => {
@@ -875,47 +965,22 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 				<p class="mt-4 text-xs text-muted-foreground">{m.quick_cut_workspace_hint()}</p>
 			</div>
 		{:else}
-			<div class="flex min-w-0 flex-wrap gap-2">
-				{#each sources as src, idx (src.id)}
-					<div class="flex items-center gap-1">
-						<button
-							type="button"
-							class="flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs {activeSourceId ===
-							src.id
-								? 'border-primary bg-primary text-primary-foreground'
-								: 'bg-card hover:bg-accent'}"
-							aria-pressed={activeSourceId === src.id}
-							onclick={() => switchActiveSource(src.id)}
-						>
-							<span class="truncate font-medium"
-								>{m.quick_cut_source_label({ index: idx + 1 })} · {src.name}</span
-							>
-							{#if !src.file && !src.handle}
-								<span class="rounded bg-destructive px-1 text-[10px] text-destructive-foreground"
-									>{m.quick_cut_source_missing()}</span
-								>
-							{/if}
-						</button>
-						{#if !src.file && !src.handle}
-							<Button
-								size="xs"
-								variant="outline"
-								onclick={() => reconnectSource(src.id)}
-								class="min-h-11">{m.quick_cut_reconnect()}</Button
-							>
-						{/if}
-					</div>
-				{/each}
-				<Button size="xs" variant="outline" onclick={openFiles} class="min-h-11"
-					>{m.quick_cut_add_source()}</Button
-				>
-			</div>
+			<SourceBar
+				{sources}
+				{activeSourceId}
+				busy={exporting}
+				onSelect={switchActiveSource}
+				onReconnect={(id) => void reconnectSource(id)}
+				onRemove={requestSourceRemoval}
+				onAdd={() => void openFiles()}
+			/>
 
-			<div class="flex min-w-0 flex-col gap-3">
-				{#each sources as src (src.id)}
-					<StreamSelector source={src} onChange={(patch) => updateSourceStreams(src.id, patch)} />
-				{/each}
-			</div>
+			{#if activeSource}
+				<StreamSelector
+					source={activeSource}
+					onChange={(patch) => updateSourceStreams(activeSource.id, patch)}
+				/>
+			{/if}
 
 			<div class="grid min-w-0 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
 				<div class="flex min-w-0 flex-col gap-3">
@@ -1151,4 +1216,12 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	<footer class="border-t px-3 py-2 text-center text-xs text-muted-foreground">
 		{m.quick_cut_keyboard_hint()}
 	</footer>
+
+	<DestructiveConfirmDialog
+		bind:open={sourceRemovalDialogOpen}
+		title={m.quick_cut_remove_source_title({ name: pendingSourceRemoval?.name ?? '' })}
+		description={sourceRemovalDescription()}
+		confirmLabel={m.quick_cut_remove_source()}
+		onConfirm={confirmSourceRemoval}
+	/>
 </div>

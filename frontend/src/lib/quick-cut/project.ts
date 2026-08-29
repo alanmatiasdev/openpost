@@ -475,6 +475,10 @@ export function deserializeProject(json: string): QuickCutProject {
 	return parseProject(json);
 }
 
+export function snapshotProject(project: QuickCutProject): QuickCutProject {
+	return deserializeProject(serializeProject(project));
+}
+
 export function projectFileName(project: QuickCutProject): string {
 	const safe = (project.name || 'quick-cut').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 32);
 	return `${safe}-${project.id.slice(0, 8)}.llc.json`;

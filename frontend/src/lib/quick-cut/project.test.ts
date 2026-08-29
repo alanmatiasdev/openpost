@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewProject, parseProject, serializeProject } from './project';
+import { createNewProject, parseProject, serializeProject, snapshotProject } from './project';
 import { createSegment } from './model';
 import type { QuickCutSourceMetadata } from './types';
 
@@ -40,6 +40,18 @@ describe('quick-cut project parsing', () => {
 			'b1',
 			'a2'
 		]);
+	});
+
+	it('takes a validated plain snapshot of a proxied editor project', () => {
+		const project = createNewProject([source()]);
+		project.segments = [createSegment(0, 1, { id: 'segment', sourceId: 'source-a' })];
+		const proxied = new Proxy(project, {});
+
+		const snapshot = snapshotProject(proxied);
+
+		expect(snapshot).toEqual(project);
+		expect(snapshot).not.toBe(project);
+		expect(snapshot.sources[0]).not.toBe(project.sources[0]);
 	});
 
 	it('round-trips per-segment cut strategies and keeps older segments on the project mode', () => {

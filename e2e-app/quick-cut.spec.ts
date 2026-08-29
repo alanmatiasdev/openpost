@@ -178,7 +178,38 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await page.getByRole("button", { name: /Send to OpenPost/i }).click();
   await expect(page.getByText(/Choose an OpenPost workspace before sending/i)).toBeVisible();
 
+  const addChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /Add source/i }).click();
+  const addChooser = await addChooserPromise;
+  await addChooser.setFiles(
+    path.resolve("frontend/src/lib/video-editor/media/fixtures/prores-proxy.mov"),
+  );
+  const firstSource = page.getByRole("button", { name: /Source 1 · prores-proxy\.mov/i });
+  const secondSource = page.getByRole("button", { name: /Source 2 · prores-proxy\.mov/i });
+  await expect(firstSource).toBeVisible();
+  await expect(secondSource).toBeVisible();
   await page.setViewportSize({ width: 320, height: 800 });
+  await expectNoHorizontalOverflow(page);
+
+  await firstSource.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Select source", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Remove source", exact: true }).click();
+  const firstRemoval = page.getByRole("dialog");
+  await expect(firstRemoval).toContainText("1 segment");
+  await firstRemoval.getByRole("button", { name: "Remove source", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Segment 1/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Source 2 · prores-proxy\.mov/i })).toHaveCount(0);
+
+  const remainingSource = page.getByRole("button", {
+    name: /Source 1 · prores-proxy\.mov/i,
+  });
+  await remainingSource.focus();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Remove source", exact: true }).click();
+  const finalRemoval = page.getByRole("dialog");
+  await expect(finalRemoval).toContainText("last source");
+  await finalRemoval.getByRole("button", { name: "Remove source", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /No video open/i })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   expect(consoleErrors.filter((error) => !error.includes("Failed to load resource"))).toEqual([]);
 });
