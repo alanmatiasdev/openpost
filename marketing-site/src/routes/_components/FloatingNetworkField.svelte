@@ -375,15 +375,57 @@
 	}
 
 	@media (min-width: 48rem) {
-		.network-orbit:nth-child(3),
-		.network-orbit:nth-child(4),
-		.network-orbit:nth-child(7),
-		.network-orbit:nth-child(8),
-		.network-orbit:nth-child(9),
-		.network-orbit:nth-child(10),
-		.network-orbit:nth-child(11),
+		.network-orbit {
+			--mark-size: clamp(2.75rem, 4vw, 3.35rem) !important;
+		}
+
+		.network-orbit:nth-child(1) {
+			top: 7%;
+			left: 3%;
+		}
+		.network-orbit:nth-child(2) {
+			top: 92%;
+			left: 4.5%;
+		}
+		.network-orbit:nth-child(3) {
+			top: 24%;
+			left: 4.5%;
+		}
+		.network-orbit:nth-child(4) {
+			top: 41%;
+			left: 3%;
+		}
+		.network-orbit:nth-child(5) {
+			top: 7%;
+			left: 97%;
+		}
+		.network-orbit:nth-child(6) {
+			top: 24%;
+			left: 95.5%;
+		}
+		.network-orbit:nth-child(7) {
+			top: 41%;
+			left: 97%;
+		}
+		.network-orbit:nth-child(8) {
+			top: 58%;
+			left: 95.5%;
+		}
+		.network-orbit:nth-child(9) {
+			top: 58%;
+			left: 4.5%;
+		}
+		.network-orbit:nth-child(10) {
+			top: 75%;
+			left: 97%;
+		}
+		.network-orbit:nth-child(11) {
+			top: 75%;
+			left: 3%;
+		}
 		.network-orbit:nth-child(12) {
-			display: none;
+			top: 92%;
+			left: 95.5%;
 		}
 	}
 
