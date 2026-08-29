@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "Muestra solo animaciones compatibles con todas las capas seleccionadas.",
 	"video_editor_motion_applied_title": "Aplicado a este clip",
 	"video_editor_motion_keyframes": "Fotogramas clave",
+	"video_editor_motion_manual_keyframes": "Fotogramas clave manuales",
+	"video_editor_motion_preset_keyframes_summary": "{keyframes} fotogramas clave en {properties} propiedades.",
 	"video_editor_motion_keyframes_cleared": "Se borraron {count} fotogramas clave.",
 	"video_editor_motion_no_results": "No hay animaciones coincidentes.",
 	"video_editor_motion_clip_title": "Clip de movimiento",

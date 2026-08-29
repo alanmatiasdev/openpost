@@ -120,8 +120,30 @@ function freeCutProject(): Project {
 					{
 						property: 'x',
 						keyframes: [
-							{ id: 'x0', frame: 0, value: 10, easing: 'linear' },
-							{ id: 'x1', frame: 30, value: 100, easing: 'ease-out' }
+							{
+								id: 'x0',
+								frame: 0,
+								value: 10,
+								easing: 'linear',
+								source: {
+									applicationId: 'freecut-preset',
+									kind: 'built-in-preset',
+									presetId: 'slide-in-left',
+									presetName: 'Slide left'
+								}
+							},
+							{
+								id: 'x1',
+								frame: 30,
+								value: 100,
+								easing: 'ease-out',
+								source: {
+									applicationId: 'freecut-preset',
+									kind: 'built-in-preset',
+									presetId: 'slide-in-left',
+									presetName: 'Slide left'
+								}
+							}
 						]
 					},
 					{
@@ -185,7 +207,11 @@ describe('FreeCut project compatibility', () => {
 			frames: [0, 30],
 			values: [10, 100],
 			ids: ['x0', 'x1'],
-			easings: ['linear', 'ease-out']
+			easings: ['linear', 'ease-out'],
+			sources: [
+				expect.objectContaining({ applicationId: 'freecut-preset' }),
+				expect.objectContaining({ applicationId: 'freecut-preset' })
+			]
 		});
 		expect(star.keyframes?.volume?.values).toEqual([expect.closeTo(0.501187, 5), 1]);
 		expect(lottie).toMatchObject({

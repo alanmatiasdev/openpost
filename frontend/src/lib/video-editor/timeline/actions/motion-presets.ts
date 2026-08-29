@@ -1,4 +1,5 @@
 import type {
+	AnimationKeyframeSource,
 	EasingConfig,
 	ItemKeyframes,
 	KeyframeTrack,
@@ -37,6 +38,7 @@ export interface ApplyMotionPresetOptions {
 	frameHeight: number;
 	fps?: number;
 	settings?: MotionGeneratorSettings;
+	presetName?: string;
 }
 
 export type ApplyMotionPresetResult =
@@ -52,6 +54,7 @@ interface PreparedMotionApply {
 	anchorItem: TimelineItem;
 	fromFrame: number;
 	toFrame: number;
+	source: AnimationKeyframeSource;
 }
 
 interface MotionApplyMutation {
@@ -93,6 +96,12 @@ export function applyMotionPreset(options: ApplyMotionPresetOptions): ApplyMotio
 	const fps = options.fps ?? timelineStore.fps;
 	const settings = options.settings ?? DEFAULT_MOTION_GENERATOR_SETTINGS;
 	const prepared = items.flatMap((item, index) => {
+		const source: AnimationKeyframeSource = {
+			applicationId: crypto.randomUUID(),
+			kind: 'built-in-preset',
+			presetId: preset.id,
+			presetName: options.presetName ?? preset.id
+		};
 		const anchorItem = options.mode === 'replace' ? withoutMotionAnimation(item) : item;
 		const anchorFrame = getMotionPresetAnchorFrame(preset.category, item.durationInFrames, fps);
 		const anchor = resolvedMotionTransform(
@@ -122,7 +131,8 @@ export function applyMotionPreset(options: ApplyMotionPresetOptions): ApplyMotio
 				payloads,
 				anchorItem,
 				fromFrame: Math.min(...frames),
-				toFrame: Math.max(...frames)
+				toFrame: Math.max(...frames),
+				source
 			}
 		];
 	});
@@ -240,6 +250,7 @@ function applyPreparedMotion(
 				frame,
 				value: { x: x?.value ?? pose.x, y: y?.value ?? pose.y },
 				easing: style.easing,
+				source: apply.source,
 				...(style.easingConfig && {
 					easingConfig: cloneEasingConfig(style.easingConfig)
 				})
@@ -253,7 +264,7 @@ function applyPreparedMotion(
 
 	for (const payload of apply.payloads) {
 		if (usesPosition && (payload.property === 'x' || payload.property === 'y')) continue;
-		const result = upsertMotionKeyframe(keyframes, payload, mode);
+		const result = upsertMotionKeyframe(keyframes, payload, mode, apply.source);
 		keyframes = result.keyframes;
 		if (result.applied) appliedKeyframes += 1;
 	}
@@ -294,7 +305,8 @@ function cloneTrack(track: KeyframeTrack): KeyframeTrack {
 			easingConfigs: track.easingConfigs.map((config) =>
 				config ? cloneEasingConfig(config) : null
 			)
-		})
+		}),
+		...(track.sources && { sources: [...track.sources] })
 	};
 }
 
@@ -316,7 +328,8 @@ function removeTrackRange(
 		}),
 		...(track.easingConfigs && {
 			easingConfigs: track.easingConfigs.filter((_, index) => keep[index])
-		})
+		}),
+		...(track.sources && { sources: track.sources.filter((_, index) => keep[index]) })
 	};
 	if (next.frames.length > 0) return { ...keyframes, [property]: next };
 	const result = { ...keyframes };
@@ -327,10 +340,11 @@ function removeTrackRange(
 function upsertMotionKeyframe(
 	keyframes: ItemKeyframes,
 	payload: MotionPresetKeyframePayload,
-	mode: MotionPresetApplyMode
+	mode: MotionPresetApplyMode,
+	source: AnimationKeyframeSource
 ): MotionKeyframeUpsert {
-	const source = keyframes[payload.property];
-	const track = completeTrack(source, payload.property);
+	const existingTrack = keyframes[payload.property];
+	const track = completeTrack(existingTrack, payload.property);
 	const collision = track.frames.indexOf(payload.frame);
 	if (mode === 'add' && collision >= 0) return { keyframes, applied: false };
 	if (collision >= 0) {
@@ -339,6 +353,7 @@ function upsertMotionKeyframe(
 		track.easingConfigs[collision] = payload.easingConfig
 			? cloneEasingConfig(payload.easingConfig)
 			: null;
+		track.sources[collision] = source;
 	} else {
 		let index = track.frames.findIndex((frame) => frame > payload.frame);
 		if (index < 0) index = track.frames.length;
@@ -351,6 +366,7 @@ function upsertMotionKeyframe(
 			0,
 			payload.easingConfig ? cloneEasingConfig(payload.easingConfig) : null
 		);
+		track.sources.splice(index, 0, source);
 	}
 	return {
 		keyframes: { ...keyframes, [payload.property]: track },
@@ -372,7 +388,8 @@ function completeTrack(
 		easings: source.frames.map((_, index) => source.easings?.[index] ?? 'linear'),
 		easingConfigs: source.frames.map((_, index) =>
 			source.easingConfigs?.[index] ? cloneEasingConfig(source.easingConfigs[index]!) : null
-		)
+		),
+		sources: source.frames.map((_, index) => source.sources?.[index] ?? null)
 	};
 }
 

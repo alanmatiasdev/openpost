@@ -4,6 +4,8 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import { m } from '$lib/paraglide/messages';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { editorSession } from '$lib/video-editor/editor.svelte';
+	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
 	import { sequenceStore } from '$lib/video-editor/sequences/sequence-store.svelte';
 	import type {
 		AnimationPreset,
@@ -49,8 +51,10 @@
 	import { trimAnimationToItemBounds } from '$lib/video-editor/timeline/actions/trimmed-keyframes';
 	import { countTrimmedKeyframes } from '$lib/video-editor/timeline/trimmed-keyframes';
 	import {
-		clearKeyframesForItems,
-		keyframeCountForClear
+		animationKeyframeApplications,
+		clearManualKeyframesForItems,
+		manualKeyframeSummary,
+		removeAnimationKeyframeApplication
 	} from '$lib/video-editor/timeline/actions/keyframes';
 	import ListFilterIcon from '@lucide/svelte/icons/list-filter';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -103,6 +107,9 @@
 			return item ? [item] : [];
 		})
 	);
+	const selectedItem = $derived(selectedItems[0]);
+	const selectedAppliedItems = $derived(selectedItem ? [selectedItem] : []);
+	const selectedAppliedIds = $derived(selectedItem ? [selectedItem.id] : []);
 	const additiveLayers = $derived(() => {
 		const map = new Map<
 			string,
@@ -119,9 +126,8 @@
 		selectedItems.filter((item) => item.motionModifiers?.some((modifier) => modifier.enabled))
 			.length
 	);
-	const baseKeyframeCount = $derived(
-		selectedItems.reduce((count, item) => count + keyframeCountForClear(item), 0)
-	);
+	const generatedApplications = $derived(animationKeyframeApplications(selectedAppliedItems));
+	const manualSummary = $derived(manualKeyframeSummary(selectedAppliedItems));
 	const activeModifiers = $derived(() => {
 		const types = new Set<MotionModifierType>();
 		for (const item of selectedItems) {
@@ -132,7 +138,10 @@
 		return MOTION_MODULATORS.filter((modulator) => types.has(modulator.id));
 	});
 	const hasAppliedAnimation = $derived(
-		baseKeyframeCount > 0 || additiveLayers().length > 0 || activeModifiers().length > 0
+		generatedApplications.length > 0 ||
+			manualSummary.keyframeCount > 0 ||
+			additiveLayers().length > 0 ||
+			activeModifiers().length > 0
 	);
 	const selectedIsMotionClip = $derived(
 		selectedItems.length === 1 &&
@@ -334,6 +343,7 @@
 			frameWidth,
 			frameHeight,
 			fps,
+			presetName: labels[preset.id],
 			settings: { durationScale, intensityScale, staggerFrames }
 		});
 		if (result.ok) {
@@ -392,8 +402,26 @@
 		}
 	}
 
-	function clearBaseKeyframes(): void {
-		const result = clearKeyframesForItems(selectedIds);
+	function clearManualKeyframes(): void {
+		const result = clearManualKeyframesForItems(selectedAppliedIds);
+		if (result.keyframesRemoved === 0) return;
+		status = m.video_editor_motion_keyframes_cleared({
+			count: String(result.keyframesRemoved)
+		});
+		onedit();
+	}
+
+	function navigateToItemFrame(relativeFrame: number): void {
+		if (!selectedItem) return;
+		editorSession.pausePlayback();
+		setCurrentFrame(
+			selectedItem.from +
+				Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(relativeFrame)))
+		);
+	}
+
+	function removeGeneratedApplication(applicationId: string): void {
+		const result = removeAnimationKeyframeApplication(selectedAppliedIds, applicationId);
 		if (result.keyframesRemoved === 0) return;
 		status = m.video_editor_motion_keyframes_cleared({
 			count: String(result.keyframesRemoved)
@@ -509,18 +537,51 @@
 		<section class="motion-applied" aria-labelledby="motion-applied-title">
 			<h3 id="motion-applied-title">{m.video_editor_motion_applied_title()}</h3>
 			<div class="applied-list">
-				{#if baseKeyframeCount > 0}
+				{#each generatedApplications as application (application.applicationId)}
 					<div class="applied-row">
-						<div>
-							<strong>{m.video_editor_motion_keyframes()}</strong>
+						<button
+							type="button"
+							class="applied-row-content"
+							onclick={() => navigateToItemFrame(application.firstFrame)}
+						>
+							<strong>{application.presetName}</strong>
 							<span
-								>{m.video_editor_clear_keyframes_affected({
-									count: String(baseKeyframeCount)
+								>{m.video_editor_motion_preset_keyframes_summary({
+									keyframes: String(application.keyframeCount),
+									properties: String(application.propertyCount)
 								})}</span
 							>
-						</div>
-						<button type="button" onclick={clearBaseKeyframes}>
-							{m.video_editor_clear_keyframes_confirm({ count: String(baseKeyframeCount) })}
+						</button>
+						<button
+							type="button"
+							aria-label={m.video_editor_motion_layer_remove_named({
+								name: application.presetName
+							})}
+							onclick={() => removeGeneratedApplication(application.applicationId)}
+						>
+							{m.video_editor_motion_layer_remove()}
+						</button>
+					</div>
+				{/each}
+				{#if manualSummary.keyframeCount > 0}
+					<div class="applied-row">
+						<button
+							type="button"
+							class="applied-row-content"
+							disabled={manualSummary.firstFrame === null}
+							onclick={() => navigateToItemFrame(manualSummary.firstFrame ?? 0)}
+						>
+							<strong>{m.video_editor_motion_manual_keyframes()}</strong>
+							<span
+								>{m.video_editor_clear_keyframes_affected({
+									count: String(manualSummary.keyframeCount)
+								})}</span
+							>
+						</button>
+						<button type="button" onclick={clearManualKeyframes}>
+							{m.video_editor_clear_keyframes_confirm({
+								count: String(manualSummary.keyframeCount)
+							})}
 						</button>
 					</div>
 				{/if}
@@ -1025,7 +1086,8 @@
 		background: oklch(0.145 0.01 55);
 	}
 	.applied-row > div,
-	.applied-row > label {
+	.applied-row > label,
+	.applied-row-content {
 		display: flex;
 		min-width: 0;
 		min-height: 2rem;
@@ -1041,7 +1103,8 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.applied-row div > span {
+	.applied-row div > span,
+	.applied-row-content > span {
 		font-size: 0.5rem;
 		color: oklch(0.6 0.018 65);
 	}
@@ -1055,6 +1118,20 @@
 		color: oklch(0.72 0.055 35);
 		font-size: 0.53rem;
 		cursor: pointer;
+	}
+	.applied-row .applied-row-content {
+		flex: 1;
+		justify-content: flex-start;
+		min-width: 0;
+		padding: 0.2rem;
+		color: inherit;
+		text-align: left;
+	}
+	.applied-row .applied-row-content:hover:not(:disabled) {
+		background: oklch(0.2 0.015 55);
+	}
+	.applied-row .applied-row-content:disabled {
+		cursor: default;
 	}
 	.applied-row button:hover,
 	.motion-search-clear:hover {

@@ -5,6 +5,7 @@ import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/type
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions-store.svelte';
+import { setKeyframe } from '$lib/video-editor/timeline/actions/keyframes';
 import MotionPresetsPanel from './motion-presets-panel.svelte';
 
 const track: TimelineTrack = {
@@ -99,20 +100,31 @@ describe('MotionPresetsPanel', () => {
 		await expect.element(screen.getByText('No matching animation.')).toBeVisible();
 	});
 
-	it('summarizes and clears applied keyframes as one undoable edit', async () => {
+	it('removes one generated preset without deleting manual animation', async () => {
+		setKeyframe('one', 'rotation', 45, 20);
+		commandHistory.clearHistory();
 		const input = props();
 		const screen = await render(MotionPresetsPanel, input);
 		await screen.getByRole('button', { name: 'Replace Fade in' }).click();
 		await expect
 			.element(screen.getByRole('heading', { name: 'Applied to this clip' }))
 			.toBeVisible();
-		await expect.element(screen.getByText('Keyframes to remove: 2.')).toBeVisible();
-		await screen.getByRole('button', { name: 'Clear 2' }).click();
-		expect(timelineStore.itemById.get('one')?.keyframes).toBeUndefined();
+		await expect.element(screen.getByText('2 keyframes across 1 properties.')).toBeVisible();
+		await expect.element(screen.getByText('Manual keyframes')).toBeVisible();
+		timelineStore._setCurrentFrame(30);
+		await screen.getByRole('button', { name: /Fade in 2 keyframes/ }).click();
+		expect(timelineStore.currentFrame).toBe(0);
+		await screen.getByRole('button', { name: 'Remove Fade in layer' }).click();
+		expect(timelineStore.itemById.get('one')?.keyframes?.opacity).toBeUndefined();
+		expect(timelineStore.itemById.get('one')?.keyframes?.rotation).toMatchObject({
+			frames: [45],
+			values: [20]
+		});
 		expect(commandHistory.undoStack).toHaveLength(2);
 		expect(input.onedit).toHaveBeenCalledTimes(2);
 		commandHistory.undo();
 		expect(timelineStore.itemById.get('one')?.keyframes?.opacity?.frames).toEqual([0, 15]);
+		expect(timelineStore.itemById.get('one')?.keyframes?.rotation?.frames).toEqual([45]);
 	});
 
 	it('attaches deterministic staggered live behavior to every selected clip', async () => {

@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "只显示适用于所有所选图层的动画。",
 	"video_editor_motion_applied_title": "已应用到此剪辑",
 	"video_editor_motion_keyframes": "关键帧",
+	"video_editor_motion_manual_keyframes": "手动关键帧",
+	"video_editor_motion_preset_keyframes_summary": "{properties} 个属性中的 {keyframes} 个关键帧。",
 	"video_editor_motion_keyframes_cleared": "已清除 {count} 个关键帧。",
 	"video_editor_motion_no_results": "没有匹配的动画。",
 	"video_editor_motion_clip_title": "动效剪辑",

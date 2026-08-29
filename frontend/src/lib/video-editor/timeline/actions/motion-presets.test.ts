@@ -55,6 +55,16 @@ describe('applyMotionPreset', () => {
 			frames: [0, 15],
 			values: [0, 1]
 		});
+		const firstSources = timelineStore.itemById.get('one')?.keyframes?.opacity?.sources;
+		expect(firstSources).toHaveLength(2);
+		expect(firstSources?.[0]).toMatchObject({
+			kind: 'built-in-preset',
+			presetId: 'fade-in'
+		});
+		expect(firstSources?.[1]?.applicationId).toBe(firstSources?.[0]?.applicationId);
+		expect(
+			timelineStore.itemById.get('two')?.keyframes?.opacity?.sources?.[0]?.applicationId
+		).not.toBe(firstSources?.[0]?.applicationId);
 		expect(commandHistory.undoStack).toHaveLength(1);
 		commandHistory.undo();
 		expect(timelineStore.items.every((candidate) => candidate.keyframes === undefined)).toBe(true);
@@ -168,6 +178,10 @@ describe('applyMotionPreset', () => {
 			{ frame: 15, value: { x: 50, y: 75 } },
 			{ id: 'far', frame: 30, value: { x: 300, y: 400 } }
 		]);
+		expect(
+			updated?.vectorKeyframes?.position?.slice(0, 2).every((keyframe) => keyframe.source)
+		).toBe(true);
+		expect(updated?.vectorKeyframes?.position?.[2]?.source).toBeUndefined();
 	});
 
 	it('applies scale presets to text without changing its layout box', () => {

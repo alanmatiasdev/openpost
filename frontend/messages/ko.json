@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "선택한 모든 레이어에서 작동하는 애니메이션만 표시합니다.",
 	"video_editor_motion_applied_title": "이 클립에 적용됨",
 	"video_editor_motion_keyframes": "키프레임",
+	"video_editor_motion_manual_keyframes": "수동 키프레임",
+	"video_editor_motion_preset_keyframes_summary": "{properties}개 속성에 {keyframes}개 키프레임.",
 	"video_editor_motion_keyframes_cleared": "키프레임 {count}개를 지웠습니다.",
 	"video_editor_motion_no_results": "일치하는 애니메이션이 없습니다.",
 	"video_editor_motion_clip_title": "Motion 클립",

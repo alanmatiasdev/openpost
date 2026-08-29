@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "Yalnızca seçili tüm katmanlarla çalışan animasyonları gösterir.",
 	"video_editor_motion_applied_title": "Bu klibe uygulandı",
 	"video_editor_motion_keyframes": "Anahtar kareler",
+	"video_editor_motion_manual_keyframes": "Manuel anahtar kareler",
+	"video_editor_motion_preset_keyframes_summary": "{properties} özellikte {keyframes} anahtar kare.",
 	"video_editor_motion_keyframes_cleared": "{count} anahtar kare temizlendi.",
 	"video_editor_motion_no_results": "Eşleşen animasyon yok.",
 	"video_editor_motion_clip_title": "Motion klibi",

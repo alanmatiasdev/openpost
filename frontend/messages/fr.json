@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "Afficher uniquement les animations compatibles avec tous les calques sélectionnés.",
 	"video_editor_motion_applied_title": "Appliqué à ce clip",
 	"video_editor_motion_keyframes": "Images clés",
+	"video_editor_motion_manual_keyframes": "Images clés manuelles",
+	"video_editor_motion_preset_keyframes_summary": "{keyframes} images clés sur {properties} propriétés.",
 	"video_editor_motion_keyframes_cleared": "{count} images clés effacées.",
 	"video_editor_motion_no_results": "Aucune animation correspondante.",
 	"video_editor_motion_clip_title": "Clip de motion",

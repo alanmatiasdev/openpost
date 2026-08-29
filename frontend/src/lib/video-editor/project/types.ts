@@ -354,6 +354,14 @@ export type KeyframeProperty =
 	| PathVertexKeyframeProperty
 	| EffectKeyframeProperty;
 
+/** Identifies one preset application so it can be removed without touching manual animation. */
+export interface AnimationKeyframeSource {
+	applicationId: string;
+	kind: 'built-in-preset' | 'saved-preset';
+	presetId: string;
+	presetName: string;
+}
+
 /**
  * Parallel frame/value arrays for one animated property. Frames ascend and
  * are relative to the item's start (`from`), so tracks survive item moves.
@@ -365,6 +373,7 @@ export interface KeyframeTrack {
 	ids?: string[];
 	easings?: EasingType[];
 	easingConfigs?: Array<EasingConfig | null>;
+	sources?: Array<AnimationKeyframeSource | null>;
 }
 
 /** Per-property keyframe tracks stored on a timeline item. */
@@ -442,6 +451,7 @@ export interface VectorKeyframe {
 	easing: EasingType;
 	easingConfig?: EasingConfig;
 	spatial?: SpatialBezierTangents;
+	source?: AnimationKeyframeSource;
 }
 
 export type ItemVectorKeyframes = Partial<Record<VectorKeyframeProperty, VectorKeyframe[]>>;
@@ -460,9 +470,11 @@ export interface AnimationPresetProperty {
 	keyframes: AnimationPresetKeyframe[];
 }
 
+export type AnimationPresetVectorKeyframe = Omit<VectorKeyframe, 'source'>;
+
 export interface AnimationPresetVectorProperty {
 	property: VectorKeyframeProperty;
-	keyframes: VectorKeyframe[];
+	keyframes: AnimationPresetVectorKeyframe[];
 }
 
 /** Project-scoped animation recipe captured from one compatible clip type. */

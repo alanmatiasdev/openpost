@@ -6597,6 +6597,8 @@
 	"video_editor_motion_compatible_only_hint": "Mostra apenas animações que funcionam em todas as camadas selecionadas.",
 	"video_editor_motion_applied_title": "Aplicado a este clipe",
 	"video_editor_motion_keyframes": "Quadros-chave",
+	"video_editor_motion_manual_keyframes": "Quadros-chave manuais",
+	"video_editor_motion_preset_keyframes_summary": "{keyframes} quadros-chave em {properties} propriedades.",
 	"video_editor_motion_keyframes_cleared": "{count} quadros-chave removidos.",
 	"video_editor_motion_no_results": "Nenhuma animação correspondente.",
 	"video_editor_motion_clip_title": "Clipe de movimento",

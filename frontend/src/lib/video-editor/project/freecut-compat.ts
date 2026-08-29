@@ -61,12 +61,19 @@ const easingConfigSchema = z.object({
 		})
 		.optional()
 });
+const animationKeyframeSourceSchema = z.object({
+	applicationId: z.string(),
+	kind: z.enum(['built-in-preset', 'saved-preset']),
+	presetId: z.string(),
+	presetName: z.string()
+});
 const scalarKeyframeSchema = z.looseObject({
 	id: z.string().optional(),
 	frame: z.number().finite().optional(),
 	value: z.number().finite().optional(),
 	easing: easingTypeSchema.optional(),
-	easingConfig: easingConfigSchema.optional()
+	easingConfig: easingConfigSchema.optional(),
+	source: animationKeyframeSourceSchema.optional()
 });
 const scalarPropertySchema = z.looseObject({
 	property: z.string(),
@@ -77,7 +84,8 @@ const vectorKeyframeSchema = z.looseObject({
 	frame: z.number().finite().optional(),
 	value: vectorSchema.optional(),
 	easing: easingTypeSchema.optional(),
-	easingConfig: easingConfigSchema.optional()
+	easingConfig: easingConfigSchema.optional(),
+	source: animationKeyframeSourceSchema.optional()
 });
 const vectorPropertyGroupSchema = z.looseObject({
 	property: vectorPropertySchema,
@@ -379,7 +387,8 @@ function convertKeyframeTrack(
 		values: value.keyframes.map((keyframe) => convertValue(keyframe.value) ?? 0),
 		ids: value.keyframes.map((keyframe, index) => keyframe.id ?? `${property}-${index}`),
 		easings: value.keyframes.map((keyframe) => keyframe.easing ?? 'linear'),
-		easingConfigs: value.keyframes.map((keyframe) => keyframe.easingConfig ?? null)
+		easingConfigs: value.keyframes.map((keyframe) => keyframe.easingConfig ?? null),
+		sources: value.keyframes.map((keyframe) => keyframe.source ?? null)
 	};
 }
 
