@@ -7,6 +7,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { m } from '$lib/paraglide/messages';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Label } from '$lib/components/ui/label';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import Logo from '$lib/components/Logo.svelte';
@@ -65,6 +66,12 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import { sendToOpenPost } from '$lib/video-editor/send-to-openpost';
 	import { handleGlobalPlayPauseShortcut } from '$lib/video-editor/settings/keyboard-shortcuts';
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
+	import {
+		formatSegmentInterchange,
+		inferSegmentInterchangeFormat,
+		parseSegmentInterchange,
+		type SegmentInterchangeFormat
+	} from '$lib/quick-cut/interchange';
 
 	let sources = $state<QuickCutSource[]>([]);
 	let sourceUrls = $state<Map<string, string>>(new Map());
@@ -866,6 +873,73 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		showToast(m.quick_cut_project_saved(), 'success');
 	}
 
+	async function handleImportSegments(): Promise<void> {
+		if (!activeSource) return;
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.csv,.tsv,.txt,.srt,text/csv,text/tab-separated-values,text/plain';
+		const file = await new Promise<File | null>((resolve) => {
+			input.onchange = () => resolve(input.files?.[0] ?? null);
+			input.oncancel = () => resolve(null);
+			input.click();
+		});
+		if (!file) return;
+		try {
+			const imported = parseSegmentInterchange(
+				await file.text(),
+				inferSegmentInterchangeFormat(file.name),
+				{ sourceId: activeSource.id, duration: activeSource.duration }
+			);
+			const next = [...segments, ...imported];
+			if (hasOverlap(next)) throw new Error(m.quick_cut_overlap_error());
+			const errors = validateSegments(next, 0, sources);
+			if (errors.length > 0) throw new Error(errors[0]!.message);
+			segments = next;
+			selectedId = imported[0]?.id ?? selectedId;
+			syncProject();
+			showToast(m.quick_cut_segments_imported({ count: imported.length }), 'success');
+			soundPreferences.play('success');
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+			soundPreferences.play('error');
+		}
+	}
+
+	function segmentInterchangeFileName(format: SegmentInterchangeFormat): string {
+		const sourceName = (activeSource?.name ?? 'segments')
+			.replace(/\.[^.]+$/u, '')
+			.replace(/[^a-z0-9._-]+/giu, '-')
+			.replace(/^-+|-+$/gu, '');
+		const suffix: Record<SegmentInterchangeFormat, string> = {
+			'csv-seconds': 'segments-seconds.csv',
+			'csv-timecode': 'segments-timecodes.csv',
+			'tsv-timecode': 'segments-timecodes.tsv',
+			chapters: 'chapters.txt',
+			srt: 'segments.srt'
+		};
+		return `${sourceName || 'quick-cut'}-${suffix[format]}`;
+	}
+
+	function handleExportSegments(format: SegmentInterchangeFormat): void {
+		if (!activeSource) return;
+		const exportable = segments.filter(
+			(segment) => segment.sourceId === activeSource.id && segment.enabled !== false
+		);
+		if (exportable.length === 0) {
+			showToast(m.quick_cut_no_source_segments(), 'error');
+			return;
+		}
+		const content = formatSegmentInterchange(exportable, format);
+		const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = segmentInterchangeFileName(format);
+		anchor.click();
+		setTimeout(() => URL.revokeObjectURL(url), 5000);
+		showToast(m.quick_cut_segments_exported(), 'success');
+	}
+
 	async function handleSendToOpenPost(): Promise<void> {
 		if (segmentsForExport.length === 0 || sources.length === 0 || exporting) return;
 		await runExport(segmentsForExport, merge, 'send');
@@ -1193,11 +1267,51 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 							<Button size="sm" variant="outline" onclick={openFiles} class="min-h-11"
 								>{m.quick_cut_open_multiple()}</Button
 							>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button {...props} size="sm" variant="outline" class="min-h-11 w-full">
+											{m.quick_cut_segment_files()}
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content class="w-64" align="end">
+									<DropdownMenu.Item onclick={() => void handleImportSegments()}>
+										{m.quick_cut_import_segments()}
+									</DropdownMenu.Item>
+									<DropdownMenu.Sub>
+										<DropdownMenu.SubTrigger
+											>{m.quick_cut_export_segments()}</DropdownMenu.SubTrigger
+										>
+										<DropdownMenu.SubContent class="w-56">
+											<DropdownMenu.Item onclick={() => handleExportSegments('csv-seconds')}>
+												{m.quick_cut_format_csv_seconds()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => handleExportSegments('csv-timecode')}>
+												{m.quick_cut_format_csv_timecodes()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => handleExportSegments('tsv-timecode')}>
+												{m.quick_cut_format_tsv_timecodes()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => handleExportSegments('chapters')}>
+												{m.quick_cut_format_chapters()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => handleExportSegments('srt')}>
+												{m.quick_cut_format_srt()}
+											</DropdownMenu.Item>
+										</DropdownMenu.SubContent>
+									</DropdownMenu.Sub>
+									<DropdownMenu.Separator />
+									<DropdownMenu.Label class="max-w-60 whitespace-normal text-muted-foreground">
+										{m.quick_cut_segment_files_hint()}
+									</DropdownMenu.Label>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
+						</div>
+						<div class="mt-2 grid gap-2 sm:grid-cols-2">
 							<Button size="sm" variant="outline" onclick={handleImportProject} class="min-h-11"
 								>{m.quick_cut_import_project()}</Button
 							>
-						</div>
-						<div class="mt-2 grid gap-2 sm:grid-cols-2">
 							<Button
 								size="sm"
 								variant="outline"
@@ -1205,14 +1319,14 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 								disabled={!project}
 								class="min-h-11">{m.quick_cut_export_project()}</Button
 							>
-							<Button
-								size="sm"
-								variant="outline"
-								onclick={handleSendToOpenPost}
-								disabled={!preflight?.eligible}
-								class="min-h-11">{m.quick_cut_send_to_openpost()}</Button
-							>
 						</div>
+						<Button
+							size="sm"
+							variant="outline"
+							onclick={handleSendToOpenPost}
+							disabled={!preflight?.eligible}
+							class="mt-2 min-h-11 w-full">{m.quick_cut_send_to_openpost()}</Button
+						>
 					</div>
 
 					<ExportPanel progress={exportProgress} cancel={cancelExport} isExporting={exporting} />

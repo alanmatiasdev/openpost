@@ -104,6 +104,18 @@
 									})} · {src.name}</span
 								>
 							{/if}
+							<label class="flex flex-col gap-1 text-xs">
+								<span class="sr-only">{m.quick_cut_segment_name()} {index + 1}</span>
+								<Input
+									type="text"
+									value={seg.name ?? ''}
+									placeholder={m.quick_cut_segment_name_placeholder()}
+									aria-label={`${m.quick_cut_segment_name()} ${index + 1}`}
+									onchange={(event) =>
+										onUpdate(seg.id, { name: event.currentTarget.value.trim() || undefined })}
+									class="h-11 min-h-11 text-sm md:h-9 md:min-h-9"
+								/>
+							</label>
 							<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
 								<label class="flex flex-1 flex-col gap-1 text-xs">
 									<span class="text-muted-foreground"
