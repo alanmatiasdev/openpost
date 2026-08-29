@@ -113,6 +113,8 @@ describe('resolveAnimatedItemAt', () => {
 	it('resolves nested transform, crop, audio, and text fields at one absolute frame', () => {
 		const video: TimelineItem = {
 			...item('video'),
+			sourceWidth: 1000,
+			sourceHeight: 500,
 			transform: { x: 10, opacity: 1 },
 			crop: { top: 0, right: 0, bottom: 0, left: 0 },
 			keyframes: {
@@ -137,7 +139,7 @@ describe('resolveAnimatedItemAt', () => {
 		const resolvedText = resolveAnimatedItemAt(text, 115);
 
 		expect(resolvedVideo.transform).toMatchObject({ x: 40, opacity: 0.5 });
-		expect(resolvedVideo.crop?.left).toBe(50);
+		expect(resolvedVideo.crop?.left).toBe(0.05);
 		expect(resolvedText.textStyleScale).toBe(1.5);
 		expect(resolvedText.fontSize).toBe(60);
 		expect(resolvedText.textShadow).toMatchObject({ blur: 10, color: '#000000' });

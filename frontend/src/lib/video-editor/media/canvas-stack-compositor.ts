@@ -6,7 +6,8 @@ import type { GpuRenderEffect } from '../effects/gpu/compositor';
 import { getGpuEffectDefaultParams } from '../effects/gpu/registry';
 import { isNonNormalBlend } from '../effects/gpu/blend-modes';
 import { blendImageData } from '../effects/gpu/cpu-blend';
-import { mediaDrawGeometry } from './render-geometry';
+import { mediaDrawGeometry, type MediaDrawGeometry } from './render-geometry';
+import { applyCropFeatherMask, hasCropFeather } from './crop-layout';
 import { transitionRegistry } from '../transitions';
 import { TransitionPipeline } from '../transitions/gpu/pipeline';
 import { ShapeMaskRasterizer } from '../shapes/masks';
@@ -123,53 +124,118 @@ export function drawTransformedLayer(
 ): void {
 	const transform = item.transform ?? {};
 	const geometry = mediaDrawGeometry(item, sourceWidth, sourceHeight, canvasWidth, canvasHeight);
-	context.save();
-	context.globalAlpha = Math.min(1, Math.max(0, alpha));
-	context.filter = effectsToCssFilter(item.effects) || 'none';
-	context.translate(geometry.centerX, geometry.centerY);
-	context.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
-	context.scale(
-		(transform.flipHorizontal === true ? -1 : 1) * (transform.scaleX ?? 1),
-		(transform.flipVertical === true ? -1 : 1) * (transform.scaleY ?? 1)
-	);
-	const cornerRadius = Math.min(
-		Math.max(0, transform.cornerRadius ?? 0),
-		geometry.drawWidth / 2,
-		geometry.drawHeight / 2
-	);
-	if (cornerRadius > 0) {
-		context.beginPath();
-		const pathContext: RoundedPathContext = context;
-		if (pathContext.roundRect) {
-			pathContext.roundRect(
-				-geometry.anchorX,
-				-geometry.anchorY,
-				geometry.drawWidth,
-				geometry.drawHeight,
-				cornerRadius
-			);
-		} else {
-			pathContext.rect(
-				-geometry.anchorX,
-				-geometry.anchorY,
-				geometry.drawWidth,
-				geometry.drawHeight
-			);
+	if (hasCropFeather(geometry.featherPixels)) {
+		const width = Math.max(1, Math.ceil(geometry.drawWidth));
+		const height = Math.max(1, Math.ceil(geometry.drawHeight));
+		const localCanvas = acquireCanvas(width, height);
+		const localContext = localCanvas.getContext('2d');
+		if (localContext) {
+			localContext.globalAlpha = 1;
+			localContext.globalCompositeOperation = 'source-over';
+			localContext.filter = 'none';
+			localContext.clearRect(0, 0, width, height);
+			drawMediaIntoLocalCanvas(localContext, image, geometry, transform.cornerRadius ?? 0, true);
+			context.save();
+			applyLayerTransform(context, transform, item.effects, geometry, alpha);
+			context.drawImage(localCanvas, -geometry.anchorX, -geometry.anchorY);
+			context.restore();
 		}
-		context.clip();
+		releaseCanvas(localCanvas);
+		return;
 	}
+	context.save();
+	applyLayerTransform(context, transform, item.effects, geometry, alpha);
+	clipRoundedRect(
+		context,
+		-geometry.anchorX,
+		-geometry.anchorY,
+		geometry.drawWidth,
+		geometry.drawHeight,
+		transform.cornerRadius ?? 0
+	);
+	clipRect(context, geometry.viewportRect, -geometry.anchorX, -geometry.anchorY);
 	context.drawImage(
 		image,
 		geometry.sourceX,
 		geometry.sourceY,
 		geometry.sourceWidth,
 		geometry.sourceHeight,
-		-geometry.anchorX,
-		-geometry.anchorY,
-		geometry.drawWidth,
-		geometry.drawHeight
+		-geometry.anchorX + geometry.mediaRect.x,
+		-geometry.anchorY + geometry.mediaRect.y,
+		geometry.mediaRect.width,
+		geometry.mediaRect.height
 	);
 	context.restore();
+}
+
+function applyLayerTransform(
+	context: StackContext,
+	transform: NonNullable<TimelineItem['transform']>,
+	effects: TimelineItem['effects'],
+	geometry: MediaDrawGeometry,
+	alpha: number
+): void {
+	context.globalAlpha = Math.min(1, Math.max(0, alpha));
+	context.filter = effectsToCssFilter(effects) || 'none';
+	context.translate(geometry.centerX, geometry.centerY);
+	context.rotate(((transform.rotation ?? 0) * Math.PI) / 180);
+	context.scale(
+		(transform.flipHorizontal === true ? -1 : 1) * (transform.scaleX ?? 1),
+		(transform.flipVertical === true ? -1 : 1) * (transform.scaleY ?? 1)
+	);
+}
+
+function drawMediaIntoLocalCanvas(
+	context: StackContext,
+	image: CanvasImageSource,
+	geometry: MediaDrawGeometry,
+	cornerRadius: number,
+	applyFeather: boolean
+): void {
+	context.save();
+	clipRoundedRect(context, 0, 0, geometry.drawWidth, geometry.drawHeight, cornerRadius);
+	clipRect(context, geometry.viewportRect);
+	context.drawImage(
+		image,
+		geometry.sourceX,
+		geometry.sourceY,
+		geometry.sourceWidth,
+		geometry.sourceHeight,
+		geometry.mediaRect.x,
+		geometry.mediaRect.y,
+		geometry.mediaRect.width,
+		geometry.mediaRect.height
+	);
+	context.restore();
+	if (applyFeather) applyCropFeatherMask(context, geometry.viewportRect, geometry.featherPixels);
+}
+
+function clipRoundedRect(
+	context: StackContext,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	radius: number
+): void {
+	const cornerRadius = Math.min(Math.max(0, radius), width / 2, height / 2);
+	if (cornerRadius <= 0) return;
+	context.beginPath();
+	const pathContext: RoundedPathContext = context;
+	if (pathContext.roundRect) pathContext.roundRect(x, y, width, height, cornerRadius);
+	else pathContext.rect(x, y, width, height);
+	context.clip();
+}
+
+function clipRect(
+	context: StackContext,
+	rect: { x: number; y: number; width: number; height: number },
+	offsetX = 0,
+	offsetY = 0
+): void {
+	context.beginPath();
+	context.rect(offsetX + rect.x, offsetY + rect.y, rect.width, rect.height);
+	context.clip();
 }
 
 /** One persistent canvas stack sharing a single WebGL2 compositor across preview and export. */
@@ -471,16 +537,12 @@ export class CanvasStackCompositor {
 		this.cornerPinContext.globalCompositeOperation = 'source-over';
 		this.cornerPinContext.filter = 'none';
 		this.cornerPinContext.clearRect(0, 0, pinWidth, pinHeight);
-		this.cornerPinContext.drawImage(
+		drawMediaIntoLocalCanvas(
+			this.cornerPinContext,
 			image,
-			geometry.sourceX,
-			geometry.sourceY,
-			geometry.sourceWidth,
-			geometry.sourceHeight,
-			0,
-			0,
-			pinWidth,
-			pinHeight
+			geometry,
+			item.transform?.cornerRadius ?? 0,
+			hasCropFeather(geometry.featherPixels)
 		);
 
 		const transform = item.transform ?? {};

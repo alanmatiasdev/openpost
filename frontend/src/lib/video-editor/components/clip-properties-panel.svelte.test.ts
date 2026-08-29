@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import type { TimelineItem, TimelineTrack } from '$lib/video-editor/project/types';
 import { commandHistory } from '$lib/video-editor/timeline/commands/command-store.svelte';
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+import { resolveAnimatedItemAt } from '$lib/video-editor/timeline/animated-properties';
 import ClipPropertiesPanel from './clip-properties-panel.svelte';
 import '../../../routes/layout.css';
 
@@ -296,6 +297,92 @@ describe('ClipPropertiesPanel transform workflow', () => {
 		await screen.getByRole('button', { name: 'Reset radius' }).click();
 		expect(timelineStore.itemById.get('video-item')?.transform?.cornerRadius).toBe(0);
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+});
+
+describe('ClipPropertiesPanel crop workflow', () => {
+	it('edits source pixels across different media sizes as one undoable operation', async () => {
+		await page.viewport(420, 1000);
+		const image: TimelineItem = {
+			id: 'image-item',
+			trackId: 'video',
+			from: 0,
+			durationInFrames: 90,
+			label: 'Still',
+			type: 'image',
+			sourceWidth: 1280,
+			sourceHeight: 720,
+			crop: { top: 0, right: 0, bottom: 0, left: 0.125 }
+		};
+		const video = {
+			...items[0]!,
+			crop: { top: 0, right: 0, bottom: 0, left: 0.25 }
+		};
+		timelineStore.setAll({
+			tracks,
+			items: [video, items[1]!, items[2]!, image],
+			currentFrame: 0,
+			fps: 30
+		});
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item', 'image-item'],
+			onedit
+		});
+		screen.container.style.width = '360px';
+		const panel = screen.getByTestId('clip-crop-section').query();
+		panel.style.width = '360px';
+		panel.style.background = 'oklch(0.15 0.008 55)';
+
+		const left = screen.getByRole('textbox', { name: 'Left' }).query();
+		if (!(left instanceof HTMLInputElement)) throw new Error('Left crop control did not render.');
+		expect(left.value).toBe('160');
+		await page.screenshot({
+			element: panel,
+			path: '../../../../.svelte-kit/openpost-clip-crop-source-pixels.png'
+		});
+		left.value = '320';
+		left.dispatchEvent(new InputEvent('input', { bubbles: true, data: '320' }));
+		left.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('video-item')?.crop?.left).toBe(0.5);
+		expect(timelineStore.itemById.get('image-item')?.crop?.left).toBe(0.25);
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(commandHistory.getLastCommandType()).toBe('SET_ANIMATED_PROPERTIES');
+		commandHistory.undo();
+		expect(timelineStore.itemById.get('video-item')?.crop?.left).toBe(0.25);
+		expect(timelineStore.itemById.get('image-item')?.crop?.left).toBe(0.125);
+
+		commandHistory.clearHistory();
+		await screen.getByRole('button', { name: 'Reset Left' }).click();
+		expect(timelineStore.itemById.get('video-item')?.crop?.left).toBe(0);
+		expect(timelineStore.itemById.get('image-item')?.crop?.left).toBe(0);
+		expect(commandHistory.undoStack).toHaveLength(1);
+
+		screen.container.style.width = '288px';
+		panel.style.width = '288px';
+		expect(panel.scrollWidth).toBeLessThanOrEqual(288);
+	});
+
+	it('stores auto-keyed crop values in pixels and resolves them to render ratios', async () => {
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item'],
+			onedit
+		});
+		await screen.getByRole('button', { name: 'Toggle auto-key for Left' }).click();
+		const left = screen.getByRole('textbox', { name: 'Left' }).query();
+		if (!(left instanceof HTMLInputElement)) throw new Error('Left crop control did not render.');
+		left.value = '160';
+		left.dispatchEvent(new InputEvent('input', { bubbles: true, data: '160' }));
+		left.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+		expect(timelineStore.itemById.get('video-item')?.keyframes?.cropLeft?.values).toEqual([160]);
+		expect(resolveAnimatedItemAt(timelineStore.itemById.get('video-item')!, 0).crop?.left).toBe(
+			0.25
+		);
 	});
 });
 

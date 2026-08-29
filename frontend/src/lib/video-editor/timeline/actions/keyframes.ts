@@ -59,6 +59,11 @@ import {
 	isPathVertexKeyframeProperty,
 	setPathVertexPropertyValue
 } from '../path-vertex-keyframes';
+import {
+	cropSourceDimensions,
+	cropWithPropertyPixels,
+	type CropKeyframeProperty
+} from '$lib/video-editor/media/crop-properties';
 export { activeValueAt, interpolateAt } from '../keyframe-interpolation';
 
 export interface KeyframeEdit {
@@ -1460,8 +1465,14 @@ function basePropertyPatch(
 	}
 	const crop = item.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
 	if (property.startsWith('crop')) {
-		const field = property.slice(4).toLowerCase();
-		return { crop: { ...crop, [field]: value } };
+		return {
+			crop: cropWithPropertyPixels(
+				crop,
+				property as CropKeyframeProperty,
+				value,
+				cropSourceDimensions(item)
+			)
+		};
 	}
 	if (property.startsWith('textShadow')) {
 		const field = property.slice('textShadow'.length);

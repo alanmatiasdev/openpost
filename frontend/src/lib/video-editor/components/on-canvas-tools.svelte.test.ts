@@ -143,7 +143,7 @@ describe('OnCanvasTools', () => {
 		expect(callbacks.oncommitvalues).not.toHaveBeenCalled();
 		window.dispatchEvent(new PointerEvent('pointermove', { ...start, clientY: endY, buttons: 1 }));
 		window.dispatchEvent(new PointerEvent('pointerup', { ...start, clientY: endY }));
-		expect(callbacks.oncommitvalues).toHaveBeenCalledWith(12, { cropLeft: 0.25 });
+		expect(callbacks.oncommitvalues).toHaveBeenCalledWith(12, { cropLeft: 100 });
 		expect(callbacks.onedit).toHaveBeenCalledTimes(1);
 	});
 

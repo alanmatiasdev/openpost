@@ -232,6 +232,8 @@ export interface CropSettings {
 	bottom: number;
 	left: number;
 	softness?: number;
+	/** Fit the cropped source region back into the item bounds. */
+	refit?: boolean;
 }
 
 /** Four local-pixel offsets stored against the item size where they were authored. */

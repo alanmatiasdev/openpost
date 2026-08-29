@@ -243,6 +243,17 @@
 			activeItems.some((item) => hasCornerPin(item.cornerPin)) ||
 			activeItems.some(
 				(item) =>
+					Math.abs(
+						resolveAnimatedItemAt(item, displayFrame, {
+							fps: timelineStore.fps,
+							frameWidth: canvasWidth,
+							frameHeight: canvasHeight,
+							items: timelineStore.items
+						}).crop?.softness ?? 0
+					) > 0.0001
+			) ||
+			activeItems.some(
+				(item) =>
 					isNonNormalBlend(item.blendMode) &&
 					(resolveAnimatedItemAt(item, displayFrame, {
 						fps: timelineStore.fps,

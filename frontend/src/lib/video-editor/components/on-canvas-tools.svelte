@@ -615,7 +615,11 @@
 		const next = draftCrop;
 		if (next) {
 			const property = CROP_EDGE_PROPERTY[edge];
-			if (oncommitvalues(currentFrame, { [property]: next[edge] })) onedit();
+			const sourceDimension =
+				edge === 'left' || edge === 'right'
+					? (item.sourceWidth ?? item.compositionWidth ?? Math.round(width))
+					: (item.sourceHeight ?? item.compositionHeight ?? Math.round(height));
+			if (oncommitvalues(currentFrame, { [property]: next[edge] * sourceDimension })) onedit();
 		}
 		draftCrop = null;
 		oncropdraft(null);

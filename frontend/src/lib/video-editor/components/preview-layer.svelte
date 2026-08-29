@@ -215,6 +215,7 @@
 		const height = transform.height ?? canvasHeight;
 		const anchorX = transform.anchorX ?? width / 2;
 		const anchorY = transform.anchorY ?? height / 2;
+		const crop = resolved.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
 		return [
 			`left:${50 + ((transform.x ?? 0) / canvasWidth) * 100}%`,
 			`top:${50 + ((transform.y ?? 0) / canvasHeight) * 100}%`,
@@ -235,24 +236,11 @@
 						)
 			}`,
 			`border-radius:${(Math.max(0, transform.cornerRadius ?? 0) / canvasWidth) * 100}cqw`,
-			`filter:${deferEffects ? 'none' : effectsToCssFilter(renderEffects)}`
+			`filter:${deferEffects ? 'none' : effectsToCssFilter(renderEffects)}`,
+			`clip-path:inset(${Math.max(0, crop.top) * 100}% ${Math.max(0, crop.right) * 100}% ${Math.max(0, crop.bottom) * 100}% ${Math.max(0, crop.left) * 100}%)`
 		].join(';');
 	});
-	const mediaCropStyle = $derived.by(() => {
-		const crop = resolved.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
-		const left = Math.min(0.999, Math.max(0, crop.left));
-		const right = Math.min(0.999, Math.max(0, crop.right));
-		const top = Math.min(0.999, Math.max(0, crop.top));
-		const bottom = Math.min(0.999, Math.max(0, crop.bottom));
-		const visibleWidth = Math.max(0.001, 1 - left - right);
-		const visibleHeight = Math.max(0.001, 1 - top - bottom);
-		return [
-			`left:${(-left / visibleWidth) * 100}%`,
-			`top:${(-top / visibleHeight) * 100}%`,
-			`width:${100 / visibleWidth}%`,
-			`height:${100 / visibleHeight}%`
-		].join(';');
-	});
+	const mediaCropStyle = 'left:0;top:0;width:100%;height:100%';
 	const activeSubtitle = $derived(
 		resolved.type === 'subtitle'
 			? selectCuesAtFrame(resolved.cues ?? [], visualFrame)[0]

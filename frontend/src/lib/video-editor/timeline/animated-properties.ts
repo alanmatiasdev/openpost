@@ -33,6 +33,11 @@ import {
 	setPathVertexPropertyValue
 } from './path-vertex-keyframes';
 import { resolveTransformHierarchy, type ResolvedTransform } from './transform-parenting';
+import {
+	cropSourceDimensions,
+	cropWithPropertyPixels,
+	type CropKeyframeProperty
+} from '$lib/video-editor/media/crop-properties';
 
 export interface AnimatedItemMotionContext {
 	fps: number;
@@ -121,9 +126,11 @@ export function getAnimatablePropertiesForItem(item: TimelineItem): KeyframeProp
 			builtIn = [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
 			break;
 		case 'subtitle':
-		case 'composition':
 		case 'controller':
 			builtIn = [...VISUAL_PROPERTIES];
+			break;
+		case 'composition':
+			builtIn = [...VISUAL_PROPERTIES, ...CROP_PROPERTIES];
 			break;
 		case 'shape':
 			builtIn = [
@@ -292,18 +299,19 @@ function applyResolvedValue(
 	if (isTransformProperty(property)) {
 		return { ...item, transform: { ...item.transform, [property]: value } };
 	}
+	if (CROP_PROPERTIES.includes(property)) {
+		return {
+			...item,
+			crop: cropWithPropertyPixels(
+				item.crop,
+				property as CropKeyframeProperty,
+				value,
+				cropSourceDimensions(item)
+			)
+		};
+	}
 
 	switch (property) {
-		case 'cropLeft':
-			return { ...item, crop: { ...cropOrDefault(item), left: value } };
-		case 'cropRight':
-			return { ...item, crop: { ...cropOrDefault(item), right: value } };
-		case 'cropTop':
-			return { ...item, crop: { ...cropOrDefault(item), top: value } };
-		case 'cropBottom':
-			return { ...item, crop: { ...cropOrDefault(item), bottom: value } };
-		case 'cropSoftness':
-			return { ...item, crop: { ...cropOrDefault(item), softness: value } };
 		case 'volume':
 		case 'textStyleScale':
 		case 'fontSize':
@@ -373,10 +381,6 @@ function isTransformProperty(
 	property: KeyframeProperty
 ): property is keyof NonNullable<TimelineItem['transform']> & KeyframeProperty {
 	return VISUAL_PROPERTIES.includes(property);
-}
-
-function cropOrDefault(item: TimelineItem): NonNullable<TimelineItem['crop']> {
-	return item.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
 }
 
 function shadowOrDefault(item: TimelineItem): NonNullable<TimelineItem['textShadow']> {

@@ -47,6 +47,7 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import { Label } from '$lib/components/ui/label';
 	import ClipTransformSection from './clip-transform-section.svelte';
+	import ClipCropSection from './clip-crop-section.svelte';
 
 	let nrDraftAmount = $state<number | null>(null);
 	// Reset draft when selection or persisted amount changes
@@ -99,44 +100,6 @@
 		max: number;
 		step: number;
 	}
-
-	const cropFields: NumericField[] = [
-		{
-			property: 'cropLeft',
-			label: m.video_editor_align_left(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		},
-		{
-			property: 'cropRight',
-			label: m.video_editor_align_right(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		},
-		{
-			property: 'cropTop',
-			label: m.video_editor_property_top(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		},
-		{
-			property: 'cropBottom',
-			label: m.video_editor_property_bottom(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		},
-		{
-			property: 'cropSoftness',
-			label: m.video_editor_property_softness(),
-			min: 0,
-			max: 1,
-			step: 0.01
-		}
-	];
 
 	const textFields: NumericField[] = [
 		{
@@ -420,31 +383,7 @@
 			<ClipTransformSection itemId={item.id} {itemIds} {onedit} />
 		{/if}
 
-		{#if item.type === 'video' || item.type === 'image' || item.type === 'lottie'}
-			<section>
-				<h3
-					class="mb-1 text-[10px] font-semibold tracking-wider text-[oklch(0.65_0.015_55)] uppercase"
-				>
-					{m.video_editor_crop()}
-				</h3>
-				<div class="grid grid-cols-2 gap-1">
-					{#each cropFields as field (field.property)}
-						<label class="text-[10px] text-[oklch(0.7_0.01_55)]"
-							>{field.label}<Input
-								class="mt-0.5 w-full rounded bg-[oklch(0.22_0.01_50)] px-1.5 py-1 text-xs"
-								type="number"
-								min={field.min}
-								max={field.max}
-								step={field.step}
-								value={valueFor(item, field.property)}
-								onchange={(event) =>
-									commitNumeric(field.property, event.currentTarget.valueAsNumber)}
-							/></label
-						>
-					{/each}
-				</div>
-			</section>
-		{/if}
+		<ClipCropSection itemId={item.id} {itemIds} {onedit} />
 
 		{#if item.type === 'shape'}
 			<ShapePropertiesPanel {item} {onedit} />
