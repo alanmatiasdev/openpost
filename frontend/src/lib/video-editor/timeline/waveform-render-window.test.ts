@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { planTimelineWaveformRenderWindow, waveformPolyline } from './waveform-render-window';
+import {
+	mappedTimelineWaveformSourceBoundaries,
+	planTimelineWaveformRenderWindow,
+	waveformPolyline
+} from './waveform-render-window';
 
 describe('timeline waveform render window', () => {
 	it('keeps a multi-hour clip proportional to the viewport', () => {
@@ -52,5 +56,17 @@ describe('timeline waveform render window', () => {
 		expect(waveformPolyline(Float32Array.from([-1, 1, -0.5, 0.5]))).toBe(
 			'0.5,0.0 0.5,80.0 1.5,20.0 1.5,60.0'
 		);
+	});
+
+	it('maps only rendered waveform columns through the source-time curve', () => {
+		const boundaries = mappedTimelineWaveformSourceBoundaries({
+			window: { clipWidthPx: 600, leftPx: 200, widthPx: 100 },
+			clipDurationFrames: 600,
+			sourceFrameAtTimelineOffset: (timelineOffset) => timelineOffset * 2
+		});
+
+		expect(boundaries).toHaveLength(101);
+		expect(boundaries[0]).toBe(400);
+		expect(boundaries.at(-1)).toBe(600);
 	});
 });

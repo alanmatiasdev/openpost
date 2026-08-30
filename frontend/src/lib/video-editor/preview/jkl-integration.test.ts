@@ -88,11 +88,16 @@ describe('JKL shuttle integration', () => {
 		).toBe(false);
 	});
 
-	it('ignores editable fields', () => {
+	it('ignores editable fields and component-owned shortcut scopes', () => {
 		const input = document.createElement('input');
 		const textarea = document.createElement('textarea');
+		const ownedScope = document.createElement('div');
+		const ownedTarget = document.createElement('span');
+		ownedScope.dataset.editorShortcutsOwned = '';
+		ownedScope.append(ownedTarget);
 		expect(editorShortcutTargetIsDisabled(input)).toBe(true);
 		expect(editorShortcutTargetIsDisabled(textarea)).toBe(true);
+		expect(editorShortcutTargetIsDisabled(ownedTarget)).toBe(true);
 		expect(editorShortcutTargetIsDisabled(document.createElement('div'))).toBe(false);
 	});
 

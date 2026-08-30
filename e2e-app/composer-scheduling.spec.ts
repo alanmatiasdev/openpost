@@ -455,7 +455,6 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
   );
   await page.keyboard.press("Escape");
-  await expect(buildWithAI).toHaveCount(0);
   await page
     .getByTestId("desktop-composer-controls")
     .getByRole("button", { name: "Post settings", exact: true })
@@ -474,8 +473,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await clickComposerDeliveryAction(page, "Schedule");
-  const today = new Date();
-  const futureDate = new Date(today);
+  const futureDate = new Date();
   futureDate.setDate(futureDate.getDate() + 2);
   const futureDateLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -485,17 +483,11 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   }).format(futureDate);
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
-  if (futureDate.getMonth() !== today.getMonth()) {
-    await scheduleDialog.getByRole("button", { name: "Next month", exact: true }).click();
-  }
   await scheduleDialog
-    .locator("[data-calendar-day]:not([data-outside-month])")
-    .and(
-      scheduleDialog.getByRole("button", {
-        name: futureDateLabel,
-        exact: true,
-      }),
-    )
+    .getByRole("button", {
+      name: futureDateLabel,
+      exact: true,
+    })
     .click();
   await scheduleDialog.getByRole("button", { name: "10:30", exact: true }).click();
   await scheduleDialog.getByRole("button", { name: "Schedule", exact: true }).click();

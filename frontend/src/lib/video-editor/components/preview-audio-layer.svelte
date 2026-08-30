@@ -16,6 +16,7 @@
 	import { audioCrossfadeGainAtFrame } from '$lib/video-editor/audio/transition-crossfade';
 	import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { frameToSourceSeconds } from '$lib/video-editor/media/render-plan';
+	import { playbackRateAtTimelineOffset } from '$lib/video-editor/timeline/source-time-map';
 	import { audioClipFadeGainAtFrame } from '$lib/video-editor/media/clip-fades';
 	import {
 		decodedPreviewAudio,
@@ -115,6 +116,7 @@
 	const processingSignature = $derived(
 		JSON.stringify({
 			speed: item.speed ?? 1,
+			speedRamp: item.speedRamp,
 			pitch: getAudioPitchShiftSemitones(item),
 			eqStages: previewAudioEqStagesForTimeline(
 				item,
@@ -521,7 +523,7 @@
 		});
 		const sync = () => {
 			const frame = untrack(() => timelineStore.currentFrame);
-			const speed = item.speed ?? 1;
+			const speed = playbackRateAtTimelineOffset(item, frame - item.from, editorSession.fps);
 			const transportRate = editorSession.playbackRate;
 			const combinedRate = getShuttleMediaPlaybackRate(speed, Math.abs(transportRate));
 			const shuttleRev = isReverseShuttleRate(transportRate) && editorSession.isPlaying;
@@ -538,6 +540,10 @@
 				const graph = processedGraph;
 				if (!graph || !processedNode || processedSampleRate <= 0) return;
 				const playing = editorSession.isPlaying;
+				processedNode.port.postMessage({
+					type: 'set-tempo',
+					tempo: getShuttleMediaPlaybackRate(speed, Math.abs(transportRate))
+				});
 				if (!playing) {
 					seekProcessed(frame, false);
 					return;
@@ -564,6 +570,7 @@
 				}
 				const expectedOffset = Math.max(0, ((frame - item.from) / editorSession.fps) * speed);
 				const context = previewAudioContext();
+				if (reverseSource) reverseSource.playbackRate.value = speed;
 				const actualOffset = reverseSource
 					? reverseStartedOffset + (context.currentTime - reverseStartedAt) * speed
 					: Number.POSITIVE_INFINITY;

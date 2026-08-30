@@ -13,7 +13,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import Logo from '$lib/components/Logo.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
-	import { showToast } from '$lib/toast';
+	import { dismissToast, showToast } from '$lib/toast';
 	import { onDestroy, tick } from 'svelte';
 	import SegmentList from '$lib/quick-cut/components/SegmentList.svelte';
 	import TimelineBar from '$lib/quick-cut/components/TimelineBar.svelte';
@@ -118,6 +118,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 	let preflightGeneration = 0;
 	let previewWait: AbortController | null = null;
 	let sourceRemovalDialogOpen = $state(false);
+	let segmentValidationToastId: string | number | null = null;
 	let pendingSourceRemoval = $state<QuickCutSource | null>(null);
 	let capturingFrame = $state(false);
 
@@ -440,6 +441,10 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		selectedId = seg.id;
 		inPoint = null;
 		outPoint = null;
+		if (segmentValidationToastId !== null) {
+			dismissToast(segmentValidationToastId);
+			segmentValidationToastId = null;
+		}
 		soundPreferences.play('success');
 		syncProject();
 	}
@@ -477,7 +482,7 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 				: error.kind === 'end_beyond_duration'
 					? m.quick_cut_segment_outside_source()
 					: m.quick_cut_need_range();
-		showToast(message, 'error');
+		segmentValidationToastId = showToast(message, 'error');
 		soundPreferences.play('error');
 		return false;
 	}

@@ -609,6 +609,7 @@ export function editorShortcutTargetIsDisabled(target: EventTarget | null): bool
 	if (!(target instanceof HTMLElement)) return false;
 	if (target.closest('[data-editor-shortcuts-disabled]')) return true;
 	if (target.closest('[data-editor-shortcuts-enabled]')) return false;
+	if (target.closest('[data-editor-shortcuts-owned]')) return true;
 	return Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"]'));
 }
 

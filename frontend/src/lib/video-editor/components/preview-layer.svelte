@@ -785,12 +785,10 @@
 		const draw = async () => {
 			const revision = ++request;
 			const frame = untrack(() => visualFrame);
-			const sourceFps = item.sourceFps ?? composition.fps;
 			const nestedFrame = Math.max(
 				0,
 				Math.floor(
-					(item.sourceStart ?? 0) +
-						((frame - item.from) / editorSession.fps) * (item.speed ?? 1) * sourceFps
+					frameToSourceSeconds(item, frame, editorSession.fps) * (item.sourceFps ?? composition.fps)
 				)
 			);
 			const source = await renderer.render(nestedFrame);

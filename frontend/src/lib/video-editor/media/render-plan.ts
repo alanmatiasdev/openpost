@@ -21,6 +21,12 @@ import type { AudioEqSettings } from '../audio/types';
 import type { ResolvedAudioNoiseReductionSettings } from '../audio/audio-noise-reduction';
 import { resolveNoiseReductionSettings } from '../audio/audio-noise-reduction';
 import { activeValueAt } from '../timeline/keyframe-interpolation';
+import {
+	hasVariableSpeed,
+	playbackRateAtTimelineOffset,
+	playbackRateCurve,
+	timelineOffsetToSourceFrame
+} from '../timeline/source-time-map';
 import { effectiveMediaTracks } from '../timeline/utils/track-groups';
 import {
 	calculateTransitionProgress,
@@ -66,6 +72,11 @@ export interface MixEntry {
 	sourceOffsetSeconds: number;
 	/** Source seconds played per real second (the item's speed). */
 	playbackRate: number;
+	/** Output-relative tempo samples for a persisted variable-speed curve. */
+	playbackRateCurve?: Array<{ atSeconds: number; rate: number }>;
+	/** Exact source window consumed by a variable-speed entry. */
+	sourceWindowStartSeconds?: number;
+	sourceWindowEndSeconds?: number;
 	/** Independent pitch offset. Tempo remains owned by playbackRate. */
 	pitchShiftSemitones: number;
 	/** Ordered outer-to-inner parametric EQ stages. */
@@ -127,6 +138,13 @@ export function isVisibleAtFrame(item: TimelineItem, frame: number): boolean {
 
 /** Source-media seconds shown by a timeline item at an absolute timeline frame. */
 export function frameToSourceSeconds(item: TimelineItem, frame: number, fps: number): number {
+	if (hasVariableSpeed(item)) {
+		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
+		const sourceFrame = timelineOffsetToSourceFrame(item, frame - item.from, fps);
+		const upperFrame =
+			item.sourceDuration === undefined ? Number.POSITIVE_INFINITY : item.sourceDuration - 1;
+		return Math.min(upperFrame, Math.max(0, sourceFrame)) / sourceFps;
+	}
 	const speed = item.speed ?? 1;
 	const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : fps;
 	const sourceStart = item.sourceStart ?? 0;
@@ -182,6 +200,44 @@ export function planMixdown(
 		);
 		const startFrame = item.from - beforeFrames;
 		const endFrame = item.from + item.durationInFrames + afterFrames;
+		const variableSpeed = hasVariableSpeed(item);
+		const variableSourceStart = variableSpeed
+			? timelineOffsetToSourceFrame(item, startFrame - item.from, fps)
+			: undefined;
+		const variableSourceEnd = variableSpeed
+			? timelineOffsetToSourceFrame(item, endFrame - item.from, fps)
+			: undefined;
+		const sourceWindowStartSeconds = variableSpeed
+			? Math.max(
+					0,
+					(item.isReversed ? (variableSourceEnd ?? 0) + 1 : (variableSourceStart ?? 0)) / sourceFps
+				)
+			: undefined;
+		const sourceWindowEndSeconds = variableSpeed
+			? Math.max(
+					sourceWindowStartSeconds ?? 0,
+					(item.isReversed ? (variableSourceStart ?? 0) + 1 : (variableSourceEnd ?? 0)) / sourceFps
+				)
+			: undefined;
+		const rateCurve = variableSpeed
+			? [
+					{ atSeconds: 0, rate: playbackRateAtTimelineOffset(item, startFrame - item.from, fps) },
+					...playbackRateCurve(item, fps)
+						.filter(
+							(point) =>
+								item.from + point.offsetFrames > startFrame &&
+								item.from + point.offsetFrames < endFrame
+						)
+						.map((point) => ({
+							atSeconds: (item.from + point.offsetFrames - startFrame) / fps,
+							rate: point.rate
+						})),
+					{
+						atSeconds: (endFrame - startFrame) / fps,
+						rate: playbackRateAtTimelineOffset(item, endFrame - item.from, fps)
+					}
+				]
+			: undefined;
 		const previewGainPoints = volumeGainPoints(item, 1, fps, startFrame, endFrame);
 		const mixerTrackGain = track.volume ?? 1;
 		const rawDucking = item.audioDucking;
@@ -198,16 +254,25 @@ export function planMixdown(
 			mediaId: item.mediaId,
 			trackId: track.id,
 			whenSeconds: startFrame / fps,
-			sourceOffsetSeconds: item.isReversed
-				? Math.max(
-						0,
-						(item.sourceEnd ??
-							(item.sourceStart ?? 0) + (item.durationInFrames / fps) * speed * sourceFps) /
-							sourceFps +
-							(beforeFrames / fps) * speed
-					)
-				: Math.max(0, (item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed),
-			playbackRate: speed,
+			sourceOffsetSeconds: variableSpeed
+				? item.isReversed
+					? (sourceWindowEndSeconds ?? 0)
+					: (sourceWindowStartSeconds ?? 0)
+				: item.isReversed
+					? Math.max(
+							0,
+							(item.sourceEnd ??
+								(item.sourceStart ?? 0) + (item.durationInFrames / fps) * speed * sourceFps) /
+								sourceFps +
+								(beforeFrames / fps) * speed
+						)
+					: Math.max(0, (item.sourceStart ?? 0) / sourceFps - (beforeFrames / fps) * speed),
+			playbackRate: variableSpeed
+				? playbackRateAtTimelineOffset(item, startFrame - item.from, fps)
+				: speed,
+			playbackRateCurve: rateCurve,
+			sourceWindowStartSeconds,
+			sourceWindowEndSeconds,
 			pitchShiftSemitones: getAudioPitchShiftSemitones(item),
 			audioEqStages: appendResolvedAudioEqSources(
 				undefined,
@@ -339,6 +404,10 @@ export function planNestedMixdown(
 				itemId: `${wrapper.id}/${entry.itemId}`,
 				whenSeconds: wrapperStart + entry.whenSeconds / wrapperSpeed,
 				playbackRate: entry.playbackRate * wrapperSpeed,
+				playbackRateCurve: entry.playbackRateCurve?.map((point) => ({
+					atSeconds: point.atSeconds / wrapperSpeed,
+					rate: point.rate * wrapperSpeed
+				})),
 				pitchShiftSemitones: entry.pitchShiftSemitones + wrapperPitch,
 				audioEqStages: prependResolvedAudioEqSources(
 					entry.audioEqStages,
@@ -387,6 +456,57 @@ function gainValueAtTime(points: GainPoint[], time: number): number {
 	return sorted[sorted.length - 1]!.value;
 }
 
+function curveRateAt(curve: NonNullable<MixEntry['playbackRateCurve']>, seconds: number): number {
+	if (seconds <= curve[0]!.atSeconds) return curve[0]!.rate;
+	for (let index = 1; index < curve.length; index += 1) {
+		const right = curve[index]!;
+		if (seconds > right.atSeconds) continue;
+		const left = curve[index - 1]!;
+		const duration = right.atSeconds - left.atSeconds;
+		if (duration <= 0) return right.rate;
+		const progress = (seconds - left.atSeconds) / duration;
+		return left.rate + (right.rate - left.rate) * progress;
+	}
+	return curve.at(-1)!.rate;
+}
+
+function curveSourceDistance(
+	curve: NonNullable<MixEntry['playbackRateCurve']>,
+	startSeconds: number,
+	endSeconds: number
+): number {
+	if (endSeconds <= startSeconds) return 0;
+	const boundaries = [
+		startSeconds,
+		...curve
+			.map((point) => point.atSeconds)
+			.filter((seconds) => seconds > startSeconds && seconds < endSeconds),
+		endSeconds
+	];
+	let distance = 0;
+	for (let index = 0; index < boundaries.length - 1; index += 1) {
+		const left = boundaries[index]!;
+		const right = boundaries[index + 1]!;
+		distance += ((curveRateAt(curve, left) + curveRateAt(curve, right)) / 2) * (right - left);
+	}
+	return distance;
+}
+
+function slicePlaybackRateCurve(
+	curve: NonNullable<MixEntry['playbackRateCurve']>,
+	startSeconds: number,
+	durationSeconds: number
+): NonNullable<MixEntry['playbackRateCurve']> {
+	const endSeconds = startSeconds + durationSeconds;
+	return [
+		{ atSeconds: 0, rate: curveRateAt(curve, startSeconds) },
+		...curve
+			.filter((point) => point.atSeconds > startSeconds && point.atSeconds < endSeconds)
+			.map((point) => ({ ...point, atSeconds: point.atSeconds - startSeconds })),
+		{ atSeconds: durationSeconds, rate: curveRateAt(curve, endSeconds) }
+	];
+}
+
 export function sliceMixEntries(
 	entries: MixEntry[],
 	startSeconds: number,
@@ -398,16 +518,33 @@ export function sliceMixEntries(
 		const overlapEnd = Math.min(endSeconds, entryEnd);
 		if (overlapEnd <= overlapStart) return [];
 		const skipped = overlapStart - entry.whenSeconds;
+		const slicedDuration = overlapEnd - overlapStart;
+		const curve = entry.playbackRateCurve;
+		const skippedSourceSeconds = curve
+			? curveSourceDistance(curve, 0, skipped)
+			: skipped * entry.playbackRate;
+		const slicedSourceSeconds = curve
+			? curveSourceDistance(curve, skipped, skipped + slicedDuration)
+			: slicedDuration * entry.playbackRate;
+		const sourceOffsetSeconds =
+			entry.sourceOffsetSeconds + (entry.reversed ? -1 : 1) * skippedSourceSeconds;
+		const sourceWindowStartSeconds = curve
+			? entry.reversed
+				? sourceOffsetSeconds - slicedSourceSeconds
+				: sourceOffsetSeconds
+			: entry.sourceWindowStartSeconds;
+		const sourceWindowEndSeconds = curve
+			? entry.reversed
+				? sourceOffsetSeconds
+				: sourceOffsetSeconds + slicedSourceSeconds
+			: entry.sourceWindowEndSeconds;
 		const startGain = gainValueAtTime(entry.gainPoints, overlapStart);
 		const previewStartGain = gainValueAtTime(entry.previewGainPoints, overlapStart);
 		const gainPoints = [
 			{ whenSeconds: 0, value: startGain },
 			...entry.gainPoints
 				.filter((point) => point.whenSeconds > overlapStart && point.whenSeconds <= overlapEnd)
-				.map((point) => ({
-					...point,
-					whenSeconds: point.whenSeconds - startSeconds
-				}))
+				.map((point) => ({ ...point, whenSeconds: point.whenSeconds - startSeconds }))
 		];
 		const previewGainPoints = [
 			{ whenSeconds: 0, value: previewStartGain },
@@ -440,9 +577,14 @@ export function sliceMixEntries(
 				duckEndSeconds: slicedDuckEnd,
 				duckTrackAliases: slicedDuckAliases,
 				whenSeconds: overlapStart - startSeconds,
-				sourceOffsetSeconds:
-					entry.sourceOffsetSeconds + (entry.reversed ? -1 : 1) * skipped * entry.playbackRate,
-				durationSeconds: overlapEnd - overlapStart,
+				sourceOffsetSeconds,
+				sourceWindowStartSeconds,
+				sourceWindowEndSeconds,
+				playbackRate: curve ? curveRateAt(curve, skipped) : entry.playbackRate,
+				playbackRateCurve: curve
+					? slicePlaybackRateCurve(curve, skipped, slicedDuration)
+					: undefined,
+				durationSeconds: slicedDuration,
 				gainPoints,
 				previewGainPoints,
 				transitionGainSpans: entry.transitionGainSpans.map((span) => ({
@@ -478,10 +620,7 @@ function volumeGainPoints(
 		const whenSeconds = frame / fps;
 		if (seen.has(whenSeconds)) continue;
 		seen.add(whenSeconds);
-		points.push({
-			whenSeconds,
-			value: (animated ?? item.volume ?? 1) * trackVolume * clipFade
-		});
+		points.push({ whenSeconds, value: (animated ?? item.volume ?? 1) * trackVolume * clipFade });
 	}
 	return points.length > 0 ? points : [{ whenSeconds: startFrame / fps, value: baseGain }];
 }
@@ -507,13 +646,7 @@ export function transitionBlendAtFrame(
 			transition.timing,
 			transition.bezierPoints
 		);
-		return {
-			outgoingId: from.id,
-			incomingId: to.id,
-			progress,
-			type: transition.type,
-			transition
-		};
+		return { outgoingId: from.id, incomingId: to.id, progress, type: transition.type, transition };
 	}
 	return null;
 }

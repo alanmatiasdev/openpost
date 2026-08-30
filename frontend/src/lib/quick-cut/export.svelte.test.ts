@@ -33,7 +33,10 @@ const COLORS = [
 ];
 const scratchPaths: string[] = [];
 
-async function sourceVideo(container: 'webm' | 'mp4' = 'webm'): Promise<File> {
+async function sourceVideo(
+	container: 'webm' | 'mp4' = 'webm',
+	audio: 'included' | 'omitted' = 'included'
+): Promise<File> {
 	const target = new BufferTarget();
 	const output = new Output({
 		format: container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat(),
@@ -44,28 +47,33 @@ async function sourceVideo(container: 'webm' | 'mp4' = 'webm'): Promise<File> {
 		bitrate: 500_000,
 		keyFrameInterval: 1
 	});
-	const audio = new AudioSampleSource({
-		codec: container === 'webm' ? 'opus' : 'aac',
-		bitrate: 96_000
-	});
+	const audioSource =
+		audio === 'included'
+			? new AudioSampleSource({
+					codec: container === 'webm' ? 'opus' : 'aac',
+					bitrate: 96_000
+				})
+			: null;
 	output.addVideoTrack(video, { frameRate: FPS });
-	output.addAudioTrack(audio);
+	if (audioSource) output.addAudioTrack(audioSource);
 	await output.start();
-	const sampleRate = 48_000;
-	const pcm = new Float32Array(2 * sampleRate);
-	for (let frame = 0; frame < pcm.length; frame++) {
-		pcm[frame] = Math.sin((2 * Math.PI * 440 * frame) / sampleRate) * 0.25;
+	if (audioSource) {
+		const sampleRate = 48_000;
+		const pcm = new Float32Array(2 * sampleRate);
+		for (let frame = 0; frame < pcm.length; frame++) {
+			pcm[frame] = Math.sin((2 * Math.PI * 440 * frame) / sampleRate) * 0.25;
+		}
+		const audioSample = new AudioSample({
+			data: pcm,
+			format: 'f32',
+			numberOfChannels: 1,
+			sampleRate,
+			timestamp: 0
+		});
+		await audioSource.add(audioSample);
+		audioSample.close();
+		audioSource.close();
 	}
-	const audioSample = new AudioSample({
-		data: pcm,
-		format: 'f32',
-		numberOfChannels: 1,
-		sampleRate,
-		timestamp: 0
-	});
-	await audio.add(audioSample);
-	audioSample.close();
-	audio.close();
 	const canvas = new OffscreenCanvas(SIZE, SIZE);
 	const context = canvas.getContext('2d');
 	if (!context) throw new Error('2D canvas unavailable.');
@@ -178,7 +186,7 @@ describe('Quick Cut smart export', () => {
 	});
 
 	it('keeps AVC tail packets byte-identical in an MP4 smart cut', async () => {
-		const file = await sourceVideo('mp4');
+		const file = await sourceVideo('mp4', 'omitted');
 		const source = await probeSourceFile(file);
 		const segment = createSegment(0.25, 1.75, {
 			id: 'avc-boundary',

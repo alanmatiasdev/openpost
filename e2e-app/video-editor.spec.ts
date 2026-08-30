@@ -87,6 +87,159 @@ async function createProject(page: Page, name: string): Promise<void> {
   await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 }
 
+async function seedTranscriptEditProject(page: Page): Promise<void> {
+  const projectId = new URL(page.url()).pathname.split("/").at(-1);
+  if (!projectId) throw new Error("Video Editor project id is missing from the URL.");
+
+  await page.evaluate(async (id) => {
+    const root = await navigator.storage.getDirectory();
+    const projects = await root.getDirectoryHandle("projects");
+    const projectDirectory = await projects.getDirectoryHandle(id);
+    const projectFile = await projectDirectory.getFileHandle("project.json");
+    const project = JSON.parse(await (await projectFile.getFile()).text());
+    project.duration = 7;
+    project.updatedAt = Date.now();
+    project.timeline = {
+      tracks: [
+        {
+          id: "captions",
+          name: "Captions",
+          kind: "video",
+          height: 64,
+          locked: false,
+          visible: true,
+          muted: false,
+          solo: false,
+          order: 0,
+        },
+        {
+          id: "video",
+          name: "Video",
+          kind: "video",
+          height: 96,
+          locked: false,
+          visible: true,
+          muted: false,
+          solo: false,
+          order: 1,
+        },
+        {
+          id: "audio",
+          name: "Audio",
+          kind: "audio",
+          height: 72,
+          locked: false,
+          visible: true,
+          muted: false,
+          solo: false,
+          volume: 1,
+          order: 2,
+        },
+      ],
+      items: [
+        {
+          id: "video-primary",
+          trackId: "video",
+          from: 0,
+          durationInFrames: 90,
+          label: "Interview video",
+          type: "video",
+          mediaId: "interview-media",
+          linkedGroupId: "primary-av",
+          sourceStart: 0,
+          sourceEnd: 90,
+          sourceFps: 30,
+          speed: 1,
+        },
+        {
+          id: "audio-primary",
+          trackId: "audio",
+          from: 0,
+          durationInFrames: 90,
+          label: "Interview audio",
+          type: "audio",
+          mediaId: "interview-media",
+          linkedGroupId: "primary-av",
+          sourceStart: 0,
+          sourceEnd: 90,
+          sourceFps: 30,
+          speed: 1,
+        },
+        {
+          id: "video-later",
+          trackId: "video",
+          from: 120,
+          durationInFrames: 90,
+          label: "Later video",
+          type: "video",
+          mediaId: "interview-media",
+          linkedGroupId: "later-av",
+          sourceStart: 0,
+          sourceEnd: 90,
+          sourceFps: 30,
+          speed: 1,
+        },
+        {
+          id: "audio-later",
+          trackId: "audio",
+          from: 120,
+          durationInFrames: 90,
+          label: "Later audio",
+          type: "audio",
+          mediaId: "interview-media",
+          linkedGroupId: "later-av",
+          sourceStart: 0,
+          sourceEnd: 90,
+          sourceFps: 30,
+          speed: 1,
+        },
+        {
+          id: "transcript-captions",
+          trackId: "captions",
+          from: 0,
+          durationInFrames: 90,
+          label: "Interview captions",
+          type: "subtitle",
+          captionSource: {
+            type: "transcript",
+            clipId: "video-primary",
+            mediaId: "interview-media",
+            sourceStartSeconds: 0,
+            playbackSpeed: 1,
+          },
+          cues: [
+            {
+              id: "cue",
+              startFrame: 0,
+              endFrame: 90,
+              text: "Please um continue",
+              words: [
+                { id: "please", startFrame: 0, endFrame: 25, text: "Please" },
+                { id: "um", startFrame: 30, endFrame: 45, text: "um" },
+                { id: "continue", startFrame: 50, endFrame: 90, text: "continue" },
+              ],
+            },
+          ],
+        },
+      ],
+      currentFrame: 0,
+      zoomLevel: 1,
+      scrollPosition: 0,
+    };
+
+    const writable = await projectFile.createWritable();
+    await writable.write(JSON.stringify(project));
+    await writable.close();
+  }, projectId);
+
+  await page.reload();
+  await expect(page.locator('[data-timeline-item-id="video-primary"]')).toBeVisible();
+  const recoveryDialog = page.getByRole("dialog", { name: "Restore project media" });
+  if (await recoveryDialog.isVisible()) {
+    await recoveryDialog.getByRole("button", { name: "Work offline" }).click();
+  }
+}
+
 async function addTextItem(page: Page): Promise<void> {
   await page
     .getByRole("complementary", { name: "Assets" })
@@ -717,6 +870,125 @@ test("Video Editor keyboard transport and delete commands survive focused contro
   await expect
     .poll(() => clips.nth(0).evaluate((clip) => parseFloat((clip as HTMLElement).style.left)))
     .toBe(firstLeft);
+});
+
+test("Transcript word cuts own Backspace and ripple linked media with undo", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Transcript edit route proof");
+  await seedTranscriptEditProject(page);
+
+  const primaryVideo = page.locator('[data-timeline-item-id="video-primary"]');
+  const laterVideo = page.locator('[data-timeline-item-id="video-later"]');
+  const laterAudio = page.locator('[data-timeline-item-id="audio-later"]');
+  await primaryVideo.locator(":scope > button").first().click();
+
+  const inspector = page.getByRole("complementary", { name: "Edit" });
+  await inspector.getByRole("tab", { name: "Transcript" }).click();
+  const transcript = inspector.getByTestId("transcript-panel");
+  await transcript.getByRole("button", { name: "Edit video by transcript" }).click();
+  const fillerWord = transcript.getByRole("button", { name: 'Select "um"' });
+
+  await fillerWord.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+  await fillerWord.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Stage words" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await fillerWord.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(page.getByRole("menuitem", { name: "Stage words" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const videoLeftBefore = await laterVideo.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.left),
+  );
+  const audioLeftBefore = await laterAudio.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.left),
+  );
+  await fillerWord.click();
+  await page.keyboard.press("Backspace");
+  await expect(transcript.getByText("1 staged · 0.5s")).toBeVisible();
+  await expect(primaryVideo).toBeVisible();
+
+  await transcript.getByRole("button", { name: "Cut staged words" }).click();
+  await expect(fillerWord).toHaveCount(0);
+  const program = page.getByRole("application", { name: "Program" });
+  await expect(program.getByRole("img", { name: "Please continue" })).toBeVisible();
+  const videoLeftAfter = await laterVideo.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.left),
+  );
+  const audioLeftAfter = await laterAudio.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.left),
+  );
+  expect(videoLeftAfter).toBeLessThan(videoLeftBefore);
+  expect(audioLeftAfter).toBeLessThan(audioLeftBefore);
+  expect(audioLeftAfter).toBe(videoLeftAfter);
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(transcript.getByRole("button", { name: 'Select "um"' })).toBeVisible();
+  await expect(program.getByRole("img", { name: "Please um continue" })).toBeVisible();
+  await expect
+    .poll(() => laterVideo.evaluate((clip) => parseFloat((clip as HTMLElement).style.left)))
+    .toBe(videoLeftBefore);
+  await expect
+    .poll(() => laterAudio.evaluate((clip) => parseFloat((clip as HTMLElement).style.left)))
+    .toBe(audioLeftBefore);
+});
+
+test("Speed curves retime linked picture and sound from the inspector", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Speed curve route proof");
+  await seedTranscriptEditProject(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const primaryVideo = page.locator('[data-timeline-item-id="video-primary"]');
+  const primaryAudio = page.locator('[data-timeline-item-id="audio-primary"]');
+  await primaryVideo.locator(":scope > button").first().click();
+  const videoWidthBefore = await primaryVideo.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.width),
+  );
+  const audioWidthBefore = await primaryAudio.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.width),
+  );
+
+  const playhead = page.getByRole("slider", { name: "Timeline playhead" });
+  await playhead.focus();
+  for (let frame = 0; frame < 30; frame += 1) await page.keyboard.press("ArrowRight");
+
+  const inspector = page.getByRole("complementary", { name: "Edit" });
+  const speedCurve = inspector.getByTestId("speed-ramp-editor");
+  await speedCurve.getByRole("button", { name: "Add point" }).click();
+  await speedCurve.getByRole("spinbutton", { name: "Speed 2" }).fill("2");
+  await speedCurve.getByRole("spinbutton", { name: "Speed 2" }).press("Enter");
+  await speedCurve.getByRole("button", { name: "Easing for segment starting at frame 30" }).click();
+  await page.getByRole("option", { name: "Hold" }).click();
+
+  await expect(speedCurve.getByRole("img", { name: "Speed" })).toBeVisible();
+  await expect(speedCurve.getByRole("button", { name: "Delete Speed 2" })).toBeVisible();
+  await expect
+    .poll(() => primaryVideo.evaluate((clip) => parseFloat((clip as HTMLElement).style.width)))
+    .toBeLessThan(videoWidthBefore);
+  await expect
+    .poll(() => primaryAudio.evaluate((clip) => parseFloat((clip as HTMLElement).style.width)))
+    .toBeLessThan(audioWidthBefore);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-speed-curve-1280.png",
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobilePanels = page.getByRole("navigation", { name: "Editor panels" });
+  await mobilePanels.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(speedCurve).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-speed-curve-390.png",
+    fullPage: true,
+  });
 });
 
 test("Video Editor restores its workspace before reloading a project deep link", async ({

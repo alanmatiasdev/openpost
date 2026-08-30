@@ -3999,6 +3999,7 @@
 	"video_editor_no_selection": "Özelliklerini düzenlemek için bir klip, kaplama, altyazı veya ses öğesi seçin.",
 	"video_editor_clip": "Klip",
 	"video_editor_clip_speed": "Hız",
+	"video_editor_clip_speed_curve": "Hız eğrisi",
 	"video_editor_clip_gain_db": "Kazanç (dB)",
 	"video_editor_audio_pitch": "Perde",
 	"video_editor_audio_semitones": "Yarım ton",

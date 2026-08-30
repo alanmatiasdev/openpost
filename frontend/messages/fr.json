@@ -3999,6 +3999,7 @@
 	"video_editor_no_selection": "Sélectionnez un clip, une incrustation, un sous-titre ou un élément audio pour modifier ses propriétés.",
 	"video_editor_clip": "Clip",
 	"video_editor_clip_speed": "Vitesse",
+	"video_editor_clip_speed_curve": "Courbe de vitesse",
 	"video_editor_clip_gain_db": "Gain (dB)",
 	"video_editor_audio_pitch": "Hauteur",
 	"video_editor_audio_semitones": "Demi-tons",

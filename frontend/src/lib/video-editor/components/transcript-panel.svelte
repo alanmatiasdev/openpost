@@ -374,6 +374,22 @@
 		transcriptContextOpen = false;
 	}
 
+	function openSourceWordContextFromKeyboard(event: KeyboardEvent, target: HTMLElement): void {
+		const word = target.closest<HTMLElement>('[data-source-word-index]');
+		if (!word) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		const bounds = word.getBoundingClientRect();
+		word.dispatchEvent(
+			new MouseEvent('contextmenu', {
+				bubbles: true,
+				cancelable: true,
+				clientX: bounds.left + Math.min(bounds.width, 12),
+				clientY: bounds.bottom
+			})
+		);
+	}
+
 	function handlePanelKeydown(event: KeyboardEvent): void {
 		if (!editVideoMode || !panelElement) return;
 		const target = event.target;
@@ -384,6 +400,13 @@
 			(target instanceof HTMLElement && target.isContentEditable)
 		)
 			return;
+		if (
+			target instanceof HTMLElement &&
+			(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))
+		) {
+			openSourceWordContextFromKeyboard(event, target);
+			return;
+		}
 		if (eventMatchesShortcut(event, keyboardShortcuts.bindings.COPY)) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -504,6 +527,7 @@
 	role="region"
 	aria-label={m.video_editor_transcript()}
 	data-testid="transcript-panel"
+	data-editor-shortcuts-owned
 >
 	<div
 		class="flex flex-wrap items-center gap-2 px-1"

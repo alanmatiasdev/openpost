@@ -4,6 +4,90 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.13.1] - 2026-08-30
+
+### Fixed
+
+- Kept source-anchored speed curves attached during slip edits, and mapped timeline waveforms and filmstrips through variable-speed playback.
+
+## [4.13.0] - 2026-08-30
+
+### Fixed
+
+- Kept transcript word shortcuts inside transcript editing, added keyboard access to word menus, and preserved Space playback while transcript words are focused.
+- Prevented growth discovery jobs from deadlocking on SQLite single-connection deployments when initializing sync state for newly connected social accounts.
+- Rebuilt Quick Cut segment controls so time ranges, cut mode, preview, and export stay readable on desktop and mobile, and kept mobile notifications within the viewport.
+
+### Added
+
+- Added source-anchored speed curves with linked audio/video editing, exact transcript and split mapping, pitch-preserving preview, and bounded variable-tempo export.
+
+## [4.12.0] - 2026-08-30
+
+### Changed
+
+- Rebuilt the Video Editor Color workspace around dedicated grading controls, graded filmstrips, scopes, curves, and full keyframe editing.
+- Matched FreeCut's grading readouts and section workflow with labeled scope guides, parade and vectorscope targets, visible grade actions and preset gallery, adjustment-layer creation, and per-section reset, bypass, and remove controls.
+- Matched FreeCut's effect-stack workflow with one-click effect insertion, compact stack controls, collapsible panels, selection-wide bypass, and Color-aware effect filtering.
+- Isolated Motion into its own composition preview and timeline, with blank composition creation, canvas controls, last-composition restore, and exact Edit return navigation.
+- Reorganized animation around FreeCut's source workflow with global search, compatibility filtering, an undoable applied-animation summary, and direct Edit-to-Motion clip creation.
+- Tracked each generated animation preset through keyframe edits so one applied preset can be removed without deleting manual animation.
+- Rebuilt clip transforms around FreeCut's Position, Size, Rotation, Anchor, and Appearance workflow with scrubbable unit-aware fields, mixed selections, linked dimensions, grouped blend modes, reset actions, and one-step undo.
+- Matched FreeCut's source-pixel crop workflow with multi-clip scrubbing, reset and auto-key controls, signed edge softness, and the same fixed-source crop geometry in preview and export.
+- Rebuilt playback controls around FreeCut's live speed and fade workflow, including mixed multi-clip values, linked A/V rate stretching, reset actions, reverse status, and one undo entry per gesture.
+- Matched FreeCut's multi-clip audio core with linked-audio selection, live dB gain and fade controls, throttled pitch editing, gain auto-keying, mixed values, and atomic resets while retaining OpenPost's advanced EQ and cleanup tools.
+- Rebuilt parametric EQ from FreeCut's source with an interactive logarithmic response graph, pointer and keyboard band editing, mixed multi-clip presets, linked-audio targeting, and one undo step per edit.
+- Added FreeCut's shape gradient swap and path-order controls, including undoable reverse and first-point actions in each path point's keyboard-accessible context menu.
+- Added FreeCut's independent None, Shadow, Outline, and Glow text effects, including atomic multi-text selection updates.
+- Added duration-preserving speed and reverse controls for animated GIF and WebP clips, detected from imported animation metadata rather than file names.
+- Completed FreeCut's transition inspector behavior with registry-wide search, duration and per-control resets, and handle-safe placement choices.
+- Matched FreeCut's marker inspector with live timecode, quick colors, reset, and the same color actions in the marker context menu.
+- Added FreeCut's remappable Razor and split-at-cursor commands, including pointer-precise linked-clip cuts and keyboard operation.
+- Added LosslessCut-style remove-ranges export to Quick Cut, with source-aware complements, project persistence, and lossless or exact output through the existing export path.
+- Added LosslessCut-style Smart Cut for exact Quick Cut exports: only the leading GOP and audio are re-encoded while unchanged video packets are copied, including compatible merged exports.
+- Added Quick Cut segment interchange for CSV, TSV, chapter text, and SRT, with editable labels and source-bound validation.
+- Added progressive selected-stream waveforms plus pointer-centered zoom, wheel panning, drag scrubbing, keyframe ticks, and playhead follow to the Quick Cut timeline.
+- Preserved container tags, raw same-format metadata, track names, languages, and dispositions across merged lossless, Smart Cut, and re-encoded Quick Cut exports.
+- Added source-resolution PNG and JPEG frame capture to Quick Cut, including clipboard copy and playback, mark, and capture actions on the video context menu.
+- Routed Quick Cut through the shared remappable editor shortcut catalog, including focused-button-safe playback, frame stepping, marks, range deletion, loop control, and live shortcut hints.
+- Added beat-driven editing from OpenReel's source workflows: smart, one-per-beat, and duration-preserving clip sync across selected tracks, offsets and beat cadence, plus four-beat source cuts.
+- Kept AI review inside the existing composer, with conflict-safe apply, original restoration, compact per-platform strategy summaries, and conservative adaptation for providers without a native creative model.
+- Moved all AI requests to the official OpenAI Go SDK while preserving OpenRouter provider routing, privacy controls, web search, and multimodal inputs.
+- Consolidated public documentation into canonical user, provider, configuration, installation, self-hosting, operations, and API routes, and removed duplicate or internal-only pages.
+- Kept one authoritative Docker Compose example, moved provider readiness and invitation delivery guidance to operator audiences, and updated generated documentation surfaces and links.
+- Consolidated the marketing self-hosting, AGPL source, contributor, and deployment-choice content at `/self-hosting`.
+- Removed the `/open-source` and `/compare` marketing route families and their evidence, discovery, navigation, and test surfaces.
+- Centralized marketing navigation views in one categorized registry.
+- Made the mobile first-use screen lead with Hosted sign-in while keeping self-hosted setup clear and secondary.
+- Reduced the depth of primary mobile buttons to match the flatter app hierarchy.
+- Simplified the marketing and documentation entry points around OpenPost's real publication workflow.
+- Grouped documentation navigation by user task and clarified that provider adapters and Hosted certification are separate.
+- Shortened the README product copy and added reproducible OpenPost Image Editor and OpenPost Video Editor screenshots.
+- Consolidated Publications, Inbox communications, and account management on their canonical routes across the web and mobile apps.
+- Removed the public app homepage and the legacy Studio, Video Studio, Activity, Posts, and standalone Accounts routes without redirects.
+- Flattened routine app and editor controls so depth marks only the current focal action or a temporary layer.
+- Made Editors visible in primary workspace navigation and added readable labels to mobile navigation.
+- Simplified the OpenPost Image Editor start screen to lead with real starter templates.
+- Reduced visual noise in the marketing hero and Image Editor template chooser.
+- Made the first Image Editor guidance select the primary editable text and avoid redundant desktop actions.
+
+### Fixed
+
+- Kept hidden grading effects stable during multi-clip reordering, bypass, reset, and removal actions.
+- Applied unanimated multi-clip transforms to every selected clip even when the playhead is outside some clips.
+- Migrated legacy ratio crop keyframes to source pixels so the keyframe graph, canvas handles, inspector, preview, and export use one unit contract.
+- Matched meme caption sizing and line spacing to the pinned memegen renderer, retried transient previews, and made meme and discovery JSON generation use strict schemas with bounded recovery.
+- Kept rejected AI builds on direction selection, aligned generated directions with create limits, and made ideation start from one optional brief and an explicit choice.
+- Kept CLI media usage output aligned with the Publication API contract.
+- Updated MCP prompts and the scheduler widget to use canonical Publication operations and results.
+- Corrected API migration, settings navigation, and provider-readiness wording in the public documentation.
+- Restored iOS builds on Xcode 26.2 while the pinned Expo packages await upstream Swift compatibility releases.
+
+### Added
+
+- Added composer-native AI ideation, five-direction drafting, durable platform-specific Rendition generation, voice profiles, internal source checks, and opt-in meme recommendations.
+- Analytics can now compare daily views, engagement, and follower changes by post, platform, or account. Summary stats and the publication table are easier to scan.
+
 ## [4.11.0] - 2026-08-29
 
 ### Changed

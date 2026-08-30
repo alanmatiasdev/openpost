@@ -3999,6 +3999,7 @@
 	"video_editor_no_selection": "クリップ、オーバーレイ、字幕、オーディオ項目を選ぶとプロパティを編集できます。",
 	"video_editor_clip": "クリップ",
 	"video_editor_clip_speed": "速度",
+	"video_editor_clip_speed_curve": "速度カーブ",
 	"video_editor_clip_gain_db": "ゲイン（dB）",
 	"video_editor_audio_pitch": "ピッチ",
 	"video_editor_audio_semitones": "半音",

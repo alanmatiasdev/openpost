@@ -3999,6 +3999,7 @@
 	"video_editor_no_selection": "选择一个剪辑、叠加层、字幕或音频项即可编辑其属性。",
 	"video_editor_clip": "片段",
 	"video_editor_clip_speed": "速度",
+	"video_editor_clip_speed_curve": "速度曲线",
 	"video_editor_clip_gain_db": "增益（dB）",
 	"video_editor_audio_pitch": "音高",
 	"video_editor_audio_semitones": "半音",

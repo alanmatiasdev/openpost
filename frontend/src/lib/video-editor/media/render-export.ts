@@ -534,12 +534,11 @@ export class TimelineFrameRenderer {
 				);
 				this.nestedRenderers.set(rendererKey, renderer);
 			}
-			const sourceFps = originalItem.sourceFps ?? composition.fps;
 			const nestedFrame = Math.max(
 				0,
 				Math.floor(
-					(originalItem.sourceStart ?? 0) +
-						((frame - originalItem.from) / this.fps) * (originalItem.speed ?? 1) * sourceFps
+					frameToSourceSeconds(originalItem, frame, this.fps) *
+						(originalItem.sourceFps ?? composition.fps)
 				)
 			);
 			const source = await renderer.render(nestedFrame);

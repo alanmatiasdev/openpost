@@ -162,6 +162,7 @@ function neutralTransform(item: TimelineItem, media: MediaMetadata): boolean {
 function unmodifiedVideo(item: TimelineItem, media: MediaMetadata): boolean {
 	return (
 		closeTo(item.speed ?? 1, 1) &&
+		(item.speedRamp?.length ?? 0) === 0 &&
 		!item.isReversed &&
 		neutralTransform(item, media) &&
 		neutralCrop(item) &&
@@ -202,6 +203,7 @@ function unmodifiedAudio(item: TimelineItem, track: TimelineTrack): boolean {
 	const hasTrackEq = isTrackEqActive(track);
 	return (
 		closeTo(item.speed ?? 1, 1) &&
+		(item.speedRamp?.length ?? 0) === 0 &&
 		!item.isReversed &&
 		!isAudioPitchShiftActive(getAudioPitchShiftSemitones(item)) &&
 		!hasClipEq &&

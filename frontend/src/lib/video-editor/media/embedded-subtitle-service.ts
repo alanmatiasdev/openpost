@@ -6,6 +6,10 @@ import { execute } from '../timeline/commands/command-store.svelte';
 import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { effectiveMediaTracks, isTrackEffectivelyLocked } from '../timeline/utils/track-groups';
 import {
+	getItemSourceSpanSeconds,
+	sourceSecondsToTimelinePosition
+} from '../timeline/utils/media-item-frames';
+import {
 	extractMatroskaTextSubtitleTracksFromBlob,
 	type EmbeddedSubtitleScanOptions,
 	type EmbeddedSubtitleTrack
@@ -125,24 +129,24 @@ function buildSubtitleForClip(
 	const timelineFps = timelineStore.fps;
 	const sourceFps =
 		clip.sourceFps && clip.sourceFps > 0 ? clip.sourceFps : media.fps || timelineFps;
-	const speed = clip.speed && clip.speed > 0 ? clip.speed : 1;
 	const sourceStart = Math.max(0, clip.sourceStart ?? 0);
 	const fallbackSourceFrames =
 		clip.sourceDuration ??
-		Math.max(1, Math.round((clip.durationInFrames / timelineFps) * speed * sourceFps));
+		Math.max(1, Math.round((clip.durationInFrames / timelineFps) * (clip.speed ?? 1) * sourceFps));
 	const sourceEnd = Math.max(sourceStart + 1, clip.sourceEnd ?? sourceStart + fallbackSourceFrames);
-	const sourceStartSeconds = sourceStart / sourceFps;
-	const sourceEndSeconds = sourceEnd / sourceFps;
+	const sourceSpan = getItemSourceSpanSeconds(clip, timelineFps);
+	const sourceStartSeconds = sourceSpan?.start ?? sourceStart / sourceFps;
+	const sourceEndSeconds = sourceSpan?.end ?? sourceEnd / sourceFps;
 	const cues = track.cues.flatMap((cue) => {
 		const overlapStart = Math.max(cue.startSeconds, sourceStartSeconds);
 		const overlapEnd = Math.min(cue.endSeconds, sourceEndSeconds);
 		if (overlapEnd <= overlapStart) return [];
-		const startOffset = Math.floor(((overlapStart - sourceStartSeconds) / speed) * timelineFps);
-		const endOffset = Math.ceil(((overlapEnd - sourceStartSeconds) / speed) * timelineFps);
-		const startFrame = clip.from + Math.max(0, startOffset);
+		const mappedStart = sourceSecondsToTimelinePosition(clip, overlapStart, timelineFps);
+		const mappedEnd = sourceSecondsToTimelinePosition(clip, overlapEnd, timelineFps);
+		const startFrame = Math.max(clip.from, Math.floor(Math.min(mappedStart, mappedEnd)));
 		const endFrame = Math.min(
 			clip.from + clip.durationInFrames,
-			clip.from + Math.max(startOffset + 1, endOffset)
+			Math.max(startFrame + 1, Math.ceil(Math.max(mappedStart, mappedEnd)))
 		);
 		if (endFrame <= startFrame) return [];
 		return [{ id: cue.id, startFrame, endFrame, text: cue.text }];

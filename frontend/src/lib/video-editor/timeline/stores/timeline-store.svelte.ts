@@ -15,6 +15,7 @@ import type { TimelineItem, TimelineMarker, TimelineTrack } from '$lib/video-edi
 import type { AudioEqSettings } from '$lib/video-editor/audio/types';
 import { clampTimelineZoom } from '$lib/video-editor/timeline/zoom';
 import { calculateSplitSourceBoundaries } from '../utils/source-calculations';
+import { hasVariableSpeed, variableSpeedSplitBoundaries } from '../source-time-map';
 import { synchronizeTranscriptCaptionsAfterSplit } from '../../transcript/split-transcript-captions';
 
 export interface TimelineSettings {
@@ -325,16 +326,18 @@ export const timelineStore = {
 			rightItem.type === 'composition'
 		) {
 			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : state.settings.fps;
-			const boundaries = calculateSplitSourceBoundaries(
-				item.sourceStart ?? 0,
-				leftDuration,
-				rightDuration,
-				item.speed ?? 1,
-				state.settings.fps,
-				sourceFps,
-				item.isReversed,
-				item.sourceEnd
-			);
+			const boundaries = hasVariableSpeed(rightItem)
+				? variableSpeedSplitBoundaries(rightItem, leftDuration, state.settings.fps)
+				: calculateSplitSourceBoundaries(
+						item.sourceStart ?? 0,
+						leftDuration,
+						rightDuration,
+						item.speed ?? 1,
+						state.settings.fps,
+						sourceFps,
+						item.isReversed,
+						item.sourceEnd
+					);
 			item.sourceStart = boundaries.left.sourceStart;
 			item.sourceEnd = boundaries.left.sourceEnd;
 			rightItem.sourceStart = boundaries.right.sourceStart;

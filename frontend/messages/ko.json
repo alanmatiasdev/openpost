@@ -3999,6 +3999,7 @@
 	"video_editor_no_selection": "속성을 편집할 클립, 오버레이, 자막 또는 오디오 항목을 선택하세요.",
 	"video_editor_clip": "클립",
 	"video_editor_clip_speed": "속도",
+	"video_editor_clip_speed_curve": "속도 곡선",
 	"video_editor_clip_gain_db": "게인(dB)",
 	"video_editor_audio_pitch": "피치",
 	"video_editor_audio_semitones": "반음",

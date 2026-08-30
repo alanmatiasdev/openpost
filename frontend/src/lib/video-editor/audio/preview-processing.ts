@@ -41,6 +41,7 @@ export function requiresProcessedPreviewAudio(
 ): boolean {
 	return (
 		Math.abs((item.speed ?? 1) - 1) > 0.0001 ||
+		(item.speedRamp?.length ?? 0) > 0 ||
 		isAudioPitchShiftActive(getAudioPitchShiftSemitones(item)) ||
 		previewAudioEqStages(item, trackAudioEq, busAudioEq).some(isAudioEqStageActive) ||
 		hasActiveAudioEffects(getAudioEffects(item)) ||

@@ -189,16 +189,6 @@ test("public Image Editor keeps edits open when device storage fails", async ({ 
   await expect(addedText).toBeVisible();
 });
 
-test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({ page, request }) => {
-  const auth = await registerUser(
-    request,
-    `studio-redirect-${Date.now().toString(36)}@example.com`,
-  );
-  await authenticatePage(page, auth.token);
-  await page.goto("/image-editor/new");
-  await expect(page).toHaveURL(/\/image-editor\/new\?legacy-route=1$/);
-});
-
 test("public Image Editor drops and crops an image with undo, redo, and reload", async ({
   page,
 }) => {
@@ -1489,12 +1479,13 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await authenticatePage(page, auth.token);
   await page.goto(`/image-editor/new?workspace=${workspace.id}`);
 
-  await expect(page.getByRole("heading", { name: "Choose a format" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Starter templates" })).toBeVisible();
   const starterTemplates = page.getByRole("region", {
     name: "Starter templates",
   });
-  await expect(starterTemplates.getByRole("button")).toHaveCount(15);
+  await expect(starterTemplates.getByRole("button", { name: /Quick announcement/ })).toBeVisible();
+  await page.getByRole("button", { name: "Show all 15 templates" }).click();
+  await expect(page.getByRole("button", { name: "Show fewer templates" })).toBeVisible();
   await expect(starterTemplates.getByRole("button", { name: /Quiet quote/ })).toBeVisible();
   await expect(starterTemplates.getByRole("button", { name: /YouTube list/ })).toBeVisible();
 

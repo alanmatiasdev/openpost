@@ -182,11 +182,10 @@ export class StreamingTimeStretch {
 
 	private constructor(
 		private readonly source: StreamingStereoSource,
-		private readonly filter: {
-			extract(target: Float32Array, numFrames: number): number;
-		},
+		private readonly filter: { extract(target: Float32Array, numFrames: number): number },
+		private readonly processor: { tempo: number },
 		private readonly channelCount: number,
-		private readonly tempo: number
+		private tempo: number
 	) {}
 
 	static async create(
@@ -203,12 +202,23 @@ export class StreamingTimeStretch {
 		return new StreamingTimeStretch(
 			source,
 			new TimeStretchFilter(source, processor),
+			processor,
 			Math.max(1, channelCount),
 			tempo
 		);
 	}
 
-	process(channels: Float32Array[], isLast = false): Float32Array[] {
+	setTempo(tempo: number): void {
+		if (!Number.isFinite(tempo) || tempo <= 0) return;
+		this.tempo = tempo;
+		this.processor.tempo = tempo;
+	}
+
+	process(
+		channels: Float32Array[],
+		isLast = false,
+		expectedTotalOutputFrames?: number
+	): Float32Array[] {
 		if (this.finished) throw new Error('Cannot append audio after the time-stretch stream ended');
 		this.totalInputFrames += this.source.push(channels);
 		if (isLast) {
@@ -216,7 +226,7 @@ export class StreamingTimeStretch {
 			this.finished = true;
 		}
 		const expectedTotal = isLast
-			? Math.max(0, Math.floor(this.totalInputFrames / this.tempo))
+			? Math.max(0, expectedTotalOutputFrames ?? Math.floor(this.totalInputFrames / this.tempo))
 			: Number.POSITIVE_INFINITY;
 		const parts: Float32Array[][] = Array.from({ length: this.channelCount }, () => []);
 		let produced = 0;
