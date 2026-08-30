@@ -1409,7 +1409,7 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 			return nil, huma.Error500InternalServerError("bluesky adapter type mismatch")
 		}
 
-		did, accessToken, refreshToken, expiresIn, err := blueskyAdapter.CreateSession(ctx, input.Body.Handle, input.Body.AppPassword)
+		did, handle, accessToken, refreshToken, expiresIn, err := blueskyAdapter.CreateSession(ctx, input.Body.Handle, input.Body.AppPassword)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("bluesky login failed: %s", err.Error()))
 		}
@@ -1426,9 +1426,19 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 			ExpiresIn:    expiresIn,
 			Extra:        nil,
 		}
-		profile, err := blueskyAdapter.GetProfile(ctx, accessToken)
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("bluesky profile failed: %s", err.Error()))
+		profile := &platform.UserProfile{
+			ID:       did,
+			Username: firstNonEmpty(handle, input.Body.Handle),
+		}
+		providerProfile, profileErr := blueskyAdapter.GetProfile(ctx, accessToken)
+		if profileErr != nil {
+			log.Printf("[BlueskyLogin] Profile unavailable after session creation: %v", profileErr)
+		} else if providerProfile != nil {
+			profile.ID = firstNonEmpty(providerProfile.ID, profile.ID)
+			profile.Username = firstNonEmpty(providerProfile.Username, profile.Username)
+			profile.DisplayName = providerProfile.DisplayName
+			profile.AvatarURL = providerProfile.AvatarURL
+			profile.CapabilityState = providerProfile.CapabilityState
 		}
 		if err := h.requireProviderConnectionCompletion(
 			ctx, "bluesky", "", string(intent), userID,

@@ -45,7 +45,10 @@ func TestLinkedInOrganizationSelectionUsesOrganizationURN(t *testing.T) {
 			}
 			return jsonResponse(req, `{"elements":[{"organization":"urn:li:organization:42"}],"paging":{"links":[]}}`), nil
 		case "/rest/organizations":
-			return jsonResponse(req, `{"results":{"42":{"localizedName":"OpenPost","vanityName":"openpost"}},"statuses":{"42":200}}`), nil
+			if !strings.Contains(req.URL.Query().Get("projection"), "logoV2(original,original~:playableStreams)") {
+				t.Fatalf("organization lookup omitted logo projection: %s", req.URL.RawQuery)
+			}
+			return jsonResponse(req, `{"results":{"42":{"localizedName":"OpenPost","vanityName":"openpost","logoV2":{"original":"urn:li:digitalmediaAsset:logo","original~":{"elements":[{"identifiers":[{"identifier":"https://media.linkedin.example/openpost.png"}]}]}}}},"statuses":{"42":200}}`), nil
 		default:
 			t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
 			return nil, nil
@@ -64,6 +67,9 @@ func TestLinkedInOrganizationSelectionUsesOrganizationURN(t *testing.T) {
 	if options[0].AvatarURL != "https://media.linkedin.example/ada.jpg" {
 		t.Fatalf("unexpected personal profile avatar %#v", options[0])
 	}
+	if options[1].AvatarURL != "https://media.linkedin.example/openpost.png" {
+		t.Fatalf("unexpected organization avatar %#v", options[1])
+	}
 	personal, err := adapter.SelectAccount(context.Background(), token, "person:member-1")
 	if err != nil {
 		t.Fatalf("SelectAccount returned error: %v", err)
@@ -77,6 +83,9 @@ func TestLinkedInOrganizationSelectionUsesOrganizationURN(t *testing.T) {
 	}
 	if selected.AccountID != "urn:li:organization:42" || selected.Token != token {
 		t.Fatalf("unexpected selected organization %#v", selected)
+	}
+	if selected.AccountAvatarURL != "https://media.linkedin.example/openpost.png" {
+		t.Fatalf("unexpected selected organization avatar %#v", selected)
 	}
 	if selected.CapabilityState["linkedin_account_type"] != "organization" {
 		t.Fatalf("missing organization capability state %#v", selected.CapabilityState)

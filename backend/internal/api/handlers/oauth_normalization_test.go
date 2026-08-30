@@ -178,6 +178,42 @@ func TestBlueskyLoginPersistsProfileAvatar(t *testing.T) {
 	require.Equal(t, "https://cdn.bsky.app/avatar.jpg", account.AccountAvatarURL)
 }
 
+func TestBlueskyLoginUsesSessionIdentityWhenActorProfileIsUnavailable(t *testing.T) {
+	payload, err := json.Marshal(map[string]int64{"exp": time.Now().Add(time.Hour).Unix()})
+	require.NoError(t, err)
+	accessJWT := "e30." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+
+	pds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/xrpc/com.atproto.server.createSession":
+			_, _ = io.WriteString(w, `{"did":"did:plc:creator","handle":"canonical.bsky.social","accessJwt":"`+accessJWT+`","refreshJwt":"refresh-token"}`)
+		case "/xrpc/com.atproto.server.getSession":
+			_, _ = io.WriteString(w, `{"did":"did:plc:creator","handle":"canonical.bsky.social"}`)
+		case "/xrpc/app.bsky.actor.getProfile":
+			http.Error(w, `{"error":"ProfileNotFound","message":"Profile not found"}`, http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(pds.Close)
+
+	e, handler := newNormServer(t, map[string]platform.Adapter{
+		"bluesky": platform.NewBlueskyAdapter(pds.URL),
+	})
+	response := oauthSelectionRequest(t, e, http.MethodPost, "/api/v1/accounts/bluesky/login", map[string]string{
+		"workspace_id": "ws-1",
+		"handle":       "submitted.bsky.social",
+		"app_password": "app-password",
+	}, true)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var account models.SocialAccount
+	require.NoError(t, handler.db.NewSelect().Model(&account).Where("account_id = ?", "did:plc:creator").Scan(t.Context()))
+	require.Equal(t, "canonical.bsky.social", account.AccountUsername)
+	require.Empty(t, account.AccountAvatarURL)
+}
+
 func TestNormRoutesFirstAndExistingDestinationsToTheirCanonicalPages(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
