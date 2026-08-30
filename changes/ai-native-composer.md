@@ -6,6 +6,7 @@
 
 - Kept AI review inside the existing composer, with conflict-safe apply, original restoration, compact per-platform strategy summaries, and conservative adaptation for providers without a native creative model.
 - Moved all AI requests to the official OpenAI Go SDK while preserving OpenRouter provider routing, privacy controls, web search, and multimodal inputs.
+- Kept the composer AI action anchored while it slides from Ideate to Build with AI as the draft gains text.
 
 ### Fixed
 
