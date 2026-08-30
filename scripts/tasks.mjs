@@ -197,35 +197,37 @@ const policyGroups = [
   ],
 ];
 
-try {
-  const plan = resolvePlan(command, scope, options);
-  if (options.has("--plan")) {
-    console.log(JSON.stringify(publicPlan(plan), null, 2));
-  } else {
-    const cacheDirectory = resolveTurboCacheDirectory({ repositoryRoot: root });
-    if (process.env.OPENPOST_ROOT_TASK_LOCKED === "1") {
-      await execute(plan, { cacheDirectory, enforceCacheLimit: false });
+if (import.meta.main) {
+  try {
+    const plan = resolvePlan(command, scope, options);
+    if (options.has("--plan")) {
+      console.log(JSON.stringify(publicPlan(plan), null, 2));
     } else {
-      const worktreeLock = path.join(root, ".turbo", "root-task");
-      if (plan.command === "dev") {
-        await withTurboCacheLock({ directory: worktreeLock }, async () => {
-          await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
-        });
+      const cacheDirectory = resolveTurboCacheDirectory({ repositoryRoot: root });
+      if (process.env.OPENPOST_ROOT_TASK_LOCKED === "1") {
         await execute(plan, { cacheDirectory, enforceCacheLimit: false });
       } else {
-        await withTurboCacheLock({ directory: worktreeLock }, async () => {
-          await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
-          await executeWithCacheLease(plan, cacheDirectory);
-        });
+        const worktreeLock = path.join(root, ".turbo", "root-task");
+        if (plan.command === "dev") {
+          await withTurboCacheLock({ directory: worktreeLock }, async () => {
+            await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
+          });
+          await execute(plan, { cacheDirectory, enforceCacheLimit: false });
+        } else {
+          await withTurboCacheLock({ directory: worktreeLock }, async () => {
+            await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
+            await executeWithCacheLease(plan, cacheDirectory);
+          });
+        }
       }
     }
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
   }
-} catch (error) {
-  console.error(error.message);
-  process.exitCode = 1;
 }
 
-function resolvePlan(requestedCommand, requestedScope, requestedOptions) {
+export function resolvePlan(requestedCommand, requestedScope, requestedOptions = new Set()) {
   if (!requestedCommand) throw new Error(help());
   switch (requestedCommand) {
     case "dev":
@@ -245,11 +247,8 @@ function resolvePlan(requestedCommand, requestedScope, requestedOptions) {
       if (requestedScope) throw unsupported("verify", requestedScope, []);
       return plan("verify", undefined, [
         [taskStage("static checks", "check")],
-        [
-          taskStage("format check", "format:check"),
-          taskStage("lint", "lint"),
-          taskStage("tests", "test"),
-        ],
+        [taskStage("format check", "format:check"), taskStage("lint", "lint")],
+        [taskStage("tests", "test")],
         [taskStage("production builds", "build")],
       ]);
     default:
@@ -415,7 +414,9 @@ function testPlan(requestedScope, requestedOptions) {
       "@openpost/social-preview",
     ),
   ]);
-  const workspace = stage("workspace tests", [commandStep("bunx", "turbo", "run", "test")]);
+  const workspace = stage("workspace tests", [
+    commandStep("bunx", "turbo", "run", "test", "--concurrency", "1"),
+  ]);
   const repository = stage("repository tests", [bunTest("./scripts")]);
   const nonBrowserFrontend = stage("frontend server tests", [
     commandStep("bunx", "turbo", "run", "test:server", "--filter", "@openpost/web"),
@@ -464,7 +465,7 @@ function testPlan(requestedScope, requestedOptions) {
     ]);
     return plan("test", undefined, [[backend, cli, nonBrowserFrontend, nonBrowserWorkspace]]);
   }
-  return plan("test", undefined, [[backend, cli, workspace, repository]]);
+  return plan("test", undefined, [[backend, cli, repository], [workspace]]);
 }
 
 function buildPlan(requestedScope) {
@@ -662,14 +663,17 @@ function plan(requestedCommand, requestedScope, phases) {
   return { command: requestedCommand, scope: requestedScope, phases };
 }
 
-function publicPlan(taskPlan) {
+export function publicPlan(taskPlan) {
   return {
     command: taskPlan.command,
     scope: taskPlan.scope ?? null,
-    stages: taskPlan.phases.flat().map((item) => ({
-      label: item.label,
-      commands: item.steps.map((step) => step.display ?? step.argv?.join(" ") ?? step.type),
-    })),
+    stages: taskPlan.phases.flatMap((items, phase) =>
+      items.map((item) => ({
+        phase,
+        label: item.label,
+        commands: item.steps.map((step) => step.display ?? step.argv?.join(" ") ?? step.type),
+      })),
+    ),
   };
 }
 
