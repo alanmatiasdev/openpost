@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.13.1] - 2026-08-30
+
+### Fixed
+
+- Kept source-anchored speed curves attached during slip edits, and mapped timeline waveforms and filmstrips through variable-speed playback.
+
 ## [4.13.0] - 2026-08-30
 
 ### Fixed
