@@ -42,7 +42,11 @@ import {
 	timelineToSourceFrames
 } from '../utils/source-calculations';
 import { DEFAULT_MARKER_COLOR } from '../markers';
-import { timelineOffsetToSourceFrame, variableSpeedDurationInFrames } from '../source-time-map';
+import {
+	shiftSpeedRampSourceFrames,
+	timelineOffsetToSourceFrame,
+	variableSpeedDurationInFrames
+} from '../source-time-map';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -811,8 +815,20 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 		const end = item.sourceEnd ?? start + item.durationInFrames;
 		const limit = (item.sourceDuration ?? end) - (end - start);
 		const next = Math.min(Math.max(start + deltaSourceFrames, 0), Math.max(limit, 0));
+		const sourceDelta = next - start;
 		timelineStore._updateItems([
-			{ id, patch: { sourceStart: next, sourceEnd: next + (end - start) } }
+			{
+				id,
+				patch: {
+					sourceStart: next,
+					sourceEnd: next + (end - start),
+					...(item.speedRamp?.length
+						? {
+								speedRamp: shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta)
+							}
+						: {})
+				}
+			}
 		]);
 	});
 }

@@ -76,6 +76,20 @@ export function planTimelineWaveformRenderWindow(args: {
 	};
 }
 
+/** Source-frame boundaries for only the waveform columns inside a rendered timeline window. */
+export function mappedTimelineWaveformSourceBoundaries(args: {
+	window: Pick<TimelineWaveformRenderWindow, 'clipWidthPx' | 'leftPx' | 'widthPx'>;
+	clipDurationFrames: number;
+	sourceFrameAtTimelineOffset: (timelineOffset: number) => number;
+}): Float64Array {
+	const columns = Math.max(1, Math.floor(args.window.widthPx));
+	return Float64Array.from({ length: columns + 1 }, (_, column) => {
+		const clipRatio =
+			(args.window.leftPx + (column / columns) * args.window.widthPx) / args.window.clipWidthPx;
+		return args.sourceFrameAtTimelineOffset(clipRatio * args.clipDurationFrames);
+	});
+}
+
 export function waveformPolyline(
 	columns: Float32Array,
 	height = TIMELINE_WAVEFORM_HEIGHT,

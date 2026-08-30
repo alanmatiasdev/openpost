@@ -10,6 +10,7 @@ import {
 	planSlipGesture,
 	planTrimGesture
 } from './edit-gesture';
+import { variableSpeedDurationInFrames } from './source-time-map';
 
 function mediaItem(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return {
@@ -149,6 +150,33 @@ describe('timeline edit gestures', () => {
 			sourceStart: 0,
 			sourceEnd: 60
 		});
+	});
+
+	it('slips a variable-speed source window without changing its playback curve', () => {
+		const item = mediaItem({
+			sourceDuration: 240,
+			speedRamp: [
+				{ id: 'start', sourceFrame: 30, speed: 1, easing: 'hold' },
+				{ id: 'fast', sourceFrame: 50, speed: 2, easing: 'hold' },
+				{ id: 'end', sourceFrame: 90, speed: 1, easing: 'linear' }
+			]
+		});
+		const patch = planSlipGesture(item, -20, 30);
+		const slipped = { ...item, ...patch };
+
+		expect(patch).toEqual({
+			sourceStart: 50,
+			sourceEnd: 110,
+			speedRamp: [
+				{ id: 'start', sourceFrame: 50, speed: 1, easing: 'hold' },
+				{ id: 'fast', sourceFrame: 70, speed: 2, easing: 'hold' },
+				{ id: 'end', sourceFrame: 110, speed: 1, easing: 'linear' }
+			]
+		});
+		expect(variableSpeedDurationInFrames(slipped, 30)).toBeCloseTo(
+			variableSpeedDurationInFrames(item, 30),
+			6
+		);
 	});
 
 	it('requires an explicit source end before slipping', () => {
@@ -393,6 +421,51 @@ describe('timeline edit gestures', () => {
 		expect(planLinkedSlipGesture(video, -30, [video, audio], 30)).toEqual([
 			{ id: 'video', patch: { sourceStart: 40, sourceEnd: 100 } },
 			{ id: 'audio', patch: { sourceStart: 40, sourceEnd: 100 } }
+		]);
+	});
+
+	it('slips synchronized linked speed curves by the same clamped source delta', () => {
+		const speedRamp = [
+			{ id: 'start', sourceFrame: 30, speed: 1, easing: 'hold' as const },
+			{ id: 'fast', sourceFrame: 60, speed: 2, easing: 'linear' as const },
+			{ id: 'end', sourceFrame: 90, speed: 1, easing: 'linear' as const }
+		];
+		const video = mediaItem({
+			id: 'video',
+			linkedGroupId: 'group',
+			sourceDuration: 240,
+			speedRamp
+		});
+		const audio = mediaItem({
+			id: 'audio',
+			trackId: 'audio',
+			type: 'audio',
+			linkedGroupId: 'group',
+			sourceDuration: 100,
+			speedRamp: speedRamp.map((point) => ({ ...point, id: `audio-${point.id}` }))
+		});
+
+		expect(planLinkedSlipGesture(video, -30, [video, audio], 30)).toEqual([
+			{
+				id: 'video',
+				patch: {
+					sourceStart: 40,
+					sourceEnd: 100,
+					speedRamp: speedRamp.map((point) => ({ ...point, sourceFrame: point.sourceFrame + 10 }))
+				}
+			},
+			{
+				id: 'audio',
+				patch: {
+					sourceStart: 40,
+					sourceEnd: 100,
+					speedRamp: speedRamp.map((point) => ({
+						...point,
+						id: `audio-${point.id}`,
+						sourceFrame: point.sourceFrame + 10
+					}))
+				}
+			}
 		]);
 	});
 

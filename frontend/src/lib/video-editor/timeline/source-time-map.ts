@@ -246,6 +246,18 @@ export function hasVariableSpeed(item: TimelineItem): boolean {
 	return (item.speedRamp?.length ?? 0) > 0;
 }
 
+/** Keep a source-anchored speed curve attached to the content during a slip edit. */
+export function shiftSpeedRampSourceFrames(
+	speedRamp: readonly SpeedRampPoint[] | undefined,
+	deltaSourceFrames: number
+): SpeedRampPoint[] | undefined {
+	if (!speedRamp || speedRamp.length === 0) return undefined;
+	return speedRamp.map((point) => ({
+		...point,
+		sourceFrame: point.sourceFrame + deltaSourceFrames
+	}));
+}
+
 /** Map a timeline-local frame offset onto the source-native frame domain. */
 export function timelineOffsetToSourceFrame(
 	item: TimelineItem,

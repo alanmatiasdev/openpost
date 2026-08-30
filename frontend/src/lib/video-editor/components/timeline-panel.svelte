@@ -54,10 +54,11 @@
 	import { planTimelineWaveformDemand } from '$lib/video-editor/timeline/waveform-demand';
 	import {
 		TIMELINE_WAVEFORM_HEIGHT,
+		mappedTimelineWaveformSourceBoundaries,
 		planTimelineWaveformRenderWindow,
 		waveformPolyline
 	} from '$lib/video-editor/timeline/waveform-render-window';
-	import { peaksForWindow } from '$lib/video-editor/media/peaks';
+	import { peaksForMappedWindow, peaksForWindow } from '$lib/video-editor/media/peaks';
 	import { dbToLinearGain, linearGainToDb } from '$lib/video-editor/media/clip-fades';
 	import {
 		AUDIO_VOLUME_DB_MAX,
@@ -102,6 +103,10 @@
 		computeFilmstripTiles,
 		visibleFilmstripTargetIndices
 	} from '$lib/video-editor/media/filmstrip-plan';
+	import {
+		hasVariableSpeed,
+		timelineOffsetToSourceFrame
+	} from '$lib/video-editor/timeline/source-time-map';
 	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { getTextItemPlainText } from '$lib/video-editor/typography/text-item-spans';
 	import { hasColorGrade } from '$lib/video-editor/effects/color-grade';
@@ -614,17 +619,7 @@
 		return clearWaveformDemandTimer;
 	});
 
-	function timelineWaveform(item: {
-		id: string;
-		from: number;
-		mediaId?: string;
-		sourceStart?: number;
-		sourceEnd?: number;
-		sourceFps?: number;
-		speed?: number;
-		isReversed?: boolean;
-		durationInFrames: number;
-	}): {
+	function timelineWaveform(item: TimelineItem): {
 		points: string;
 		leftPx: number;
 		widthPx: number;
@@ -638,6 +633,7 @@
 		const sourceStart = item.sourceStart ?? 0;
 		const sourceEnd =
 			item.sourceEnd ?? sourceStart + (item.durationInFrames / fps) * (item.speed ?? 1) * sourceFps;
+		const variableSpeed = hasVariableSpeed(item);
 		const window = planTimelineWaveformRenderWindow({
 			clipFromFrame: item.from,
 			clipDurationFrames: item.durationInFrames,
@@ -656,7 +652,10 @@
 			window.startSourceFrame,
 			window.endSourceFrame,
 			sourceFps,
-			window.reverseColumns
+			window.reverseColumns,
+			...(variableSpeed
+				? (item.speedRamp ?? []).flatMap((point) => [point.sourceFrame, point.speed, point.easing])
+				: [])
 		].join(':');
 		const cached = waveformRenderCache.get(item.id);
 		if (
@@ -666,15 +665,30 @@
 			cached.key === renderKey
 		)
 			return cached.value;
-		const columns = peaksForWindow(
-			data,
-			window.startSourceFrame,
-			window.endSourceFrame,
-			sourceFps,
-			window.widthPx
-		);
+		const columns = variableSpeed
+			? peaksForMappedWindow(
+					data,
+					mappedTimelineWaveformSourceBoundaries({
+						window,
+						clipDurationFrames: item.durationInFrames,
+						sourceFrameAtTimelineOffset: (timelineOffset) =>
+							timelineOffsetToSourceFrame(item, timelineOffset, fps) + (item.isReversed ? 1 : 0)
+					}),
+					sourceFps
+				)
+			: peaksForWindow(
+					data,
+					window.startSourceFrame,
+					window.endSourceFrame,
+					sourceFps,
+					window.widthPx
+				);
 		const value = {
-			points: waveformPolyline(columns, TIMELINE_WAVEFORM_HEIGHT, window.reverseColumns),
+			points: waveformPolyline(
+				columns,
+				TIMELINE_WAVEFORM_HEIGHT,
+				variableSpeed ? false : window.reverseColumns
+			),
 			leftPx: window.leftPx,
 			widthPx: window.widthPx,
 			clipWidthPx: window.clipWidthPx
@@ -998,7 +1012,14 @@
 			if (visibleEndPx <= visibleStartPx) continue;
 			const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : Math.max(1, fps);
 			const sourceStartSeconds = (item.sourceStart ?? 0) / sourceFps;
-			const clipSpanSeconds = (item.durationInFrames / fps) * (item.speed ?? 1);
+			const clipSpanSeconds =
+				item.sourceEnd !== undefined
+					? Math.max(0, item.sourceEnd - (item.sourceStart ?? 0)) / sourceFps
+					: (item.durationInFrames / fps) * (item.speed ?? 1);
+			const sourceSecondAtTimelineRatio = hasVariableSpeed(item)
+				? (ratio: number) =>
+						timelineOffsetToSourceFrame(item, ratio * item.durationInFrames, fps) / sourceFps
+				: undefined;
 			const targets = visibleFilmstripTargetIndices({
 				sourceStartSeconds,
 				clipSpanSeconds,
@@ -1007,7 +1028,8 @@
 				visibleEndPx,
 				tileWidthPx: FILMSTRIP_TILE_WIDTH_PX,
 				totalSourceFrames: Math.max(1, Math.ceil(media.duration)),
-				reversed: item.isReversed
+				reversed: item.isReversed,
+				sourceSecondAtTimelineRatio
 			});
 			if (targets.length === 0) continue;
 			visibleMedia.set(mediaId, media);
@@ -1051,23 +1073,16 @@
 		}
 	});
 
-	function filmstripTilesFor(item: {
-		from: number;
-		mediaId?: string;
-		sourceStart?: number;
-		sourceEnd?: number;
-		sourceFps?: number;
-		speed?: number;
-		isReversed?: boolean;
-		durationInFrames: number;
-	}): ReturnType<typeof computeFilmstripTiles> | null {
+	function filmstripTilesFor(item: TimelineItem): ReturnType<typeof computeFilmstripTiles> | null {
 		if (!item.mediaId) return null;
 		const entry = filmstrips[item.mediaId];
 		if (!entry || entry.failed || entry.frames.length === 0) return null;
 		const sourceFps = item.sourceFps && item.sourceFps > 0 ? item.sourceFps : Math.max(1, fps);
-		const speed = item.speed ?? 1;
 		const startSeconds = (item.sourceStart ?? 0) / sourceFps;
-		const spanSeconds = (item.durationInFrames / fps) * speed;
+		const spanSeconds =
+			item.sourceEnd !== undefined
+				? Math.max(0, item.sourceEnd - (item.sourceStart ?? 0)) / sourceFps
+				: (item.durationInFrames / fps) * (item.speed ?? 1);
 		if (!(spanSeconds > 0)) return null;
 		const clipWidth = frameToPx(item.durationInFrames);
 		const clipLeft = TRACK_HEADER_WIDTH + frameToPx(item.from);
@@ -1085,7 +1100,11 @@
 			{
 				tileWidthPx: FILMSTRIP_TILE_WIDTH_PX,
 				visibleStartPx,
-				visibleEndPx
+				visibleEndPx,
+				sourceSecondAtTimelineRatio: hasVariableSpeed(item)
+					? (ratio: number) =>
+							timelineOffsetToSourceFrame(item, ratio * item.durationInFrames, fps) / sourceFps
+					: undefined
 			}
 		);
 	}

@@ -26,6 +26,7 @@ import {
 	getSynchronizedLinkedCounterpartPair,
 	getSynchronizedLinkedItems
 } from './utils/linked-items';
+import { shiftSpeedRampSourceFrames } from './source-time-map';
 
 export interface TrimGesturePlan {
 	patch: Partial<TimelineItem>;
@@ -294,7 +295,7 @@ export function planSlipGesture(
 	item: TimelineItem,
 	deltaTimelineFrames: number,
 	timelineFps: number
-): Pick<TimelineItem, 'sourceStart' | 'sourceEnd'> | null {
+): Pick<TimelineItem, 'sourceStart' | 'sourceEnd' | 'speedRamp'> | null {
 	if (item.type !== 'video' && item.type !== 'audio') return null;
 	const { sourceStart, sourceEnd, sourceDuration, sourceFps, speed } = getSourceProperties(item);
 	if (sourceEnd === undefined) return null;
@@ -311,7 +312,14 @@ export function planSlipGesture(
 			? Number.POSITIVE_INFINITY
 			: Math.max(0, sourceDuration - windowFrames);
 	const nextStart = Math.min(Math.max(sourceStart + requestedDelta, 0), maxStart);
-	return { sourceStart: nextStart, sourceEnd: nextStart + windowFrames };
+	const sourceDelta = nextStart - sourceStart;
+	return {
+		sourceStart: nextStart,
+		sourceEnd: nextStart + windowFrames,
+		...(item.speedRamp?.length
+			? { speedRamp: shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta) }
+			: {})
+	};
 }
 
 /** Plan one source-space slip across every still-synchronized linked clip. */
@@ -348,7 +356,12 @@ export function planLinkedSlipGesture(
 					id: participant.id,
 					patch: {
 						sourceStart,
-						sourceEnd: participant.sourceEnd + delta
+						sourceEnd: participant.sourceEnd + delta,
+						...(participant.speedRamp?.length
+							? {
+									speedRamp: shiftSpeedRampSourceFrames(participant.speedRamp, delta)
+								}
+							: {})
 					}
 				}
 			];
