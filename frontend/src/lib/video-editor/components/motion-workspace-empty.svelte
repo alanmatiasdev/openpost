@@ -25,7 +25,6 @@
 
 <section
 	class="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-[oklch(0.205_0.008_55)] p-6"
-	role="region"
 	aria-label={m.video_editor_workspace_motion()}
 	data-motion-preview-empty
 >

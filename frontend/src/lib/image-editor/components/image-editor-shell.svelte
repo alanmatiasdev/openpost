@@ -771,7 +771,7 @@
 	function startPanelResize(event: PointerEvent, panel: 'assets' | 'inspector' | 'layers'): void {
 		if (event.button !== 0) return;
 		const handle = event.currentTarget;
-		if (!(handle instanceof HTMLButtonElement)) return;
+		if (!(handle instanceof HTMLElement)) return;
 		handle.focus();
 		event.preventDefault();
 		panelResize = {
@@ -3321,11 +3321,13 @@
 		{#if !focusedCanvas}
 			<aside class="relative hidden min-h-0 min-w-0 border-r bg-background lg:block">
 				<div class="size-full min-h-0 overflow-hidden"><AssetPanel {guestMode} /></div>
-				<button
-					type="button"
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- focusable ARIA Window Splitter -->
+				<div
 					aria-label={m.image_editor_resize_asset_panel()}
 					title={m.image_editor_resize_asset_panel()}
 					role="separator"
+					tabindex="0"
 					aria-orientation="vertical"
 					aria-valuemin="220"
 					aria-valuemax={panelMaximum('assets')}
@@ -3337,7 +3339,7 @@
 						assetPanelWidth = clampPanelSize(260, 220, panelMaximum('assets'), 260);
 						storePanelLayout();
 					}}
-				></button>
+				></div>
 			</aside>
 		{/if}
 		<main
@@ -3415,11 +3417,13 @@
 				class="image-editor-inspector relative hidden min-h-0 min-w-0 border-l bg-background lg:grid"
 				style:--image-editor-layers-height={`${layersPanelHeight}px`}
 			>
-				<button
-					type="button"
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- focusable ARIA Window Splitter -->
+				<div
 					aria-label={m.image_editor_resize_inspector_panel()}
 					title={m.image_editor_resize_inspector_panel()}
 					role="separator"
+					tabindex="0"
 					aria-orientation="vertical"
 					aria-valuemin="280"
 					aria-valuemax={panelMaximum('inspector')}
@@ -3431,13 +3435,15 @@
 						inspectorPanelWidth = clampPanelSize(320, 280, panelMaximum('inspector'), 320);
 						storePanelLayout();
 					}}
-				></button>
+				></div>
 				<div class="min-h-0 min-w-0 overflow-hidden"><LayerTree /></div>
-				<button
-					type="button"
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- focusable ARIA Window Splitter -->
+				<div
 					aria-label={m.image_editor_resize_layers_properties()}
 					title={m.image_editor_resize_layers_properties()}
 					role="separator"
+					tabindex="0"
 					aria-orientation="horizontal"
 					aria-valuemin="120"
 					aria-valuemax={layersPanelMaximum()}
@@ -3449,7 +3455,7 @@
 						layersPanelHeight = clampPanelSize(280, 120, layersPanelMaximum(), 280);
 						storePanelLayout();
 					}}
-				></button>
+				></div>
 				<div class="min-h-0 min-w-0 overflow-hidden">
 					<PropertiesPanel onOpenMedia={openBackgroundMediaPicker} />
 				</div>
