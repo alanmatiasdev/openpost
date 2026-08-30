@@ -14,7 +14,14 @@
     "reviewed_on": "2026-08-09",
     "lifecycle_url": "https://www.alpinelinux.org/releases/"
   },
-  "runtime_packages": ["ca-certificates", "ffmpeg", "tzdata", "sqlite"],
+  "runtime_packages": [
+    "ca-certificates",
+    "ffmpeg",
+    "tzdata",
+    "sqlite",
+    "libcrypto3>=3.5.8-r0",
+    "libssl3>=3.5.8-r0"
+  ],
   "standalone_runtime": {
     "media_commands": ["ffmpeg", "ffprobe"],
     "development_package": "pkgs.ffmpeg",

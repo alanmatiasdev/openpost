@@ -65,6 +65,21 @@ test("runtime packages must stay declared and the pinned base cannot be upgraded
   assert.ok(problems.some((problem) => problem.includes("apk upgrade")));
 });
 
+test("every installed runtime package must be present in the declared policy", () => {
+  const inputs = imagePolicyInputs();
+  const problems = validateImagePolicy(
+    {
+      ...inputs,
+      dockerfile: inputs.dockerfile.replace(
+        "'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0'",
+        "'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' curl",
+      ),
+    },
+    new Date("2026-08-09T00:00:00Z"),
+  );
+  assert.ok(problems.some((problem) => problem.includes("runtime packages")));
+});
+
 test("the production image cannot rebuild a second frontend artifact", () => {
   const inputs = imagePolicyInputs();
   const problems = validateImagePolicy(

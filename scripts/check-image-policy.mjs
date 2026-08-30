@@ -23,6 +23,25 @@ function namedWorkflowStep(steps, name) {
   return steps.find((step) => step.includes(`- name: ${name}\n`));
 }
 
+function dockerRuntimePackages(dockerfile) {
+  const runtimeStage =
+    dockerfile.match(/\nFROM [^\n]+ AS runtime\n(?<body>[\s\S]*)$/u)?.groups?.body ?? "";
+  const lines = runtimeStage.split("\n");
+  const prefix = "RUN apk add --no-cache ";
+  const start = lines.findIndex((line) => line.startsWith(prefix));
+  if (start === -1) return [];
+
+  let install = lines[start].slice(prefix.length).trim();
+  let index = start;
+  while (install.endsWith("\\") && index + 1 < lines.length) {
+    index += 1;
+    install = install.slice(0, -1).trimEnd() + " " + lines[index].trim();
+  }
+  return [...install.matchAll(/'([^']*)'|"([^"]*)"|([^\s]+)/gu)].map(
+    (match) => match[1] ?? match[2] ?? match[3],
+  );
+}
+
 const requiredEvidenceFiles = [
   "release-manifest.json",
   "openpost-image-evidence.json",
@@ -125,7 +144,14 @@ export function validateImagePolicy(inputs, now = new Date()) {
     problems.push("Dockerfile runtime FROM does not match image-policy.json");
   }
   const runtimePackages = policy.runtime_packages;
-  const expectedRuntimePackages = ["ca-certificates", "ffmpeg", "tzdata", "sqlite"];
+  const expectedRuntimePackages = [
+    "ca-certificates",
+    "ffmpeg",
+    "tzdata",
+    "sqlite",
+    "libcrypto3>=3.5.8-r0",
+    "libssl3>=3.5.8-r0",
+  ];
   if (
     !Array.isArray(runtimePackages) ||
     runtimePackages.length !== expectedRuntimePackages.length ||
@@ -133,7 +159,7 @@ export function validateImagePolicy(inputs, now = new Date()) {
   ) {
     problems.push(`runtime packages must be exactly ${expectedRuntimePackages.join(", ")}`);
   } else if (
-    !inputs.dockerfile.includes(`RUN apk add --no-cache ${expectedRuntimePackages.join(" ")}`)
+    JSON.stringify(dockerRuntimePackages(inputs.dockerfile)) !== JSON.stringify(runtimePackages)
   ) {
     problems.push("Dockerfile runtime packages do not match image-policy.json");
   }
