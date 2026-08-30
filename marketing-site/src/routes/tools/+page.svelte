@@ -24,12 +24,12 @@
 			Finish the post before you sign up.
 		</h1>
 		<p class="marketing-copy mt-6">
-			Edit the media, check each platform, plan the week, and build the link. Every tool works
-			before you sign up.
+			For creators preparing a post before signing up. Edit the media, check each platform, plan the
+			week, and build the link. Every tool works before you sign up.
 		</p>
 		<p class="mt-5 inline-flex items-start gap-2 text-sm leading-6 text-muted-foreground">
 			<LockKeyhole class="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-			Your work stays on your device unless a tool says it needs a live check.
+			Drafts stay local unless a tool clearly offers a live network check.
 		</p>
 	</div>
 </section>

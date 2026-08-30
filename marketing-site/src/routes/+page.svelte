@@ -36,6 +36,11 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
 			Write once. Adjust for each channel. Publish on schedule.
 		</p>
+		<p
+			class="hero-enter hero-enter-2 mx-auto mt-3 max-w-2xl text-sm font-semibold text-foreground/70"
+		>
+			For solo founders who want one workspace for social publishing.
+		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
 				Start 14-day trial

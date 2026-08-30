@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -1379,20 +1379,32 @@ test(
         `${canonical} must use distinct evidence for its audience and boundary`,
       );
     }
-    const turboPlan = JSON.parse(
-      execFileSync(
-        "bunx",
-        [
-          "turbo",
+    const turboPlanDirectory = await mkdtemp(path.join(os.tmpdir(), "openpost-turbo-plan-"));
+    const turboPlanPath = path.join(turboPlanDirectory, "plan.json");
+    let turboPlan;
+    try {
+      const turboDryRun = Bun.spawn({
+        cmd: [
+          path.join(root, "node_modules", ".bin", "turbo"),
           "run",
           "build",
           "--dry=json",
           "--filter=@openpost/site",
           "--filter=@openpost/docs",
         ],
-        { cwd: root, encoding: "utf8" },
-      ),
-    );
+        cwd: root,
+        stdout: Bun.file(turboPlanPath),
+        stderr: "pipe",
+      });
+      const [turboExitCode, turboStderr] = await Promise.all([
+        turboDryRun.exited,
+        new Response(turboDryRun.stderr).text(),
+      ]);
+      assert.equal(turboExitCode, 0, turboStderr);
+      turboPlan = JSON.parse(await readFile(turboPlanPath, "utf8"));
+    } finally {
+      await rm(turboPlanDirectory, { recursive: true, force: true });
+    }
     const plannedTasks = new Map(turboPlan.tasks.map((task) => [task.taskId, task]));
     const publicBuilds = [
       ["marketing", "@openpost/site#build", "dist/**"],

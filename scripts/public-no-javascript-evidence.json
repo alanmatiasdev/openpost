@@ -135,6 +135,10 @@
     "audience": "Creators and teams converting known audience hours into a repeatable weekly test plan.",
     "boundary": "The planner distributes times evenly inside the chosen window; it does not predict audience behavior."
   },
+  "https://openpost.social/tools/utm-link-builder": {
+    "audience": "Anyone sharing a campaign link and checking the result in site analytics.",
+    "boundary": "The tags only appear in analytics when the destination site records them."
+  },
   "https://docs.openpost.social/cli/authentication": {
     "audience": "This page is for people signing the OpenPost CLI in from a browser, remote server, or automation job.",
     "boundary": "The CLI opens an OpenPost approval page and waits for you to approve or deny access. Only a signed-in browser session can make that decision; an API or CLI token cannot approve another device credential. Before approval, choose whether workspace-owned actions apply to one workspace or every workspace the token is permitted to access. A bound token can use workspace-owned resources only in the selected workspace and only while your account remains a member there."
@@ -204,7 +208,7 @@
     "boundary": "OpenPost exposes one HTTP API for the web app, CLI, MCP server, and external automation. The API uses JSON and requires an authenticated session or API token for private operations. Production deployments should serve it over HTTPS. Workspace-scoped operations also require access to the selected Workspace."
   },
   "https://docs.openpost.social/development/api-tokens": {
-    "audience": "OpenPost API tokens are account credentials for the REST API, MCP clients, the CLI, and automation. Create one token per client in Settings → Developer access, give it the narrowest scope and workspace boundary that works, and revoke it when that client no longer needs access.",
+    "audience": "OpenPost API tokens are account credentials for the REST API, MCP clients, the CLI, and automation. Create one token per client in Settings → Personal → Developer access, give it the narrowest scope and workspace boundary that works, and revoke it when that client no longer needs access.",
     "boundary": "The full secret is never stored in plaintext and cannot be shown again. OpenPost lists only a short prefix, scope, workspace boundary, creation time, last use, expiration, and active, expired, or revoked status. If the secret is lost, revoke it and create a replacement."
   },
   "https://docs.openpost.social/development/architecture": {
@@ -448,7 +452,7 @@
     "boundary": "The public editor works without sign-in and adds no watermark. Start with a social format, an OpenPost template, or a PNG, JPEG, or WebP image. Designs and imported images stay in that browser. Clearing site data, using private browsing, or letting the browser clear old data can remove local work."
   },
   "https://docs.openpost.social/usage/": {
-    "audience": "Use these docs to connect accounts, write account versions, schedule posts, track results, work with replies and messages, use the CLI, or let an AI tool help through MCP.",
+    "audience": "Use these docs to connect accounts, build or write account versions, schedule posts, track results, work with replies and messages, use the CLI, or grant an AI tool access through MCP.",
     "boundary": "Provider data, formats, and actions remain limited by the connected account and provider."
   },
   "https://docs.openpost.social/usage/media-library": {
