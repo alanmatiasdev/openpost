@@ -414,7 +414,7 @@ jobs:
     name: Deploy production
     runs-on: ubuntu-latest
     needs: promote-image
-    timeout-minutes: 10
+    timeout-minutes: 70
     steps:
       - name: Trigger the verified VPS deployment
         env:
@@ -423,18 +423,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          request_path=/hooks/deploy-openpost
+          issued_at=$(date +%s)
+          delivery_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
           payload=$(printf '{"repository":"%s","sha":"%s","tag":"%s","digest":"%s"}' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" "$IMAGE_DIGEST")
-          signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
+          body_digest=$(printf '%s' "$payload" | openssl dgst -sha256 | awk '{print $2}')
+          canonical_request=$(printf 'POST\n%s\n%s\n%s\n%s' \
+            "$request_path" "$issued_at" "$delivery_id" "$body_digest")
+          signature=$(printf '%s' "$canonical_request" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
           response=$(curl --fail-with-body --silent --show-error \
             --connect-timeout 10 \
-            --max-time 300 \
+            --max-time 3660 \
             -H 'Content-Type: application/json' \
-            -H "X-Hub-Signature-256: $signature" \
-            --data "$payload" \
-            https://webhooks.rgo.pt/hooks/deploy-openpost)
+            -H "X-Deploy-Timestamp: $issued_at" \
+            -H "X-Deploy-Delivery: $delivery_id" \
+            -H "X-Deploy-Signature-256: $signature" \
+            --data-binary "$payload" \
+            "https://webhooks.rgo.pt$request_path")
           printf '%s\n' "$response"
-          grep -q "DEPLOY_OK openpost ${GITHUB_SHA}" <<<"$response"
+          [ "$response" = '{"status":"completed"}' ]
       - name: Verify public readiness, version, and revision
         shell: bash
         run: |
