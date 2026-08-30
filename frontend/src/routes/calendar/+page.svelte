@@ -33,6 +33,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { getLocaleTag } from '$lib/i18n';
+	import { formatSocialAccountName } from '$lib/utils';
 	import { workspaceColor } from '$lib/workspace-color';
 	import { m } from '$lib/paraglide/messages';
 	import { ui } from '$lib/stores/ui.svelte';
@@ -425,13 +426,13 @@
 	}
 
 	function accountBadge(account: SocialAccount): AccountBadge {
-		const username = account.account_username?.trim();
 		return {
 			id: account.id,
 			platform: account.platform,
-			label: username
-				? `@${username.replace(/^@/, '')}`
-				: account.slug || platformLabel(account.platform)
+			label:
+				formatSocialAccountName(account.account_username, account.platform) ||
+				account.slug ||
+				platformLabel(account.platform)
 		};
 	}
 

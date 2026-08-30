@@ -17,6 +17,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import AnalyticsPerformanceChart from '$lib/components/analytics-performance-chart.svelte';
+	import SocialAccountIdentity from '$lib/components/social-account-identity.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import AnalyticsIcon from '@lucide/svelte/icons/chart-no-axes-combined';
 	import AccountsIcon from '@lucide/svelte/icons/users';
@@ -29,6 +30,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
+	import { formatSocialAccountName, getPlatformName } from '$lib/utils';
 	import { hasEngagementMeasurement, type AnalyticsSortMode } from '$lib/analytics-overview';
 	import {
 		allFeatureEffectiveDisabled,
@@ -189,7 +191,9 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			insights.push({
 				title: m.analytics_insight_top_destination(),
 				body: m.analytics_insight_top_destination_body({
-					account: strongestDestination.username,
+					account:
+						formatSocialAccountName(strongestDestination.username, strongestDestination.platform) ||
+						getPlatformName(strongestDestination.platform),
 					engagement: formatNumber(strongestDestination.engagement)
 				})
 			});
@@ -201,7 +205,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			insights.push({
 				title: m.analytics_insight_follower_decline(),
 				body: m.analytics_insight_follower_decline_body({
-					account: decliningAccount.username,
+					account: accountName(decliningAccount),
 					count: formatNumber(Math.abs(decliningAccount.follower_delta ?? 0))
 				})
 			});
@@ -355,6 +359,26 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			minute: '2-digit',
 			timeZone: workspaceCtx.settings.timezone || 'UTC'
 		}).format(new Date(value));
+	}
+
+	function accountName(account: AnalyticsAccount): string {
+		return formatSocialAccountName(account.username, account.platform) || account.platform;
+	}
+
+	function accountFilterLabel(account: AnalyticsAccount | undefined): string {
+		if (!account) return m.analytics_account_filter();
+		return `${m.analytics_account_filter()}: ${accountName(account)}, ${getPlatformName(account.platform)}`;
+	}
+
+	function renditionAccount(rendition: AnalyticsContent): AnalyticsAccount | undefined {
+		return accounts.find((account) => account.id === rendition.account_id);
+	}
+
+	function renditionName(rendition: AnalyticsContent): string {
+		return (
+			formatSocialAccountName(rendition.username, rendition.platform) ||
+			getPlatformName(rendition.platform)
+		);
 	}
 
 	function metricValue(metric: MetricSummary) {
@@ -552,7 +576,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			{#each accountsNeedingReconnect as account (account.id)}
 				<InlineNotice
 					tone="warning"
-					message={`${account.username}: ${account.error_message || m.analytics_permission_required()}`}
+					message={`${accountName(account)}: ${account.error_message || m.analytics_permission_required()}`}
 				>
 					{#snippet actions()}
 						<Button href="/settings?tab=accounts" variant="outline" size="sm"
@@ -664,7 +688,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 							{chartDescription}
 							{#if selectedAccount}
 								<span>
-									{m.analytics_filtered_to_account({ account: selectedAccount.username })}</span
+									{m.analytics_filtered_to_account({ account: accountName(selectedAccount) })}</span
 								>
 							{/if}
 						</p>
@@ -701,15 +725,42 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 							onValueChange={(value) => (selectedAccountID = value)}
 						>
 							<Select.Trigger
-								class="h-11 w-full sm:h-9 sm:w-52"
-								aria-label={m.analytics_account_filter()}
+								class="h-11 w-full sm:h-9 sm:w-60"
+								aria-label={accountFilterLabel(selectedAccount)}
 							>
-								{selectedAccount?.username ?? m.analytics_all_accounts()}
+								{#if selectedAccount}
+									<SocialAccountIdentity
+										name={accountName(selectedAccount)}
+										platform={selectedAccount.platform}
+										avatarUrl={selectedAccount.avatar_url}
+										size="sm"
+									/>
+								{:else}
+									<span class="flex items-center gap-2">
+										<AccountsIcon class="size-4 text-muted-foreground" aria-hidden="true" />
+										{m.analytics_all_accounts()}
+									</span>
+								{/if}
 							</Select.Trigger>
-							<Select.Content>
-								<Select.Item value="all">{m.analytics_all_accounts()}</Select.Item>
+							<Select.Content class="w-72 max-w-[calc(100vw-1rem)]">
+								<Select.Item value="all" class="min-h-11">
+									<span class="flex items-center gap-2.5">
+										<span
+											class="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"
+										>
+											<AccountsIcon class="size-4" aria-hidden="true" />
+										</span>
+										<span class="font-medium">{m.analytics_all_accounts()}</span>
+									</span>
+								</Select.Item>
 								{#each accounts as account (account.id)}
-									<Select.Item value={account.id}>{account.username}</Select.Item>
+									<Select.Item value={account.id} class="min-h-12 py-2">
+										<SocialAccountIdentity
+											name={accountName(account)}
+											platform={account.platform}
+											avatarUrl={account.avatar_url}
+										/>
+									</Select.Item>
 								{/each}
 							</Select.Content>
 						</Select.Root>
@@ -765,7 +816,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 						</h2>
 						<p class="mt-1 text-sm text-muted-foreground">
 							{selectedAccount
-								? m.analytics_content_for_account({ account: selectedAccount.username })
+								? m.analytics_content_for_account({ account: accountName(selectedAccount) })
 								: m.analytics_content_description()}
 						</p>
 					</div>
@@ -891,16 +942,17 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 											{#each renditions as rendition (rendition.rendition_id)}
 												{@const renditionExposures = renditionExposure(rendition)}
 												{@const renditionEngagementMetrics = renditionEngagement(rendition)}
+												{@const account = renditionAccount(rendition)}
 												<div
 													class="grid min-w-0 gap-3 border-b border-border py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
 												>
-													<div class="flex min-w-0 items-start gap-2.5">
-														<PlatformIcon
+													<div class="min-w-0">
+														<SocialAccountIdentity
+															name={renditionName(rendition)}
 															platform={rendition.platform}
-															class="mt-0.5 size-4 shrink-0"
+															avatarUrl={account?.avatar_url}
 														/>
-														<div class="min-w-0">
-															<p class="truncate text-sm font-medium">{rendition.username}</p>
+														<div class="mt-1 pl-11">
 															{#if contentStatus(rendition)}
 																<p
 																	class={[

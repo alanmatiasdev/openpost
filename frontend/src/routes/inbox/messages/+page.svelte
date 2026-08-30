@@ -7,7 +7,7 @@
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
-	import { getPlatformName } from '$lib/utils';
+	import { formatSocialAccountName, getPlatformName } from '$lib/utils';
 	import PageContainer from '$lib/components/page-container.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import CommunicationsNavigation from '$lib/components/communications-navigation.svelte';
@@ -15,6 +15,7 @@
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
+	import SocialAccountIdentity from '$lib/components/social-account-identity.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -438,6 +439,20 @@
 		);
 	}
 
+	function accountName(account: SocialAccount): string {
+		return (
+			formatSocialAccountName(account.account_username, account.platform) ||
+			account.slug ||
+			account.account_id ||
+			account.platform
+		);
+	}
+
+	function accountFilterLabel(account: SocialAccount | undefined): string {
+		if (!account) return m.engagement_all_accounts();
+		return `${m.engagement_all_accounts()}: ${accountName(account)}, ${getPlatformName(account.platform)}`;
+	}
+
 	function initials(value: string) {
 		return value
 			.split(/\s+/)
@@ -581,22 +596,35 @@
 				value={accountFilter || 'all'}
 				onValueChange={(value) => (accountFilter = value === 'all' ? '' : value)}
 			>
-				<Select.Trigger class="h-11 w-48 sm:h-9" aria-label={m.engagement_all_accounts()}>
+				<Select.Trigger
+					class="h-11 w-60 sm:h-9"
+					aria-label={accountFilterLabel(accounts.find((account) => account.id === accountFilter))}
+				>
 					{#if accountFilter}
 						{@const selectedAccount = accounts.find((account) => account.id === accountFilter)}
-						{selectedAccount?.account_username ||
-							(selectedAccount
-								? getPlatformName(selectedAccount.platform)
-								: m.engagement_all_accounts())}
+						{#if selectedAccount}
+							<SocialAccountIdentity
+								name={accountName(selectedAccount)}
+								platform={selectedAccount.platform}
+								avatarUrl={selectedAccount.account_avatar_url}
+								size="sm"
+							/>
+						{:else}
+							{m.engagement_all_accounts()}
+						{/if}
 					{:else}
 						{m.engagement_all_accounts()}
 					{/if}
 				</Select.Trigger>
-				<Select.Content>
-					<Select.Item value="all">{m.engagement_all_accounts()}</Select.Item>
+				<Select.Content class="w-72 max-w-[calc(100vw-1rem)]">
+					<Select.Item value="all" class="min-h-11">{m.engagement_all_accounts()}</Select.Item>
 					{#each accounts.filter((account) => !platformFilter || account.platform === platformFilter) as account (account.id)}
-						<Select.Item value={account.id}>
-							{account.account_username || getPlatformName(account.platform)}
+						<Select.Item value={account.id} class="min-h-12 py-2">
+							<SocialAccountIdentity
+								name={accountName(account)}
+								platform={account.platform}
+								avatarUrl={account.account_avatar_url}
+							/>
 						</Select.Item>
 					{/each}
 				</Select.Content>

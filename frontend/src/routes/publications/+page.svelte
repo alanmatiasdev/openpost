@@ -28,6 +28,7 @@
 	import { getLocaleTag } from '$lib/i18n';
 	import { resolveAppPath } from '$lib/app-path';
 	import { showToast } from '$lib/toast';
+	import { formatSocialAccountName } from '$lib/utils';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	type ActivityDestination = NonNullable<Publication['renditions']>[number];
@@ -480,8 +481,12 @@
 	function destinationName(destination: ActivityDestination) {
 		const account = destinationAccount(destination);
 		return (
+			formatSocialAccountName(
+				account?.account_username,
+				account?.platform ?? destination.platform
+			) ||
 			account?.slug ||
-			(account?.account_username ? `@${account.account_username}` : destination.platform)
+			destination.platform
 		);
 	}
 

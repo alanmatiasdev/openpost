@@ -5,6 +5,8 @@
 	import type { components } from '$lib/api/types';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import SocialAccountIdentity from '$lib/components/social-account-identity.svelte';
+	import { formatSocialAccountName } from '$lib/utils';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
@@ -194,10 +196,7 @@
 	}
 
 	function optionSubtitle(option: SelectionOption) {
-		const parts = [
-			option.username ? `@${option.username.replace(/^@/, '')}` : '',
-			option.kind ?? ''
-		]
+		const parts = [formatSocialAccountName(option.username, platform), option.kind ?? '']
 			.map((part) => part.trim())
 			.filter(Boolean);
 		return parts.join(' · ');
@@ -261,31 +260,22 @@
 					{:else}
 						<RadioGroup.Item class="mt-1" value={option.id} aria-label={optionTitle(option)} />
 					{/if}
-					{#if option.avatar_url}
-						<img
-							class="size-12 rounded-full border object-cover"
-							src={option.avatar_url}
-							alt=""
-							loading="lazy"
-						/>
-					{:else}
-						<div
-							class="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground"
-							aria-hidden="true"
-						>
-							{optionTitle(option).slice(0, 1).toUpperCase()}
-						</div>
-					{/if}
 					<span class="min-w-0 flex-1 space-y-1">
-						<span class="block font-medium text-foreground">{optionTitle(option)}</span>
-						{#if optionSubtitle(option)}
-							<span class="block text-sm text-muted-foreground">{optionSubtitle(option)}</span>
-						{/if}
+						<SocialAccountIdentity
+							name={optionTitle(option)}
+							{platform}
+							platformLabel={platformName}
+							avatarUrl={option.avatar_url}
+							detail={optionSubtitle(option)}
+							size="lg"
+						/>
 						{#if option.description}
-							<span class="block text-sm text-muted-foreground">{option.description}</span>
+							<span class="block pl-[3.25rem] text-sm text-muted-foreground"
+								>{option.description}</span
+							>
 						{/if}
 						{#if metadataEntries(option).length}
-							<span class="flex flex-wrap gap-2 pt-1">
+							<span class="flex flex-wrap gap-2 pt-1 pl-[3.25rem]">
 								{#each metadataEntries(option) as [key, value] (key)}
 									<span class="rounded-sm bg-muted px-2 py-1 text-xs text-muted-foreground">
 										{key.replaceAll('_', ' ')}: {value}

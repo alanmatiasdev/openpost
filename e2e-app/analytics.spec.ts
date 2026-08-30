@@ -18,8 +18,15 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   });
   const unique = Date.now().toString(36);
   const auth = await registerUser(request, `analytics-${unique}@example.com`);
+  // SAFETY: createWorkspace throws unless the API returns a workspace object with its required ID.
   const workspace = (await createWorkspace(request, auth.token, "Analytics E2E")) as { id: string };
   await authenticatePage(page, auth.token);
+  await page.route("https://cdn.openpost.test/account-avatar.svg", async (route) => {
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#ea580c"/><text x="32" y="39" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="white">OP</text></svg>',
+    });
+  });
   await page.route("**/api/v1/account-features**", async (route) => {
     await route.fulfill({ contentType: "application/json", json: [] });
   });
@@ -201,7 +208,8 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
           {
             id: "account-x",
             platform: "x",
-            username: "@openpost",
+            username: "openpost",
+            avatar_url: "https://cdn.openpost.test/account-avatar.svg",
             status: "ok",
             account_supported: true,
             content_supported: true,
@@ -219,7 +227,7 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
           {
             id: "account-tiktok",
             platform: "tiktok",
-            username: "@video",
+            username: "video",
             status: "permission_required",
             error_code: "missing_scope",
             error_message: "Reconnect this account to grant: user.info.stats.",
@@ -233,7 +241,7 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
           ...Array.from({ length: 7 }, (_, index) => ({
             id: `account-mastodon-${index}`,
             platform: "mastodon",
-            username: `@community-${index}`,
+            username: `community-${index}`,
             status: "ok",
             account_supported: true,
             content_supported: true,
@@ -461,6 +469,25 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
     ),
   ).toBeVisible();
   await expect(page.getByLabel("Account filter")).toContainText("All accounts");
+  await page.getByLabel("Account filter").click();
+  const openPostAccount = page.getByRole("option", { name: /@openpost.*X/u });
+  await expect(openPostAccount).toBeVisible();
+  await expect(openPostAccount.locator('[data-slot="avatar-image"]')).toHaveAttribute(
+    "src",
+    "https://cdn.openpost.test/account-avatar.svg",
+  );
+  await expect
+    .poll(() =>
+      openPostAccount
+        .locator('[data-slot="avatar-image"]')
+        .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
+  await expect(page.getByRole("option", { name: /@video.*TikTok/u })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("analytics-1280-account-filter.png"),
+  });
+  await page.keyboard.press("Escape");
   await expect(
     page.getByText("@video: Reconnect this account to grant: user.info.stats."),
   ).toBeVisible();

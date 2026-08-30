@@ -51,4 +51,33 @@ describe('analytics performance chart', () => {
 
 		await expect.element(screen.getByText('No daily changes')).toBeVisible();
 	});
+
+	it('formats follower breakdowns as provider-aware account identities', async () => {
+		const screen = await render(AnalyticsPerformanceChart, {
+			points: [
+				{
+					date: '2026-08-30',
+					value: 12,
+					items: [
+						{
+							key: 'account-1',
+							label: 'openpost.bsky.social',
+							platform: 'bluesky',
+							value: 12
+						}
+					]
+				}
+			],
+			metric: 'followers',
+			label: 'Daily follower change',
+			emptyLabel: 'No daily changes',
+			otherLabel: 'Other accounts',
+			formatValue: String,
+			formatDate: (value: string) => `Date ${value}`
+		});
+
+		await screen.getByRole('button', { name: 'Date 2026-08-30, 12 Daily follower change' }).click();
+
+		await expect.element(screen.getByText('@openpost.bsky.social')).toBeVisible();
+	});
 });

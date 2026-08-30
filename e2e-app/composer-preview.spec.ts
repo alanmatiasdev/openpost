@@ -21,7 +21,7 @@ type PostPayload = {
   [key: string]: unknown;
 };
 
-test("composer renders account-specific renditions", async ({ page, request }) => {
+test("composer renders account-specific renditions", async ({ page, request }, testInfo) => {
   const unique = Date.now().toString(36);
   const email = `composer-preview-${unique}@example.com`;
   let publicationPayload: PostPayload | undefined;
@@ -31,6 +31,13 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await createWorkspace(request, auth.token, "Composer Preview E2E");
 
   await authenticatePage(page, auth.token);
+  await page.route("https://cdn.example/*.jpg", async (route) => {
+    const label = route.request().url().includes("image-editor") ? "OS" : "OP";
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#c45106"/><text x="32" y="39" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="700" fill="white">${label}</text></svg>`,
+    });
+  });
   await page.route("**/api/v1/accounts?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -174,7 +181,7 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await page.route(/\/api\/v1\/publications\/publication-preview(?:\?.*)?$/, async (route) => {
     if (route.request().method() === "PUT") {
       publicationPayload = {
-        ...(publicationPayload ?? {}),
+        ...publicationPayload,
         ...(route.request().postDataJSON() as PostPayload),
       };
       await route.fulfill({
@@ -196,7 +203,7 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await page.route("**/api/v1/publications/publication-preview/renditions", async (route) => {
     if (route.request().method() === "PUT") {
       publicationPayload = {
-        ...(publicationPayload ?? {}),
+        ...publicationPayload,
         ...(route.request().postDataJSON() as PostPayload),
       };
       await route.fulfill({ contentType: "application/json", json: {} });
@@ -219,18 +226,37 @@ test("composer renders account-specific renditions", async ({ page, request }) =
   await expect(page.locator('[data-testid="instagram-preview"]')).toHaveCount(0);
   await expect(page.getByLabel(/Remove .* from targets/)).toHaveCount(0);
   const accountControl = page.getByTestId("composer-account-control");
+  await expect(accountControl).toHaveAttribute(
+    "aria-label",
+    "Accounts: @openpost_main, Bluesky; @openpost_studio, Bluesky",
+  );
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(2);
   await accountControl.click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(2);
   const accountPicker = page.getByRole("group", { name: "Accounts" });
-  await expect(accountPicker.getByText("openpost_main", { exact: true })).toBeVisible();
-  await expect(accountPicker.getByText("openpost_studio", { exact: true })).toBeVisible();
+  await expect(accountPicker.getByText("@openpost_main", { exact: true })).toBeVisible();
+  await expect(accountPicker.getByText("@openpost_studio", { exact: true })).toBeVisible();
   const mainAccountRow = page
     .getByTestId("composer-account-row")
     .filter({ hasText: "openpost_main" });
-  await mainAccountRow.getByText("openpost_main", { exact: true }).click();
+  await expect(mainAccountRow.locator('[data-slot="social-account-platform"]')).toHaveText(
+    "Bluesky",
+  );
+  await expect(mainAccountRow.locator('[data-slot="avatar-image"]')).toHaveAttribute(
+    "src",
+    "https://cdn.example/main.jpg",
+  );
+  await expect
+    .poll(() =>
+      mainAccountRow
+        .locator('[data-slot="avatar-image"]')
+        .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
+  await accountPicker.screenshot({ path: testInfo.outputPath("composer-390-account-picker.png") });
+  await mainAccountRow.getByText("@openpost_main", { exact: true }).click();
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(1);
-  await mainAccountRow.getByText("openpost_main", { exact: true }).click();
+  await mainAccountRow.getByText("@openpost_main", { exact: true }).click();
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(2);
   await page.keyboard.press("Escape");
   await expect.poll(() => publicationPayload).toBeTruthy();

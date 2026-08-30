@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { components } from '$lib/api/types';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import { formatSocialAccountName } from '$lib/utils';
 
 	type DailyPoint = components['schemas']['DailyBreakdownPoint'];
 	type DailyItem = components['schemas']['DailyBreakdownItem'];
@@ -127,6 +128,12 @@
 		return `${formatDate(point.date)}, ${formatValue(point.value)} ${label}`;
 	}
 
+	function tooltipItemLabel(item: DailyItem) {
+		return metric === 'followers'
+			? formatSocialAccountName(item.label, item.platform) || item.label
+			: item.label;
+	}
+
 	function platformLabel(platform: string) {
 		if (platform.toLowerCase() === 'x') return 'X';
 		return platform.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -244,7 +251,7 @@
 										style={`background: ${segmentColor(item)}`}
 									></span>
 									<div class="min-w-0 flex-1">
-										<p class="truncate text-xs font-medium">{item.label}</p>
+										<p class="truncate text-xs font-medium">{tooltipItemLabel(item)}</p>
 										{#if item.platform}
 											<p
 												class="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground"

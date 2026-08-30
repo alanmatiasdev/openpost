@@ -68,8 +68,10 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import SocialSetControl from './social-set-control.svelte';
+	import SocialAccountIdentity from './social-account-identity.svelte';
 	import ComposerRequiredFields from './composer-required-fields.svelte';
 	import ComposerPublishActions from './composer-publish-actions.svelte';
+	import ComposerAIActionButton from './composer-ai-action-button.svelte';
 	import ComposerDeliveryFeedback from './composer-delivery-feedback.svelte';
 	import SaveIndicator from './save-indicator.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
@@ -79,13 +81,13 @@
 	import WorkspaceSetupGuide from './workspace-setup-guide.svelte';
 	import WorkspaceActivationCompletion from './workspace-activation-completion.svelte';
 	import PlatformIcon from './platform-icon.svelte';
+	import { formatSocialAccountName } from '$lib/utils';
 	import { Badge } from '$lib/components/ui/badge';
 	import { getPlatformKey, getPlatformName } from '$lib/utils';
 	import { CalendarDate, isEqualDay } from '@internationalized/date';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import XIcon from '@lucide/svelte/icons/x';
-	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import Undo2Icon from '@lucide/svelte/icons/undo-2';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import UnlinkIcon from '@lucide/svelte/icons/unlink';
@@ -95,6 +97,8 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
+	import HistoryIcon from '@lucide/svelte/icons/history';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { ReorderableList } from 'svelte-reorderable-list';
 	import { m } from '$lib/paraglide/messages';
@@ -264,6 +268,9 @@
 		onDeleted?: () => void | Promise<void>;
 		onDraftCreated?: (id: string) => void;
 		onThreadStateChange?: (isThread: boolean) => void;
+		onOpenVersionHistory?: () => void;
+		onCopyAsDraft?: () => void | Promise<void>;
+		copyingDraft?: boolean;
 		hideSetupGuideOnDesktop?: boolean;
 	}
 
@@ -282,6 +289,9 @@
 		onDeleted,
 		onDraftCreated,
 		onThreadStateChange,
+		onOpenVersionHistory,
+		onCopyAsDraft,
+		copyingDraft = false,
 		hideSetupGuideOnDesktop = false
 	}: Props = $props();
 	let isEditMode = $derived(Boolean(initialPublication));
@@ -325,6 +335,12 @@
 	let conflictDialogOpen = $state(false);
 	let linkUrl = $state('');
 	let composerSettingsOpen = $state(false);
+
+	async function openVersionHistory() {
+		composerSettingsOpen = false;
+		await tick();
+		onOpenVersionHistory?.();
+	}
 
 	let workspaces = $state.raw<Workspace[]>([]);
 	let selectedWorkspaceId = $state<string>('');
@@ -3280,7 +3296,11 @@
 	}
 
 	function accountLabel(account: SocialAccount): string {
-		return account.account_username || account.slug || getPlatformName(account.platform);
+		return (
+			formatSocialAccountName(account.account_username, account.platform) ||
+			account.slug ||
+			getPlatformName(account.platform)
+		);
 	}
 
 	function destinationFormatOptions(account: SocialAccount) {
@@ -5307,7 +5327,7 @@
 					size="icon"
 					class="size-11 text-muted-foreground"
 					onclick={() => (composerSettingsOpen = true)}
-					aria-label={m.composer_repost_settings()}
+					aria-label={m.compose_post_settings()}
 				>
 					<SettingsIcon class="size-4" />
 				</Button>
@@ -5422,13 +5442,13 @@
 								size="icon"
 								class="text-muted-foreground"
 								onclick={() => (composerSettingsOpen = true)}
-								aria-label={m.composer_repost_settings()}
+								aria-label={m.compose_post_settings()}
 							>
 								<SettingsIcon class="size-4" />
 							</Button>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content><p class="text-sm">{m.composer_repost_settings()}</p></Tooltip.Content>
+					<Tooltip.Content><p class="text-sm">{m.compose_post_settings()}</p></Tooltip.Content>
 				</Tooltip.Root>
 
 				{#if isEditMode && !autoSavesDraft}
@@ -5638,7 +5658,13 @@
 									class:text-muted-foreground={activeVariantAccountId !== account.id}
 									onclick={() => activateVariantTab(account.id)}
 								>
-									<span class="max-w-32 truncate">{accountLabel(account)}</span>
+									<SocialAccountIdentity
+										class="max-w-52"
+										name={accountLabel(account)}
+										platform={account.platform}
+										avatarUrl={account.account_avatar_url}
+										size="sm"
+									/>
 									{#if destinationFormatLabel(account)}
 										<span class="text-xs text-muted-foreground"
 											>· {destinationFormatLabel(account)}</span
@@ -6234,29 +6260,20 @@
 											</button>
 
 											{#if i === 0 && !activeVariantAccountId && !isThread}
-												<Button
-													type="button"
-													size="sm"
-													class="ml-auto min-h-11 gap-1.5 px-3 md:min-h-8"
+												<ComposerAIActionButton
+													hasText={Boolean(posts[0]?.content.trim())}
+													building={buildingPost}
 													disabled={!canBuildPost}
+													ideateLabel={m.compose_ai_ideate()}
+													buildLabel={generationUndo
+														? m.compose_ai_build_again()
+														: m.compose_ai_build()}
+													buildingLabel={m.compose_ai_building()}
 													onclick={buildPostWithAI}
-													aria-busy={buildingPost}
 													title={selectedAccountIds.length === 0
 														? m.compose_ai_destinations_required()
 														: undefined}
-												>
-													{#if buildingPost}
-														<LoaderIcon class="size-3.5 animate-spin" />
-														{m.compose_ai_building()}
-													{:else}
-														<SparklesIcon class="size-3.5" />
-														{posts[0]?.content.trim()
-															? generationUndo
-																? m.compose_ai_build_again()
-																: m.compose_ai_build()
-															: m.compose_ai_ideate()}
-													{/if}
-												</Button>
+												/>
 											{/if}
 										</div>
 
@@ -6483,16 +6500,18 @@
 		</Dialog.Header>
 		<div class="space-y-2 py-2">
 			{#each selectedAccounts.filter((account) => account.id !== activeVariantAccountId) as account (account.id)}
-				<label class="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm">
+				<label class="flex min-h-12 items-center gap-3 rounded-md border px-3 py-2 text-sm">
 					<Checkbox
 						checked={destinationActionTargetIds.includes(account.id)}
 						disabled={hasPendingPasteMediaUploads}
 						onCheckedChange={() => toggleDestinationActionTarget(account.id)}
 					/>
-					<span class="min-w-0 truncate">{accountLabel(account)}</span>
-					<span class="ml-auto text-xs text-muted-foreground">
-						{getPlatformName(account.platform)}
-					</span>
+					<SocialAccountIdentity
+						class="min-w-0 flex-1"
+						name={accountLabel(account)}
+						platform={account.platform}
+						avatarUrl={account.account_avatar_url}
+					/>
 				</label>
 			{/each}
 		</div>
@@ -6518,9 +6537,41 @@
 		data-testid="composer-settings-sheet"
 	>
 		<Sheet.Header class="border-b px-5 py-5 pr-16 text-left">
-			<Sheet.Title>{m.composer_repost_settings()}</Sheet.Title>
-			<Sheet.Description>{m.composer_repost_settings_body()}</Sheet.Description>
+			<Sheet.Title>{m.compose_post_settings()}</Sheet.Title>
+			<Sheet.Description>{m.compose_post_settings_body()}</Sheet.Description>
 		</Sheet.Header>
+		{#if onOpenVersionHistory || onCopyAsDraft}
+			<div class="grid gap-1 border-b p-3">
+				{#if onOpenVersionHistory}
+					<Button
+						type="button"
+						variant="ghost"
+						class="h-11 w-full justify-start gap-3 px-3"
+						onclick={openVersionHistory}
+					>
+						<HistoryIcon class="size-4 text-muted-foreground" />
+						{m.image_editor_version_history()}
+					</Button>
+				{/if}
+				{#if onCopyAsDraft}
+					<Button
+						type="button"
+						variant="ghost"
+						class="h-11 w-full justify-start gap-3 px-3"
+						onclick={onCopyAsDraft}
+						disabled={copyingDraft}
+					>
+						{#if copyingDraft}
+							<LoaderIcon class="size-4 animate-spin text-muted-foreground" />
+							{m.publication_copying()}
+						{:else}
+							<CopyIcon class="size-4 text-muted-foreground" />
+							{m.publication_copy_as_draft()}
+						{/if}
+					</Button>
+				{/if}
+			</div>
+		{/if}
 		<div class="p-5">
 			<ComposerRepostControl
 				workspaceID={selectedWorkspaceId}

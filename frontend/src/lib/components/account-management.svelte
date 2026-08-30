@@ -13,13 +13,14 @@
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import SectionHeader from '$lib/components/section-header.svelte';
+	import SocialAccountIdentity from '$lib/components/social-account-identity.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import WorkspaceSetupGuide from '$lib/components/workspace-setup-guide.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import type { DestructiveActionOutcome } from '$lib/destructive-action-outcome';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
-	import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
+	import { formatSocialAccountName, getPlatformName, getPlatformColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { goto } from '$app/navigation';
 	import { resolveAppPath } from '$lib/app-path';
@@ -367,8 +368,8 @@
 	}
 
 	function accountDisplayName(account: SocialAccount): string {
-		const handle = formatAccountHandle(account.account_username);
-		if (handle) return handle;
+		const displayName = formatSocialAccountName(account.account_username, account.platform);
+		if (displayName) return displayName;
 		if (account.instance_url) return account.instance_url.replace('https://', '');
 		return account.account_id || account.platform;
 	}
@@ -393,6 +394,11 @@
 		} catch {
 			return account.instance_url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 		}
+	}
+
+	function accountKindLabel(account: SocialAccount): string {
+		const label = account.account_kind?.replaceAll('_', ' ').trim() ?? '';
+		return label ? label[0].toUpperCase() + label.slice(1) : '';
 	}
 
 	async function openEditAccount(account: SocialAccount) {
@@ -1198,18 +1204,17 @@
 									class="flex min-h-28 flex-col justify-between gap-3 bg-background p-4"
 								>
 									<div class="flex items-start gap-3">
-										<div
-											class="flex size-10 shrink-0 items-center justify-center rounded-lg {getPlatformColor(
-												account.platform
-											)}"
-										>
-											<PlatformIcon platform={account.platform} class="size-5 text-white" />
-										</div>
-										<div class="min-w-0 flex-1">
-											<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-												<h3 class="line-clamp-2 min-w-0 text-sm font-semibold break-words">
-													{accountPlatformName(account)}
-												</h3>
+										<div class="flex min-w-0 flex-1 flex-wrap items-start gap-x-2 gap-y-1">
+											<h3 class="min-w-0 flex-1">
+												<SocialAccountIdentity
+													name={accountDisplayName(account)}
+													platform={account.platform}
+													platformLabel={accountPlatformName(account)}
+													avatarUrl={account.account_avatar_url}
+													size="lg"
+												/>
+											</h3>
+											<div class="flex shrink-0 items-center gap-2 pt-0.5">
 												{#if isConnectorAccount(account)}
 													<Badge
 														class="shrink-0 rounded-full border-border bg-muted text-[11px] whitespace-nowrap text-muted-foreground shadow-none"
@@ -1224,9 +1229,6 @@
 													></span>
 												{/if}
 											</div>
-											<p class="mt-1 truncate text-sm text-muted-foreground">
-												{accountDisplayName(account)}
-											</p>
 										</div>
 										{#if canEditWorkspace}<DropdownMenu.Root>
 												<DropdownMenu.Trigger>
@@ -1747,26 +1749,15 @@
 					data-testid="account-settings-scroll"
 				>
 					<div class="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
-						<div
-							class="flex size-10 shrink-0 items-center justify-center rounded-lg {getPlatformColor(
-								editingAccount.platform
-							)}"
-						>
-							<PlatformIcon platform={editingAccount.platform} class="size-5 text-white" />
-						</div>
 						<div class="min-w-0 flex-1">
-							<div class="truncate text-sm font-semibold">
-								{accountDisplayName(editingAccount)}
-							</div>
-							<div class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-								<span>{getPlatformName(editingAccount.platform)}</span>
-								{#if editingAccount.account_kind}
-									<span aria-hidden="true">·</span>
-									<span class="capitalize">
-										{editingAccount.account_kind.replaceAll('_', ' ')}
-									</span>
-								{/if}
-							</div>
+							<SocialAccountIdentity
+								name={accountDisplayName(editingAccount)}
+								platform={editingAccount.platform}
+								platformLabel={accountPlatformName(editingAccount)}
+								avatarUrl={editingAccount.account_avatar_url}
+								detail={accountKindLabel(editingAccount)}
+								size="lg"
+							/>
 							{#if accountServer(editingAccount)}
 								<div class="truncate text-xs text-muted-foreground">
 									{m.accounts_server()}: {accountServer(editingAccount)}
