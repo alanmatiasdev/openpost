@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.14.0] - 2026-08-30
+
+### Fixed
+
+- Kept the Video Editor preview and timeline visible while phone-sized asset and edit tools open in contextual panels.
+- Removed the duplicate Properties heading, exposed selected asset tabs to assistive technology, and enlarged coarse-pointer controls without bloating desktop controls.
+- Kept Video Editor slider keys inside inspector controls, restored draft values on Escape, and preserved visible focus rings.
+- Restored timeout recovery for AI publication discovery and meme suggestions after the provider SDK exhausts its internal retries.
+- Kept the AI workspace fully inside the viewport at desktop and mobile sizes.
+- Open new video projects centered in Fit view, deselect clips from the empty preview, and keep Motion controls inside their pane.
+- Keep video clips from occupying the same track at the same time unless an explicit transition connects them.
+- Keep the compact stock-media search focused on search and filters instead of repeating provider guidance.
+- Show folder-backed Video Editor projects beside cloud Image Editor designs, with independent search, loading, permission, empty, and error states.
+- Rechecked destination setup after every cold launch instead of opening Drafts before an active account exists.
+- Made OAuth callback states and X request tokens atomic so one credential cannot authorize two concurrent callbacks.
+- Kept public-route evidence checks reliable when the release gate captures Turbo's build plan.
+- Prevented concurrent Threads account connections from mixing provider user IDs, and rejected token/profile identity mismatches.
+- Kept an Image Editor design open when device storage rejects the final save.
+- Marked the active Image Editor page for assistive technology and kept coarse-pointer color swatches inside the picker.
+- Keep effect and transition previews smooth by rendering only visible cards through bounded, deduplicated preview queues.
+- Apply effects to the current selection or a timed adjustment layer, and place transitions only on valid cuts without false errors when reapplying the current choice.
+- Remove duplicate Program and Scopes header rows from the Color workspace while preserving the labelled preview, compact scope controls, and resize seam.
+
+### Changed
+
+- Kept the composer AI action anchored while it slides from Ideate to Build with AI as the draft gains text.
+- Open AI ideation in a compact brief dialog, then smoothly expand the same dialog into the full idea workspace.
+- Made short analytics series fill the available chart width.
+- Reworked the Video Editor media area into a full-height tool rail and resizable content pane, with the timeline starting beside it.
+- Made persistent side and bottom panes resizable across both editors, with keyboard controls and predictable reset sizes.
+- Restored local Video Editor projects to the Editors library alongside Image Editor designs.
+- Reserved mobile button depth for eight forward actions and kept routine filled controls flat.
+- Corrected Android availability metadata, current Settings paths, and the built-in AI creation guide.
+- Clarified who the home page and free tools serve before scripts load.
+- Aligned editor panel headings and expanded editor hit areas for coarse pointers without enlarging their visual marks.
+- Expanded the Video Editor tool rail with Stock, text templates, shapes, effects, transitions, Lottie, transcript, and AI creation tools that can add or drag content to the timeline.
+- Added the full FreeCut-inspired effect and transition catalogs with live visual previews and responsive, resizable workspace panes.
+
 ## [4.13.1] - 2026-08-30
 
 ### Fixed
