@@ -52,9 +52,28 @@ test("public provider claims are derived from the manifest on every claim surfac
     () =>
       validatePublicClaimSurfaceSources(manifest, {
         ...sources,
-        providerIndex: sources.providerIndex.replace("0 ways to post", "1 way to post"),
+        providerIndex: sources.providerIndex.replace(
+          "No posting option has passed our final live check",
+          "One posting option has passed our final live check",
+        ),
       }),
     /projection is stale/u,
+  );
+});
+
+test("the README keeps live provider claims in plain language", () => {
+  const manifest = validManifest();
+  const detailedProjection = renderPublicClaimProjection(manifest);
+  const readmeProjection = renderPublicClaimProjection(manifest, { detailLevel: "summary" });
+  const sources = validPublicClaimSurfaces(detailedProjection);
+
+  assert.match(readmeProjection, /1 way to post/u);
+  assert.doesNotMatch(readmeProjection, /publish_immediate|standard_text|standard_policy/u);
+  assert.doesNotThrow(() =>
+    validatePublicClaimSurfaceSources(manifest, {
+      ...sources,
+      readme: readmeProjection,
+    }),
   );
 });
 

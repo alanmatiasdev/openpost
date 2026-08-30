@@ -96,19 +96,21 @@ export function assertNoUnprojectedPublicClaims(manifest) {
   }
 }
 
-export function renderPublicClaimProjection(manifest) {
+export function renderPublicClaimProjection(manifest, options = {}) {
   const claims = [...manifest.claims].sort((left, right) =>
     subjectKey(left.subject).localeCompare(subjectKey(right.subject)),
   );
-  const lines = [
-    publicProjectionStart,
-    `OpenPost Hosted has passed our full live check for **${claims.length} way${claims.length === 1 ? "" : "s"} to post**.`,
-    "",
-  ];
+  const checkedCount =
+    claims.length === 0
+      ? "No posting option has passed our final live check on OpenPost Hosted yet."
+      : claims.length === 1
+        ? "**1 way to post** has passed our final live check on OpenPost Hosted."
+        : `**${claims.length} ways to post** have passed our final live check on OpenPost Hosted.`;
+  const lines = [publicProjectionStart, checkedCount, ""];
   if (claims.length === 0) {
-    lines.push(
-      "Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.",
-    );
+    lines.push("A social app can appear in OpenPost before it is ready for real accounts.");
+  } else if (options.detailLevel === "summary") {
+    lines.push("See the full readiness list for details.");
   } else {
     lines.push("Ready on OpenPost Hosted:");
     for (const claim of claims) {
@@ -161,11 +163,17 @@ export function validatePublicClaimSurfaceSources(manifest, sources) {
     ["provider index documentation", sources.providerIndex ?? ""],
     ["provider launch gate documentation", sources.launchMatrix ?? ""],
     ["certification contract documentation", sources.certificationReadme ?? ""],
-    ["README provider section", sources.readme ?? ""],
   ]) {
     if (extractPublicClaimProjection(source, label) !== expectedProjection) {
       throw new Error(`${label} public certification projection is stale`);
     }
+  }
+  const readmeProjection = renderPublicClaimProjection(manifest, { detailLevel: "summary" });
+  if (
+    extractPublicClaimProjection(sources.readme ?? "", "README provider section") !==
+    readmeProjection
+  ) {
+    throw new Error("README provider section public certification projection is stale");
   }
   if (/\b(?:Available|Supported)\b/u.test(sources.providerIndex ?? "")) {
     throw new Error(

@@ -125,9 +125,9 @@ records are invented or backfilled by migration.
 Reviewed 2026-08-09.
 
 <!-- provider-certification:begin -->
-OpenPost Hosted has passed our full live check for **0 ways to post**.
+No posting option has passed our final live check on OpenPost Hosted yet.
 
-Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.
+A social app can appear in OpenPost before it is ready for real accounts.
 <!-- provider-certification:end -->
 
 The repository contains no checked-in live evidence and migration 077 never

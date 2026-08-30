@@ -18,9 +18,6 @@
   <a href="https://github.com/getopenpost/openpost/releases">
     <img src="https://img.shields.io/github/v/release/getopenpost/openpost?label=release" alt="Latest release">
   </a>
-  <a href="https://github.com/getopenpost/openpost/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/getopenpost/openpost/ci.yml?label=build" alt="Build status">
-  </a>
   <a href="https://github.com/getopenpost/openpost">
     <img src="https://img.shields.io/github/stars/getopenpost/openpost" alt="GitHub stars">
   </a>
@@ -32,7 +29,7 @@
 <p align="center">
   <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start 14-day trial</strong></a>
   ·
-  <a href="https://docs.openpost.social/guide/quickstart"><strong>Self-host</strong></a>
+  <a href="https://docs.openpost.social/guide/quickstart"><strong>Run your own</strong></a>
   ·
   <a href="https://docs.openpost.social"><strong>Docs</strong></a>
   ·
@@ -43,7 +40,7 @@
   <img alt="OpenPost with one post ready for several social apps" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
 </p>
 
-One place for your posts, pictures, videos, calendar, results, and replies. Start with an idea. Make it fit each app. Pick a time. See what happened.
+Make something worth sharing. OpenPost helps you shape it for every social app, send it at the right time, and see what happened.
 
 <table>
   <tr>
@@ -52,8 +49,8 @@ One place for your posts, pictures, videos, calendar, results, and replies. Star
       <br><sub>Calendar</sub>
     </td>
     <td width="50%" align="center">
-      <img alt="OpenPost analytics with account growth, content results, and follower trend" src="./assets/screenshots/analytics-dark.webp" width="100%">
-      <br><sub>Analytics</sub>
+      <img alt="OpenPost results with account growth, post results, and follower trend" src="./assets/screenshots/analytics-dark.webp" width="100%">
+      <br><sub>Results</sub>
     </td>
   </tr>
 </table>
@@ -71,71 +68,49 @@ One place for your posts, pictures, videos, calendar, results, and replies. Star
   </tr>
 </table>
 
-## What you can do
+## Make it. Share it. Keep moving.
 
-- Write one post, then tweak it for each social app.
+- Write one post, then make it fit each social app.
 - Add pictures, clips, and links.
 - Put posts on the calendar.
 - Make images, cut videos, and make memes.
-- See what went out, what failed, and how each post did.
+- See what went out, what failed, and what people liked.
 - Read and answer comments.
 
-OpenPost is for posting. It does not manage sales, ads, or every mention of your name.
+OpenPost is for posting. It does not run your ads or track every mention of your name.
 
-## Try it
+## Start posting
 
-The fastest way in is [OpenPost Hosted](https://app.openpost.social). We run it for you.
+Try [OpenPost](https://app.openpost.social). We run it for you.
 
-Want to run it yourself?
+Want your own copy? [Follow the setup guide](https://docs.openpost.social/guide/quickstart).
 
-```bash
-git clone https://github.com/getopenpost/openpost.git
-cd openpost
-cp .env.example .env
-# Set OPENPOST_APP_URL and replace the two sample secrets in .env.
-docker compose up -d
-```
-
-Open `http://localhost:8080`, make your first account, and connect a social app.
-
-[Self-hosting guide](https://docs.openpost.social/guide/quickstart) · [Install help](https://docs.openpost.social/self-hosting/) · [Hosted or self-hosted?](https://openpost.social/self-hosting)
+[Setup help](https://docs.openpost.social/self-hosting/) · [Which one is right for me?](https://openpost.social/self-hosting)
 
 ## Where you can post
 
-OpenPost can connect to X, Mastodon, Bluesky, LinkedIn, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord.
+OpenPost is built for X, Mastodon, Bluesky, LinkedIn, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord.
 
-Each social app has its own rules. Some must approve the connection first. Others need a certain kind of account. OpenPost tells you what is missing before you try to post.
+Each social app has its own rules. Some must approve OpenPost first. Others need a certain kind of account. OpenPost tells you what is missing before you post.
 
 <!-- provider-certification:begin -->
 
-OpenPost Hosted has passed our full live check for **0 ways to post**.
+No posting option has passed our final live check on OpenPost Hosted yet.
 
-Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.
+A social app can appear in OpenPost before it is ready for real accounts.
 <!-- provider-certification:end -->
 
-[Social app readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Posting limits](https://docs.openpost.social/providers/)
+[See what works today](https://docs.openpost.social/operations/provider-launch-matrix) · [See each app's rules](https://docs.openpost.social/providers/)
 
-## Build with it
+## Make it yours
 
-Use the API, CLI, or MCP server to make posts, plan them, and check them. They can do only what your OpenPost account can do. They never show your social app login details.
+OpenPost is open source. Run your own copy, build something with it, or help make it better.
 
-[CLI guide](https://docs.openpost.social/cli/) · [MCP guide](https://docs.openpost.social/mcp/) · [API reference](https://docs.openpost.social/development/api-reference)
-
-## Work on OpenPost
-
-OpenPost is built with Go, Svelte 5, SvelteKit, Bun, and Devenv.
-
-```bash
-direnv allow
-devenv shell -- setup
-bun run verify
-```
-
-Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and the [setup guide](https://docs.openpost.social/development/setup).
+[Run your own copy](https://docs.openpost.social/guide/quickstart) · [Build with OpenPost](https://docs.openpost.social/development/api-reference) · [Help improve OpenPost](CONTRIBUTING.md)
 
 ## Help OpenPost grow
 
-If OpenPost saves you time, **star the repo**. It helps more people find it.
+If OpenPost saves you time, **give it a star**. It helps more people find it.
 
 <!-- star-history:start -->
 <picture>
@@ -144,6 +119,6 @@ If OpenPost saves you time, **star the repo**. It helps more people find it.
 </picture>
 <!-- star-history:end -->
 
-## License and security
+## License and safety
 
-OpenPost uses the [AGPL-3.0-only license](LICENSE). Report security bugs privately through the [security policy](SECURITY.md).
+OpenPost is open source under the [AGPL-3.0-only license](LICENSE). Found a safety problem? Tell us privately through the [security policy](SECURITY.md).
