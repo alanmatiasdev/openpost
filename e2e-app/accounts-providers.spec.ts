@@ -318,7 +318,7 @@ test("accounts page connects an operator-installed custom connector", async ({ p
   const account = page.getByTestId("account-card-account-directus");
   await expect(account).toContainText("Directus");
   await expect(account).toContainText("Custom connector");
-  await expect(account).toContainText("@Editorial Posts");
+  await expect(account.getByText("Editorial Posts", { exact: true })).toBeVisible();
   await expect(account).toContainText("editorial-posts");
 
   if (process.env.OPENPOST_CAPTURE_CONNECTOR_REVIEW === "1") {

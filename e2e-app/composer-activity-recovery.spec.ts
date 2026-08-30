@@ -136,7 +136,7 @@ test("composer ignores stale accounts and recovers the current workspace", async
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await page.getByTestId("composer-account-control").click();
   await expect(
-    page.getByTestId("composer-account-row").getByText("current_workspace", { exact: true }),
+    page.getByTestId("composer-account-row").getByText("@current_workspace", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("stale_previous", { exact: true })).toHaveCount(0);
   expect(secondRequests).toBe(2);

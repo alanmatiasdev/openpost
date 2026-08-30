@@ -258,7 +258,9 @@ test("communications and notifications stay usable across desktop and phone layo
   await expect(page.getByText("Could you share the setup guide?")).toBeVisible();
   await page.getByRole("button", { name: "Collection issues (1)" }).click();
   await expect(page.getByText("Collection recovery", { exact: true })).toBeVisible();
-  await expect(page.getByRole("paragraph").filter({ hasText: /^YouTube$/ })).toBeVisible();
+  await expect(
+    page.locator('[data-slot="social-account-platform"]').filter({ hasText: /^YouTube$/ }),
+  ).toBeVisible();
   await expect(
     page.getByText("OpenPost could not collect new replies. It will try again automatically."),
   ).toBeVisible();
