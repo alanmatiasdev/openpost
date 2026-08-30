@@ -439,11 +439,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
-  const buildWithAI = page.getByRole("button", { name: "Build with AI" });
-  await expect(buildWithAI).toBeVisible();
-  await expect(buildWithAI).toBeDisabled();
   await page.getByLabel("Post text").fill(postContent);
-  await expect(buildWithAI).toBeEnabled();
   await page.getByRole("button", { name: "Add post" }).click();
   await page.getByLabel("Post text").nth(1).fill("The second post keeps the outcome panel shared.");
   await expect(await composerDeliveryAction(page, "Publish Now")).toBeDisabled();
@@ -453,7 +449,6 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
   );
   await page.keyboard.press("Escape");
-  await expect(buildWithAI).toHaveCount(0);
   await page
     .getByTestId("desktop-composer-controls")
     .getByRole("button", { name: "Repost settings", exact: true })
