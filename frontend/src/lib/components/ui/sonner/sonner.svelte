@@ -30,8 +30,12 @@
 	}
 
 	@media (max-width: 600px) {
-		:global([data-sonner-toaster]) {
+		:global([data-sonner-toaster][data-x-position='center']) {
+			left: var(--mobile-offset-left);
+			right: var(--mobile-offset-right);
 			width: auto;
+			transform: none !important;
+			transition: none;
 		}
 
 		:global([data-sonner-toaster]) :global([data-sonner-toast]) {

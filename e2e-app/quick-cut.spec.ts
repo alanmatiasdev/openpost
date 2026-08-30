@@ -17,7 +17,7 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
     const viewportWidth = document.documentElement.clientWidth;
     const offenders = Array.from(document.body.querySelectorAll<HTMLElement>("*"))
       .map((element) => ({ element, rect: element.getBoundingClientRect() }))
-      .filter(({ rect }) => rect.width > 0 && rect.right > viewportWidth + 1)
+      .filter(({ rect }) => rect.width > 0 && (rect.left < -1 || rect.right > viewportWidth + 1))
       .map(({ element, rect }) => ({
         tag: element.tagName.toLowerCase(),
         label: element.getAttribute("aria-label"),
@@ -34,6 +34,30 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   });
   expect(documentOverflows).toBe(false);
   expect(offenders).toEqual([]);
+}
+
+async function expectControlsNotToOverlap(controls: Array<import("@playwright/test").Locator>) {
+  const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+  expect(boxes.every(Boolean)).toBe(true);
+  for (let firstIndex = 0; firstIndex < boxes.length; firstIndex += 1) {
+    const first = boxes[firstIndex]!;
+    for (let secondIndex = firstIndex + 1; secondIndex < boxes.length; secondIndex += 1) {
+      const second = boxes[secondIndex]!;
+      const overlapWidth =
+        Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+      const overlapHeight =
+        Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y);
+      expect(Math.max(0, overlapWidth) * Math.max(0, overlapHeight)).toBe(0);
+    }
+  }
+}
+
+async function expectControlContentToFit(control: import("@playwright/test").Locator) {
+  const dimensions = await control.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
 }
 
 test("quick cut loads with accessible controls and no overflow at 320/390/desktop", async ({
@@ -135,6 +159,9 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await page.getByRole("button", { name: /Add segment/i }).click();
   await expect(page.getByText("Keep at least 0.05 seconds.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Segment 1/i })).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expectNoHorizontalOverflow(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   await page.locator("video").evaluate((video: HTMLVideoElement) => {
     video.currentTime = Math.min(0.1, video.duration || 0.1);
@@ -143,6 +170,18 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await page.getByRole("button", { name: /^O · Mark out$/i }).click();
   await page.getByRole("button", { name: /Add segment/i }).click();
   await expect(page.getByRole("button", { name: /Segment 1/i })).toBeVisible();
+  await expect(page.getByText("Keep at least 0.05 seconds.")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expectControlsNotToOverlap([
+    page.getByLabel("Mark in 1"),
+    page.getByLabel("Mark out 1"),
+    page.getByRole("button", { name: "Preview", exact: true }),
+    page.getByRole("button", { name: "Export", exact: true }).first(),
+  ]);
+  await expectControlContentToFit(page.getByLabel("Mark in 1"));
+  await expectControlContentToFit(page.getByLabel("Mark out 1"));
+  await expectControlContentToFit(page.getByPlaceholder("Optional label"));
 
   await page.getByLabel("Mark in 1").fill("00:00.03");
   await page.getByLabel("Mark in 1").press("Tab");
@@ -166,8 +205,17 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       path: path.resolve(`frontend/.svelte-kit/openpost-quick-cut-${viewport.width}.png`),
+      fullPage: viewport.width < 600,
     });
   }
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.resolve("frontend/.svelte-kit/openpost-quick-cut-1280-dark.png"),
+  });
+  await page.emulateMedia({ colorScheme: "light" });
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).first().click();
@@ -186,8 +234,12 @@ test("quick cut imports real media, creates a range, and never fakes Send", asyn
   await addChooser.setFiles(
     path.resolve("frontend/src/lib/video-editor/media/fixtures/prores-proxy.mov"),
   );
-  const firstSource = page.getByRole("button", { name: /Source 1 · prores-proxy\.mov/i });
-  const secondSource = page.getByRole("button", { name: /Source 2 · prores-proxy\.mov/i });
+  const firstSource = page.getByRole("button", {
+    name: /Source 1 · prores-proxy\.mov/i,
+  });
+  const secondSource = page.getByRole("button", {
+    name: /Source 2 · prores-proxy\.mov/i,
+  });
   await expect(firstSource).toBeVisible();
   await expect(secondSource).toBeVisible();
   await page.setViewportSize({ width: 320, height: 800 });
