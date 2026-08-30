@@ -679,6 +679,7 @@ func isFacebookVideoMime(mimeType string) bool {
 
 func facebookScopes() []string {
 	return []string{
+		"business_management",
 		"pages_show_list",
 		"pages_read_engagement",
 		"pages_manage_engagement",
