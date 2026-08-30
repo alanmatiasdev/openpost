@@ -816,18 +816,17 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 		const limit = (item.sourceDuration ?? end) - (end - start);
 		const next = Math.min(Math.max(start + deltaSourceFrames, 0), Math.max(limit, 0));
 		const sourceDelta = next - start;
+		const patch: Partial<TimelineItem> = {
+			sourceStart: next,
+			sourceEnd: next + (end - start)
+		};
+		if (item.speedRamp?.length) {
+			patch.speedRamp = shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta);
+		}
 		timelineStore._updateItems([
 			{
 				id,
-				patch: {
-					sourceStart: next,
-					sourceEnd: next + (end - start),
-					...(item.speedRamp?.length
-						? {
-								speedRamp: shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta)
-							}
-						: {})
-				}
+				patch
 			}
 		]);
 	});

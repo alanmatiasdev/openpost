@@ -313,13 +313,14 @@ export function planSlipGesture(
 			: Math.max(0, sourceDuration - windowFrames);
 	const nextStart = Math.min(Math.max(sourceStart + requestedDelta, 0), maxStart);
 	const sourceDelta = nextStart - sourceStart;
-	return {
+	const patch: Pick<TimelineItem, 'sourceStart' | 'sourceEnd' | 'speedRamp'> = {
 		sourceStart: nextStart,
-		sourceEnd: nextStart + windowFrames,
-		...(item.speedRamp?.length
-			? { speedRamp: shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta) }
-			: {})
+		sourceEnd: nextStart + windowFrames
 	};
+	if (item.speedRamp?.length) {
+		patch.speedRamp = shiftSpeedRampSourceFrames(item.speedRamp, sourceDelta);
+	}
+	return patch;
 }
 
 /** Plan one source-space slip across every still-synchronized linked clip. */
@@ -351,18 +352,17 @@ export function planLinkedSlipGesture(
 		participants.flatMap((participant) => {
 			if (participant.sourceEnd === undefined) return [];
 			const sourceStart = (participant.sourceStart ?? 0) + delta;
+			const patch: Partial<TimelineItem> = {
+				sourceStart,
+				sourceEnd: participant.sourceEnd + delta
+			};
+			if (participant.speedRamp?.length) {
+				patch.speedRamp = shiftSpeedRampSourceFrames(participant.speedRamp, delta);
+			}
 			return [
 				{
 					id: participant.id,
-					patch: {
-						sourceStart,
-						sourceEnd: participant.sourceEnd + delta,
-						...(participant.speedRamp?.length
-							? {
-									speedRamp: shiftSpeedRampSourceFrames(participant.speedRamp, delta)
-								}
-							: {})
-					}
+					patch
 				}
 			];
 		});
