@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Publish clearly.</strong>
+  <strong>Your socials, on steroids.</strong>
   <br>
   Create, adapt, schedule, and track social content from one workspace.
 </p>

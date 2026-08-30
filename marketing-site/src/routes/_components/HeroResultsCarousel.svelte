@@ -132,7 +132,7 @@
 								<span class="profile-mark">OP</span>
 								<strong>OpenPost</strong>
 								<span>@openpost</span>
-								<small>Build once. Publish clearly.</small>
+								<small>Your socials, on steroids.</small>
 							</span>
 							<span class="follower-row">
 								<span><strong>12.8K</strong><small>Followers</small></span>
