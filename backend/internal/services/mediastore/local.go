@@ -192,6 +192,11 @@ func (f *contextFile) Read(buffer []byte) (int, error) {
 	return f.File.Read(buffer)
 }
 
+// WriteTo keeps io.Copy from using os.File's context-blind fast path.
+func (f *contextFile) WriteTo(writer io.Writer) (int64, error) {
+	return io.Copy(writer, contextReader{ctx: f.ctx, reader: f.File})
+}
+
 type contextReader struct {
 	ctx    context.Context
 	reader io.Reader

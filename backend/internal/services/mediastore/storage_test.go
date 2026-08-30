@@ -138,6 +138,15 @@ func (r *failingReader) Read(buffer []byte) (int, error) {
 	return copy(buffer, "partial"), nil
 }
 
+type cancelAfterWrite struct {
+	cancel context.CancelFunc
+}
+
+func (w cancelAfterWrite) Write(buffer []byte) (int, error) {
+	w.cancel()
+	return len(buffer), nil
+}
+
 type cleanupStorage struct {
 	deleteContextErr error
 }
@@ -320,6 +329,24 @@ func TestLocalStorageReadsHonorCancellationAfterOpen(t *testing.T) {
 
 	_, err = io.ReadAll(reader)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestLocalStorageCopyStopsAfterCancellation(t *testing.T) {
+	storage := NewLocalStorage(t.TempDir(), "/media")
+	content := bytes.Repeat([]byte("a"), 1024*1024)
+	_, err := storage.Save(t.Context(), "media/object.bin", bytes.NewReader(content))
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	reader, err := storage.Open(ctx, "media/object.bin")
+	require.NoError(t, err)
+	defer reader.Close()
+
+	copied, err := io.Copy(cancelAfterWrite{cancel: cancel}, reader)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Positive(t, copied)
+	require.Less(t, copied, int64(len(content)))
 }
 
 func TestCompensatingDeleteSurvivesRequestCancellation(t *testing.T) {
