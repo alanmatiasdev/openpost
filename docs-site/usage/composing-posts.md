@@ -6,6 +6,14 @@ OpenPost uses one text-and-thread composer for every publication. Add another po
 
 The Workspace setup guide advances when you enter non-empty text, attach media, or intentionally add a thread post. Opening or focusing the composer, choosing a destination, and saving an empty draft do not count as starting a composition. This progress is stored once per Workspace and remains complete after refresh.
 
+## Build with AI
+
+Choose the destinations first so OpenPost can write a source draft and native Renditions for the accounts you selected. Use **Build with AI** when you already have an idea. Use **Ideate** when you want help finding one: add an optional brief, choose **Get ideas**, select an option, continue, then compare five distinct directions before you choose **Build native drafts**.
+
+The build runs as a durable Job. You can close the window, resume a running build, cancel it, or retry a stopped build without losing the selected idea, direction, or current attachments. OpenPost does not replace the composer while the Job runs. If you edit the draft before the result arrives, choose **Review and apply** to compare the versions or **Keep my edits** to leave the current draft unchanged.
+
+Review the shared draft and every destination Rendition before you schedule or publish. Self-hosted instances need `OPENROUTER_API_KEY`; see [Environment Variables](/configuration/environment-variables#core-settings) for the model, provider, and data-retention controls.
+
 ## Steps
 
 1. Write the shared content and add media.

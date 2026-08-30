@@ -51,7 +51,7 @@ The default per-workspace budget is $5.00 per UTC month. A request that would ma
 - `OPENPOST_X_POST_CREATE_COST_MICROUSD=15000`
 - `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD=200000`
 
-Review these prices when X changes its pay-per-use catalog. OpenPost exposes confirmed cost estimates and unresolved reserved exposure under **Settings → Plan & usage**. Reserved exposure protects the safety limit after an ambiguous result, but it is not presented as billed cost. X pricing and the X Developer Console remain authoritative.
+Review these prices when X changes its pay-per-use catalog. OpenPost exposes confirmed cost estimates and unresolved reserved exposure under **Settings → Organization → Plan & usage**. Reserved exposure protects the safety limit after an ambiguous result, but it is not presented as billed cost. X pricing and the X Developer Console remain authoritative.
 
 ## Monthly metrics
 

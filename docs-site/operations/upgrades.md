@@ -22,4 +22,4 @@ docker compose logs -f openpost
 
 ## Optional account features after upgrade
 
-Direct messages, Comments and replies, Analytics, and Grow are optional and per connected account. New accounts start with each feature off. Manage supported features in the Account details drawer under **Settings → Social accounts**. Existing accounts keep their current behavior: previous Inbox opt-ins become Direct messages choices, current Analytics and Engagement behavior remains enabled, Grow becomes enabled only where OpenPost already has stored Grow sync state, and other accounts receive explicit off choices.
+Direct messages, Comments and replies, Analytics, and Grow are optional and per connected account. New accounts start with each feature off. Manage supported features in the Account details drawer under **Settings → Workspace → Social accounts**. Existing accounts keep their current behavior: previous Inbox opt-ins become Direct messages choices, current Analytics and Engagement behavior remains enabled, Grow becomes enabled only where OpenPost already has stored Grow sync state, and other accounts receive explicit off choices.

@@ -48,8 +48,10 @@ test("structured data joins each page to the product, site, and real operator", 
   assert.equal(page["@type"], "AboutPage");
   assert.deepEqual(page.about, { "@id": "https://openpost.social/#software" });
   assert.equal(software.name, "OpenPost");
+  assert.equal(software.operatingSystem, "Web, Android");
   assert.deepEqual(software.sameAs, ["https://github.com/getopenpost/openpost"]);
   assert.equal(source.codeRepository, "https://github.com/getopenpost/openpost");
+  assert.deepEqual(source.runtimePlatform, ["Web", "Linux", "Android"]);
   assert.equal(operator.name, "Rodrigo Dias");
   assert.equal(operator.homeLocation.address.addressCountry, "PT");
   assert.equal(operator.contactPoint.url, "https://openpost.social/contact");

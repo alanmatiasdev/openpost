@@ -70,7 +70,7 @@ export function structuredDataForMarketingPage(entry: MarketingRouteEntry) {
 				name: 'OpenPost',
 				url: siteUrl,
 				applicationCategory: 'BusinessApplication',
-				operatingSystem: 'Web, iOS, Android',
+				operatingSystem: 'Web, Android',
 				description:
 					'An all-in-one social publishing workspace with a web app, HTTP API, CLI, MCP server, and self-hosted deployment option.',
 				softwareHelp: userDocsUrl,
@@ -94,7 +94,7 @@ export function structuredDataForMarketingPage(entry: MarketingRouteEntry) {
 				codeRepository: githubUrl,
 				programmingLanguage: ['Go', 'TypeScript', 'Svelte'],
 				license: `${githubUrl}/blob/main/LICENSE`,
-				runtimePlatform: ['Web', 'Linux', 'iOS', 'Android'],
+				runtimePlatform: ['Web', 'Linux', 'Android'],
 				about: { '@id': softwareId }
 			},
 			{

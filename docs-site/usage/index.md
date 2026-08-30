@@ -4,7 +4,7 @@ description: Learn how to connect accounts, create account versions, schedule pu
 
 # User Docs
 
-Use these docs to connect accounts, write account versions, schedule posts, track results, work with replies and messages, use the CLI, or let an AI tool help through MCP.
+Use these docs to connect accounts, build or write account versions, schedule posts, track results, work with replies and messages, use the CLI, or grant an AI tool access through MCP.
 
 Provider data, formats, and actions remain limited by the connected account and provider.
 
@@ -15,11 +15,11 @@ For a visual introduction, [watch the OpenPost product demo](https://youtu.be/_m
 The web app is the main place to work.
 
 - [Workspaces](/usage/workspaces) keep brands, accounts, prompts, schedules, and media separate.
-- [Settings](/usage/settings) explains the Workspace, Account, and Organization split.
+- [Settings](/usage/settings) explains the Personal, Workspace, Organization, and Instance split.
 - [Account Security](/usage/account-security) covers authenticator setup, one-time recovery codes, passkeys, and secure replacement or removal.
 - [Accounts](/usage/accounts) explains how connected social accounts appear in a workspace.
-- [Agent-Assisted Publishing](/usage/agent-assisted-publishing) shows how an MCP tool can prepare account versions while a person reviews the work.
-- [Composing Posts](/usage/composing-posts) covers account selection, media, account versions, and the editor.
+- [Composing Posts](/usage/composing-posts) covers built-in AI drafting, account selection, media, account versions, and the editor.
+- [Agent-Assisted Publishing](/usage/agent-assisted-publishing) shows how an external MCP tool can prepare account versions while a person reviews the work.
 - [Threads](/usage/threads) covers multi-post sequences.
 - [Scheduling](/usage/scheduling) covers posting times, status, and errors.
 - [Auto Reposts](/usage/auto-reposts) covers native repost rules, engagement gates, delays, per-post overrides, and cross-workspace account access.
