@@ -1,17 +1,33 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function readGitPaths(args, root) {
-  return execFileSync("git", [...args, "-z"], {
-    cwd: root,
-    encoding: "utf8",
-  })
-    .split("\0")
-    .filter(Boolean);
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "openpost-release-paths-"));
+  const outputPath = path.join(outputDirectory, "paths");
+  try {
+    execFileSync(
+      "sh",
+      [
+        "-c",
+        'output="$1"; shift; exec git "$@" -z > "$output"',
+        "openpost-read-git-paths",
+        outputPath,
+        ...args,
+      ],
+      {
+        cwd: root,
+        stdio: ["ignore", "ignore", "inherit"],
+      },
+    );
+    return readFileSync(outputPath, "utf8").split("\0").filter(Boolean);
+  } finally {
+    rmSync(outputDirectory, { recursive: true, force: true });
+  }
 }
 
 export function readReleaseSurfaceManifest(root = repositoryRoot) {

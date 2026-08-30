@@ -48,6 +48,23 @@ else
 fi
 
 gitleaks git "${redacted_flags[@]}" --log-opts="$log_options" "$root"
-gitleaks dir "${redacted_flags[@]}" "$root"
+
+snapshot_root="$(mktemp -d "${TMPDIR:-/tmp}/openpost-secret-scan.XXXXXX")"
+trap 'rm -rf -- "$snapshot_root"' EXIT
+tracked_snapshot="$snapshot_root/tracked"
+mkdir "$tracked_snapshot"
+
+while IFS= read -r -d '' path; do
+  if [ -f "./$path" ] || [ -L "./$path" ]; then
+    printf './%s\0' "$path"
+  fi
+done < <(git ls-files --cached -z) |
+  tar --no-recursion --null --files-from=- --create --file=- |
+  tar --extract --file=- --directory="$tracked_snapshot"
+
+gitleaks dir "${redacted_flags[@]}" \
+  --config "$tracked_snapshot/.gitleaks.toml" \
+  --gitleaks-ignore-path "$tracked_snapshot" \
+  "$tracked_snapshot"
 
 echo "secret-scan: candidate history and current files passed"
