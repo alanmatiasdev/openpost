@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept the composer AI action contrast readable while it changes from Ideate to Build with AI.
 - Reject the public secret shown by older binary-install instructions and generate independent JWT and encryption keys in the current guide.
 - Kept X OAuth callbacks working across mixed keyring rollout peers and removed expired plaintext request secrets during encryption-key rotation.
 - Refuse to start when JWT or encryption secrets still use tracked public example placeholders, and keep bootstrap and data-plane credentials deployment-owned.

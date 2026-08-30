@@ -105,10 +105,10 @@
 
 <style>
 	:global(.ai-action-button) {
-		transition-property: width, transform, box-shadow, background-color, border-color, color;
-		transition-duration: 400ms, 100ms, 140ms, 140ms, 140ms, 140ms;
-		transition-timing-function:
-			cubic-bezier(0.2, 0.8, 0.2, 1), ease-out, ease-out, ease-out, ease-out, ease-out;
+		/* Keep semantic foreground and surface pairs atomic so their transition never loses contrast. */
+		transition-property: width, transform, box-shadow;
+		transition-duration: 400ms, 100ms, 140ms;
+		transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1), ease-out, ease-out;
 	}
 
 	.ai-action-track {
@@ -117,7 +117,7 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		:global(.ai-action-button) {
-			transition-duration: 0ms, 100ms, 140ms, 140ms, 140ms, 140ms;
+			transition-duration: 0ms, 100ms, 140ms;
 		}
 
 		.ai-action-track {
