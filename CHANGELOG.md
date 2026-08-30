@@ -8,6 +8,12 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Refuse to start when JWT or encryption secrets still use tracked public example placeholders, and keep bootstrap and data-plane credentials deployment-owned.
+- Added rollback-safe, versioned encryption-key rotation with dual reads, bounded database re-encryption, and authenticated current-key verification across every persisted ciphertext store.
+- Hosted readiness now proves PostgreSQL and required S3 write, read, and delete access with bounded requests, while release CI exercises the production-shaped data plane without skipped PostgreSQL coverage.
+- Blob operations now honor cancellation without corrupting local files, failed media writes roll back with bounded cleanup, and PostgreSQL pools have role-specific budgets plus saturation signals.
+- Made shutdown drain readiness, HTTP requests, and workers under one deadline, while persisting interrupted job state with a fresh bounded context.
+- Serialized schema setup across PostgreSQL replicas and SQLite processes.
 - Kept the Video Editor preview and timeline visible while phone-sized asset and edit tools open in contextual panels.
 - Removed the duplicate Properties heading, exposed selected asset tabs to assistive technology, and enlarged coarse-pointer controls without bloating desktop controls.
 - Kept Video Editor slider keys inside inspector controls, restored draft values on Escape, and preserved visible focus rings.
@@ -29,6 +35,10 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Keep the mobile API schema current and publish Android builds with a monotonic version plus revision and APK digest evidence.
+- Align release Go and Bun toolchains, declare image and standalone media dependencies, and stop upgrading the pinned container base during builds.
+- Gate repository policy on redacted scans of both candidate commit history and current files.
+- Emit server and worker logs as revision-aware JSON on stdout and redact credential-shaped fields and values.
 - Kept the composer AI action anchored while it slides from Ideate to Build with AI as the draft gains text.
 - Open AI ideation in a compact brief dialog, then smoothly expand the same dialog into the full idea workspace.
 - Made short analytics series fill the available chart width.
@@ -41,6 +51,10 @@ All notable changes to this project are documented in this file.
 - Aligned editor panel headings and expanded editor hit areas for coarse pointers without enlarging their visual marks.
 - Expanded the Video Editor tool rail with Stock, text templates, shapes, effects, transitions, Lottie, transcript, and AI creation tools that can add or drag content to the timeline.
 - Added the full FreeCut-inspired effect and transition catalogs with live visual previews and responsive, resizable workspace panes.
+
+### Added
+
+- Added explicit `all`, `web`, `worker`, and `migrate` process roles so hosted deployments can migrate once and scale HTTP and durable jobs independently.
 
 ## [4.13.1] - 2026-08-30
 
