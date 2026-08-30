@@ -10011,6 +10011,8 @@ export interface components {
       database: string;
       /** @description Readiness status */
       status: string;
+      /** @description Required object storage dependency status */
+      storage?: string;
     };
     ReauthGrantOutputBody: {
       /**
