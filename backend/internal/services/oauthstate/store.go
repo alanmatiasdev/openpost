@@ -59,22 +59,15 @@ func (s *Store) Create(ctx context.Context, payload Payload) (string, error) {
 
 func (s *Store) Consume(ctx context.Context, state string) (*Payload, error) {
 	challenge := new(models.AuthChallenge)
-	if err := s.db.NewSelect().
+	if err := s.db.NewDelete().
 		Model(challenge).
 		Where("id = ?", state).
 		Where("type = ?", challengeType).
+		Returning("*").
 		Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidState
 		}
-		return nil, err
-	}
-
-	if _, err := s.db.NewDelete().
-		Model((*models.AuthChallenge)(nil)).
-		Where("id = ?", challenge.ID).
-		Where("type = ?", challengeType).
-		Exec(ctx); err != nil {
 		return nil, err
 	}
 

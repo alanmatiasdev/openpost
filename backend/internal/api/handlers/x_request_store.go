@@ -38,17 +38,16 @@ func (s *xRequestStore) Consume(requestToken string, maxAge time.Duration) (plat
 	ctx := context.Background()
 
 	record := new(models.XOAuthRequestToken)
-	err := s.db.NewSelect().Model(record).Where("request_token = ?", requestToken).Scan(ctx)
+	err := s.db.NewDelete().
+		Model(record).
+		Where("request_token = ?", requestToken).
+		Returning("*").
+		Scan(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return platform.XRequestMeta{}, false, nil
 		}
 		return platform.XRequestMeta{}, false, err
-	}
-
-	_, delErr := s.db.NewDelete().Model(record).Where("request_token = ?", requestToken).Exec(ctx)
-	if delErr != nil {
-		return platform.XRequestMeta{}, false, delErr
 	}
 
 	if time.Since(record.CreatedAt) > maxAge {
