@@ -1310,6 +1310,11 @@ test("public OpenPost Image Editor creates and restores a local design without a
   const title = page.getByRole("textbox", { name: "Design title" });
   await title.fill("Local launch design");
   await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-image-editor-1280.png",
+    fullPage: true,
+  });
 
   await page.reload();
   await expect(title).toHaveValue("Local launch design");
@@ -1335,6 +1340,10 @@ test("public OpenPost Image Editor creates and restores a local design without a
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-image-editor-390.png",
+    fullPage: true,
+  });
 
   const trackedEvents = await page.evaluate(
     () =>
