@@ -11,3 +11,4 @@
 
 - Matched meme caption sizing and line spacing to the pinned memegen renderer, retried transient previews, and made meme and discovery JSON generation use strict schemas with bounded recovery.
 - Kept rejected AI builds on direction selection, aligned generated directions with create limits, and made ideation start from one optional brief and an explicit choice.
+- Kept the AI workspace fully inside the viewport at desktop and mobile sizes.

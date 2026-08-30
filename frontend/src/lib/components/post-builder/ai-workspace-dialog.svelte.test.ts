@@ -83,6 +83,16 @@ function dialogProps(overrides: Partial<DialogProps> = {}): DialogProps {
 	};
 }
 
+async function expectWithinViewport(dialog: HTMLElement): Promise<void> {
+	await vi.waitFor(() => {
+		const bounds = dialog.getBoundingClientRect();
+		expect(bounds.left).toBeGreaterThanOrEqual(-0.5);
+		expect(bounds.top).toBeGreaterThanOrEqual(-0.5);
+		expect(bounds.right).toBeLessThanOrEqual(window.innerWidth + 0.5);
+		expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight + 0.5);
+	});
+}
+
 describe('AI workspace dialog', () => {
 	it('waits for Continue after an opportunity is selected', async () => {
 		await page.viewport(1280, 900);
@@ -107,6 +117,7 @@ describe('AI workspace dialog', () => {
 		expect(onContinue).toHaveBeenCalledOnce();
 		const dialog = document.querySelector<HTMLElement>('[data-testid="ai-workspace-dialog"]');
 		if (!dialog) throw new Error('AI workspace dialog did not render.');
+		await expectWithinViewport(dialog);
 		await page.screenshot({
 			element: dialog,
 			path: '../../../.svelte-kit/openpost-ai-workspace-opportunities-1280.png'
@@ -161,6 +172,7 @@ describe('AI workspace dialog', () => {
 		await expect.element(screen.getByRole('button', { name: copy.cancel })).not.toBeInTheDocument();
 		const dialog = document.querySelector<HTMLElement>('[data-testid="ai-workspace-dialog"]');
 		if (!dialog) throw new Error('AI workspace dialog did not render.');
+		await expectWithinViewport(dialog);
 		await page.screenshot({
 			element: dialog,
 			path: '../../../.svelte-kit/openpost-ai-workspace-rejection-390.png'
@@ -184,6 +196,10 @@ describe('AI workspace dialog', () => {
 		});
 
 		await expect.element(screen.getByTestId('ai-opportunity-grid')).not.toBeInTheDocument();
+		const dialog = document.querySelector<HTMLElement>('[data-testid="ai-workspace-dialog"]');
+		if (!dialog) throw new Error('AI workspace dialog did not render.');
+		await expectWithinViewport(dialog);
+		expect(dialog.getBoundingClientRect().height).toBeLessThan(window.innerHeight * 0.75);
 		await screen.getByRole('button', { name: copy.getIdeas }).click();
 		expect(onDiscover).toHaveBeenCalledOnce();
 	});

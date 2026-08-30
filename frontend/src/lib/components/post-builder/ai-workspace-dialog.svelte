@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import { cn } from '$lib/utils';
 	import AIAngleGrid from './ai-angle-grid.svelte';
 	import AIGenerationProgress from './ai-generation-progress.svelte';
 	import AIOpportunityGrid from './ai-opportunity-grid.svelte';
@@ -99,7 +100,12 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="top-0 left-0 flex h-dvh max-h-dvh max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 sm:top-1/2 sm:left-1/2 sm:h-[min(760px,calc(100dvh-2rem))] sm:w-[min(96vw,90rem)] sm:max-w-[90rem] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl"
+		class={cn(
+			'flex flex-col gap-0 overflow-hidden p-0',
+			step === 'brief'
+				? 'h-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] max-w-[42rem] rounded-xl'
+				: 'h-dvh max-h-dvh max-w-none rounded-none sm:h-[min(760px,calc(100dvh-2rem))] sm:w-[min(96vw,90rem)] sm:max-w-[90rem] sm:rounded-xl'
+		)}
 		data-testid="ai-workspace-dialog"
 	>
 		<Dialog.Header class="shrink-0 border-b px-4 py-3 pr-14 text-left sm:px-6 sm:py-4">
