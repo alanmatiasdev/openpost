@@ -14,9 +14,15 @@ Expected release assets:
 
 ## 2. Create `.env`
 
-Create a working directory and write a complete `.env` file:
+Create a working directory, generate two independent secrets, and write a
+private `.env` file:
 
-```dotenv
+```bash
+umask 077
+jwt_secret="$(openssl rand -hex 32)"
+encryption_key="$(openssl rand -hex 32)"
+
+cat > .env <<EOF
 OPENPOST_PORT=8080
 OPENPOST_DATABASE_PATH=/var/lib/openpost/openpost.db
 OPENPOST_MEDIA_PATH=/var/lib/openpost/media
@@ -24,8 +30,8 @@ OPENPOST_APP_URL=https://social.example.com
 OPENPOST_PUBLIC_URL=https://social.example.com
 OPENPOST_MEDIA_URL=https://social.example.com/media
 
-OPENPOST_JWT_SECRET=replace-with-a-random-secret-at-least-32-characters-long
-OPENPOST_ENCRYPTION_KEY=replace-with-a-random-secret-at-least-32-characters-long
+OPENPOST_JWT_SECRET=${jwt_secret}
+OPENPOST_ENCRYPTION_KEY=${encryption_key}
 
 # Optional but commonly useful
 OPENPOST_DISABLE_REGISTRATIONS=false
@@ -38,6 +44,9 @@ OPENPOST_DISABLE_REGISTRATIONS=false
 # LINKEDIN_CLIENT_SECRET=
 # THREADS_CLIENT_ID=
 # THREADS_CLIENT_SECRET=
+EOF
+
+unset jwt_secret encryption_key
 ```
 
 ## 3. Prepare production paths

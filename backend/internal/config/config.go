@@ -1224,6 +1224,8 @@ func Init() {
 }
 
 func validateBootstrapSecrets(jwtSecret, encryptionKey string) error {
+	const documentedRandomSecretPlaceholder = "replace-with-a-random-secret-at-least-32-characters-long"
+
 	for _, secret := range []struct {
 		name  string
 		value string
@@ -1237,7 +1239,8 @@ func validateBootstrapSecrets(jwtSecret, encryptionKey string) error {
 		if len(secret.value) < minSecretLength {
 			return fmt.Errorf("FATAL: %s must be at least %d characters (got %d)", secret.name, minSecretLength, len(secret.value))
 		}
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(secret.value)), "change-this-") {
+		normalized := strings.ToLower(strings.TrimSpace(secret.value))
+		if strings.HasPrefix(normalized, "change-this-") || normalized == documentedRandomSecretPlaceholder {
 			return fmt.Errorf("FATAL: %s must not use a public example placeholder", secret.name)
 		}
 	}

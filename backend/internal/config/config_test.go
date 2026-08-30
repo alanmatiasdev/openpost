@@ -1152,6 +1152,7 @@ func TestWarnOnPlaceholderURLOnlyWarnsForImplicitDefault(t *testing.T) {
 func TestValidateBootstrapSecretsRejectsTrackedExamplePlaceholdersWithoutEchoingThem(t *testing.T) {
 	jwtPlaceholder := "change-this-jwt-secret-min-32-chars"
 	encryptionPlaceholder := "change-this-encryption-key-32chars"
+	documentedPlaceholder := "replace-with-a-random-secret-at-least-32-characters-long"
 
 	err := validateBootstrapSecrets(jwtPlaceholder, strings.Repeat("e", minSecretLength))
 	require.ErrorContains(t, err, "OPENPOST_JWT_SECRET")
@@ -1162,6 +1163,21 @@ func TestValidateBootstrapSecretsRejectsTrackedExamplePlaceholdersWithoutEchoing
 	require.ErrorContains(t, err, "OPENPOST_ENCRYPTION_KEY")
 	require.ErrorContains(t, err, "public example placeholder")
 	require.NotContains(t, err.Error(), encryptionPlaceholder)
+
+	for _, secrets := range []struct {
+		name       string
+		jwt        string
+		encryption string
+	}{
+		{name: "JWT", jwt: documentedPlaceholder, encryption: strings.Repeat("e", minSecretLength)},
+		{name: "encryption", jwt: strings.Repeat("j", minSecretLength), encryption: documentedPlaceholder},
+	} {
+		t.Run("documented "+secrets.name+" placeholder", func(t *testing.T) {
+			err := validateBootstrapSecrets(secrets.jwt, secrets.encryption)
+			require.ErrorContains(t, err, "public example placeholder")
+			require.NotContains(t, err.Error(), documentedPlaceholder)
+		})
+	}
 }
 
 func TestValidateBootstrapSecretsAcceptsIndependentGeneratedValues(t *testing.T) {
