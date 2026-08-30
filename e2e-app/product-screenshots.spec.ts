@@ -1043,13 +1043,13 @@ test.describe("product screenshot capture", () => {
     await page
       .locator("#post-textarea-0")
       .fill(
-        "Approval prompts FEEL safe because they ask a human.\n\nBut the human is usually tired and doesn't want to read a huge confusing bash command.\n\nWelp...",
+        "One launch, every channel.\n\nAdapt the message for each destination, schedule it once, and see what shipped.",
       );
     const composer = page.getByTestId("text-thread-composer-content");
     await composer.getByRole("button", { name: "Add media" }).click();
     const mediaPicker = page.getByRole("dialog");
     await mediaPicker.getByRole("tab", { name: "Library" }).click();
-    await mediaPicker.getByRole("button", { name: "Select command-review.png" }).click();
+    await mediaPicker.getByRole("button", { name: "Select openpost-workflow.png" }).click();
     await mediaPicker.getByRole("button", { name: "Add media", exact: true }).click();
     await expect(composer.getByRole("button", { name: "Remove media" })).toBeVisible();
     await expect(page.getByTestId("composer-primary-delivery-action")).toBeVisible();
@@ -1108,12 +1108,17 @@ test.describe("product screenshot capture", () => {
     const imageEditorStage = page.getByTestId("image-editor-stage");
     await expect(imageEditorStage).toBeVisible();
     await page.getByRole("textbox", { name: "Design title" }).fill("Launch carousel");
-    const imageHeadline = page.getByRole("treeitem", {
+    const originalImageHeadline = page.getByRole("treeitem", {
       name: /How to get it done, text/u,
     });
-    await imageHeadline.click();
+    await originalImageHeadline.click();
     const imageProperties = page.locator(".image-editor-inspector");
+    await imageProperties.getByRole("textbox", { name: "Layer name" }).fill("Publish clearly.");
+    await imageProperties.getByRole("textbox", { name: "Layer name" }).press("Tab");
     await imageProperties.locator("textarea").fill("Publish clearly.");
+    const imageHeadline = page.getByRole("treeitem", {
+      name: /Publish clearly\., text/u,
+    });
     const imageSubline = page.getByRole("treeitem", {
       name: /A focused five-page walkthrough\., text/u,
     });
@@ -1164,6 +1169,12 @@ test.describe("product screenshot capture", () => {
     await videoTextSpans.nth(1).fill("Publish clearly.");
     await videoTextSpans.nth(2).fill("Create once. Adapt each version.");
     await videoTextSpans.nth(2).press("Tab");
+    await videoInspector.locator(".template-strip").evaluate((element) => {
+      const eventTemplate = element.querySelector<HTMLElement>('button[aria-label="Apply Event"]');
+      if (!eventTemplate) throw new Error("Event text template is missing");
+      element.scrollLeft +=
+        eventTemplate.getBoundingClientRect().left - element.getBoundingClientRect().left;
+    });
     await expect(page.locator("[data-program-monitor]")).toBeVisible();
     await capture(page, "video-editor-dark.png", [
       page.locator("[data-program-monitor]"),
