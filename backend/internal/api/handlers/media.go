@@ -1562,7 +1562,7 @@ func (h *MediaHandler) completeDirectMediaUpload(ctx context.Context, userID, wo
 	}
 
 	fileHash := inspection.FileHash
-	if mediaSourceSupportsDeduplication(media.Source) && media.AssetKind == "library" {
+	if directMediaUploadSupportsDeduplication(media) {
 		if existing, found, err := h.findDuplicateMedia(ctx, workspaceID, fileHash, media.ID); err != nil {
 			return result, err
 		} else if found {
@@ -1598,7 +1598,7 @@ func (h *MediaHandler) resolveDirectUploadDeduplication(
 	fileHash string,
 	media models.MediaAttachment,
 ) (MediaUploadResult, bool) {
-	if !mediaSourceSupportsDeduplication(media.Source) || media.AssetKind != "library" {
+	if !directMediaUploadSupportsDeduplication(media) {
 		return MediaUploadResult{}, false
 	}
 	existing, found, err := h.findDuplicateMedia(ctx, workspaceID, fileHash, media.ID)
@@ -1613,6 +1613,10 @@ func (h *MediaHandler) resolveDirectUploadDeduplication(
 		return MediaUploadResult{}, false
 	}
 	return mediaUploadResultFromAttachment(existing, true), true
+}
+
+func directMediaUploadSupportsDeduplication(media models.MediaAttachment) bool {
+	return mediaSourceSupportsDeduplication(media.Source) && media.AssetKind == "library"
 }
 
 func (h *MediaHandler) loadDirectMediaUpload(ctx context.Context, userID, workspaceID, mediaID string) (models.MediaAttachment, error) {
