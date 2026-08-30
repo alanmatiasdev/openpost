@@ -214,7 +214,7 @@
 			</div>
 
 			<div
-				class="overflow-hidden rounded-lg border bg-muted/15 sm:grid sm:grid-cols-[minmax(0,1fr)_9rem]"
+				class="overflow-hidden rounded-lg border bg-muted/15 sm:grid sm:h-92 sm:grid-cols-[minmax(0,1fr)_9rem]"
 			>
 				<div class="flex justify-center p-3 sm:p-4">
 					<Calendar
@@ -228,13 +228,13 @@
 						{weekStartsOn}
 					/>
 				</div>
-				<div class="border-t sm:border-t-0 sm:border-l">
-					<div class="border-b px-3 py-2 text-center text-sm font-medium">
+				<div class="border-t sm:flex sm:min-h-0 sm:flex-col sm:border-t-0 sm:border-l">
+					<div class="shrink-0 border-b px-3 py-2 text-center text-sm font-medium">
 						{m.compose_time()}
 					</div>
 					<div
 						data-testid="schedule-dialog-time-list"
-						class="max-h-52 overflow-y-auto p-2 sm:max-h-72"
+						class="max-h-52 overflow-y-auto p-2 sm:max-h-none sm:min-h-0 sm:flex-1"
 					>
 						{#if timeSlots.length === 0}
 							<p class="px-2 py-6 text-center text-xs text-muted-foreground">
