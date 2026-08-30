@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.13.0] - 2026-08-30
+
+### Fixed
+
+- Kept transcript word shortcuts inside transcript editing, added keyboard access to word menus, and preserved Space playback while transcript words are focused.
+- Prevented growth discovery jobs from deadlocking on SQLite single-connection deployments when initializing sync state for newly connected social accounts.
+- Rebuilt Quick Cut segment controls so time ranges, cut mode, preview, and export stay readable on desktop and mobile, and kept mobile notifications within the viewport.
+
+### Added
+
+- Added source-anchored speed curves with linked audio/video editing, exact transcript and split mapping, pitch-preserving preview, and bounded variable-tempo export.
+
 ## [4.12.0] - 2026-08-30
 
 ### Changed
