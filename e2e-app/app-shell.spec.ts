@@ -141,7 +141,10 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(await composerDeliveryAction(page, "Schedule")).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Version history", exact: true }).click();
+  await page.getByRole("button", { name: "Post settings", exact: true }).click();
+  const composerSettings = page.getByTestId("composer-settings-sheet");
+  await expect(composerSettings).toBeVisible();
+  await composerSettings.getByRole("button", { name: "Version history", exact: true }).click();
   const historyDrawer = page.getByTestId("publication-history-drawer");
   const historyScroll = page.getByTestId("publication-history-scroll");
   await expect(historyDrawer).toBeVisible();

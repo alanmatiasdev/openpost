@@ -19,7 +19,6 @@
 	import { getLocaleTag } from '$lib/i18n';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import CopyIcon from '@lucide/svelte/icons/copy';
-	import HistoryIcon from '@lucide/svelte/icons/history';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 
 	type Publication = components['schemas']['PublicationResponse'];
@@ -188,13 +187,8 @@
 	>
 </svelte:head>
 
-{#snippet copyAsDraftButton(compact: boolean)}
-	<Button
-		variant="outline"
-		size={compact ? 'sm' : 'default'}
-		onclick={copyAsDraft}
-		disabled={copying}
-	>
+{#snippet copyAsDraftButton()}
+	<Button variant="outline" onclick={copyAsDraft} disabled={copying}>
 		{#if copying}
 			<LoaderCircleIcon class="mr-1.5 size-4 animate-spin" />
 			{m.publication_copying()}
@@ -235,7 +229,7 @@
 						: m.activity_dismiss_failed()}
 				</Button>
 			{/if}
-			{@render copyAsDraftButton(false)}
+			{@render copyAsDraftButton()}
 			<Button variant="outline" onclick={() => history.back()}>
 				<ArrowLeftIcon class="mr-1.5 size-4" />
 				{m.common_back()}
@@ -300,15 +294,6 @@
 	</PageContainer>
 {:else if publication}
 	<div class="flex flex-1 flex-col overflow-hidden">
-		<div class="flex shrink-0 justify-end gap-2 border-b px-3 py-2 sm:px-4">
-			{#if publication.status === 'scheduled'}
-				{@render copyAsDraftButton(true)}
-			{/if}
-			<Button variant="ghost" size="sm" onclick={() => (historyOpen = true)}>
-				<HistoryIcon class="mr-1.5 size-4" />
-				{m.image_editor_version_history()}
-			</Button>
-		</div>
 		{#if copyError}
 			<div class="shrink-0 px-3 pt-2 sm:px-4">
 				<InlineNotice tone="error" message={copyError} />
@@ -320,6 +305,9 @@
 			{initialMediaIds}
 			onSuccess={handleSuccess}
 			onDeleted={handleSuccess}
+			onOpenVersionHistory={() => (historyOpen = true)}
+			onCopyAsDraft={publication.status === 'scheduled' ? copyAsDraft : undefined}
+			copyingDraft={copying}
 		/>
 		<Sheet.Root bind:open={historyOpen}>
 			<Sheet.Content
