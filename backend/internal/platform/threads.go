@@ -17,10 +17,8 @@ import (
 )
 
 type ThreadsAdapter struct {
-	config        *oauth2.Config
-	stateStore    sync.Map
-	lastUserID    string
-	lastUserIDMux sync.Mutex
+	config     *oauth2.Config
+	stateStore sync.Map
 }
 
 func NewThreadsAdapter(clientID, clientSecret, redirectURI string) *ThreadsAdapter {
@@ -98,14 +96,11 @@ func (t *ThreadsAdapter) ExchangeCode(ctx context.Context, code string, _ map[st
 
 	userID := tokenResp.UserID.String()
 
-	t.lastUserIDMux.Lock()
-	t.lastUserID = userID
-	t.lastUserIDMux.Unlock()
-
 	longLived, err := t.exchangeLongLivedToken(ctx, tokenResp.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("threads long-lived exchange: %w", err)
 	}
+	longLived.Extra["user_id"] = userID
 
 	return longLived, nil
 }
@@ -135,8 +130,7 @@ func (t *ThreadsAdapter) exchangeLongLivedToken(ctx context.Context, shortLivedT
 		ExpiresIn:   tokenResp.ExpiresIn,
 		TokenType:   tokenTypeBearer,
 		Extra: map[string]string{
-			"user_id": t.lastUserID,
-			"scope":   strings.Join(t.config.Scopes, " "),
+			"scope": strings.Join(t.config.Scopes, " "),
 		},
 	}, nil
 }
