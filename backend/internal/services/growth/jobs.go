@@ -530,4 +530,3 @@ func (s *Service) loadSyncStateDB(ctx context.Context, db bun.IDB, socialAccount
 	}
 	return &state, nil
 }
-

@@ -568,7 +568,7 @@ func TestJobPayloadValidation(t *testing.T) {
 
 func TestDiscoveryInitialSyncStateSingleConnection(t *testing.T) {
 	db := growthTestDB(t)
-	db.DB.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(1)
 	seedGrowthWorkspace(t, db, "ws-1", "user-1", models.WorkspaceRoleEditor)
 	now := time.Now().UTC()
 	_, err := db.NewInsert().Model(&models.SocialAccount{
@@ -601,4 +601,3 @@ func TestDiscoveryInitialSyncStateSingleConnection(t *testing.T) {
 	require.NotNil(t, state)
 	require.Equal(t, models.GrowthSyncStatusOK, state.Status)
 }
-
