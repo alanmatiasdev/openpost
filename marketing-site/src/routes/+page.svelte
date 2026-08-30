@@ -23,11 +23,10 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-16 text-center sm:pt-24 sm:pb-20 lg:pt-28">
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
-			Publish <span>clearly.</span>
+			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			For solo founders who want one workspace for social publishing. Create one publication, adapt
-			it for each destination, and schedule it from one workspace.
+			Write once. Adjust for each channel. Publish on schedule.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">

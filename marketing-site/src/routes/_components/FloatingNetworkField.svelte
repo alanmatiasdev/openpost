@@ -380,52 +380,91 @@
 		}
 
 		.network-orbit:nth-child(1) {
-			top: 7%;
-			left: 3%;
+			top: 5%;
+			left: 2.5%;
 		}
 		.network-orbit:nth-child(2) {
-			top: 92%;
-			left: 4.5%;
+			top: 94%;
+			left: 5.25%;
 		}
 		.network-orbit:nth-child(3) {
-			top: 24%;
-			left: 4.5%;
+			top: 22%;
+			left: 5.5%;
 		}
 		.network-orbit:nth-child(4) {
-			top: 41%;
-			left: 3%;
+			top: 43%;
+			left: 2.75%;
 		}
 		.network-orbit:nth-child(5) {
-			top: 7%;
+			top: 11%;
 			left: 97%;
 		}
 		.network-orbit:nth-child(6) {
-			top: 24%;
-			left: 95.5%;
+			top: 29%;
+			left: 94.75%;
 		}
 		.network-orbit:nth-child(7) {
-			top: 41%;
-			left: 97%;
+			top: 46%;
+			left: 97.5%;
 		}
 		.network-orbit:nth-child(8) {
-			top: 58%;
-			left: 95.5%;
+			top: 64%;
+			left: 94.5%;
 		}
 		.network-orbit:nth-child(9) {
-			top: 58%;
-			left: 4.5%;
+			top: 61%;
+			left: 5.25%;
 		}
 		.network-orbit:nth-child(10) {
-			top: 75%;
+			top: 82%;
 			left: 97%;
 		}
 		.network-orbit:nth-child(11) {
-			top: 75%;
-			left: 3%;
+			top: 78%;
+			left: 2.5%;
 		}
 		.network-orbit:nth-child(12) {
-			top: 92%;
+			top: 96%;
 			left: 95.5%;
+		}
+	}
+
+	@media (min-width: 64rem) {
+		.network-orbit:nth-child(1) {
+			left: 4%;
+		}
+		.network-orbit:nth-child(2) {
+			left: 8%;
+		}
+		.network-orbit:nth-child(3) {
+			left: 7.5%;
+		}
+		.network-orbit:nth-child(4) {
+			left: 2.5%;
+		}
+		.network-orbit:nth-child(5) {
+			left: 96.5%;
+		}
+		.network-orbit:nth-child(6) {
+			left: 92%;
+		}
+		.network-orbit:nth-child(7) {
+			left: 97.5%;
+		}
+		.network-orbit:nth-child(8) {
+			left: 92%;
+		}
+		.network-orbit:nth-child(9) {
+			left: 6%;
+		}
+		.network-orbit:nth-child(10) {
+			left: 95%;
+		}
+		.network-orbit:nth-child(11) {
+			left: 3.5%;
+		}
+		.network-orbit:nth-child(12) {
+			left: 92.5%;
 		}
 	}
 
