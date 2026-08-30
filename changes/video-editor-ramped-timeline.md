@@ -1,6 +1,3 @@
----
-type: fix
-area: video-editor
----
+### Fixed
 
-Keep source-anchored speed curves attached during slip edits, and map timeline waveforms and filmstrips through variable-speed playback.
+- Kept source-anchored speed curves attached during slip edits, and mapped timeline waveforms and filmstrips through variable-speed playback.
