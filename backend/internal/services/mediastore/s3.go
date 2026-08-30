@@ -403,32 +403,53 @@ func (s *S3Storage) GetURL(id string) string {
 }
 
 func (s *S3Storage) Open(ctx context.Context, id string) (io.ReadCloser, error) {
-	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(cleanObjectKey(id)),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return out.Body, nil
+	return s.open(ctx, id, "")
 }
 
 func (s *S3Storage) OpenRange(ctx context.Context, id string, offset int64) (io.ReadCloser, error) {
 	if offset < 0 {
 		return nil, fmt.Errorf("invalid media offset %d", offset)
 	}
+	byteRange := ""
+	if offset > 0 {
+		byteRange = fmt.Sprintf("bytes=%d-", offset)
+	}
+	return s.open(ctx, id, byteRange)
+}
+
+func (s *S3Storage) open(ctx context.Context, id, byteRange string) (io.ReadCloser, error) {
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(cleanObjectKey(id)),
 	}
-	if offset > 0 {
-		input.Range = aws.String(fmt.Sprintf("bytes=%d-", offset))
+	if byteRange != "" {
+		input.Range = aws.String(byteRange)
 	}
-	out, err := s.client.GetObject(ctx, input)
+	getCtx, cancel := s.callContext(ctx)
+	out, err := s.client.GetObject(getCtx, input)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	return out.Body, nil
+	return &cancelReadCloser{ReadCloser: out.Body, cancel: cancel}, nil
+}
+
+type cancelReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelReadCloser) Read(buffer []byte) (int, error) {
+	read, err := r.ReadCloser.Read(buffer)
+	if err != nil {
+		r.cancel()
+	}
+	return read, err
+}
+
+func (r *cancelReadCloser) Close() error {
+	r.cancel()
+	return r.ReadCloser.Close()
 }
 
 func (s *S3Storage) CreateDirectUploadSession(ctx context.Context, input DirectUploadInput) (*DirectUploadSession, error) {

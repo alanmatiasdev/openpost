@@ -49,6 +49,25 @@ type contextInspectS3Client struct {
 	sawDeadline bool
 }
 
+type stalledReadS3Client struct {
+	fakeS3Client
+}
+
+type contextBoundReadCloser struct {
+	ctx context.Context
+}
+
+func (r *contextBoundReadCloser) Read(_ []byte) (int, error) {
+	<-r.ctx.Done()
+	return 0, r.ctx.Err()
+}
+
+func (*contextBoundReadCloser) Close() error { return nil }
+
+func (c *stalledReadS3Client) GetObject(ctx context.Context, _ *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return &s3.GetObjectOutput{Body: &contextBoundReadCloser{ctx: ctx}}, nil
+}
+
 func (c *contextInspectS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, options ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	_, c.sawDeadline = ctx.Deadline()
 	return c.fakeS3Client.PutObject(ctx, input, options...)
@@ -498,6 +517,44 @@ func TestS3StorageBoundsSmallRemoteRequests(t *testing.T) {
 	_, err := storage.Save(context.Background(), "media/long-upload.bin", bytes.NewBufferString("content"))
 	require.NoError(t, err)
 	require.True(t, client.sawDeadline)
+}
+
+func TestS3StorageBoundsResponseBodyReads(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		open func(context.Context, *S3Storage) (io.ReadCloser, error)
+	}{
+		{
+			name: "full object",
+			open: func(ctx context.Context, storage *S3Storage) (io.ReadCloser, error) {
+				return storage.Open(ctx, "media/stalled.bin")
+			},
+		},
+		{
+			name: "range",
+			open: func(ctx context.Context, storage *S3Storage) (io.ReadCloser, error) {
+				return storage.OpenRange(ctx, "media/stalled.bin", 1)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			storage := newS3StorageWithClient(&stalledReadS3Client{}, S3Config{
+				Bucket:         "openpost-media",
+				RequestTimeout: 25 * time.Millisecond,
+			})
+			callerCtx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+			defer cancel()
+			reader, err := test.open(callerCtx, storage)
+			require.NoError(t, err)
+			defer reader.Close()
+
+			startedAt := time.Now()
+			_, err = reader.Read(make([]byte, 1))
+
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Less(t, time.Since(startedAt), 250*time.Millisecond)
+		})
+	}
 }
 
 func TestS3MultipartUploadCanOutliveOneRemoteCallBudget(t *testing.T) {
