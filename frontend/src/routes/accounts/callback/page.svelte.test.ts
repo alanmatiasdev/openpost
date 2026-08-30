@@ -79,7 +79,7 @@ describe('account OAuth callback selection flow', () => {
 			)
 			.toBeVisible();
 		await expect.element(screen.getByText('OpenPost Page')).toBeVisible();
-		await expect.element(screen.getByText('@openpost · page')).toBeVisible();
+		expect(screen.container.textContent).toMatch(/Facebook\s*·\s*openpost\s*·\s*page/);
 		await expect.element(screen.getByText('followers: 1,240')).toBeVisible();
 		await expect
 			.element(screen.getByText(/This deadline only applies to this selection step/))
