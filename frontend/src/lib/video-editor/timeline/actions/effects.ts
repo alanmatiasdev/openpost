@@ -32,7 +32,8 @@ import {
 } from '$lib/video-editor/effects/color-grade';
 import { removeEffectKeyframes } from '$lib/video-editor/effects/effect-keyframes';
 import { timelineStore } from '../stores/timeline-store.svelte';
-import { execute } from '../commands/command-store.svelte';
+import { execute, executeAtomic } from '../commands/command-store.svelte';
+import { addAdjustmentLayer, type AddAdjustmentLayerOptions } from './items';
 
 /** Append a new enabled effect with its default amount. One undoable step. */
 export function addEffect(itemId: string, type: CssFilterType): boolean {
@@ -130,6 +131,21 @@ export function addEffectTemplates(
 		},
 		{ count: uniqueItemIds.length }
 	);
+}
+
+/** Create an adjustment layer with its initial stack as one undoable action. */
+export function addAdjustmentLayerWithEffects(
+	label: string,
+	templates: readonly EffectTemplate[],
+	options: AddAdjustmentLayerOptions = {}
+): string {
+	return executeAtomic('ADD_ADJUSTMENT_LAYER_WITH_EFFECTS', () => {
+		const itemId = addAdjustmentLayer(label, options);
+		if (templates.length > 0 && !addEffectTemplates([itemId], templates)) {
+			throw new Error('The adjustment effect stack could not be created.');
+		}
+		return itemId;
+	});
 }
 
 /** Toggle one GPU effect's enabled flag. One undoable step. */

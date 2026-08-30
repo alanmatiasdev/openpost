@@ -6,7 +6,7 @@
  * aligned with linked selection, transitions, and sync-lock ripple rules.
  */
 
-import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
+import type { ShapeType, TextStylePresetId, TimelineItem } from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { detachTransformChildrenForRemoval } from './transform-parenting';
 import { editorSession } from '../../editor.svelte';
@@ -42,6 +42,10 @@ import {
 	findForwardOpenTrackShift,
 	updatesIntroduceExclusiveTrackOverlap
 } from '../track-occupancy';
+import {
+	buildTextStylePresetTemplate,
+	type TextStylePresetCopy
+} from '../../typography/text-style-presets';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -81,7 +85,11 @@ export function addTextItem(label: string): string {
 	});
 }
 
-export function addTextItemAtFrame(label: string, frame: number): string {
+export function addTextItemAtFrame(
+	label: string,
+	frame: number,
+	preferredTrackId?: string
+): string {
 	return execute('ADD_TEXT_ITEM', () => {
 		if (
 			!effectiveMediaTracks(timelineStore.tracks).some(
@@ -96,7 +104,8 @@ export function addTextItemAtFrame(label: string, frame: number): string {
 			itemType: 'text',
 			from: frame,
 			durationInFrames,
-			label
+			label,
+			preferredTrackId
 		});
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
@@ -106,6 +115,52 @@ export function addTextItemAtFrame(label: string, frame: number): string {
 			durationInFrames,
 			label,
 			text: label,
+			type: 'text'
+		});
+		return id;
+	});
+}
+
+export function addTextTemplateItem(
+	presetId: TextStylePresetId,
+	copy: TextStylePresetCopy,
+	placement: { frame?: number; preferredTrackId?: string } = {}
+): string {
+	return execute('ADD_TEXT_ITEM', () => {
+		if (
+			!effectiveMediaTracks(timelineStore.tracks).some(
+				(track) => track.kind !== 'audio' && !track.locked
+			)
+		) {
+			throw new Error('An unlocked visual track is required to add text.');
+		}
+		const from = placement.frame ?? timelineStore.currentFrame;
+		const durationInFrames = timelineStore.fps * 3;
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'text',
+			from,
+			durationInFrames,
+			label: copy.label,
+			preferredTrackId: placement.preferredTrackId
+		});
+		const projectWidth = editorSession.project?.metadata.width ?? 1920;
+		const projectHeight = editorSession.project?.metadata.height ?? 1080;
+		const template = buildTextStylePresetTemplate(
+			presetId,
+			{ width: projectWidth, height: projectHeight },
+			1,
+			copy
+		);
+		const id = crypto.randomUUID();
+		timelineStore._addItem({
+			...template,
+			id,
+			trackId: targetTrack.id,
+			from,
+			durationInFrames,
+			label: template.label ?? copy.label,
+			text: template.text ?? copy.sample.title,
 			type: 'text'
 		});
 		return id;
@@ -156,8 +211,22 @@ const SHAPE_LABELS = {
 	path: 'Path'
 } satisfies Record<ShapeType, string>;
 
+export interface AddShapeItemStyle {
+	fillType?: TimelineItem['fillType'];
+	fillColor?: string;
+	gradientStartColor?: string;
+	gradientEndColor?: string;
+	gradientAngle?: number;
+	sizeMode?: 'default' | 'canvas';
+}
+
 /** Add a styled three-second shape on the top unlocked visual track. */
-export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeType]): string {
+export function addShapeItem(
+	shapeType: ShapeType,
+	label = SHAPE_LABELS[shapeType],
+	style: AddShapeItemStyle = {},
+	placement: { frame?: number; preferredTrackId?: string } = {}
+): string {
 	return execute('ADD_SHAPE_ITEM', () => {
 		if (
 			!effectiveMediaTracks(timelineStore.tracks).some(
@@ -169,14 +238,15 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 		const projectWidth = editorSession.project?.metadata.width ?? 1920;
 		const projectHeight = editorSession.project?.metadata.height ?? 1080;
 		const size = Math.max(80, Math.round(Math.min(projectWidth, projectHeight) * 0.28));
-		const from = timelineStore.currentFrame;
+		const from = placement.frame ?? timelineStore.currentFrame;
 		const durationInFrames = timelineStore.fps * 3;
 		const targetTrack = ensureOpenTrackForRange({
 			kind: 'video',
 			itemType: 'shape',
 			from,
 			durationInFrames,
-			label
+			label,
+			preferredTrackId: placement.preferredTrackId
 		});
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
@@ -187,7 +257,11 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 			label,
 			type: 'shape',
 			shapeType,
-			fillColor: '#f97316',
+			fillType: style.fillType,
+			fillColor: style.fillColor ?? '#f97316',
+			gradientStartColor: style.gradientStartColor,
+			gradientEndColor: style.gradientEndColor,
+			gradientAngle: style.gradientAngle,
 			fillEnabled: shapeType !== 'path',
 			strokeColor: '#ffffff',
 			strokeEnabled: shapeType === 'path',
@@ -196,12 +270,12 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 			shapeInnerRadius: shapeType === 'star' ? 0.5 : undefined,
 			transform: {
 				width:
-					shapeType === 'path'
+					style.sizeMode === 'canvas' || shapeType === 'path'
 						? projectWidth
 						: shapeType === 'rectangle' || shapeType === 'ellipse'
 							? Math.round(size * 1.35)
 							: size,
-				height: shapeType === 'path' ? projectHeight : size,
+				height: style.sizeMode === 'canvas' || shapeType === 'path' ? projectHeight : size,
 				aspectRatioLocked:
 					shapeType !== 'path' && shapeType !== 'rectangle' && shapeType !== 'ellipse'
 			}
@@ -210,15 +284,22 @@ export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeTyp
 	});
 }
 
-/** Add a three-second adjustment layer on the top visual track at the playhead. */
-export function addAdjustmentLayer(label: string): string {
+export interface AddAdjustmentLayerOptions {
+	frame?: number;
+	preferredTrackId?: string;
+}
+
+/** Add a three-second adjustment layer at the requested timeline position. */
+export function addAdjustmentLayer(label: string, options: AddAdjustmentLayerOptions = {}): string {
 	return execute('ADD_ADJUSTMENT_LAYER', () => {
-		let topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
+		const visualTracks = effectiveMediaTracks(timelineStore.tracks)
 			.filter((track) => track.kind !== 'audio' && !track.locked)
-			.toSorted((left, right) => left.order - right.order)[0];
+			.toSorted((left, right) => left.order - right.order);
+		let topVisualTrack =
+			visualTracks.find((track) => track.id === options.preferredTrackId) ?? visualTracks[0];
 		if (!topVisualTrack) throw new Error('An unlocked visual track is required.');
 
-		const from = timelineStore.currentFrame;
+		const from = Math.max(0, Math.round(options.frame ?? timelineStore.currentFrame));
 		const durationInFrames = timelineStore.fps * 3;
 		const end = from + durationInFrames;
 		const topTrackOccupied = (timelineStore.itemsByTrackId.get(topVisualTrack.id) ?? []).some(
@@ -1023,7 +1104,10 @@ export function setItemsVolume(itemIds: string[], volume: number): SetItemsVolum
 	if (locked > 0) return { changed: 0, locked };
 	execute('SET_ITEMS_VOLUME', () => {
 		timelineStore._updateItems(
-			toUpdate.map((candidate) => ({ id: candidate.id, patch: { volume: clamped } }))
+			toUpdate.map((candidate) => ({
+				id: candidate.id,
+				patch: { volume: clamped }
+			}))
 		);
 	});
 	return { changed: toUpdate.length, locked };

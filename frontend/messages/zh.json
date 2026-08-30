@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "推移",
 	"video_editor_transition_zoom_blur": "变焦模糊",
 	"video_editor_transition_bounded": "转场时长不能超过相邻每个剪辑的一半。",
+	"video_editor_transition_add_or_drag": "点击可添加到所选剪辑点，或拖到有效剪辑点上。",
 	"video_editor_transition_properties": "转场设置",
 	"video_editor_transition_search": "搜索转场",
 	"video_editor_transition_preset": "效果",

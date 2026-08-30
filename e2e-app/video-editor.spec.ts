@@ -89,7 +89,7 @@ async function createProject(page: Page, name: string): Promise<void> {
 
 async function addTextItem(page: Page): Promise<void> {
   await page
-    .getByRole("complementary", { name: "Media pool" })
+    .getByRole("complementary", { name: "Assets" })
     .getByRole("button", { name: "Add layer" })
     .click();
   await page.getByRole("menuitem", { name: "Add text", exact: true }).click();
@@ -279,7 +279,7 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     await expect(preview).toBeVisible();
     await expectMinimumHeight(preview, 176);
     await expectMinimumHeight(pasteboard, 96);
-    const assetsPanel = page.getByRole("complementary", { name: "Media pool" });
+    const assetsPanel = page.getByRole("complementary", { name: "Assets" });
     const navigationBounds = await mobilePanels.boundingBox();
     const assetsBounds = await assetsPanel.boundingBox();
     const assetsPreviewBounds = await preview.boundingBox();
@@ -288,6 +288,46 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     expect(assetsPreviewBounds).not.toBeNull();
     expect(navigationBounds!.y + navigationBounds!.height).toBeLessThanOrEqual(assetsBounds!.y + 1);
     expect(assetsBounds!.y + assetsBounds!.height).toBeLessThanOrEqual(assetsPreviewBounds!.y + 1);
+
+    const toolTabs = assetsPanel.getByRole("tablist", { name: "Assets" }).getByRole("tab");
+    await expect(toolTabs).toHaveCount(11);
+    for (const name of [
+      "Media pool",
+      "Stock",
+      "Text",
+      "Shapes",
+      "Backgrounds",
+      "Stickers",
+      "Effects",
+      "Transition",
+      "Lottie",
+      "Transcript",
+      "Create",
+    ]) {
+      await expect(assetsPanel.getByRole("tab", { name, exact: true })).toBeVisible();
+    }
+    await expectMinimumTargets(toolTabs);
+    const mobileToolList = assetsPanel.getByRole("tablist", { name: "Assets" });
+    await expect
+      .poll(() => mobileToolList.evaluate((element) => element.clientWidth))
+      .toBe(viewport.width);
+    await expect
+      .poll(() =>
+        mobileToolList.evaluate((element) => Math.round(element.getBoundingClientRect().height)),
+      )
+      .toBeGreaterThanOrEqual(52);
+    await expect
+      .poll(() =>
+        mobileToolList.evaluate((element) => Math.round(element.getBoundingClientRect().height)),
+      )
+      .toBeLessThanOrEqual(54);
+    await assetsPanel.getByRole("tab", { name: "Transition", exact: true }).click();
+    await expect(assetsPanel.getByRole("heading", { name: "Transition" })).toBeVisible();
+    await expect(assetsPanel.locator("[data-transition-catalog-id]")).toHaveCount(44);
+    await expect(assetsPanel.getByRole("button", { name: "Import media" })).toHaveCount(0);
+    await assetsPanel.getByRole("tab", { name: "Effects", exact: true }).click();
+    await expect(assetsPanel.locator('[data-effect-catalog-id^="gpu-"]')).toHaveCount(54);
+    await expectMinimumHeight(page.locator("#video-editor-left-tool-panel"), 96);
 
     await editButton.click();
     await expect(preview).toBeVisible();
@@ -349,21 +389,63 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
 
-  const mediaPool = page.getByRole("complementary", { name: "Media pool" });
+  const mediaPool = page.getByRole("complementary", { name: "Assets" });
+  await mediaPool.getByRole("tab", { name: "Media pool", exact: true }).click();
   await expect(
-    mediaPool.getByRole("button", { name: "Media", pressed: true, exact: true }),
+    mediaPool.getByRole("button", {
+      name: "Media",
+      pressed: true,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(mediaPool.getByRole("button", { name: "Import media" })).toBeVisible();
   await mediaPool.getByRole("button", { name: "Scenes" }).click();
   await expect(mediaPool.getByRole("button", { name: "Scenes", pressed: true })).toBeVisible();
-  await expect(mediaPool.getByRole("button", { name: "Import media" })).toBeVisible();
-  await mediaPool.getByRole("button", { name: "Assets" }).click();
-  await expect(mediaPool.getByRole("button", { name: "Assets", pressed: true })).toBeVisible();
   await expect(mediaPool.getByRole("button", { name: "Import media" })).toHaveCount(0);
-  await mediaPool.getByRole("button", { name: "Media pool" }).click();
+  const desktopTools = mediaPool.getByRole("tablist", { name: "Assets" });
+  await expect(desktopTools).toHaveAttribute("aria-orientation", "vertical");
+  await expect(desktopTools.getByRole("tab")).toHaveCount(11);
+  await mediaPool.getByRole("tab", { name: "Stock", exact: true }).click();
+  await expect(mediaPool.getByRole("tab", { name: "Stock", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(mediaPool.getByRole("button", { name: "Import media" })).toHaveCount(0);
+  await mediaPool.getByRole("tab", { name: "Stock", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(mediaPool.getByRole("tab", { name: "Text", exact: true })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(mediaPool.getByRole("tab", { name: "Create", exact: true })).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(mediaPool.getByRole("tab", { name: "Media pool", exact: true })).toBeFocused();
+
+  await mediaPool.getByRole("tab", { name: "Effects", exact: true }).click();
+  await expect(
+    mediaPool.locator('[data-effect-catalog-id="gpu-brightness"] canvas'),
+  ).toHaveAttribute("data-rendered", "true");
+  await page.locator("[data-program-pasteboard]").click({ position: { x: 3, y: 3 } });
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-effects-1280.png",
+    fullPage: true,
+  });
+
+  await mediaPool.getByRole("tab", { name: "Transition", exact: true }).click();
+  await expect(mediaPool.locator('[data-transition-catalog-id="dissolve"] canvas')).toHaveAttribute(
+    "data-rendered",
+    "true",
+  );
+  await page.locator("[data-program-pasteboard]").click({ position: { x: 3, y: 3 } });
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-transitions-1280.png",
+    fullPage: true,
+  });
+
+  await mediaPool.getByRole("tab", { name: "Media pool", exact: true }).click();
   await mediaPool.getByRole("button", { name: "Media", exact: true }).click();
 
-  const mediaResize = mediaPool.getByRole("separator", { name: "Media pool" });
+  const mediaResize = mediaPool.getByRole("separator", { name: "Assets" });
   const initialMediaWidth = Number(await mediaResize.getAttribute("aria-valuenow"));
   await mediaResize.focus();
   await page.keyboard.press("ArrowRight");
@@ -581,7 +663,7 @@ test("Video Editor keyboard transport and delete commands survive focused contro
   await expect(clips).toHaveCount(1);
 
   await page
-    .getByRole("complementary", { name: "Media pool" })
+    .getByRole("complementary", { name: "Assets" })
     .getByRole("button", { name: "Add layer" })
     .focus();
   await page.keyboard.press("Space");

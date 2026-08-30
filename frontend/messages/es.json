@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "Empujar",
 	"video_editor_transition_zoom_blur": "Difuminar el zoom",
 	"video_editor_transition_bounded": "Las transiciones están limitadas a la mitad de la longitud de cada clip contiguo.",
+	"video_editor_transition_add_or_drag": "Haz clic para añadirla al corte seleccionado o arrástrala a un corte válido.",
 	"video_editor_transition_properties": "Ajustes de transición",
 	"video_editor_transition_search": "Transiciones de búsqueda",
 	"video_editor_transition_preset": "Efecto",

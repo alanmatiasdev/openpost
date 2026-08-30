@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "プッシュ",
 	"video_editor_transition_zoom_blur": "ズームブラー",
 	"video_editor_transition_bounded": "トランジションは隣接クリップ長の半分までです。",
+	"video_editor_transition_add_or_drag": "クリックして選択したカットに追加するか、有効なカットへドラッグします。",
 	"video_editor_transition_properties": "トランジション設定",
 	"video_editor_transition_search": "トランジションを検索",
 	"video_editor_transition_preset": "エフェクト",

@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "푸시",
 	"video_editor_transition_zoom_blur": "줌 블러",
 	"video_editor_transition_bounded": "전환은 양쪽 클립 길이의 절반 이하로 제한됩니다.",
+	"video_editor_transition_add_or_drag": "클릭하여 선택한 컷에 추가하거나 유효한 컷으로 드래그하세요.",
 	"video_editor_transition_properties": "전환 설정",
 	"video_editor_transition_search": "전환 검색",
 	"video_editor_transition_preset": "효과",

@@ -5123,6 +5123,7 @@
 	"video_editor_transition_push": "Push",
 	"video_editor_transition_zoom_blur": "Zoom blur",
 	"video_editor_transition_bounded": "Transitions are limited to half the length of each adjoining clip.",
+	"video_editor_transition_add_or_drag": "Click to add at the selected cut, or drag onto a valid cut.",
 	"video_editor_transition_properties": "Transition settings",
 	"video_editor_transition_search": "Search transitions",
 	"video_editor_transition_preset": "Effect",

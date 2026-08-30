@@ -12,13 +12,22 @@ import { transitionsStore } from '$lib/video-editor/timeline/actions/transitions
 import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 import { createTrackGroup } from '$lib/video-editor/timeline/actions/tracks';
 import { addMarker, setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
-import { setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
+import { clearEffectDragData, setEffectDragData } from '$lib/video-editor/timeline/effect-drop';
+import {
+	clearTransitionDragData,
+	setTransitionDragData
+} from '$lib/video-editor/timeline/transition-drop';
 import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 import {
 	clearActiveMediaDrag,
 	mediaDragData,
 	writeMediaDragData
 } from '$lib/video-editor/media/media-drag';
+import {
+	shapeGeneratedItemDragData,
+	textGeneratedItemDragData,
+	writeGeneratedItemDragData
+} from '$lib/video-editor/timeline/generated-item-drag';
 import { mediaPlacement } from '$lib/video-editor/media/media-placement.svelte';
 import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 import {
@@ -141,6 +150,8 @@ beforeEach(() => {
 	colorPreviewStore.__resetForTesting();
 	mediaTasks.reset();
 	clearSceneDragData();
+	clearEffectDragData();
+	clearTransitionDragData();
 	clearActiveMediaDrag();
 	mediaPlacement.cancel();
 	sequenceStore.reset();
@@ -325,7 +336,11 @@ describe('TimelinePanel progressive controls', () => {
 	it('routes media tools to the exact clips opened by right click', async () => {
 		await page.viewport(720, 720);
 		mediaPool.loadAll([
-			{ ...sceneMedia, fileName: 'scene-source.mkv', mimeType: 'video/x-matroska' }
+			{
+				...sceneMedia,
+				fileName: 'scene-source.mkv',
+				mimeType: 'video/x-matroska'
+			}
 		]);
 		timelineStore._setItems(
 			timelineStore.items.map((entry) =>
@@ -502,14 +517,22 @@ describe('TimelinePanel progressive controls', () => {
 				id: 'speech-captions',
 				type: 'subtitle',
 				trackId: 'caption-track',
-				captionSource: { type: 'transcript', clipId: 'video', mediaId: sceneMedia.id },
+				captionSource: {
+					type: 'transcript',
+					clipId: 'video',
+					mediaId: sceneMedia.id
+				},
 				cues: []
 			}),
 			item({
 				id: 'scene-captions',
 				type: 'subtitle',
 				trackId: 'caption-track',
-				captionSource: { type: 'ai-captions', clipId: 'video', mediaId: sceneMedia.id },
+				captionSource: {
+					type: 'ai-captions',
+					clipId: 'video',
+					mediaId: sceneMedia.id
+				},
 				cues: []
 			})
 		]);
@@ -711,7 +734,9 @@ describe('TimelinePanel progressive controls', () => {
 		await trackName.click();
 		await userEvent.keyboard('{Shift>}{F10}{/Shift}');
 		await screen.getByRole('menuitem', { name: 'Add track' }).hover();
-		const addVideoTrack = screen.getByRole('menuitem', { name: 'Add video track' });
+		const addVideoTrack = screen.getByRole('menuitem', {
+			name: 'Add video track'
+		});
 		await expect.element(addVideoTrack).toBeVisible();
 		addVideoTrack.element().click();
 		expect(timelineStore.tracks.filter((track) => track.kind === 'video')).toHaveLength(2);
@@ -914,7 +939,12 @@ describe('TimelinePanel progressive controls', () => {
 			.filter((candidate) => candidate.trackId === 'video-track')
 			.toSorted((left, right) => left.from - right.from);
 		expect(videoPieces).toHaveLength(2);
-		expect(videoPieces.map(({ from, durationInFrames }) => ({ from, durationInFrames }))).toEqual([
+		expect(
+			videoPieces.map(({ from, durationInFrames }) => ({
+				from,
+				durationInFrames
+			}))
+		).toEqual([
 			{ from: 0, durationInFrames: 30 },
 			{ from: 30, durationInFrames: 30 }
 		]);
@@ -953,7 +983,12 @@ describe('TimelinePanel progressive controls', () => {
 		const videoPieces = timelineStore.items
 			.filter((candidate) => candidate.trackId === 'video-track')
 			.toSorted((left, right) => left.from - right.from);
-		expect(videoPieces.map(({ from, durationInFrames }) => ({ from, durationInFrames }))).toEqual([
+		expect(
+			videoPieces.map(({ from, durationInFrames }) => ({
+				from,
+				durationInFrames
+			}))
+		).toEqual([
 			{ from: 0, durationInFrames: 40 },
 			{ from: 40, durationInFrames: 20 }
 		]);
@@ -1004,7 +1039,11 @@ describe('TimelinePanel progressive controls', () => {
 
 		key('1', 'Digit1');
 		await expect
-			.element(screen.getByRole('application', { name: 'Keyframe value graph for opacity' }))
+			.element(
+				screen.getByRole('application', {
+					name: 'Keyframe value graph for opacity'
+				})
+			)
 			.toBeVisible();
 		expect(screen.container.querySelector('[aria-label="Keyframe dope sheet"]')).toBeNull();
 		await screen.getByRole('button', { name: 'Zoom in' }).last().click();
@@ -1018,7 +1057,11 @@ describe('TimelinePanel progressive controls', () => {
 		key('3', 'Digit3');
 		await expect.element(screen.getByRole('region', { name: 'Keyframe dope sheet' })).toBeVisible();
 		await expect
-			.element(screen.getByRole('application', { name: 'Keyframe value graph for opacity' }))
+			.element(
+				screen.getByRole('application', {
+					name: 'Keyframe value graph for opacity'
+				})
+			)
 			.toBeVisible();
 		key('2', 'Digit2');
 		await vi.waitFor(() =>
@@ -1131,7 +1174,11 @@ describe('TimelinePanel Bento layout entry', () => {
 			expect(badges.map((badge) => badge.textContent?.trim()).sort()).toEqual(['+00:12', '-00:12']);
 		});
 		await expect
-			.element(screen.getByRole('button', { name: /Linked video.*out of sync by \+00:12/ }))
+			.element(
+				screen.getByRole('button', {
+					name: /Linked video.*out of sync by \+00:12/
+				})
+			)
 			.toBeVisible();
 		expect(
 			document.querySelector('[data-timeline-item-id="short-video"] [data-linked-sync-offset]')
@@ -1146,7 +1193,9 @@ describe('TimelinePanel Bento layout entry', () => {
 		timeline.scrollLeft = 170;
 		timeline.dispatchEvent(new Event('scroll'));
 		await nextAnimationFrame();
-		await page.screenshot({ path: '../../../../.svelte-kit/openpost-linked-sync-320.png' });
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-linked-sync-320.png'
+		});
 	});
 
 	it('renders persisted waveforms for audio-only timeline clips', async () => {
@@ -1269,7 +1318,9 @@ describe('TimelinePanel Bento layout entry', () => {
 		await page.viewport(800, 720);
 		const nearId = `waveform-near-${crypto.randomUUID()}`;
 		const farId = `waveform-far-${crypto.randomUUID()}`;
-		const source = new File(['not-decoded'], 'pending.wav', { type: 'audio/wav' });
+		const source = new File(['not-decoded'], 'pending.wav', {
+			type: 'audio/wav'
+		});
 		let releaseNear: ((file: File) => void) | undefined;
 		let releaseFar: ((file: File) => void) | undefined;
 		const nearFile = new Promise<File>((resolve) => (releaseNear = resolve));
@@ -1375,11 +1426,13 @@ describe('TimelinePanel Bento layout entry', () => {
 
 		commandHistory.undo();
 		expect(timelineStore.itemById.get('music-bed')?.volume ?? 1).toBe(1);
-		volume
-			.element()
-			.dispatchEvent(
-				new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true })
-			);
+		volume.element().dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowDown',
+				shiftKey: true,
+				bubbles: true
+			})
+		);
 		expect(timelineStore.itemById.get('music-bed')?.volume).toBeLessThan(1);
 		expect(commandHistory.undoStack).toHaveLength(1);
 	});
@@ -1465,7 +1518,12 @@ describe('TimelinePanel Bento layout entry', () => {
 			.spyOn(filmstripCache, 'subscribe')
 			.mockImplementation((mediaId, callback) => {
 				if (mediaId === longMedia.id) {
-					callback({ frames: sparseFrames, isComplete: false, isExtracting: true, progress: 10 });
+					callback({
+						frames: sparseFrames,
+						isComplete: false,
+						isExtracting: true,
+						progress: 10
+					});
 				}
 				return () => undefined;
 			});
@@ -1548,7 +1606,9 @@ describe('TimelinePanel Bento layout entry', () => {
 		});
 
 		await screen.getByRole('button', { name: 'More actions' }).last().click();
-		const arrange = screen.getByRole('menuitem', { name: 'Arrange selected clips' });
+		const arrange = screen.getByRole('menuitem', {
+			name: 'Arrange selected clips'
+		});
 		await expect.element(arrange).toBeEnabled();
 		arrange.element().click();
 		await expect.element(screen.getByRole('dialog', { name: 'Arrange clips' })).toBeVisible();
@@ -1705,7 +1765,12 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		timelineStore._setTracks([...timelineStore.tracks, hiddenTrack]);
 		timelineStore._setItems([
 			...timelineStore.items,
-			item({ id: 'hidden-cut', trackId: hiddenTrack.id, from: 65, durationInFrames: 5 })
+			item({
+				id: 'hidden-cut',
+				trackId: hiddenTrack.id,
+				from: 65,
+				durationInFrames: 5
+			})
 		]);
 		addMarker(75);
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
@@ -1729,13 +1794,21 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		key('u', 'KeyU');
 		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' }))
+			.element(
+				screen.getByRole('menuitemcheckbox', {
+					name: 'Slide clip between adjacent edits'
+				})
+			)
 			.toHaveAttribute('aria-checked', 'true');
 		await userEvent.keyboard('{Escape}');
 		key('v', 'KeyV');
 		await screen.getByRole('button', { name: 'More actions' }).first().click();
 		await expect
-			.element(screen.getByRole('menuitemcheckbox', { name: 'Slide clip between adjacent edits' }))
+			.element(
+				screen.getByRole('menuitemcheckbox', {
+					name: 'Slide clip between adjacent edits'
+				})
+			)
 			.toHaveAttribute('aria-checked', 'false');
 		await userEvent.keyboard('{Escape}');
 
@@ -2265,6 +2338,40 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(onedit).toHaveBeenCalledOnce();
 	});
 
+	it('creates a timed adjustment layer when an effect is dropped on empty timeline space', async () => {
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const videoTrack = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(videoTrack).not.toBeNull();
+		const payload = {
+			type: 'timeline-effect' as const,
+			label: 'Brightness',
+			effects: [{ kind: 'css' as const, effectType: 'brightness' as const }]
+		};
+		setEffectDragData(payload);
+		const dataTransfer = new DataTransfer();
+		const trackRect = videoTrack!.getBoundingClientRect();
+		const clientX = trackRect.left + 180 + 100 * 4;
+
+		videoTrack!.dispatchEvent(new DragEvent('dragover', { bubbles: true, clientX, dataTransfer }));
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-effect-adjustment-drop-preview]')).not.toBeNull();
+
+		videoTrack!.dispatchEvent(new DragEvent('drop', { bubbles: true, clientX, dataTransfer }));
+		await nextAnimationFrame();
+		const adjustment = timelineStore.items.find((candidate) => candidate.type === 'adjustment');
+		expect(adjustment).toMatchObject({
+			trackId: 'video-track',
+			from: 100,
+			durationInFrames: 90,
+			label: 'Brightness',
+			effects: [expect.objectContaining({ type: 'brightness', enabled: true })]
+		});
+		expect(commandHistory.getLastCommandType()).toBe('ADD_ADJUSTMENT_LAYER_WITH_EFFECTS');
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('marquee-selects every clip intersecting a background drag', async () => {
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const videoClip = screen.getByRole('button', { name: /^Video\./ }).element().parentElement!;
@@ -2536,6 +2643,49 @@ describe('TimelinePanel sync-lock ripple trim', () => {
 		expect(transitionsStore.list[0]?.durationInFrames).toBe(10);
 	});
 
+	it('replaces an existing transition when a catalog card is dropped on its bridge', async () => {
+		timelineStore._setItems([
+			item({}),
+			item({
+				id: 'next-video',
+				from: 60,
+				label: 'Next video',
+				sourceStart: 20,
+				sourceEnd: 80
+			})
+		]);
+		transitionsStore.setAll([
+			{
+				id: 'transition',
+				type: 'crossfade',
+				durationInFrames: 10,
+				fromItemId: 'video',
+				toItemId: 'next-video'
+			}
+		]);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const bridge = document.querySelector<HTMLElement>('[data-transition-id="transition"]');
+		expect(bridge).not.toBeNull();
+		setTransitionDragData({ presentation: 'wipe', direction: 'from-left', label: 'Slide' });
+		const dataTransfer = new DataTransfer();
+
+		bridge!.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer }));
+		await nextAnimationFrame();
+		expect(document.querySelector('[data-transition-bridge-drop-preview]')).not.toBeNull();
+
+		bridge!.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer }));
+		await nextAnimationFrame();
+		expect(transitionsStore.list[0]).toMatchObject({
+			id: 'transition',
+			presentation: 'wipe',
+			direction: 'from-left'
+		});
+		expect(document.querySelector('[data-transition-bridge-drop-preview]')).toBeNull();
+		expect(commandHistory.getLastCommandType()).toBe('UPDATE_TRANSITION');
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
 	it('cancels a transition resize on Escape without saving or history', async () => {
 		timelineStore._setItems([
 			item({}),
@@ -2624,7 +2774,11 @@ describe('TimelinePanel exact media placement', () => {
 		expect(ghost?.style.left).toBe('360px');
 
 		window.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				shiftKey: true,
+				bubbles: true
+			})
 		);
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
@@ -2720,6 +2874,94 @@ describe('TimelinePanel exact media placement', () => {
 		});
 		expect(onedit).toHaveBeenCalledOnce();
 		expect(commandHistory.undoStack).toHaveLength(1);
+	});
+
+	it('drops a text recipe on the pointed open track and frame as one edit', async () => {
+		timelineStore._setItems([]);
+		timelineStore._setSnapEnabled(false);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(row).not.toBeNull();
+		const dataTransfer = new DataTransfer();
+		writeGeneratedItemDragData(
+			dataTransfer,
+			textGeneratedItemDragData('Breaking', 'breaking-update')
+		);
+		const clientX = row!.getBoundingClientRect().left + 220;
+		row!.dispatchEvent(
+			new DragEvent('dragover', {
+				bubbles: true,
+				cancelable: true,
+				clientX,
+				dataTransfer
+			})
+		);
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-generated-item-drop-preview]')).not.toBeNull();
+		});
+		const ghost = document.querySelector<HTMLElement>('[data-generated-item-drop-preview]');
+		expect(ghost?.closest('[data-track]')?.getAttribute('data-track')).toBe('video-track');
+		expect(ghost?.style.left).toBe('220px');
+
+		row!.dispatchEvent(
+			new DragEvent('drop', {
+				bubbles: true,
+				cancelable: true,
+				clientX,
+				dataTransfer
+			})
+		);
+		expect(timelineStore.items).toHaveLength(1);
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: 'video-track',
+			from: 10,
+			type: 'text',
+			textStylePresetId: 'breaking-update'
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
+	});
+
+	it('drops a shape recipe on the pointed open track and frame as one edit', async () => {
+		timelineStore._setItems([]);
+		timelineStore._setSnapEnabled(false);
+		const onedit = vi.fn();
+		await render(TimelinePanel, { onedit });
+		const row = document.querySelector<HTMLElement>('[data-track="video-track"]');
+		expect(row).not.toBeNull();
+		const dataTransfer = new DataTransfer();
+		writeGeneratedItemDragData(
+			dataTransfer,
+			shapeGeneratedItemDragData('Gradient', 'rectangle', {
+				fillType: 'linear',
+				gradientStartColor: '#f97316',
+				gradientEndColor: '#6366f1',
+				sizeMode: 'canvas'
+			})
+		);
+		const clientX = row!.getBoundingClientRect().left + 260;
+		row!.dispatchEvent(
+			new DragEvent('dragover', { bubbles: true, cancelable: true, clientX, dataTransfer })
+		);
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-generated-item-drop-preview]')).not.toBeNull();
+		});
+
+		row!.dispatchEvent(
+			new DragEvent('drop', { bubbles: true, cancelable: true, clientX, dataTransfer })
+		);
+		expect(timelineStore.items).toHaveLength(1);
+		expect(timelineStore.items[0]).toMatchObject({
+			trackId: 'video-track',
+			from: 20,
+			type: 'shape',
+			shapeType: 'rectangle',
+			fillType: 'linear',
+			transform: expect.objectContaining({ width: 1920, height: 1080 })
+		});
+		expect(commandHistory.undoStack).toHaveLength(1);
+		expect(onedit).toHaveBeenCalledOnce();
 	});
 
 	it('auto-scrolls the timeline while a media drag stays at an edge', async () => {
@@ -2906,9 +3148,24 @@ describe('TimelinePanel track push', () => {
 		timelineStore.setAll({
 			tracks: [videoTrack, audioTrack],
 			items: [
-				item({ id: 'video-before', label: 'Before', from: 0, durationInFrames: 80 }),
-				item({ id: 'anchor', label: 'Anchor', from: 100, durationInFrames: 20 }),
-				item({ id: 'video-later', label: 'Video later', from: 140, durationInFrames: 20 }),
+				item({
+					id: 'video-before',
+					label: 'Before',
+					from: 0,
+					durationInFrames: 80
+				}),
+				item({
+					id: 'anchor',
+					label: 'Anchor',
+					from: 100,
+					durationInFrames: 20
+				}),
+				item({
+					id: 'video-later',
+					label: 'Video later',
+					from: 140,
+					durationInFrames: 20
+				}),
 				item({
 					id: 'audio-before',
 					trackId: 'audio-track',
@@ -3003,9 +3260,15 @@ describe('TimelinePanel track push', () => {
 		const anchor = document.querySelector<HTMLButtonElement>(
 			'[data-timeline-item-id="anchor"] > button'
 		)!;
-		await page.screenshot({ path: '../../../../.svelte-kit/openpost-track-push-320.png' });
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-track-push-320.png'
+		});
 		anchor.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				shiftKey: true,
+				bubbles: true
+			})
 		);
 		expect(timelineStore.itemById.get('anchor')?.from).toBe(110);
 		expect(timelineStore.itemById.get('audio-later')?.from).toBe(120);
@@ -3086,7 +3349,9 @@ describe('TimelinePanel viewport performance', () => {
 		expect(document.querySelectorAll('[data-timeline-density-bucket]').length).toBeLessThanOrEqual(
 			1_024
 		);
-		await page.screenshot({ path: '../../../../.svelte-kit/openpost-timeline-density-320.png' });
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-timeline-density-320.png'
+		});
 		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
 			document.documentElement.clientWidth
 		);
@@ -3126,14 +3391,23 @@ describe('TimelinePanel viewport performance', () => {
 	it('pans, resizes, cancels, and uses the keyboard through the timeline navigator', async () => {
 		await page.viewport(1280, 720);
 		timelineStore.setAll({
-			items: [item({ id: 'long', label: 'Long', durationInFrames: 10_000, sourceEnd: 10_000 })],
+			items: [
+				item({
+					id: 'long',
+					label: 'Long',
+					durationInFrames: 10_000,
+					sourceEnd: 10_000
+				})
+			],
 			zoomLevel: 0.25
 		});
 		const screen = await render(TimelinePanel, { onedit: vi.fn() });
 		const region = screen.getByRole('region', { name: 'Timeline' }).element();
 		const thumb = screen.getByRole('scrollbar', { name: 'Visible timeline range' }).element();
 		await vi.waitFor(() => expect(thumb.getBoundingClientRect().width).toBeGreaterThan(0));
-		await page.screenshot({ path: '../../../../.svelte-kit/openpost-timeline-navigator-1280.png' });
+		await page.screenshot({
+			path: '../../../../.svelte-kit/openpost-timeline-navigator-1280.png'
+		});
 
 		thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 		await nextAnimationFrame();

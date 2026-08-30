@@ -15,13 +15,11 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import * as Command from '$lib/components/ui/command';
 	import * as Popover from '$lib/components/ui/popover';
-	import { prewarmEffectPreviews } from '$lib/video-editor/effects/preview/effect-preview-engine';
 	import EffectThumbnail from './effect-thumbnail.svelte';
 
 	let {
@@ -82,14 +80,6 @@
 		event.stopPropagation();
 		onRemoveOption?.(option.value);
 	}
-
-	onMount(() => {
-		const idle = window.requestIdleCallback?.(() => prewarmEffectPreviews());
-		if (idle === undefined) prewarmEffectPreviews();
-		return () => {
-			if (idle !== undefined) window.cancelIdleCallback?.(idle);
-		};
-	});
 </script>
 
 <Popover.Root bind:open>

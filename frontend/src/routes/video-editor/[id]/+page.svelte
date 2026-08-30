@@ -44,8 +44,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import {
 		addTransition,
 		removeTransition,
-		transitionsStore
+		transitionsStore,
+		updateTransitionPresentation
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
+	import { resolveTransitionTargetFromSelection } from '$lib/video-editor/timeline/transition-drop';
+	import type { TransitionDirection } from '$lib/video-editor/project/types';
 	import { addSubtitleItemFromSrt } from '$lib/video-editor/transcript/captions';
 	import type { TranscriptionSelection } from '$lib/video-editor/transcript/engine/types';
 	import { transcriptionService } from '$lib/video-editor/transcript/transcription-service.svelte';
@@ -62,7 +65,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import MediaPoolList from '$lib/video-editor/components/media-pool-list.svelte';
 	import EmbeddedSubtitlePicker from '$lib/video-editor/components/embedded-subtitle-picker.svelte';
 	import SceneBrowserPanel from '$lib/video-editor/components/scene-browser-panel.svelte';
-	import AssetLibraryPanel from '$lib/video-editor/components/asset-library-panel.svelte';
+	import StockBrowserPanel from '$lib/video-editor/components/stock-browser-panel.svelte';
+	import TextTemplateBrowser from '$lib/video-editor/components/text-template-browser.svelte';
+	// oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Shape is the editor's user-facing media type.
+	import ShapePanel from '$lib/video-editor/components/shape-panel.svelte';
+	import BackgroundPanel from '$lib/video-editor/components/background-panel.svelte';
+	import StickerBrowserPanel from '$lib/video-editor/components/sticker-browser-panel.svelte';
+	import EffectBrowserPanel from '$lib/video-editor/components/effect-browser-panel.svelte';
+	import TransitionBrowserPanel from '$lib/video-editor/components/transition-browser-panel.svelte';
+	import LottieBrowserPanel from '$lib/video-editor/components/lottie-browser-panel.svelte';
 	import EditorAssistantPanel from '$lib/video-editor/components/editor-assistant-panel.svelte';
 	import EffectsPanel from '$lib/video-editor/components/effects-panel.svelte';
 	import MotionPresetsPanel from '$lib/video-editor/components/motion-presets-panel.svelte';
@@ -105,12 +116,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import ClapperboardIcon from '@lucide/svelte/icons/clapperboard';
 	import ImagesIcon from '@lucide/svelte/icons/images';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import TypeIcon from '@lucide/svelte/icons/type';
+	import WandSparklesIcon from '@lucide/svelte/icons/wand-sparkles';
+	import BetweenHorizontalStartIcon from '@lucide/svelte/icons/between-horizontal-start';
+	import CaptionsIcon from '@lucide/svelte/icons/captions';
+	import StickerIcon from '@lucide/svelte/icons/sticker';
+	import PanelsTopLeftIcon from '@lucide/svelte/icons/panels-top-left';
+	import FilmIcon from '@lucide/svelte/icons/film';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import ShapesIcon from '@lucide/svelte/icons/shapes';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import SettingsIcon from '@lucide/svelte/icons/settings-2';
-	import UploadIcon from '@lucide/svelte/icons/upload';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import {
 		editorWorkspace,
@@ -139,7 +157,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import { pasteTimelineItemClipboard } from '$lib/video-editor/timeline/actions/item-clipboard';
 	import { handleTranscriptClipboardCopy } from '$lib/video-editor/transcript/transcript-copy-bridge';
 	import { expandSelectionWithLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
-	import { isTrackEffectivelyLocked } from '$lib/video-editor/timeline/utils/track-groups';
+	import {
+		effectiveMediaTracks,
+		isTrackEffectivelyLocked
+	} from '$lib/video-editor/timeline/utils/track-groups';
 	import { snapshotTimelineState } from '$lib/video-editor/timeline/utils/state-snapshot.svelte';
 	import { emitEditorSound } from '$lib/video-editor/sounds/editor-sounds';
 	import { sourceHoverStore } from '$lib/video-editor/source-monitor/source-hover.svelte';
@@ -176,7 +197,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	let recordingOpen = $state(false);
 	let unsupportedAudioRequest = $state<UnsupportedAudioImportRequest | null>(null);
 	let unsupportedAudioResolve: ((decision: 'import' | 'cancel') => void) | null = null;
-	let assetPanel = $state<'media' | 'assets' | 'ai'>('media');
+	type LeftPanel =
+		| 'media'
+		| 'stock'
+		| 'text'
+		| 'shapes'
+		| 'backgrounds'
+		| 'stickers'
+		| 'effects'
+		| 'transitions'
+		| 'lottie'
+		| 'transcript'
+		| 'ai';
+	let leftPanel = $state<LeftPanel>('media');
 	let mediaPanelView = $state<'project' | 'scenes'>('project');
 	let mobileEditPane = $state<'assets' | 'program' | 'tools'>('program');
 	let assetBrowserWidth = $state(editorSettings.assetBrowserWidth);
@@ -277,18 +310,72 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			.length
 	);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
-	const assetPanelHeading = $derived(
-		assetPanel === 'media'
-			? m.video_editor_media_pool()
-			: assetPanel === 'assets'
-				? m.video_editor_assets()
-				: m.video_editor_local_ai()
-	);
-	const assetPanelOptions = $derived([
+	const primaryLeftPanelOptions = $derived([
 		{ value: 'media' as const, label: m.video_editor_media_pool(), icon: ImagesIcon },
-		{ value: 'assets' as const, label: m.video_editor_assets(), icon: ShapesIcon },
+		{ value: 'stock' as const, label: m.video_editor_stock_assets(), icon: SearchIcon },
+		{ value: 'text' as const, label: m.video_editor_tool_text(), icon: TypeIcon },
+		// oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- The generated message key names the user-facing Shapes tool.
+		{ value: 'shapes' as const, label: m.video_editor_shapes(), icon: ShapesIcon },
+		{
+			value: 'backgrounds' as const,
+			label: m.video_editor_backgrounds_title(),
+			icon: PanelsTopLeftIcon
+		},
+		{ value: 'stickers' as const, label: m.video_editor_stickers(), icon: StickerIcon },
+		{ value: 'effects' as const, label: m.video_editor_effects(), icon: WandSparklesIcon },
+		{
+			value: 'transitions' as const,
+			label: m.video_editor_transition(),
+			icon: BetweenHorizontalStartIcon
+		},
+		{ value: 'lottie' as const, label: m.video_editor_animations(), icon: FilmIcon },
+		{ value: 'transcript' as const, label: m.video_editor_transcript(), icon: CaptionsIcon }
+	]);
+	const utilityLeftPanelOptions = $derived([
 		{ value: 'ai' as const, label: m.video_editor_local_ai(), icon: SparklesIcon }
 	]);
+	const leftPanelOptions = $derived([...primaryLeftPanelOptions, ...utilityLeftPanelOptions]);
+	const leftPanelHeading = $derived(
+		leftPanelOptions.find((option) => option.value === leftPanel)?.label ?? m.video_editor_assets()
+	);
+	const selectedLeftPanelItemIds = $derived(
+		selectedItemIds.length > 0 ? selectedItemIds : selectedItemId ? [selectedItemId] : []
+	);
+
+	function moveLeftPanelFocus(
+		event: KeyboardEvent & { currentTarget: HTMLButtonElement },
+		value: LeftPanel,
+		orientation: 'horizontal' | 'vertical'
+	): void {
+		const currentIndex = leftPanelOptions.findIndex((option) => option.value === value);
+		let nextIndex: number | null = null;
+		if (event.key === 'Home') nextIndex = 0;
+		if (event.key === 'End') nextIndex = leftPanelOptions.length - 1;
+		if (orientation === 'horizontal' && event.key === 'ArrowRight') {
+			nextIndex = (currentIndex + 1) % leftPanelOptions.length;
+		}
+		if (orientation === 'horizontal' && event.key === 'ArrowLeft') {
+			nextIndex = (currentIndex - 1 + leftPanelOptions.length) % leftPanelOptions.length;
+		}
+		if (orientation === 'vertical' && event.key === 'ArrowDown') {
+			nextIndex = (currentIndex + 1) % leftPanelOptions.length;
+		}
+		if (orientation === 'vertical' && event.key === 'ArrowUp') {
+			nextIndex = (currentIndex - 1 + leftPanelOptions.length) % leftPanelOptions.length;
+		}
+		if (nextIndex === null) return;
+		const next = leftPanelOptions[nextIndex];
+		if (!next) return;
+		event.preventDefault();
+		leftPanel = next.value;
+		requestAnimationFrame(() => {
+			document
+				.querySelector<HTMLButtonElement>(
+					`[data-left-panel-tab="${next.value}"][data-tab-orientation="${orientation}"]`
+				)
+				?.focus();
+		});
+	}
 	const editInspectorHeading = $derived.by(() => {
 		if (selectedTransitionId) return m.video_editor_transition();
 		if (selectedItemIds.length > 1) {
@@ -327,7 +414,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			sourceTextItemId: itemId,
 			text
 		};
-		assetPanel = 'ai';
+		leftPanel = 'ai';
 		mobileEditPane = 'assets';
 	}
 
@@ -1125,6 +1212,68 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		}
 	}
 
+	function handleApplyTransition(presentation: string, direction?: TransitionDirection): void {
+		if (selectedTransition) {
+			const transitionItems = [
+				timelineStore.itemById.get(selectedTransition.fromItemId),
+				timelineStore.itemById.get(selectedTransition.toItemId)
+			];
+			if (
+				transitionItems.some(
+					(item) => item && isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)
+				)
+			) {
+				showToast(m.video_editor_agent_error_locked_tracks(), 'error');
+				return;
+			}
+			if (updateTransitionPresentation(selectedTransition.id, presentation, direction)) {
+				editorSession.scheduleAutosave();
+			} else {
+				showToast(m.video_editor_agent_error_transition_failed(), 'error');
+			}
+			return;
+		}
+		if (selectedItemIds.length > 1 || !selectedItemId) {
+			showToast(m.video_editor_select_clip(), 'info');
+			return;
+		}
+		const target = resolveTransitionTargetFromSelection({
+			selectedItemId,
+			items: timelineStore.items,
+			tracks: effectiveMediaTracks(timelineStore.tracks),
+			transitions: transitionsStore.list,
+			fps: timelineStore.fps,
+			presentation
+		});
+		if (!target) {
+			showToast(m.video_editor_no_neighbor(), 'info');
+			return;
+		}
+		try {
+			let id = target.existingTransitionId;
+			if (id) {
+				if (!updateTransitionPresentation(id, presentation, direction)) {
+					showToast(m.video_editor_agent_error_transition_failed(), 'error');
+					return;
+				}
+			} else {
+				id = addTransition(
+					target.fromItemId,
+					target.toItemId,
+					'crossfade',
+					target.suggestedDurationInFrames,
+					{ presentation, direction }
+				);
+			}
+			selectedTransitionId = id ?? null;
+			selectedItemId = null;
+			selectedItemIds = [];
+			editorSession.scheduleAutosave();
+		} catch (error) {
+			showToast(error instanceof Error ? error.message : String(error), 'error');
+		}
+	}
+
 	function handleRemoveTransition(): void {
 		if (!selectedTransition) return;
 		removeTransition(selectedTransition.id);
@@ -1452,7 +1601,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			return;
 		}
 		handleOpenSceneBrowserShortcut(event, keyboardShortcuts.bindings.OPEN_SCENE_BROWSER, () => {
-			assetPanel = 'media';
+			leftPanel = 'media';
 			mediaPanelView = 'scenes';
 			requestAnimationFrame(() =>
 				document.querySelector<HTMLInputElement>('[data-scene-browser-search]')?.focus()
@@ -1663,40 +1812,93 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					{#if activeWorkspace === 'edit'}
 						<aside
 							id="video-editor-assets-panel"
-							class="relative h-[min(44%,22rem)] min-h-0 w-full flex-none flex-col border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:flex lg:h-auto lg:w-auto lg:border-r lg:border-b-0 {mobileEditPane ===
+							class="relative h-[min(44%,22rem)] min-h-24 w-full flex-none flex-col border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:flex lg:h-auto lg:min-h-0 lg:w-auto lg:border-r lg:border-b-0 {mobileEditPane ===
 							'assets'
 								? 'flex'
 								: 'hidden'}"
-							aria-label={m.video_editor_media_pool()}
+							aria-label={m.video_editor_assets()}
 						>
 							<div class="flex min-h-0 flex-1">
 								<nav
-									class="hidden w-11 shrink-0 flex-col items-center gap-1 border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.008_50)] py-2 lg:flex"
-									aria-label={m.video_editor_media_pool()}
+									class="hidden w-11 shrink-0 flex-col border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.008_50)] lg:flex"
+									aria-label={m.video_editor_assets()}
 								>
-									{#each assetPanelOptions as option (option.value)}
-										{@const Icon = option.icon}
-										<Tooltip.Root>
-											<Tooltip.Trigger>
-												{#snippet child({ props })}
-													<Button
-														{...props}
-														variant={assetPanel === option.value ? 'secondary' : 'ghost'}
-														size="icon-sm"
-														class="text-[oklch(0.72_0.015_55)] data-[active=true]:text-white"
-														data-active={assetPanel === option.value}
-														aria-label={option.label}
-														aria-pressed={assetPanel === option.value}
-														onclick={() => (assetPanel = option.value)}
-													>
-														<Icon aria-hidden="true" />
-													</Button>
-												{/snippet}
-											</Tooltip.Trigger>
-											<Tooltip.Content side="right">{option.label}</Tooltip.Content>
-										</Tooltip.Root>
-									{/each}
-									<div class="mt-auto">
+									<div
+										class="flex min-h-0 flex-1 flex-col"
+										aria-label={m.video_editor_assets()}
+										aria-orientation="vertical"
+										role="tablist"
+									>
+										<div
+											class="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2"
+										>
+											{#each primaryLeftPanelOptions as option (option.value)}
+												{@const Icon = option.icon}
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														{#snippet child({ props })}
+															<Button
+																{...props}
+																variant={leftPanel === option.value ? 'secondary' : 'ghost'}
+																size="icon-sm"
+																class="shrink-0 text-[oklch(0.72_0.015_55)] data-[active=true]:text-white"
+																data-active={leftPanel === option.value}
+																data-left-panel-tab={option.value}
+																data-tab-orientation="vertical"
+																role="tab"
+																tabindex={leftPanel === option.value ? 0 : -1}
+																aria-controls="video-editor-left-tool-panel"
+																aria-label={option.label}
+																aria-selected={leftPanel === option.value}
+																onclick={() => (leftPanel = option.value)}
+																onkeydown={(event) =>
+																	moveLeftPanelFocus(event, option.value, 'vertical')}
+															>
+																<Icon aria-hidden="true" />
+															</Button>
+														{/snippet}
+													</Tooltip.Trigger>
+													<Tooltip.Content side="right">{option.label}</Tooltip.Content>
+												</Tooltip.Root>
+											{/each}
+										</div>
+										<div
+											class="flex shrink-0 flex-col items-center gap-1 border-t border-[oklch(0.25_0.015_55)] py-2"
+										>
+											{#each utilityLeftPanelOptions as option (option.value)}
+												{@const Icon = option.icon}
+												<Tooltip.Root>
+													<Tooltip.Trigger>
+														{#snippet child({ props })}
+															<Button
+																{...props}
+																variant={leftPanel === option.value ? 'secondary' : 'ghost'}
+																size="icon-sm"
+																class="text-[oklch(0.72_0.015_55)] data-[active=true]:text-white"
+																data-active={leftPanel === option.value}
+																data-left-panel-tab={option.value}
+																data-tab-orientation="vertical"
+																role="tab"
+																tabindex={leftPanel === option.value ? 0 : -1}
+																aria-controls="video-editor-left-tool-panel"
+																aria-label={option.label}
+																aria-selected={leftPanel === option.value}
+																onclick={() => (leftPanel = option.value)}
+																onkeydown={(event) =>
+																	moveLeftPanelFocus(event, option.value, 'vertical')}
+															>
+																<Icon aria-hidden="true" />
+															</Button>
+														{/snippet}
+													</Tooltip.Trigger>
+													<Tooltip.Content side="right">{option.label}</Tooltip.Content>
+												</Tooltip.Root>
+											{/each}
+										</div>
+									</div>
+									<div
+										class="flex shrink-0 flex-col items-center border-t border-[oklch(0.25_0.015_55)] py-2"
+									>
 										<DropdownMenu.Root>
 											<DropdownMenu.Trigger>
 												{#snippet child({ props })}
@@ -1731,14 +1933,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 										class="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[oklch(0.25_0.015_55)] px-2"
 									>
 										<h2 class="min-w-0 truncate text-sm font-medium text-white/90">
-											{assetPanelHeading}
+											{leftPanelHeading}
 										</h2>
-										{#if assetPanel === 'media'}
-											<Button size="sm" variant="ghost" class="h-8" onclick={handleImport}>
-												<UploadIcon aria-hidden="true" />
-												{m.video_editor_import_media()}
-											</Button>
-										{/if}
 										<div class="lg:hidden">
 											<DropdownMenu.Root>
 												<DropdownMenu.Trigger>
@@ -1765,22 +1961,32 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 										</div>
 									</div>
 									<div
-										class="grid grid-cols-3 gap-1 border-b border-[oklch(0.25_0.015_55)] p-1 lg:hidden"
-										aria-label={m.video_editor_media_pool()}
+										class="flex shrink-0 gap-1 overflow-x-auto border-b border-[oklch(0.25_0.015_55)] p-1 lg:hidden"
+										aria-label={m.video_editor_assets()}
+										aria-orientation="horizontal"
+										role="tablist"
 									>
-										{#each assetPanelOptions as option (option.value)}
+										{#each leftPanelOptions as option (option.value)}
+											{@const Icon = option.icon}
 											<button
 												type="button"
-												class:active={assetPanel === option.value}
-												class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
-												aria-pressed={assetPanel === option.value}
-												onclick={() => (assetPanel = option.value)}
+												class:active={leftPanel === option.value}
+												class="flex min-h-11 shrink-0 items-center gap-1.5 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+												data-left-panel-tab={option.value}
+												data-tab-orientation="horizontal"
+												role="tab"
+												tabindex={leftPanel === option.value ? 0 : -1}
+												aria-controls="video-editor-left-tool-panel"
+												aria-selected={leftPanel === option.value}
+												onclick={() => (leftPanel = option.value)}
+												onkeydown={(event) => moveLeftPanelFocus(event, option.value, 'horizontal')}
 											>
+												<Icon class="size-3.5" aria-hidden="true" />
 												{option.label}
 											</button>
 										{/each}
 									</div>
-									{#if assetPanel === 'media'}
+									{#if leftPanel === 'media'}
 										<div class="grid grid-cols-2 gap-1 border-b border-[oklch(0.25_0.015_55)] p-1">
 											<button
 												type="button"
@@ -1804,38 +2010,66 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 											</button>
 										</div>
 									{/if}
-									{#if assetPanel === 'media' && mediaPanelView === 'project'}
-										<MediaPoolList
-											{projectId}
-											onUnsupportedAudio={requestUnsupportedAudioDecision}
-											onsequenceopen={resetTimelineSelection}
-											onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
-											onextractsubtitles={openEmbeddedSubtitlePicker}
-										/>
-									{:else if assetPanel === 'media'}
-										<SceneBrowserPanel />
-									{:else if assetPanel === 'assets'}
-										<AssetLibraryPanel {projectId} oninserted={handleVectorAssetInserted} />
-									{:else}
-										<EditorAssistantPanel
-											{projectId}
-											oninserted={handleGeneratedAudioInserted}
-											onselectitems={(ids) => {
-												selectedItemIds = ids;
-												selectedItemId = ids[0] ?? null;
-												selectedTransitionId = null;
-											}}
-											onopensilence={(ids) => openAgentSpeechCleanup('silence', ids)}
-											onopenfillers={(ids) => openAgentSpeechCleanup('fillers', ids)}
-											selectedIds={selectedItemIds.length > 0
-												? selectedItemIds
-												: selectedItemId
-													? [selectedItemId]
-													: []}
-											onautosave={() => editorSession.scheduleAutosave()}
-											{textVoiceRequest}
-										/>
-									{/if}
+									<div
+										id="video-editor-left-tool-panel"
+										class="flex min-h-24 flex-1 flex-col lg:min-h-0"
+										role="tabpanel"
+										aria-label={leftPanelHeading}
+									>
+										{#if leftPanel === 'media' && mediaPanelView === 'project'}
+											<MediaPoolList
+												{projectId}
+												onUnsupportedAudio={requestUnsupportedAudioDecision}
+												onsequenceopen={resetTimelineSelection}
+												onsourceopen={(mediaId) => (sourceMediaId = mediaId)}
+												onextractsubtitles={openEmbeddedSubtitlePicker}
+												onimport={handleImport}
+											/>
+										{:else if leftPanel === 'media'}
+											<SceneBrowserPanel />
+										{:else if leftPanel === 'stock'}
+											<StockBrowserPanel {projectId} oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'text'}
+											<TextTemplateBrowser oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'shapes'}
+											<ShapePanel oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'backgrounds'}
+											<BackgroundPanel oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'stickers'}
+											<StickerBrowserPanel {projectId} oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'effects'}
+											<EffectBrowserPanel
+												selectedItemIds={selectedLeftPanelItemIds}
+												oninserted={handleVectorAssetInserted}
+												onedit={() => editorSession.scheduleAutosave()}
+											/>
+										{:else if leftPanel === 'transitions'}
+											<TransitionBrowserPanel onapply={handleApplyTransition} />
+										{:else if leftPanel === 'lottie'}
+											<LottieBrowserPanel {projectId} oninserted={handleVectorAssetInserted} />
+										{:else if leftPanel === 'transcript'}
+											<TranscriptPanel
+												itemIds={selectedLeftPanelItemIds}
+												showHeading={false}
+												onedit={() => editorSession.scheduleAutosave()}
+											/>
+										{:else}
+											<EditorAssistantPanel
+												{projectId}
+												oninserted={handleGeneratedAudioInserted}
+												onselectitems={(ids) => {
+													selectedItemIds = ids;
+													selectedItemId = ids[0] ?? null;
+													selectedTransitionId = null;
+												}}
+												onopensilence={(ids) => openAgentSpeechCleanup('silence', ids)}
+												onopenfillers={(ids) => openAgentSpeechCleanup('fillers', ids)}
+												selectedIds={selectedLeftPanelItemIds}
+												onautosave={() => editorSession.scheduleAutosave()}
+												{textVoiceRequest}
+											/>
+										{/if}
+									</div>
 									<MediaTaskProgress />
 								</div>
 							</div>
@@ -1845,7 +2079,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 								minimum={300}
 								maximum={assetBrowserMaximum}
 								defaultValue={336}
-								label={m.video_editor_media_pool()}
+								label={m.video_editor_assets()}
 								onresize={(value) => (assetBrowserWidth = value)}
 								oncommit={(value) => persistPanelSize('assetBrowserWidth', value)}
 							/>

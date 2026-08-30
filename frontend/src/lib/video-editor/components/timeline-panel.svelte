@@ -10,6 +10,9 @@
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import {
 		addMarker,
+		addShapeItem,
+		addTextItemAtFrame,
+		addTextTemplateItem,
 		canCloseAllGapsOnTrack,
 		canCloseGapAtPosition,
 		closeAllGapsOnTrack,
@@ -23,6 +26,13 @@
 		linkItems,
 		unlinkItems
 	} from '$lib/video-editor/timeline/actions/items';
+	import {
+		clearGeneratedItemDragData,
+		getGeneratedItemDragData,
+		type GeneratedItemDragData
+	} from '$lib/video-editor/timeline/generated-item-drag';
+	import { localizedTextStylePresetCopy } from '$lib/video-editor/typography/text-style-preset-copy';
+	import { trackRangeIsOpen } from '$lib/video-editor/timeline/track-occupancy';
 	import { findTrackGapAtFrame } from '$lib/video-editor/timeline/gap-closing';
 	import {
 		DEFAULT_MARKER_COLOR,
@@ -213,10 +223,12 @@
 	import { itemClipboardStore } from '$lib/video-editor/timeline/stores/item-clipboard-store.svelte';
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import {
+		addTransition,
 		pruneOrphanedTransitions,
 		removeTransition,
 		transitionsStore,
-		updateTransition
+		updateTransition,
+		updateTransitionPresentation
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import {
 		buildInsertedGapPreviewUpdatesForSyncLockedTracks,
@@ -285,7 +297,16 @@
 		resolveEffectDropTargetIds,
 		type EffectDragData
 	} from '$lib/video-editor/timeline/effect-drop';
-	import { addEffectTemplates } from '$lib/video-editor/timeline/actions/effects';
+	import {
+		clearTransitionDragData,
+		getTransitionDragData,
+		resolveTransitionDropTarget,
+		type TransitionDropTarget
+	} from '$lib/video-editor/timeline/transition-drop';
+	import {
+		addAdjustmentLayerWithEffects,
+		addEffectTemplates
+	} from '$lib/video-editor/timeline/actions/effects';
 	import {
 		consolidateCaptionItems,
 		type CaptionConsolidationOptions
@@ -789,8 +810,24 @@
 	} | null>(null);
 	let effectDropTargetIds = $state<string[]>([]);
 	let effectDropHoveredItemId = $state<string | null>(null);
+	let effectAdjustmentDropPreview = $state<{
+		trackId: string;
+		from: number;
+		durationInFrames: number;
+		label: string;
+	} | null>(null);
+	let transitionDropPreview = $state<(TransitionDropTarget & { hoveredItemId: string }) | null>(
+		null
+	);
+	let transitionBridgeDropPreviewId = $state<string | null>(null);
 	let sceneDropPreview = $state<{
 		trackId: string | null;
+		from: number;
+		durationInFrames: number;
+		label: string;
+	} | null>(null);
+	let generatedItemDropPreview = $state<{
+		trackId: string;
 		from: number;
 		durationInFrames: number;
 		label: string;
@@ -825,8 +862,17 @@
 	}
 
 	$effect(() => {
-		if (effectDropTargetIds.length === 0) return;
-		const clear = () => clearEffectDropPreview();
+		if (
+			effectDropTargetIds.length === 0 &&
+			!effectAdjustmentDropPreview &&
+			!transitionDropPreview &&
+			!transitionBridgeDropPreviewId
+		)
+			return;
+		const clear = () => {
+			clearEffectDropPreview();
+			clearTransitionDropPreview();
+		};
 		window.addEventListener('dragend', clear);
 		window.addEventListener('drop', clear);
 		return () => {
@@ -840,6 +886,20 @@
 		const clear = () => {
 			clearMediaDropPreview();
 			clearActiveMediaDrag();
+		};
+		window.addEventListener('dragend', clear);
+		window.addEventListener('drop', clear);
+		return () => {
+			window.removeEventListener('dragend', clear);
+			window.removeEventListener('drop', clear);
+		};
+	});
+
+	$effect(() => {
+		if (!generatedItemDropPreview) return;
+		const clear = () => {
+			generatedItemDropPreview = null;
+			clearGeneratedItemDragData();
 		};
 		window.addEventListener('dragend', clear);
 		window.addEventListener('drop', clear);
@@ -1974,6 +2034,158 @@
 	function clearEffectDropPreview(): void {
 		effectDropTargetIds = [];
 		effectDropHoveredItemId = null;
+		effectAdjustmentDropPreview = null;
+	}
+
+	function clearTransitionDropPreview(): void {
+		transitionDropPreview = null;
+		transitionBridgeDropPreviewId = null;
+	}
+
+	function transitionTargetAtPointer(
+		event: DragEvent,
+		itemId: string
+	): TransitionDropTarget | null {
+		const payload = getTransitionDragData();
+		if (!payload || !(event.currentTarget instanceof HTMLElement)) return null;
+		const rect = event.currentTarget.getBoundingClientRect();
+		const edge = event.clientX - rect.left < rect.width / 2 ? 'left' : 'right';
+		return resolveTransitionDropTarget({
+			itemId,
+			edge,
+			items: timelineStore.items,
+			tracks: effectiveMediaTracks(timelineStore.tracks),
+			transitions: transitionsStore.list,
+			fps: timelineStore.fps,
+			presentation: payload.presentation
+		});
+	}
+
+	function previewTransitionDrop(event: DragEvent, itemId: string): void {
+		const target = transitionTargetAtPointer(event, itemId);
+		if (!target) {
+			clearTransitionDropPreview();
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		transitionDropPreview = { ...target, hoveredItemId: itemId };
+	}
+
+	function leaveTransitionDrop(event: DragEvent, itemId: string): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		if (transitionDropPreview?.hoveredItemId === itemId) clearTransitionDropPreview();
+	}
+
+	function dropTransition(event: DragEvent, itemId: string): boolean {
+		const payload = getTransitionDragData();
+		if (!payload) return false;
+		const target = transitionTargetAtPointer(event, itemId);
+		clearTransitionDropPreview();
+		clearTransitionDragData();
+		event.preventDefault();
+		event.stopPropagation();
+		if (!target) return true;
+		try {
+			let transitionId = target.existingTransitionId;
+			if (transitionId) {
+				if (!updateTransitionPresentation(transitionId, payload.presentation, payload.direction)) {
+					emitEditorSound('error', editorSession.clock.isPlaying);
+					return true;
+				}
+			} else {
+				transitionId = addTransition(
+					target.fromItemId,
+					target.toItemId,
+					'crossfade',
+					target.suggestedDurationInFrames,
+					{ presentation: payload.presentation, direction: payload.direction }
+				);
+			}
+			selectedTransitionId = transitionId ?? null;
+			selectedItemId = null;
+			selectedItemIds = [];
+			onedit();
+		} catch {
+			emitEditorSound('error', editorSession.clock.isPlaying);
+		}
+		return true;
+	}
+
+	function transitionTargetForBridge(transitionId: string): TransitionDropTarget | null {
+		const payload = getTransitionDragData();
+		const transition = transitionsStore.list.find((candidate) => candidate.id === transitionId);
+		if (!payload || !transition) return null;
+		const target = resolveTransitionDropTarget({
+			itemId: transition.fromItemId,
+			edge: 'right',
+			items: timelineStore.items,
+			tracks: effectiveMediaTracks(timelineStore.tracks),
+			transitions: transitionsStore.list,
+			fps: timelineStore.fps,
+			presentation: payload.presentation
+		});
+		return target?.existingTransitionId === transitionId ? target : null;
+	}
+
+	function previewTransitionBridgeDrop(event: DragEvent, transitionId: string): void {
+		if (!transitionTargetForBridge(transitionId)) {
+			clearTransitionDropPreview();
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		transitionDropPreview = null;
+		transitionBridgeDropPreviewId = transitionId;
+	}
+
+	function leaveTransitionBridgeDrop(event: DragEvent, transitionId: string): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		if (transitionBridgeDropPreviewId === transitionId) clearTransitionDropPreview();
+	}
+
+	function dropTransitionOnBridge(event: DragEvent, transitionId: string): void {
+		const payload = getTransitionDragData();
+		const target = transitionTargetForBridge(transitionId);
+		clearTransitionDropPreview();
+		clearTransitionDragData();
+		if (!payload) return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (
+			!target ||
+			!updateTransitionPresentation(transitionId, payload.presentation, payload.direction)
+		) {
+			emitEditorSound('error', editorSession.clock.isPlaying);
+			return;
+		}
+		selectedTransitionId = transitionId;
+		selectedItemId = null;
+		selectedItemIds = [];
+		onedit();
+	}
+
+	function previewCatalogDrop(event: DragEvent, itemId: string): void {
+		if (getTransitionDragData()) {
+			clearEffectDropPreview();
+			previewTransitionDrop(event, itemId);
+			return;
+		}
+		previewEffectDrop(event, itemId);
+	}
+
+	function leaveCatalogDrop(event: DragEvent, itemId: string): void {
+		leaveEffectDrop(event, itemId);
+		leaveTransitionDrop(event, itemId);
+	}
+
+	function dropCatalogItem(event: DragEvent, itemId: string): void {
+		if (dropTransition(event, itemId)) return;
+		dropEffect(event, itemId);
 	}
 
 	function resolveEffectTargets(itemId: string, payload: EffectDragData | null): string[] {
@@ -2029,10 +2241,141 @@
 		if (addEffectTemplates(targetItemIds, payload.effects)) onedit();
 	}
 
+	function previewEffectAdjustmentDrop(event: DragEvent, trackId: string): boolean {
+		const payload = getEffectDragData();
+		if (!payload) return false;
+		const track = effectiveMediaTracks(timelineStore.tracks).find(
+			(candidate) => candidate.id === trackId
+		);
+		if (!track || track.kind === 'audio' || track.locked) {
+			effectAdjustmentDropPreview = null;
+			if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+			return true;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		effectAdjustmentDropPreview = {
+			trackId,
+			from: sceneFrameAtPointer(event),
+			durationInFrames: timelineStore.fps * 3,
+			label: payload.label
+		};
+		return true;
+	}
+
+	function leaveEffectAdjustmentDrop(event: DragEvent): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		effectAdjustmentDropPreview = null;
+	}
+
+	function dropEffectAdjustment(event: DragEvent, trackId: string): boolean {
+		const payload = getEffectDragData();
+		if (!payload) return false;
+		const preview = effectAdjustmentDropPreview;
+		clearEffectDropPreview();
+		clearEffectDragData();
+		event.preventDefault();
+		event.stopPropagation();
+		if (!preview || preview.trackId !== trackId) return true;
+		try {
+			const itemId = addAdjustmentLayerWithEffects(payload.label, payload.effects, {
+				frame: preview.from,
+				preferredTrackId: trackId
+			});
+			selectedItemId = itemId;
+			selectedItemIds = [itemId];
+			onedit();
+		} catch {
+			emitEditorSound('error', editorSession.clock.isPlaying);
+		}
+		return true;
+	}
+
 	function sceneFrameAtPointer(event: DragEvent): number {
 		if (!scrollContainer) return timelineStore.currentFrame;
 		const rect = scrollContainer.getBoundingClientRect();
-		return pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH);
+		return Math.max(
+			0,
+			pxToFrame(event.clientX - rect.left + scrollContainer.scrollLeft - TRACK_HEADER_WIDTH)
+		);
+	}
+
+	function previewGeneratedItemDrop(event: DragEvent, trackId: string): boolean {
+		const payload = getGeneratedItemDragData(event.dataTransfer);
+		if (!payload) return false;
+		const track = effectiveMediaTracks(timelineStore.tracks).find(
+			(candidate) => candidate.id === trackId
+		);
+		if (!track || track.kind === 'audio' || track.locked) {
+			generatedItemDropPreview = null;
+			return true;
+		}
+		const from = sceneFrameAtPointer(event);
+		const durationInFrames = timelineStore.fps * 3;
+		const itemType = payload.kind === 'shape' ? 'shape' : 'text';
+		if (!trackRangeIsOpen(timelineStore.items, trackId, from, durationInFrames, itemType)) {
+			generatedItemDropPreview = null;
+			if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+			return true;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		generatedItemDropPreview = {
+			trackId,
+			from,
+			durationInFrames,
+			label: payload.label
+		};
+		sceneDropPreview = null;
+		return true;
+	}
+
+	function leaveGeneratedItemDrop(event: DragEvent): void {
+		if (!(event.currentTarget instanceof HTMLElement)) return;
+		if (isDragPointInsideElement(event, event.currentTarget)) return;
+		generatedItemDropPreview = null;
+	}
+
+	function insertGeneratedItem(
+		payload: GeneratedItemDragData,
+		frame: number,
+		preferredTrackId: string
+	): string {
+		if (payload.kind === 'shape') {
+			return addShapeItem(payload.shapeType, payload.label, payload.style, {
+				frame,
+				preferredTrackId
+			});
+		}
+		return payload.presetId
+			? addTextTemplateItem(payload.presetId, localizedTextStylePresetCopy(payload.presetId), {
+					frame,
+					preferredTrackId
+				})
+			: addTextItemAtFrame(payload.label, frame, preferredTrackId);
+	}
+
+	function dropGeneratedItem(event: DragEvent, trackId: string): boolean {
+		const payload = getGeneratedItemDragData(event.dataTransfer);
+		if (!payload) return false;
+		const preview = generatedItemDropPreview;
+		generatedItemDropPreview = null;
+		clearGeneratedItemDragData();
+		event.preventDefault();
+		event.stopPropagation();
+		if (!preview || preview.trackId !== trackId) return true;
+		try {
+			const itemId = insertGeneratedItem(payload, preview.from, trackId);
+			selectedItemId = itemId;
+			selectedItemIds = [itemId];
+			onedit();
+		} catch {
+			emitEditorSound('error', editorSession.clock.isPlaying);
+		}
+		return true;
 	}
 
 	function openSceneTrack(preferredTrackId: string, from: number, end: number): string | null {
@@ -3877,6 +4220,7 @@
 				markerDrag ||
 				mediaDropPreview ||
 				effectDropTargetIds.length > 0 ||
+				transitionDropPreview ||
 				sceneDropPreview ||
 				deleteGroupDialogOpen ||
 				bentoLayoutOpen ||
@@ -5236,23 +5580,43 @@
 								ondragenter={track.isGroup
 									? undefined
 									: (event) => {
-											if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+											if (
+												!previewMediaDrop(event, track.id) &&
+												!previewGeneratedItemDrop(event, track.id) &&
+												!previewEffectAdjustmentDrop(event, track.id)
+											) {
+												previewSceneDrop(event, track.id);
+											}
 										}}
 								ondragover={track.isGroup
 									? undefined
 									: (event) => {
-											if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+											if (
+												!previewMediaDrop(event, track.id) &&
+												!previewGeneratedItemDrop(event, track.id) &&
+												!previewEffectAdjustmentDrop(event, track.id)
+											) {
+												previewSceneDrop(event, track.id);
+											}
 										}}
 								ondragleave={track.isGroup
 									? undefined
 									: (event) => {
 											leaveMediaDrop(event);
+											leaveGeneratedItemDrop(event);
+											leaveEffectAdjustmentDrop(event);
 											leaveSceneDrop(event);
 										}}
 								ondrop={track.isGroup
 									? undefined
 									: (event) => {
-											if (!dropMedia(event, track.id)) dropScene(event, track.id);
+											if (
+												!dropMedia(event, track.id) &&
+												!dropGeneratedItem(event, track.id) &&
+												!dropEffectAdjustment(event, track.id)
+											) {
+												dropScene(event, track.id);
+											}
 										}}
 							>
 								<div
@@ -5341,6 +5705,32 @@
 										</span>
 									</div>
 								{/if}
+								{#if generatedItemDropPreview?.trackId === track.id}
+									<div
+										class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed border-fuchsia-300 bg-fuchsia-950/80 px-2 py-1 text-xs text-white shadow-lg"
+										style={clipStyle({
+											from: generatedItemDropPreview.from,
+											durationInFrames: generatedItemDropPreview.durationInFrames,
+											type: 'text'
+										})}
+										data-generated-item-drop-preview
+									>
+										<span class="block truncate">{generatedItemDropPreview.label}</span>
+									</div>
+								{/if}
+								{#if effectAdjustmentDropPreview?.trackId === track.id}
+									<div
+										class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.14_45)] bg-[oklch(0.3_0.08_45_/_0.84)] px-2 py-1 text-xs text-white shadow-lg"
+										style={clipStyle({
+											from: effectAdjustmentDropPreview.from,
+											durationInFrames: effectAdjustmentDropPreview.durationInFrames,
+											type: 'adjustment'
+										})}
+										data-effect-adjustment-drop-preview
+									>
+										<span class="block truncate">{effectAdjustmentDropPreview.label}</span>
+									</div>
+								{/if}
 								{#if mediaDropPreview && (mediaDropPreview.trackId === track.id || mediaDropPreview.secondaryTrackId === track.id)}
 									<div
 										class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-xs text-white shadow-lg {mediaDropPreview.valid
@@ -5385,11 +5775,21 @@
 											data-timeline-item-id={item.id}
 											data-editor-shortcuts-enabled
 											use:observeTimelineItem={item.id}
-											ondragenter={(event) => previewEffectDrop(event, item.id)}
-											ondragover={(event) => previewEffectDrop(event, item.id)}
-											ondragleave={(event) => leaveEffectDrop(event, item.id)}
-											ondrop={(event) => dropEffect(event, item.id)}
+											ondragenter={(event) => previewCatalogDrop(event, item.id)}
+											ondragover={(event) => previewCatalogDrop(event, item.id)}
+											ondragleave={(event) => leaveCatalogDrop(event, item.id)}
+											ondrop={(event) => dropCatalogItem(event, item.id)}
 										>
+											{#if transitionDropPreview?.hoveredItemId === item.id}
+												<div
+													class="pointer-events-none absolute inset-y-0 z-40 w-1/3 border border-dashed border-[oklch(0.72_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.2)] {transitionDropPreview.edge ===
+													'left'
+														? 'left-0 rounded-l-sm'
+														: 'right-0 rounded-r-sm'}"
+													data-transition-drop-preview
+													data-transition-edge={transitionDropPreview.edge}
+												></div>
+											{/if}
 											{#if effectDropTargetIds.includes(item.id)}
 												<div
 													class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-[oklch(0.66_0.14_45_/_0.95)] bg-[oklch(0.66_0.14_45_/_0.16)] shadow-[inset_0_0_0_1px_oklch(0.66_0.14_45_/_0.35)]"
@@ -5624,6 +6024,7 @@
 								{#each trackTransitions as transition (transition.id)}
 									{@const geometry = transitionGeometry(transition, track.id)}
 									{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="group absolute top-1 z-30 flex h-[calc(100%-8px)] items-start justify-center rounded-sm border bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)] {selectedTransitionId ===
 											transition.id
@@ -5631,7 +6032,17 @@
 												: 'border-[oklch(0.76_0.14_45_/_0.7)]'}"
 											style="left:{geometry.left}px;width:{geometry.width}px"
 											data-transition-id={transition.id}
+											ondragenter={(event) => previewTransitionBridgeDrop(event, transition.id)}
+											ondragover={(event) => previewTransitionBridgeDrop(event, transition.id)}
+											ondragleave={(event) => leaveTransitionBridgeDrop(event, transition.id)}
+											ondrop={(event) => dropTransitionOnBridge(event, transition.id)}
 										>
+											{#if transitionBridgeDropPreviewId === transition.id}
+												<div
+													class="pointer-events-none absolute inset-0 z-30 rounded-sm border border-dashed border-[oklch(0.88_0.17_65)] bg-[oklch(0.66_0.14_45_/_0.28)]"
+													data-transition-bridge-drop-preview
+												></div>
+											{/if}
 											<button
 												type="button"
 												class="absolute inset-0 overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[oklch(0.82_0.16_65)]"

@@ -13,7 +13,8 @@
 	import {
 		removeTransition,
 		transitionsStore,
-		updateTransition
+		updateTransition,
+		updateTransitionPresentation
 	} from '$lib/video-editor/timeline/actions/transitions.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
 	import { getMaxTransitionDuration } from '$lib/video-editor/timeline/transition-planner';
@@ -161,35 +162,8 @@
 		if (updateTransition(transitionId, updates)) onedit();
 	}
 
-	function defaultProperties(nextDefinition: TransitionDefinition) {
-		const defaults: NonNullable<TimelineTransition['properties']> = {};
-		for (const parameter of nextDefinition.parameters ?? []) {
-			defaults[parameter.key] = parameter.defaultValue;
-		}
-		return defaults;
-	}
-
 	function choosePresentation(nextDefinition: TransitionDefinition): void {
-		if (!transition) return;
-		const available = maxDuration(transition);
-		const durationInFrames = Math.min(
-			available,
-			Math.max(
-				nextDefinition.minDuration,
-				Math.min(nextDefinition.maxDuration, transition.durationInFrames)
-			)
-		);
-		const timing = nextDefinition.supportedTimings.includes(transition.timing ?? 'linear')
-			? (transition.timing ?? 'linear')
-			: nextDefinition.supportedTimings[0];
-		commit({
-			presentation: nextDefinition.id,
-			type: nextDefinition.id === 'dipToColorDissolve' ? 'fade-black' : 'crossfade',
-			durationInFrames,
-			timing,
-			direction: nextDefinition.hasDirection ? nextDefinition.directions?.[0] : undefined,
-			properties: defaultProperties(nextDefinition)
-		});
+		if (updateTransitionPresentation(transitionId, nextDefinition.id)) onedit();
 	}
 
 	function setPlacement(alignment: number): void {

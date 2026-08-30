@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "İtme",
 	"video_editor_transition_zoom_blur": "Yakınlaştırma bulanıklığı",
 	"video_editor_transition_bounded": "Geçişler, komşu kliplerin yarısıyla sınırlıdır.",
+	"video_editor_transition_add_or_drag": "Seçili kesmeye eklemek için tıklayın veya geçerli bir kesmeye sürükleyin.",
 	"video_editor_transition_properties": "Geçiş ayarları",
 	"video_editor_transition_search": "Geçiş ara",
 	"video_editor_transition_preset": "Efekt",

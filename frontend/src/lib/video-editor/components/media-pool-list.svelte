@@ -123,6 +123,7 @@
 		onsequenceopen = () => undefined,
 		onsourceopen = () => undefined,
 		onextractsubtitles = () => undefined,
+		onimport,
 		onUnsupportedAudio,
 		deleteProjectMedia = deleteMediaFromProject,
 		generateMediaProxy = getAutomaticProxy,
@@ -134,6 +135,7 @@
 		onsequenceopen?: () => void;
 		onsourceopen?: (mediaId: string) => void;
 		onextractsubtitles?: (media: MediaMetadata) => void;
+		onimport?: () => void;
 		onUnsupportedAudio?: (request: UnsupportedAudioImportRequest) => Promise<'import' | 'cancel'>;
 		deleteProjectMedia?: typeof deleteMediaFromProject;
 		generateMediaProxy?: typeof getAutomaticProxy;
@@ -1082,6 +1084,18 @@
 			>
 				<LinkIcon class="size-3.5" aria-hidden="true" />
 			</Button>
+			{#if onimport}
+				<Button
+					type="button"
+					variant="outline"
+					size="icon-xs"
+					aria-label={m.video_editor_import_media()}
+					title={m.video_editor_import_media()}
+					onclick={onimport}
+				>
+					<FolderOpenIcon class="size-3.5" aria-hidden="true" />
+				</Button>
+			{/if}
 		</div>
 		<div class="grid grid-cols-2 gap-1.5">
 			<div class="min-w-0">

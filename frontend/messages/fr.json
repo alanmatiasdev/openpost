@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "Poussée",
 	"video_editor_transition_zoom_blur": "Zoom flouté",
 	"video_editor_transition_bounded": "Les transitions sont limitées à la moitié de la durée de chaque clip adjacent.",
+	"video_editor_transition_add_or_drag": "Cliquez pour l’ajouter à la coupe sélectionnée, ou faites-la glisser sur une coupe valide.",
 	"video_editor_transition_properties": "Réglages de transition",
 	"video_editor_transition_search": "Rechercher des transitions",
 	"video_editor_transition_preset": "Effet",

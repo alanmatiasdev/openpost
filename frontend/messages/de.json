@@ -5118,6 +5118,7 @@
 	"video_editor_transition_push": "Schieben",
 	"video_editor_transition_zoom_blur": "Zoom-Weichzeichner",
 	"video_editor_transition_bounded": "Übergänge sind auf höchstens die halbe Länge jedes angrenzenden Clips begrenzt.",
+	"video_editor_transition_add_or_drag": "Klicken, um den Übergang am ausgewählten Schnitt hinzuzufügen, oder auf einen gültigen Schnitt ziehen.",
 	"video_editor_transition_properties": "Übergangseinstellungen",
 	"video_editor_transition_search": "Übergänge suchen",
 	"video_editor_transition_preset": "Effekt",

@@ -9,6 +9,7 @@ import {
 	addMarker,
 	addShapeItem,
 	addTextItem,
+	addTextTemplateItem,
 	clearAllMarkers,
 	closeAllGapsOnTrack,
 	closeGapAtPosition,
@@ -309,7 +310,12 @@ describe('timeline gap closing actions', () => {
 		);
 		timelineStore._setItems([
 			clip({ id: 'video-before', from: 0, durationInFrames: 30 }),
-			clip({ id: 'video-after', from: 60, durationInFrames: 30, linkedGroupId: 'pair' }),
+			clip({
+				id: 'video-after',
+				from: 60,
+				durationInFrames: 30,
+				linkedGroupId: 'pair'
+			}),
 			clip({
 				id: 'audio-after',
 				trackId: 'track-audio',
@@ -333,7 +339,12 @@ describe('timeline gap closing actions', () => {
 		);
 		timelineStore._setItems([
 			clip({ id: 'video-before', from: 0, durationInFrames: 30 }),
-			clip({ id: 'video-after', from: 60, durationInFrames: 30, linkedGroupId: 'pair' }),
+			clip({
+				id: 'video-after',
+				from: 60,
+				durationInFrames: 30,
+				linkedGroupId: 'pair'
+			}),
 			clip({
 				id: 'audio-after',
 				trackId: 'track-audio',
@@ -396,6 +407,28 @@ describe('addTextItem', () => {
 		});
 		expect(commandHistory.getLastCommandType()).toBe('ADD_TEXT_ITEM');
 
+		commandHistory.undo();
+		expect(timelineStore.itemById.has(id)).toBe(false);
+	});
+
+	it('creates a complete styled template as one undoable item', () => {
+		setCurrentFrame(12);
+		const id = addTextTemplateItem('breaking-update', {
+			label: 'Breaking',
+			sample: {
+				eyebrow: 'BREAKING',
+				title: 'Major update',
+				subtitle: 'Developing now'
+			}
+		});
+
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			type: 'text',
+			from: 12,
+			textStylePresetId: 'breaking-update',
+			textSpans: [{ text: 'BREAKING' }, { text: 'Major update' }, { text: 'Developing now' }]
+		});
+		expect(commandHistory.getLastCommandType()).toBe('ADD_TEXT_ITEM');
 		commandHistory.undo();
 		expect(timelineStore.itemById.has(id)).toBe(false);
 	});
@@ -470,6 +503,23 @@ describe('addShapeItem', () => {
 				aspectRatioLocked: false
 			}
 		});
+	});
+
+	it('creates a gradient card without a second styling command', () => {
+		const id = addShapeItem('rectangle', 'Linear gradient', {
+			fillType: 'linear',
+			gradientStartColor: '#f97316',
+			gradientEndColor: '#6366f1',
+			gradientAngle: 135
+		});
+		expect(timelineStore.itemById.get(id)).toMatchObject({
+			type: 'shape',
+			fillType: 'linear',
+			gradientStartColor: '#f97316',
+			gradientEndColor: '#6366f1',
+			gradientAngle: 135
+		});
+		expect(commandHistory.getLastCommandType()).toBe('ADD_SHAPE_ITEM');
 	});
 
 	it('rejects topology patches while path vertex keys exist', () => {
@@ -626,7 +676,12 @@ describe('linked item actions', () => {
 	});
 
 	it('splits generated transcript captions with their source clip in one undo step', () => {
-		const video = clip({ id: 'video', durationInFrames: 60, sourceEnd: 60, sourceFps: 30 });
+		const video = clip({
+			id: 'video',
+			durationInFrames: 60,
+			sourceEnd: 60,
+			sourceFps: 30
+		});
 		const captions: TimelineItem = {
 			id: 'captions',
 			trackId: 'track-video-overlay',
@@ -670,7 +725,11 @@ describe('linked item actions', () => {
 			id: captions.id,
 			from: 0,
 			durationInFrames: 30,
-			captionSource: { clipId: video.id, sourceStartSeconds: 0, sourceEndSeconds: 1 },
+			captionSource: {
+				clipId: video.id,
+				sourceStartSeconds: 0,
+				sourceEndSeconds: 1
+			},
 			cues: [{ text: 'Hello before' }]
 		});
 		expect(splitCaptions[1]).toMatchObject({
@@ -696,7 +755,12 @@ describe('linked item actions', () => {
 	});
 
 	it('keeps a source clip whole when its generated caption track is locked', () => {
-		const video = clip({ id: 'video', durationInFrames: 60, sourceEnd: 60, sourceFps: 30 });
+		const video = clip({
+			id: 'video',
+			durationInFrames: 60,
+			sourceEnd: 60,
+			sourceFps: 30
+		});
 		const captions: TimelineItem = {
 			id: 'captions',
 			trackId: 'track-video-overlay',
@@ -903,7 +967,12 @@ describe('linked item actions', () => {
 
 	it('allows an audio end extension to overlap for mixing', () => {
 		timelineStore._setItems([
-			clip({ id: 'audio', trackId: 'track-audio', type: 'audio', durationInFrames: 30 }),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				durationInFrames: 30
+			}),
 			clip({
 				id: 'mix',
 				trackId: 'track-audio',
@@ -920,7 +989,12 @@ describe('linked item actions', () => {
 	it('joins linked split siblings and repairs transition endpoints as one undo step', () => {
 		const linkedGroupId = 'linked';
 		const originId = 'source-edit';
-		const videoLeft = clip({ id: 'video-left', originId, linkedGroupId, sourceEnd: 30 });
+		const videoLeft = clip({
+			id: 'video-left',
+			originId,
+			linkedGroupId,
+			sourceEnd: 30
+		});
 		const videoRight = clip({
 			id: 'video-right',
 			originId,

@@ -56,7 +56,11 @@
 	import { keyboardShortcuts } from '$lib/video-editor/settings/keyboard-shortcuts.svelte';
 	import { eventMatchesShortcut } from '$lib/video-editor/settings/keyboard-shortcuts';
 
-	let { onedit, itemIds = [] }: { onedit: () => void; itemIds?: string[] } = $props();
+	let {
+		onedit,
+		itemIds = [],
+		showHeading = true
+	}: { onedit: () => void; itemIds?: string[]; showHeading?: boolean } = $props();
 
 	const subtitleItems = $derived(timelineStore.items.filter((item) => item.type === 'subtitle'));
 
@@ -501,10 +505,16 @@
 	aria-label={m.video_editor_transcript()}
 	data-testid="transcript-panel"
 >
-	<div class="flex flex-wrap items-center justify-between gap-2 px-1">
-		<h3 class="text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
-			{m.video_editor_transcript()}
-		</h3>
+	<div
+		class="flex flex-wrap items-center gap-2 px-1"
+		class:justify-between={showHeading}
+		class:justify-end={!showHeading}
+	>
+		{#if showHeading}
+			<h3 class="text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
+				{m.video_editor_transcript()}
+			</h3>
+		{/if}
 		<Button
 			type="button"
 			variant={editVideoMode ? 'secondary' : 'ghost'}
