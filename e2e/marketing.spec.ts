@@ -20,12 +20,12 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page).toHaveTitle("OpenPost - The all-in-one content team for solo founders");
   await expect(
     page.getByRole("heading", {
-      name: "Your socials, on steroids.",
+      name: "Publish clearly.",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "For solo founders who want one workspace for social publishing. Write the idea once, shape each version, schedule every channel, and see what went live.",
+      "For solo founders who want one workspace for social publishing. Create one publication, adapt it for each destination, and schedule it from one workspace.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -35,7 +35,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Start for free", exact: true }).first(),
+    page.getByRole("link", { name: "Start 14-day trial", exact: true }).first(),
   ).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
@@ -73,7 +73,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page.getByText("One working loop")).toHaveCount(0);
   await expect(
     page.getByRole("heading", {
-      name: "Everything you need to publish.",
+      name: "One publication, shaped for each destination.",
     }),
   ).toBeVisible();
   await expect(
@@ -465,7 +465,7 @@ test("hero and footer actions remain usable at 320 pixels", async ({ page }) => 
 
   const heroLink = page
     .locator("section.hero")
-    .getByRole("link", { name: "Start free", exact: true });
+    .getByRole("link", { name: "Start 14-day trial", exact: true });
   await expect(heroLink).toBeVisible();
   await heroLink.focus();
   await expect(heroLink).toBeFocused();
@@ -576,7 +576,7 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
   });
 
   await page.goto("/");
-  const startFree = page.getByRole("link", { name: "Start free", exact: true });
+  const startFree = page.getByRole("link", { name: "Start 14-day trial", exact: true }).first();
   await expect(startFree).toHaveAttribute("data-cuelume-toggle", "release");
   await expect(startFree).not.toHaveAttribute("data-cuelume-press");
   await expect(startFree).not.toHaveAttribute("data-cuelume-release");
