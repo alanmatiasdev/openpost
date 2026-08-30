@@ -79,10 +79,10 @@ describe('analytics performance chart', () => {
 		screen.container.style.width = '960px';
 		const scroll = screen.getByTestId('analytics-chart-scroll').element();
 		const canvas = scroll.firstElementChild;
-		expect(canvas).toBeInstanceOf(HTMLElement);
+		if (!(canvas instanceof HTMLElement)) throw new Error('Expected an analytics chart canvas');
 
 		await expect
-			.poll(() => (canvas as HTMLElement).getBoundingClientRect().right)
+			.poll(() => canvas.getBoundingClientRect().right)
 			.toBeGreaterThanOrEqual(scroll.getBoundingClientRect().right - 1);
 	});
 
