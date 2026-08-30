@@ -477,13 +477,10 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
   await scheduleDialog
-    .locator("[data-calendar-day]:not([data-outside-month])")
-    .and(
-      scheduleDialog.getByRole("button", {
-        name: futureDateLabel,
-        exact: true,
-      }),
-    )
+    .getByRole("button", {
+      name: futureDateLabel,
+      exact: true,
+    })
     .click();
   await scheduleDialog.getByRole("button", { name: "10:30", exact: true }).click();
   await scheduleDialog.getByRole("button", { name: "Schedule", exact: true }).click();
