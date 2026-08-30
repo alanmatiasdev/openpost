@@ -1199,6 +1199,15 @@ test.describe("product screenshot capture", () => {
       "147",
     );
     await imageProperties.getByRole("button", { name: "Transform", exact: true }).click();
+    const adjustmentsButton = imageProperties.getByRole("button", {
+      name: "Adjustments",
+      exact: true,
+    });
+    await adjustmentsButton.click();
+    const brightnessSlider = imageProperties.getByRole("slider", { name: "Brightness" });
+    await brightnessSlider.press("End");
+    await expect(brightnessSlider).toHaveAttribute("aria-valuenow", "1");
+    await brightnessSlider.scrollIntoViewIfNeeded();
     await expect(page.getByTestId("image-editor-save-indicator")).toHaveAttribute(
       "data-state",
       "saved",
@@ -1207,8 +1216,8 @@ test.describe("product screenshot capture", () => {
     await capture(page, "image-editor-dark.png", [
       imageEditorStage,
       logoLayer,
-      imageProperties.getByRole("heading", { name: "Image" }),
-      imageProperties.getByRole("button", { name: "Edit", exact: true }),
+      adjustmentsButton,
+      brightnessSlider,
     ]);
 
     await installLocalVideoWorkspace(page, studySOSVideo.toString("base64"));
