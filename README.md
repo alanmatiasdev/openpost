@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start 14-day trial</strong></a>
+  <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start a 14-day trial</strong></a>
   ·
   <a href="https://docs.openpost.social/guide/quickstart"><strong>Run your own</strong></a>
   ·
@@ -98,7 +98,7 @@ Open `http://localhost:8080`, create the first account, and connect a social acc
 
 ## Providers
 
-OpenPost has adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks.
+OpenPost has adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business or Creator accounts, TikTok, YouTube, and Discord webhooks.
 
 An adapter in the code does not mean OpenPost Hosted can use it today. Some providers still require app review, a certain account type, extra scopes, or public media URLs. OpenPost shows what is missing before you publish.
 
