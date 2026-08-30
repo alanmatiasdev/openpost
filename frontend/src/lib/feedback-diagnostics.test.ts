@@ -8,7 +8,7 @@ describe('feedback diagnostics privacy', () => {
 				'https://self-hosted.internal:8443/activity?oauth_code=secret#destination',
 				'https://openpost.test'
 			)
-		).toBe('/publications');
+		).toBe('/activity');
 		expect(safeFeedbackPath('/posts/draft?token=secret', 'https://openpost.test')).toBe(
 			'/posts/draft'
 		);
