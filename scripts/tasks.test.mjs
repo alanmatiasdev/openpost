@@ -22,6 +22,13 @@ test("specialized policy checks share the check interface", () => {
   );
 });
 
+test("repository tests use exact Bun paths", () => {
+  const result = taskPlan("test", "marketing");
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  assert.match(plan.stages[0].commands[0], /bun test \.\/scripts\//u);
+});
+
 test("unknown scopes fail with the supported interface", () => {
   const result = taskPlan("test", "unknown");
   assert.notEqual(result.status, 0);

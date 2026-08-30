@@ -687,7 +687,10 @@ function bunRun(...args) {
 }
 
 function bunTest(...args) {
-  return commandStep("bun", "test", ...args);
+  const exactPaths = args.map((arg) =>
+    arg.startsWith(".") || arg.startsWith("-") || path.isAbsolute(arg) ? arg : `./${arg}`,
+  );
+  return commandStep("bun", "test", ...exactPaths);
 }
 
 function go(...values) {
