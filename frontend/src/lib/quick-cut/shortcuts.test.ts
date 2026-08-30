@@ -3,6 +3,7 @@ import { resolveEditorShortcuts } from '$lib/video-editor/settings/keyboard-shor
 import { quickCutShortcutAction } from './shortcuts';
 
 function keyEvent(code: string, key: string, modifiers: KeyboardEventInit = {}): KeyboardEvent {
+	// SAFETY: The resolver reads only KeyboardEvent fields supplied by this fixture.
 	return { code, key, ...modifiers } as KeyboardEvent;
 }
 

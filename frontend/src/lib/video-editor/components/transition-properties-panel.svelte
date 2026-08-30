@@ -225,6 +225,7 @@
 	}
 
 	function resetProperty(parameter: TransitionParameterDefinition): void {
+		// SAFETY: Transition array defaults are already validated against the parameter schema.
 		const value = Array.isArray(parameter.defaultValue)
 			? ([...parameter.defaultValue] as TransitionPropertyValue)
 			: parameter.defaultValue;

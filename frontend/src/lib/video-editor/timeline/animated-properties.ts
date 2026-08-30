@@ -70,9 +70,13 @@ const VIDEO_PROPERTIES: KeyframeProperty[] = [
 	'volume'
 ];
 
-const CROP_PROPERTIES: KeyframeProperty[] = VIDEO_PROPERTIES.filter(
-	(property) => property !== 'volume'
+const CROP_PROPERTIES: CropKeyframeProperty[] = VIDEO_PROPERTIES.filter(
+	(property): property is CropKeyframeProperty => property !== 'volume'
 );
+
+function isCropKeyframeProperty(property: KeyframeProperty): property is CropKeyframeProperty {
+	return CROP_PROPERTIES.some((candidate) => candidate === property);
+}
 
 const TEXT_PROPERTIES: KeyframeProperty[] = [
 	'textStyleScale',
@@ -299,15 +303,10 @@ function applyResolvedValue(
 	if (isTransformProperty(property)) {
 		return { ...item, transform: { ...item.transform, [property]: value } };
 	}
-	if (CROP_PROPERTIES.includes(property)) {
+	if (isCropKeyframeProperty(property)) {
 		return {
 			...item,
-			crop: cropWithPropertyPixels(
-				item.crop,
-				property as CropKeyframeProperty,
-				value,
-				cropSourceDimensions(item)
-			)
+			crop: cropWithPropertyPixels(item.crop, property, value, cropSourceDimensions(item))
 		};
 	}
 

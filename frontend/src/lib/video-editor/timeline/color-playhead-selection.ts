@@ -3,7 +3,7 @@ import { isColorTimelineItem } from './color-mini-timeline';
 
 // Match FreeCut's Color-page target order: grade source footage before overlays
 // that happen to share the same frame.
-const GRADE_TYPE_PRIORITY: Record<TimelineItem['type'], number> = {
+const GRADE_TYPE_PRIORITY = {
 	video: 0,
 	image: 1,
 	lottie: 1,
@@ -15,7 +15,7 @@ const GRADE_TYPE_PRIORITY: Record<TimelineItem['type'], number> = {
 	subtitle: 6,
 	controller: Number.POSITIVE_INFINITY,
 	audio: Number.POSITIVE_INFINITY
-};
+} satisfies Record<TimelineItem['type'], number>;
 
 export function colorItemSpansFrame(item: TimelineItem, frame: number): boolean {
 	return frame >= item.from && frame < item.from + item.durationInFrames;

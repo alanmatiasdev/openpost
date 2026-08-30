@@ -48,15 +48,18 @@ export function presentAccountManagementFeedback(
 }
 
 export function rememberAccountManagementContinuation(continuation: AccountManagementContinuation) {
-	if (typeof localStorage === 'undefined') return;
+	if (!('localStorage' in globalThis)) return;
 	try {
-		localStorage.setItem('oauth_workspace_id', continuation.workspaceID);
+		globalThis.localStorage.setItem('oauth_workspace_id', continuation.workspaceID);
 		if (continuation.mastodon?.instanceURL) {
-			localStorage.setItem('oauth_mastodon_instance_url', continuation.mastodon.instanceURL);
-			localStorage.removeItem('oauth_mastodon_server');
+			globalThis.localStorage.setItem(
+				'oauth_mastodon_instance_url',
+				continuation.mastodon.instanceURL
+			);
+			globalThis.localStorage.removeItem('oauth_mastodon_server');
 		} else if (continuation.mastodon?.serverName) {
-			localStorage.setItem('oauth_mastodon_server', continuation.mastodon.serverName);
-			localStorage.removeItem('oauth_mastodon_instance_url');
+			globalThis.localStorage.setItem('oauth_mastodon_server', continuation.mastodon.serverName);
+			globalThis.localStorage.removeItem('oauth_mastodon_instance_url');
 		}
 	} catch {
 		// Storage may be unavailable in hardened browser contexts; continuation is best-effort.
@@ -76,11 +79,11 @@ export function accountManagementReturnHref(
 }
 
 export function clearAccountManagementContinuation() {
-	if (typeof localStorage === 'undefined') return;
+	if (!('localStorage' in globalThis)) return;
 	try {
-		localStorage.removeItem('oauth_workspace_id');
-		localStorage.removeItem('oauth_mastodon_server');
-		localStorage.removeItem('oauth_mastodon_instance_url');
+		globalThis.localStorage.removeItem('oauth_workspace_id');
+		globalThis.localStorage.removeItem('oauth_mastodon_server');
+		globalThis.localStorage.removeItem('oauth_mastodon_instance_url');
 	} catch {
 		// Storage may be unavailable in hardened browser contexts; clearing is best-effort.
 	}

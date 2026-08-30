@@ -16,7 +16,17 @@ const cache = new SizedAccessedMemoryCache<CacheEntry>(WAVEFORM_CACHE_BYTES);
 const inflight = new Map<string, Promise<WaveformData>>();
 const subscribers = new Map<string, Set<(data: WaveformData) => void>>();
 
-export function quickCutWaveformKey(source: QuickCutSource): string {
+type QuickCutWaveformIdentity = Pick<
+	QuickCutSource,
+	| 'id'
+	| 'size'
+	| 'lastModified'
+	| 'contentFingerprint'
+	| 'audioStreams'
+	| 'selectedAudioTrackIndices'
+>;
+
+export function quickCutWaveformKey(source: QuickCutWaveformIdentity): string {
 	const fingerprint =
 		source.contentFingerprint ?? `${source.size}:${source.lastModified ?? 'unknown'}`;
 	const audioTrack =

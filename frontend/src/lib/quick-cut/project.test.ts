@@ -43,7 +43,7 @@ describe('quick-cut project parsing', () => {
 
 	it('keeps older projects in keep-ranges mode', () => {
 		const project = createNewProject([source()]);
-		const serialized = JSON.parse(serializeProject(project)) as Record<string, unknown>;
+		const serialized = structuredClone(project);
 		delete serialized.removeMarkedRanges;
 
 		expect(parseProject(JSON.stringify(serialized)).removeMarkedRanges).toBe(false);

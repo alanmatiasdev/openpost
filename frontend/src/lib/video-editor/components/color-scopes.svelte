@@ -46,11 +46,14 @@
 	let scopeStorageReady = $state(false);
 	const active = $derived(scopeSamples.current?.itemId === itemId ? scopeSamples.current : null);
 	const showViewModes = $derived(gpuReady && (scope === 'histogram' || scope === 'waveform'));
+	function isColorScope(value: string | null): value is ColorScope {
+		return value !== null && SCOPE_OPTIONS.some((candidate) => candidate === value);
+	}
 
 	onMount(() => {
 		try {
 			const saved = localStorage.getItem(SCOPE_STORAGE_KEY);
-			if (SCOPE_OPTIONS.includes(saved as ColorScope)) scope = saved as ColorScope;
+			if (isColorScope(saved)) scope = saved;
 		} catch {
 			// Storage is optional; RGB Parade remains the source-defined default.
 		}

@@ -121,6 +121,30 @@
 		return Math.max(0, Math.min(fadeLimit(), value));
 	}
 
+	function staticValue(item: TimelineItem, field: StaticAudioField): number {
+		switch (field) {
+			case 'audioFadeIn':
+				return item.audioFadeIn ?? 0;
+			case 'audioFadeOut':
+				return item.audioFadeOut ?? 0;
+			case 'audioPitchSemitones':
+				return item.audioPitchSemitones ?? 0;
+			case 'audioPitchCents':
+				return item.audioPitchCents ?? 0;
+		}
+	}
+
+	function isStaticAudioField(
+		property: KeyframeProperty | StaticAudioField
+	): property is StaticAudioField {
+		return (
+			property === 'audioFadeIn' ||
+			property === 'audioFadeOut' ||
+			property === 'audioPitchSemitones' ||
+			property === 'audioPitchCents'
+		);
+	}
+
 	function writeStatic(field: StaticAudioField, value: number, force = false): void {
 		if (!Number.isFinite(value)) return;
 		if (field.startsWith('audioPitch') && !force) {
@@ -131,7 +155,7 @@
 		beginGesture(field);
 		const safe = clampStatic(field, value);
 		const updates = audioItems
-			.filter((item) => Math.abs(((item[field] as number | undefined) ?? 0) - safe) >= 0.001)
+			.filter((item) => Math.abs(staticValue(item, field) - safe) >= 0.001)
 			.map((item) => ({ id: item.id, patch: { [field]: safe } }));
 		if (updates.length === 0) return;
 		timelineStore._updateItems(updates);
@@ -141,9 +165,9 @@
 	function commit(property: KeyframeProperty | StaticAudioField, value: number): void {
 		if (!gesture) {
 			if (property === 'volume') writeGain(value);
-			else writeStatic(property as StaticAudioField, value, true);
-		} else if (property !== 'volume' && property.startsWith('audioPitch')) {
-			writeStatic(property as StaticAudioField, value, true);
+			else if (isStaticAudioField(property)) writeStatic(property, value, true);
+		} else if (isStaticAudioField(property) && property.startsWith('audioPitch')) {
+			writeStatic(property, value, true);
 		}
 		const current = gesture;
 		if (!current || current.property !== property) return;
@@ -194,7 +218,7 @@
 	}
 
 	function resetStatic(field: StaticAudioField): void {
-		const targets = audioItems.filter((item) => ((item[field] as number | undefined) ?? 0) !== 0);
+		const targets = audioItems.filter((item) => staticValue(item, field) !== 0);
 		if (targets.length === 0) return;
 		executeAtomic('RESET_CLIP_AUDIO_PROPERTY', () => {
 			timelineStore._updateItems(targets.map((item) => ({ id: item.id, patch: { [field]: 0 } })));

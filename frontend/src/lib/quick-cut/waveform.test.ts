@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { quickCutWaveformKey, sampleWaveformColumns } from './waveform';
-import type { QuickCutSource } from './types';
 
 describe('Quick Cut waveform', () => {
 	it('keeps short transients when reducing source peaks to screen columns', () => {
@@ -67,7 +66,7 @@ describe('Quick Cut waveform', () => {
 			contentFingerprint: 'fingerprint',
 			audioStreams: [{ index: 0 }, { index: 1 }],
 			selectedAudioTrackIndices: [0]
-		} as QuickCutSource;
+		};
 
 		expect(quickCutWaveformKey(source)).not.toBe(
 			quickCutWaveformKey({ ...source, selectedAudioTrackIndices: [1] })

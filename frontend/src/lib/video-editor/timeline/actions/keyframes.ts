@@ -1048,6 +1048,7 @@ function removeKeyframesMatchingSource(
 			let itemRemoved = 0;
 			for (const [rawProperty, sourceTrack] of Object.entries(item.keyframes ?? {})) {
 				if (!sourceTrack) continue;
+				// SAFETY: item.keyframes is keyed by the closed KeyframeProperty union.
 				const property = rawProperty as KeyframeProperty;
 				const track = withCompleteMetadata(sourceTrack, property);
 				const keep = track.frames
@@ -1465,13 +1466,10 @@ function basePropertyPatch(
 	}
 	const crop = item.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
 	if (property.startsWith('crop')) {
+		// SAFETY: CropKeyframeProperty contains every KeyframeProperty with the crop prefix.
+		const cropProperty = property as CropKeyframeProperty;
 		return {
-			crop: cropWithPropertyPixels(
-				crop,
-				property as CropKeyframeProperty,
-				value,
-				cropSourceDimensions(item)
-			)
+			crop: cropWithPropertyPixels(crop, cropProperty, value, cropSourceDimensions(item))
 		};
 	}
 	if (property.startsWith('textShadow')) {

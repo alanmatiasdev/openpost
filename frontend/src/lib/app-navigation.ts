@@ -27,7 +27,7 @@ export type AppRouteFamily =
 	| 'settings'
 	| 'local-editors';
 
-export const appRouteFamilies: Record<AppRouteFamily, readonly string[]> = {
+export const appRouteFamilies = {
 	root: ['/'],
 	calendar: ['/calendar'],
 	publications: ['/publications'],
@@ -38,7 +38,7 @@ export const appRouteFamilies: Record<AppRouteFamily, readonly string[]> = {
 	editors: ['/editors', '/image-editor', '/video-editor'],
 	settings: ['/settings'],
 	'local-editors': ['/video-editor', '/quick-cut', '/record']
-};
+} satisfies Record<AppRouteFamily, readonly string[]>;
 
 export const primaryNavigation: PrimaryNavigationItem[] = [
 	{ id: 'new', label: 'New post', href: '/', family: 'root', mobile: true },

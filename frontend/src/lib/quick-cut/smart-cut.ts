@@ -42,6 +42,20 @@ export interface SmartCutOptions {
 	onProgress?: LocalExportProgress;
 }
 
+function isSupportedVideoCodec(
+	codec: string,
+	supported: readonly VideoCodec[]
+): codec is VideoCodec {
+	return supported.some((candidate) => candidate === codec);
+}
+
+function isSupportedAudioCodec(
+	codec: string,
+	supported: readonly AudioCodec[]
+): codec is AudioCodec {
+	return supported.some((candidate) => candidate === codec);
+}
+
 export function nextSmartCutBoundary(
 	segment: Pick<QuickCutSegment, 'start' | 'end'>,
 	keyframes: readonly number[]
@@ -171,13 +185,14 @@ export async function exportSmartCut(options: SmartCutOptions): Promise<QuickCut
 			'Smart Cut needs a selected video track with a known codec and frame rate.'
 		);
 	}
-	const videoCodec = selectedVideo.codec as VideoCodec;
 	const probeFormat = options.createFormat();
-	if (!probeFormat.getSupportedVideoCodecs().includes(videoCodec)) {
+	const supportedVideoCodecs = probeFormat.getSupportedVideoCodecs();
+	if (!isSupportedVideoCodec(selectedVideo.codec, supportedVideoCodecs)) {
 		throw new UnsupportedSmartCutError(
 			'The output container cannot stream-copy the source video codec.'
 		);
 	}
+	const videoCodec = selectedVideo.codec;
 	const file = await resolveSourceFile(options.source, options.signal);
 	const selectedAudios = getSelectedAudioStreams(options.source);
 	for (const audio of selectedAudios) await ensureAc3DecoderForCodec(audio.codec);
@@ -248,8 +263,9 @@ export async function exportSmartCut(options: SmartCutOptions): Promise<QuickCut
 			}
 			for (let index = 0; index < audioTracks.length; index++) {
 				const track = audioTracks[index]!;
-				const codec = (await track.getCodec()) as AudioCodec | null;
-				if (!codec || !probeFormat.getSupportedAudioCodecs().includes(codec)) {
+				const codec = await track.getCodec();
+				const supportedAudioCodecs = probeFormat.getSupportedAudioCodecs();
+				if (!codec || !isSupportedAudioCodec(codec, supportedAudioCodecs)) {
 					throw new UnsupportedSmartCutError(
 						'The exact audio codec is not supported by the output container.'
 					);

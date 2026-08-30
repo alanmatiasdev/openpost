@@ -113,11 +113,10 @@
 		}
 	}
 
-	function valuesFor(
-		property: KeyframeProperty,
-		value: number
-	): Partial<Record<KeyframeProperty, number>> {
-		if (property !== 'width' && property !== 'height') return { [property]: value };
+	function valuesFor(property: KeyframeProperty, value: number) {
+		if (property !== 'width' && property !== 'height') {
+			return { [property]: value };
+		}
 		const width = mixedValue('width');
 		const height = mixedValue('height');
 		if (!aspectLocked() || width === null || height === null || height <= 0) {
@@ -149,11 +148,9 @@
 		if (!gesture) writeLive(property, value);
 		const before = gesture;
 		if (!before) return;
-		commitAnimatedPropertyEdit(
-			before,
-			selectedIds,
-			Object.keys(valuesFor(property, value)) as KeyframeProperty[]
-		);
+		// SAFETY: valuesFor only creates keys from the closed KeyframeProperty input type.
+		const properties = Object.keys(valuesFor(property, value)) as KeyframeProperty[];
+		commitAnimatedPropertyEdit(before, selectedIds, properties);
 		gesture = null;
 		onedit();
 	}

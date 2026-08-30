@@ -43,9 +43,12 @@
 	);
 
 	$effect(() => {
-		activeSource?.id;
-		viewport = { start: 0, zoom: 1 };
+		resetViewport(activeSource?.id);
 	});
+
+	function resetViewport(_sourceId: string | undefined): void {
+		viewport = { start: 0, zoom: 1 };
+	}
 
 	$effect(() => {
 		if (viewport.zoom <= 1) return;

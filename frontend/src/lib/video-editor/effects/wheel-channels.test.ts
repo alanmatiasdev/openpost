@@ -19,9 +19,8 @@ describe('color wheel channels', () => {
 	});
 
 	it('discards a uniform master offset when restoring the wheel push', () => {
-		const channels = wheelChannelsFromHueAmount(210, 0.4).map(
-			(channel) => channel + 1.25
-		) as WheelChannels;
+		const base = wheelChannelsFromHueAmount(210, 0.4);
+		const channels: WheelChannels = [base[0] + 1.25, base[1] + 1.25, base[2] + 1.25];
 		const restored = hueAmountFromWheelChannels(channels);
 		expect(restored.hue).toBeCloseTo(210, 6);
 		expect(restored.amount).toBeCloseTo(0.4, 6);

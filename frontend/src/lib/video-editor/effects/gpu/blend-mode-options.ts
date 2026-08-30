@@ -4,7 +4,7 @@ import { BLEND_MODE_GROUPS, type BlendMode } from './blend-modes';
 
 /** Localized grouped options shared by every compositor blend picker. */
 export function getBlendModeOptions(): AppSelectOption[] {
-	const modeLabels: Record<BlendMode, string> = {
+	const modeLabels = {
 		normal: m.video_editor_blend_normal(),
 		dissolve: m.video_editor_blend_dissolve(),
 		darken: m.video_editor_blend_darken(),
@@ -30,15 +30,15 @@ export function getBlendModeOptions(): AppSelectOption[] {
 		saturation: m.video_editor_blend_saturation(),
 		color: m.video_editor_blend_color(),
 		luminosity: m.video_editor_blend_luminosity()
-	};
-	const groupLabels: Record<string, string> = {
+	} satisfies Record<BlendMode, string>;
+	const groupLabels = {
 		normal: m.video_editor_blend_group_normal(),
 		darken: m.video_editor_blend_group_darken(),
 		lighten: m.video_editor_blend_group_lighten(),
 		contrast: m.video_editor_blend_group_contrast(),
 		inversion: m.video_editor_blend_group_inversion(),
 		component: m.video_editor_blend_group_component()
-	};
+	} satisfies Record<(typeof BLEND_MODE_GROUPS)[number]['label'], string>;
 	return BLEND_MODE_GROUPS.flatMap((group) =>
 		group.modes.map((mode) => ({
 			value: mode,

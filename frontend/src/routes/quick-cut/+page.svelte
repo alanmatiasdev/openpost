@@ -380,10 +380,10 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 		try {
 			const blob = await captureVideoFrame(videoEl, format);
 			if (destination === 'clipboard') {
-				if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+				if (!navigator.clipboard?.write || !globalThis.ClipboardItem) {
 					throw new Error(m.quick_cut_clipboard_unavailable());
 				}
-				await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+				await navigator.clipboard.write([new globalThis.ClipboardItem({ [blob.type]: blob })]);
 				showToast(m.quick_cut_frame_copied(), 'success');
 			} else {
 				const fileName = frameCaptureFileName(activeSource.name, currentTime, format);
@@ -981,13 +981,13 @@ LosslessCut (GPL - behavioral reference only, no code ported).
 			.replace(/\.[^.]+$/u, '')
 			.replace(/[^a-z0-9._-]+/giu, '-')
 			.replace(/^-+|-+$/gu, '');
-		const suffix: Record<SegmentInterchangeFormat, string> = {
+		const suffix = {
 			'csv-seconds': 'segments-seconds.csv',
 			'csv-timecode': 'segments-timecodes.csv',
 			'tsv-timecode': 'segments-timecodes.tsv',
 			chapters: 'chapters.txt',
 			srt: 'segments.srt'
-		};
+		} satisfies Record<SegmentInterchangeFormat, string>;
 		return `${sourceName || 'quick-cut'}-${suffix[format]}`;
 	}
 

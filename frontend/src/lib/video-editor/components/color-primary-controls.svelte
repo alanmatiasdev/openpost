@@ -74,10 +74,7 @@
 		'hue',
 		'lumMix'
 	] as const;
-	const parameterDisplays: Record<
-		string,
-		{ scale: number; bias: number; step: number; decimals: number }
-	> = {
+	const parameterDisplays = {
 		temperature: { scale: 40, bias: 0, step: 10, decimals: 1 },
 		tint: { scale: 1, bias: 0, step: 0.1, decimals: 2 },
 		contrast: { scale: 1, bias: 0, step: 0.005, decimals: 3 },
@@ -89,8 +86,8 @@
 		saturation: { scale: 0.5, bias: 50, step: 0.5, decimals: 2 },
 		hue: { scale: 1, bias: 0, step: 0.5, decimals: 2 },
 		lumMix: { scale: 1, bias: 0, step: 0.5, decimals: 2 }
-	};
-	const parameterAccents: Record<string, string> = {
+	} satisfies Record<string, { scale: number; bias: number; step: number; decimals: number }>;
+	const parameterAccents = {
 		temperature: 'neutral',
 		contrast: 'neutral',
 		pivot: 'neutral',
@@ -99,7 +96,7 @@
 		hue: 'hue',
 		saturation: 'rgb',
 		colorBoost: 'rgb'
-	};
+	} satisfies Record<string, string>;
 
 	let {
 		itemId,
@@ -143,8 +140,8 @@
 			);
 		};
 		updateSize();
-		if (typeof ResizeObserver === 'undefined') return;
-		const observer = new ResizeObserver(updateSize);
+		if (!globalThis.ResizeObserver) return;
+		const observer = new globalThis.ResizeObserver(updateSize);
 		observer.observe(wheelGrid);
 		return () => observer.disconnect();
 	});
@@ -209,7 +206,7 @@
 		if (upsertGpuEffectParamsOnItems(targetItemIds, EFFECT_ID, updates)) onedit();
 	}
 
-	function pointFromPointer(event: PointerEvent): { hue: number; amount: number } {
+	function pointFromPointer(event: PointerEvent) {
 		const bounds = event.currentTarget.getBoundingClientRect();
 		const centerX = bounds.left + bounds.width / 2;
 		const centerY = bounds.top + bounds.height / 2;
@@ -323,7 +320,7 @@
 		return normalizeLevel(name, (value - display.bias) / display.scale);
 	}
 
-	function parameterDisplayRange(name: string): { min: number; max: number } {
+	function parameterDisplayRange(name: string) {
 		const param = schema(name);
 		const display = parameterDisplay(name);
 		return {
@@ -353,10 +350,7 @@
 		);
 	}
 
-	function displayRange(descriptor: (typeof wheelDescriptors)[number]): {
-		min: number;
-		max: number;
-	} {
+	function displayRange(descriptor: (typeof wheelDescriptors)[number]) {
 		const levelSchema = schema(descriptor.level);
 		return {
 			min: Number(levelSchema?.min ?? 0) * descriptor.display.scale + descriptor.display.bias,
@@ -367,9 +361,12 @@
 	function displayedChannels(descriptor: (typeof wheelDescriptors)[number]): WheelChannels {
 		const wheel = wheelValue(descriptor);
 		const master = displayLevel(descriptor);
-		return wheelChannelsFromHueAmount(wheel.hue, wheel.amount).map(
-			(deviation) => master + deviation * descriptor.display.scale
-		) as WheelChannels;
+		const deviations = wheelChannelsFromHueAmount(wheel.hue, wheel.amount);
+		return [
+			master + deviations[0] * descriptor.display.scale,
+			master + deviations[1] * descriptor.display.scale,
+			master + deviations[2] * descriptor.display.scale
+		];
 	}
 
 	function updateChannel(
@@ -385,9 +382,12 @@
 			Math.min(range.max + descriptor.display.scale, value)
 		);
 		const mean = (channels[0] + channels[1] + channels[2]) / 3;
-		const wheel = hueAmountFromWheelChannels(
-			channels.map((channel) => (channel - mean) / descriptor.display.scale) as WheelChannels
-		);
+		const normalizedChannels: WheelChannels = [
+			(channels[0] - mean) / descriptor.display.scale,
+			(channels[1] - mean) / descriptor.display.scale,
+			(channels[2] - mean) / descriptor.display.scale
+		];
+		const wheel = hueAmountFromWheelChannels(normalizedChannels);
 		const updates = {
 			[descriptor.level]: Math.round(levelFromDisplay(descriptor, mean) * 10_000) / 10_000,
 			[descriptor.hue]: Math.round(wheel.hue * 10) / 10,

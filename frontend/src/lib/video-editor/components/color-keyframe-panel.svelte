@@ -40,11 +40,10 @@
 	let activeProperty = $state<KeyframeProperty | null>(null);
 
 	const item = $derived(itemId ? timelineStore.itemById.get(itemId) : undefined);
-	const properties = $derived.by(() =>
-		item
-			? getAnimatablePropertiesForItem(item).filter(isEffectKeyframeProperty)
-			: ([] as KeyframeProperty[])
-	);
+	const properties = $derived.by((): KeyframeProperty[] => {
+		if (!item) return [];
+		return getAnimatablePropertiesForItem(item).filter(isEffectKeyframeProperty);
+	});
 	const propertyOptions = $derived(
 		properties.map((property) => ({ value: property, label: label(property) }))
 	);

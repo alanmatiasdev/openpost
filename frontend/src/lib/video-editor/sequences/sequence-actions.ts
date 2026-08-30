@@ -128,9 +128,9 @@ export function createCompositeComposition(options: CreateCompositeCompositionOp
 			fps,
 			width: Math.round(Math.min(7680, Math.max(1, options.width))),
 			height: Math.round(Math.min(4320, Math.max(1, options.height))),
-			durationInFrames: Math.round(Math.min(fps * 60 * 60, Math.max(1, options.durationInFrames))),
-			...(options.backgroundColor ? { backgroundColor: options.backgroundColor } : {})
+			durationInFrames: Math.round(Math.min(fps * 60 * 60, Math.max(1, options.durationInFrames)))
 		};
+		if (options.backgroundColor) composition.backgroundColor = options.backgroundColor;
 		sequenceStore.addComposition(composition);
 		return id;
 	});
