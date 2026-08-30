@@ -5372,7 +5372,7 @@
 	"editors_image_designs": "Designs de imagem",
 	"editors_image_designs_body": "Layouts, carrosséis e gráficos editáveis.",
 	"editors_video_projects": "Projetos de vídeo",
-	"editors_video_projects_body": "Edições guardadas na nuvem e cronologias de origem.",
+	"editors_video_projects_body": "Projetos guardados na pasta de trabalho local selecionada.",
 	"editors_open_video": "Abrir editor de vídeo",
 	"editors_retry": "Tentar novamente",
 	"editors_page_count_one": "{count} página",

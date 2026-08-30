@@ -25,13 +25,9 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	import type { ProjectCreationSettings } from '$lib/video-editor/project/project-presets';
 	import { permanentlyDeleteProject } from '$lib/video-editor/project/project-trash';
 	import type { Project } from '$lib/video-editor/project/types';
+	import { createWorkspaceProjectCatalog } from '$lib/video-editor/project/workspace-project-catalog.svelte';
 	import { onPermissionLost } from '$lib/video-editor/workspace-fs/root';
-	import {
-		createProject,
-		getAllProjects,
-		getProjectThumbnail,
-		updateProject
-	} from '$lib/video-editor/workspace-fs/projects';
+	import { createProject, updateProject } from '$lib/video-editor/workspace-fs/projects';
 	import {
 		DEFAULT_TRASH_TTL_MS,
 		listTrashedProjects,
@@ -40,16 +36,11 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 		sweepTrashOlderThan,
 		type TrashedProjectEntry
 	} from '$lib/video-editor/workspace-fs/trash';
-	import { onMount } from 'svelte';
-
-	const PROJECT_THUMBNAIL_READ_CONCURRENCY = 8;
+	import { onMount, untrack } from 'svelte';
 
 	const gate = createWorkspaceGate();
-	let projects = $state.raw<Project[]>([]);
-	let thumbnailUrls = $state.raw<Record<string, string>>({});
+	const projectCatalog = createWorkspaceProjectCatalog(gate);
 	let trashedProjects = $state.raw<TrashedProjectEntry[]>([]);
-	let loadingProjects = $state(false);
-	let projectsError = $state('');
 	let trashError = $state('');
 	let trashBusyId = $state<string | null>(null);
 	let emptyingTrash = $state(false);
@@ -62,40 +53,11 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 	let bundleOperation = $state<'import' | 'export' | null>(null);
 	let bundleController = $state<AbortController | null>(null);
 	let bundleCanceling = $state(false);
-	let projectLoadGeneration = 0;
+	let trashLoadGeneration = 0;
 
-	function replaceThumbnailUrls(next: Record<string, string>): void {
-		for (const url of Object.values(thumbnailUrls)) URL.revokeObjectURL(url);
-		thumbnailUrls = next;
-	}
-
-	async function loadProjectThumbnailUrls(
-		projectsToLoad: Project[]
-	): Promise<Record<string, string>> {
-		const next: Record<string, string> = {};
-		let nextIndex = 0;
-		async function worker(): Promise<void> {
-			while (nextIndex < projectsToLoad.length) {
-				const project = projectsToLoad[nextIndex++];
-				if (!project) continue;
-				const thumbnail = await getProjectThumbnail(project.id);
-				if (thumbnail) next[project.id] = URL.createObjectURL(thumbnail);
-			}
-		}
-		await Promise.all(
-			Array.from(
-				{ length: Math.min(PROJECT_THUMBNAIL_READ_CONCURRENCY, projectsToLoad.length) },
-				() => worker()
-			)
-		);
-		return next;
-	}
-
-	async function loadProjects(sweepExpired = false): Promise<void> {
+	async function loadTrash(sweepExpired = false): Promise<void> {
 		if (gate.state !== 'ready') return;
-		const generation = ++projectLoadGeneration;
-		loadingProjects = true;
-		projectsError = '';
+		const generation = ++trashLoadGeneration;
 		trashError = '';
 		try {
 			if (sweepExpired) {
@@ -103,46 +65,39 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 					await permanentlyDeleteProject(id);
 				});
 			}
-			const nextProjects = await getAllProjects();
-			const nextThumbnailUrls = await loadProjectThumbnailUrls(nextProjects);
-			let nextTrashedProjects = trashedProjects;
-			let nextTrashError = '';
-			try {
-				nextTrashedProjects = await listTrashedProjects();
-			} catch (error) {
-				nextTrashError = error instanceof Error ? error.message : String(error);
-			}
-			if (generation !== projectLoadGeneration) {
-				for (const url of Object.values(nextThumbnailUrls)) URL.revokeObjectURL(url);
-				return;
-			}
-			projects = nextProjects;
-			trashedProjects = nextTrashedProjects;
-			trashError = nextTrashError;
-			replaceThumbnailUrls(nextThumbnailUrls);
+			const nextTrashedProjects = await listTrashedProjects();
+			if (generation === trashLoadGeneration) trashedProjects = nextTrashedProjects;
 		} catch (error) {
-			if (generation === projectLoadGeneration) {
-				projectsError = error instanceof Error ? error.message : String(error);
+			if (generation === trashLoadGeneration) {
+				trashError = error instanceof Error ? error.message : String(error);
 			}
-		} finally {
-			if (generation === projectLoadGeneration) loadingProjects = false;
 		}
 	}
 
+	async function loadProjects(sweepExpired = false): Promise<void> {
+		await Promise.all([projectCatalog.refresh(), loadTrash(sweepExpired)]);
+	}
+
 	$effect(() => {
+		const state = gate.state;
 		void gate.workspaceRevision;
-		if (gate.state === 'ready') void loadProjects(true);
+		if (state === 'ready') {
+			untrack(() => void loadTrash(true));
+		} else {
+			trashLoadGeneration += 1;
+			trashedProjects = [];
+			trashError = '';
+		}
 	});
 
-	onMount(() =>
-		onPermissionLost(() => {
+	onMount(() => {
+		const stopPermissionListener = onPermissionLost(() => {
 			showToast(m.video_editor_gate_permission_lost());
-		})
-	);
-
-	onMount(() => () => {
-		projectLoadGeneration += 1;
-		replaceThumbnailUrls({});
+		});
+		return () => {
+			trashLoadGeneration += 1;
+			stopPermissionListener();
+		};
 	});
 
 	async function openProject(project: Project): Promise<void> {
@@ -518,11 +473,11 @@ STORY: pick (or reconnect) a workspace folder once, then work with projects that
 			<WorkspaceGatePanel {gate} />
 		{:else if gate.state === 'ready'}
 			<ProjectBrowser
-				{projects}
-				{thumbnailUrls}
+				projects={projectCatalog.projects}
+				thumbnailUrls={projectCatalog.thumbnailUrls}
 				{trashedProjects}
-				loading={loadingProjects}
-				error={projectsError}
+				loading={projectCatalog.loading}
+				error={projectCatalog.error}
 				{trashError}
 				{trashBusyId}
 				{emptyingTrash}
