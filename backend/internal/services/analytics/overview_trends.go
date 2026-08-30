@@ -124,48 +124,59 @@ func (s *Service) loadTrendPublications(
 	ctx context.Context,
 	snapshots []models.AnalyticsRenditionSnapshot,
 ) (map[string]models.Publication, error) {
-	ids := make([]string, 0, len(snapshots))
-	seen := map[string]struct{}{}
-	for _, snapshot := range snapshots {
-		if _, exists := seen[snapshot.PublicationID]; exists {
-			continue
-		}
-		seen[snapshot.PublicationID] = struct{}{}
-		ids = append(ids, snapshot.PublicationID)
-	}
-	var publications []models.Publication
-	if err := s.db.NewSelect().Model(&publications).Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("load analytics trend publications: %w", err)
-	}
-	byID := make(map[string]models.Publication, len(publications))
-	for _, publication := range publications {
-		byID[publication.ID] = publication
-	}
-	return byID, nil
+	ids := uniqueTrendEntityIDs(snapshots, func(snapshot models.AnalyticsRenditionSnapshot) string {
+		return snapshot.PublicationID
+	})
+	return loadTrendEntities(ctx, s.db, ids, "publications", func(publication models.Publication) string {
+		return publication.ID
+	})
 }
 
 func (s *Service) loadTrendAccounts(
 	ctx context.Context,
 	snapshots []models.AnalyticsRenditionSnapshot,
 ) (map[string]models.SocialAccount, error) {
+	ids := uniqueTrendEntityIDs(snapshots, func(snapshot models.AnalyticsRenditionSnapshot) string {
+		return snapshot.SocialAccountID
+	})
+	return loadTrendEntities(ctx, s.db, ids, "accounts", func(account models.SocialAccount) string {
+		return account.ID
+	})
+}
+
+func loadTrendEntities[T any](
+	ctx context.Context,
+	db *bun.DB,
+	ids []string,
+	label string,
+	entityID func(T) string,
+) (map[string]T, error) {
+	var entities []T
+	if err := db.NewSelect().Model(&entities).Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load analytics trend %s: %w", label, err)
+	}
+	byID := make(map[string]T, len(entities))
+	for _, entity := range entities {
+		byID[entityID(entity)] = entity
+	}
+	return byID, nil
+}
+
+func uniqueTrendEntityIDs(
+	snapshots []models.AnalyticsRenditionSnapshot,
+	entityID func(models.AnalyticsRenditionSnapshot) string,
+) []string {
 	ids := make([]string, 0, len(snapshots))
 	seen := map[string]struct{}{}
 	for _, snapshot := range snapshots {
-		if _, exists := seen[snapshot.SocialAccountID]; exists {
+		id := entityID(snapshot)
+		if _, exists := seen[id]; exists {
 			continue
 		}
-		seen[snapshot.SocialAccountID] = struct{}{}
-		ids = append(ids, snapshot.SocialAccountID)
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
-	var accounts []models.SocialAccount
-	if err := s.db.NewSelect().Model(&accounts).Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("load analytics trend accounts: %w", err)
-	}
-	byID := make(map[string]models.SocialAccount, len(accounts))
-	for _, account := range accounts {
-		byID[account.ID] = account
-	}
-	return byID, nil
+	return ids
 }
 
 func uniqueRenditionIDs(snapshots []models.AnalyticsRenditionSnapshot) []string {
