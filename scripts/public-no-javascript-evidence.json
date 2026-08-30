@@ -181,7 +181,7 @@
   },
   "https://docs.openpost.social/configuration/media-storage": {
     "audience": "This page is for operators choosing local or S3-compatible media storage.",
-    "boundary": "OpenPost requires ffmpeg and ffprobe on PATH to verify uploaded videos and create posters. The official Docker image includes both tools, and the project Devenv supplies them for development. Install FFmpeg separately when running the standalone binary. A video stays unavailable for publishing if the server cannot complete this verification; Media shows the processing error and offers a retry after the dependency or file problem is fixed."
+    "boundary": "OpenPost requires ffmpeg and ffprobe from the same FFmpeg installation on PATH to verify uploaded videos and create posters. The official Docker image includes both tools. Project development and standalone release checks use the pkgs.ffmpeg input pinned by devenv.lock. Standalone binaries do not bundle FFmpeg, so install a maintained FFmpeg package for the host before starting OpenPost and keep both commands together when upgrading it. A video stays unavailable for publishing if the server cannot complete this verification; Media shows the processing error and offers a retry after the dependency or file problem is fixed."
   },
   "https://docs.openpost.social/configuration/production-checklist": {
     "audience": "Use this page before putting a real OpenPost instance behind a public domain. It is operator-facing: product usage lives in User Docs, while code changes live in Developer Docs.",
@@ -332,12 +332,12 @@
     "boundary": "The Hosted service makes daily Postgres dumps and a daily synchronized copy of Cloudflare R2 media in a root-owned directory on the application host. The directory is not public or application-served. The deployment configuration restricts its directory and newly created file modes, validates database compression before an atomic rename, disables SSH password and direct root login, and grants the named operator access through authorized SSH keys and sudo. Application users, support requests, and the OpenPost container do not receive backup-directory access."
   },
   "https://docs.openpost.social/operations/container-image": {
-    "audience": "The image's OCI health check calls /api/v1/health. This proves that the HTTP process is alive without turning a database outage into a container restart loop. Traffic gates, deployment rollouts, and dependency-aware monitors call /api/v1/ready, which returns 503 when the database probe fails. See Health Checks for the complete operator policy.",
+    "audience": "The image's OCI health check calls /api/v1/health. This proves that the HTTP process is alive without turning a data-plane outage into a container restart loop. Traffic gates, deployment rollouts, and dependency-aware monitors call /api/v1/ready, which returns 503 when the database probe or required object-storage capability check fails. See Health Checks for the complete operator policy.",
     "boundary": "The published OpenPost container image supports linux/amd64 only. The CI candidate build names that platform explicitly and restart-smokes that same image before it can be published. The maintained Dockerfile rejects non-amd64 targets. An ARM64 host must use amd64 emulation; a native ARM64 image requires an explicit downstream Dockerfile/source change and its own complete runtime smoke proof. OpenPost does not currently publish or claim support for a linux/arm64 image."
   },
   "https://docs.openpost.social/operations/health-checks": {
     "audience": "Use this endpoint when you only need to know whether the HTTP process is alive. The published image's OCI health check and the maintained Compose file use it so a database outage does not turn into a container restart loop.",
-    "boundary": "It returns 503 when OpenPost cannot run a database probe."
+    "boundary": "It returns 503 when OpenPost cannot run a database probe or the configured S3 bucket fails its bounded capability check."
   },
   "https://docs.openpost.social/operations/logs": {
     "audience": "Each HTTP request log includes both the requested path and the normalized matched route, such as /api/v1/publications/:id. The normalized route lets operators aggregate endpoint use without treating every resource ID as a separate path.",

@@ -28,7 +28,7 @@ CI retains the manifest, SBOM, and full report as a diagnostic artifact before t
 
 ## Probe ownership
 
-The image's OCI health check calls `/api/v1/health`. This proves that the HTTP process is alive without turning a database outage into a container restart loop. Traffic gates, deployment rollouts, and dependency-aware monitors call `/api/v1/ready`, which returns `503` when the database probe fails. See [Health Checks](/operations/health-checks) for the complete operator policy.
+The image's OCI health check calls `/api/v1/health`. This proves that the HTTP process is alive without turning a data-plane outage into a container restart loop. Traffic gates, deployment rollouts, and dependency-aware monitors call `/api/v1/ready`, which returns `503` when the database probe or required object-storage capability check fails. See [Health Checks](/operations/health-checks) for the complete operator policy.
 
 ## Updating the policy
 
