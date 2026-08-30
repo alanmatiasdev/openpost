@@ -32,6 +32,7 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
   for (const scenario of scenarios) {
     await test.step(`${scenario.width}px ${scenario.locale} ${scenario.theme}`, async () => {
       await page.setViewportSize(scenario);
+      await page.emulateMedia({ colorScheme: scenario.theme });
       await page.context().addCookies([
         {
           name: "PARAGLIDE_LOCALE",
@@ -41,15 +42,10 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
           sameSite: "Lax",
         },
       ]);
-      await page.goto("/settings");
-      await page.evaluate(
-        (theme) => localStorage.setItem("mode-watcher-mode", theme),
-        scenario.theme,
-      );
-      await page.reload();
 
       const planLabel = scenario.locale === "pt" ? "Plano e utilização" : "Plan & usage";
       if (scenario.width >= 1024) {
+        await page.goto("/settings");
         const organizationLink = page.getByTestId("settings-navigation").getByRole("link", {
           name: scenario.locale === "pt" ? "Organização" : "Organization",
           exact: true,
