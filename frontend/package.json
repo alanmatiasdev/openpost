@@ -16,7 +16,7 @@
 		"check:watch": "bun run sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint:oxlint": "oxlint .",
 		"lint:svelte": "eslint 'src/**/*.svelte' 'src/**/*.svelte.{ts,js}'",
-		"test": "bun run sync && vitest run",
+		"test": "bun run sync && vitest run --project server && vitest run --project client --shard=1/4 && vitest run --project client --shard=2/4 && vitest run --project client --shard=3/4 && vitest run --project client --shard=4/4",
 		"test:watch": "bun run sync && vitest",
 		"test:server": "bun run sync && vitest run --project server",
 		"generate:types": "openapi-typescript openapi.json -o src/lib/api/types.d.ts",
