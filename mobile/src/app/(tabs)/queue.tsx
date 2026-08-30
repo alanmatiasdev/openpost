@@ -206,7 +206,9 @@ function QueueRow({ publication }: { publication: PublicationListItem }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => router.push({ pathname: "/publications/[id]", params: { id: publication.id } })}
+      onPress={() =>
+        router.push({ pathname: "/publications/[id]", params: { id: publication.id } })
+      }
     >
       {({ pressed }) => (
         <Card style={[styles.row, pressed && { opacity: 0.6 }]}>
