@@ -2133,7 +2133,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 								data-video-preview
 								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.205_0.008_55)]"
 							>
-								{#if showSourceMonitor || activeWorkspace === 'color'}
+								{#if showSourceMonitor}
 									<div
 										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-xs font-medium text-[oklch(0.72_0.015_55)]"
 									>
@@ -2174,11 +2174,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 										onresize={(value) => (scopesPanelWidth = value)}
 										oncommit={(value) => persistPanelSize('scopesPanelWidth', value)}
 									/>
-									<div
-										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-xs font-medium text-[oklch(0.72_0.015_55)]"
-									>
-										{m.video_editor_scopes()}
-									</div>
 									<div class="min-h-0 flex-1 overflow-hidden">
 										<ColorScopes
 											embedded

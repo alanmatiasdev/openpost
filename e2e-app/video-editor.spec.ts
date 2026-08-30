@@ -534,6 +534,24 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     fullPage: true,
   });
   await page.getByRole("tab", { name: "Color" }).click();
+  await expect(page.getByText("Program", { exact: true })).toHaveCount(0);
+  const programPanel = page.locator("#video-editor-program-panel");
+  const colorPasteboard = programPanel.locator("[data-program-pasteboard]");
+  const scopesPanel = page.getByRole("complementary", { name: "Scopes" });
+  const scopeSurface = scopesPanel.locator("[data-scope-backend]");
+  const programPanelBounds = await programPanel.boundingBox();
+  const colorPasteboardBounds = await colorPasteboard.boundingBox();
+  const scopesPanelBounds = await scopesPanel.boundingBox();
+  const scopeSurfaceBounds = await scopeSurface.boundingBox();
+  expect(programPanelBounds).not.toBeNull();
+  expect(colorPasteboardBounds).not.toBeNull();
+  expect(scopesPanelBounds).not.toBeNull();
+  expect(scopeSurfaceBounds).not.toBeNull();
+  expect(Math.abs(colorPasteboardBounds!.y - programPanelBounds!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(scopeSurfaceBounds!.y - scopesPanelBounds!.y)).toBeLessThanOrEqual(1);
+  await expect(scopesPanel.getByRole("heading", { name: "Scopes", exact: true })).toHaveCount(1);
+  await expect(scopesPanel.getByRole("button", { name: "Live color scope" })).toBeVisible();
+  await expect(scopesPanel.getByRole("separator", { name: "Scopes" })).toBeVisible();
   const populatedColorDock = page.getByRole("region", {
     name: "Color grading",
   });
