@@ -109,7 +109,9 @@ test("Image Editor uses one object marquee across the image edge", async ({ page
   await expect(stage).toBeVisible();
 
   await page.getByRole("button", { name: "Shape", exact: true }).click();
-  const rectangleLayer = page.getByRole("treeitem", { name: /Rectangle, shape/ });
+  const rectangleLayer = page.getByRole("treeitem", {
+    name: /Rectangle, shape/,
+  });
   await expect(rectangleLayer).toBeVisible();
   await page.keyboard.press("v");
 
@@ -1165,6 +1167,39 @@ test("public OpenPost Image Editor creates and restores a local design without a
   }
   expect(fittedStage.width).toBeLessThanOrEqual(canvasBox.width);
   expect(fittedStage.height).toBeLessThanOrEqual(canvasBox.height);
+
+  for (const name of [
+    "Resize the asset panel",
+    "Resize the settings panel",
+    "Resize the Layers and Properties panes",
+    "Pages",
+  ]) {
+    const separator = page.getByRole("separator", { name });
+    await expect(separator).toBeVisible();
+    await expect(separator).toHaveAttribute("aria-valuenow", /\d+/u);
+  }
+  const pagesResize = page.getByRole("separator", { name: "Pages" });
+  const pagesHeight = Number(await pagesResize.getAttribute("aria-valuenow"));
+  await pagesResize.focus();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(pagesResize).toHaveAttribute("aria-valuenow", String(pagesHeight + 48));
+  await expect
+    .poll(async () => {
+      const [canvas, currentStage] = await Promise.all([
+        designCanvas.boundingBox(),
+        stage.boundingBox(),
+      ]);
+      if (!canvas || !currentStage) return Number.POSITIVE_INFINITY;
+      return Math.abs(currentStage.y + currentStage.height / 2 - (canvas.y + canvas.height / 2));
+    })
+    .toBeLessThan(2);
+  await pagesResize.dblclick();
+  await expect(pagesResize).toHaveAttribute("aria-valuenow", "132");
+  await expect
+    .poll(async () => (await stage.boundingBox())?.height ?? 0)
+    .toBeCloseTo(fittedStage.height, 0);
 
   await designCanvas.dispatchEvent("wheel", {
     bubbles: true,

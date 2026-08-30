@@ -146,7 +146,12 @@ function diagnosticVideoProject(): Project {
 		createdAt: 0,
 		updatedAt: 0,
 		duration: 1,
-		metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000000' },
+		metadata: {
+			width: 1920,
+			height: 1080,
+			fps: 30,
+			backgroundColor: '#000000'
+		},
 		timeline: { tracks: [track('video-track', 0)], items: [item] }
 	};
 }
@@ -216,7 +221,12 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 1,
-			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: {
 				tracks: [track('top-track', 0), track('bottom-track', 1)],
 				items: [bottom, top]
@@ -246,8 +256,67 @@ describe('PreviewPlayer backdrop composition', () => {
 		expect(editorSettings.canvasSnapEnabled).toBe(false);
 		expect(timelineStore.snapEnabled).toBe(false);
 		await expect
-			.element(screen.getByRole('button', { name: 'Enable canvas snapping (Shift+S)' }))
+			.element(
+				screen.getByRole('button', {
+					name: 'Enable canvas snapping (Shift+S)'
+				})
+			)
 			.toHaveAttribute('aria-pressed', 'false');
+	});
+
+	it('clears the visual selection from empty preview space', async () => {
+		await page.viewport(1000, 700);
+		const item = colorLayer('selected', 'video-track', '#ff0000');
+		item.transform = { width: 120, height: 80 };
+		const project: Project = {
+			id: 'preview-deselect-project',
+			name: 'Preview deselect project',
+			description: '',
+			createdAt: 0,
+			updatedAt: 0,
+			duration: 1,
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
+			timeline: { tracks: [track('video-track', 0)], items: [item] }
+		};
+		editorSession.project = project;
+		sequenceStore.load(project.timeline!, project.metadata);
+		timelineStore.setAll({
+			items: [item],
+			tracks: project.timeline!.tracks,
+			currentFrame: 0,
+			fps: 30
+		});
+		const ondeselect = vi.fn();
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: item.id,
+			selectedItemIds: [item.id],
+			ondeselect,
+			onedit: vi.fn()
+		});
+		screen.container.style.width = '900px';
+		screen.container.style.height = '600px';
+
+		await expect.element(screen.getByRole('button', { name: 'Move selected clip' })).toBeVisible();
+		const pasteboard = screen.container.querySelector<HTMLElement>('[data-program-pasteboard]');
+		expect(pasteboard).not.toBeNull();
+		pasteboard!.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				button: 0,
+				clientX: 2,
+				clientY: 2
+			})
+		);
+
+		await expect
+			.element(screen.getByRole('button', { name: 'Move selected clip' }))
+			.not.toBeInTheDocument();
+		expect(ondeselect).toHaveBeenCalledOnce();
 	});
 
 	it('selects a buried overlapping layer from the canvas context menu', async () => {
@@ -265,7 +334,12 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 1,
-			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: {
 				tracks: [track('top-track', 0), track('bottom-track', 1)],
 				items: [bottom, top]
@@ -289,12 +363,18 @@ describe('PreviewPlayer backdrop composition', () => {
 		const monitor = screen.getByRole('application', { name: 'Program' });
 		await expect.element(monitor).toBeVisible();
 
-		await userEvent.click(monitor, { button: 'right', position: { x: 400, y: 200 } });
+		await userEvent.click(monitor, {
+			button: 'right',
+			position: { x: 400, y: 200 }
+		});
 		await expect.element(screen.getByRole('menuitem', { name: /^Top layer/ })).toBeVisible();
 		await expect.element(screen.getByRole('menuitem', { name: /^Bottom layer/ })).toBeVisible();
 		await screen.getByRole('menuitem', { name: /^Bottom layer/ }).click();
 
-		await userEvent.click(monitor, { button: 'right', position: { x: 400, y: 200 } });
+		await userEvent.click(monitor, {
+			button: 'right',
+			position: { x: 400, y: 200 }
+		});
 		expect(screen.getByRole('menuitem', { name: /^Bottom layer/ }).element()).toHaveAttribute(
 			'aria-current',
 			'true'
@@ -314,12 +394,20 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 0,
-			metadata: { width: 1920, height: 1080, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 1920,
+				height: 1080,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: { tracks: [], items: [] }
 		};
 		editorSession.project = project;
 		sequenceStore.load(project.timeline!, project.metadata);
-		const screen = await render(PreviewPlayer, { selectedItemId: null, onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: null,
+			onedit: vi.fn()
+		});
 		const monitor = screen.container.querySelector<HTMLElement>('[data-program-monitor]');
 		expect(monitor).not.toBeNull();
 		if (!monitor) return;
@@ -342,7 +430,14 @@ describe('PreviewPlayer backdrop composition', () => {
 				name: 'Offset',
 				source: 'built-in-preset',
 				sourcePresetId: 'slide-in-left',
-				anchor: { x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1 },
+				anchor: {
+					x: 0,
+					y: 0,
+					width: 100,
+					height: 100,
+					rotation: 0,
+					opacity: 1
+				},
 				payloads: [{ property: 'x', frame: 0, value: 20, easing: 'linear' }]
 			})
 		];
@@ -353,7 +448,12 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 1,
-			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: { tracks: [track('video-track', 0)], items: [item] }
 		};
 		editorSession.project = project;
@@ -364,7 +464,10 @@ describe('PreviewPlayer backdrop composition', () => {
 			fps: 30
 		});
 		const onedit = vi.fn();
-		const screen = await render(PreviewPlayer, { selectedItemId: item.id, onedit });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: item.id,
+			onedit
+		});
 		screen.container.style.width = '800px';
 		screen.container.style.height = '500px';
 
@@ -430,7 +533,12 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 1,
-			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: {
 				tracks: [track('top-track', 0), track('bottom-track', 1)],
 				items: [bottom, top]
@@ -457,7 +565,11 @@ describe('PreviewPlayer backdrop composition', () => {
 		expect(screen.container.querySelector('[data-on-canvas-tools]')).toBeNull();
 		const move = screen.container.querySelector<HTMLButtonElement>('[data-group-transform-box]');
 		move?.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true })
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				shiftKey: true,
+				bubbles: true
+			})
 		);
 		expect(timelineStore.itemById.get(bottom.id)?.transform?.x).toBe(-90);
 		expect(timelineStore.itemById.get(top.id)?.transform?.x).toBe(100);
@@ -543,7 +655,12 @@ describe('PreviewPlayer backdrop composition', () => {
 			createdAt: 0,
 			updatedAt: 0,
 			duration: 1,
-			metadata: { width: 800, height: 400, fps: 30, backgroundColor: '#000000' },
+			metadata: {
+				width: 800,
+				height: 400,
+				fps: 30,
+				backgroundColor: '#000000'
+			},
 			timeline: {
 				tracks: [track('top-track', 0), track('bottom-track', 1)],
 				items: [bottom, top]
@@ -657,7 +774,10 @@ describe('PreviewPlayer backdrop composition', () => {
 		});
 		spatialEffectEditorStore.startEditing(layer.id, 'twirl');
 		const onedit = vi.fn();
-		const screen = await render(PreviewPlayer, { selectedItemId: layer.id, onedit });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: layer.id,
+			onedit
+		});
 		screen.container.style.width = '800px';
 		screen.container.style.height = '500px';
 		await vi.waitFor(() => {
@@ -769,7 +889,10 @@ describe('PreviewPlayer backdrop composition', () => {
 		});
 		previewPlaybackSettings.setPreviewQuality('auto');
 		adaptivePreviewQuality.__setScaleForTesting(0.5);
-		const screen = await render(PreviewPlayer, { selectedItemId: 'mask', onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'mask',
+			onedit: vi.fn()
+		});
 		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
 		expect(preview).not.toBeNull();
 		if (!preview) return;
@@ -793,7 +916,10 @@ describe('PreviewPlayer backdrop composition', () => {
 			currentFrame: 0,
 			fps: 30
 		});
-		const screen = await render(PreviewPlayer, { selectedItemId: 'content', onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'content',
+			onedit: vi.fn()
+		});
 		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
 		expect(preview).not.toBeNull();
 		if (!preview) return;
@@ -825,7 +951,10 @@ describe('PreviewPlayer backdrop composition', () => {
 			currentFrame: 0,
 			fps: 30
 		});
-		const screen = await render(PreviewPlayer, { selectedItemId: 'mask', onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'mask',
+			onedit: vi.fn()
+		});
 		const preview = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
 		expect(preview).not.toBeNull();
 		if (!preview) return;
@@ -900,7 +1029,10 @@ describe('PreviewPlayer backdrop composition', () => {
 			fps: 30
 		});
 		colorPreviewStore.setComparisonMode('split');
-		const screen = await render(PreviewPlayer, { selectedItemId: 'graded', onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'graded',
+			onedit: vi.fn()
+		});
 		const after = screen.container.querySelector<HTMLCanvasElement>('[data-stacked-preview]');
 		const before = screen.container.querySelector<HTMLCanvasElement>('[data-color-before-preview]');
 		expect(after).not.toBeNull();
@@ -936,7 +1068,10 @@ describe('PreviewPlayer backdrop composition', () => {
 			currentFrame: 0,
 			fps: 30
 		});
-		const screen = await render(PreviewPlayer, { selectedItemId: 'graded', onedit: vi.fn() });
+		const screen = await render(PreviewPlayer, {
+			selectedItemId: 'graded',
+			onedit: vi.fn()
+		});
 		const picked = colorPreviewStore.requestPick('graded', 'white-balance');
 		await vi.waitFor(() => {
 			expect(

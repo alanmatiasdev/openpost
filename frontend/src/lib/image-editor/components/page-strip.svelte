@@ -67,7 +67,7 @@
 	}
 </script>
 
-<div class="border-t bg-background/95 backdrop-blur">
+<div class="flex size-full flex-col border-t bg-background/95 backdrop-blur">
 	<div class="flex h-11 items-center gap-1 border-b px-2 lg:h-9">
 		<Button
 			variant="ghost"
@@ -116,7 +116,9 @@
 		</div>
 	</div>
 	{#if editor.pagesExpanded && editor.document}
-		<div class="no-scrollbar flex h-24 items-center gap-2 overflow-x-auto px-3 py-2">
+		<div
+			class="no-scrollbar flex h-24 shrink-0 items-center gap-2 overflow-x-auto px-3 py-2 lg:h-auto lg:min-h-0 lg:flex-1"
+		>
 			{#each editor.document.pages as page, index (page.id)}
 				<button
 					type="button"

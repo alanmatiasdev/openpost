@@ -387,11 +387,11 @@
 
 <section
 	bind:this={root}
-	class="relative border-y border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.008_55)]"
+	class="relative h-full border-y border-[oklch(0.25_0.015_55)] bg-[oklch(0.135_0.008_55)]"
 	aria-label={m.video_editor_mixer()}
 	data-audio-mixer
 >
-	<div class="flex h-56 min-w-0 overflow-x-auto overscroll-x-contain px-2 py-2">
+	<div class="flex h-full min-w-0 overflow-x-auto overscroll-x-contain px-2 py-2">
 		<div class="relative mr-1 w-6 shrink-0" aria-hidden="true">
 			{#each SCALE_MARKS as mark}
 				<span

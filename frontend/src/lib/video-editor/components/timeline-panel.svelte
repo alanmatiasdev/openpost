@@ -261,6 +261,7 @@
 	import TimelineDensityOverview from './timeline-density-overview.svelte';
 	import TimelineNavigator from './timeline-navigator.svelte';
 	import AudioMixerPanel from './audio-mixer-panel.svelte';
+	import PanelResizeHandle from '$lib/components/panel-resize-handle.svelte';
 	import BeatDetectionPanel from '$lib/video-editor/audio/beat-detection/beat-detection-panel.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import BentoLayoutDialog from './bento-layout-dialog.svelte';
@@ -352,6 +353,8 @@
 		onsplitselection = () => {},
 		ondeleteselection = () => {},
 		onrippledeleteselection = () => {},
+		onmixerlayoutchange = () => {},
+		mixerMaximum = 420,
 		freezeFramePending = false,
 		sceneScanPending = false,
 		transcriptionPendingItemIds = [],
@@ -383,6 +386,8 @@
 		onsplitselection?: () => void;
 		ondeleteselection?: () => void;
 		onrippledeleteselection?: () => void;
+		onmixerlayoutchange?: (open: boolean, height: number) => void;
+		mixerMaximum?: number;
 		freezeFramePending?: boolean;
 		sceneScanPending?: boolean;
 		transcriptionPendingItemIds?: readonly string[];
@@ -415,6 +420,7 @@
 	let bentoLayoutOpen = $state(false);
 	let clearKeyframesDialogOpen = $state(false);
 	let mixerOpen = $state(false);
+	let mixerHeight = $state(editorSettings.audioMixerHeight);
 	let beatPanelOpen = $state(false);
 	let keyframesOpen = $state(false);
 	let lastTimelinePointerScreenX: number | null = null;
@@ -429,6 +435,32 @@
 		latestClientX: number;
 		animationFrame: number | null;
 	} | null = null;
+
+	function toggleMixer(): void {
+		mixerOpen = !mixerOpen;
+		if (mixerOpen) beatPanelOpen = false;
+		onmixerlayoutchange(mixerOpen, mixerHeight);
+	}
+
+	function toggleBeatPanel(): void {
+		beatPanelOpen = !beatPanelOpen;
+		if (!beatPanelOpen || !mixerOpen) return;
+		mixerOpen = false;
+		onmixerlayoutchange(false, mixerHeight);
+	}
+
+	function resizeMixer(value: number): void {
+		mixerHeight = value;
+		onmixerlayoutchange(true, value);
+	}
+
+	$effect(() => {
+		const minimum = Math.min(160, mixerMaximum);
+		const next = Math.max(minimum, Math.min(mixerHeight, mixerMaximum));
+		if (next === mixerHeight) return;
+		mixerHeight = next;
+		if (mixerOpen) onmixerlayoutchange(true, next);
+	});
 	let trackHeightResize: {
 		pointerId: number;
 		trackId: string;
@@ -3688,6 +3720,7 @@
 	}
 
 	onDestroy(() => {
+		if (mixerOpen) onmixerlayoutchange(false, mixerHeight);
 		clearMediaDropPreview(true);
 		clearActiveMediaDrag();
 		clearHoverPreview();
@@ -4579,106 +4612,37 @@
 
 <svelte:window onkeydown={onPanelKeydown} />
 
-<div class="flex max-w-full min-w-0 items-center gap-2 overflow-x-auto px-3 py-1">
-	<span class="text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_timeline()}</span>
-	<div class="flex items-center gap-0.5 border-l border-[oklch(0.25_0.015_55)] pl-2">
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded"
-			aria-label={m.video_editor_add_marker()}
-			title={`${m.video_editor_add_marker()} (M)`}
-			onclick={addMarkerAtPlayhead}
-		>
-			<FlagIcon class="size-3.5" />
-		</Button>
-		<MarkerListPopover {onedit} onselect={selectMarker} />
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={timelineStore.snapEnabled}
-			aria-pressed={timelineStore.snapEnabled}
-			aria-label={timelineStore.snapEnabled
-				? m.video_editor_snap_disable()
-				: m.video_editor_snap_enable()}
-			title={timelineStore.snapEnabled
-				? m.video_editor_snap_disable()
-				: m.video_editor_snap_enable()}
-			onclick={toggleSnap}
-		>
-			<MagnetIcon class="size-3.5" />
-		</Button>
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="ghost"
-						size="icon"
-						class="size-7 rounded"
-						aria-label={m.image_editor_more_actions()}
-					>
-						<MoreHorizontalIcon class="size-3.5" />
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="video-editor-theme w-60" align="start">
-				<DropdownMenu.Item onclick={() => addNamedTrack('video')}>
-					{m.video_editor_track_add_video()}
-				</DropdownMenu.Item>
-				<DropdownMenu.Item onclick={() => addNamedTrack('audio')}>
-					{m.video_editor_track_add_audio()}
-				</DropdownMenu.Item>
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item
-					disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
-					onclick={() =>
-						jumpToMarker(markerBefore(timelineStore.markers, timelineStore.currentFrame))}
-				>
-					{m.video_editor_previous_marker()}
-				</DropdownMenu.Item>
-				<DropdownMenu.Item
-					disabled={!markerAfter(timelineStore.markers, timelineStore.currentFrame)}
-					onclick={() =>
-						jumpToMarker(markerAfter(timelineStore.markers, timelineStore.currentFrame))}
-				>
-					{m.video_editor_next_marker()}
-				</DropdownMenu.Item>
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item
-					disabled={selectedTrackIds.length === 0}
-					onclick={createGroupFromSelection}
-				>
-					{m.video_editor_track_group_selected()}
-				</DropdownMenu.Item>
-				<DropdownMenu.Separator />
-				<DropdownMenu.CheckboxItem
-					checked={previewPlaybackSettings.audioSkimmingEnabled}
-					onCheckedChange={toggleAudioSkimming}
-				>
-					{m.video_editor_audio_skimming_hint()}
-				</DropdownMenu.CheckboxItem>
-				<DropdownMenu.CheckboxItem
-					checked={timelineStore.linkedSelectionEnabled}
-					onCheckedChange={toggleLinkedSelection}
-				>
-					{m.video_editor_linked_selection_enable()}
-				</DropdownMenu.CheckboxItem>
-				<DropdownMenu.Separator />
-				{#each [['razor', m.video_editor_shortcuts_command_razor_tool()], ['slip', m.video_editor_slip()], ['slide', m.video_editor_slide()], ['rate-stretch', m.video_editor_rate_stretch()], ['track-push', m.video_editor_track_push()]] as tool}
-					<DropdownMenu.CheckboxItem
-						checked={activeEditTool === tool[0]}
-						onCheckedChange={() => toggleEditTool(tool[0] as AdvancedEditTool)}
-					>
-						{tool[1]}
-					</DropdownMenu.CheckboxItem>
-				{/each}
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
-	</div>
-	<div class="ml-auto flex items-center gap-1">
-		{#if selectedItem}
+<div class="flex size-full min-h-0 flex-col">
+	<div class="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto px-3 py-1">
+		<span class="text-xs text-[oklch(0.65_0.015_55)]">{m.video_editor_timeline()}</span>
+		<div class="flex items-center gap-0.5 border-l border-[oklch(0.25_0.015_55)] pl-2">
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded"
+				aria-label={m.video_editor_add_marker()}
+				title={`${m.video_editor_add_marker()} (M)`}
+				onclick={addMarkerAtPlayhead}
+			>
+				<FlagIcon class="size-3.5" />
+			</Button>
+			<MarkerListPopover {onedit} onselect={selectMarker} />
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+				data-active={timelineStore.snapEnabled}
+				aria-pressed={timelineStore.snapEnabled}
+				aria-label={timelineStore.snapEnabled
+					? m.video_editor_snap_disable()
+					: m.video_editor_snap_enable()}
+				title={timelineStore.snapEnabled
+					? m.video_editor_snap_disable()
+					: m.video_editor_snap_enable()}
+				onclick={toggleSnap}
+			>
+				<MagnetIcon class="size-3.5" />
+			</Button>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
@@ -4693,1526 +4657,1637 @@
 						</Button>
 					{/snippet}
 				</DropdownMenu.Trigger>
-				<DropdownMenu.Content class="video-editor-theme w-60" align="end">
-					<DropdownMenu.Item
-						disabled={bentoEligibleIds.length < 2}
-						onclick={() => (bentoLayoutOpen = true)}
-					>
-						{m.video_editor_bento_open()}
+				<DropdownMenu.Content class="video-editor-theme w-60" align="start">
+					<DropdownMenu.Item onclick={() => addNamedTrack('video')}>
+						{m.video_editor_track_add_video()}
 					</DropdownMenu.Item>
-					<DropdownMenu.Item
-						disabled={!canFreezeSelectedItem || freezeFramePending}
-						onclick={() => onfreezeframe(selectedItem.id)}
-					>
-						{m.video_editor_freeze_frame()}
+					<DropdownMenu.Item onclick={() => addNamedTrack('audio')}>
+						{m.video_editor_track_add_audio()}
 					</DropdownMenu.Item>
-					<DropdownMenu.Item disabled={!canJoinSelectedItems} onclick={joinSelection}>
-						{m.video_editor_join_selected()}
-					</DropdownMenu.Item>
-					{#if captionConsolidationTarget}
-						<DropdownMenu.Item onclick={consolidateSelection}>
-							{m.video_editor_consolidate_captions()}
-						</DropdownMenu.Item>
-					{/if}
 					<DropdownMenu.Separator />
-					<DropdownMenu.Item disabled={!canLinkSelectedItems} onclick={linkSelection}>
-						{m.video_editor_link_selected()}
+					<DropdownMenu.Item
+						disabled={!markerBefore(timelineStore.markers, timelineStore.currentFrame)}
+						onclick={() =>
+							jumpToMarker(markerBefore(timelineStore.markers, timelineStore.currentFrame))}
+					>
+						{m.video_editor_previous_marker()}
 					</DropdownMenu.Item>
-					<DropdownMenu.Item disabled={!canUnlinkSelectedItems} onclick={unlinkSelection}>
-						{m.video_editor_unlink_selected()}
+					<DropdownMenu.Item
+						disabled={!markerAfter(timelineStore.markers, timelineStore.currentFrame)}
+						onclick={() =>
+							jumpToMarker(markerAfter(timelineStore.markers, timelineStore.currentFrame))}
+					>
+						{m.video_editor_next_marker()}
 					</DropdownMenu.Item>
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item
+						disabled={selectedTrackIds.length === 0}
+						onclick={createGroupFromSelection}
+					>
+						{m.video_editor_track_group_selected()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator />
+					<DropdownMenu.CheckboxItem
+						checked={previewPlaybackSettings.audioSkimmingEnabled}
+						onCheckedChange={toggleAudioSkimming}
+					>
+						{m.video_editor_audio_skimming_hint()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.CheckboxItem
+						checked={timelineStore.linkedSelectionEnabled}
+						onCheckedChange={toggleLinkedSelection}
+					>
+						{m.video_editor_linked_selection_enable()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.Separator />
+					{#each [['razor', m.video_editor_shortcuts_command_razor_tool()], ['slip', m.video_editor_slip()], ['slide', m.video_editor_slide()], ['rate-stretch', m.video_editor_rate_stretch()], ['track-push', m.video_editor_track_push()]] as tool}
+						<DropdownMenu.CheckboxItem
+							checked={activeEditTool === tool[0]}
+							onCheckedChange={() => toggleEditTool(tool[0] as AdvancedEditTool)}
+						>
+							{tool[1]}
+						</DropdownMenu.CheckboxItem>
+					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
-				{selectedItemIds.length > 1
-					? m.video_editor_items_selected({ count: selectedItemIds.length })
-					: selectedItem.label}
-			</span>
+		</div>
+		<div class="ml-auto flex items-center gap-1">
+			{#if selectedItem}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon"
+								class="size-7 rounded"
+								aria-label={m.image_editor_more_actions()}
+							>
+								<MoreHorizontalIcon class="size-3.5" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content class="video-editor-theme w-60" align="end">
+						<DropdownMenu.Item
+							disabled={bentoEligibleIds.length < 2}
+							onclick={() => (bentoLayoutOpen = true)}
+						>
+							{m.video_editor_bento_open()}
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							disabled={!canFreezeSelectedItem || freezeFramePending}
+							onclick={() => onfreezeframe(selectedItem.id)}
+						>
+							{m.video_editor_freeze_frame()}
+						</DropdownMenu.Item>
+						<DropdownMenu.Item disabled={!canJoinSelectedItems} onclick={joinSelection}>
+							{m.video_editor_join_selected()}
+						</DropdownMenu.Item>
+						{#if captionConsolidationTarget}
+							<DropdownMenu.Item onclick={consolidateSelection}>
+								{m.video_editor_consolidate_captions()}
+							</DropdownMenu.Item>
+						{/if}
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item disabled={!canLinkSelectedItems} onclick={linkSelection}>
+							{m.video_editor_link_selected()}
+						</DropdownMenu.Item>
+						<DropdownMenu.Item disabled={!canUnlinkSelectedItems} onclick={unlinkSelection}>
+							{m.video_editor_unlink_selected()}
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+				<span class="mr-2 max-w-40 truncate rounded bg-[oklch(0.22_0.01_50)] px-2 py-0.5 text-xs">
+					{selectedItemIds.length > 1
+						? m.video_editor_items_selected({ count: selectedItemIds.length })
+						: selectedItem.label}
+				</span>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+					data-active={keyframesOpen}
+					aria-pressed={keyframesOpen}
+					aria-label={m.video_editor_keyframes()}
+					title={m.video_editor_keyframes()}
+					onclick={() => (keyframesOpen = !keyframesOpen)}
+				>
+					<DiamondIcon class="size-3.5" />
+				</Button>
+				{#if keyframesOpen}
+					<AppSelect
+						class="h-7 w-36 text-xs"
+						value={pendingKeyframeProperty}
+						options={keyframePropertyOptions}
+						ariaLabel={m.video_editor_keyframe_property()}
+						onValueChange={setPendingKeyframeProperty}
+					/>
+					<button
+						type="button"
+						class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+						onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
+						><DiamondIcon class="size-2.5 fill-current" />
+						{m.video_editor_keyframe_add()}</button
+					>
+					<button
+						type="button"
+						class="rounded px-1.5 py-0.5 text-xs font-semibold text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.22_0.01_50)] data-[active=true]:bg-[oklch(0.66_0.14_45)] data-[active=true]:text-black [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+						data-active={selectedItem
+							? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
+							: false}
+						aria-pressed={selectedItem
+							? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
+							: false}
+						aria-label={m.video_editor_property_auto_key({
+							property: keyframeLabel(pendingKeyframeProperty)
+						})}
+						onclick={() =>
+							selectedItem && autoKeyframeStore.toggle(selectedItem.id, pendingKeyframeProperty)}
+						>A</button
+					>
+					<button
+						type="button"
+						class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+						disabled={clearableKeyframeCount === 0}
+						aria-label={m.video_editor_clear_keyframes_toolbar()}
+						title={m.video_editor_clear_keyframes_toolbar_hint()}
+						onclick={openClearKeyframesDialog}
+					>
+						{m.video_editor_clear_keyframes_toolbar()}
+					</button>
+					<AppSelect
+						class="h-7 w-24 text-xs"
+						value={keyframeEditorMode}
+						options={keyframeViewOptions}
+						ariaLabel={m.video_editor_keyframe_view()}
+						onValueChange={setKeyframeEditorMode}
+					/>
+				{/if}
+			{/if}
 			<Button
 				variant="ghost"
 				size="icon"
 				class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-				data-active={keyframesOpen}
-				aria-pressed={keyframesOpen}
-				aria-label={m.video_editor_keyframes()}
-				title={m.video_editor_keyframes()}
-				onclick={() => (keyframesOpen = !keyframesOpen)}
+				data-active={beatPanelOpen}
+				aria-pressed={beatPanelOpen}
+				aria-label={m.video_editor_beat_panel_title()}
+				title={m.video_editor_beat_panel_title()}
+				onclick={toggleBeatPanel}
 			>
-				<DiamondIcon class="size-3.5" />
+				<MusicIcon class="size-3.5" />
 			</Button>
-			{#if keyframesOpen}
-				<AppSelect
-					class="h-7 w-36 text-xs"
-					value={pendingKeyframeProperty}
-					options={keyframePropertyOptions}
-					ariaLabel={m.video_editor_keyframe_property()}
-					onValueChange={setPendingKeyframeProperty}
-				/>
-				<button
-					type="button"
-					class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-					onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
-					><DiamondIcon class="size-2.5 fill-current" />
-					{m.video_editor_keyframe_add()}</button
-				>
-				<button
-					type="button"
-					class="rounded px-1.5 py-0.5 text-xs font-semibold text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.22_0.01_50)] data-[active=true]:bg-[oklch(0.66_0.14_45)] data-[active=true]:text-black [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-					data-active={selectedItem
-						? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
-						: false}
-					aria-pressed={selectedItem
-						? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
-						: false}
-					aria-label={m.video_editor_property_auto_key({
-						property: keyframeLabel(pendingKeyframeProperty)
-					})}
-					onclick={() =>
-						selectedItem && autoKeyframeStore.toggle(selectedItem.id, pendingKeyframeProperty)}
-					>A</button
-				>
-				<button
-					type="button"
-					class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-					disabled={clearableKeyframeCount === 0}
-					aria-label={m.video_editor_clear_keyframes_toolbar()}
-					title={m.video_editor_clear_keyframes_toolbar_hint()}
-					onclick={openClearKeyframesDialog}
-				>
-					{m.video_editor_clear_keyframes_toolbar()}
-				</button>
-				<AppSelect
-					class="h-7 w-24 text-xs"
-					value={keyframeEditorMode}
-					options={keyframeViewOptions}
-					ariaLabel={m.video_editor_keyframe_view()}
-					onValueChange={setKeyframeEditorMode}
-				/>
-			{/if}
-		{/if}
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={beatPanelOpen}
-			aria-pressed={beatPanelOpen}
-			aria-label={m.video_editor_beat_panel_title()}
-			title={m.video_editor_beat_panel_title()}
-			onclick={() => (beatPanelOpen = !beatPanelOpen)}
-		>
-			<MusicIcon class="size-3.5" />
-		</Button>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
-			data-active={mixerOpen}
-			aria-pressed={mixerOpen}
-			aria-label={m.video_editor_mixer_toggle()}
-			title={m.video_editor_mixer_toggle_hint()}
-			onclick={() => (mixerOpen = !mixerOpen)}
-		>
-			<SlidersHorizontalIcon class="size-3.5" />
-		</Button>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-			aria-label={m.video_editor_zoom_out()}
-			title={m.video_editor_zoom_out_hint()}
-			onclick={() => zoomBy(1 / TIMELINE_ZOOM_STEP)}
-		>
-			<ZoomOutIcon class="size-4" />
-		</button>
-		<Slider
-			class="w-28"
-			min={0}
-			max={1}
-			step={0.001}
-			value={timelineZoomToSlider(zoom)}
-			ariaLabel={m.video_editor_zoom()}
-			onValueChange={changeTimelineZoomFromSlider}
-		/>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-			aria-label={m.video_editor_zoom_in()}
-			title={m.video_editor_zoom_in_hint()}
-			onclick={() => zoomBy(TIMELINE_ZOOM_STEP)}
-		>
-			<ZoomInIcon class="size-4" />
-		</button>
-		<button
-			type="button"
-			class="min-w-10 rounded px-1 py-0.5 font-mono text-xs text-[oklch(0.7_0.015_55)] tabular-nums hover:bg-[oklch(0.22_0.01_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-			aria-label={m.video_editor_zoom_100()}
-			title={m.video_editor_zoom_100_hint()}
-			onclick={zoomTo100}
-		>
-			{Math.round(zoom * 100)}%
-		</button>
-		<button
-			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-			aria-label={m.video_editor_zoom_fit()}
-			title={m.video_editor_zoom_fit_hint()}
-			onclick={zoomToFit}
-		>
-			<Maximize2Icon class="size-4" />
-		</button>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-7 rounded data-[active=true]:bg-[oklch(0.66_0.14_45_/_0.16)] data-[active=true]:text-[oklch(0.76_0.14_45)]"
+				data-active={mixerOpen}
+				aria-pressed={mixerOpen}
+				aria-label={m.video_editor_mixer_toggle()}
+				title={m.video_editor_mixer_toggle_hint()}
+				onclick={toggleMixer}
+			>
+				<SlidersHorizontalIcon class="size-3.5" />
+			</Button>
+			<button
+				type="button"
+				class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+				aria-label={m.video_editor_zoom_out()}
+				title={m.video_editor_zoom_out_hint()}
+				onclick={() => zoomBy(1 / TIMELINE_ZOOM_STEP)}
+			>
+				<ZoomOutIcon class="size-4" />
+			</button>
+			<Slider
+				class="w-28"
+				min={0}
+				max={1}
+				step={0.001}
+				value={timelineZoomToSlider(zoom)}
+				ariaLabel={m.video_editor_zoom()}
+				onValueChange={changeTimelineZoomFromSlider}
+			/>
+			<button
+				type="button"
+				class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+				aria-label={m.video_editor_zoom_in()}
+				title={m.video_editor_zoom_in_hint()}
+				onclick={() => zoomBy(TIMELINE_ZOOM_STEP)}
+			>
+				<ZoomInIcon class="size-4" />
+			</button>
+			<button
+				type="button"
+				class="min-w-10 rounded px-1 py-0.5 font-mono text-xs text-[oklch(0.7_0.015_55)] tabular-nums hover:bg-[oklch(0.22_0.01_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+				aria-label={m.video_editor_zoom_100()}
+				title={m.video_editor_zoom_100_hint()}
+				onclick={zoomTo100}
+			>
+				{Math.round(zoom * 100)}%
+			</button>
+			<button
+				type="button"
+				class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+				aria-label={m.video_editor_zoom_fit()}
+				title={m.video_editor_zoom_fit_hint()}
+				onclick={zoomToFit}
+			>
+				<Maximize2Icon class="size-4" />
+			</button>
+		</div>
 	</div>
-</div>
-<DestructiveConfirmDialog
-	bind:open={deleteGroupDialogOpen}
-	title={m.video_editor_track_group_delete_title()}
-	description={m.video_editor_track_group_delete_body({
-		name: deleteGroupTarget?.name ?? '',
-		count: deleteGroupTarget?.trackCount ?? 0
-	})}
-	confirmLabel={m.video_editor_track_group_delete()}
-	onConfirm={() => {
-		const target = deleteGroupTarget;
-		const removedTrackIds = target
-			? new Set(trackChildren(timelineStore.tracks, target.id).map((track) => track.id))
-			: new Set<string>();
-		deleteGroupTarget = null;
-		if (!target || !removeTrackGroupWithContents(target.id)) {
-			return { ok: false, message: m.video_editor_track_group_delete_failed() };
-		}
-		selectedTrackIds = selectedTrackIds.filter((id) =>
-			mediaTracks(timelineStore.tracks).some((track) => track.id === id)
-		);
-		selectedItemIds = selectedItemIds.filter((id) => {
-			const item = timelineStore.itemById.get(id);
-			return item ? !removedTrackIds.has(item.trackId) : false;
-		});
-		if (selectedItemId && !timelineStore.itemById.has(selectedItemId)) selectedItemId = null;
-		onedit();
-		return { ok: true };
-	}}
-/>
+	<DestructiveConfirmDialog
+		bind:open={deleteGroupDialogOpen}
+		title={m.video_editor_track_group_delete_title()}
+		description={m.video_editor_track_group_delete_body({
+			name: deleteGroupTarget?.name ?? '',
+			count: deleteGroupTarget?.trackCount ?? 0
+		})}
+		confirmLabel={m.video_editor_track_group_delete()}
+		onConfirm={() => {
+			const target = deleteGroupTarget;
+			const removedTrackIds = target
+				? new Set(trackChildren(timelineStore.tracks, target.id).map((track) => track.id))
+				: new Set<string>();
+			deleteGroupTarget = null;
+			if (!target || !removeTrackGroupWithContents(target.id)) {
+				return { ok: false, message: m.video_editor_track_group_delete_failed() };
+			}
+			selectedTrackIds = selectedTrackIds.filter((id) =>
+				mediaTracks(timelineStore.tracks).some((track) => track.id === id)
+			);
+			selectedItemIds = selectedItemIds.filter((id) => {
+				const item = timelineStore.itemById.get(id);
+				return item ? !removedTrackIds.has(item.trackId) : false;
+			});
+			if (selectedItemId && !timelineStore.itemById.has(selectedItemId)) selectedItemId = null;
+			onedit();
+			return { ok: true };
+		}}
+	/>
 
-<BentoLayoutDialog
-	bind:open={bentoLayoutOpen}
-	itemIds={bentoEligibleIds}
-	{canvasWidth}
-	{canvasHeight}
-	onapplied={() => onedit()}
-/>
+	<BentoLayoutDialog
+		bind:open={bentoLayoutOpen}
+		itemIds={bentoEligibleIds}
+		{canvasWidth}
+		{canvasHeight}
+		onapplied={() => onedit()}
+	/>
 
-<ClearKeyframesDialog
-	bind:open={clearKeyframesDialogOpen}
-	itemIds={selectedItemIds}
-	options={clearKeyframeDialogOptions}
-	lockedItemCount={lockedAnimatedSelectionCount}
-	oncleared={(result) => {
-		if (result.keyframesRemoved === 0) return;
-		onedit();
-		emitEditorSound('confirm', editorSession.clock.isPlaying);
-	}}
-/>
+	<ClearKeyframesDialog
+		bind:open={clearKeyframesDialogOpen}
+		itemIds={selectedItemIds}
+		options={clearKeyframeDialogOptions}
+		lockedItemCount={lockedAnimatedSelectionCount}
+		oncleared={(result) => {
+			if (result.keyframesRemoved === 0) return;
+			onedit();
+			emitEditorSound('confirm', editorSession.clock.isPlaying);
+		}}
+	/>
 
-{#if selectedMarker}
-	<div
-		class="flex min-h-9 max-w-full items-center gap-2 overflow-x-auto border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-xs"
-	>
-		<FlagIcon class="size-3.5 shrink-0" style={`color:${selectedMarker.color}`} />
-		<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>
-		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
-			{m.video_editor_marker_label()}
-			<Input
-				class="h-7 w-44 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
-				value={markerLabelDraft}
-				oninput={(event) => (markerLabelDraft = event.currentTarget.value)}
-				onblur={() => commitMarkerPatch(selectedMarker, { label: markerLabelDraft.trim() })}
-				onkeydown={(event) => {
-					if (event.key === 'Enter') event.currentTarget.blur();
-					if (event.key === 'Escape') {
-						markerLabelDraft = selectedMarker.label ?? '';
-						event.currentTarget.blur();
-					}
-				}}
-			/>
-		</label>
-		<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
-			{m.video_editor_marker_frame()}
-			<Input
-				class="h-7 w-20 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 font-mono text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
-				type="number"
-				aria-label={m.video_editor_marker_frame()}
-				min="0"
-				step="1"
-				value={selectedMarker.frame}
-				onchange={(event) => {
-					const frame = Number(event.currentTarget.value);
-					if (Number.isFinite(frame)) {
-						commitMarkerPatch(selectedMarker, {
-							frame: Math.max(0, Math.round(frame))
-						});
-					}
-				}}
-			/>
-			<span class="font-mono text-xs tabular-nums">
-				{formatTimelinePreviewTimecode(selectedMarker.frame, timelineStore.fps)}
-			</span>
-		</label>
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="ghost"
-						size="icon"
-						class="size-7 rounded border border-[oklch(0.3_0.01_55)]"
-						aria-label={m.video_editor_marker_color()}
-					>
-						<span
-							class="size-4 rounded-full border border-black/30"
-							style={`background:${selectedMarker.color}`}
-						></span>
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="video-editor-theme w-48 p-2" align="start">
-				<div class="flex items-center gap-2 px-1 pb-2 text-xs text-[var(--video-editor-muted)]">
-					<Input
-						class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
-						type="color"
-						aria-label={m.video_editor_marker_color()}
-						value={markerColorForInput(selectedMarker.color)}
-						onchange={(event) =>
+	{#if selectedMarker}
+		<div
+			class="flex min-h-9 max-w-full items-center gap-2 overflow-x-auto border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-xs"
+		>
+			<FlagIcon class="size-3.5 shrink-0" style={`color:${selectedMarker.color}`} />
+			<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>
+			<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
+				{m.video_editor_marker_label()}
+				<Input
+					class="h-7 w-44 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
+					value={markerLabelDraft}
+					oninput={(event) => (markerLabelDraft = event.currentTarget.value)}
+					onblur={() => commitMarkerPatch(selectedMarker, { label: markerLabelDraft.trim() })}
+					onkeydown={(event) => {
+						if (event.key === 'Enter') event.currentTarget.blur();
+						if (event.key === 'Escape') {
+							markerLabelDraft = selectedMarker.label ?? '';
+							event.currentTarget.blur();
+						}
+					}}
+				/>
+			</label>
+			<label class="flex items-center gap-1 text-[oklch(0.65_0.015_55)]">
+				{m.video_editor_marker_frame()}
+				<Input
+					class="h-7 w-20 rounded border border-[oklch(0.3_0.01_55)] bg-[oklch(0.2_0.008_55)] px-2 font-mono text-white outline-none focus:border-[oklch(0.66_0.14_45)]"
+					type="number"
+					aria-label={m.video_editor_marker_frame()}
+					min="0"
+					step="1"
+					value={selectedMarker.frame}
+					onchange={(event) => {
+						const frame = Number(event.currentTarget.value);
+						if (Number.isFinite(frame)) {
 							commitMarkerPatch(selectedMarker, {
-								color: event.currentTarget.value
-							})}
-					/>
-					{m.video_editor_marker_color()}
-				</div>
-				<div
-					class="grid grid-cols-6 gap-1 border-t border-[oklch(0.28_0.014_55)] pt-2"
-					role="group"
-					aria-label={m.video_editor_marker_color()}
-				>
-					{#each MARKER_PRESET_COLORS as color, index (color)}
-						<button
-							type="button"
-							class="grid size-6 place-items-center rounded focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:size-11"
-							aria-label={m.video_editor_marker_color_choice({ number: index + 1 })}
-							aria-pressed={selectedMarker.color.toLowerCase() === color.toLowerCase()}
-							onclick={() => commitMarkerPatch(selectedMarker, { color })}
+								frame: Math.max(0, Math.round(frame))
+							});
+						}
+					}}
+				/>
+				<span class="font-mono text-xs tabular-nums">
+					{formatTimelinePreviewTimecode(selectedMarker.frame, timelineStore.fps)}
+				</span>
+			</label>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon"
+							class="size-7 rounded border border-[oklch(0.3_0.01_55)]"
+							aria-label={m.video_editor_marker_color()}
 						>
 							<span
-								class="size-4 rounded-full border border-black/30 {selectedMarker.color.toLowerCase() ===
-								color.toLowerCase()
-									? 'ring-2 ring-white/80'
-									: ''}"
-								style={`background:${color}`}
+								class="size-4 rounded-full border border-black/30"
+								style={`background:${selectedMarker.color}`}
 							></span>
-						</button>
-					{/each}
-				</div>
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					class="mt-2 h-7 w-full justify-center text-xs"
-					disabled={selectedMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
-					onclick={() => commitMarkerPatch(selectedMarker, { color: DEFAULT_MARKER_COLOR })}
-				>
-					{m.video_editor_marker_reset_color()}
-				</Button>
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
-		<Button
-			variant="ghost"
-			size="icon"
-			class="ml-auto size-7 rounded text-red-300 hover:bg-red-500/15 hover:text-red-200"
-			aria-label={m.video_editor_delete_marker()}
-			title={`${m.video_editor_delete_marker()} (Shift+M)`}
-			onclick={() => deleteTimelineMarker(selectedMarker.id)}
-		>
-			<Trash2Icon class="size-3.5" />
-		</Button>
-	</div>
-{/if}
-
-{#if mixerOpen}
-	<AudioMixerPanel />
-{/if}
-
-{#if beatPanelOpen}
-	<BeatDetectionPanel bind:selectedItemId />
-{/if}
-
-<ContextMenu.Root>
-	<ContextMenu.Trigger>
-		{#snippet child({ props })}
-			<div
-				{...props}
-				bind:this={scrollContainer}
-				id="video-editor-timeline-scroll"
-				tabindex="-1"
-				data-media-placement-surface
-				oncontextmenucapture={prepareTimelineContextMenu}
-				onkeydown={openTimelineContextMenuFromKeyboard}
-				onscroll={scheduleTimelineViewportUpdate}
-				onpointerdown={(event) => {
-					clearHoverPreview();
-					if (mediaPlacement.request) return;
-					startMarquee(event);
-				}}
-				onpointermove={rememberTimelinePointer}
-				onpointerleave={forgetTimelinePointer}
-				onwheel={onTimelineWheel}
-				class="relative h-[calc(100%-5.75rem)] min-h-24 overflow-auto pb-2"
-				role="region"
-				aria-label={m.video_editor_timeline()}
-			>
-				{#if mediaPlacement.request && mediaDropPreview}
-					<div
-						class="pointer-events-none absolute top-1 right-2 left-2 z-[70] w-auto rounded-md border border-[oklch(0.38_0.015_55)] bg-[oklch(0.17_0.01_55_/_0.96)] px-3 py-1.5 text-xs text-white shadow-xl sm:right-auto sm:left-1/2 sm:w-max sm:max-w-[calc(100%-1rem)] sm:-translate-x-1/2"
-						role="status"
-						aria-live="polite"
-						data-media-placement-status
-					>
-						<span class="font-medium">{mediaDropPreview.label}</span>
-						<span class="ml-1 text-[oklch(0.7_0.015_55)]">
-							{mediaDropPreview.valid
-								? m.video_editor_media_placement_ready()
-								: m.video_editor_media_placement_unavailable()}
-						</span>
-					</div>
-				{/if}
-				<div class="relative select-none" style="width:{timelineWidth}px">
-					{#if marquee?.active}
-						<div
-							class="pointer-events-none absolute z-50 border border-[oklch(0.72_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.16)]"
-							style={marqueeStyle()}
-							data-timeline-marquee
-						></div>
-					{/if}
-					<!-- Ruler -->
-					<div
-						class="sticky top-0 z-20 h-6 cursor-ew-resize touch-none border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
-						role="slider"
-						tabindex="0"
-						aria-label={m.video_editor_playhead()}
-						aria-valuemin="0"
-						aria-valuemax={timelineStore.maxItemEndFrame}
-						aria-valuenow={timelineStore.currentFrame}
-						aria-disabled={timelineStore.seekLocked}
-						onkeydown={onRulerKeydown}
-						onpointerdown={startRulerScrub}
-					>
-						<div
-							class="sticky left-0 z-30 h-full border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"
-							style="width:{TRACK_HEADER_WIDTH}px"
-						></div>
-						{#each rulerTicks() as tick (tick)}
-							<span
-								class="absolute bottom-0 border-l border-[oklch(0.3_0.01_55)] pl-1 font-mono text-xs text-[oklch(0.65_0.015_55)]"
-								style="left:{timelineX(tick)}px"
-							>
-								{tickLabel(tick)}
-							</span>
-						{/each}
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content class="video-editor-theme w-48 p-2" align="start">
+					<div class="flex items-center gap-2 px-1 pb-2 text-xs text-[var(--video-editor-muted)]">
+						<Input
+							class="size-7 cursor-pointer rounded border border-[oklch(0.3_0.01_55)] bg-transparent p-0.5"
+							type="color"
+							aria-label={m.video_editor_marker_color()}
+							value={markerColorForInput(selectedMarker.color)}
+							onchange={(event) =>
+								commitMarkerPatch(selectedMarker, {
+									color: event.currentTarget.value
+								})}
+						/>
+						{m.video_editor_marker_color()}
 					</div>
 					<div
-						class="pointer-events-none sticky top-0 z-40 -mt-6 mb-6 h-0"
+						class="grid grid-cols-6 gap-1 border-t border-[oklch(0.28_0.014_55)] pt-2"
 						role="group"
-						aria-label={m.video_editor_markers_lane()}
+						aria-label={m.video_editor_marker_color()}
 					>
-						{#each [...timelineStore.markers].sort((left, right) => left.frame - right.frame) as marker (marker.id)}
+						{#each MARKER_PRESET_COLORS as color, index (color)}
 							<button
 								type="button"
-								class="pointer-events-auto absolute top-0 flex h-6 w-5 -translate-x-1/2 cursor-grab items-start justify-center pt-0.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white active:cursor-grabbing [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
-								style="left:{timelineX(marker.frame)}px"
-								aria-label={`${markerName(marker)}, ${m.video_editor_marker_frame_value({ frame: marker.frame })}`}
-								aria-pressed={timelineStore.selectedMarkerId === marker.id}
-								title={`${markerName(marker)} · ${m.video_editor_marker_frame_value({ frame: marker.frame })} · ${m.video_editor_marker_keyboard()}`}
-								data-timeline-marker={marker.id}
-								data-marquee-ignore
-								onpointerdown={(event) => startMarkerDrag(event, marker)}
-								ondblclick={(event) => {
-									event.stopPropagation();
-									deleteTimelineMarker(marker.id);
-								}}
-								onkeydown={(event) => onMarkerKeydown(event, marker)}
+								class="grid size-6 place-items-center rounded focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:size-11"
+								aria-label={m.video_editor_marker_color_choice({ number: index + 1 })}
+								aria-pressed={selectedMarker.color.toLowerCase() === color.toLowerCase()}
+								onclick={() => commitMarkerPatch(selectedMarker, { color })}
 							>
 								<span
-									class="block h-0 w-0 border-r-[6px] border-l-[6px] border-r-transparent border-l-transparent drop-shadow-sm {timelineStore.selectedMarkerId ===
-									marker.id
-										? 'drop-shadow-[0_0_2px_white]'
+									class="size-4 rounded-full border border-black/30 {selectedMarker.color.toLowerCase() ===
+									color.toLowerCase()
+										? 'ring-2 ring-white/80'
 										: ''}"
-									style={`border-top:10px solid ${marker.color}`}
+									style={`background:${color}`}
 								></span>
 							</button>
 						{/each}
 					</div>
-					<TimelineVoiceoverOverlay {timelineX} pixelsPerFrame={pxPerFrame} />
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="mt-2 h-7 w-full justify-center text-xs"
+						disabled={selectedMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
+						onclick={() => commitMarkerPatch(selectedMarker, { color: DEFAULT_MARKER_COLOR })}
+					>
+						{m.video_editor_marker_reset_color()}
+					</Button>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="ml-auto size-7 rounded text-red-300 hover:bg-red-500/15 hover:text-red-200"
+				aria-label={m.video_editor_delete_marker()}
+				title={`${m.video_editor_delete_marker()} (Shift+M)`}
+				onclick={() => deleteTimelineMarker(selectedMarker.id)}
+			>
+				<Trash2Icon class="size-3.5" />
+			</Button>
+		</div>
+	{/if}
 
-					<!-- Tracks -->
-					{#each visibleTrackRows(timelineStore.tracks) as track (track.id)}
-						{@const parentTrack = track.parentTrackId
-							? timelineStore.tracks.find((candidate) => candidate.id === track.parentTrackId)
-							: undefined}
-						{@const resolvedTrack = {
-							...track,
-							...effectiveTrackState(track, timelineStore.tracks)
-						}}
-						{@const renderPlan = timelineRenderPlan(track.id)}
-						{@const trackTransitions = visibleTransitionsForTrack(track.id, renderPlan)}
+	{#if mixerOpen}
+		<div class="relative min-h-0 shrink-0" style:height={`${mixerHeight}px`} data-audio-mixer-dock>
+			<PanelResizeHandle
+				edge="top"
+				value={mixerHeight}
+				minimum={Math.min(160, mixerMaximum)}
+				maximum={mixerMaximum}
+				defaultValue={Math.min(224, mixerMaximum)}
+				label={m.video_editor_mixer()}
+				onresize={resizeMixer}
+				oncommit={(value) => editorSettings.set('audioMixerHeight', value)}
+			/>
+			<AudioMixerPanel />
+		</div>
+	{/if}
+
+	{#if beatPanelOpen}
+		<BeatDetectionPanel bind:selectedItemId />
+	{/if}
+
+	<ContextMenu.Root>
+		<ContextMenu.Trigger>
+			{#snippet child({ props })}
+				<div
+					{...props}
+					bind:this={scrollContainer}
+					id="video-editor-timeline-scroll"
+					tabindex="-1"
+					data-media-placement-surface
+					oncontextmenucapture={prepareTimelineContextMenu}
+					onkeydown={openTimelineContextMenuFromKeyboard}
+					onscroll={scheduleTimelineViewportUpdate}
+					onpointerdown={(event) => {
+						clearHoverPreview();
+						if (mediaPlacement.request) return;
+						startMarquee(event);
+					}}
+					onpointermove={rememberTimelinePointer}
+					onpointerleave={forgetTimelinePointer}
+					onwheel={onTimelineWheel}
+					class="relative min-h-24 flex-1 overflow-auto pb-2"
+					role="region"
+					aria-label={m.video_editor_timeline()}
+				>
+					{#if mediaPlacement.request && mediaDropPreview}
 						<div
-							class="relative border-b border-[oklch(0.22_0.01_50)] {resolvedTrack.visible ===
-								false ||
-							(track.kind === 'audio' && resolvedTrack.muted)
-								? 'bg-[oklch(0.13_0.006_55)]'
-								: ''} {track.isGroup ? 'z-[31] bg-[oklch(0.18_0.012_55)]' : ''}"
-							style="height:{track.height}px"
-							data-track={track.id}
-							role="group"
-							aria-label={track.name}
-							onpointerdown={track.isGroup
-								? undefined
-								: (event) => placeMediaWithPointer(event, track.id)}
-							onpointermove={track.isGroup
-								? undefined
-								: (event) => {
-										const request = mediaPlacement.request;
-										const resolved = request ? resolveDraggedMedia(request.payload) : null;
-										if (!request || !resolved) return;
-										const position = snappedMediaFrame(event.clientX, resolved.durationInFrames);
-										updateMediaDropPreview(
-											request.payload,
-											track.id,
-											position.from,
-											position.snapTarget
-										);
-									}}
-							ondragenter={track.isGroup
-								? undefined
-								: (event) => {
-										if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
-									}}
-							ondragover={track.isGroup
-								? undefined
-								: (event) => {
-										if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
-									}}
-							ondragleave={track.isGroup
-								? undefined
-								: (event) => {
-										leaveMediaDrop(event);
-										leaveSceneDrop(event);
-									}}
-							ondrop={track.isGroup
-								? undefined
-								: (event) => {
-										if (!dropMedia(event, track.id)) dropScene(event, track.id);
-									}}
+							class="pointer-events-none absolute top-1 right-2 left-2 z-[70] w-auto rounded-md border border-[oklch(0.38_0.015_55)] bg-[oklch(0.17_0.01_55_/_0.96)] px-3 py-1.5 text-xs text-white shadow-xl sm:right-auto sm:left-1/2 sm:w-max sm:max-w-[calc(100%-1rem)] sm:-translate-x-1/2"
+							role="status"
+							aria-live="polite"
+							data-media-placement-status
+						>
+							<span class="font-medium">{mediaDropPreview.label}</span>
+							<span class="ml-1 text-[oklch(0.7_0.015_55)]">
+								{mediaDropPreview.valid
+									? m.video_editor_media_placement_ready()
+									: m.video_editor_media_placement_unavailable()}
+							</span>
+						</div>
+					{/if}
+					<div class="relative select-none" style="width:{timelineWidth}px">
+						{#if marquee?.active}
+							<div
+								class="pointer-events-none absolute z-50 border border-[oklch(0.72_0.14_45)] bg-[oklch(0.66_0.14_45_/_0.16)]"
+								style={marqueeStyle()}
+								data-timeline-marquee
+							></div>
+						{/if}
+						<!-- Ruler -->
+						<div
+							class="sticky top-0 z-20 h-6 cursor-ew-resize touch-none border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)]"
+							role="slider"
+							tabindex="0"
+							aria-label={m.video_editor_playhead()}
+							aria-valuemin="0"
+							aria-valuemax={timelineStore.maxItemEndFrame}
+							aria-valuenow={timelineStore.currentFrame}
+							aria-disabled={timelineStore.seekLocked}
+							onkeydown={onRulerKeydown}
+							onpointerdown={startRulerScrub}
 						>
 							<div
-								class="sticky left-0 z-30 h-full"
+								class="sticky left-0 z-30 h-full border-r border-[oklch(0.25_0.015_55)] bg-[oklch(0.16_0.008_55)]"
 								style="width:{TRACK_HEADER_WIDTH}px"
-								data-marquee-ignore
-							>
-								<TimelineTrackHeader
-									{track}
-									effectiveTrack={resolvedTrack}
-									itemCount={track.isGroup
-										? trackChildren(timelineStore.tracks, track.id).length
-										: (timelineStore.itemsByTrackId.get(track.id) ?? []).length}
-									canDelete={track.isGroup
-										? mediaTracks(timelineStore.tracks).length -
-												trackChildren(timelineStore.tracks, track.id).length >=
-											1
-										: mediaTracks(timelineStore.tracks).length > 1}
-									selected={track.isGroup
-										? trackChildren(timelineStore.tracks, track.id).every((childTrack) =>
-												selectedTrackIds.includes(childTrack.id)
-											)
-										: selectedTrackIds.includes(track.id)}
-									child={Boolean(parentTrack)}
-									inheritedLocked={Boolean(parentTrack?.locked)}
-									inheritedVisible={parentTrack?.visible === false}
-									inheritedMuted={Boolean(parentTrack?.muted)}
-									inheritedSolo={Boolean(parentTrack?.solo)}
-									onselect={(event) => selectTrack(event, track.id)}
-									oncollapse={() => editTrack(() => toggleTrackGroupCollapsed(track.id))}
-									onungroup={() =>
-										editTrack(() => {
-											selectedTrackIds = selectedTrackIds.filter(
-												(id) =>
-													!trackChildren(timelineStore.tracks, track.id).some(
-														(child) => child.id === id
-													)
+							></div>
+							{#each rulerTicks() as tick (tick)}
+								<span
+									class="absolute bottom-0 border-l border-[oklch(0.3_0.01_55)] pl-1 font-mono text-xs text-[oklch(0.65_0.015_55)]"
+									style="left:{timelineX(tick)}px"
+								>
+									{tickLabel(tick)}
+								</span>
+							{/each}
+						</div>
+						<div
+							class="pointer-events-none sticky top-0 z-40 -mt-6 mb-6 h-0"
+							role="group"
+							aria-label={m.video_editor_markers_lane()}
+						>
+							{#each [...timelineStore.markers].sort((left, right) => left.frame - right.frame) as marker (marker.id)}
+								<button
+									type="button"
+									class="pointer-events-auto absolute top-0 flex h-6 w-5 -translate-x-1/2 cursor-grab items-start justify-center pt-0.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white active:cursor-grabbing [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+									style="left:{timelineX(marker.frame)}px"
+									aria-label={`${markerName(marker)}, ${m.video_editor_marker_frame_value({ frame: marker.frame })}`}
+									aria-pressed={timelineStore.selectedMarkerId === marker.id}
+									title={`${markerName(marker)} · ${m.video_editor_marker_frame_value({ frame: marker.frame })} · ${m.video_editor_marker_keyboard()}`}
+									data-timeline-marker={marker.id}
+									data-marquee-ignore
+									onpointerdown={(event) => startMarkerDrag(event, marker)}
+									ondblclick={(event) => {
+										event.stopPropagation();
+										deleteTimelineMarker(marker.id);
+									}}
+									onkeydown={(event) => onMarkerKeydown(event, marker)}
+								>
+									<span
+										class="block h-0 w-0 border-r-[6px] border-l-[6px] border-r-transparent border-l-transparent drop-shadow-sm {timelineStore.selectedMarkerId ===
+										marker.id
+											? 'drop-shadow-[0_0_2px_white]'
+											: ''}"
+										style={`border-top:10px solid ${marker.color}`}
+									></span>
+								</button>
+							{/each}
+						</div>
+						<TimelineVoiceoverOverlay {timelineX} pixelsPerFrame={pxPerFrame} />
+
+						<!-- Tracks -->
+						{#each visibleTrackRows(timelineStore.tracks) as track (track.id)}
+							{@const parentTrack = track.parentTrackId
+								? timelineStore.tracks.find((candidate) => candidate.id === track.parentTrackId)
+								: undefined}
+							{@const resolvedTrack = {
+								...track,
+								...effectiveTrackState(track, timelineStore.tracks)
+							}}
+							{@const renderPlan = timelineRenderPlan(track.id)}
+							{@const trackTransitions = visibleTransitionsForTrack(track.id, renderPlan)}
+							<div
+								class="relative border-b border-[oklch(0.22_0.01_50)] {resolvedTrack.visible ===
+									false ||
+								(track.kind === 'audio' && resolvedTrack.muted)
+									? 'bg-[oklch(0.13_0.006_55)]'
+									: ''} {track.isGroup ? 'z-[31] bg-[oklch(0.18_0.012_55)]' : ''}"
+								style="height:{track.height}px"
+								data-track={track.id}
+								role="group"
+								aria-label={track.name}
+								onpointerdown={track.isGroup
+									? undefined
+									: (event) => placeMediaWithPointer(event, track.id)}
+								onpointermove={track.isGroup
+									? undefined
+									: (event) => {
+											const request = mediaPlacement.request;
+											const resolved = request ? resolveDraggedMedia(request.payload) : null;
+											if (!request || !resolved) return;
+											const position = snappedMediaFrame(event.clientX, resolved.durationInFrames);
+											updateMediaDropPreview(
+												request.payload,
+												track.id,
+												position.from,
+												position.snapTarget
 											);
-											return ungroupTracks(track.id);
-										})}
-									ondeletegroup={() => requestDeleteGroup(track.id)}
-									onmoveup={() => editTrack(() => moveTrack(track.id, -1))}
-									onmovedown={() => editTrack(() => moveTrack(track.id, 1))}
-									onrename={(name) => editTrack(() => renameTrack(track.id, name))}
-									onvisibility={() =>
-										editTrack(
-											() => toggleTrackVisibility(track.id),
-											track.visible === false ? 'toggleOn' : 'toggleOff'
-										)}
-									onmute={() =>
-										editTrack(
-											() => toggleTrackMute(track.id),
-											track.muted ? 'toggleOff' : 'toggleOn'
-										)}
-									onsolo={() =>
-										editTrack(
-											() => toggleTrackSolo(track.id),
-											track.solo ? 'toggleOff' : 'toggleOn'
-										)}
-									onlock={() =>
-										editTrack(
-											() => toggleTrackLock(track.id),
-											track.locked ? 'toggleOff' : 'toggleOn'
-										)}
-									onsynclock={() =>
-										editTrack(
-											() => toggleTrackSyncLock(track.id),
-											track.syncLock ? 'toggleOff' : 'toggleOn'
-										)}
-									ondelete={() => deleteTrack(track.id)}
-								/>
-							</div>
-							{#if sceneDropPreview?.trackId === track.id}
+										}}
+								ondragenter={track.isGroup
+									? undefined
+									: (event) => {
+											if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+										}}
+								ondragover={track.isGroup
+									? undefined
+									: (event) => {
+											if (!previewMediaDrop(event, track.id)) previewSceneDrop(event, track.id);
+										}}
+								ondragleave={track.isGroup
+									? undefined
+									: (event) => {
+											leaveMediaDrop(event);
+											leaveSceneDrop(event);
+										}}
+								ondrop={track.isGroup
+									? undefined
+									: (event) => {
+											if (!dropMedia(event, track.id)) dropScene(event, track.id);
+										}}
+							>
 								<div
-									class="pointer-events-none absolute top-1 z-20 h-[calc(100%-8px)] overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.13_45)] bg-[oklch(0.4_0.04_250_/_0.78)] px-2 py-1 text-xs text-white shadow-lg"
-									style={clipStyle({
-										from: sceneDropPreview.from,
-										durationInFrames: sceneDropPreview.durationInFrames,
-										type: 'video'
-									})}
-									data-scene-drop-preview
+									class="sticky left-0 z-30 h-full"
+									style="width:{TRACK_HEADER_WIDTH}px"
+									data-marquee-ignore
 								>
-									<span class="block truncate">{sceneDropPreview.label}</span>
-									<span class="sr-only" role="status" aria-live="polite">
-										{m.video_editor_scene_drop_ready()}
-									</span>
+									<TimelineTrackHeader
+										{track}
+										effectiveTrack={resolvedTrack}
+										itemCount={track.isGroup
+											? trackChildren(timelineStore.tracks, track.id).length
+											: (timelineStore.itemsByTrackId.get(track.id) ?? []).length}
+										canDelete={track.isGroup
+											? mediaTracks(timelineStore.tracks).length -
+													trackChildren(timelineStore.tracks, track.id).length >=
+												1
+											: mediaTracks(timelineStore.tracks).length > 1}
+										selected={track.isGroup
+											? trackChildren(timelineStore.tracks, track.id).every((childTrack) =>
+													selectedTrackIds.includes(childTrack.id)
+												)
+											: selectedTrackIds.includes(track.id)}
+										child={Boolean(parentTrack)}
+										inheritedLocked={Boolean(parentTrack?.locked)}
+										inheritedVisible={parentTrack?.visible === false}
+										inheritedMuted={Boolean(parentTrack?.muted)}
+										inheritedSolo={Boolean(parentTrack?.solo)}
+										onselect={(event) => selectTrack(event, track.id)}
+										oncollapse={() => editTrack(() => toggleTrackGroupCollapsed(track.id))}
+										onungroup={() =>
+											editTrack(() => {
+												selectedTrackIds = selectedTrackIds.filter(
+													(id) =>
+														!trackChildren(timelineStore.tracks, track.id).some(
+															(child) => child.id === id
+														)
+												);
+												return ungroupTracks(track.id);
+											})}
+										ondeletegroup={() => requestDeleteGroup(track.id)}
+										onmoveup={() => editTrack(() => moveTrack(track.id, -1))}
+										onmovedown={() => editTrack(() => moveTrack(track.id, 1))}
+										onrename={(name) => editTrack(() => renameTrack(track.id, name))}
+										onvisibility={() =>
+											editTrack(
+												() => toggleTrackVisibility(track.id),
+												track.visible === false ? 'toggleOn' : 'toggleOff'
+											)}
+										onmute={() =>
+											editTrack(
+												() => toggleTrackMute(track.id),
+												track.muted ? 'toggleOff' : 'toggleOn'
+											)}
+										onsolo={() =>
+											editTrack(
+												() => toggleTrackSolo(track.id),
+												track.solo ? 'toggleOff' : 'toggleOn'
+											)}
+										onlock={() =>
+											editTrack(
+												() => toggleTrackLock(track.id),
+												track.locked ? 'toggleOff' : 'toggleOn'
+											)}
+										onsynclock={() =>
+											editTrack(
+												() => toggleTrackSyncLock(track.id),
+												track.syncLock ? 'toggleOff' : 'toggleOn'
+											)}
+										ondelete={() => deleteTrack(track.id)}
+									/>
 								</div>
-							{/if}
-							{#if mediaDropPreview && (mediaDropPreview.trackId === track.id || mediaDropPreview.secondaryTrackId === track.id)}
-								<div
-									class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-xs text-white shadow-lg {mediaDropPreview.valid
-										? 'border-[oklch(0.72_0.14_145)] bg-[oklch(0.32_0.09_145_/_0.86)]'
-										: 'border-red-400 bg-red-500/25'}"
-									style={`left:${timelineX(mediaDropPreview.from)}px;width:${frameToPx(mediaDropPreview.durationInFrames)}px`}
-									data-media-drop-preview
-									data-valid={String(mediaDropPreview.valid)}
-									data-reason={mediaDropPreview.reason ?? undefined}
-									data-secondary={String(mediaDropPreview.secondaryTrackId === track.id)}
-								>
-									<span class="block truncate">{mediaDropPreview.label}</span>
-								</div>
-							{/if}
-							{#if renderPlan.isDense}
-								<TimelineDensityOverview
-									buckets={renderPlan.densityBuckets}
-									{selectedItemIds}
-									locked={resolvedTrack.locked}
-									{timelineX}
-									{frameToPx}
-									onpointeritem={(event, item) =>
-										activeEditTool === 'razor'
-											? razorSplitTimelineItem(event, item.id)
-											: startDrag(event, item.id, activeEditTool ?? 'move')}
-									onselectitem={(event, item) => selectItem(event, item.id)}
-								/>
-							{/if}
-							{#each renderPlan.nativeItems as item (item.id)}
-								{@const displayItem = previewedItem(item)}
-								{@const pushAvailability = trackPushAvailability(item)}
-								{@const syncOffsetFrames = linkedSyncOffset(item)}
-								{#if !syncLockPreviewById[item.id]?.hidden}
-									<!-- svelte-ignore a11y_no_static_element_interactions -->
+								{#if sceneDropPreview?.trackId === track.id}
 									<div
-										class="group/timeline-item @container absolute top-1 h-[calc(100%-8px)] touch-none rounded-sm border text-left {selectedItemIds.includes(
-											item.id
-										)
-											? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
-											: 'border-transparent'} {resolvedTrack.locked ? 'opacity-75' : ''}"
-										style={clipStyle(displayItem)}
-										data-timeline-item-id={item.id}
-										data-editor-shortcuts-enabled
-										use:observeTimelineItem={item.id}
-										ondragenter={(event) => previewEffectDrop(event, item.id)}
-										ondragover={(event) => previewEffectDrop(event, item.id)}
-										ondragleave={(event) => leaveEffectDrop(event, item.id)}
-										ondrop={(event) => dropEffect(event, item.id)}
+										class="pointer-events-none absolute top-1 z-20 h-[calc(100%-8px)] overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.13_45)] bg-[oklch(0.4_0.04_250_/_0.78)] px-2 py-1 text-xs text-white shadow-lg"
+										style={clipStyle({
+											from: sceneDropPreview.from,
+											durationInFrames: sceneDropPreview.durationInFrames,
+											type: 'video'
+										})}
+										data-scene-drop-preview
 									>
-										{#if effectDropTargetIds.includes(item.id)}
-											<div
-												class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-[oklch(0.66_0.14_45_/_0.95)] bg-[oklch(0.66_0.14_45_/_0.16)] shadow-[inset_0_0_0_1px_oklch(0.66_0.14_45_/_0.35)]"
-												data-effect-drop-preview
-											>
-												{#if effectDropHoveredItemId === item.id}
-													<span class="sr-only" role="status" aria-live="polite">
-														{m.video_editor_effects_drop_ready({
-															count: effectDropTargetIds.length
-														})}
-													</span>
-												{/if}
-												{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
-													<span
-														class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-xs font-medium text-[oklch(0.16_0.008_55)]"
-													>
-														{m.video_editor_effects_drop_count({
-															count: effectDropTargetIds.length
-														})}
-													</span>
-												{/if}
-											</div>
-										{/if}
-										<button
-											type="button"
-											class="absolute inset-0 flex min-w-0 items-center overflow-hidden text-left {activeEditTool ===
-											'razor'
-												? 'cursor-crosshair'
-												: activeEditTool === 'track-push'
-													? pushAvailability === 'ready'
-														? 'cursor-col-resize'
-														: 'cursor-not-allowed'
-													: 'cursor-grab active:cursor-grabbing'}"
-											aria-label={activeEditTool === 'track-push'
-												? `${item.label}. ${m.video_editor_track_push_handle()}`
-												: timelineItemAriaLabel(item, syncOffsetFrames)}
-											aria-disabled={activeEditTool === 'track-push' &&
-												pushAvailability !== 'ready'}
-											title={activeEditTool === 'track-push' ? trackPushTitle(item) : undefined}
-											onclick={(event) => {
-												event.stopPropagation();
-												if (event.detail === 0) selectItem(event, item.id);
-											}}
-											ondblclick={(event) => {
-												if (!item.compositionId) return;
-												event.stopPropagation();
-												onopencomposition(item.compositionId);
-											}}
-											onkeydown={(event) => handleTimelineItemKeydown(event, item, activeEditTool)}
-											onpointerdown={(event) =>
-												activeEditTool === 'razor'
-													? razorSplitTimelineItem(event, item.id)
-													: startDrag(event, item.id, activeEditTool ?? 'move')}
+										<span class="block truncate">{sceneDropPreview.label}</span>
+										<span class="sr-only" role="status" aria-live="polite">
+											{m.video_editor_scene_drop_ready()}
+										</span>
+									</div>
+								{/if}
+								{#if mediaDropPreview && (mediaDropPreview.trackId === track.id || mediaDropPreview.secondaryTrackId === track.id)}
+									<div
+										class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-xs text-white shadow-lg {mediaDropPreview.valid
+											? 'border-[oklch(0.72_0.14_145)] bg-[oklch(0.32_0.09_145_/_0.86)]'
+											: 'border-red-400 bg-red-500/25'}"
+										style={`left:${timelineX(mediaDropPreview.from)}px;width:${frameToPx(mediaDropPreview.durationInFrames)}px`}
+										data-media-drop-preview
+										data-valid={String(mediaDropPreview.valid)}
+										data-reason={mediaDropPreview.reason ?? undefined}
+										data-secondary={String(mediaDropPreview.secondaryTrackId === track.id)}
+									>
+										<span class="block truncate">{mediaDropPreview.label}</span>
+									</div>
+								{/if}
+								{#if renderPlan.isDense}
+									<TimelineDensityOverview
+										buckets={renderPlan.densityBuckets}
+										{selectedItemIds}
+										locked={resolvedTrack.locked}
+										{timelineX}
+										{frameToPx}
+										onpointeritem={(event, item) =>
+											activeEditTool === 'razor'
+												? razorSplitTimelineItem(event, item.id)
+												: startDrag(event, item.id, activeEditTool ?? 'move')}
+										onselectitem={(event, item) => selectItem(event, item.id)}
+									/>
+								{/if}
+								{#each renderPlan.nativeItems as item (item.id)}
+									{@const displayItem = previewedItem(item)}
+									{@const pushAvailability = trackPushAvailability(item)}
+									{@const syncOffsetFrames = linkedSyncOffset(item)}
+									{#if !syncLockPreviewById[item.id]?.hidden}
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<div
+											class="group/timeline-item @container absolute top-1 h-[calc(100%-8px)] touch-none rounded-sm border text-left {selectedItemIds.includes(
+												item.id
+											)
+												? 'border-[oklch(0.66_0.14_45)] ring-1 ring-[oklch(0.66_0.14_45)]'
+												: 'border-transparent'} {resolvedTrack.locked ? 'opacity-75' : ''}"
+											style={clipStyle(displayItem)}
+											data-timeline-item-id={item.id}
+											data-editor-shortcuts-enabled
+											use:observeTimelineItem={item.id}
+											ondragenter={(event) => previewEffectDrop(event, item.id)}
+											ondragover={(event) => previewEffectDrop(event, item.id)}
+											ondragleave={(event) => leaveEffectDrop(event, item.id)}
+											ondrop={(event) => dropEffect(event, item.id)}
 										>
-											{#if editorSettings.showFilmstrips && item.type === 'video'}
-												{@const filmstripTiles = filmstripTilesFor(displayItem)}
-												{#if filmstripTiles}
-													<div
-														class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden"
-														data-filmstrip
-													>
-														{#each filmstripTiles as tile (tile.slot)}
-															<FilmstripTile
-																bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
-																url={tile.url}
-																style="left:{tile.x}px;width:{tile.width}px"
-															/>
-														{/each}
-													</div>
-												{/if}
-											{/if}
-											{#if editorSettings.showFilmstrips && item.type === 'image' && item.mediaId && isAnimatedImageMedia(mediaPool.get(item.mediaId))}
-												{@const animationTiles = animatedImageTilesFor(displayItem)}
-												{#if animationTiles}
-													<div
-														class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden"
-														data-filmstrip
-													>
-														{#each animationTiles as tile (tile.slot)}
-															<FilmstripTile
-																bitmap={animatedImageBitmapFor(item.mediaId, tile.index)}
-																url={null}
-																style="left:{tile.x}px;width:{tile.width}px"
-															/>
-														{/each}
-													</div>
-												{/if}
-											{/if}
-											{#if editorSettings.showWaveforms}
-												{@const waveform = timelineWaveform(displayItem)}
-												{#if waveform}
-													<svg
-														class="pointer-events-none absolute bottom-0 h-10 origin-center"
-														style="left:{waveform.leftPx}px;width:{waveform.widthPx}px;transform:scaleY({displayItem.type ===
-														'audio'
-															? audioVolumeWaveformScale(audioVolumeDb(displayItem))
-															: 1})"
-														viewBox="0 0 {waveform.widthPx} {TIMELINE_WAVEFORM_HEIGHT}"
-														preserveAspectRatio="none"
-														data-waveform-window
-														data-render-width={waveform.widthPx}
-														data-clip-width={waveform.clipWidthPx}
-													>
-														<polyline
-															points={waveform.points}
-															fill="none"
-															stroke="oklch(0.85 0.03 120)"
-															stroke-width="0.6"
-														/>
-													</svg>
-												{/if}
-											{/if}
-											<span class="relative z-10 min-w-0 flex-1 truncate px-2 text-xs text-white/90"
-												>{item.label}</span
-											>
-											{#if syncOffsetFrames !== null}
-												<TimelineLinkedSyncBadge
-													offsetFrames={syncOffsetFrames}
-													{fps}
-													clipWidthPx={frameToPx(displayItem.durationInFrames)}
-												/>
-											{/if}
-											{#if item.isReversed}
-												<span
-													class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-xs font-semibold text-white/85"
-													title={m.video_editor_clip_reverse()}
+											{#if effectDropTargetIds.includes(item.id)}
+												<div
+													class="pointer-events-none absolute inset-0 z-40 rounded-sm border border-dashed border-[oklch(0.66_0.14_45_/_0.95)] bg-[oklch(0.66_0.14_45_/_0.16)] shadow-[inset_0_0_0_1px_oklch(0.66_0.14_45_/_0.35)]"
+													data-effect-drop-preview
 												>
-													{m.video_editor_clip_reverse_badge()}
-												</span>
+													{#if effectDropHoveredItemId === item.id}
+														<span class="sr-only" role="status" aria-live="polite">
+															{m.video_editor_effects_drop_ready({
+																count: effectDropTargetIds.length
+															})}
+														</span>
+													{/if}
+													{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
+														<span
+															class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-xs font-medium text-[oklch(0.16_0.008_55)]"
+														>
+															{m.video_editor_effects_drop_count({
+																count: effectDropTargetIds.length
+															})}
+														</span>
+													{/if}
+												</div>
 											{/if}
-										</button>
-										<TimelineFadeHandles
-											{item}
-											selected={selectedItemIds.includes(item.id)}
-											trackLocked={isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)}
-											{activeEditTool}
-											{onedit}
-										/>
-										{#if displayItem.type === 'audio' && selectedItemIds.includes(item.id) && activeEditTool === null}
-											{@const volumeDb = audioVolumeDb(displayItem)}
 											<button
 												type="button"
-												role="slider"
-												class="absolute inset-x-0 z-30 h-3 -translate-y-1/2 cursor-ns-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white [@media(pointer:coarse)]:h-11"
-												style="top:{audioVolumeLinePercent(volumeDb)}%"
-												aria-label={`${m.video_editor_clip_volume()}: ${formatAudioVolumeDb(volumeDb)}`}
-												aria-valuemin={AUDIO_VOLUME_DB_MIN}
-												aria-valuemax={AUDIO_VOLUME_DB_MAX}
-												aria-valuenow={volumeDb}
-												aria-valuetext={formatAudioVolumeDb(volumeDb)}
-												onpointerdown={(event) => startAudioVolumeDrag(event, item)}
-												onkeydown={(event) => adjustAudioVolumeWithKeyboard(event, item)}
-												ondblclick={(event) => {
-													event.preventDefault();
+												class="absolute inset-0 flex min-w-0 items-center overflow-hidden text-left {activeEditTool ===
+												'razor'
+													? 'cursor-crosshair'
+													: activeEditTool === 'track-push'
+														? pushAvailability === 'ready'
+															? 'cursor-col-resize'
+															: 'cursor-not-allowed'
+														: 'cursor-grab active:cursor-grabbing'}"
+												aria-label={activeEditTool === 'track-push'
+													? `${item.label}. ${m.video_editor_track_push_handle()}`
+													: timelineItemAriaLabel(item, syncOffsetFrames)}
+												aria-disabled={activeEditTool === 'track-push' &&
+													pushAvailability !== 'ready'}
+												title={activeEditTool === 'track-push' ? trackPushTitle(item) : undefined}
+												onclick={(event) => {
 													event.stopPropagation();
-													setAudioVolumeFromTimeline(item, 0);
+													if (event.detail === 0) selectItem(event, item.id);
 												}}
+												ondblclick={(event) => {
+													if (!item.compositionId) return;
+													event.stopPropagation();
+													onopencomposition(item.compositionId);
+												}}
+												onkeydown={(event) =>
+													handleTimelineItemKeydown(event, item, activeEditTool)}
+												onpointerdown={(event) =>
+													activeEditTool === 'razor'
+														? razorSplitTimelineItem(event, item.id)
+														: startDrag(event, item.id, activeEditTool ?? 'move')}
 											>
+												{#if editorSettings.showFilmstrips && item.type === 'video'}
+													{@const filmstripTiles = filmstripTilesFor(displayItem)}
+													{#if filmstripTiles}
+														<div
+															class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden"
+															data-filmstrip
+														>
+															{#each filmstripTiles as tile (tile.slot)}
+																<FilmstripTile
+																	bitmap={filmstripBitmapFor(item.mediaId, tile.index)}
+																	url={tile.url}
+																	style="left:{tile.x}px;width:{tile.width}px"
+																/>
+															{/each}
+														</div>
+													{/if}
+												{/if}
+												{#if editorSettings.showFilmstrips && item.type === 'image' && item.mediaId && isAnimatedImageMedia(mediaPool.get(item.mediaId))}
+													{@const animationTiles = animatedImageTilesFor(displayItem)}
+													{#if animationTiles}
+														<div
+															class="pointer-events-none absolute inset-x-0 bottom-0 h-8 overflow-hidden"
+															data-filmstrip
+														>
+															{#each animationTiles as tile (tile.slot)}
+																<FilmstripTile
+																	bitmap={animatedImageBitmapFor(item.mediaId, tile.index)}
+																	url={null}
+																	style="left:{tile.x}px;width:{tile.width}px"
+																/>
+															{/each}
+														</div>
+													{/if}
+												{/if}
+												{#if editorSettings.showWaveforms}
+													{@const waveform = timelineWaveform(displayItem)}
+													{#if waveform}
+														<svg
+															class="pointer-events-none absolute bottom-0 h-10 origin-center"
+															style="left:{waveform.leftPx}px;width:{waveform.widthPx}px;transform:scaleY({displayItem.type ===
+															'audio'
+																? audioVolumeWaveformScale(audioVolumeDb(displayItem))
+																: 1})"
+															viewBox="0 0 {waveform.widthPx} {TIMELINE_WAVEFORM_HEIGHT}"
+															preserveAspectRatio="none"
+															data-waveform-window
+															data-render-width={waveform.widthPx}
+															data-clip-width={waveform.clipWidthPx}
+														>
+															<polyline
+																points={waveform.points}
+																fill="none"
+																stroke="oklch(0.85 0.03 120)"
+																stroke-width="0.6"
+															/>
+														</svg>
+													{/if}
+												{/if}
 												<span
-													class="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/75 shadow-[0_0_0_1px_rgb(0_0_0_/_0.25)]"
-												></span>
-												{#if audioVolumeDrag?.itemId === item.id}
+													class="relative z-10 min-w-0 flex-1 truncate px-2 text-xs text-white/90"
+													>{item.label}</span
+												>
+												{#if syncOffsetFrames !== null}
+													<TimelineLinkedSyncBadge
+														offsetFrames={syncOffsetFrames}
+														{fps}
+														clipWidthPx={frameToPx(displayItem.durationInFrames)}
+													/>
+												{/if}
+												{#if item.isReversed}
 													<span
-														class="pointer-events-none absolute right-1 bottom-full mb-1 rounded bg-black/90 px-1.5 py-0.5 font-mono text-xs text-white shadow-lg"
-														data-audio-volume-readout
+														class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-xs font-semibold text-white/85"
+														title={m.video_editor_clip_reverse()}
 													>
-														{formatAudioVolumeDb(volumeDb)}
+														{m.video_editor_clip_reverse_badge()}
 													</span>
 												{/if}
 											</button>
-										{/if}
-										<button
-											type="button"
-											class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11 {activeEditTool ===
-											'track-push'
-												? pushAvailability === 'ready'
-													? 'bg-cyan-400/45 hover:bg-cyan-300/70'
-													: 'cursor-not-allowed bg-white/10'
-												: 'bg-white/15 hover:bg-white/40'}"
-											aria-label={activeEditTool === 'track-push'
-												? m.video_editor_track_push_handle()
-												: m.video_editor_trim_start()}
-											aria-disabled={activeEditTool === 'track-push' &&
-												pushAvailability !== 'ready'}
-											title={activeEditTool === 'track-push'
-												? trackPushTitle(item)
-												: m.video_editor_trim_keyboard()}
-											onkeydown={(event) =>
-												applyKeyboardEdit(
-													event,
-													item,
-													activeEditTool === 'rate-stretch'
-														? 'rate-stretch-start'
-														: activeEditTool === 'track-push'
-															? 'track-push'
-															: 'trim-start'
-												)}
-											onpointerdown={(event) =>
-												startDrag(
-													event,
-													item.id,
-													activeEditTool === 'rate-stretch'
-														? 'rate-stretch-start'
-														: activeEditTool === 'track-push'
-															? 'track-push'
-															: 'trim-start'
-												)}
-										></button>
-										<button
-											type="button"
-											class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11"
-											aria-label={m.video_editor_trim_end()}
-											title={m.video_editor_trim_keyboard()}
-											onkeydown={(event) =>
-												applyKeyboardEdit(
-													event,
-													item,
-													activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
-												)}
-											onpointerdown={(event) =>
-												startDrag(
-													event,
-													item.id,
-													activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
-												)}
-										></button>
-									</div>
-								{/if}
-							{/each}
-							{#each trackTransitions as transition (transition.id)}
-								{@const geometry = transitionGeometry(transition, track.id)}
-								{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
-									<div
-										class="group absolute top-1 z-30 flex h-[calc(100%-8px)] items-start justify-center rounded-sm border bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)] {selectedTransitionId ===
-										transition.id
-											? 'border-[oklch(0.82_0.16_65)] ring-2 ring-[oklch(0.66_0.14_45_/_0.48)]'
-											: 'border-[oklch(0.76_0.14_45_/_0.7)]'}"
-										style="left:{geometry.left}px;width:{geometry.width}px"
-										data-transition-id={transition.id}
-									>
-										<button
-											type="button"
-											class="absolute inset-0 overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[oklch(0.82_0.16_65)]"
-											aria-label={m.video_editor_transition()}
-											onclick={() => selectTransition(transition.id)}
-										>
-											<span
-												class="mt-0.5 inline-block max-w-[calc(100%-8px)] truncate rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-xs font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
-											>
-												{localizedTransitionLabel(
-													transition.presentation ??
-														(transition.type === 'fade-black' ? 'dipToColorDissolve' : 'fade'),
-													transition.type === 'fade-black'
-														? m.video_editor_transition_dip_black()
-														: m.video_editor_transition_cross_dissolve()
-												)}
-											</span>
-										</button>
-										<button
-											type="button"
-											class="absolute inset-y-0 -left-3 z-20 w-6 cursor-ew-resize touch-none rounded-l-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-left-[22px] [@media(pointer:coarse)]:w-11"
-											aria-label={m.video_editor_transition_resize_start()}
-											title={m.video_editor_transition_resize_keyboard()}
-											onkeydown={(event) => resizeTransitionWithKeyboard(event, transition, 'left')}
-											onpointerdown={(event) => startTransitionResize(event, transition, 'left')}
-										></button>
-										<button
-											type="button"
-											class="absolute inset-y-0 -right-3 z-20 w-6 cursor-ew-resize touch-none rounded-r-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-right-[22px] [@media(pointer:coarse)]:w-11"
-											aria-label={m.video_editor_transition_resize_end()}
-											title={m.video_editor_transition_resize_keyboard()}
-											onkeydown={(event) =>
-												resizeTransitionWithKeyboard(event, transition, 'right')}
-											onpointerdown={(event) => startTransitionResize(event, transition, 'right')}
-										></button>
-									</div>
-								{/if}
-							{/each}
-							{#if !track.isGroup}<div
-									class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none [@media(pointer:coarse)]:h-11"
-									role="slider"
-									tabindex="0"
-									aria-orientation="vertical"
-									aria-label={m.video_editor_track_resize({ name: track.name })}
-									aria-valuemin={MIN_TRACK_HEIGHT}
-									aria-valuemax={MAX_TRACK_HEIGHT}
-									aria-valuenow={track.height}
-									title={m.video_editor_track_resize_hint()}
-									data-track-resize={track.id}
-									data-marquee-ignore
-									onpointerdown={(event) => startTrackHeightResize(event, track.id)}
-									ondblclick={(event) => resetTrackHeight(event, track.id)}
-									onkeydown={(event) => resizeTrackHeightFromKeyboard(event, track.id)}
-								></div>{/if}
-						</div>
-					{/each}
-
-					<!-- Keyframe dopesheet for the selected clip -->
-					{#if selectedItem && keyframesOpen}
-						<div
-							class="relative bg-[oklch(0.145_0.008_55)]"
-							role="group"
-							aria-label={m.video_editor_keyframe_view()}
-							data-keyframe-shortcuts
-							onpointerenter={() => (keyframeShortcutPointerInside = true)}
-							onpointerleave={() => (keyframeShortcutPointerInside = false)}
-						>
-							{#if keyframeEditorMode !== 'graph'}
-								<KeyframeDopesheet
-									item={selectedItem}
-									availableProperties={availableKeyframeProperties}
-									currentFrame={timelineStore.currentFrame}
-									pixelsPerFrame={pxPerFrame}
-									{timelineWidth}
-									{timelineX}
-									onscrub={setCurrentFrame}
-									onselect={(keyframe) =>
-										(selectedKeyframe = keyframe
-											? { property: keyframe.property, frame: keyframe.frame }
-											: null)}
-									onactiveproperty={(property) => (pendingKeyframeProperty = property)}
-									{onedit}
-								/>
-							{/if}
-							<PropertyRuntimePanel
-								item={selectedItem}
-								items={timelineStore.items}
-								availableProperties={availableKeyframeProperties}
-								currentFrame={timelineStore.currentFrame}
-								fps={timelineStore.fps}
-								{onedit}
-							/>
-							{#if selectedKeyframe && selectedKeyframeIndex >= 0}
-								<div
-									class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-xs"
-								>
-									<span class="font-medium capitalize"
-										>{keyframeLabel(selectedKeyframe.property)}</span
-									>
-									<label class="flex items-center gap-1">
-										{m.video_editor_keyframe_easing()}
-										<AppSelect
-											class="h-7 w-28 text-xs"
-											value={selectedEasing}
-											options={easingOptions}
-											onValueChange={(value) => commitEasing(easingFromValue(value))}
-										/>
-									</label>
-									{#if selectedEasing === 'cubic-bezier'}
-										<AppSelect
-											class="h-7 w-32 text-xs"
-											value=""
-											options={bezierOptions}
-											ariaLabel={m.video_editor_keyframe_bezier_preset()}
-											onValueChange={applyBezierPreset}
-										/>
-										{#each BEZIER_KEYS as key (key)}<label
-												>{key}<Input
-													class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
-													type="number"
-													step="0.01"
-													min={key === 'x1' || key === 'x2' ? 0 : -2}
-													max={key === 'x1' || key === 'x2' ? 1 : 3}
-													value={bezierValue(key)}
-													onchange={(event) => commitBezier(key, event.currentTarget.valueAsNumber)}
-												/></label
-											>{/each}
-									{:else if selectedEasing === 'spring'}
-										{#each SPRING_KEYS as key (key)}<label
-												>{key}<Input
-													class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
-													type="number"
-													step={key === 'tension' || key === 'friction' ? 1 : 0.1}
-													min={key === 'tension' || key === 'friction' ? 1 : 0.1}
-													max={key === 'tension' ? 1000 : key === 'friction' ? 100 : 10}
-													value={springValue(key)}
-													onchange={(event) => commitSpring(key, event.currentTarget.valueAsNumber)}
-												/></label
-											>{/each}
-									{/if}
-									{#if selectedEasing === 'cubic-bezier' || selectedEasing === 'spring'}
-										<div
-											class="flex items-center gap-1 border-l border-[oklch(0.28_0.012_55)] pl-2"
-										>
-											<AppSelect
-												class="h-7 w-32 text-xs"
-												value={selectedCustomPresetName}
-												options={customPresetOptions}
-												ariaLabel={m.video_editor_keyframe_custom_presets()}
-												onValueChange={applyCustomPreset}
+											<TimelineFadeHandles
+												{item}
+												selected={selectedItemIds.includes(item.id)}
+												trackLocked={isTrackEffectivelyLocked(item.trackId, timelineStore.tracks)}
+												{activeEditTool}
+												{onedit}
 											/>
-											<Input
-												class="h-7 w-28 rounded bg-[oklch(0.22_0.01_50)] px-1"
-												value={customPresetName}
-												placeholder={suggestedPresetName}
-												aria-label={m.video_editor_keyframe_preset_name()}
-												oninput={(event) => (customPresetName = event.currentTarget.value)}
-											/>
-											<button
-												type="button"
-												class="h-7 rounded border border-[oklch(0.32_0.015_55)] px-2 font-medium hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-												disabled={!customPresetName.trim()}
-												onclick={saveCustomPreset}>{m.video_editor_keyframe_preset_save()}</button
-											>
-											{#if selectedCustomPresetName}
+											{#if displayItem.type === 'audio' && selectedItemIds.includes(item.id) && activeEditTool === null}
+												{@const volumeDb = audioVolumeDb(displayItem)}
 												<button
 													type="button"
-													class="h-7 rounded px-2 text-[oklch(0.72_0.1_28)] hover:bg-[oklch(0.3_0.08_28_/_0.22)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-													onclick={deleteCustomPreset}
-													>{m.video_editor_keyframe_preset_delete()}</button
+													role="slider"
+													class="absolute inset-x-0 z-30 h-3 -translate-y-1/2 cursor-ns-resize touch-none rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white [@media(pointer:coarse)]:h-11"
+													style="top:{audioVolumeLinePercent(volumeDb)}%"
+													aria-label={`${m.video_editor_clip_volume()}: ${formatAudioVolumeDb(volumeDb)}`}
+													aria-valuemin={AUDIO_VOLUME_DB_MIN}
+													aria-valuemax={AUDIO_VOLUME_DB_MAX}
+													aria-valuenow={volumeDb}
+													aria-valuetext={formatAudioVolumeDb(volumeDb)}
+													onpointerdown={(event) => startAudioVolumeDrag(event, item)}
+													onkeydown={(event) => adjustAudioVolumeWithKeyboard(event, item)}
+													ondblclick={(event) => {
+														event.preventDefault();
+														event.stopPropagation();
+														setAudioVolumeFromTimeline(item, 0);
+													}}
 												>
+													<span
+														class="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/75 shadow-[0_0_0_1px_rgb(0_0_0_/_0.25)]"
+													></span>
+													{#if audioVolumeDrag?.itemId === item.id}
+														<span
+															class="pointer-events-none absolute right-1 bottom-full mb-1 rounded bg-black/90 px-1.5 py-0.5 font-mono text-xs text-white shadow-lg"
+															data-audio-volume-readout
+														>
+															{formatAudioVolumeDb(volumeDb)}
+														</span>
+													{/if}
+												</button>
 											{/if}
+											<button
+												type="button"
+												class="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11 {activeEditTool ===
+												'track-push'
+													? pushAvailability === 'ready'
+														? 'bg-cyan-400/45 hover:bg-cyan-300/70'
+														: 'cursor-not-allowed bg-white/10'
+													: 'bg-white/15 hover:bg-white/40'}"
+												aria-label={activeEditTool === 'track-push'
+													? m.video_editor_track_push_handle()
+													: m.video_editor_trim_start()}
+												aria-disabled={activeEditTool === 'track-push' &&
+													pushAvailability !== 'ready'}
+												title={activeEditTool === 'track-push'
+													? trackPushTitle(item)
+													: m.video_editor_trim_keyboard()}
+												onkeydown={(event) =>
+													applyKeyboardEdit(
+														event,
+														item,
+														activeEditTool === 'rate-stretch'
+															? 'rate-stretch-start'
+															: activeEditTool === 'track-push'
+																? 'track-push'
+																: 'trim-start'
+													)}
+												onpointerdown={(event) =>
+													startDrag(
+														event,
+														item.id,
+														activeEditTool === 'rate-stretch'
+															? 'rate-stretch-start'
+															: activeEditTool === 'track-push'
+																? 'track-push'
+																: 'trim-start'
+													)}
+											></button>
+											<button
+												type="button"
+												class="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-white/15 opacity-0 group-hover:opacity-100 hover:bg-white/40 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:w-11"
+												aria-label={m.video_editor_trim_end()}
+												title={m.video_editor_trim_keyboard()}
+												onkeydown={(event) =>
+													applyKeyboardEdit(
+														event,
+														item,
+														activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
+													)}
+												onpointerdown={(event) =>
+													startDrag(
+														event,
+														item.id,
+														activeEditTool === 'rate-stretch' ? 'rate-stretch-end' : 'trim-end'
+													)}
+											></button>
 										</div>
 									{/if}
-								</div>
-							{/if}
-							{#if keyframeEditorMode !== 'dopesheet'}
-								<KeyframeValueGraph
-									item={selectedItem}
-									property={pendingKeyframeProperty}
-									currentFrame={timelineStore.currentFrame}
-									onscrub={setCurrentFrame}
-									onselect={(keyframe) =>
-										(selectedKeyframe = keyframe
-											? { property: keyframe.property, frame: keyframe.frame }
-											: null)}
-									{onedit}
-									fitRequest={keyframeGraphFitRequest}
-								/>
-							{/if}
-						</div>
-					{/if}
-
-					{#if activeSnapTarget}
-						<div
-							class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-[oklch(0.76_0.14_45)]"
-							style="left:{timelineX(activeSnapTarget.frame)}px"
-							data-snap-guideline={activeSnapTarget.type}
-						>
-							<span
-								class="absolute top-6 left-1 rounded border border-[oklch(0.48_0.11_45)] bg-[oklch(0.18_0.015_55)] px-1.5 py-0.5 font-mono text-[9px] whitespace-nowrap text-[oklch(0.88_0.09_65)]"
-							>
-								{m.video_editor_snapped_to({
-									time: tickLabel(activeSnapTarget.frame)
-								})}
-							</span>
-						</div>
-					{/if}
-
-					{#if $timelinePreviewScrub.frame !== null}
-						<div
-							class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-white/65"
-							style="left:{timelineX($timelinePreviewScrub.frame)}px"
-							data-timeline-preview-scrubber
-							aria-hidden="true"
-						>
-							<span
-								class="absolute top-1 left-1/2 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-black/70 bg-white"
-							></span>
-							<span
-								class="absolute top-6 left-1/2 -translate-x-1/2 rounded border border-white/20 bg-black/85 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-white shadow-sm"
-								data-timeline-preview-timecode
-							>
-								{formatTimelinePreviewTimecode($timelinePreviewScrub.frame, fps)}
-							</span>
-						</div>
-					{/if}
-
-					<!-- Playhead -->
-					<div
-						class="pointer-events-none absolute top-0 bottom-0 z-30 w-px bg-[oklch(0.66_0.14_45)]"
-						style="left:{timelineX(timelineStore.currentFrame)}px"
-					></div>
-					<!-- In/out range shade -->
-					{#if timelineStore.inPoint !== null && timelineStore.outPoint !== null}
-						<div
-							class="pointer-events-none absolute top-6 bottom-0 z-10 bg-[oklch(0.66_0.14_45_/_0.08)]"
-							style="left:{timelineX(timelineStore.inPoint)}px;width:{frameToPx(
-								(timelineStore.outPoint ?? 0) - (timelineStore.inPoint ?? 0)
-							)}px"
-						></div>
-					{/if}
-				</div>
-			</div>
-		{/snippet}
-	</ContextMenu.Trigger>
-	<ContextMenu.Content class="video-editor-theme w-60">
-		{#if contextTransition}
-			<ContextMenu.Item variant="destructive" onclick={removeContextTransition}>
-				{m.video_editor_transition_delete()}
-			</ContextMenu.Item>
-		{:else if timelineContextTarget?.kind === 'items'}
-			{#if contextPrimaryItem?.compositionId}
-				<ContextMenu.Item
-					onclick={() => {
-						if (contextPrimaryItem?.compositionId) {
-							onopencomposition(contextPrimaryItem.compositionId);
-						}
-					}}
-				>
-					{m.video_editor_sequence_open()}
-				</ContextMenu.Item>
-				<ContextMenu.Item
-					disabled={!contextItemsAllEditable}
-					onclick={() => ondissolvecompound(contextPrimaryItem.id)}
-				>
-					{m.video_editor_dissolve_compound()}
-				</ContextMenu.Item>
-			{:else if contextPrimaryItem}
-				<ContextMenu.Item
-					disabled={!contextItemsAllEditable}
-					onclick={() => oncreatecompound(contextItems.map((item) => item.id))}
-				>
-					{m.video_editor_create_compound()}
-				</ContextMenu.Item>
-			{/if}
-			{#if hasContextEditTools}
-				<ContextMenu.Sub>
-					<ContextMenu.SubTrigger>{m.video_editor_tools()}</ContextMenu.SubTrigger>
-					<ContextMenu.SubContent class="video-editor-theme w-56">
-						{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
-							<ContextMenu.Item
-								disabled={!contextMediaItemsEditable}
-								onclick={() =>
-									onreverseitems(contextMediaItemIds, contextPrimaryItem?.isReversed !== true)}
-							>
-								{m.video_editor_clip_reverse()}
-								<ContextMenu.Shortcut>
-									{contextPrimaryItem?.isReversed
-										? m.video_editor_clip_reverse_on()
-										: m.video_editor_clip_reverse_off()}
-								</ContextMenu.Shortcut>
-							</ContextMenu.Item>
-							{#if contextPrimaryItem?.type === 'video'}
-								<ContextMenu.Sub>
-									<ContextMenu.SubTrigger
-										disabled={sceneScanPending ||
-											isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)}
-									>
-										{m.video_editor_scene_split()}
-									</ContextMenu.SubTrigger>
-									<ContextMenu.SubContent class="video-editor-theme w-52">
-										<ContextMenu.Item onclick={() => onsplitscenes(contextPrimaryItem.id, 'fast')}>
-											{m.video_editor_scene_split_fast()}
-											<ContextMenu.Shortcut>4 fps</ContextMenu.Shortcut>
-										</ContextMenu.Item>
-										<ContextMenu.Item
-											onclick={() => onsplitscenes(contextPrimaryItem.id, 'adaptive-lfm')}
+								{/each}
+								{#each trackTransitions as transition (transition.id)}
+									{@const geometry = transitionGeometry(transition, track.id)}
+									{#if geometry && !breakingTransitionPreviewIds.includes(transition.id)}
+										<div
+											class="group absolute top-1 z-30 flex h-[calc(100%-8px)] items-start justify-center rounded-sm border bg-[repeating-linear-gradient(135deg,oklch(0.66_0.14_45_/_0.2)_0_4px,transparent_4px_8px)] {selectedTransitionId ===
+											transition.id
+												? 'border-[oklch(0.82_0.16_65)] ring-2 ring-[oklch(0.66_0.14_45_/_0.48)]'
+												: 'border-[oklch(0.76_0.14_45_/_0.7)]'}"
+											style="left:{geometry.left}px;width:{geometry.width}px"
+											data-transition-id={transition.id}
 										>
-											{m.video_editor_scene_split_adaptive()}
-											<ContextMenu.Shortcut>Local</ContextMenu.Shortcut>
-										</ContextMenu.Item>
+											<button
+												type="button"
+												class="absolute inset-0 overflow-hidden rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[oklch(0.82_0.16_65)]"
+												aria-label={m.video_editor_transition()}
+												onclick={() => selectTransition(transition.id)}
+											>
+												<span
+													class="mt-0.5 inline-block max-w-[calc(100%-8px)] truncate rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-xs font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
+												>
+													{localizedTransitionLabel(
+														transition.presentation ??
+															(transition.type === 'fade-black' ? 'dipToColorDissolve' : 'fade'),
+														transition.type === 'fade-black'
+															? m.video_editor_transition_dip_black()
+															: m.video_editor_transition_cross_dissolve()
+													)}
+												</span>
+											</button>
+											<button
+												type="button"
+												class="absolute inset-y-0 -left-3 z-20 w-6 cursor-ew-resize touch-none rounded-l-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-left-[22px] [@media(pointer:coarse)]:w-11"
+												aria-label={m.video_editor_transition_resize_start()}
+												title={m.video_editor_transition_resize_keyboard()}
+												onkeydown={(event) =>
+													resizeTransitionWithKeyboard(event, transition, 'left')}
+												onpointerdown={(event) => startTransitionResize(event, transition, 'left')}
+											></button>
+											<button
+												type="button"
+												class="absolute inset-y-0 -right-3 z-20 w-6 cursor-ew-resize touch-none rounded-r-sm opacity-0 group-hover:opacity-100 hover:bg-white/25 hover:opacity-100 focus-visible:bg-white/25 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white [@media(pointer:coarse)]:-right-[22px] [@media(pointer:coarse)]:w-11"
+												aria-label={m.video_editor_transition_resize_end()}
+												title={m.video_editor_transition_resize_keyboard()}
+												onkeydown={(event) =>
+													resizeTransitionWithKeyboard(event, transition, 'right')}
+												onpointerdown={(event) => startTransitionResize(event, transition, 'right')}
+											></button>
+										</div>
+									{/if}
+								{/each}
+								{#if !track.isGroup}<div
+										class="absolute inset-x-0 bottom-0 z-50 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-[oklch(0.66_0.14_45_/_0.25)] focus-visible:outline-none [@media(pointer:coarse)]:h-11"
+										role="slider"
+										tabindex="0"
+										aria-orientation="vertical"
+										aria-label={m.video_editor_track_resize({ name: track.name })}
+										aria-valuemin={MIN_TRACK_HEIGHT}
+										aria-valuemax={MAX_TRACK_HEIGHT}
+										aria-valuenow={track.height}
+										title={m.video_editor_track_resize_hint()}
+										data-track-resize={track.id}
+										data-marquee-ignore
+										onpointerdown={(event) => startTrackHeightResize(event, track.id)}
+										ondblclick={(event) => resetTrackHeight(event, track.id)}
+										onkeydown={(event) => resizeTrackHeightFromKeyboard(event, track.id)}
+									></div>{/if}
+							</div>
+						{/each}
+
+						<!-- Keyframe dopesheet for the selected clip -->
+						{#if selectedItem && keyframesOpen}
+							<div
+								class="relative bg-[oklch(0.145_0.008_55)]"
+								role="group"
+								aria-label={m.video_editor_keyframe_view()}
+								data-keyframe-shortcuts
+								onpointerenter={() => (keyframeShortcutPointerInside = true)}
+								onpointerleave={() => (keyframeShortcutPointerInside = false)}
+							>
+								{#if keyframeEditorMode !== 'graph'}
+									<KeyframeDopesheet
+										item={selectedItem}
+										availableProperties={availableKeyframeProperties}
+										currentFrame={timelineStore.currentFrame}
+										pixelsPerFrame={pxPerFrame}
+										{timelineWidth}
+										{timelineX}
+										onscrub={setCurrentFrame}
+										onselect={(keyframe) =>
+											(selectedKeyframe = keyframe
+												? { property: keyframe.property, frame: keyframe.frame }
+												: null)}
+										onactiveproperty={(property) => (pendingKeyframeProperty = property)}
+										{onedit}
+									/>
+								{/if}
+								<PropertyRuntimePanel
+									item={selectedItem}
+									items={timelineStore.items}
+									availableProperties={availableKeyframeProperties}
+									currentFrame={timelineStore.currentFrame}
+									fps={timelineStore.fps}
+									{onedit}
+								/>
+								{#if selectedKeyframe && selectedKeyframeIndex >= 0}
+									<div
+										class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-xs"
+									>
+										<span class="font-medium capitalize"
+											>{keyframeLabel(selectedKeyframe.property)}</span
+										>
+										<label class="flex items-center gap-1">
+											{m.video_editor_keyframe_easing()}
+											<AppSelect
+												class="h-7 w-28 text-xs"
+												value={selectedEasing}
+												options={easingOptions}
+												onValueChange={(value) => commitEasing(easingFromValue(value))}
+											/>
+										</label>
+										{#if selectedEasing === 'cubic-bezier'}
+											<AppSelect
+												class="h-7 w-32 text-xs"
+												value=""
+												options={bezierOptions}
+												ariaLabel={m.video_editor_keyframe_bezier_preset()}
+												onValueChange={applyBezierPreset}
+											/>
+											{#each BEZIER_KEYS as key (key)}<label
+													>{key}<Input
+														class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+														type="number"
+														step="0.01"
+														min={key === 'x1' || key === 'x2' ? 0 : -2}
+														max={key === 'x1' || key === 'x2' ? 1 : 3}
+														value={bezierValue(key)}
+														onchange={(event) =>
+															commitBezier(key, event.currentTarget.valueAsNumber)}
+													/></label
+												>{/each}
+										{:else if selectedEasing === 'spring'}
+											{#each SPRING_KEYS as key (key)}<label
+													>{key}<Input
+														class="ml-0.5 w-14 rounded bg-[oklch(0.22_0.01_50)] px-1 py-0.5"
+														type="number"
+														step={key === 'tension' || key === 'friction' ? 1 : 0.1}
+														min={key === 'tension' || key === 'friction' ? 1 : 0.1}
+														max={key === 'tension' ? 1000 : key === 'friction' ? 100 : 10}
+														value={springValue(key)}
+														onchange={(event) =>
+															commitSpring(key, event.currentTarget.valueAsNumber)}
+													/></label
+												>{/each}
+										{/if}
+										{#if selectedEasing === 'cubic-bezier' || selectedEasing === 'spring'}
+											<div
+												class="flex items-center gap-1 border-l border-[oklch(0.28_0.012_55)] pl-2"
+											>
+												<AppSelect
+													class="h-7 w-32 text-xs"
+													value={selectedCustomPresetName}
+													options={customPresetOptions}
+													ariaLabel={m.video_editor_keyframe_custom_presets()}
+													onValueChange={applyCustomPreset}
+												/>
+												<Input
+													class="h-7 w-28 rounded bg-[oklch(0.22_0.01_50)] px-1"
+													value={customPresetName}
+													placeholder={suggestedPresetName}
+													aria-label={m.video_editor_keyframe_preset_name()}
+													oninput={(event) => (customPresetName = event.currentTarget.value)}
+												/>
+												<button
+													type="button"
+													class="h-7 rounded border border-[oklch(0.32_0.015_55)] px-2 font-medium hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+													disabled={!customPresetName.trim()}
+													onclick={saveCustomPreset}>{m.video_editor_keyframe_preset_save()}</button
+												>
+												{#if selectedCustomPresetName}
+													<button
+														type="button"
+														class="h-7 rounded px-2 text-[oklch(0.72_0.1_28)] hover:bg-[oklch(0.3_0.08_28_/_0.22)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+														onclick={deleteCustomPreset}
+														>{m.video_editor_keyframe_preset_delete()}</button
+													>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/if}
+								{#if keyframeEditorMode !== 'dopesheet'}
+									<KeyframeValueGraph
+										item={selectedItem}
+										property={pendingKeyframeProperty}
+										currentFrame={timelineStore.currentFrame}
+										onscrub={setCurrentFrame}
+										onselect={(keyframe) =>
+											(selectedKeyframe = keyframe
+												? { property: keyframe.property, frame: keyframe.frame }
+												: null)}
+										{onedit}
+										fitRequest={keyframeGraphFitRequest}
+									/>
+								{/if}
+							</div>
+						{/if}
+
+						{#if activeSnapTarget}
+							<div
+								class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-[oklch(0.76_0.14_45)]"
+								style="left:{timelineX(activeSnapTarget.frame)}px"
+								data-snap-guideline={activeSnapTarget.type}
+							>
+								<span
+									class="absolute top-6 left-1 rounded border border-[oklch(0.48_0.11_45)] bg-[oklch(0.18_0.015_55)] px-1.5 py-0.5 font-mono text-[9px] whitespace-nowrap text-[oklch(0.88_0.09_65)]"
+								>
+									{m.video_editor_snapped_to({
+										time: tickLabel(activeSnapTarget.frame)
+									})}
+								</span>
+							</div>
+						{/if}
+
+						{#if $timelinePreviewScrub.frame !== null}
+							<div
+								class="pointer-events-none absolute top-0 bottom-0 z-40 w-px bg-white/65"
+								style="left:{timelineX($timelinePreviewScrub.frame)}px"
+								data-timeline-preview-scrubber
+								aria-hidden="true"
+							>
+								<span
+									class="absolute top-1 left-1/2 size-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-black/70 bg-white"
+								></span>
+								<span
+									class="absolute top-6 left-1/2 -translate-x-1/2 rounded border border-white/20 bg-black/85 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-white shadow-sm"
+									data-timeline-preview-timecode
+								>
+									{formatTimelinePreviewTimecode($timelinePreviewScrub.frame, fps)}
+								</span>
+							</div>
+						{/if}
+
+						<!-- Playhead -->
+						<div
+							class="pointer-events-none absolute top-0 bottom-0 z-30 w-px bg-[oklch(0.66_0.14_45)]"
+							style="left:{timelineX(timelineStore.currentFrame)}px"
+						></div>
+						<!-- In/out range shade -->
+						{#if timelineStore.inPoint !== null && timelineStore.outPoint !== null}
+							<div
+								class="pointer-events-none absolute top-6 bottom-0 z-10 bg-[oklch(0.66_0.14_45_/_0.08)]"
+								style="left:{timelineX(timelineStore.inPoint)}px;width:{frameToPx(
+									(timelineStore.outPoint ?? 0) - (timelineStore.inPoint ?? 0)
+								)}px"
+							></div>
+						{/if}
+					</div>
+				</div>
+			{/snippet}
+		</ContextMenu.Trigger>
+		<ContextMenu.Content class="video-editor-theme w-60">
+			{#if contextTransition}
+				<ContextMenu.Item variant="destructive" onclick={removeContextTransition}>
+					{m.video_editor_transition_delete()}
+				</ContextMenu.Item>
+			{:else if timelineContextTarget?.kind === 'items'}
+				{#if contextPrimaryItem?.compositionId}
+					<ContextMenu.Item
+						onclick={() => {
+							if (contextPrimaryItem?.compositionId) {
+								onopencomposition(contextPrimaryItem.compositionId);
+							}
+						}}
+					>
+						{m.video_editor_sequence_open()}
+					</ContextMenu.Item>
+					<ContextMenu.Item
+						disabled={!contextItemsAllEditable}
+						onclick={() => ondissolvecompound(contextPrimaryItem.id)}
+					>
+						{m.video_editor_dissolve_compound()}
+					</ContextMenu.Item>
+				{:else if contextPrimaryItem}
+					<ContextMenu.Item
+						disabled={!contextItemsAllEditable}
+						onclick={() => oncreatecompound(contextItems.map((item) => item.id))}
+					>
+						{m.video_editor_create_compound()}
+					</ContextMenu.Item>
+				{/if}
+				{#if hasContextEditTools}
+					<ContextMenu.Sub>
+						<ContextMenu.SubTrigger>{m.video_editor_tools()}</ContextMenu.SubTrigger>
+						<ContextMenu.SubContent class="video-editor-theme w-56">
+							{#if contextPrimaryItem?.type === 'video' || contextPrimaryItem?.type === 'audio'}
+								<ContextMenu.Item
+									disabled={!contextMediaItemsEditable}
+									onclick={() =>
+										onreverseitems(contextMediaItemIds, contextPrimaryItem?.isReversed !== true)}
+								>
+									{m.video_editor_clip_reverse()}
+									<ContextMenu.Shortcut>
+										{contextPrimaryItem?.isReversed
+											? m.video_editor_clip_reverse_on()
+											: m.video_editor_clip_reverse_off()}
+									</ContextMenu.Shortcut>
+								</ContextMenu.Item>
+								{#if contextPrimaryItem?.type === 'video'}
+									<ContextMenu.Sub>
+										<ContextMenu.SubTrigger
+											disabled={sceneScanPending ||
+												isTrackEffectivelyLocked(contextPrimaryItem.trackId, timelineStore.tracks)}
+										>
+											{m.video_editor_scene_split()}
+										</ContextMenu.SubTrigger>
+										<ContextMenu.SubContent class="video-editor-theme w-52">
+											<ContextMenu.Item
+												onclick={() => onsplitscenes(contextPrimaryItem.id, 'fast')}
+											>
+												{m.video_editor_scene_split_fast()}
+												<ContextMenu.Shortcut>4 fps</ContextMenu.Shortcut>
+											</ContextMenu.Item>
+											<ContextMenu.Item
+												onclick={() => onsplitscenes(contextPrimaryItem.id, 'adaptive-lfm')}
+											>
+												{m.video_editor_scene_split_adaptive()}
+												<ContextMenu.Shortcut>Local</ContextMenu.Shortcut>
+											</ContextMenu.Item>
+										</ContextMenu.SubContent>
+									</ContextMenu.Sub>
+								{/if}
+								<ContextMenu.Separator />
+								<ContextMenu.Item
+									onclick={() => onopenspeechcleanup('fillers', contextMediaItemIds)}
+								>
+									{m.video_editor_cleanup_fillers_short()}
+								</ContextMenu.Item>
+								<ContextMenu.Item
+									onclick={() => onopenspeechcleanup('silence', contextMediaItemIds)}
+								>
+									{m.video_editor_cleanup_silence_short()}
+								</ContextMenu.Item>
+							{:else if contextPrimaryItem?.type === 'text' && contextVoiceText}
+								<ContextMenu.Item
+									onclick={() => oncreatevoice(contextPrimaryItem.id, contextVoiceText)}
+								>
+									{m.video_editor_text_create_voice()}
+								</ContextMenu.Item>
+							{/if}
+							{#if contextPrimaryItem && (contextCanManageCaptions || captionConsolidationTarget)}
+								<ContextMenu.Sub>
+									<ContextMenu.SubTrigger>{m.video_editor_tool_captions()}</ContextMenu.SubTrigger>
+									<ContextMenu.SubContent class="video-editor-theme w-60">
+										{#if contextCanManageCaptions}
+											<ContextMenu.Item
+												disabled={transcriptionPendingSet.has(contextPrimaryItem.id)}
+												onclick={() => ontranscribecaptions(contextPrimaryItem.id)}
+											>
+												{transcriptionPendingSet.has(contextPrimaryItem.id)
+													? m.video_editor_captions_updating()
+													: contextHasTranscriptCaptions
+														? m.video_editor_captions_regenerate()
+														: m.video_editor_captions_generate()}
+											</ContextMenu.Item>
+											<ContextMenu.Item
+												disabled={aiCaptionPendingSet.has(contextPrimaryItem.id)}
+												onclick={() => onaicaptions(contextPrimaryItem.id)}
+											>
+												{aiCaptionPendingSet.has(contextPrimaryItem.id)
+													? m.video_editor_ai_scene_captions_updating()
+													: contextHasAiCaptions
+														? m.video_editor_ai_scene_captions_refresh()
+														: m.video_editor_ai_scene_captions_generate()}
+											</ContextMenu.Item>
+										{/if}
+										{#if contextCanExtractEmbeddedSubtitles}
+											<ContextMenu.Item onclick={() => onextractsubtitles(contextPrimaryItem.id)}>
+												{m.video_editor_extract_embedded_subtitles()}
+											</ContextMenu.Item>
+										{/if}
+										{#if captionConsolidationTarget}
+											<ContextMenu.Item onclick={consolidateSelection}>
+												{m.video_editor_consolidate_captions()}
+											</ContextMenu.Item>
+										{/if}
 									</ContextMenu.SubContent>
 								</ContextMenu.Sub>
 							{/if}
-							<ContextMenu.Separator />
-							<ContextMenu.Item onclick={() => onopenspeechcleanup('fillers', contextMediaItemIds)}>
-								{m.video_editor_cleanup_fillers_short()}
-							</ContextMenu.Item>
-							<ContextMenu.Item onclick={() => onopenspeechcleanup('silence', contextMediaItemIds)}>
-								{m.video_editor_cleanup_silence_short()}
-							</ContextMenu.Item>
-						{:else if contextPrimaryItem?.type === 'text' && contextVoiceText}
-							<ContextMenu.Item
-								onclick={() => oncreatevoice(contextPrimaryItem.id, contextVoiceText)}
-							>
-								{m.video_editor_text_create_voice()}
-							</ContextMenu.Item>
-						{/if}
-						{#if contextPrimaryItem && (contextCanManageCaptions || captionConsolidationTarget)}
-							<ContextMenu.Sub>
-								<ContextMenu.SubTrigger>{m.video_editor_tool_captions()}</ContextMenu.SubTrigger>
-								<ContextMenu.SubContent class="video-editor-theme w-60">
-									{#if contextCanManageCaptions}
-										<ContextMenu.Item
-											disabled={transcriptionPendingSet.has(contextPrimaryItem.id)}
-											onclick={() => ontranscribecaptions(contextPrimaryItem.id)}
-										>
-											{transcriptionPendingSet.has(contextPrimaryItem.id)
-												? m.video_editor_captions_updating()
-												: contextHasTranscriptCaptions
-													? m.video_editor_captions_regenerate()
-													: m.video_editor_captions_generate()}
-										</ContextMenu.Item>
-										<ContextMenu.Item
-											disabled={aiCaptionPendingSet.has(contextPrimaryItem.id)}
-											onclick={() => onaicaptions(contextPrimaryItem.id)}
-										>
-											{aiCaptionPendingSet.has(contextPrimaryItem.id)
-												? m.video_editor_ai_scene_captions_updating()
-												: contextHasAiCaptions
-													? m.video_editor_ai_scene_captions_refresh()
-													: m.video_editor_ai_scene_captions_generate()}
-										</ContextMenu.Item>
-									{/if}
-									{#if contextCanExtractEmbeddedSubtitles}
-										<ContextMenu.Item onclick={() => onextractsubtitles(contextPrimaryItem.id)}>
-											{m.video_editor_extract_embedded_subtitles()}
-										</ContextMenu.Item>
-									{/if}
-									{#if captionConsolidationTarget}
-										<ContextMenu.Item onclick={consolidateSelection}>
-											{m.video_editor_consolidate_captions()}
-										</ContextMenu.Item>
-									{/if}
-								</ContextMenu.SubContent>
-							</ContextMenu.Sub>
-						{/if}
-						{#if hasContextGradeActions}
-							{#if hasContextPrimaryEditTools}<ContextMenu.Separator />{/if}
-							{#if contextGradeSourceItem}
-								<ContextMenu.Item onclick={() => oncopygrade(contextGradeSourceItem.id)}>
-									{m.video_editor_color_copy_grade()}
-								</ContextMenu.Item>
+							{#if hasContextGradeActions}
+								{#if hasContextPrimaryEditTools}<ContextMenu.Separator />{/if}
+								{#if contextGradeSourceItem}
+									<ContextMenu.Item onclick={() => oncopygrade(contextGradeSourceItem.id)}>
+										{m.video_editor_color_copy_grade()}
+									</ContextMenu.Item>
+								{/if}
+								{#if colorPreviewStore.gradeClipboard?.length && contextGradeTargetItemIds.length > 0}
+									<ContextMenu.Item onclick={() => onpastegrade(contextGradeTargetItemIds)}>
+										{m.video_editor_color_paste_grade()}
+									</ContextMenu.Item>
+								{/if}
 							{/if}
-							{#if colorPreviewStore.gradeClipboard?.length && contextGradeTargetItemIds.length > 0}
-								<ContextMenu.Item onclick={() => onpastegrade(contextGradeTargetItemIds)}>
-									{m.video_editor_color_paste_grade()}
-								</ContextMenu.Item>
-							{/if}
-						{/if}
-					</ContextMenu.SubContent>
-				</ContextMenu.Sub>
-			{/if}
-			{#if contextPrimaryItem?.type === 'video'}
-				<ContextMenu.Item
-					disabled={!canFreezeSelectedItem || freezeFramePending}
-					onclick={() => {
-						if (contextPrimaryItem) onfreezeframe(contextPrimaryItem.id);
-					}}
-				>
-					{m.video_editor_freeze_frame()}
-				</ContextMenu.Item>
-			{/if}
-			{#if contextJoinableNeighbors.previous}
-				<ContextMenu.Item onclick={() => joinContextNeighbor(contextJoinableNeighbors.previous.id)}>
-					{m.video_editor_join_previous()}
+						</ContextMenu.SubContent>
+					</ContextMenu.Sub>
+				{/if}
+				{#if contextPrimaryItem?.type === 'video'}
+					<ContextMenu.Item
+						disabled={!canFreezeSelectedItem || freezeFramePending}
+						onclick={() => {
+							if (contextPrimaryItem) onfreezeframe(contextPrimaryItem.id);
+						}}
+					>
+						{m.video_editor_freeze_frame()}
+					</ContextMenu.Item>
+				{/if}
+				{#if contextJoinableNeighbors.previous}
+					<ContextMenu.Item
+						onclick={() => joinContextNeighbor(contextJoinableNeighbors.previous.id)}
+					>
+						{m.video_editor_join_previous()}
+						<ContextMenu.Shortcut
+							>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+						>
+					</ContextMenu.Item>
+				{/if}
+				{#if contextJoinableNeighbors.next}
+					<ContextMenu.Item onclick={() => joinContextNeighbor(contextJoinableNeighbors.next.id)}>
+						{m.video_editor_join_next()}
+						<ContextMenu.Shortcut
+							>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+						>
+					</ContextMenu.Item>
+				{/if}
+				{#if canJoinSelectedItems}
+					<ContextMenu.Item onclick={joinSelection}>
+						{m.video_editor_join_selected()}
+						<ContextMenu.Shortcut
+							>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+						>
+					</ContextMenu.Item>
+				{/if}
+				{#if bentoEligibleIds.length >= 2}
+					<ContextMenu.Item onclick={() => (bentoLayoutOpen = true)}>
+						{m.video_editor_bento_open()}
+					</ContextMenu.Item>
+				{/if}
+				{#if clearableKeyframeCount > 0 || lockedAnimatedSelectionCount > 0}
+					<ContextMenu.Item
+						disabled={clearableKeyframeCount === 0}
+						onclick={openClearKeyframesDialog}
+					>
+						{m.video_editor_clear_keyframes_toolbar()}
+						<ContextMenu.Shortcut
+							>{formatShortcutBinding(
+								keyboardShortcuts.bindings.CLEAR_KEYFRAMES
+							)}</ContextMenu.Shortcut
+						>
+					</ContextMenu.Item>
+				{/if}
+				{#if hasContextClipActions}<ContextMenu.Separator />{/if}
+				<ContextMenu.Item onclick={() => oncutselection()}>
+					{m.video_editor_shortcuts_command_cut()}
 					<ContextMenu.Shortcut
-						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.CUT)}</ContextMenu.Shortcut
 					>
 				</ContextMenu.Item>
-			{/if}
-			{#if contextJoinableNeighbors.next}
-				<ContextMenu.Item onclick={() => joinContextNeighbor(contextJoinableNeighbors.next.id)}>
-					{m.video_editor_join_next()}
+				<ContextMenu.Item onclick={() => oncopyselection()}>
+					{m.common_copy()}
 					<ContextMenu.Shortcut
-						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.COPY)}</ContextMenu.Shortcut
 					>
 				</ContextMenu.Item>
-			{/if}
-			{#if canJoinSelectedItems}
-				<ContextMenu.Item onclick={joinSelection}>
-					{m.video_editor_join_selected()}
-					<ContextMenu.Shortcut
-						>{formatShortcutBinding(keyboardShortcuts.bindings.JOIN_ITEMS)}</ContextMenu.Shortcut
-					>
-				</ContextMenu.Item>
-			{/if}
-			{#if bentoEligibleIds.length >= 2}
-				<ContextMenu.Item onclick={() => (bentoLayoutOpen = true)}>
-					{m.video_editor_bento_open()}
-				</ContextMenu.Item>
-			{/if}
-			{#if clearableKeyframeCount > 0 || lockedAnimatedSelectionCount > 0}
-				<ContextMenu.Item
-					disabled={clearableKeyframeCount === 0}
-					onclick={openClearKeyframesDialog}
-				>
-					{m.video_editor_clear_keyframes_toolbar()}
+				<ContextMenu.Separator />
+				<ContextMenu.Item disabled={!contextItemsEditable} onclick={onsplitselection}>
+					{m.video_editor_shortcuts_command_split()}
 					<ContextMenu.Shortcut
 						>{formatShortcutBinding(
-							keyboardShortcuts.bindings.CLEAR_KEYFRAMES
+							keyboardShortcuts.bindings.SPLIT_AT_PLAYHEAD
 						)}</ContextMenu.Shortcut
 					>
 				</ContextMenu.Item>
-			{/if}
-			{#if hasContextClipActions}<ContextMenu.Separator />{/if}
-			<ContextMenu.Item onclick={() => oncutselection()}>
-				{m.video_editor_shortcuts_command_cut()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.CUT)}</ContextMenu.Shortcut
-				>
-			</ContextMenu.Item>
-			<ContextMenu.Item onclick={() => oncopyselection()}>
-				{m.common_copy()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.COPY)}</ContextMenu.Shortcut
-				>
-			</ContextMenu.Item>
-			<ContextMenu.Separator />
-			<ContextMenu.Item disabled={!contextItemsEditable} onclick={onsplitselection}>
-				{m.video_editor_shortcuts_command_split()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(
-						keyboardShortcuts.bindings.SPLIT_AT_PLAYHEAD
-					)}</ContextMenu.Shortcut
-				>
-			</ContextMenu.Item>
-			{#if canLinkSelectedItems}
-				<ContextMenu.Item onclick={linkSelection}>{m.video_editor_link_selected()}</ContextMenu.Item
-				>
-			{:else if canUnlinkSelectedItems}
-				<ContextMenu.Item onclick={unlinkSelection}
-					>{m.video_editor_unlink_selected()}</ContextMenu.Item
-				>
-			{/if}
-			<ContextMenu.Separator />
-			<ContextMenu.Item
-				variant="destructive"
-				disabled={!contextItemsEditable}
-				onclick={ondeleteselection}
-			>
-				{m.video_editor_delete_leave_gap()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.DELETE_SELECTED)}</ContextMenu.Shortcut
-				>
-			</ContextMenu.Item>
-			<ContextMenu.Item
-				variant="destructive"
-				disabled={!contextItemsEditable}
-				onclick={onrippledeleteselection}
-			>
-				{m.video_editor_ripple_delete()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.RIPPLE_DELETE)}</ContextMenu.Shortcut
-				>
-			</ContextMenu.Item>
-		{:else if contextMarker}
-			<ContextMenu.Item onclick={() => selectMarker(contextMarker)}>
-				{markerName(contextMarker)} · {m.video_editor_marker_frame_value({
-					frame: contextMarker.frame
-				})}
-			</ContextMenu.Item>
-			<ContextMenu.Sub>
-				<ContextMenu.SubTrigger>{m.video_editor_marker_color()}</ContextMenu.SubTrigger>
-				<ContextMenu.SubContent class="video-editor-theme w-44">
-					{#each MARKER_PRESET_COLORS as color, index (color)}
-						<ContextMenu.Item onclick={() => commitMarkerPatch(contextMarker, { color })}>
-							<span class="size-3 rounded-full border border-black/30" style={`background:${color}`}
-							></span>
-							{m.video_editor_marker_color_choice({ number: index + 1 })}
-						</ContextMenu.Item>
-					{/each}
-					<ContextMenu.Separator />
-					<ContextMenu.Item
-						disabled={contextMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
-						onclick={() => commitMarkerPatch(contextMarker, { color: DEFAULT_MARKER_COLOR })}
+				{#if canLinkSelectedItems}
+					<ContextMenu.Item onclick={linkSelection}
+						>{m.video_editor_link_selected()}</ContextMenu.Item
 					>
-						{m.video_editor_marker_reset_color()}
-					</ContextMenu.Item>
-				</ContextMenu.SubContent>
-			</ContextMenu.Sub>
-			<ContextMenu.Separator />
-			<ContextMenu.Item
-				variant="destructive"
-				onclick={() => deleteTimelineMarker(contextMarker.id)}
-			>
-				{m.video_editor_delete_marker()}
-			</ContextMenu.Item>
-		{:else if contextTrack}
-			{@const parentTrack = contextTrack.parentTrackId
-				? timelineStore.tracks.find((track) => track.id === contextTrack.parentTrackId)
-				: undefined}
-			{@const effectiveContextTrack = effectiveTrackState(contextTrack, timelineStore.tracks)}
-			{#if !contextTrack.isGroup}
-				<ContextMenu.Item disabled={!contextTrackGapsCanClose} onclick={closeContextTrackGaps}>
-					{m.video_editor_track_close_all_gaps()}
-				</ContextMenu.Item>
+				{:else if canUnlinkSelectedItems}
+					<ContextMenu.Item onclick={unlinkSelection}
+						>{m.video_editor_unlink_selected()}</ContextMenu.Item
+					>
+				{/if}
 				<ContextMenu.Separator />
+				<ContextMenu.Item
+					variant="destructive"
+					disabled={!contextItemsEditable}
+					onclick={ondeleteselection}
+				>
+					{m.video_editor_delete_leave_gap()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(
+							keyboardShortcuts.bindings.DELETE_SELECTED
+						)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					variant="destructive"
+					disabled={!contextItemsEditable}
+					onclick={onrippledeleteselection}
+				>
+					{m.video_editor_ripple_delete()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.RIPPLE_DELETE)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+			{:else if contextMarker}
+				<ContextMenu.Item onclick={() => selectMarker(contextMarker)}>
+					{markerName(contextMarker)} · {m.video_editor_marker_frame_value({
+						frame: contextMarker.frame
+					})}
+				</ContextMenu.Item>
 				<ContextMenu.Sub>
-					<ContextMenu.SubTrigger>{m.video_editor_track_add()}</ContextMenu.SubTrigger>
-					<ContextMenu.SubContent class="video-editor-theme w-48">
-						<ContextMenu.Item onclick={() => addNamedTrack('video')}>
-							{m.video_editor_track_add_video()}
-						</ContextMenu.Item>
-						<ContextMenu.Item onclick={() => addNamedTrack('audio')}>
-							{m.video_editor_track_add_audio()}
+					<ContextMenu.SubTrigger>{m.video_editor_marker_color()}</ContextMenu.SubTrigger>
+					<ContextMenu.SubContent class="video-editor-theme w-44">
+						{#each MARKER_PRESET_COLORS as color, index (color)}
+							<ContextMenu.Item onclick={() => commitMarkerPatch(contextMarker, { color })}>
+								<span
+									class="size-3 rounded-full border border-black/30"
+									style={`background:${color}`}
+								></span>
+								{m.video_editor_marker_color_choice({ number: index + 1 })}
+							</ContextMenu.Item>
+						{/each}
+						<ContextMenu.Separator />
+						<ContextMenu.Item
+							disabled={contextMarker.color.toLowerCase() === DEFAULT_MARKER_COLOR}
+							onclick={() => commitMarkerPatch(contextMarker, { color: DEFAULT_MARKER_COLOR })}
+						>
+							{m.video_editor_marker_reset_color()}
 						</ContextMenu.Item>
 					</ContextMenu.SubContent>
 				</ContextMenu.Sub>
+				<ContextMenu.Separator />
 				<ContextMenu.Item
-					disabled={contextEmptyTrackIds.length === 0}
-					onclick={removeContextEmptyTracks}
+					variant="destructive"
+					onclick={() => deleteTimelineMarker(contextMarker.id)}
 				>
-					{m.video_editor_track_delete_empty()}
+					{m.video_editor_delete_marker()}
 				</ContextMenu.Item>
+			{:else if contextTrack}
+				{@const parentTrack = contextTrack.parentTrackId
+					? timelineStore.tracks.find((track) => track.id === contextTrack.parentTrackId)
+					: undefined}
+				{@const effectiveContextTrack = effectiveTrackState(contextTrack, timelineStore.tracks)}
+				{#if !contextTrack.isGroup}
+					<ContextMenu.Item disabled={!contextTrackGapsCanClose} onclick={closeContextTrackGaps}>
+						{m.video_editor_track_close_all_gaps()}
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+					<ContextMenu.Sub>
+						<ContextMenu.SubTrigger>{m.video_editor_track_add()}</ContextMenu.SubTrigger>
+						<ContextMenu.SubContent class="video-editor-theme w-48">
+							<ContextMenu.Item onclick={() => addNamedTrack('video')}>
+								{m.video_editor_track_add_video()}
+							</ContextMenu.Item>
+							<ContextMenu.Item onclick={() => addNamedTrack('audio')}>
+								{m.video_editor_track_add_audio()}
+							</ContextMenu.Item>
+						</ContextMenu.SubContent>
+					</ContextMenu.Sub>
+					<ContextMenu.Item
+						disabled={contextEmptyTrackIds.length === 0}
+						onclick={removeContextEmptyTracks}
+					>
+						{m.video_editor_track_delete_empty()}
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+				{/if}
+				<ContextMenu.Item
+					disabled={parentTrack?.visible === false}
+					onclick={() => editTrack(() => toggleTrackVisibility(contextTrack.id))}
+				>
+					{effectiveContextTrack.visible
+						? m.video_editor_track_hide()
+						: m.video_editor_track_show()}
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					disabled={Boolean(parentTrack?.locked)}
+					onclick={() => editTrack(() => toggleTrackLock(contextTrack.id))}
+				>
+					{effectiveContextTrack.locked
+						? m.video_editor_track_unlock()
+						: m.video_editor_track_lock()}
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					disabled={Boolean(parentTrack?.muted)}
+					onclick={() => editTrack(() => toggleTrackMute(contextTrack.id))}
+				>
+					{effectiveContextTrack.muted
+						? m.video_editor_track_unmute()
+						: m.video_editor_track_mute()}
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					disabled={Boolean(parentTrack?.solo)}
+					onclick={() => editTrack(() => toggleTrackSolo(contextTrack.id))}
+				>
+					{effectiveContextTrack.solo ? m.video_editor_track_unsolo() : m.video_editor_track_solo()}
+				</ContextMenu.Item>
+				{#if contextTrack.isGroup}
+					<ContextMenu.Item onclick={() => editTrack(() => ungroupTracks(contextTrack.id))}>
+						{m.video_editor_track_group_ungroup_hint()}
+					</ContextMenu.Item>
+				{:else}
+					<ContextMenu.Item onclick={() => editTrack(() => toggleTrackSyncLock(contextTrack.id))}>
+						{contextTrack.syncLock !== false
+							? m.video_editor_track_sync_unlock()
+							: m.video_editor_track_sync_lock()}
+					</ContextMenu.Item>
+				{/if}
 				<ContextMenu.Separator />
-			{/if}
-			<ContextMenu.Item
-				disabled={parentTrack?.visible === false}
-				onclick={() => editTrack(() => toggleTrackVisibility(contextTrack.id))}
-			>
-				{effectiveContextTrack.visible ? m.video_editor_track_hide() : m.video_editor_track_show()}
-			</ContextMenu.Item>
-			<ContextMenu.Item
-				disabled={Boolean(parentTrack?.locked)}
-				onclick={() => editTrack(() => toggleTrackLock(contextTrack.id))}
-			>
-				{effectiveContextTrack.locked ? m.video_editor_track_unlock() : m.video_editor_track_lock()}
-			</ContextMenu.Item>
-			<ContextMenu.Item
-				disabled={Boolean(parentTrack?.muted)}
-				onclick={() => editTrack(() => toggleTrackMute(contextTrack.id))}
-			>
-				{effectiveContextTrack.muted ? m.video_editor_track_unmute() : m.video_editor_track_mute()}
-			</ContextMenu.Item>
-			<ContextMenu.Item
-				disabled={Boolean(parentTrack?.solo)}
-				onclick={() => editTrack(() => toggleTrackSolo(contextTrack.id))}
-			>
-				{effectiveContextTrack.solo ? m.video_editor_track_unsolo() : m.video_editor_track_solo()}
-			</ContextMenu.Item>
-			{#if contextTrack.isGroup}
-				<ContextMenu.Item onclick={() => editTrack(() => ungroupTracks(contextTrack.id))}>
-					{m.video_editor_track_group_ungroup_hint()}
-				</ContextMenu.Item>
-			{:else}
-				<ContextMenu.Item onclick={() => editTrack(() => toggleTrackSyncLock(contextTrack.id))}>
-					{contextTrack.syncLock !== false
-						? m.video_editor_track_sync_unlock()
-						: m.video_editor_track_sync_lock()}
-				</ContextMenu.Item>
-			{/if}
-			<ContextMenu.Separator />
-			<ContextMenu.Item
-				variant="destructive"
-				disabled={contextTrack.isGroup
-					? mediaTracks(timelineStore.tracks).length -
-							trackChildren(timelineStore.tracks, contextTrack.id).length <
-						1
-					: mediaTracks(timelineStore.tracks).length <= 1}
-				onclick={() =>
-					contextTrack.isGroup ? requestDeleteGroup(contextTrack.id) : deleteTrack(contextTrack.id)}
-			>
-				{contextTrack.isGroup ? m.video_editor_track_group_delete() : m.video_editor_track_delete()}
-			</ContextMenu.Item>
-		{:else if timelineContextTarget?.kind === 'space'}
-			{#if contextSpaceGap}
-				<ContextMenu.Item disabled={!contextSpaceGapCanClose} onclick={closeContextGap}>
-					{m.video_editor_close_gap()}
-				</ContextMenu.Item>
-				<ContextMenu.Separator />
-			{/if}
-			<ContextMenu.Item onclick={() => addContextMarker(timelineContextTarget.frame)}>
-				{m.video_editor_add_marker()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.ADD_MARKER)}</ContextMenu.Shortcut
+				<ContextMenu.Item
+					variant="destructive"
+					disabled={contextTrack.isGroup
+						? mediaTracks(timelineStore.tracks).length -
+								trackChildren(timelineStore.tracks, contextTrack.id).length <
+							1
+						: mediaTracks(timelineStore.tracks).length <= 1}
+					onclick={() =>
+						contextTrack.isGroup
+							? requestDeleteGroup(contextTrack.id)
+							: deleteTrack(contextTrack.id)}
 				>
-			</ContextMenu.Item>
-			<ContextMenu.Item
-				disabled={!itemClipboardStore.hasItems}
-				onclick={() => onpasteat(timelineContextTarget.frame, timelineContextTarget.trackId)}
-			>
-				{m.video_editor_shortcuts_command_paste()}
-				<ContextMenu.Shortcut
-					>{formatShortcutBinding(keyboardShortcuts.bindings.PASTE)}</ContextMenu.Shortcut
+					{contextTrack.isGroup
+						? m.video_editor_track_group_delete()
+						: m.video_editor_track_delete()}
+				</ContextMenu.Item>
+			{:else if timelineContextTarget?.kind === 'space'}
+				{#if contextSpaceGap}
+					<ContextMenu.Item disabled={!contextSpaceGapCanClose} onclick={closeContextGap}>
+						{m.video_editor_close_gap()}
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+				{/if}
+				<ContextMenu.Item onclick={() => addContextMarker(timelineContextTarget.frame)}>
+					{m.video_editor_add_marker()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.ADD_MARKER)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+				<ContextMenu.Item
+					disabled={!itemClipboardStore.hasItems}
+					onclick={() => onpasteat(timelineContextTarget.frame, timelineContextTarget.trackId)}
 				>
-			</ContextMenu.Item>
-		{/if}
-	</ContextMenu.Content>
-</ContextMenu.Root>
-<TimelineNavigator
-	{timelineWidth}
-	viewportWidth={timelineViewport.width}
-	scrollLeft={timelineViewport.scrollLeft}
-	headerWidth={TRACK_HEADER_WIDTH}
-	contentFrames={timelineContentFrames}
-	zoomLevel={zoom}
-	items={timelineStore.items}
-	onscroll={scrollTimelineFromNavigator}
-	onzoom={zoomTimelineFromNavigator}
-/>
+					{m.video_editor_shortcuts_command_paste()}
+					<ContextMenu.Shortcut
+						>{formatShortcutBinding(keyboardShortcuts.bindings.PASTE)}</ContextMenu.Shortcut
+					>
+				</ContextMenu.Item>
+			{/if}
+		</ContextMenu.Content>
+	</ContextMenu.Root>
+	<TimelineNavigator
+		{timelineWidth}
+		viewportWidth={timelineViewport.width}
+		scrollLeft={timelineViewport.scrollLeft}
+		headerWidth={TRACK_HEADER_WIDTH}
+		contentFrames={timelineContentFrames}
+		zoomLevel={zoom}
+		items={timelineStore.items}
+		onscroll={scrollTimelineFromNavigator}
+		onzoom={zoomTimelineFromNavigator}
+	/>
+</div>

@@ -126,8 +126,14 @@
 	let {
 		selectedItemId = $bindable(null),
 		selectedItemIds = $bindable([]),
+		ondeselect = () => undefined,
 		onedit
-	}: { selectedItemId?: string | null; selectedItemIds?: string[]; onedit: () => void } = $props();
+	}: {
+		selectedItemId?: string | null;
+		selectedItemIds?: string[];
+		ondeselect?: () => void;
+		onedit: () => void;
+	} = $props();
 	const project = $derived(editorSession.project);
 	const canvasWidth = $derived(sequenceStore.activeWidth);
 	const canvasHeight = $derived(sequenceStore.activeHeight);
@@ -1293,6 +1299,22 @@
 		canvasContextOpen = false;
 	}
 
+	function deselectFromEmptyPreview(event: PointerEvent): void {
+		if (event.button !== 0) return;
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		if (
+			target.closest(
+				'[data-preview-item], [data-on-canvas-tools], button, input, select, textarea, [role="slider"]'
+			)
+		)
+			return;
+		selectedItemId = null;
+		selectedItemIds = [];
+		canvasContextOpen = false;
+		ondeselect();
+	}
+
 	$effect(() => {
 		void draftTransform;
 		void groupDraftTransforms;
@@ -1309,6 +1331,9 @@
 <div
 	class="fullscreen:p-6 [container-type:size] flex min-h-0 flex-1 overflow-auto bg-[oklch(0.205_0.008_55)] p-4 sm:p-5 xl:p-7"
 	data-program-pasteboard
+	role="region"
+	aria-label={m.video_editor_program_monitor()}
+	onpointerdown={deselectFromEmptyPreview}
 >
 	<ContextMenu.Root open={canvasContextOpen} onOpenChange={setCanvasContextOpen}>
 		<ContextMenu.Trigger disabled={canvasContextDisabled}>

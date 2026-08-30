@@ -10,6 +10,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
+	import PanelResizeHandle from '$lib/components/panel-resize-handle.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import SaveIndicator from '$lib/components/save-indicator.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -346,7 +347,10 @@
 	let assetPanelWidth = $state(260);
 	let inspectorPanelWidth = $state(320);
 	let layersPanelHeight = $state(280);
+	let pagesPanelHeight = $state(132);
 	let inspectorElement = $state<HTMLElement>();
+	let desktopViewportWidth = $state(1280);
+	let inspectorPanelHeight = $state(680);
 	let shortcutModifier = $state('Ctrl');
 	let meaningfulEditTracked = false;
 	let panelResize:
@@ -590,6 +594,7 @@
 			assetPanelWidth = clampPanelSize(stored.assets, 220, 420, assetPanelWidth);
 			inspectorPanelWidth = clampPanelSize(stored.inspector, 280, 480, inspectorPanelWidth);
 			layersPanelHeight = clampPanelSize(stored.layers, 120, 520, layersPanelHeight);
+			pagesPanelHeight = clampPanelSize(stored.pages, 120, 320, pagesPanelHeight);
 			constrainDesktopPanelWidths();
 		} catch {
 			// Invalid local layout preferences fall back to the balanced defaults.
@@ -610,6 +615,7 @@
 		if (window.innerWidth < 1024 && window.innerHeight <= 520) {
 			editor.pagesExpanded = false;
 		}
+		handleWindowResize();
 		const unsubscribe = editor.onChange(() => {
 			conflictPreservedCopy = null;
 			designChannel?.postMessage({
@@ -693,6 +699,16 @@
 		dismissFirstEditHint();
 	}
 
+	function toggleInspectorPanel(): void {
+		editor.rightPanelVisible = !editor.rightPanelVisible;
+		if (!editor.rightPanelVisible) return;
+		constrainDesktopPanelWidths();
+		requestAnimationFrame(() => {
+			constrainLayersPanelHeightFromDom();
+			storePanelLayout();
+		});
+	}
+
 	function clampPanelSize(
 		value: number | undefined,
 		minimum: number,
@@ -703,22 +719,37 @@
 	}
 
 	function panelMaximum(panel: 'assets' | 'inspector'): number {
-		const otherPanelWidth = panel === 'assets' ? inspectorPanelWidth : assetPanelWidth;
+		const otherPanelWidth =
+			panel === 'assets' ? (editor.rightPanelVisible ? inspectorPanelWidth : 0) : assetPanelWidth;
 		const available =
-			document.documentElement.clientWidth -
-			DESKTOP_TOOL_RAIL_WIDTH -
-			MINIMUM_CANVAS_WIDTH -
-			otherPanelWidth;
+			desktopViewportWidth - DESKTOP_TOOL_RAIL_WIDTH - MINIMUM_CANVAS_WIDTH - otherPanelWidth;
 		return Math.max(
 			panel === 'assets' ? 220 : 280,
 			Math.min(panel === 'assets' ? 420 : 480, available)
 		);
 	}
 
+	function layersPanelMaximum(): number {
+		return Math.max(160, inspectorPanelHeight - 166);
+	}
+
+	function constrainLayersPanelHeightFromDom(): void {
+		if (window.innerWidth < 1024 || !editor.rightPanelVisible || !inspectorElement) return;
+		const measuredHeight = inspectorElement.clientHeight;
+		if (measuredHeight <= 0) return;
+		inspectorPanelHeight = measuredHeight;
+		layersPanelHeight = clampPanelSize(
+			layersPanelHeight,
+			120,
+			layersPanelMaximum(),
+			layersPanelHeight
+		);
+	}
+
 	function constrainDesktopPanelWidths(): void {
 		if (window.innerWidth < 1024) return;
 		const maximumCombinedWidth =
-			document.documentElement.clientWidth - DESKTOP_TOOL_RAIL_WIDTH - MINIMUM_CANVAS_WIDTH;
+			desktopViewportWidth - DESKTOP_TOOL_RAIL_WIDTH - MINIMUM_CANVAS_WIDTH;
 		let overflow = assetPanelWidth + inspectorPanelWidth - maximumCombinedWidth;
 		if (overflow <= 0) return;
 		const assetReduction = Math.min(assetPanelWidth - 220, Math.ceil(overflow / 2));
@@ -728,8 +759,13 @@
 	}
 
 	function handleWindowResize(): void {
+		desktopViewportWidth = window.innerWidth;
 		firstEditActionLabel = window.innerWidth < 1024 ? m.image_editor_open_properties() : undefined;
 		constrainDesktopPanelWidths();
+		constrainLayersPanelHeightFromDom();
+		requestAnimationFrame(() => {
+			constrainLayersPanelHeightFromDom();
+		});
 	}
 
 	function startPanelResize(event: PointerEvent, panel: 'assets' | 'inspector' | 'layers'): void {
@@ -768,11 +804,10 @@
 				inspectorPanelWidth
 			);
 		} else {
-			const maximum = Math.max(160, (inspectorElement?.clientHeight ?? 680) - 166);
 			layersPanelHeight = clampPanelSize(
 				panelResize.startSize + event.clientY - panelResize.startY,
 				120,
-				maximum,
+				layersPanelMaximum(),
 				layersPanelHeight
 			);
 		}
@@ -791,7 +826,8 @@
 				JSON.stringify({
 					assets: Math.round(assetPanelWidth),
 					inspector: Math.round(inspectorPanelWidth),
-					layers: Math.round(layersPanelHeight)
+					layers: Math.round(layersPanelHeight),
+					pages: Math.round(pagesPanelHeight)
 				})
 			);
 		} catch {
@@ -849,6 +885,12 @@
 		event: KeyboardEvent,
 		panel: 'assets' | 'inspector' | 'layers'
 	): void {
+		const verticalSeparator = panel === 'assets' || panel === 'inspector';
+		if (
+			(verticalSeparator && event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') ||
+			(!verticalSeparator && event.key !== 'ArrowUp' && event.key !== 'ArrowDown')
+		)
+			return;
 		const direction =
 			event.key === 'ArrowRight' || event.key === 'ArrowDown'
 				? 1
@@ -876,7 +918,7 @@
 			layersPanelHeight = clampPanelSize(
 				layersPanelHeight + direction * step,
 				120,
-				Math.max(160, (inspectorElement?.clientHeight ?? 680) - 166),
+				layersPanelMaximum(),
 				layersPanelHeight
 			);
 		}
@@ -1942,7 +1984,7 @@
 		fit_canvas: () => editor.fitZoom(),
 		zoom_100: () => (editor.zoom = 1),
 		focus_canvas: () => (focusedCanvas = !focusedCanvas),
-		toggle_inspector: () => (editor.rightPanelVisible = !editor.rightPanelVisible),
+		toggle_inspector: toggleInspectorPanel,
 		toggle_snapping: () => setSnapping(!editor.snappingEnabled),
 		toggle_rulers: () => setViewOption('rulers', !editor.showRulers),
 		toggle_guides: () => setViewOption('guides', !editor.showGuides),
@@ -3277,26 +3319,36 @@
 			{/each}
 		</nav>
 		{#if !focusedCanvas}
-			<aside
-				class="relative hidden min-h-0 min-w-0 overflow-hidden border-r bg-background lg:block"
-			>
-				<AssetPanel {guestMode} />
+			<aside class="relative hidden min-h-0 min-w-0 border-r bg-background lg:block">
+				<div class="size-full min-h-0 overflow-hidden"><AssetPanel {guestMode} /></div>
 				<button
 					type="button"
 					aria-label={m.image_editor_resize_asset_panel()}
 					title={m.image_editor_resize_asset_panel()}
-					class="image-editor-resize-handle absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none border-0 bg-transparent p-0"
+					role="separator"
+					aria-orientation="vertical"
+					aria-valuemin="220"
+					aria-valuemax={panelMaximum('assets')}
+					aria-valuenow={Math.round(assetPanelWidth)}
+					class="image-editor-resize-handle absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none border-0 bg-transparent p-0 [@media(pointer:coarse)]:top-1/2 [@media(pointer:coarse)]:-right-5 [@media(pointer:coarse)]:bottom-auto [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-translate-y-1/2"
 					onpointerdown={(event) => startPanelResize(event, 'assets')}
 					onkeydown={(event) => resizePanelWithKeyboard(event, 'assets')}
+					ondblclick={() => {
+						assetPanelWidth = clampPanelSize(260, 220, panelMaximum('assets'), 260);
+						storePanelLayout();
+					}}
 				></button>
 			</aside>
 		{/if}
-		<main class="relative min-h-0 min-w-0">
+		<main
+			class="relative min-h-0 min-w-0"
+			style:--image-editor-pages-height={`${pagesPanelHeight}px`}
+		>
 			<div
 				class="absolute inset-0 {focusedCanvas
 					? 'bottom-0'
 					: editor.pagesExpanded
-						? 'bottom-[8.75rem] lg:bottom-33'
+						? 'bottom-[8.75rem] lg:bottom-[var(--image-editor-pages-height)]'
 						: 'bottom-11 lg:bottom-9'}"
 			>
 				<ImageEditorCanvas
@@ -3309,7 +3361,7 @@
 				class="absolute right-3 {focusedCanvas
 					? 'bottom-3'
 					: editor.pagesExpanded
-						? 'bottom-[9.5rem] lg:bottom-36'
+						? 'bottom-[9.5rem] lg:bottom-[calc(var(--image-editor-pages-height)_+_0.75rem)]'
 						: 'bottom-14 lg:bottom-12'} z-10 flex items-center gap-1 rounded-lg bg-background/90 p-1 shadow ring-1 ring-black/10"
 			>
 				<Button
@@ -3336,7 +3388,23 @@
 				>
 			</div>
 			{#if !focusedCanvas}
-				<div class="absolute inset-x-0 bottom-0">
+				<div
+					class="absolute inset-x-0 bottom-0 {editor.pagesExpanded
+						? 'lg:h-[var(--image-editor-pages-height)]'
+						: 'lg:h-9'}"
+				>
+					{#if editor.pagesExpanded}
+						<PanelResizeHandle
+							edge="top"
+							value={pagesPanelHeight}
+							minimum={120}
+							maximum={320}
+							defaultValue={132}
+							label={m.image_editor_pages()}
+							onresize={(value) => (pagesPanelHeight = value)}
+							oncommit={storePanelLayout}
+						/>
+					{/if}
 					<PageStrip onExternalFiles={placeExternalFiles} />
 				</div>
 			{/if}
@@ -3344,25 +3412,43 @@
 		{#if editor.rightPanelVisible && !focusedCanvas}
 			<aside
 				bind:this={inspectorElement}
-				class="image-editor-inspector relative hidden min-h-0 min-w-0 overflow-hidden border-l bg-background lg:grid"
+				class="image-editor-inspector relative hidden min-h-0 min-w-0 border-l bg-background lg:grid"
 				style:--image-editor-layers-height={`${layersPanelHeight}px`}
 			>
 				<button
 					type="button"
 					aria-label={m.image_editor_resize_inspector_panel()}
 					title={m.image_editor_resize_inspector_panel()}
-					class="image-editor-resize-handle absolute inset-y-0 left-0 z-20 w-2 cursor-col-resize touch-none border-0 bg-transparent p-0"
+					role="separator"
+					aria-orientation="vertical"
+					aria-valuemin="280"
+					aria-valuemax={panelMaximum('inspector')}
+					aria-valuenow={Math.round(inspectorPanelWidth)}
+					class="image-editor-resize-handle absolute inset-y-0 left-0 z-20 w-2 cursor-col-resize touch-none border-0 bg-transparent p-0 [@media(pointer:coarse)]:top-1/2 [@media(pointer:coarse)]:bottom-auto [@media(pointer:coarse)]:-left-5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-translate-y-1/2"
 					onpointerdown={(event) => startPanelResize(event, 'inspector')}
 					onkeydown={(event) => resizePanelWithKeyboard(event, 'inspector')}
+					ondblclick={() => {
+						inspectorPanelWidth = clampPanelSize(320, 280, panelMaximum('inspector'), 320);
+						storePanelLayout();
+					}}
 				></button>
 				<div class="min-h-0 min-w-0 overflow-hidden"><LayerTree /></div>
 				<button
 					type="button"
 					aria-label={m.image_editor_resize_layers_properties()}
 					title={m.image_editor_resize_layers_properties()}
+					role="separator"
+					aria-orientation="horizontal"
+					aria-valuemin="120"
+					aria-valuemax={layersPanelMaximum()}
+					aria-valuenow={Math.round(layersPanelHeight)}
 					class="image-editor-resize-handle relative z-10 cursor-row-resize touch-none border-x-0 border-y bg-background p-0"
 					onpointerdown={(event) => startPanelResize(event, 'layers')}
 					onkeydown={(event) => resizePanelWithKeyboard(event, 'layers')}
+					ondblclick={() => {
+						layersPanelHeight = clampPanelSize(280, 120, layersPanelMaximum(), 280);
+						storePanelLayout();
+					}}
 				></button>
 				<div class="min-h-0 min-w-0 overflow-hidden">
 					<PropertiesPanel onOpenMedia={openBackgroundMediaPicker} />
@@ -4464,6 +4550,15 @@
 
 		.image-editor-inspector {
 			grid-template-rows: minmax(120px, var(--image-editor-layers-height)) 6px minmax(160px, 1fr);
+		}
+	}
+
+	@media (min-width: 64rem) and (pointer: coarse) {
+		.image-editor-inspector > .image-editor-resize-handle.relative {
+			height: 44px;
+			width: 44px;
+			align-self: center;
+			justify-self: center;
 		}
 	}
 </style>

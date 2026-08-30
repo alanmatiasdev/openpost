@@ -104,7 +104,7 @@
 </script>
 
 <aside
-	class="flex max-h-[44dvh] w-full shrink-0 flex-col gap-2 overflow-y-auto border-t border-[oklch(0.25_0.015_55)] p-2 lg:max-h-none lg:w-80 lg:border-t-0 lg:border-l"
+	class="flex size-full min-w-0 shrink-0 flex-col gap-2 overflow-x-hidden overflow-y-auto border-t border-[oklch(0.25_0.015_55)] p-2 lg:border-t-0 lg:border-l"
 	aria-label={m.video_editor_workspace_motion()}
 >
 	<h2 class="px-1 text-xs font-medium tracking-wide text-[oklch(0.65_0.015_55)] uppercase">
@@ -120,7 +120,7 @@
 					</p>
 				</div>
 			</div>
-			<div class="mt-3 grid grid-cols-2 gap-2">
+			<div class="mt-3 grid grid-cols-1 gap-2">
 				<Button
 					size="sm"
 					variant="secondary"

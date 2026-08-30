@@ -99,6 +99,35 @@ async function openHeaderMoreMenu(page: Page): Promise<void> {
   await page.locator("header").getByRole("button", { name: "More actions" }).click();
 }
 
+test("A new Video Editor project starts centered in Fit view", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "First zoom project");
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await page.getByRole("button", { name: "Preview zoom: Fit" }).click();
+  await page.getByRole("menuitem", { name: "75%" }).click();
+  await expect(page.getByRole("button", { name: "Preview zoom: 75%" })).toBeVisible();
+
+  await page.goto("/video-editor");
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByRole("textbox", { name: "Project name" }).fill("Fresh fit project");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page).toHaveURL(/\/video-editor\/[0-9a-f-]+$/u);
+  await expect(page.getByRole("button", { name: "Preview zoom: Fit" })).toBeVisible();
+
+  const pasteboard = await page.locator("[data-program-pasteboard]").boundingBox();
+  const monitor = await page.locator("[data-program-monitor]").boundingBox();
+  expect(pasteboard).not.toBeNull();
+  expect(monitor).not.toBeNull();
+  expect(
+    Math.abs(monitor!.x + monitor!.width / 2 - (pasteboard!.x + pasteboard!.width / 2)),
+  ).toBeLessThan(2);
+  expect(
+    Math.abs(monitor!.y + monitor!.height / 2 - (pasteboard!.y + pasteboard!.height / 2)),
+  ).toBeLessThan(2);
+});
+
 test("Motion owns an isolated composition session and restores Edit", async ({ page }) => {
   test.setTimeout(60_000);
   await createProject(page, "Motion workspace proof");
@@ -140,7 +169,9 @@ test("Motion owns an isolated composition session and restores Edit", async ({ p
   await page.getByRole("tab", { name: "Motion" }).click();
   await expect(page.getByTestId("composition-timeline")).toBeVisible();
   await expect(page.getByTestId("composition-picker")).toContainText("Launch card");
-  const reopenedMotionInspector = page.getByRole("complementary", { name: "Motion" });
+  const reopenedMotionInspector = page.getByRole("complementary", {
+    name: "Motion",
+  });
   const animationSearch = reopenedMotionInspector.getByRole("searchbox", {
     name: "Search animation",
   });
@@ -228,9 +259,18 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     await expectMinimumTargets(mobilePanels.getByRole("button"));
     const preview = page.locator("[data-video-preview]");
     const pasteboard = page.locator("[data-program-pasteboard]");
-    const assetsButton = mobilePanels.getByRole("button", { name: "Assets", exact: true });
-    const programButton = mobilePanels.getByRole("button", { name: "Program", exact: true });
-    const editButton = mobilePanels.getByRole("button", { name: "Edit", exact: true });
+    const assetsButton = mobilePanels.getByRole("button", {
+      name: "Assets",
+      exact: true,
+    });
+    const programButton = mobilePanels.getByRole("button", {
+      name: "Program",
+      exact: true,
+    });
+    const editButton = mobilePanels.getByRole("button", {
+      name: "Edit",
+      exact: true,
+    });
     await expect(assetsButton).toHaveAttribute("aria-controls", "video-editor-assets-panel");
     await expect(programButton).toHaveAttribute("aria-controls", "video-editor-program-panel");
     await expect(editButton).toHaveAttribute("aria-controls", "video-editor-tools-panel");
@@ -310,11 +350,70 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
 
   const mediaPool = page.getByRole("complementary", { name: "Media pool" });
-  await expect(mediaPool.getByRole("button", { name: "Media", pressed: true })).toBeVisible();
+  await expect(
+    mediaPool.getByRole("button", { name: "Media", pressed: true, exact: true }),
+  ).toBeVisible();
+  await expect(mediaPool.getByRole("button", { name: "Import media" })).toBeVisible();
+  await mediaPool.getByRole("button", { name: "Scenes" }).click();
+  await expect(mediaPool.getByRole("button", { name: "Scenes", pressed: true })).toBeVisible();
+  await expect(mediaPool.getByRole("button", { name: "Import media" })).toBeVisible();
   await mediaPool.getByRole("button", { name: "Assets" }).click();
   await expect(mediaPool.getByRole("button", { name: "Assets", pressed: true })).toBeVisible();
-  await expect(mediaPool.getByRole("button", { name: "Media", pressed: false })).toBeVisible();
-  await mediaPool.getByRole("button", { name: "Media" }).click();
+  await expect(mediaPool.getByRole("button", { name: "Import media" })).toHaveCount(0);
+  await mediaPool.getByRole("button", { name: "Media pool" }).click();
+  await mediaPool.getByRole("button", { name: "Media", exact: true }).click();
+
+  const mediaResize = mediaPool.getByRole("separator", { name: "Media pool" });
+  const initialMediaWidth = Number(await mediaResize.getAttribute("aria-valuenow"));
+  await mediaResize.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(mediaResize).toHaveAttribute("aria-valuenow", String(initialMediaWidth + 16));
+  const mediaBounds = await mediaPool.boundingBox();
+  const desktopTimelineBounds = await page.locator("footer").boundingBox();
+  expect(mediaBounds).not.toBeNull();
+  expect(desktopTimelineBounds).not.toBeNull();
+  expect(desktopTimelineBounds!.x).toBeGreaterThanOrEqual(mediaBounds!.x + mediaBounds!.width - 1);
+  await expect(page.getByRole("button", { name: "Preview zoom: Fit" })).toBeVisible();
+
+  const timelineFooter = page.locator("footer");
+  const collapsedTimelineHeight = (await timelineFooter.boundingBox())!.height;
+  await page.getByRole("button", { name: "Audio mixer" }).click();
+  const mixerDock = page.locator("[data-audio-mixer-dock]");
+  const mixerResize = page.getByRole("separator", { name: "Audio mixer" });
+  await expect(mixerDock).toBeVisible();
+  await expect(page.locator("#video-editor-timeline-scroll")).toBeVisible();
+  await expect
+    .poll(async () => (await timelineFooter.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(collapsedTimelineHeight);
+  const initialMixerHeight = Number(await mixerResize.getAttribute("aria-valuenow"));
+  await mixerResize.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(mixerResize).toHaveAttribute("aria-valuenow", String(initialMixerHeight + 16));
+  await page.getByRole("button", { name: "Audio mixer" }).click();
+  await expect(mixerDock).toHaveCount(0);
+  await expect
+    .poll(async () => Math.round((await timelineFooter.boundingBox())?.height ?? 0))
+    .toBe(Math.round(collapsedTimelineHeight));
+
+  await page.getByRole("button", { name: "Audio mixer" }).click();
+  await page.getByRole("button", { name: "Beat markers" }).click();
+  await expect(mixerDock).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Beat markers" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect
+    .poll(async () => Math.round((await timelineFooter.boundingBox())?.height ?? 0))
+    .toBe(Math.round(collapsedTimelineHeight));
+  await page.getByRole("button", { name: "Beat markers" }).click();
+
+  await page.getByRole("button", { name: "Audio mixer" }).click();
+  await page.getByRole("tab", { name: "Color" }).click();
+  await page.getByRole("tab", { name: "Edit" }).click();
+  await expect(mixerDock).toHaveCount(0);
+  await expect
+    .poll(async () => Math.round((await timelineFooter.boundingBox())?.height ?? 0))
+    .toBe(Math.round(collapsedTimelineHeight));
 
   await addTextItem(page);
   const inspector = page.getByRole("complementary", { name: "Edit" });
@@ -345,14 +444,20 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     await expect(page.getByRole("menuitem", { name })).toBeVisible();
   }
   await page.keyboard.press("Escape");
+  await page.locator("[data-program-pasteboard]").click({ position: { x: 3, y: 3 } });
+  await expect(inspector.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     path: "frontend/.svelte-kit/openpost-video-editor-1280.png",
     fullPage: true,
   });
   await page.getByRole("tab", { name: "Color" }).click();
-  const populatedColorDock = page.getByRole("region", { name: "Color grading" });
-  const colorWheels = populatedColorDock.getByRole("slider", { name: /color wheel$/u });
+  const populatedColorDock = page.getByRole("region", {
+    name: "Color grading",
+  });
+  const colorWheels = populatedColorDock.getByRole("slider", {
+    name: /color wheel$/u,
+  });
   await expect(colorWheels).toHaveCount(4);
   await colorWheels.first().focus();
   await page.keyboard.press("ArrowUp");
@@ -360,7 +465,9 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(populatedColorDock.getByRole("textbox", { name: "Lift Red" })).toBeVisible();
   await expect(populatedColorDock.getByRole("slider", { name: "Lift thumb wheel" })).toBeVisible();
   await expect(
-    populatedColorDock.getByRole("button", { name: "Auto balance from the current frame" }),
+    populatedColorDock.getByRole("button", {
+      name: "Auto balance from the current frame",
+    }),
   ).toBeVisible();
   await expect(populatedColorDock.getByRole("textbox", { name: "Temperature" })).toHaveValue("0.0");
   await expect(populatedColorDock.getByRole("textbox", { name: "Saturation" })).toHaveValue(
@@ -371,11 +478,15 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     populatedColorDock.getByRole("button", { name: /keyframe at playhead$/u }).first(),
   ).toBeVisible();
   await expect(populatedColorDock.getByRole("region", { name: "Curves" })).toBeVisible();
-  const colorKeyframes = populatedColorDock.getByRole("region", { name: "Keyframes" });
+  const colorKeyframes = populatedColorDock.getByRole("region", {
+    name: "Keyframes",
+  });
   await expect(colorKeyframes).toBeVisible();
   await expect(colorKeyframes.locator("[data-keyframe-side-ruler]")).toBeVisible();
   await colorKeyframes
-    .getByRole("button", { name: /^Add Color Wheels: Lift Hue keyframe at playhead$/u })
+    .getByRole("button", {
+      name: /^Add Color Wheels: Lift Hue keyframe at playhead$/u,
+    })
     .click();
   const colorKeyframe = colorKeyframes.locator("[data-dopesheet-keyframe-id]").first();
   await expect(colorKeyframe).toBeVisible();
