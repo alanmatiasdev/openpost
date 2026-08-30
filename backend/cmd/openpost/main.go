@@ -139,11 +139,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
+	closeDatabase := func() {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Printf("database shutdown failed: %v", closeErr)
 		}
-	}()
+	}
 	if command.role.autoMigrates() {
 		if err := database.CreateSchemaLocked(context.Background(), db, cfg.DatabaseDriver, cfg.DatabaseDSN()); err != nil {
 			log.Fatalf("database schema initialization failed: %v", err)
@@ -158,6 +158,7 @@ func main() {
 		}); err != nil {
 			log.Fatal(err)
 		}
+		closeDatabase()
 		return
 	}
 
@@ -675,6 +676,7 @@ func main() {
 	if err := registerE2EDeliveryProjection(e, db, authenticator, cfg.AppE2EDeliveryProjection); err != nil {
 		log.Fatalf("failed to configure E2E delivery projection: %v", err)
 	}
+	defer closeDatabase()
 
 	e.GET("/openapi.json", func(c echo.Context) error {
 		spec := api.OpenAPI()
