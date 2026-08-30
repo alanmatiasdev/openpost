@@ -38,7 +38,11 @@ func (a *directOAuthTestAdapter) RefreshToken(context.Context, platform.RefreshT
 }
 
 func (a *directOAuthTestAdapter) GetProfile(context.Context, string) (*platform.UserProfile, error) {
-	return &platform.UserProfile{ID: "provider-user", Username: "openpost"}, nil
+	return &platform.UserProfile{
+		ID:        "provider-user",
+		Username:  "openpost",
+		AvatarURL: "https://cdn.provider.example/openpost.jpg",
+	}, nil
 }
 
 func (a *directOAuthTestAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
@@ -77,7 +81,7 @@ func TestOAuthCallbackAccountSelectionRedirectsExposeFinalLocationHeader(t *test
 func TestOAuthCallbackDirectSuccessRedirectsToScopedComposer(t *testing.T) {
 	t.Parallel()
 
-	e, state, _ := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
+	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
 	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/threads/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
 	result := rec.Result()
 	t.Cleanup(func() { _ = result.Body.Close() })
@@ -91,6 +95,10 @@ func TestOAuthCallbackDirectSuccessRedirectsToScopedComposer(t *testing.T) {
 	require.Empty(t, location.Query().Get("connected"))
 	require.NotContains(t, location.RawQuery, "provider-code")
 	require.NotContains(t, location.RawQuery, "token")
+
+	var account models.SocialAccount
+	require.NoError(t, db.NewSelect().Model(&account).Where("account_id = ?", "provider-user").Scan(t.Context()))
+	require.Equal(t, "https://cdn.provider.example/openpost.jpg", account.AccountAvatarURL)
 }
 
 func TestOAuthCallbackReauthorizationOfInactiveDestinationReturnsToAccounts(t *testing.T) {

@@ -290,6 +290,7 @@ func (x *XAdapter) GetProfile(ctx context.Context, accessToken string) (*UserPro
 		ID:          user.ID,
 		Username:    user.Username,
 		DisplayName: user.Name,
+		AvatarURL:   user.ProfileImageURL,
 		CapabilityState: map[string]string{
 			XCapabilityStateSubscriptionType: normalizeXSubscriptionType(user.SubscriptionType),
 		},
@@ -300,11 +301,12 @@ type xAuthenticatedUser struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
 	Username         string `json:"username"`
+	ProfileImageURL  string `json:"profile_image_url"`
 	SubscriptionType string `json:"subscription_type"`
 }
 
 func (x *XAdapter) getAuthenticatedUser(ctx context.Context, accessToken string, includeSubscription bool) (xAuthenticatedUser, error) {
-	fields := "id,name,username"
+	fields := "id,name,username,profile_image_url"
 	if includeSubscription {
 		fields += ",subscription_type"
 	}

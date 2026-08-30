@@ -38,7 +38,7 @@ func TestLinkedInOrganizationSelectionUsesOrganizationURN(t *testing.T) {
 	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/v2/userinfo":
-			return jsonResponse(req, `{"sub":"member-1","name":"Ada Member","given_name":"Ada"}`), nil
+			return jsonResponse(req, `{"sub":"member-1","name":"Ada Member","given_name":"Ada","picture":"https://media.linkedin.example/ada.jpg"}`), nil
 		case "/rest/organizationAcls":
 			if req.URL.Query().Get("role") != "ADMINISTRATOR" || req.URL.Query().Get("state") != "APPROVED" {
 				t.Fatalf("unexpected organization ACL query %s", req.URL.RawQuery)
@@ -60,6 +60,16 @@ func TestLinkedInOrganizationSelectionUsesOrganizationURN(t *testing.T) {
 	}
 	if len(options) != 2 || options[0].ID != "person:member-1" || options[1].ID != "organization:42" {
 		t.Fatalf("unexpected options %#v", options)
+	}
+	if options[0].AvatarURL != "https://media.linkedin.example/ada.jpg" {
+		t.Fatalf("unexpected personal profile avatar %#v", options[0])
+	}
+	personal, err := adapter.SelectAccount(context.Background(), token, "person:member-1")
+	if err != nil {
+		t.Fatalf("SelectAccount returned error: %v", err)
+	}
+	if personal.AccountAvatarURL != "https://media.linkedin.example/ada.jpg" {
+		t.Fatalf("unexpected selected personal profile %#v", personal)
 	}
 	selected, err := adapter.SelectAccount(context.Background(), token, "organization:42")
 	if err != nil {

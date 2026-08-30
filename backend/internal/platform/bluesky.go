@@ -156,10 +156,30 @@ func (b *BlueskyAdapter) GetProfile(ctx context.Context, accessToken string) (*U
 	if err != nil {
 		return nil, err
 	}
+	type blueskyActorProfile struct {
+		Did         string `json:"did"`
+		Handle      string `json:"handle"`
+		DisplayName string `json:"displayName"`
+		Avatar      string `json:"avatar"`
+	}
+	params := url.Values{"actor": []string{session.Did}}
+	profile, err := DoBearerJSON[blueskyActorProfile](
+		ctx,
+		"GET",
+		b.pdsURL+"/xrpc/app.bsky.actor.getProfile?"+params.Encode(),
+		accessToken,
+		nil,
+		"bluesky profile",
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &UserProfile{
-		ID:       session.Did,
-		Username: session.Handle,
+		ID:          firstNonEmptyString(profile.Did, session.Did),
+		Username:    firstNonEmptyString(profile.Handle, session.Handle),
+		DisplayName: profile.DisplayName,
+		AvatarURL:   profile.Avatar,
 	}, nil
 }
 

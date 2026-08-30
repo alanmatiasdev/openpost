@@ -38,6 +38,26 @@ func TestThreadsExchangeCodeRecordsGrantedOptionalScopes(t *testing.T) {
 	}
 }
 
+func TestThreadsGetProfileRequestsAvatar(t *testing.T) {
+	originalClient := httpClient
+	defer func() { httpClient = originalClient }()
+
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Query().Get("fields") != "id,username,name,threads_profile_picture_url" {
+			t.Fatalf("unexpected profile fields %q", req.URL.Query().Get("fields"))
+		}
+		return jsonResponse(req, `{"id":"threads-1","username":"creator","name":"Creator","threads_profile_picture_url":"https://threads.example/avatar.jpg"}`), nil
+	})}
+
+	profile, err := NewThreadsAdapter("", "", "").GetProfile(context.Background(), "threads-token")
+	if err != nil {
+		t.Fatalf("GetProfile returned error: %v", err)
+	}
+	if profile.AvatarURL != "https://threads.example/avatar.jpg" {
+		t.Fatalf("unexpected profile: %#v", profile)
+	}
+}
+
 func TestThreadsListCommentsMapsReplies(t *testing.T) {
 	originalClient := httpClient
 	defer func() { httpClient = originalClient }()

@@ -2,11 +2,14 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
@@ -137,6 +140,42 @@ func TestNormRoutesNewAccountWithSupportedFeaturesToComposer(t *testing.T) {
 	require.Equal(t, "ws-1", u.Query().Get("workspace_id"))
 	require.NotEmpty(t, u.Query().Get("account_ids"))
 	require.NotContains(t, loc, "access_token")
+}
+
+func TestBlueskyLoginPersistsProfileAvatar(t *testing.T) {
+	payload, err := json.Marshal(map[string]int64{"exp": time.Now().Add(time.Hour).Unix()})
+	require.NoError(t, err)
+	accessJWT := "e30." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+
+	pds := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/xrpc/com.atproto.server.createSession":
+			_, _ = io.WriteString(w, `{"did":"did:plc:creator","handle":"creator.bsky.social","accessJwt":"`+accessJWT+`","refreshJwt":"refresh-token"}`)
+		case "/xrpc/com.atproto.server.getSession":
+			_, _ = io.WriteString(w, `{"did":"did:plc:creator","handle":"creator.bsky.social"}`)
+		case "/xrpc/app.bsky.actor.getProfile":
+			require.Equal(t, "did:plc:creator", r.URL.Query().Get("actor"))
+			_, _ = io.WriteString(w, `{"did":"did:plc:creator","handle":"creator.bsky.social","displayName":"Creator","avatar":"https://cdn.bsky.app/avatar.jpg"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(pds.Close)
+
+	e, handler := newNormServer(t, map[string]platform.Adapter{
+		"bluesky": platform.NewBlueskyAdapter(pds.URL),
+	})
+	response := oauthSelectionRequest(t, e, http.MethodPost, "/api/v1/accounts/bluesky/login", map[string]string{
+		"workspace_id": "ws-1",
+		"handle":       "creator.bsky.social",
+		"app_password": "app-password",
+	}, true)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var account models.SocialAccount
+	require.NoError(t, handler.db.NewSelect().Model(&account).Where("account_id = ?", "did:plc:creator").Scan(t.Context()))
+	require.Equal(t, "https://cdn.bsky.app/avatar.jpg", account.AccountAvatarURL)
 }
 
 func TestNormRoutesFirstAndExistingDestinationsToTheirCanonicalPages(t *testing.T) {

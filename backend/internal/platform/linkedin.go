@@ -177,6 +177,7 @@ func (l *LinkedInAdapter) GetProfile(ctx context.Context, accessToken string) (*
 		ID:              profile.Sub,
 		Username:        profile.GivenName,
 		DisplayName:     profile.Name,
+		AvatarURL:       profile.Picture,
 		CapabilityState: map[string]string{"linkedin_account_type": "person"},
 	}, nil
 }
@@ -193,6 +194,7 @@ func (l *LinkedInAdapter) ListAccountSelections(ctx context.Context, token *Toke
 		ID:          "person:" + profile.ID,
 		Username:    profile.Username,
 		DisplayName: profile.DisplayName,
+		AvatarURL:   profile.AvatarURL,
 		Kind:        "Personal profile",
 		Description: "Publish as your LinkedIn member profile.",
 	}

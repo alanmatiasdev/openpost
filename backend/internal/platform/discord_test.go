@@ -128,3 +128,20 @@ func TestDiscordWebhookVerificationDoesNotFollowRedirects(t *testing.T) {
 		t.Fatalf("expected one Discord request, got %d", calls)
 	}
 }
+
+func TestDiscordWebhookProfileBuildsAvatarURL(t *testing.T) {
+	originalClient := httpClient
+	defer func() { httpClient = originalClient }()
+
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return jsonResponse(req, `{"id":"123","name":"Announcements","avatar":"avatar_hash","guild":{"id":"guild-1","name":"OpenPost"},"channel":{"id":"channel-1","name":"announcements"}}`), nil
+	})}
+
+	profile, err := NewDiscordAdapter().GetProfile(t.Context(), "https://discord.com/api/webhooks/123/secret")
+	if err != nil {
+		t.Fatalf("GetProfile returned error: %v", err)
+	}
+	if profile.AvatarURL != "https://cdn.discordapp.com/avatars/123/avatar_hash.png" {
+		t.Fatalf("unexpected profile: %#v", profile)
+	}
+}

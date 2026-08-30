@@ -1014,8 +1014,8 @@ func (h *OAuthHandler) Callback(api huma.API) {
 		}
 
 		return h.saveAccountAndRedirect(
-			ctx, userID, input.Platform, workspaceID, profile.ID, profile.Username,
-			instanceRef, executionIntent, profile.CapabilityState, tokenResp, adapter,
+			ctx, userID, input.Platform, workspaceID, instanceRef, executionIntent,
+			profile, tokenResp, adapter,
 		)
 	})
 }
@@ -1187,11 +1187,12 @@ func (h *OAuthHandler) createPendingAccountSelection(
 
 func (h *OAuthHandler) saveAccountAndRedirect(
 	ctx context.Context,
-	userID, platformName, workspaceID, accountID, accountUsername, instanceURL, executionIntent string,
-	capabilityState map[string]string,
+	userID, platformName, workspaceID, instanceURL, executionIntent string,
+	profile *platform.UserProfile,
 	tokenResp *platform.TokenResult,
 	adapter platform.Adapter,
 ) (*huma.StreamResponse, error) {
+	accountID := profile.ID
 	// For Threads, the account ID comes from the token response extra
 	if tokenResp.Extra != nil {
 		if uid, ok := tokenResp.Extra["user_id"]; ok && uid != "" {
@@ -1205,16 +1206,17 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	}
 
 	account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
-		Actor:           workspaceActor(ctx, userID),
-		UserID:          userID,
-		PlatformName:    platformName,
-		WorkspaceID:     workspaceID,
-		AccountID:       accountID,
-		AccountUsername: accountUsername,
-		InstanceURL:     instanceURL,
-		Token:           tokenResp,
-		CapabilityState: capabilityState,
-		Grant:           authorizationGrantInput(adapter, accountID),
+		Actor:            workspaceActor(ctx, userID),
+		UserID:           userID,
+		PlatformName:     platformName,
+		WorkspaceID:      workspaceID,
+		AccountID:        accountID,
+		AccountUsername:  profile.Username,
+		AccountAvatarURL: profile.AvatarURL,
+		InstanceURL:      instanceURL,
+		Token:            tokenResp,
+		CapabilityState:  profile.CapabilityState,
+		Grant:            authorizationGrantInput(adapter, accountID),
 	})
 	if err != nil {
 		log.Printf("[Callback] Failed to save account: %v", err)
@@ -1339,15 +1341,16 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		}
 
 		account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
-			Actor:           workspaceActor(ctx, userID),
-			UserID:          userID,
-			PlatformName:    mastodonProvider,
-			WorkspaceID:     input.Body.WorkspaceID,
-			AccountID:       profile.ID,
-			AccountUsername: profile.Username,
-			InstanceURL:     instanceURL,
-			Token:           tokenResp,
-			Grant:           authorizationGrantInput(adapter, profile.ID),
+			Actor:            workspaceActor(ctx, userID),
+			UserID:           userID,
+			PlatformName:     mastodonProvider,
+			WorkspaceID:      input.Body.WorkspaceID,
+			AccountID:        profile.ID,
+			AccountUsername:  profile.Username,
+			AccountAvatarURL: profile.AvatarURL,
+			InstanceURL:      instanceURL,
+			Token:            tokenResp,
+			Grant:            authorizationGrantInput(adapter, profile.ID),
 		})
 		if err != nil {
 			log.Printf("[ExchangeCode] Failed to save account: %v", err)
@@ -1423,17 +1426,28 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 			ExpiresIn:    expiresIn,
 			Extra:        nil,
 		}
+		profile, err := blueskyAdapter.GetProfile(ctx, accessToken)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("bluesky profile failed: %s", err.Error()))
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, "bluesky", "", string(intent), userID,
+		); err != nil {
+			return nil, err
+		}
+		accountID := firstNonEmpty(profile.ID, did)
 
 		account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
-			Actor:           workspaceActor(ctx, userID),
-			UserID:          userID,
-			PlatformName:    "bluesky",
-			WorkspaceID:     input.Body.WorkspaceID,
-			AccountID:       did,
-			AccountUsername: input.Body.Handle,
-			InstanceURL:     "https://bsky.social",
-			Token:           tokenResp,
-			Grant:           authorizationGrantInput(adapter, did),
+			Actor:            workspaceActor(ctx, userID),
+			UserID:           userID,
+			PlatformName:     "bluesky",
+			WorkspaceID:      input.Body.WorkspaceID,
+			AccountID:        accountID,
+			AccountUsername:  firstNonEmpty(profile.Username, input.Body.Handle),
+			AccountAvatarURL: profile.AvatarURL,
+			InstanceURL:      "https://bsky.social",
+			Token:            tokenResp,
+			Grant:            authorizationGrantInput(adapter, accountID),
 		})
 		if err != nil {
 			log.Printf("[BlueskyLogin] Failed to save account: %v", err)
@@ -1497,15 +1511,16 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 			TokenType:   "Webhook",
 		}
 		account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
-			Actor:           workspaceActor(ctx, userID),
-			UserID:          userID,
-			PlatformName:    "discord",
-			WorkspaceID:     input.Body.WorkspaceID,
-			AccountID:       profile.ID,
-			AccountUsername: firstNonEmpty(profile.DisplayName, profile.Username),
-			Token:           token,
-			CapabilityState: profile.CapabilityState,
-			Grant:           authorizationGrantInput(adapter, profile.ID),
+			Actor:            workspaceActor(ctx, userID),
+			UserID:           userID,
+			PlatformName:     "discord",
+			WorkspaceID:      input.Body.WorkspaceID,
+			AccountID:        profile.ID,
+			AccountUsername:  firstNonEmpty(profile.DisplayName, profile.Username),
+			AccountAvatarURL: profile.AvatarURL,
+			Token:            token,
+			CapabilityState:  profile.CapabilityState,
+			Grant:            authorizationGrantInput(adapter, profile.ID),
 		})
 		if err != nil {
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
