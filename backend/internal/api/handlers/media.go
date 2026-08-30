@@ -2629,9 +2629,20 @@ func (h *MediaHandler) deleteMediaFiles(ctx context.Context, media *models.Media
 	return nil
 }
 
-func (h *MediaHandler) cleanupUnpersistedMedia(ctx context.Context, media *models.MediaAttachment) error {
+func (h *MediaHandler) reconcileFailedMediaInsert(ctx context.Context, media *models.MediaAttachment) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mediaUploadCleanupTimeout)
 	defer cancel()
+	result, err := h.db.NewDelete().Model(media).WherePK().Exec(cleanupCtx)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted > 1 {
+		return fmt.Errorf("reconcile failed media insert deleted %d rows", deleted)
+	}
 	return h.deleteMediaFiles(cleanupCtx, media)
 }
 
@@ -3033,7 +3044,10 @@ func (h *MediaHandler) processStreamUpload(
 	if _, err := h.db.NewInsert().Model(media).Exec(ctx); err != nil {
 		if mediaSourceSupportsDeduplication(source) && assetKind == "library" {
 			if existing, found, duplicateErr := h.findDuplicateMedia(ctx, input.WorkspaceID, fileHash, media.ID); duplicateErr == nil && found {
-				_ = mediastore.DeleteForCleanup(ctx, h.storage, objectKey)
+				if cleanupErr := h.reconcileFailedMediaInsert(ctx, media); cleanupErr != nil {
+					log.Printf("failed to reconcile deduplicated streaming upload %s: %v", media.ID, cleanupErr)
+					return nil, errors.New("failed to reconcile media record")
+				}
 				if provenanceErr := h.persistStockMediaProvenance(ctx, existing.ID, input.StockProvenance); provenanceErr != nil {
 					return nil, provenanceErr
 				}
@@ -3043,17 +3057,24 @@ func (h *MediaHandler) processStreamUpload(
 				return mediaUploadMap(existing, true), nil
 			}
 		}
-		_ = mediastore.DeleteForCleanup(ctx, h.storage, objectKey)
+		if cleanupErr := h.reconcileFailedMediaInsert(ctx, media); cleanupErr != nil {
+			log.Printf("failed to reconcile streaming media insertion failure for %s: %v", media.ID, cleanupErr)
+		}
 		return nil, errors.New("failed to save media record")
 	}
+	if input.OnCreated != nil {
+		input.OnCreated(*media)
+	}
 	if err := h.addMediaTag(ctx, input.TagID, media.ID); err != nil {
-		_, _ = h.db.NewDelete().Model(media).WherePK().Exec(ctx)
-		_ = mediastore.DeleteForCleanup(ctx, h.storage, objectKey)
+		if rollbackErr := h.rollbackMediaRecord(ctx, media); rollbackErr != nil {
+			log.Printf("failed to roll back streaming media after tag assignment failure for %s: %v", media.ID, rollbackErr)
+		}
 		return nil, errors.New(err.Error())
 	}
 	if err := h.persistStockMediaProvenance(ctx, media.ID, input.StockProvenance); err != nil {
-		_, _ = h.db.NewDelete().Model((*models.MediaAttachment)(nil)).Where("id = ?", media.ID).Exec(ctx)
-		_ = mediastore.DeleteForCleanup(ctx, h.storage, objectKey)
+		if rollbackErr := h.rollbackMediaRecord(ctx, media); rollbackErr != nil {
+			log.Printf("failed to roll back streaming media after provenance persistence failure for %s: %v", media.ID, rollbackErr)
+		}
 		return nil, errors.New("failed to save stock media provenance")
 	}
 	if err := refreshPublicMediaState(ctx, h.db, h.publicMedia, media); err != nil {
@@ -3190,8 +3211,9 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 	if _, err := h.db.NewInsert().Model(media).Exec(ctx); err != nil {
 		if mediaSourceSupportsDeduplication(source) && assetKind == "library" {
 			if existing, found, duplicateErr := h.findDuplicateMedia(ctx, input.WorkspaceID, fileHash, media.ID); duplicateErr == nil && found {
-				if deleteErr := h.cleanupUnpersistedMedia(ctx, media); deleteErr != nil {
-					log.Printf("failed to delete deduplicated upload files for %s: %v", media.ID, deleteErr)
+				if cleanupErr := h.reconcileFailedMediaInsert(ctx, media); cleanupErr != nil {
+					log.Printf("failed to reconcile deduplicated upload %s: %v", media.ID, cleanupErr)
+					return nil, errors.New("failed to reconcile media record")
 				}
 				if provenanceErr := h.persistStockMediaProvenance(ctx, existing.ID, input.StockProvenance); provenanceErr != nil {
 					return nil, provenanceErr
@@ -3202,8 +3224,8 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 				return mediaUploadMap(existing, true), nil
 			}
 		}
-		if deleteErr := h.cleanupUnpersistedMedia(ctx, media); deleteErr != nil {
-			log.Printf("failed to delete media files after record insertion failure for %s: %v", media.ID, deleteErr)
+		if cleanupErr := h.reconcileFailedMediaInsert(ctx, media); cleanupErr != nil {
+			log.Printf("failed to reconcile media insertion failure for %s: %v", media.ID, cleanupErr)
 		}
 		return nil, errors.New("failed to save media record")
 	}
