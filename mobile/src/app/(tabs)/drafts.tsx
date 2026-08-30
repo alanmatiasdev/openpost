@@ -220,7 +220,8 @@ export default function DraftsScreen() {
         ) : null}
         <View style={styles.captureActions}>
           <Button
-            title="Build with AI"
+            title="Generate draft"
+            variant="focal"
             onPress={() => void quickCapture(true)}
             disabled={createDraft.isPending || idea.trim().length === 0}
             loading={createDraft.isPending}

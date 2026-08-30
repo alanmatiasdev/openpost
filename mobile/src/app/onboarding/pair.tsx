@@ -128,6 +128,7 @@ export default function PairScreen() {
             </BodyText>
             <Button
               title="Open verification page"
+              variant="focal"
               onPress={() => void WebBrowser.openBrowserAsync(verificationUrl)}
               style={styles.openButton}
             />

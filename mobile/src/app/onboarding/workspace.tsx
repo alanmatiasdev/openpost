@@ -91,6 +91,7 @@ export default function WorkspaceScreen() {
               <>
                 <Button
                   title={emptyState.actions[0].label}
+                  variant="focal"
                   accessibilityRole="link"
                   onPress={() => void WebBrowser.openBrowserAsync(emptyState.actions[0].url)}
                   style={styles.emptyPrimary}

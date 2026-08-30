@@ -95,7 +95,7 @@ export function SectionHeader({ label }: { label: string }) {
         },
       ]}
     >
-      {label.toUpperCase()}
+      {label}
     </Text>
   );
 }
@@ -113,7 +113,7 @@ export function Button({
 }: {
   title: string;
   onPress: () => void;
-  variant?: "filled" | "tinted" | "plain" | "destructive";
+  variant?: "filled" | "focal" | "tinted" | "plain" | "destructive";
   disabled?: boolean;
   loading?: boolean;
   accessibilityRole?: React.ComponentProps<typeof Pressable>["accessibilityRole"];
@@ -122,18 +122,17 @@ export function Button({
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
-  const background =
-    variant === "filled"
-      ? colors.tint
-      : variant === "destructive"
-        ? "transparent"
-        : variant === "tinted"
-          ? colors.tintSoft
-          : "transparent";
-  const color =
-    variant === "filled" ? colors.onTint : variant === "destructive" ? colors.danger : colors.tint;
+  const isPrimary = variant === "filled" || variant === "focal";
+  const background = isPrimary
+    ? colors.tint
+    : variant === "destructive"
+      ? "transparent"
+      : variant === "tinted"
+        ? colors.tintSoft
+        : "transparent";
+  const color = isPrimary ? colors.onTint : variant === "destructive" ? colors.danger : colors.tint;
   const inactive = disabled || loading;
-  const hasDepth = variant === "filled";
+  const hasDepth = variant === "focal";
   const hasBorder = hasDepth || variant === "tinted";
   return (
     <Pressable
@@ -148,12 +147,11 @@ export function Button({
         styles.button,
         {
           backgroundColor: background,
-          borderColor:
-            variant === "filled"
-              ? colors.tint
-              : variant === "tinted"
-                ? `${colors.tint}66`
-                : "transparent",
+          borderColor: isPrimary
+            ? colors.tint
+            : variant === "tinted"
+              ? `${colors.tint}66`
+              : "transparent",
           borderBottomColor: hasDepth ? colors.buttonDepth : undefined,
           borderBottomWidth: hasDepth ? (pressed ? 1 : 2) : undefined,
           borderWidth: hasBorder ? (hasDepth ? 1 : StyleSheet.hairlineWidth) : 0,
@@ -252,9 +250,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   sectionHeader: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
-    letterSpacing: 0.4,
     marginBottom: 8,
     marginHorizontal: 4,
   },

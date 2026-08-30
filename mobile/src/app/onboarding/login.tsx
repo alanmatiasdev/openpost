@@ -108,6 +108,7 @@ export default function LoginScreen() {
 
           <Button
             title="Continue"
+            variant="focal"
             onPress={() => void submit()}
             disabled={busy || (mfaToken ? totpCode.length !== 6 : !email || !password)}
             loading={busy}

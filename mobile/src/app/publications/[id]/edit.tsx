@@ -440,7 +440,7 @@ function Composer({
         },
       });
       if (error || !data)
-        throw new Error(await errorMessage(response, "Could not build this post"));
+        throw new Error(await errorMessage(response, "Could not generate this draft"));
       return data;
     },
     onSuccess: (generated) => {
@@ -453,7 +453,7 @@ function Composer({
           ]),
         ),
       );
-      setStatusMessage("AI draft ready. Review it before you queue it.");
+      setStatusMessage("Generated draft ready. Review it before you queue it.");
       setActionError(null);
       void successHaptic();
       if (!celebratedIdea.current) {
@@ -604,7 +604,7 @@ function Composer({
             <BodyText>One idea, adapted for every destination</BodyText>
           </View>
           <Button
-            title={generatePost.isPending ? "Building..." : "Build with AI"}
+            title={generatePost.isPending ? "Generating..." : "Generate draft"}
             variant="tinted"
             onPress={() => generatePost.mutate()}
             disabled={generatePost.isPending || activeAccounts.size === 0 || !body.trim()}
@@ -828,6 +828,7 @@ function Composer({
         >
           <Button
             title="Queue next slot"
+            variant="focal"
             onPress={() => queueNextSlot.mutate()}
             disabled={queueNextSlot.isPending || activeAccounts.size === 0 || !body.trim()}
             loading={queueNextSlot.isPending}
@@ -1000,6 +1001,7 @@ function Composer({
           </Card>
           <Button
             title="Schedule and queue"
+            variant="focal"
             onPress={() => scheduleMutation.mutate()}
             disabled={!scheduledAt || scheduleMutation.isPending || activeAccounts.size === 0}
             loading={scheduleMutation.isPending}

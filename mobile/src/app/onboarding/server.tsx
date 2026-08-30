@@ -57,6 +57,7 @@ export default function ServerScreen() {
             <BodyText>Managed at {HOSTED_URL.replace("https://", "")}</BodyText>
             <Button
               title="Continue to sign in"
+              variant="focal"
               disabled={busy !== null}
               loading={busy === "hosted"}
               onPress={() => void choose(HOSTED_URL, "hosted")}

@@ -74,6 +74,7 @@ export default function DestinationScreen() {
             <Card style={styles.card}>
               <Button
                 title={state.actions[0].label}
+                variant="focal"
                 accessibilityRole="link"
                 onPress={() => void WebBrowser.openBrowserAsync(state.actions[0].url)}
               />
