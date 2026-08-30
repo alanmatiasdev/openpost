@@ -27,6 +27,28 @@ function getMediaSpeed(item: TimelineItem): number {
 	return item.type === 'video' || item.type === 'audio' ? (item.speed ?? 1) : 1;
 }
 
+/** Map source seconds onto the continuous timeline position before boundary rounding. */
+export function sourceSecondsToTimelinePosition(
+	item: TimelineItem,
+	sourceSeconds: number,
+	timelineFps: number
+): number {
+	const sourceFps = getMediaSourceFps(item, timelineFps);
+	const sourceFrame = sourceSeconds * sourceFps;
+	if (hasVariableSpeed(item)) {
+		return item.from + sourceFrameToTimelineOffset(item, sourceFrame, timelineFps);
+	}
+	const isMedia = item.type === 'video' || item.type === 'audio';
+	const sourceStart = isMedia ? (item.sourceStart ?? 0) : 0;
+	const sourceEnd = isMedia
+		? (item.sourceEnd ??
+			sourceStart +
+				timelineToSourceFrames(item.durationInFrames, getMediaSpeed(item), timelineFps, sourceFps))
+		: sourceStart;
+	const deltaSourceFrames = item.isReversed ? sourceEnd - sourceFrame : sourceFrame - sourceStart;
+	return item.from + (deltaSourceFrames / sourceFps / getMediaSpeed(item)) * timelineFps;
+}
+
 /**
  * Map a source-native time (seconds) onto the item's absolute timeline frame.
  * Returns the frame relative to `item.from` plus that offset — callers compare

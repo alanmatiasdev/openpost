@@ -7,7 +7,7 @@ import { timelineStore } from '../timeline/stores/timeline-store.svelte';
 import { effectiveMediaTracks, isTrackEffectivelyLocked } from '../timeline/utils/track-groups';
 import {
 	getItemSourceSpanSeconds,
-	sourceSecondsToTimelineFrame
+	sourceSecondsToTimelinePosition
 } from '../timeline/utils/media-item-frames';
 import {
 	extractMatroskaTextSubtitleTracksFromBlob,
@@ -141,12 +141,12 @@ function buildSubtitleForClip(
 		const overlapStart = Math.max(cue.startSeconds, sourceStartSeconds);
 		const overlapEnd = Math.min(cue.endSeconds, sourceEndSeconds);
 		if (overlapEnd <= overlapStart) return [];
-		const mappedStart = sourceSecondsToTimelineFrame(clip, overlapStart, timelineFps);
-		const mappedEnd = sourceSecondsToTimelineFrame(clip, overlapEnd, timelineFps);
-		const startFrame = Math.max(clip.from, Math.min(mappedStart, mappedEnd));
+		const mappedStart = sourceSecondsToTimelinePosition(clip, overlapStart, timelineFps);
+		const mappedEnd = sourceSecondsToTimelinePosition(clip, overlapEnd, timelineFps);
+		const startFrame = Math.max(clip.from, Math.floor(Math.min(mappedStart, mappedEnd)));
 		const endFrame = Math.min(
 			clip.from + clip.durationInFrames,
-			Math.max(startFrame + 1, Math.max(mappedStart, mappedEnd))
+			Math.max(startFrame + 1, Math.ceil(Math.max(mappedStart, mappedEnd)))
 		);
 		if (endFrame <= startFrame) return [];
 		return [{ id: cue.id, startFrame, endFrame, text: cue.text }];
