@@ -1193,9 +1193,11 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	adapter platform.Adapter,
 ) (*huma.StreamResponse, error) {
 	accountID := profile.ID
-	// For Threads, the account ID comes from the token response extra
-	if tokenResp.Extra != nil {
+	if platformName == "threads" && tokenResp.Extra != nil {
 		if uid, ok := tokenResp.Extra["user_id"]; ok && uid != "" {
+			if profile.ID != "" && uid != profile.ID {
+				return h.redirectWithError("provider account identity mismatch", workspaceID)
+			}
 			accountID = uid
 		}
 	}

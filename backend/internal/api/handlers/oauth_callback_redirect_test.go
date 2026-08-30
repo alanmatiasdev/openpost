@@ -19,14 +19,21 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type directOAuthTestAdapter struct{}
+type directOAuthTestAdapter struct {
+	tokenUserID string
+	profileID   string
+}
 
 func (a *directOAuthTestAdapter) GenerateAuthURL(state string) (string, map[string]string) {
 	return "https://provider.example/oauth?state=" + url.QueryEscape(state), nil
 }
 
 func (a *directOAuthTestAdapter) ExchangeCode(context.Context, string, map[string]string) (*platform.TokenResult, error) {
-	return &platform.TokenResult{AccessToken: "access-token", TokenType: "Bearer"}, nil
+	token := &platform.TokenResult{AccessToken: "access-token", TokenType: "Bearer"}
+	if a.tokenUserID != "" {
+		token.Extra = map[string]string{"user_id": a.tokenUserID}
+	}
+	return token, nil
 }
 
 func (a *directOAuthTestAdapter) RefreshCapability() platform.RefreshCapability {
@@ -38,11 +45,34 @@ func (a *directOAuthTestAdapter) RefreshToken(context.Context, platform.RefreshT
 }
 
 func (a *directOAuthTestAdapter) GetProfile(context.Context, string) (*platform.UserProfile, error) {
+	profileID := a.profileID
+	if profileID == "" {
+		profileID = "provider-user"
+	}
 	return &platform.UserProfile{
-		ID:        "provider-user",
+		ID:        profileID,
 		Username:  "openpost",
 		AvatarURL: "https://cdn.provider.example/openpost.jpg",
 	}, nil
+}
+
+func TestThreadsOAuthCallbackRejectsTokenAndProfileIdentityMismatch(t *testing.T) {
+	t.Parallel()
+
+	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{
+		tokenUserID: "token-user",
+		profileID:   "profile-user",
+	})
+	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/threads/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
+	result := rec.Result()
+	t.Cleanup(func() { _ = result.Body.Close() })
+
+	require.Equal(t, http.StatusTemporaryRedirect, result.StatusCode)
+	require.Equal(t, "https://app.openpost.test/settings?oauth_status=failed&tab=accounts&workspace_id=ws-1", result.Header.Get("Location"))
+
+	count, err := db.NewSelect().Model((*models.SocialAccount)(nil)).Count(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, count)
 }
 
 func (a *directOAuthTestAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
@@ -81,7 +111,10 @@ func TestOAuthCallbackAccountSelectionRedirectsExposeFinalLocationHeader(t *test
 func TestOAuthCallbackDirectSuccessRedirectsToScopedComposer(t *testing.T) {
 	t.Parallel()
 
-	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
+	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{
+		tokenUserID: "provider-user",
+		profileID:   "provider-user",
+	})
 	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/threads/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
 	result := rec.Result()
 	t.Cleanup(func() { _ = result.Body.Close() })

@@ -1,3 +1,3 @@
 ### Fixed
 
-- Kept concurrent Threads account connections from mixing up their provider user IDs.
+- Prevented concurrent Threads account connections from mixing provider user IDs, and rejected token/profile identity mismatches.
