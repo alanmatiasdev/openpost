@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Route,
+} from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +16,14 @@ const screenshotDirectory = fileURLToPath(new URL("../assets/screenshots/", impo
 const fixtureDirectory = fileURLToPath(new URL("./fixtures/product-screenshots/", import.meta.url));
 const captureViewport = { width: 1440, height: 960 };
 const fixedNow = "2026-08-20T14:30:00.000Z";
-const rodrigoAvatarURL = "/marketing-fixtures/rodrigo-avatar.png";
+const rasterFixtureFiles = {
+  "rodrigo-avatar": "rodrigo-avatar.png",
+  "command-review": "command-review.png",
+  "lisbon-tram": "lisbon-tram.png",
+  "openpost-logo": "openpost-logo.png",
+} as const;
+type RasterFixtureKey = keyof typeof rasterFixtureFiles;
+const rodrigoAvatarURL = `/marketing-fixtures/${rasterFixtureFiles["rodrigo-avatar"]}`;
 
 const connectedAccounts = [
   {
@@ -264,30 +278,29 @@ const mediaFixtures = [
   },
 ];
 
-const editorMediaFixtures = [
-  {
-    id: "media-editor-background",
-    filename: "lisbon-tram.png",
-    artwork: "lisbon-tram",
-    width: 1923,
-    height: 818,
-    size: 1_996_336,
-    favorite: true,
-    usage: 1,
-    canDelete: false,
-  },
-  {
-    id: "media-editor-logo",
-    filename: "logo.png",
-    artwork: "openpost-logo",
-    width: 512,
-    height: 512,
-    size: 10_994,
-    favorite: true,
-    usage: 1,
-    canDelete: false,
-  },
-];
+const imageEditorBackgroundFixture = {
+  id: "media-editor-background",
+  filename: "lisbon-tram.png",
+  artwork: "lisbon-tram",
+  width: 1923,
+  height: 818,
+  size: 1_996_336,
+  favorite: true,
+  usage: 1,
+  canDelete: false,
+};
+const imageEditorLogoFixture = {
+  id: "media-editor-logo",
+  filename: "logo.png",
+  artwork: "openpost-logo",
+  width: 512,
+  height: 512,
+  size: 10_994,
+  favorite: true,
+  usage: 1,
+  canDelete: false,
+};
+const editorMediaFixtures = [imageEditorBackgroundFixture, imageEditorLogoFixture];
 
 const allMediaFixtures = [...mediaFixtures, ...editorMediaFixtures];
 
@@ -329,9 +342,8 @@ const artwork = {
 } as const;
 
 function mediaFixtureURL(artworkKey: string): string {
-  if (artworkKey === "command-review") return "/marketing-fixtures/command-review.png";
-  if (artworkKey === "lisbon-tram") return "/marketing-fixtures/lisbon-tram.png";
-  if (artworkKey === "openpost-logo") return "/marketing-fixtures/openpost-logo.png";
+  const rasterFilename = rasterFixtureFiles[artworkKey as RasterFixtureKey];
+  if (rasterFilename) return `/marketing-fixtures/${rasterFilename}`;
   return `/marketing-fixtures/${artworkKey}.svg`;
 }
 
@@ -617,24 +629,42 @@ test.describe("product screenshot capture", () => {
     request,
   }) => {
     await mkdir(screenshotDirectory, { recursive: true });
-    const [rodrigoAvatar, commandReviewImage, lisbonTramImage, openpostLogoImage, studySOSVideo] =
-      await Promise.all([
-        readFile(join(fixtureDirectory, "rodrigo-avatar.png")),
-        readFile(join(fixtureDirectory, "command-review.png")),
-        readFile(join(fixtureDirectory, "lisbon-tram.png")),
-        readFile(join(fixtureDirectory, "openpost-logo.png")),
-        // A short excerpt from https://www.youtube.com/watch?v=-m-ea3jfRpo.
-        readFile(join(fixtureDirectory, "study-sos-demo.mp4")),
-      ]);
+    const rasterFixtureBodies = new Map(
+      await Promise.all(
+        Object.entries(rasterFixtureFiles).map(
+          async ([key, filename]) =>
+            [key, await readFile(join(fixtureDirectory, filename))] as const,
+        ),
+      ),
+    );
+    const rasterFixtureBody = (key: RasterFixtureKey) => {
+      const body = rasterFixtureBodies.get(key);
+      if (!body) throw new Error(`Missing raster fixture ${key}`);
+      return body;
+    };
+    // A short excerpt from https://www.youtube.com/watch?v=-m-ea3jfRpo.
+    const studySOSVideo = await readFile(join(fixtureDirectory, "study-sos-demo.mp4"));
 
     const auth = await registerUser(request, "me@rgo.pt");
     const workspace = await createWorkspace(request, auth.token, "Personal");
     const [backgroundMediaID, logoMediaID] = await Promise.all([
-      uploadImageFixture(request, auth.token, workspace.id, "lisbon-tram.png", lisbonTramImage),
-      uploadImageFixture(request, auth.token, workspace.id, "logo.png", openpostLogoImage),
+      uploadImageFixture(
+        request,
+        auth.token,
+        workspace.id,
+        "lisbon-tram.png",
+        rasterFixtureBody("lisbon-tram"),
+      ),
+      uploadImageFixture(
+        request,
+        auth.token,
+        workspace.id,
+        "logo.png",
+        rasterFixtureBody("openpost-logo"),
+      ),
     ]);
-    editorMediaFixtures[0].id = backgroundMediaID;
-    editorMediaFixtures[1].id = logoMediaID;
+    imageEditorBackgroundFixture.id = backgroundMediaID;
+    imageEditorLogoFixture.id = logoMediaID;
     const profile = await request.patch("/api/v1/auth/profile", {
       headers: { Authorization: `Bearer ${auth.token}` },
       data: {
@@ -811,89 +841,28 @@ test.describe("product screenshot capture", () => {
     const visibleMediaFixtures = () =>
       editorMediaFixturesEnabled ? allMediaFixtures : mediaFixtures;
 
-    await page.route("**/marketing-fixtures/**", async (route) => {
-      const filename = new URL(route.request().url()).pathname.split("/").at(-1);
-      if (filename === "rodrigo-avatar.png") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: rodrigoAvatar,
-        });
-        return;
-      }
-      if (filename === "command-review.png") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: commandReviewImage,
-        });
-        return;
-      }
-      if (filename === "lisbon-tram.png") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: lisbonTramImage,
-        });
-        return;
-      }
-      if (filename === "openpost-logo.png") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: openpostLogoImage,
-        });
-        return;
-      }
-      const key = filename?.replace(/\.svg$/, "");
-      const body = key ? artwork[key as keyof typeof artwork] : undefined;
-      if (!body) {
+    const fulfillArtworkFixture = async (route: Route, key?: string) => {
+      const rasterBody = key ? rasterFixtureBodies.get(key) : undefined;
+      const svgBody = key ? artwork[key as keyof typeof artwork] : undefined;
+      if (!rasterBody && !svgBody) {
         await route.abort();
         return;
       }
       await route.fulfill({
         status: 200,
-        contentType: "image/svg+xml",
+        contentType: rasterBody ? "image/png" : "image/svg+xml",
         headers: { "cache-control": "public, max-age=31536000, immutable" },
-        body,
+        body: rasterBody ?? svgBody,
       });
+    };
+    await page.route("**/marketing-fixtures/**", async (route) => {
+      const filename = new URL(route.request().url()).pathname.split("/").at(-1);
+      await fulfillArtworkFixture(route, filename?.replace(/\.(?:png|svg)$/u, ""));
     });
     await page.route("**/media/media-*", async (route) => {
       const mediaID = new URL(route.request().url()).pathname.split("/").at(-1);
       const item = allMediaFixtures.find((candidate) => candidate.id === mediaID);
-      if (item?.artwork === "command-review") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: commandReviewImage,
-        });
-        return;
-      }
-      if (item?.artwork === "lisbon-tram" || item?.artwork === "openpost-logo") {
-        await route.fulfill({
-          status: 200,
-          contentType: "image/png",
-          headers: { "cache-control": "public, max-age=31536000, immutable" },
-          body: item.artwork === "lisbon-tram" ? lisbonTramImage : openpostLogoImage,
-        });
-        return;
-      }
-      const body = item ? artwork[item.artwork as keyof typeof artwork] : undefined;
-      if (!body) {
-        await route.abort();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "image/svg+xml",
-        headers: { "cache-control": "public, max-age=31536000, immutable" },
-        body,
-      });
+      await fulfillArtworkFixture(route, item?.artwork);
     });
 
     await page.route("**/api/v1/accounts?**", async (route) => {
