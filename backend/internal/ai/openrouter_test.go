@@ -13,13 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type deadlineOnceHTTPClient struct {
-	delegate HTTPClient
-	calls    atomic.Int32
+type deadlineThenHTTPClient struct {
+	delegate  HTTPClient
+	failFirst int32
+	calls     atomic.Int32
 }
 
-func (c *deadlineOnceHTTPClient) Do(request *http.Request) (*http.Response, error) {
-	if c.calls.Add(1) == 1 {
+func (c *deadlineThenHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	if c.calls.Add(1) <= c.failFirst {
 		return nil, context.DeadlineExceeded
 	}
 	return c.delegate.Do(request)
@@ -286,7 +287,7 @@ func TestOpenRouterGeneratePreservesOpenRouterMediaAndSearchExtensions(t *testin
 	}}, received["tools"])
 }
 
-func TestOpenRouterGenerateRetriesAnInternalDeadlineWhileCallerIsActive(t *testing.T) {
+func TestOpenRouterGenerateStartsFreshRequestAfterSDKDeadlineWhileCallerIsActive(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -302,11 +303,12 @@ func TestOpenRouterGenerateRetriesAnInternalDeadlineWhileCallerIsActive(t *testi
 		}`))
 	}))
 	t.Cleanup(server.Close)
-	client := &deadlineOnceHTTPClient{delegate: server.Client()}
+	client := &deadlineThenHTTPClient{delegate: server.Client(), failFirst: 2}
 	generator, err := NewOpenRouter(OpenRouterConfig{
 		APIKey:     "test-api-key",
 		BaseURL:    server.URL,
 		HTTPClient: client,
+		MaxRetries: 1,
 	})
 	require.NoError(t, err)
 
@@ -317,7 +319,7 @@ func TestOpenRouterGenerateRetriesAnInternalDeadlineWhileCallerIsActive(t *testi
 
 	require.NoError(t, err)
 	require.Equal(t, "recovered", result.Text)
-	require.Equal(t, int32(2), client.calls.Load())
+	require.Equal(t, int32(3), client.calls.Load())
 }
 
 func TestOpenRouterGenerateSanitizesProviderErrors(t *testing.T) {

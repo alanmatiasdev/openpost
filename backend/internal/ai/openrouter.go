@@ -140,6 +140,12 @@ func (o *OpenRouter) Generate(ctx context.Context, request GenerateRequest) (Gen
 	var response openRouterChatCompletion
 	requestOptions = append(requestOptions, option.WithResponseBodyInto(&response))
 	_, err = o.client.Chat.Completions.New(ctx, chatRequest, requestOptions...)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		// The SDK exhausted its retry scope before the feature request budget.
+		// Start one fresh read-only generation while the caller can still wait.
+		response = openRouterChatCompletion{}
+		_, err = o.client.Chat.Completions.New(ctx, chatRequest, requestOptions...)
+	}
 	if err != nil {
 		return GenerateResult{}, sanitizeOpenRouterError(err)
 	}
