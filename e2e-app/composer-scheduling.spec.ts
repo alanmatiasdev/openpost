@@ -439,10 +439,12 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
+  const ideateWithAI = page.getByRole("button", { name: "Ideate" });
+  await expect(ideateWithAI).toBeVisible();
+  await expect(ideateWithAI).toBeEnabled();
+  await page.getByLabel("Post text").fill(postContent);
   const buildWithAI = page.getByRole("button", { name: "Build with AI" });
   await expect(buildWithAI).toBeVisible();
-  await expect(buildWithAI).toBeDisabled();
-  await page.getByLabel("Post text").fill(postContent);
   await expect(buildWithAI).toBeEnabled();
   await page.getByRole("button", { name: "Add post" }).click();
   await page.getByLabel("Post text").nth(1).fill("The second post keeps the outcome panel shared.");
@@ -456,14 +458,15 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(buildWithAI).toHaveCount(0);
   await page
     .getByTestId("desktop-composer-controls")
-    .getByRole("button", { name: "Repost settings", exact: true })
+    .getByRole("button", { name: "Post settings", exact: true })
     .click();
   const settingsSheet = page.getByTestId("composer-settings-sheet");
   await expect(settingsSheet).toBeVisible();
   await settingsSheet.getByRole("button", { name: "Repost settings" }).click();
   await page.getByText("Custom", { exact: true }).click();
   const repostTarget = page.getByRole("checkbox", {
-    name: "@openpost.bsky.social · bluesky",
+    name: "@openpost.bsky.social Bluesky",
+    exact: true,
   });
   await expect(repostTarget).toBeVisible();
   if (!(await repostTarget.isChecked())) await repostTarget.click();
@@ -471,7 +474,8 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await clickComposerDeliveryAction(page, "Schedule");
-  const futureDate = new Date();
+  const today = new Date();
+  const futureDate = new Date(today);
   futureDate.setDate(futureDate.getDate() + 2);
   const futureDateLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -481,6 +485,9 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   }).format(futureDate);
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
+  if (futureDate.getMonth() !== today.getMonth()) {
+    await scheduleDialog.getByRole("button", { name: "Next month", exact: true }).click();
+  }
   await scheduleDialog
     .locator("[data-calendar-day]:not([data-outside-month])")
     .and(
@@ -506,7 +513,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await validationControl.click();
   await expect(
     page.getByRole("button", {
-      name: "Edit: openpost.bsky.social · Bluesky: Shorten this Bluesky post before scheduling.",
+      name: "Edit: @openpost.bsky.social · Bluesky: Shorten this Bluesky post before scheduling.",
     }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
