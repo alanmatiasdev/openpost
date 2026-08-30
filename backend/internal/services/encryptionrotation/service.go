@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openpost/backend/internal/jobregistry"
+	"github.com/openpost/backend/internal/platform"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/uptrace/bun"
 )
@@ -15,9 +17,10 @@ import (
 const rotationBatchSize = 100
 
 type Result struct {
-	ScannedCiphertexts  int `json:"scanned_ciphertexts"`
-	RotatedCiphertexts  int `json:"rotated_ciphertexts"`
-	VerifiedCiphertexts int `json:"verified_ciphertexts"`
+	ScannedCiphertexts           int `json:"scanned_ciphertexts"`
+	RotatedCiphertexts           int `json:"rotated_ciphertexts"`
+	VerifiedCiphertexts          int `json:"verified_ciphertexts"`
+	DeletedExpiredXOAuthRequests int `json:"deleted_expired_x_oauth_requests"`
 }
 
 type columnTarget struct {
@@ -71,6 +74,18 @@ type queryExecutor interface {
 // batches, then authenticates a complete current-key verification pass.
 func Rotate(ctx context.Context, db *bun.DB, encryptor *servicecrypto.TokenEncryptor) (Result, error) {
 	var result Result
+	deleted, err := deleteExpiredXOAuthRequests(
+		ctx,
+		db,
+		time.Now().UTC().Add(-platform.XOAuthRequestLifetime),
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	result.DeletedExpiredXOAuthRequests = deleted
+	if err := verifyNoXOAuthRequests(ctx, db); err != nil {
+		return Result{}, err
+	}
 	for _, target := range columnTargets {
 		if err := rotateColumnTarget(ctx, db, encryptor, target, &result); err != nil {
 			return Result{}, err
@@ -93,6 +108,9 @@ func Rotate(ctx context.Context, db *bun.DB, encryptor *servicecrypto.TokenEncry
 // Verify authenticates every nonempty maintained ciphertext with the current
 // primary key. A successful result is the gate for removing previous keys.
 func Verify(ctx context.Context, db *bun.DB, encryptor *servicecrypto.TokenEncryptor) (int, error) {
+	if err := verifyNoXOAuthRequests(ctx, db); err != nil {
+		return 0, err
+	}
 	verified := 0
 	for _, target := range columnTargets {
 		count, err := verifyColumnTarget(ctx, db, encryptor, target)
@@ -109,6 +127,47 @@ func Verify(ctx context.Context, db *bun.DB, encryptor *servicecrypto.TokenEncry
 		verified += count
 	}
 	return verified, nil
+}
+
+func deleteExpiredXOAuthRequests(ctx context.Context, db *bun.DB, cutoff time.Time) (int, error) {
+	deleted := 0
+	for {
+		result, err := db.ExecContext(
+			ctx,
+			`DELETE FROM "x_oauth_request_tokens"
+WHERE "request_token" IN (
+	SELECT "request_token"
+	FROM "x_oauth_request_tokens"
+	WHERE "created_at" < ?
+	ORDER BY "request_token"
+	LIMIT ?
+)`,
+			cutoff,
+			rotationBatchSize,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("delete expired X OAuth requests: %w", err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("inspect expired X OAuth request deletion: %w", err)
+		}
+		deleted += int(affected)
+		if affected < rotationBatchSize {
+			return deleted, nil
+		}
+	}
+}
+
+func verifyNoXOAuthRequests(ctx context.Context, db *bun.DB) error {
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM "x_oauth_request_tokens"`).Scan(&count); err != nil {
+		return fmt.Errorf("count X OAuth request secrets: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("%d X OAuth request secret rows remain; keep writers stopped for the full request lifetime", count)
+	}
+	return nil
 }
 
 func rotateColumnTarget(

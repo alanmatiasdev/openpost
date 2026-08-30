@@ -96,6 +96,32 @@ func TestLegacyWriteModeReadsSameKeyEnvelopeDuringExplicitIDRollout(t *testing.T
 	require.Equal(t, "written-by-updated-peer", plaintext)
 }
 
+func TestTokenEncryptorEnvelopeProbeDistinguishesRecognizedCiphertext(t *testing.T) {
+	const key = "shared-encryption-key-with-at-least-thirty-two-characters"
+	writer, err := NewTokenEncryptorWithKeyring("old-primary", key, nil)
+	require.NoError(t, err)
+	ciphertext, err := writer.Encrypt("recognized-envelope")
+	require.NoError(t, err)
+	reader := NewTokenEncryptor(key)
+
+	plaintext, recognized, err := reader.DecryptEnvelope(ciphertext)
+	require.NoError(t, err)
+	require.True(t, recognized)
+	require.Equal(t, "recognized-envelope", plaintext)
+
+	plaintext, recognized, err = reader.DecryptEnvelope(encryptLegacyCiphertext(t, key, "legacy"))
+	require.NoError(t, err)
+	require.False(t, recognized)
+	require.Empty(t, plaintext)
+
+	corrupted := append([]byte(nil), ciphertext...)
+	corrupted[len(corrupted)-1] ^= 1
+	plaintext, recognized, err = reader.DecryptEnvelope(corrupted)
+	require.Error(t, err)
+	require.True(t, recognized)
+	require.Empty(t, plaintext)
+}
+
 func TestTokenEncryptorRejectsUnknownEnvelopeKeyID(t *testing.T) {
 	retired, err := NewTokenEncryptorWithKeyring(
 		"retired",

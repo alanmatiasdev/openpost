@@ -40,9 +40,11 @@ to start instead of falling back to another key.
 5. Flip `OPENPOST_ENCRYPTION_KEY` and `OPENPOST_ENCRYPTION_KEY_ID` to the new
    primary. Keep the old key in `OPENPOST_ENCRYPTION_PREVIOUS_KEYS` throughout
    the rollout so old-primary and new-primary processes can read both.
-6. Stop every web and worker writer. Run `openpost rotate-encryption-key` with
-   the same database and keyring configuration. The command requires the latest
-   schema, rewrites bounded 100-row compare-and-swap batches, and then performs
+6. Stop every web and worker writer, then wait at least the full 10-minute X
+   OAuth request lifetime. Run `openpost rotate-encryption-key` with the same
+   database and keyring configuration. The command deletes expired X OAuth
+   requests in bounded batches, refuses to continue if any request-secret row
+   remains, rewrites bounded 100-row compare-and-swap batches, and then performs
    a full authenticated current-key verification pass.
 7. Run the command a second time. It must report zero rotated ciphertexts and a
    successful verification count. If either run fails, retain every previous
@@ -64,4 +66,5 @@ preserve schema compatibility with the previous release. Legacy-write mode
 stores the raw value. Explicit keyring mode stores a prefixed encrypted value
 and can still consume an in-flight raw value from the first rollout phase.
 These one-time requests are valid for at most 10 minutes and are not part of
-the bulk rotation command.
+the ciphertext rewrite. The rotation command deletes them only after they
+expire and reports an aggregate deletion count without exposing their values.

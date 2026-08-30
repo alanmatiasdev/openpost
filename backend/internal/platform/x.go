@@ -43,6 +43,7 @@ const (
 	XStandardVideoDurationSeconds    = 140
 	XPremiumVideoDurationSeconds     = 4 * 60 * 60
 	XStandardVideoSizeBytes          = 512 * 1024 * 1024
+	XOAuthRequestLifetime            = 10 * time.Minute
 	XPremiumVideoSizeBytes           = 16 * 1024 * 1024 * 1024
 	XCapabilityStateFreshness        = 24 * time.Hour
 	xAccountCapabilityRevision       = "x-subscription-type.2026-07-26"
@@ -101,7 +102,6 @@ func (x *XAdapter) cleanupLoop() {
 }
 
 func (x *XAdapter) purgeOldEntries() {
-	const maxAge = 10 * time.Minute
 	now := time.Now()
 
 	x.requestMeta.Range(func(key, value any) bool {
@@ -109,7 +109,7 @@ func (x *XAdapter) purgeOldEntries() {
 		if !ok {
 			return true
 		}
-		if now.Sub(meta.CreatedAt) > maxAge {
+		if now.Sub(meta.CreatedAt) > XOAuthRequestLifetime {
 			x.requestMeta.Delete(key)
 		}
 		return true
@@ -176,7 +176,7 @@ func (x *XAdapter) GetWorkspaceIDForRequestToken(requestToken string) (string, b
 
 func (x *XAdapter) GetRequestMetaForRequestToken(requestToken string) (XRequestMeta, bool) {
 	if x.requestStore != nil {
-		meta, ok, err := x.requestStore.Consume(requestToken, 10*time.Minute)
+		meta, ok, err := x.requestStore.Consume(requestToken, XOAuthRequestLifetime)
 		if err != nil || !ok {
 			return XRequestMeta{}, false
 		}
@@ -206,7 +206,7 @@ func (x *XAdapter) ExchangeCode(_ context.Context, _ string, extra map[string]st
 	)
 
 	if x.requestStore != nil {
-		consumed, found, err := x.requestStore.Consume(oauthToken, 10*time.Minute)
+		consumed, found, err := x.requestStore.Consume(oauthToken, XOAuthRequestLifetime)
 		if err != nil {
 			return nil, fmt.Errorf("x oauth1 request token lookup failed: %w", err)
 		}

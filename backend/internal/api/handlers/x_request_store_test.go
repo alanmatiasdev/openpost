@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -150,12 +152,69 @@ func TestXRequestStoreLegacyModeDoesNotInterpretEncryptionPrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	store := newXRequestStore(db, servicecrypto.NewTokenEncryptor("legacy-compatible-encryption-key"))
-	rawSecret := xRequestEncryptedSecretPrefix + "raw-provider-secret"
-	require.NoError(t, store.Save("legacy-prefixed", rawSecret, "workspace", "user", "connect", time.Now()))
+	rawSecrets := []string{
+		xRequestEncryptedSecretPrefix + "raw-provider-secret",
+		xRequestEncryptedSecretPrefix + base64.StdEncoding.EncodeToString([]byte("base64 but not an OpenPost envelope")),
+	}
+	for index, rawSecret := range rawSecrets {
+		requestToken := fmt.Sprintf("legacy-prefixed-%d", index)
+		require.NoError(t, store.Save(requestToken, rawSecret, "workspace", "user", "connect", time.Now()))
 
-	meta, found, err := store.Consume("legacy-prefixed", time.Minute)
+		meta, found, err := store.Consume(requestToken, time.Minute)
+
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, rawSecret, meta.Secret)
+	}
+}
+
+func TestXRequestStoreReadsEncryptedSecretAcrossRollingKeyIDCutover(t *testing.T) {
+	const sharedKey = "shared-encryption-key-with-at-least-thirty-two-characters"
+	db, err := database.InitDBWithDriver("sqlite", "file:"+filepath.Join(t.TempDir(), "x-request-rolling-key-id.db")+"?mode=rwc")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	_, err = db.NewCreateTable().Model((*models.XOAuthRequestToken)(nil)).Exec(t.Context())
+	require.NoError(t, err)
+
+	explicitIDEncryptor, err := servicecrypto.NewTokenEncryptorWithKeyring("old-primary", sharedKey, nil)
+	require.NoError(t, err)
+	writer := newXRequestStore(db, explicitIDEncryptor)
+	legacyReader := newXRequestStore(db, servicecrypto.NewTokenEncryptor(sharedKey))
+	require.NoError(t, writer.Save("same-key", "same-key-secret", "workspace", "user", "connect", time.Now()))
+
+	meta, found, err := legacyReader.Consume("same-key", time.Minute)
 
 	require.NoError(t, err)
 	require.True(t, found)
-	require.Equal(t, rawSecret, meta.Secret)
+	require.Equal(t, "same-key-secret", meta.Secret)
+
+	require.NoError(t, writer.Save("wrong-key", "wrong-key-secret", "workspace", "user", "connect", time.Now()))
+	wrongKeyReader := newXRequestStore(db, servicecrypto.NewTokenEncryptor("different-encryption-key-with-at-least-thirty-two-characters"))
+	_, found, err = wrongKeyReader.Consume("wrong-key", time.Minute)
+	require.ErrorContains(t, err, "decrypt X OAuth request secret")
+	require.False(t, found)
+
+	require.NoError(t, writer.Save("corrupted", "corrupted-secret", "workspace", "user", "connect", time.Now()))
+	var storedSecret string
+	require.NoError(t, db.QueryRowContext(
+		t.Context(),
+		`SELECT request_secret FROM x_oauth_request_tokens WHERE request_token = ?`,
+		"corrupted",
+	).Scan(&storedSecret))
+	encodedCiphertext, prefixed := strings.CutPrefix(storedSecret, xRequestEncryptedSecretPrefix)
+	require.True(t, prefixed)
+	ciphertext, err := base64.StdEncoding.Strict().DecodeString(encodedCiphertext)
+	require.NoError(t, err)
+	ciphertext[len(ciphertext)-1] ^= 1
+	_, err = db.ExecContext(
+		t.Context(),
+		`UPDATE x_oauth_request_tokens SET request_secret = ? WHERE request_token = ?`,
+		xRequestEncryptedSecretPrefix+base64.StdEncoding.EncodeToString(ciphertext),
+		"corrupted",
+	)
+	require.NoError(t, err)
+
+	_, found, err = legacyReader.Consume("corrupted", time.Minute)
+	require.ErrorContains(t, err, "decrypt X OAuth request secret")
+	require.False(t, found)
 }

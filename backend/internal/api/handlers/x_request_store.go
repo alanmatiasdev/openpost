@@ -69,14 +69,15 @@ func (s *xRequestStore) Consume(requestToken string, maxAge time.Duration) (plat
 	}
 
 	requestSecret := record.RequestSecret
-	if encodedCiphertext, encrypted := strings.CutPrefix(requestSecret, xRequestEncryptedSecretPrefix); encrypted && s.encryptor.WritesVersionedCiphertext() {
-		ciphertext, decodeErr := base64.StdEncoding.Strict().DecodeString(encodedCiphertext)
-		if decodeErr != nil {
-			return platform.XRequestMeta{}, false, errors.New("decrypt X OAuth request secret")
-		}
-		requestSecret, err = s.encryptor.Decrypt(ciphertext)
-		if err != nil {
-			return platform.XRequestMeta{}, false, errors.New("decrypt X OAuth request secret")
+	if encodedCiphertext, prefixed := strings.CutPrefix(requestSecret, xRequestEncryptedSecretPrefix); prefixed {
+		if ciphertext, decodeErr := base64.StdEncoding.Strict().DecodeString(encodedCiphertext); decodeErr == nil {
+			plaintext, recognized, decryptErr := s.encryptor.DecryptEnvelope(ciphertext)
+			if recognized {
+				if decryptErr != nil {
+					return platform.XRequestMeta{}, false, errors.New("decrypt X OAuth request secret")
+				}
+				requestSecret = plaintext
+			}
 		}
 	}
 

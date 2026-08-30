@@ -154,23 +154,12 @@ func (te *TokenEncryptor) Decrypt(ciphertext []byte) (string, error) {
 		return "", nil
 	}
 
-	keyID, header, payload, enveloped, err := parseEnvelope(ciphertext)
+	plaintext, enveloped, err := te.DecryptEnvelope(ciphertext)
 	if err != nil {
 		return "", err
 	}
 	if enveloped {
-		key, exists := te.keys[keyID]
-		if !exists && !te.writeEnvelope {
-			// During the explicit-ID rollout, a legacy-writing peer has only the
-			// shared current key. Envelope authentication still proves whether
-			// that key matches without weakening keyed-ID reads after cutover.
-			key = te.key
-			exists = true
-		}
-		if !exists {
-			return "", fmt.Errorf("unknown encryption key ID %q", keyID)
-		}
-		return decryptPayload(key, header, payload)
+		return plaintext, nil
 	}
 
 	for _, legacyKeyID := range te.legacyKeyIDs {
@@ -180,6 +169,33 @@ func (te *TokenEncryptor) Decrypt(ciphertext []byte) (string, error) {
 		}
 	}
 	return "", errors.New("legacy ciphertext could not be decrypted with the configured encryption keys")
+}
+
+// DecryptEnvelope decrypts only recognized versioned OpenPost ciphertext. The
+// boolean is false for legacy ciphertext and unrelated bytes, allowing stores
+// with a text marker to distinguish a raw value from an encrypted envelope.
+func (te *TokenEncryptor) DecryptEnvelope(ciphertext []byte) (plaintext string, recognized bool, err error) {
+	keyID, header, payload, enveloped, err := parseEnvelope(ciphertext)
+	if err != nil {
+		return "", enveloped, err
+	}
+	if !enveloped {
+		return "", false, nil
+	}
+
+	key, exists := te.keys[keyID]
+	if !exists && !te.writeEnvelope {
+		// During the explicit-ID rollout, a legacy-writing peer has only the
+		// shared current key. Envelope authentication still proves whether
+		// that key matches without weakening keyed-ID reads after cutover.
+		key = te.key
+		exists = true
+	}
+	if !exists {
+		return "", true, fmt.Errorf("unknown encryption key ID %q", keyID)
+	}
+	plaintext, err = decryptPayload(key, header, payload)
+	return plaintext, true, err
 }
 
 // VerifyCurrentCiphertext proves that a nonempty value is an authenticated
