@@ -131,7 +131,11 @@ func main() {
 		}
 	}
 
-	db, err := database.InitDBWithDriver(cfg.DatabaseDriver, cfg.DatabaseDSN())
+	db, err := database.InitDBWithDriverAndRole(
+		cfg.DatabaseDriver,
+		cfg.DatabaseDSN(),
+		string(command.role),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

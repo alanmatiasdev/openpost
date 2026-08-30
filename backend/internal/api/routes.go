@@ -418,7 +418,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	engagementMessagingHandler.SetFeatureGate(afhService)
 	growthHandler.SetFeatureGate(afhService)
 
-	RegisterHealth(api, deps.DB, deps.Readiness)
+	RegisterHealth(api, deps.DB, deps.Readiness, deps.MediaStorage)
 	RegisterVersion(api, BuildInfo{
 		Version:  deps.AppVersion,
 		Revision: deps.AppRevision,
@@ -481,7 +481,7 @@ func RegisterVersion(api huma.API, info BuildInfo) {
 	})
 }
 
-func RegisterHealth(api huma.API, db *bun.DB, readiness *Readiness) {
+func RegisterHealth(api huma.API, db *bun.DB, readiness *Readiness, storage mediastore.BlobStorage) {
 	huma.Register(api, huma.Operation{
 		OperationID: "health-check",
 		Method:      http.MethodGet,
@@ -513,6 +513,7 @@ func RegisterHealth(api huma.API, db *bun.DB, readiness *Readiness) {
 		Body struct {
 			Status   string `json:"status" doc:"Readiness status"`
 			Database string `json:"database" doc:"Database dependency status"`
+			Storage  string `json:"storage,omitempty" doc:"Required object storage dependency status"`
 		}
 	}, error) {
 		if !readiness.IsReady() {
@@ -525,14 +526,26 @@ func RegisterHealth(api huma.API, db *bun.DB, readiness *Readiness) {
 		if err := db.NewSelect().ColumnExpr("1").Scan(ctx, &one); err != nil {
 			return nil, huma.NewError(http.StatusServiceUnavailable, "database is not ready")
 		}
+		remoteStorageReady := false
+		if storage != nil && storage.Driver() == "s3" {
+			checker, ok := storage.(mediastore.ReadinessStorage)
+			if !ok || checker.CheckReady(ctx) != nil {
+				return nil, huma.NewError(http.StatusServiceUnavailable, "object storage is not ready")
+			}
+			remoteStorageReady = true
+		}
 		resp := &struct {
 			Body struct {
 				Status   string `json:"status" doc:"Readiness status"`
 				Database string `json:"database" doc:"Database dependency status"`
+				Storage  string `json:"storage,omitempty" doc:"Required object storage dependency status"`
 			}
 		}{}
 		resp.Body.Status = "ready"
 		resp.Body.Database = "ok"
+		if remoteStorageReady {
+			resp.Body.Storage = "ok"
+		}
 		return resp, nil
 	})
 }
