@@ -80,6 +80,12 @@ const toolPages = [
     title: "Free social posting schedule planner - OpenPost",
     description: "Turn your audience hours and timezone into a weekly posting plan you can reuse.",
   },
+  {
+    slug: "utm-link-builder",
+    name: "UTM link builder",
+    title: "Free UTM link builder - OpenPost",
+    description: "Add campaign tags to a link, then copy a clean URL for your social post.",
+  },
 ];
 
 const staticMarketingEntries = [

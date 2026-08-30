@@ -130,13 +130,13 @@
 										active={isActive('/tools/social-media-video-editor')}
 										class="group/tool focus-ring block overflow-hidden rounded-xl border bg-card p-0"
 									>
-										<div class="h-24 overflow-hidden bg-black">
+										<div class="aspect-[3/2] overflow-hidden bg-black">
 											<img
-												src="/assets/screenshots/main-dark.png"
+												src="/assets/screenshots/video-editor-dark.webp"
 												alt=""
 												width="1440"
 												height="960"
-												class="size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
+												class="tool-preview size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
 											/>
 										</div>
 										<span class="flex items-start gap-3 p-3">
@@ -160,13 +160,13 @@
 										active={isActive('/tools/social-media-image-editor')}
 										class="group/tool focus-ring block overflow-hidden rounded-xl border bg-card p-0"
 									>
-										<div class="h-24 overflow-hidden bg-black">
+										<div class="aspect-[3/2] overflow-hidden bg-black">
 											<img
-												src="/assets/screenshots/media-dark.png"
+												src="/assets/screenshots/image-editor-dark.webp"
 												alt=""
 												width="1440"
 												height="960"
-												class="size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
+												class="tool-preview size-full object-cover object-top transition-transform duration-300 group-hover/tool:scale-[1.03] group-focus-visible/tool:scale-[1.03]"
 											/>
 										</div>
 										<span class="flex items-start gap-3 p-3">
@@ -258,7 +258,7 @@
 			</Button>
 			<Button href={`${appUrl}/login`} variant="ghost" size="sm">Sign in</Button>
 			<Button href={managedSignupUrl} size="sm">
-				Start 14-day trial
+				Get started
 				<ArrowRight data-icon="inline-end" />
 			</Button>
 		</div>
@@ -320,7 +320,7 @@
 					>
 						{#if mode.current === 'dark'}<Sun />{:else}<Moon />{/if}
 					</Button>
-					<Button href={managedSignupUrl} size="sm">Start 14-day trial</Button>
+					<Button href={managedSignupUrl} size="sm">Get started</Button>
 				</div>
 			</div>
 		</nav>
@@ -345,5 +345,12 @@
 
 	:global(.tool-menu.tool-menu) {
 		width: min(38rem, calc(100vw - 2rem));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.tool-preview {
+			transform: none !important;
+			transition: none !important;
+		}
 	}
 </style>

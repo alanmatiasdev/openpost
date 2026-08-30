@@ -979,8 +979,15 @@ export const tools = [
 		slug: 'best-time-to-post-calculator',
 		name: 'Timezone posting planner',
 		description: 'Turn your timezone and weekly plan into posting times you can reuse.'
+	},
+	{
+		slug: 'utm-link-builder',
+		name: 'UTM link builder',
+		description: 'Add campaign tags to a link, then copy the finished URL.'
 	}
 ] as const;
+
+export type MarketingToolSlug = (typeof tools)[number]['slug'];
 
 export const faqs = [
 	{

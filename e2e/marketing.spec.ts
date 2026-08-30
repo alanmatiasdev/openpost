@@ -24,10 +24,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "For solo founders who want one workspace for social publishing. Write the idea once, shape each version, schedule every channel, and see what went live.",
-      { exact: true },
-    ),
+    page.getByText("Write once. Adjust for each channel. Publish on schedule.", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Provider formats, permissions, and limits still vary by network.", {
@@ -35,7 +32,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Start for free", exact: true }).first(),
+    page.getByRole("link", { name: "Get started", exact: true }).first(),
   ).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
@@ -73,7 +70,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page.getByText("One working loop")).toHaveCount(0);
   await expect(
     page.getByRole("heading", {
-      name: "Everything you need to publish.",
+      name: "One publication, shaped for each destination.",
     }),
   ).toBeVisible();
   await expect(
@@ -86,6 +83,26 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
     "src",
     "/assets/screenshots/accounts-dark.png",
   );
+  await expect(
+    page.getByAltText("OpenPost Video Editor cutting a Study SOS screen recording"),
+  ).toHaveAttribute("src", "/assets/screenshots/video-editor-dark.webp");
+  await expect(
+    page.getByAltText(
+      "OpenPost Image Editor with the OpenPost logo selected over a Lisbon tram photo",
+    ),
+  ).toHaveAttribute("src", "/assets/screenshots/image-editor-dark.webp");
+  await expect(
+    page.getByRole("heading", { name: "Free tools that do real work.", exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(
+    page.locator('.tool-menu a[href="/tools/social-media-video-editor"] img'),
+  ).toHaveAttribute("src", "/assets/screenshots/video-editor-dark.webp");
+  await expect(
+    page.locator('.tool-menu a[href="/tools/social-media-image-editor"] img'),
+  ).toHaveAttribute("src", "/assets/screenshots/image-editor-dark.webp");
+  await page.keyboard.press("Escape");
   await expect(page.getByText("Fictional examples")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "See what consistency can build." })).toHaveCount(
     0,
@@ -110,6 +127,34 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   await expect(page.getByRole("link", { name: "Discord", exact: true }).last()).toHaveAttribute(
     "href",
     "https://discord.gg/u2QwukmY4W",
+  );
+});
+
+test("free tools directory links every working tool @desktop", async ({ page }) => {
+  const toolSlugs = [
+    "social-media-video-editor",
+    "social-media-image-editor",
+    "multi-platform-character-counter",
+    "post-preview-generator",
+    "thread-splitter",
+    "fediverse-handle-checker",
+    "linkedin-text-formatter",
+    "best-time-to-post-calculator",
+    "utm-link-builder",
+  ] as const;
+
+  await page.goto("/tools");
+  await expect(
+    page.getByRole("heading", { name: "Finish the post before you sign up.", level: 1 }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  for (const slug of toolSlugs) {
+    await expect(main.locator(`a[href="/tools/${slug}"]`)).toHaveCount(1);
+  }
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
   );
 });
 
@@ -465,7 +510,7 @@ test("hero and footer actions remain usable at 320 pixels", async ({ page }) => 
 
   const heroLink = page
     .locator("section.hero")
-    .getByRole("link", { name: "Start free", exact: true });
+    .getByRole("link", { name: "Start 14-day trial", exact: true });
   await expect(heroLink).toBeVisible();
   await heroLink.focus();
   await expect(heroLink).toBeFocused();
@@ -576,16 +621,18 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
   });
 
   await page.goto("/");
-  const startFree = page.getByRole("link", { name: "Start free", exact: true });
-  await expect(startFree).toHaveAttribute("data-cuelume-toggle", "release");
-  await expect(startFree).not.toHaveAttribute("data-cuelume-press");
-  await expect(startFree).not.toHaveAttribute("data-cuelume-release");
-  await startFree.evaluate((element) => {
+  const trialLink = page
+    .locator("section.hero")
+    .getByRole("link", { name: "Start 14-day trial", exact: true });
+  await expect(trialLink).toHaveAttribute("data-cuelume-toggle", "release");
+  await expect(trialLink).not.toHaveAttribute("data-cuelume-press");
+  await expect(trialLink).not.toHaveAttribute("data-cuelume-release");
+  await trialLink.evaluate((element) => {
     element.addEventListener("click", (event) => event.preventDefault(), {
       once: true,
     });
   });
-  await startFree.click();
+  await trialLink.click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -666,6 +713,7 @@ test("marketing SEO routes expose the current public index @desktop", async ({ r
   expect(xml).toContain("<loc>https://openpost.social/tools/fediverse-handle-checker</loc>");
   expect(xml).toContain("<loc>https://openpost.social/tools/linkedin-text-formatter</loc>");
   expect(xml).toContain("<loc>https://openpost.social/tools/best-time-to-post-calculator</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/tools/utm-link-builder</loc>");
   expect(xml).toContain("<loc>https://openpost.social/security</loc>");
   expect(xml).toContain("<loc>https://openpost.social/trust</loc>");
   expect(xml).toContain("<loc>https://openpost.social/privacy</loc>");
@@ -848,6 +896,22 @@ test("free marketing tools produce useful output @desktop", async ({ page }) => 
   await expect(
     page.getByRole("region", { name: "Your local schedule" }).getByRole("listitem"),
   ).toHaveCount(2);
+
+  await page.goto("/tools/utm-link-builder");
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByLabel("Page link")
+    .fill("https://example.com/launch?ref=homepage&utm_term=founders&utm_content=demo#details");
+  await page.getByLabel("Source").fill("linkedin");
+  await page.getByRole("textbox", { name: "Campaign", exact: true }).fill("summer-launch");
+  await expect(page.getByTestId("utm-result")).toHaveText(
+    "https://example.com/launch?ref=homepage&utm_term=founders&utm_content=demo&utm_source=linkedin&utm_medium=social&utm_campaign=summer-launch#details",
+  );
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy link", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Campaign", exact: true }).fill("autumn-launch");
+  await expect(page.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
 });
 
 test("public changelog is generated from the canonical release record @desktop", async ({

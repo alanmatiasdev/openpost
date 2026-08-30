@@ -9,15 +9,23 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	import { ArrowRight } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
+	import EditorToolsShowcase from './_components/EditorToolsShowcase.svelte';
 	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
 	import PricingShowcase from './_components/PricingShowcase.svelte';
 	import ProductFeatureGrid from './_components/ProductFeatureGrid.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
-	import { faqs, managedSignupUrl } from './_marketing';
+	import UtilityToolsGrid from './_components/UtilityToolsGrid.svelte';
+	import { faqs, managedSignupUrl, type MarketingToolSlug } from './_marketing';
 
 	const shortFaqs = faqs.slice(0, 4);
+	const landingToolSlugs = [
+		'post-preview-generator',
+		'multi-platform-character-counter',
+		'best-time-to-post-calculator',
+		'utm-link-builder'
+	] as const satisfies readonly MarketingToolSlug[];
 </script>
 
 <section class="hero overflow-hidden">
@@ -74,6 +82,33 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		<ScrollReveal class="mt-20" delay={80}>
 			<ProductFeatureGrid />
 		</ScrollReveal>
+	</div>
+</section>
+
+<section class="section-pad marketing-rule border-t" aria-labelledby="tools-title">
+	<div class="marketing-shell">
+		<ScrollReveal class="max-w-3xl">
+			<h2 id="tools-title" class="marketing-heading">Free tools that do real work.</h2>
+			<p class="marketing-copy mt-5">
+				Edit the media, preview the post, check the copy, plan the week, or build a campaign link.
+				No account needed.
+			</p>
+		</ScrollReveal>
+
+		<ScrollReveal class="mt-12" delay={60}>
+			<EditorToolsShowcase />
+		</ScrollReveal>
+
+		<ScrollReveal class="mt-5" delay={100}>
+			<UtilityToolsGrid slugs={landingToolSlugs} />
+		</ScrollReveal>
+
+		<div class="mt-7 text-center">
+			<Button href="/tools" variant="outline">
+				See all free tools
+				<ArrowRight data-icon="inline-end" />
+			</Button>
+		</div>
 	</div>
 </section>
 
