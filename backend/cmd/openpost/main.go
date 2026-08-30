@@ -42,6 +42,7 @@ import (
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
+	"github.com/openpost/backend/internal/services/encryptionrotation"
 	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
@@ -84,6 +85,7 @@ var commit = "unknown"
 const (
 	processShutdownTimeout    = 10 * time.Second
 	workerCancellationReserve = 3 * time.Second
+	encryptionRotationTimeout = 15 * time.Minute
 )
 
 func newWorkerID() string {
@@ -125,7 +127,13 @@ func main() {
 		return
 	}
 	config.Init()
-	if command.role == processRoleMigrate {
+	if err := cfg.ValidateEncryptionKeyring(); err != nil {
+		log.Fatal(err)
+	}
+	if command.rotateEncryptionKey && cfg.EncryptionKeyID == "" {
+		log.Fatal("rotate-encryption-key requires an explicit OPENPOST_ENCRYPTION_KEY_ID")
+	}
+	if command.role == processRoleMigrate || command.role == processRoleMaintenance {
 		if err := cfg.ValidateRuntime(); err != nil {
 			log.Fatal(err)
 		}
@@ -162,7 +170,38 @@ func main() {
 		return
 	}
 
-	tokenEncryptor := crypto.NewTokenEncryptor(cfg.EncryptionKey)
+	var tokenEncryptor *crypto.TokenEncryptor
+	if cfg.EncryptionKeyID == "" {
+		tokenEncryptor = crypto.NewTokenEncryptor(cfg.EncryptionKey)
+	} else {
+		tokenEncryptor, err = crypto.NewTokenEncryptorWithKeyring(
+			cfg.EncryptionKeyID,
+			cfg.EncryptionKey,
+			cfg.EncryptionPreviousKeys,
+		)
+		if err != nil {
+			closeDatabase()
+			log.Fatalf("invalid encryption keyring configuration: %v", err)
+		}
+	}
+	if command.rotateEncryptionKey {
+		rotationCtx, cancelRotation := context.WithTimeout(context.Background(), encryptionRotationTimeout)
+		result, rotationErr := encryptionrotation.Rotate(rotationCtx, db, tokenEncryptor)
+		cancelRotation()
+		if rotationErr != nil {
+			closeDatabase()
+			log.Fatalf("encryption key rotation failed: %v", rotationErr)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(struct {
+			Status string `json:"status"`
+			encryptionrotation.Result
+		}{Status: "rotated", Result: result}); err != nil {
+			closeDatabase()
+			log.Fatal(err)
+		}
+		closeDatabase()
+		return
+	}
 	instanceSettingsService := instancesettings.NewService(db, tokenEncryptor, cfg)
 	aiPromptService := aiprompts.NewService(db, tokenEncryptor)
 	if err := instanceSettingsService.ApplyStored(context.Background(), cfg); err != nil {
@@ -293,7 +332,7 @@ func main() {
 	authenticator := apimiddleware.NewCompositeServiceWithSessions(authService, apiTokenService, sessionService)
 	cliAuthService := cliauth.NewService(db, apiTokenService)
 	mcpOAuthService := mcpoauth.NewService(db, apiTokenService)
-	mediaSigner := mediasigner.New(cfg.EncryptionKey)
+	mediaSigner := mediasigner.New(cfg.MediaSigningKey)
 	mfaService, err := mfa.NewService("OpenPost", mfa.RelyingPartyConfig{
 		Name:    "OpenPost",
 		ID:      cfg.WebAuthnRPID,

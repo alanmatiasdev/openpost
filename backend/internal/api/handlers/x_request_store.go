@@ -3,26 +3,40 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/uptrace/bun"
 )
 
+const xRequestEncryptedSecretPrefix = "openpost-encrypted-v1:"
+
 type xRequestStore struct {
-	db *bun.DB
+	db        *bun.DB
+	encryptor *servicecrypto.TokenEncryptor
 }
 
-func newXRequestStore(db *bun.DB) *xRequestStore {
-	return &xRequestStore{db: db}
+func newXRequestStore(db *bun.DB, encryptor *servicecrypto.TokenEncryptor) *xRequestStore {
+	return &xRequestStore{db: db, encryptor: encryptor}
 }
 
 func (s *xRequestStore) Save(requestToken, requestSecret, workspaceID, userID, executionIntent string, createdAt time.Time) error {
+	storedSecret := requestSecret
+	if s.encryptor.WritesVersionedCiphertext() {
+		ciphertext, err := s.encryptor.Encrypt(requestSecret)
+		if err != nil {
+			return errors.New("encrypt X OAuth request secret")
+		}
+		storedSecret = xRequestEncryptedSecretPrefix + base64.StdEncoding.EncodeToString(ciphertext)
+	}
 	record := &models.XOAuthRequestToken{
 		RequestToken:    requestToken,
-		RequestSecret:   requestSecret,
+		RequestSecret:   storedSecret,
 		WorkspaceID:     workspaceID,
 		UserID:          userID,
 		ExecutionIntent: executionIntent,
@@ -54,8 +68,20 @@ func (s *xRequestStore) Consume(requestToken string, maxAge time.Duration) (plat
 		return platform.XRequestMeta{}, false, nil
 	}
 
+	requestSecret := record.RequestSecret
+	if encodedCiphertext, encrypted := strings.CutPrefix(requestSecret, xRequestEncryptedSecretPrefix); encrypted && s.encryptor.WritesVersionedCiphertext() {
+		ciphertext, decodeErr := base64.StdEncoding.Strict().DecodeString(encodedCiphertext)
+		if decodeErr != nil {
+			return platform.XRequestMeta{}, false, errors.New("decrypt X OAuth request secret")
+		}
+		requestSecret, err = s.encryptor.Decrypt(ciphertext)
+		if err != nil {
+			return platform.XRequestMeta{}, false, errors.New("decrypt X OAuth request secret")
+		}
+	}
+
 	return platform.XRequestMeta{
-		Secret:          record.RequestSecret,
+		Secret:          requestSecret,
 		WorkspaceID:     record.WorkspaceID,
 		UserID:          record.UserID,
 		ExecutionIntent: record.ExecutionIntent,

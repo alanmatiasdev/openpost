@@ -10,6 +10,8 @@ import (
 
 	"github.com/openpost/backend/internal/database"
 	"github.com/openpost/backend/internal/models"
+	servicecrypto "github.com/openpost/backend/internal/services/crypto"
+	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
 
@@ -48,7 +50,7 @@ func TestXRequestStoreReturnsSecretToOneConcurrentConsumer(t *testing.T) {
 		t.Fatalf("create X request-token table: %v", err)
 	}
 
-	store := newXRequestStore(db)
+	store := newXRequestStore(db, servicecrypto.NewTokenEncryptor("legacy-compatible-key"))
 	if err := store.Save("request-token", "request-secret", "workspace-1", "user-1", "connect", time.Now()); err != nil {
 		t.Fatalf("save X request token: %v", err)
 	}
@@ -94,4 +96,66 @@ func TestXRequestStoreReturnsSecretToOneConcurrentConsumer(t *testing.T) {
 	if successes != 1 || rejected != 1 {
 		t.Fatalf("expected one successful and one rejected consumer, got successes=%d rejected=%d", successes, rejected)
 	}
+}
+
+func TestXRequestStoreStagesEncryptedStorageAcrossRollbackBoundary(t *testing.T) {
+	db, err := database.InitDBWithDriver("sqlite", "file:"+filepath.Join(t.TempDir(), "x-request-encryption.db")+"?mode=rwc")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	_, err = db.NewCreateTable().Model((*models.XOAuthRequestToken)(nil)).Exec(t.Context())
+	require.NoError(t, err)
+
+	legacyReader := servicecrypto.NewTokenEncryptor("legacy-compatible-encryption-key")
+	legacyStore := newXRequestStore(db, legacyReader)
+	require.NoError(t, legacyStore.Save("legacy-write", "legacy-secret", "workspace", "user", "connect", time.Now()))
+
+	legacyRecord := new(models.XOAuthRequestToken)
+	require.NoError(t, db.NewSelect().Model(legacyRecord).Where("request_token = ?", "legacy-write").Scan(t.Context()))
+	require.Equal(t, "legacy-secret", legacyRecord.RequestSecret, "v4.13 must still be able to consume pre-keyring writes")
+
+	versioned, err := servicecrypto.NewTokenEncryptorWithKeyring(
+		"2026-08",
+		"versioned-encryption-key-with-at-least-thirty-two-characters",
+		nil,
+	)
+	require.NoError(t, err)
+	versionedStore := newXRequestStore(db, versioned)
+	require.NoError(t, versionedStore.Save("versioned-write", "versioned-secret", "workspace", "user", "connect", time.Now()))
+
+	versionedRecord := new(models.XOAuthRequestToken)
+	require.NoError(t, db.NewSelect().Model(versionedRecord).Where("request_token = ?", "versioned-write").Scan(t.Context()))
+	require.True(t, strings.HasPrefix(versionedRecord.RequestSecret, xRequestEncryptedSecretPrefix))
+	require.NotContains(t, versionedRecord.RequestSecret, "versioned-secret")
+
+	meta, found, err := versionedStore.Consume("versioned-write", time.Minute)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "versioned-secret", meta.Secret)
+
+	_, err = db.NewInsert().Model(&models.XOAuthRequestToken{
+		RequestToken: "v413-write", RequestSecret: "v413-secret", WorkspaceID: "workspace", UserID: "user", CreatedAt: time.Now(),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	meta, found, err = versionedStore.Consume("v413-write", time.Minute)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "v413-secret", meta.Secret, "new readers must retain the v4.13 plaintext fallback during rollout")
+}
+
+func TestXRequestStoreLegacyModeDoesNotInterpretEncryptionPrefix(t *testing.T) {
+	db, err := database.InitDBWithDriver("sqlite", "file:"+filepath.Join(t.TempDir(), "x-request-prefix.db")+"?mode=rwc")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	_, err = db.NewCreateTable().Model((*models.XOAuthRequestToken)(nil)).Exec(t.Context())
+	require.NoError(t, err)
+
+	store := newXRequestStore(db, servicecrypto.NewTokenEncryptor("legacy-compatible-encryption-key"))
+	rawSecret := xRequestEncryptedSecretPrefix + "raw-provider-secret"
+	require.NoError(t, store.Save("legacy-prefixed", rawSecret, "workspace", "user", "connect", time.Now()))
+
+	meta, found, err := store.Consume("legacy-prefixed", time.Minute)
+
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, rawSecret, meta.Secret)
 }

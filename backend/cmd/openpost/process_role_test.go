@@ -14,6 +14,7 @@ func TestProcessCommandContract(t *testing.T) {
 		args        []string
 		role        processRole
 		checkConfig bool
+		rotateKey   bool
 		showHelp    bool
 	}{
 		{name: "default remains the combined self-host process", role: processRoleAll},
@@ -21,6 +22,7 @@ func TestProcessCommandContract(t *testing.T) {
 		{name: "web process", args: []string{"web"}, role: processRoleWeb},
 		{name: "worker process", args: []string{"worker"}, role: processRoleWorker},
 		{name: "migration process", args: []string{"migrate"}, role: processRoleMigrate},
+		{name: "encryption key rotation", args: []string{"rotate-encryption-key"}, role: processRoleMaintenance, rotateKey: true},
 		{name: "configuration check remains available", args: []string{"check-config"}, checkConfig: true},
 		{name: "help", args: []string{"--help"}, showHelp: true},
 	}
@@ -34,6 +36,7 @@ func TestProcessCommandContract(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.role, command.role)
 			require.Equal(t, test.checkConfig, command.checkConfig)
+			require.Equal(t, test.rotateKey, command.rotateEncryptionKey)
 			require.Equal(t, test.showHelp, command.showHelp)
 		})
 	}
@@ -66,4 +69,8 @@ func TestProcessRoleCapabilitiesAreMutuallyExplicit(t *testing.T) {
 	require.False(t, processRoleMigrate.runsWeb())
 	require.False(t, processRoleMigrate.runsWorker())
 	require.True(t, processRoleMigrate.autoMigrates())
+
+	require.False(t, processRoleMaintenance.runsWeb())
+	require.False(t, processRoleMaintenance.runsWorker())
+	require.False(t, processRoleMaintenance.autoMigrates())
 }

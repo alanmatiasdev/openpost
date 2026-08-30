@@ -204,7 +204,7 @@ func TestXOAuthCallbackDenialPreservesWorkspaceScope(t *testing.T) {
 	require.NoError(t, err)
 
 	xAdapter := platform.NewXAdapter("client-id", "client-secret", "https://app.openpost.test/api/v1/accounts/x/callback")
-	xAdapter.SetRequestStore(newXRequestStore(db))
+	xAdapter.SetRequestStore(newXRequestStore(db, crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")))
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	handler := NewOAuthHandler(db, crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"), map[string]platform.Adapter{

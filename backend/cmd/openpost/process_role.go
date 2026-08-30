@@ -9,14 +9,18 @@ const (
 	processRoleWeb     processRole = "web"
 	processRoleWorker  processRole = "worker"
 	processRoleMigrate processRole = "migrate"
+	// Maintenance is an internal database-only role selected by bounded admin
+	// commands. It never starts HTTP or durable workers.
+	processRoleMaintenance processRole = "maintenance"
 )
 
-const processUsage = "usage: openpost [all|web|worker|migrate|check-config]"
+const processUsage = "usage: openpost [all|web|worker|migrate|check-config|rotate-encryption-key]"
 
 type processCommand struct {
-	role        processRole
-	checkConfig bool
-	showHelp    bool
+	role                processRole
+	checkConfig         bool
+	rotateEncryptionKey bool
+	showHelp            bool
 }
 
 func parseProcessCommand(args []string) (processCommand, error) {
@@ -38,6 +42,8 @@ func parseProcessCommand(args []string) (processCommand, error) {
 		return processCommand{role: processRoleMigrate}, nil
 	case "check-config":
 		return processCommand{checkConfig: true}, nil
+	case "rotate-encryption-key":
+		return processCommand{role: processRoleMaintenance, rotateEncryptionKey: true}, nil
 	case "help", "-h", "--help":
 		return processCommand{showHelp: true}, nil
 	default:

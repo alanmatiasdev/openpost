@@ -38,6 +38,9 @@ type Config struct {
 	DatabaseURL              string
 	JWTSecret                string
 	EncryptionKey            string
+	EncryptionKeyID          string
+	EncryptionPreviousKeys   map[string]string
+	MediaSigningKey          string
 	DisableRegistrations     bool
 	PublicProfilesEnabled    bool
 	FrontendURL              string
@@ -160,6 +163,7 @@ type Config struct {
 	PaddleAgencyAnnualPriceID   string
 
 	analyticsSourcesParseErr error
+	encryptionKeyringLoadErr error
 }
 
 const (
@@ -198,6 +202,7 @@ func Load() *Config {
 	defaultTermsVersion := ""
 	defaultPrivacyVersion := ""
 	defaultSupportEmail := ""
+	encryptionKeyID, encryptionKeyIDErr := getEncryptionKeyringEnvDefault("OPENPOST_ENCRYPTION_KEY_ID", "")
 	if legalRequired {
 		defaultTermsURL = legalpolicy.TermsURL
 		defaultPrivacyURL = legalpolicy.PrivacyURL
@@ -214,6 +219,7 @@ func Load() *Config {
 		DatabaseURL:             getEnvWithFallbacks("OPENPOST_DATABASE_URL", "", "DATABASE_URL"),
 		JWTSecret:               getEnvWithFallbacks("OPENPOST_JWT_SECRET", "", "JWT_SECRET"),
 		EncryptionKey:           getEnvWithFallbacks("OPENPOST_ENCRYPTION_KEY", "", "ENCRYPTION_KEY"),
+		EncryptionKeyID:         strings.TrimSpace(encryptionKeyID),
 		DisableRegistrations:    getEnvBoolWithAliases(false, "OPENPOST_DISABLE_REGISTRATIONS"),
 		PublicProfilesEnabled:   getEnvBoolWithAliases(true, "OPENPOST_PUBLIC_PROFILES_ENABLED"),
 		FrontendURL:             frontendURL,
@@ -347,6 +353,7 @@ func Load() *Config {
 		PaddleAgencyMonthlyPriceID:  getEnvDefault("OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID", ""),
 		PaddleAgencyAnnualPriceID:   getEnvDefault("OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID", ""),
 	}
+	cfg.setEncryptionKeyringLoadError(encryptionKeyIDErr)
 
 	if cfg.PublicURL == "" {
 		cfg.PublicURL = cfg.FrontendURL
@@ -389,6 +396,10 @@ func Load() *Config {
 		}
 	}
 	loadAnalyticsSources(cfg)
+	loadPreviousEncryptionKeys(cfg)
+	mediaSigningKey, mediaSigningKeyErr := getEncryptionKeyringEnvDefault("OPENPOST_MEDIA_SIGNING_KEY", cfg.EncryptionKey)
+	cfg.MediaSigningKey = mediaSigningKey
+	cfg.setEncryptionKeyringLoadError(mediaSigningKeyErr)
 
 	cfg.CORSOrigins = buildCORSOrigins(
 		cfg.Edition,
@@ -569,6 +580,58 @@ func loadAnalyticsSources(cfg *Config) {
 	cfg.AnalyticsSources = normalizeAnalyticsSources(sources)
 }
 
+func loadPreviousEncryptionKeys(cfg *Config) {
+	raw, err := getEncryptionKeyringEnvDefault("OPENPOST_ENCRYPTION_PREVIOUS_KEYS", "")
+	if err != nil {
+		cfg.setEncryptionKeyringLoadError(err)
+		return
+	}
+	if raw == "" {
+		return
+	}
+	var keys map[string]string
+	if err := json.Unmarshal([]byte(raw), &keys); err != nil || keys == nil {
+		cfg.setEncryptionKeyringLoadError(fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS must be a valid JSON object"))
+		return
+	}
+	cfg.EncryptionPreviousKeys = make(map[string]string, len(keys))
+	for keyID, key := range keys {
+		normalizedKeyID := strings.TrimSpace(keyID)
+		if _, exists := cfg.EncryptionPreviousKeys[normalizedKeyID]; exists {
+			cfg.setEncryptionKeyringLoadError(fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS contains duplicate normalized key IDs"))
+			return
+		}
+		cfg.EncryptionPreviousKeys[normalizedKeyID] = key
+	}
+}
+
+func (c *Config) setEncryptionKeyringLoadError(err error) {
+	if err != nil && c.encryptionKeyringLoadErr == nil {
+		c.encryptionKeyringLoadErr = err
+	}
+}
+
+func getEncryptionKeyringEnvDefault(key, fallback string) (string, error) {
+	if value := os.Getenv(key); value != "" {
+		return value, nil
+	}
+
+	fileKey := key + "_FILE"
+	path := strings.TrimSpace(os.Getenv(fileKey))
+	if path == "" {
+		return fallback, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s must reference a readable file", fileKey)
+	}
+	value := strings.TrimSpace(string(raw))
+	if value == "" {
+		return "", fmt.Errorf("%s must reference a nonempty file", fileKey)
+	}
+	return value, nil
+}
+
 func (c *Config) DatabaseDSN() string {
 	if c.DatabaseDriver == DatabaseDriverPostgres && c.DatabaseURL != "" {
 		return c.DatabaseURL
@@ -577,6 +640,9 @@ func (c *Config) DatabaseDSN() string {
 }
 
 func (c *Config) ValidateRuntime() error {
+	if err := c.ValidateEncryptionKeyring(); err != nil {
+		return err
+	}
 	if err := c.ValidateManagedSettings(); err != nil {
 		return err
 	}
@@ -607,6 +673,75 @@ func (c *Config) ValidateRuntime() error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("OPENPOST_EDITION=cloud requires: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func (c *Config) ValidateEncryptionKeyring() error {
+	if c.encryptionKeyringLoadErr != nil {
+		return c.encryptionKeyringLoadErr
+	}
+	if c.EncryptionKeyID == "" {
+		if len(c.EncryptionPreviousKeys) > 0 {
+			return fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS requires an explicit OPENPOST_ENCRYPTION_KEY_ID")
+		}
+		return validateMediaSigningKey(c.MediaSigningKey, c.EncryptionKey)
+	}
+	if err := validateEncryptionKeyID(c.EncryptionKeyID); err != nil {
+		return fmt.Errorf("OPENPOST_ENCRYPTION_KEY_ID is invalid: %w", err)
+	}
+
+	keyIDs := make([]string, 0, len(c.EncryptionPreviousKeys))
+	for keyID := range c.EncryptionPreviousKeys {
+		keyIDs = append(keyIDs, keyID)
+	}
+	sort.Strings(keyIDs)
+	for _, keyID := range keyIDs {
+		if err := validateEncryptionKeyID(keyID); err != nil {
+			return fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS contains an invalid key ID: %w", err)
+		}
+		if keyID == c.EncryptionKeyID {
+			return fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS must not contain the current primary key ID")
+		}
+		key := c.EncryptionPreviousKeys[keyID]
+		if len(key) < minSecretLength {
+			return fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS key %q must be at least %d characters", keyID, minSecretLength)
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "change-this-") {
+			return fmt.Errorf("OPENPOST_ENCRYPTION_PREVIOUS_KEYS key %q must not use a public example placeholder", keyID)
+		}
+	}
+	return validateMediaSigningKey(c.MediaSigningKey, c.EncryptionKey)
+}
+
+func validateMediaSigningKey(key, encryptionKey string) error {
+	if key == "" || key == encryptionKey {
+		return nil
+	}
+	if len(key) < minSecretLength {
+		return fmt.Errorf("OPENPOST_MEDIA_SIGNING_KEY must be at least %d characters", minSecretLength)
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "change-this-") {
+		return fmt.Errorf("OPENPOST_MEDIA_SIGNING_KEY must not use a public example placeholder")
+	}
+	return nil
+}
+
+func validateEncryptionKeyID(keyID string) error {
+	if keyID == "" {
+		return fmt.Errorf("a key ID is required")
+	}
+	if len(keyID) > 255 {
+		return fmt.Errorf("a key ID must not exceed 255 bytes")
+	}
+	for _, character := range keyID {
+		if character >= 'a' && character <= 'z' ||
+			character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' ||
+			character == '.' || character == '_' || character == '-' {
+			continue
+		}
+		return fmt.Errorf("key IDs may contain only letters, numbers, periods, underscores, and hyphens")
 	}
 	return nil
 }

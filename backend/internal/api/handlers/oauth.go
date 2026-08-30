@@ -83,7 +83,7 @@ func NewOAuthHandler(
 	providers = cloneProviderAdapters(providers)
 	if xProvider, ok := providers["x"]; ok {
 		if xAdapter, castOk := xProvider.(*platform.XAdapter); castOk {
-			xAdapter.SetRequestStore(newXRequestStore(db))
+			xAdapter.SetRequestStore(newXRequestStore(db, encryptor))
 		}
 	}
 

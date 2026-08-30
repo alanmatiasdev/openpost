@@ -36,6 +36,9 @@ var configTestEnvKeys = []string{
 	"JWT_SECRET",
 	"OPENPOST_ENCRYPTION_KEY",
 	"ENCRYPTION_KEY",
+	"OPENPOST_ENCRYPTION_KEY_ID",
+	"OPENPOST_ENCRYPTION_PREVIOUS_KEYS",
+	"OPENPOST_MEDIA_SIGNING_KEY",
 	"OPENPOST_DISABLE_REGISTRATIONS",
 	"OPENPOST_PUBLIC_PROFILES_ENABLED",
 	"OPENPOST_LEGAL_ACCEPTANCE_REQUIRED",
@@ -466,6 +469,9 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	t.Setenv("OPENPOST_DATABASE_URL_FILE", writeEnvFile(t, "database-url", "postgres://openpost:secret@db.internal:5432/openpost?sslmode=require\n"))
 	t.Setenv("OPENPOST_JWT_SECRET_FILE", writeEnvFile(t, "jwt-secret", "jwt-secret-with-more-than-thirty-two-characters\n"))
 	t.Setenv("OPENPOST_ENCRYPTION_KEY_FILE", writeEnvFile(t, "encryption-key", "encryption-key-with-more-than-thirty-two-chars\n"))
+	t.Setenv("OPENPOST_ENCRYPTION_KEY_ID_FILE", writeEnvFile(t, "encryption-key-id", "2026-08\n"))
+	t.Setenv("OPENPOST_ENCRYPTION_PREVIOUS_KEYS_FILE", writeEnvFile(t, "previous-encryption-keys", `{"2026-07":"previous-encryption-key-with-more-than-thirty-two-chars"}`))
+	t.Setenv("OPENPOST_MEDIA_SIGNING_KEY_FILE", writeEnvFile(t, "media-signing-key", "media-signing-key-with-more-than-thirty-two-chars\n"))
 	t.Setenv("OPENPOST_STORAGE_DRIVER_FILE", writeEnvFile(t, "storage-driver", "s3\n"))
 	t.Setenv("OPENPOST_S3_REGION_FILE", writeEnvFile(t, "s3-region", "auto\n"))
 	t.Setenv("OPENPOST_S3_BUCKET_FILE", writeEnvFile(t, "s3-bucket", "openpost-media\n"))
@@ -496,6 +502,9 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	require.Equal(t, "postgres://openpost:secret@db.internal:5432/openpost?sslmode=require", cfg.DatabaseURL)
 	require.Equal(t, "jwt-secret-with-more-than-thirty-two-characters", cfg.JWTSecret)
 	require.Equal(t, "encryption-key-with-more-than-thirty-two-chars", cfg.EncryptionKey)
+	require.Equal(t, "2026-08", cfg.EncryptionKeyID)
+	require.Equal(t, map[string]string{"2026-07": "previous-encryption-key-with-more-than-thirty-two-chars"}, cfg.EncryptionPreviousKeys)
+	require.Equal(t, "media-signing-key-with-more-than-thirty-two-chars", cfg.MediaSigningKey)
 	require.Equal(t, StorageDriverS3, cfg.StorageDriver)
 	require.Equal(t, "auto", cfg.S3Region)
 	require.Equal(t, "openpost-media", cfg.S3Bucket)
@@ -511,6 +520,97 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	require.Equal(t, "pri_starter_monthly", cfg.PaddleStarterMonthlyPriceID)
 	require.Equal(t, "pri_agency_annual", cfg.PaddleAgencyAnnualPriceID)
 	require.NoError(t, cfg.ValidateRuntime())
+}
+
+func TestValidateRuntimeRejectsInvalidEncryptionKeyringWithoutEchoingKeys(t *testing.T) {
+	const previousKey = "previous-encryption-key-with-more-than-thirty-two-chars"
+	t.Setenv("OPENPOST_ENCRYPTION_KEY", "current-encryption-key-with-more-than-thirty-two-chars")
+	t.Setenv("OPENPOST_ENCRYPTION_KEY_ID", "current")
+	t.Setenv("OPENPOST_ENCRYPTION_PREVIOUS_KEYS", `{"current":"`+previousKey+`"}`)
+
+	err := Load().ValidateRuntime()
+
+	require.ErrorContains(t, err, "OPENPOST_ENCRYPTION_PREVIOUS_KEYS")
+	require.ErrorContains(t, err, "current primary key ID")
+	require.NotContains(t, err.Error(), previousKey)
+
+	t.Setenv("OPENPOST_ENCRYPTION_PREVIOUS_KEYS", `{`)
+	err = Load().ValidateRuntime()
+	require.ErrorContains(t, err, "valid JSON object")
+
+	t.Setenv("OPENPOST_ENCRYPTION_PREVIOUS_KEYS", `null`)
+	err = Load().ValidateRuntime()
+	require.ErrorContains(t, err, "valid JSON object")
+}
+
+func TestPreviousEncryptionKeysRequireExplicitPrimaryKeyID(t *testing.T) {
+	t.Setenv("OPENPOST_ENCRYPTION_PREVIOUS_KEYS", `{"previous":"previous-encryption-key-with-more-than-thirty-two-chars"}`)
+
+	cfg := Load()
+	err := cfg.ValidateRuntime()
+
+	require.Empty(t, cfg.EncryptionKeyID)
+	require.ErrorContains(t, err, "requires an explicit OPENPOST_ENCRYPTION_KEY_ID")
+}
+
+func TestEncryptionKeyringFilesFailClosedWhenUnreadableOrEmpty(t *testing.T) {
+	tests := []struct {
+		name    string
+		fileKey string
+		prepare func(*testing.T)
+	}{
+		{
+			name:    "primary key ID",
+			fileKey: "OPENPOST_ENCRYPTION_KEY_ID_FILE",
+		},
+		{
+			name:    "previous keys",
+			fileKey: "OPENPOST_ENCRYPTION_PREVIOUS_KEYS_FILE",
+			prepare: func(t *testing.T) { t.Setenv("OPENPOST_ENCRYPTION_KEY_ID", "current") },
+		},
+		{
+			name:    "media signing key",
+			fileKey: "OPENPOST_MEDIA_SIGNING_KEY_FILE",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name+" unreadable", func(t *testing.T) {
+			if test.prepare != nil {
+				test.prepare(t)
+			}
+			t.Setenv(test.fileKey, filepath.Join(t.TempDir(), "missing"))
+
+			err := Load().ValidateEncryptionKeyring()
+
+			require.ErrorContains(t, err, test.fileKey)
+			require.ErrorContains(t, err, "readable file")
+		})
+
+		t.Run(test.name+" empty", func(t *testing.T) {
+			if test.prepare != nil {
+				test.prepare(t)
+			}
+			t.Setenv(test.fileKey, writeEnvFile(t, "empty", " \n"))
+
+			err := Load().ValidateEncryptionKeyring()
+
+			require.ErrorContains(t, err, test.fileKey)
+			require.ErrorContains(t, err, "nonempty file")
+		})
+	}
+}
+
+func TestMediaSigningKeyCanRemainStableAcrossEncryptionRotation(t *testing.T) {
+	t.Setenv("OPENPOST_ENCRYPTION_KEY", "data-encryption-key-with-more-than-thirty-two-chars")
+
+	cfg := Load()
+	require.Equal(t, cfg.EncryptionKey, cfg.MediaSigningKey)
+
+	t.Setenv("OPENPOST_MEDIA_SIGNING_KEY", "stable-media-signing-key-with-more-than-thirty-two-chars")
+	cfg = Load()
+	require.Equal(t, "stable-media-signing-key-with-more-than-thirty-two-chars", cfg.MediaSigningKey)
+	require.NotEqual(t, cfg.EncryptionKey, cfg.MediaSigningKey)
 }
 
 func TestLoadFileBackedEnvPrefersInlineValue(t *testing.T) {

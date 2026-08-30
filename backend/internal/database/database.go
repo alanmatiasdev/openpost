@@ -71,7 +71,7 @@ func poolConfigForRole(role string) poolConfig {
 	case "worker":
 		config.MaxOpenConnections = 8
 		config.MaxIdleConnections = 2
-	case "migrate":
+	case "migrate", "maintenance":
 		config.MaxOpenConnections = 2
 		config.MaxIdleConnections = 1
 	}
