@@ -19,20 +19,21 @@
 
 	let { points, metric, label, emptyLabel, otherLabel, formatValue, formatDate }: Props = $props();
 	let activeDate = $state('');
+	let viewportWidth = $state(0);
 
 	const margin = { top: 18, right: 16, bottom: 34, left: 52 };
 	const plotHeight = 236;
 	const chartHeight = margin.top + plotHeight + margin.bottom;
-	const slotWidth = $derived(
-		points.length > 45
-			? 18
-			: points.length > 20
-				? 26
-				: Math.max(42, Math.floor((680 - margin.left - margin.right) / Math.max(points.length, 1)))
+	const minimumSlotWidth = $derived(points.length > 45 ? 18 : points.length > 20 ? 26 : 42);
+	const plotWidth = $derived(
+		Math.max(
+			680 - margin.left - margin.right,
+			viewportWidth - margin.left - margin.right,
+			points.length * minimumSlotWidth
+		)
 	);
-	const chartWidth = $derived(
-		Math.max(680, margin.left + margin.right + points.length * slotWidth)
-	);
+	const slotWidth = $derived(plotWidth / Math.max(points.length, 1));
+	const chartWidth = $derived(margin.left + plotWidth + margin.right);
 	const barWidth = $derived(Math.max(8, Math.min(24, slotWidth - 7)));
 	const activePoint = $derived(points.find((point) => point.date === activeDate));
 	const rankedKeys = $derived.by(() => {
@@ -71,7 +72,7 @@
 			(_, index) => domain.lowest + ((domain.highest - domain.lowest) * index) / 4
 		)
 	);
-	const labelInterval = $derived(Math.max(1, Math.ceil(points.length / 8)));
+	const labelInterval = $derived(Math.max(1, Math.ceil(points.length / 7)));
 
 	function y(value: number) {
 		const span = domain.highest - domain.lowest || 1;
@@ -145,6 +146,7 @@
 		<div
 			class="relative overflow-x-auto overscroll-x-contain pb-1"
 			data-testid="analytics-chart-scroll"
+			bind:clientWidth={viewportWidth}
 		>
 			<div class="relative" style={`width: ${chartWidth}px; height: ${chartHeight}px`}>
 				<svg

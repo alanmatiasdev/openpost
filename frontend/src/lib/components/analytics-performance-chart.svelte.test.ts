@@ -52,6 +52,40 @@ describe('analytics performance chart', () => {
 		await expect.element(screen.getByText('No daily changes')).toBeVisible();
 	});
 
+	it('fills the available width when the series does not need horizontal scrolling', async () => {
+		const screen = await render(AnalyticsPerformanceChart, {
+			points: [
+				{
+					date: '2026-08-29',
+					value: 75,
+					items: [
+						{
+							key: 'rendition-1',
+							label: 'Launch notes',
+							platform: 'linkedin',
+							publication_id: 'publication-1',
+							value: 75
+						}
+					]
+				}
+			],
+			metric: 'views',
+			label: 'Daily views',
+			emptyLabel: 'No daily views',
+			otherLabel: 'Other posts',
+			formatValue: String,
+			formatDate: String
+		});
+		screen.container.style.width = '960px';
+		const scroll = screen.getByTestId('analytics-chart-scroll').element();
+		const canvas = scroll.firstElementChild;
+		expect(canvas).toBeInstanceOf(HTMLElement);
+
+		await expect
+			.poll(() => (canvas as HTMLElement).getBoundingClientRect().right)
+			.toBeGreaterThanOrEqual(scroll.getBoundingClientRect().right - 1);
+	});
+
 	it('formats follower breakdowns as provider-aware account identities', async () => {
 		const screen = await render(AnalyticsPerformanceChart, {
 			points: [
