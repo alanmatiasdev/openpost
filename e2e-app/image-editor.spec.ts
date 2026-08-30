@@ -101,6 +101,31 @@ test("Image Editor autosaves without replaying the saved-status animation", asyn
     .toBe(0);
 });
 
+test("public Image Editor keeps edits open when device storage fails", async ({ page }) => {
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  await expect(page.getByTestId("image-editor-stage")).toBeVisible();
+  const editorURL = page.url();
+
+  await page.evaluate(() => {
+    Object.defineProperty(IDBObjectStore.prototype, "put", {
+      configurable: true,
+      value() {
+        throw new DOMException("Test storage write failed", "QuotaExceededError");
+      },
+    });
+  });
+
+  await page.keyboard.press("t");
+  const addedText = page.getByRole("treeitem", { name: /text/i });
+  await expect(addedText).toBeVisible();
+  await expect(page.getByTitle("Test storage write failed")).toBeVisible();
+  await page.locator("header").getByRole("button", { name: "Back", exact: true }).click();
+
+  await expect(page).toHaveURL(editorURL);
+  await expect(addedText).toBeVisible();
+});
+
 test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({ page, request }) => {
   const auth = await registerUser(
     request,
@@ -368,7 +393,11 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
   if (!(await pageTwo.isVisible())) {
     await page.getByRole("button", { name: "Expand pages" }).click();
   }
+  await expect(pageTwo).toHaveAttribute("aria-current", "page");
+  await expect(pageOne).not.toHaveAttribute("aria-current");
   await pageOne.click();
+  await expect(pageOne).toHaveAttribute("aria-current", "page");
+  await expect(pageTwo).not.toHaveAttribute("aria-current");
 
   await pageTwo.evaluate((node, png) => {
     const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));

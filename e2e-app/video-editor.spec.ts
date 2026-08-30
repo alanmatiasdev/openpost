@@ -29,13 +29,22 @@ async function installLocalWorkspacePicker(page: Page): Promise<void> {
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
+      page.evaluate(() => {
+        const fits =
           document.body.scrollWidth <= window.innerWidth &&
-          document.documentElement.scrollWidth <= window.innerWidth,
-      ),
+          document.documentElement.scrollWidth <= window.innerWidth;
+        if (fits) return "fits";
+        const offenders = [...document.querySelectorAll<HTMLElement>("body *")]
+          .filter((element) => {
+            const bounds = element.getBoundingClientRect();
+            return bounds.right > window.innerWidth + 1 || bounds.left < -1;
+          })
+          .slice(0, 8)
+          .map((element) => `${element.tagName.toLowerCase()}.${element.className}`);
+        return `${document.body.scrollWidth}/${window.innerWidth}: ${offenders.join(" | ")}`;
+      }),
     )
-    .toBe(true);
+    .toBe("fits");
 }
 
 async function expectMinimumTargets(
@@ -55,6 +64,15 @@ async function expectMinimumTargets(
       ),
     )
     .toBe(true);
+}
+
+async function expectMinimumHeight(
+  locator: ReturnType<Page["locator"]>,
+  minimum: number,
+): Promise<void> {
+  await expect
+    .poll(() => locator.evaluate((element) => Math.round(element.getBoundingClientRect().height)))
+    .toBeGreaterThanOrEqual(minimum);
 }
 
 async function createProject(page: Page, name: string): Promise<void> {
@@ -208,7 +226,44 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
     });
     await expect(mobilePanels).toBeVisible();
     await expectMinimumTargets(mobilePanels.getByRole("button"));
-    await mobilePanels.getByRole("button", { name: "Edit", exact: true }).click();
+    const preview = page.locator("[data-video-preview]");
+    const pasteboard = page.locator("[data-program-pasteboard]");
+    const assetsButton = mobilePanels.getByRole("button", { name: "Assets", exact: true });
+    const programButton = mobilePanels.getByRole("button", { name: "Program", exact: true });
+    const editButton = mobilePanels.getByRole("button", { name: "Edit", exact: true });
+    await expect(assetsButton).toHaveAttribute("aria-controls", "video-editor-assets-panel");
+    await expect(programButton).toHaveAttribute("aria-controls", "video-editor-program-panel");
+    await expect(editButton).toHaveAttribute("aria-controls", "video-editor-tools-panel");
+
+    await assetsButton.click();
+    await expect(preview).toBeVisible();
+    await expectMinimumHeight(preview, 176);
+    await expectMinimumHeight(pasteboard, 96);
+    const assetsPanel = page.getByRole("complementary", { name: "Media pool" });
+    const navigationBounds = await mobilePanels.boundingBox();
+    const assetsBounds = await assetsPanel.boundingBox();
+    const assetsPreviewBounds = await preview.boundingBox();
+    expect(navigationBounds).not.toBeNull();
+    expect(assetsBounds).not.toBeNull();
+    expect(assetsPreviewBounds).not.toBeNull();
+    expect(navigationBounds!.y + navigationBounds!.height).toBeLessThanOrEqual(assetsBounds!.y + 1);
+    expect(assetsBounds!.y + assetsBounds!.height).toBeLessThanOrEqual(assetsPreviewBounds!.y + 1);
+
+    await editButton.click();
+    await expect(preview).toBeVisible();
+    await expectMinimumHeight(preview, 176);
+    await expectMinimumHeight(pasteboard, 96);
+    const toolsPanel = page.getByRole("complementary", { name: "Edit" });
+    const editPreviewBounds = await preview.boundingBox();
+    const toolsBounds = await toolsPanel.boundingBox();
+    expect(editPreviewBounds).not.toBeNull();
+    expect(toolsBounds).not.toBeNull();
+    expect(navigationBounds!.y + navigationBounds!.height).toBeLessThanOrEqual(
+      editPreviewBounds!.y + 1,
+    );
+    expect(editPreviewBounds!.y + editPreviewBounds!.height).toBeLessThanOrEqual(
+      toolsBounds!.y + 1,
+    );
     const tools = page.getByRole("heading", { name: "Edit", exact: true }).locator("..");
     await expect(tools).toBeVisible();
     await expect
@@ -231,7 +286,10 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
       .boundingBox();
     expect(exportBounds).not.toBeNull();
     expect(timelineBounds).not.toBeNull();
+    expect(exportBounds!.width).toBeGreaterThanOrEqual(44);
+    expect(exportBounds!.height).toBeGreaterThanOrEqual(44);
     expect(exportBounds!.y + exportBounds!.height).toBeLessThanOrEqual(timelineBounds!.y);
+    await expectMinimumTargets(page.getByRole("slider", { name: "Zoom" }));
     await expectNoHorizontalOverflow(page);
     await page.screenshot({
       path: `frontend/.svelte-kit/openpost-video-editor-${viewport.width}.png`,
@@ -251,9 +309,18 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
   await expect(page.getByRole("navigation", { name: "Editor panels" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Edit", exact: true })).toBeVisible();
 
+  const mediaPool = page.getByRole("complementary", { name: "Media pool" });
+  await expect(mediaPool.getByRole("button", { name: "Media", pressed: true })).toBeVisible();
+  await mediaPool.getByRole("button", { name: "Assets" }).click();
+  await expect(mediaPool.getByRole("button", { name: "Assets", pressed: true })).toBeVisible();
+  await expect(mediaPool.getByRole("button", { name: "Media", pressed: false })).toBeVisible();
+  await mediaPool.getByRole("button", { name: "Media" }).click();
+
   await addTextItem(page);
   const inspector = page.getByRole("complementary", { name: "Edit" });
-  await expect(inspector.getByRole("heading", { name: "Properties" })).toBeVisible();
+  await expect(inspector.getByRole("heading", { name: "Your text" })).toBeVisible();
+  await expect(inspector.getByRole("tab", { name: "Properties" })).toBeVisible();
+  await expect(inspector.getByText("Properties", { exact: true })).toHaveCount(1);
   const inspectorBounds = await inspector.boundingBox();
   expect(inspectorBounds).not.toBeNull();
 
@@ -345,6 +412,51 @@ test("Video Editor project shell stays usable at phone and desktop widths", asyn
         !failure.includes("GPU stall due to ReadPixels"),
     ),
   ).toEqual([]);
+});
+
+test.describe("Video Editor coarse-pointer targets", () => {
+  test.use({ hasTouch: true });
+
+  test("keeps editor controls at least 44 pixels on phones and touch desktops", async ({
+    page,
+  }) => {
+    await createProject(page, "Touch target proof");
+    await addTextItem(page);
+    await expect
+      .poll(() => page.evaluate(() => matchMedia("(pointer: coarse)").matches))
+      .toBe(true);
+
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1024, height: 768 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expectMinimumTargets(page.locator("header").getByRole("button"));
+      await expectMinimumTargets(page.locator("header").getByRole("link"));
+      await expectMinimumTargets(
+        page.getByRole("tablist", { name: "Editor workspaces" }).getByRole("tab"),
+      );
+      await expectMinimumTargets(page.locator("[data-edit-inspector-tab]"));
+      await expectMinimumTargets(page.getByRole("slider", { name: "Zoom" }));
+      const timelineToolbar = page.getByText("Timeline", { exact: true }).locator("..");
+      await expectMinimumTargets(timelineToolbar.getByRole("button"));
+      if (viewport.width === 1024) {
+        await expectMinimumTargets(page.getByRole("separator", { name: "Timeline" }));
+      }
+      await expectNoHorizontalOverflow(page);
+      if (viewport.width === 1024) {
+        await page.screenshot({
+          path: "frontend/.svelte-kit/openpost-video-editor-touch-1024.png",
+          fullPage: true,
+        });
+      }
+    }
+
+    await page.getByRole("tab", { name: "Color" }).click();
+    const colorDock = page.getByRole("region", { name: "Color grading" });
+    await expectMinimumTargets(colorDock.getByRole("slider", { name: "Lift thumb wheel" }));
+    await expectNoHorizontalOverflow(page);
+  });
 });
 
 test("Video Editor keyboard transport and delete commands survive focused controls", async ({

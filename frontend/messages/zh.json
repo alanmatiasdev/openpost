@@ -556,7 +556,7 @@
 	"image_editor_help_add": "Use Add for text, shapes, uploads, workspace media, and stock photos.",
 	"image_editor_help_export": "Use Export to download the active page or every page in order.",
 	"image_editor_first_edit_hint": "从所选文本开始。在“属性”中进行更改。",
-	"image_editor_open_properties": "Open Properties",
+	"image_editor_open_properties": "打开属性",
 	"image_editor_shortcuts": "Keyboard shortcuts",
 	"image_editor_read_only": "This workspace is read-only. You can view and download the design but cannot change it.",
 	"image_editor_nothing_to_undo": "There is nothing to undo.",

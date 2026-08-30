@@ -1180,7 +1180,7 @@ test.describe("product screenshot capture", () => {
       page.locator("[data-program-monitor]"),
       timelineItems.first(),
       timelineItems.last(),
-      videoInspector.getByRole("heading", { name: "Properties" }),
+      videoInspector.getByRole("tab", { name: "Properties" }),
     ]);
 
     await page.goto("/settings?tab=general");

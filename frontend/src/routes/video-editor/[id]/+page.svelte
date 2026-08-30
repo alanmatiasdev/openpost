@@ -183,6 +183,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			.length
 	);
 	const showSourceMonitor = $derived(activeWorkspace === 'edit' && sourceMediaId !== null);
+	const editInspectorHeading = $derived.by(() => {
+		if (selectedTransitionId) return m.video_editor_transition();
+		if (selectedItemIds.length > 1) {
+			return m.video_editor_items_selected({ count: selectedItemIds.length });
+		}
+		if (selectedItemId) {
+			return timelineStore.itemById.get(selectedItemId)?.label.trim() || m.video_editor_clip();
+		}
+		return m.video_editor_tools();
+	});
 	const selectedTranscriptionJob = $derived(
 		selectedItemId ? transcriptionService.jobForItem(selectedItemId) : undefined
 	);
@@ -257,11 +267,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		};
 	});
 
+	let mobileToolsFollowSelection = false;
 	$effect(() => {
-		if (selectedItemId) {
-			selectedTransitionId = null;
+		if (selectedItemId && selectedTransitionId) selectedTransitionId = null;
+		const hasSelection = Boolean(selectedItemId || selectedTransitionId);
+		if (hasSelection) {
+			mobileToolsFollowSelection = true;
 			mobileEditPane = 'tools';
+			return;
 		}
+		if (!mobileToolsFollowSelection) return;
+		mobileToolsFollowSelection = false;
+		mobileEditPane = 'program';
 	});
 
 	$effect(() => {
@@ -1333,7 +1350,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		<div class="flex min-w-0 items-center gap-2">
 			<a
 				href="/video-editor"
-				class="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+				class="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			>
 				<Logo class="h-5 w-auto" />
 				<span class="hidden text-sm font-semibold lg:inline">{m.video_editor_title()}</span>
@@ -1392,7 +1409,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				responsiveTrigger
 				compactQueueTrigger
 				triggerVariant="default"
-				triggerClass="size-8 px-0 sm:w-auto sm:px-2.5"
+				triggerClass="size-11 px-0 sm:h-8 sm:w-auto sm:min-w-0 sm:px-2.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
 				ondone={(result) =>
 					showToast(m.video_editor_export_done({ name: result.fileName }), 'success')}
 				onerror={(error) => showToast(error.message, 'error')}
@@ -1469,6 +1486,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						type="button"
 						class:active={mobileEditPane === 'assets'}
 						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-controls="video-editor-assets-panel"
 						aria-pressed={mobileEditPane === 'assets'}
 						onclick={() => (mobileEditPane = 'assets')}
 					>
@@ -1478,6 +1496,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						type="button"
 						class:active={mobileEditPane === 'program'}
 						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-controls="video-editor-program-panel"
 						aria-pressed={mobileEditPane === 'program'}
 						onclick={() => (mobileEditPane = 'program')}
 					>
@@ -1487,6 +1506,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						type="button"
 						class:active={mobileEditPane === 'tools'}
 						class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+						aria-controls="video-editor-tools-panel"
 						aria-pressed={mobileEditPane === 'tools'}
 						onclick={() => (mobileEditPane = 'tools')}
 					>
@@ -1494,6 +1514,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					</button>
 				</nav>
 			{/if}
+
 			<div class="flex min-h-0 flex-1 flex-col">
 				<div
 					class="flex min-h-0 flex-1 {activeWorkspace === 'motion' || activeWorkspace === 'edit'
@@ -1502,7 +1523,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				>
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="min-h-0 w-full flex-1 flex-col border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:w-72 lg:flex-none lg:border-r lg:border-b-0 {mobileEditPane ===
+							id="video-editor-assets-panel"
+							class="h-[min(44%,22rem)] min-h-0 w-full flex-none flex-col border-b border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:h-auto lg:w-72 lg:border-r lg:border-b-0 {mobileEditPane ===
 							'assets'
 								? 'flex'
 								: 'hidden'}"
@@ -1515,7 +1537,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 									<button
 										type="button"
 										class:active={assetPanel === 'assets'}
-										class="min-h-11 rounded px-1 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-1 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white [@media(pointer:coarse)]:min-h-11"
+										aria-pressed={assetPanel === 'assets'}
 										onclick={() => (assetPanel = 'assets')}
 									>
 										{m.video_editor_assets()}
@@ -1523,7 +1546,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 									<button
 										type="button"
 										class:active={assetPanel === 'media'}
-										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white [@media(pointer:coarse)]:min-h-11"
+										aria-pressed={assetPanel === 'media'}
 										onclick={() => (assetPanel = 'media')}
 									>
 										{m.video_editor_media_tab()}
@@ -1531,7 +1555,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 									<button
 										type="button"
 										class:active={assetPanel === 'scenes'}
-										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white [@media(pointer:coarse)]:min-h-11"
+										aria-pressed={assetPanel === 'scenes'}
 										onclick={() => (assetPanel = 'scenes')}
 									>
 										{m.video_editor_scenes()}
@@ -1539,7 +1564,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 									<button
 										type="button"
 										class:active={assetPanel === 'ai'}
-										class="min-h-11 rounded px-2 text-[11px] text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white"
+										class="min-h-11 rounded px-2 text-xs text-[oklch(0.64_0.015_55)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] lg:min-h-7 [&.active]:bg-[oklch(0.27_0.02_45)] [&.active]:text-white [@media(pointer:coarse)]:min-h-11"
+										aria-pressed={assetPanel === 'ai'}
 										onclick={() => (assetPanel = 'ai')}
 									>
 										{m.video_editor_local_ai()}
@@ -1614,12 +1640,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						</aside>
 					{/if}
 
-					<div
-						class="min-h-0 w-full min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] lg:flex {activeWorkspace !==
-							'edit' || mobileEditPane === 'program'
-							? 'flex'
-							: 'hidden'}"
-					>
+					<div class="flex min-h-0 w-full min-w-0 flex-1 bg-[oklch(0.205_0.008_55)]">
 						<div
 							class="min-h-0 min-w-0 flex-1 bg-[oklch(0.205_0.008_55)] {activeWorkspace === 'color'
 								? 'grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]'
@@ -1641,12 +1662,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 								{/key}
 							{/if}
 							<section
+								id="video-editor-program-panel"
 								data-video-preview
 								class="fullscreen:h-screen fullscreen:w-screen [container-type:inline-size] flex min-w-0 flex-1 flex-col bg-[oklch(0.205_0.008_55)]"
 							>
 								{#if showSourceMonitor || activeWorkspace === 'color'}
 									<div
-										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-xs font-medium text-[oklch(0.72_0.015_55)]"
 									>
 										{m.video_editor_program_monitor()}
 									</div>
@@ -1674,7 +1696,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 									aria-label={m.video_editor_scopes()}
 								>
 									<div
-										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase"
+										class="flex h-9 shrink-0 items-center border-b border-[oklch(0.23_0.012_55)] px-3 text-xs font-medium text-[oklch(0.72_0.015_55)]"
 									>
 										{m.video_editor_scopes()}
 									</div>
@@ -1692,7 +1714,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					<!-- Tools -->
 					{#if activeWorkspace === 'edit'}
 						<aside
-							class="min-h-0 w-full flex-1 flex-col border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:w-72 lg:flex-none lg:border-t-0 lg:border-l {mobileEditPane ===
+							id="video-editor-tools-panel"
+							class="h-[min(44%,22rem)] min-h-0 w-full flex-none flex-col border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.15_0.008_55)] lg:flex lg:h-auto lg:w-72 lg:border-t-0 lg:border-l {mobileEditPane ===
 							'tools'
 								? 'flex'
 								: 'hidden'}"
@@ -1701,12 +1724,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 							<div
 								class="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[oklch(0.25_0.015_55)] px-3"
 							>
-								<h2 class="text-xs font-medium text-[oklch(0.72_0.015_55)]">
-									{selectedTransition
-										? m.video_editor_transition()
-										: selectedItemId
-											? m.video_editor_inspector()
-											: m.video_editor_tools()}
+								<h2 class="min-w-0 truncate text-sm font-medium text-white/90">
+									{editInspectorHeading}
 								</h2>
 								{#if selectedItemId || selectedTransition}
 									<DropdownMenu.Root>
@@ -1900,7 +1919,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 								{:else if sequenceStore.activeSequenceId === null}
 									<ProjectCanvasPanel onedit={() => editorSession.scheduleAutosave()} />
 								{:else}
-									<p class="hidden px-1 py-3 text-sm text-[oklch(0.62_0.01_55)] lg:block">
+									<p class="px-1 py-3 text-sm text-[oklch(0.62_0.01_55)]">
 										{m.video_editor_select_clip()}
 									</p>
 								{/if}
@@ -1938,13 +1957,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 			{#if activeWorkspace !== 'color'}
 				<footer
-					class="relative h-[42dvh] shrink-0 overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] lg:h-[var(--timeline-height)]"
+					class="relative h-[36dvh] shrink-0 overflow-hidden border-t border-[oklch(0.25_0.015_55)] bg-[oklch(0.145_0.008_55)] lg:h-[var(--timeline-height)]"
 					style={`--timeline-height:${timelineHeight}px`}
 				>
-					<button
-						type="button"
-						class="absolute inset-x-0 top-0 z-[80] hidden h-2 cursor-row-resize touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] lg:flex"
+					<div
+						class="absolute inset-x-0 top-0 z-[80] hidden h-2 cursor-row-resize touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[oklch(0.66_0.14_45)] lg:flex [@media(pointer:coarse)]:inset-x-auto [@media(pointer:coarse)]:left-1/2 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-translate-x-1/2"
+						tabindex="0"
 						aria-label={m.video_editor_timeline()}
+						aria-orientation="horizontal"
 						aria-valuemin="180"
 						aria-valuemax="620"
 						aria-valuenow={timelineHeight}
@@ -1954,7 +1974,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					>
 						<span class="h-0.5 w-12 rounded-full bg-white/18 transition-colors hover:bg-white/36"
 						></span>
-					</button>
+					</div>
 					{#if activeWorkspace === 'edit'}
 						<SequenceTabs
 							onswitch={resetTimelineSelection}

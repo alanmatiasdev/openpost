@@ -23,14 +23,17 @@
 			},
 			size: {
 				default:
-					"h-11 gap-1.5 px-3 text-sm has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 md:h-9 [&_svg:not([class*='size-'])]:size-4",
-				xs: "h-11 gap-1 rounded-sm px-2 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 md:h-7 [&_svg:not([class*='size-'])]:size-3",
-				sm: "h-11 gap-1 px-2.5 text-sm has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 md:h-8 [&_svg:not([class*='size-'])]:size-3.5",
-				lg: "h-11 gap-1.5 px-4 text-sm has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 md:h-10 [&_svg:not([class*='size-'])]:size-4",
-				icon: "size-11 md:size-9 [&_svg:not([class*='size-'])]:size-4",
-				'icon-xs': "size-11 rounded-sm md:size-7 [&_svg:not([class*='size-'])]:size-3",
-				'icon-sm': "size-11 md:size-8 [&_svg:not([class*='size-'])]:size-3.5",
-				'icon-lg': "size-11 md:size-10 [&_svg:not([class*='size-'])]:size-4"
+					"h-11 gap-1.5 px-3 text-sm has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 md:h-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11 [&_svg:not([class*='size-'])]:size-4",
+				xs: "h-11 gap-1 rounded-sm px-2 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 md:h-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11 [&_svg:not([class*='size-'])]:size-3",
+				sm: "h-11 gap-1 px-2.5 text-sm has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 md:h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11 [&_svg:not([class*='size-'])]:size-3.5",
+				lg: "h-11 gap-1.5 px-4 text-sm has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 md:h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11 [&_svg:not([class*='size-'])]:size-4",
+				icon: "size-11 md:size-9 [@media(pointer:coarse)]:size-11 [&_svg:not([class*='size-'])]:size-4",
+				'icon-xs':
+					"size-11 rounded-sm md:size-7 [@media(pointer:coarse)]:size-11 [&_svg:not([class*='size-'])]:size-3",
+				'icon-sm':
+					"size-11 md:size-8 [@media(pointer:coarse)]:size-11 [&_svg:not([class*='size-'])]:size-3.5",
+				'icon-lg':
+					"size-11 md:size-10 [@media(pointer:coarse)]:size-11 [&_svg:not([class*='size-'])]:size-4"
 			}
 		},
 		defaultVariants: {

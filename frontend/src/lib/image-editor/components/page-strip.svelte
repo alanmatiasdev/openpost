@@ -80,7 +80,7 @@
 		>
 			{#if editor.pagesExpanded}<ChevronDownIcon />{:else}<ChevronUpIcon />{/if}
 		</Button>
-		<span class="text-xs font-medium">{m.image_editor_pages()}</span>
+		<span class="text-sm font-medium text-foreground">{m.image_editor_pages()}</span>
 		<span class="text-xs text-muted-foreground">{editor.document?.pages.length ?? 0}</span>
 		<div class="ml-auto flex gap-1">
 			<Button
@@ -139,6 +139,7 @@
 						number: index + 1,
 						name: displayPageName(page.name, index)
 					})}
+					aria-current={page.id === editor.activePageID ? 'page' : undefined}
 					aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
 					title={m.image_editor_page_reorder_hint()}
 				>

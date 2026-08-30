@@ -914,6 +914,13 @@
 	}
 
 	:global(.wheel-thumb [data-slot='slider-thumb']) {
+		border: 0;
+		background: transparent;
+		box-shadow: none;
+	}
+
+	:global(.wheel-thumb [data-slot='slider-thumb'])::after {
+		display: block;
 		height: 0.7rem;
 		width: 0.7rem;
 		border: 1px solid rgb(0 0 0 / 80%);
@@ -922,6 +929,10 @@
 	}
 
 	@media (pointer: coarse) {
+		:global(.wheel-thumb) {
+			height: 2.75rem;
+		}
+
 		.color-wheel {
 			min-width: 4.5rem;
 			min-height: 4.5rem;

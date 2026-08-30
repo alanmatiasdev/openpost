@@ -4750,14 +4750,14 @@
 				/>
 				<button
 					type="button"
-					class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+					class="flex items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 					onclick={() => addKeyframeAtPlayhead(pendingKeyframeProperty)}
 					><DiamondIcon class="size-2.5 fill-current" />
 					{m.video_editor_keyframe_add()}</button
 				>
 				<button
 					type="button"
-					class="rounded px-1.5 py-0.5 text-[10px] font-semibold text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.22_0.01_50)] data-[active=true]:bg-[oklch(0.66_0.14_45)] data-[active=true]:text-black"
+					class="rounded px-1.5 py-0.5 text-xs font-semibold text-[oklch(0.62_0.015_55)] hover:bg-[oklch(0.22_0.01_50)] data-[active=true]:bg-[oklch(0.66_0.14_45)] data-[active=true]:text-black [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 					data-active={selectedItem
 						? autoKeyframeStore.isEnabled(selectedItem.id, pendingKeyframeProperty)
 						: false}
@@ -4773,7 +4773,7 @@
 				>
 				<button
 					type="button"
-					class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40"
+					class="rounded px-1 py-0.5 text-xs hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 					disabled={clearableKeyframeCount === 0}
 					aria-label={m.video_editor_clear_keyframes_toolbar()}
 					title={m.video_editor_clear_keyframes_toolbar_hint()}
@@ -4816,7 +4816,7 @@
 		</Button>
 		<button
 			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			aria-label={m.video_editor_zoom_out()}
 			title={m.video_editor_zoom_out_hint()}
 			onclick={() => zoomBy(1 / TIMELINE_ZOOM_STEP)}
@@ -4834,7 +4834,7 @@
 		/>
 		<button
 			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			aria-label={m.video_editor_zoom_in()}
 			title={m.video_editor_zoom_in_hint()}
 			onclick={() => zoomBy(TIMELINE_ZOOM_STEP)}
@@ -4843,7 +4843,7 @@
 		</button>
 		<button
 			type="button"
-			class="min-w-10 rounded px-1 py-0.5 font-mono text-[10px] text-[oklch(0.7_0.015_55)] tabular-nums hover:bg-[oklch(0.22_0.01_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="min-w-10 rounded px-1 py-0.5 font-mono text-xs text-[oklch(0.7_0.015_55)] tabular-nums hover:bg-[oklch(0.22_0.01_50)] hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			aria-label={m.video_editor_zoom_100()}
 			title={m.video_editor_zoom_100_hint()}
 			onclick={zoomTo100}
@@ -4852,7 +4852,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="rounded p-1 hover:bg-[oklch(0.22_0.01_50)] focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			aria-label={m.video_editor_zoom_fit()}
 			title={m.video_editor_zoom_fit_hint()}
 			onclick={zoomToFit}
@@ -4913,7 +4913,7 @@
 
 {#if selectedMarker}
 	<div
-		class="flex min-h-9 max-w-full items-center gap-2 overflow-x-auto border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-[11px]"
+		class="flex min-h-9 max-w-full items-center gap-2 overflow-x-auto border-t border-[oklch(0.25_0.015_55)] px-3 py-1 text-xs"
 	>
 		<FlagIcon class="size-3.5 shrink-0" style={`color:${selectedMarker.color}`} />
 		<span class="shrink-0 font-medium text-white/85">{markerName(selectedMarker)}</span>
@@ -4994,7 +4994,7 @@
 					{#each MARKER_PRESET_COLORS as color, index (color)}
 						<button
 							type="button"
-							class="grid size-6 place-items-center rounded focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+							class="grid size-6 place-items-center rounded focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:size-11"
 							aria-label={m.video_editor_marker_color_choice({ number: index + 1 })}
 							aria-pressed={selectedMarker.color.toLowerCase() === color.toLowerCase()}
 							onclick={() => commitMarkerPatch(selectedMarker, { color })}
@@ -5068,7 +5068,7 @@
 			>
 				{#if mediaPlacement.request && mediaDropPreview}
 					<div
-						class="pointer-events-none absolute top-1 right-2 left-2 z-[70] w-auto rounded-md border border-[oklch(0.38_0.015_55)] bg-[oklch(0.17_0.01_55_/_0.96)] px-3 py-1.5 text-[11px] text-white shadow-xl sm:right-auto sm:left-1/2 sm:w-max sm:max-w-[calc(100%-1rem)] sm:-translate-x-1/2"
+						class="pointer-events-none absolute top-1 right-2 left-2 z-[70] w-auto rounded-md border border-[oklch(0.38_0.015_55)] bg-[oklch(0.17_0.01_55_/_0.96)] px-3 py-1.5 text-xs text-white shadow-xl sm:right-auto sm:left-1/2 sm:w-max sm:max-w-[calc(100%-1rem)] sm:-translate-x-1/2"
 						role="status"
 						aria-live="polite"
 						data-media-placement-status
@@ -5108,7 +5108,7 @@
 						></div>
 						{#each rulerTicks() as tick (tick)}
 							<span
-								class="absolute bottom-0 border-l border-[oklch(0.3_0.01_55)] pl-1 font-mono text-[9px] text-[oklch(0.65_0.015_55)]"
+								class="absolute bottom-0 border-l border-[oklch(0.3_0.01_55)] pl-1 font-mono text-xs text-[oklch(0.65_0.015_55)]"
 								style="left:{timelineX(tick)}px"
 							>
 								{tickLabel(tick)}
@@ -5281,7 +5281,7 @@
 							</div>
 							{#if sceneDropPreview?.trackId === track.id}
 								<div
-									class="pointer-events-none absolute top-1 z-20 h-[calc(100%-8px)] overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.13_45)] bg-[oklch(0.4_0.04_250_/_0.78)] px-2 py-1 text-[10px] text-white shadow-lg"
+									class="pointer-events-none absolute top-1 z-20 h-[calc(100%-8px)] overflow-hidden rounded-sm border border-dashed border-[oklch(0.72_0.13_45)] bg-[oklch(0.4_0.04_250_/_0.78)] px-2 py-1 text-xs text-white shadow-lg"
 									style={clipStyle({
 										from: sceneDropPreview.from,
 										durationInFrames: sceneDropPreview.durationInFrames,
@@ -5297,7 +5297,7 @@
 							{/if}
 							{#if mediaDropPreview && (mediaDropPreview.trackId === track.id || mediaDropPreview.secondaryTrackId === track.id)}
 								<div
-									class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-[10px] text-white shadow-lg {mediaDropPreview.valid
+									class="pointer-events-none absolute top-1 z-20 flex h-[calc(100%-8px)] items-center overflow-hidden rounded-sm border border-dashed px-2 py-1 text-xs text-white shadow-lg {mediaDropPreview.valid
 										? 'border-[oklch(0.72_0.14_145)] bg-[oklch(0.32_0.09_145_/_0.86)]'
 										: 'border-red-400 bg-red-500/25'}"
 									style={`left:${timelineX(mediaDropPreview.from)}px;width:${frameToPx(mediaDropPreview.durationInFrames)}px`}
@@ -5358,7 +5358,7 @@
 												{/if}
 												{#if effectDropHoveredItemId === item.id && effectDropTargetIds.length > 1}
 													<span
-														class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[oklch(0.16_0.008_55)]"
+														class="absolute top-1 right-1 rounded-full bg-[oklch(0.66_0.14_45)] px-1.5 py-0.5 text-xs font-medium text-[oklch(0.16_0.008_55)]"
 													>
 														{m.video_editor_effects_drop_count({
 															count: effectDropTargetIds.length
@@ -5456,8 +5456,7 @@
 													</svg>
 												{/if}
 											{/if}
-											<span
-												class="relative z-10 min-w-0 flex-1 truncate px-2 text-[11px] text-white/90"
+											<span class="relative z-10 min-w-0 flex-1 truncate px-2 text-xs text-white/90"
 												>{item.label}</span
 											>
 											{#if syncOffsetFrames !== null}
@@ -5469,7 +5468,7 @@
 											{/if}
 											{#if item.isReversed}
 												<span
-													class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-[8px] font-semibold tracking-wide text-white/85"
+													class="relative z-10 mr-2 rounded bg-black/55 px-1 py-0.5 text-xs font-semibold text-white/85"
 													title={m.video_editor_clip_reverse()}
 												>
 													{m.video_editor_clip_reverse_badge()}
@@ -5508,7 +5507,7 @@
 												></span>
 												{#if audioVolumeDrag?.itemId === item.id}
 													<span
-														class="pointer-events-none absolute right-1 bottom-full mb-1 rounded bg-black/90 px-1.5 py-0.5 font-mono text-[10px] text-white shadow-lg"
+														class="pointer-events-none absolute right-1 bottom-full mb-1 rounded bg-black/90 px-1.5 py-0.5 font-mono text-xs text-white shadow-lg"
 														data-audio-volume-readout
 													>
 														{formatAudioVolumeDb(volumeDb)}
@@ -5592,7 +5591,7 @@
 											onclick={() => selectTransition(transition.id)}
 										>
 											<span
-												class="mt-0.5 inline-block max-w-[calc(100%-8px)] truncate rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-[8px] font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
+												class="mt-0.5 inline-block max-w-[calc(100%-8px)] truncate rounded bg-[oklch(0.16_0.008_55_/_0.88)] px-1 text-xs font-medium whitespace-nowrap text-[oklch(0.88_0.09_65)]"
 											>
 												{localizedTransitionLabel(
 													transition.presentation ??
@@ -5679,7 +5678,7 @@
 							/>
 							{#if selectedKeyframe && selectedKeyframeIndex >= 0}
 								<div
-									class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-[10px]"
+									class="flex min-h-10 flex-wrap items-center gap-2 border-t border-[oklch(0.25_0.015_55)] px-2 py-1 text-xs"
 								>
 									<span class="font-medium capitalize"
 										>{keyframeLabel(selectedKeyframe.property)}</span
@@ -5687,7 +5686,7 @@
 									<label class="flex items-center gap-1">
 										{m.video_editor_keyframe_easing()}
 										<AppSelect
-											class="h-7 w-28 text-[10px]"
+											class="h-7 w-28 text-xs"
 											value={selectedEasing}
 											options={easingOptions}
 											onValueChange={(value) => commitEasing(easingFromValue(value))}
@@ -5695,7 +5694,7 @@
 									</label>
 									{#if selectedEasing === 'cubic-bezier'}
 										<AppSelect
-											class="h-7 w-32 text-[10px]"
+											class="h-7 w-32 text-xs"
 											value=""
 											options={bezierOptions}
 											ariaLabel={m.video_editor_keyframe_bezier_preset()}
@@ -5730,7 +5729,7 @@
 											class="flex items-center gap-1 border-l border-[oklch(0.28_0.012_55)] pl-2"
 										>
 											<AppSelect
-												class="h-7 w-32 text-[10px]"
+												class="h-7 w-32 text-xs"
 												value={selectedCustomPresetName}
 												options={customPresetOptions}
 												ariaLabel={m.video_editor_keyframe_custom_presets()}
@@ -5745,14 +5744,14 @@
 											/>
 											<button
 												type="button"
-												class="h-7 rounded border border-[oklch(0.32_0.015_55)] px-2 font-medium hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35"
+												class="h-7 rounded border border-[oklch(0.32_0.015_55)] px-2 font-medium hover:bg-[oklch(0.25_0.012_55)] disabled:opacity-35 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 												disabled={!customPresetName.trim()}
 												onclick={saveCustomPreset}>{m.video_editor_keyframe_preset_save()}</button
 											>
 											{#if selectedCustomPresetName}
 												<button
 													type="button"
-													class="h-7 rounded px-2 text-[oklch(0.72_0.1_28)] hover:bg-[oklch(0.3_0.08_28_/_0.22)]"
+													class="h-7 rounded px-2 text-[oklch(0.72_0.1_28)] hover:bg-[oklch(0.3_0.08_28_/_0.22)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 													onclick={deleteCustomPreset}
 													>{m.video_editor_keyframe_preset_delete()}</button
 												>

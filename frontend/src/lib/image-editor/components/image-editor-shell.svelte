@@ -727,6 +727,11 @@
 		inspectorPanelWidth -= Math.min(inspectorPanelWidth - 280, overflow);
 	}
 
+	function handleWindowResize(): void {
+		firstEditActionLabel = window.innerWidth < 1024 ? m.image_editor_open_properties() : undefined;
+		constrainDesktopPanelWidths();
+	}
+
 	function startPanelResize(event: PointerEvent, panel: 'assets' | 'inspector' | 'layers'): void {
 		if (event.button !== 0) return;
 		const handle = event.currentTarget;
@@ -1356,8 +1361,9 @@
 	async function goBack(): Promise<void> {
 		if (editor.canEdit) {
 			const saved = editor.saveState === 'saved' ? true : await saveNow(undefined, 'close');
+			if (!saved) return;
 			if (previewTask) await previewTask;
-			if (!guestMode && saved && previewPending) await runPreview('close');
+			if (!guestMode && previewPending) await runPreview('close');
 		}
 		if (returnToken) {
 			const returnURL = editorHandoffReturnURL(returnToken, 'image', 'cancelled');
@@ -2526,7 +2532,7 @@
 
 <svelte:window
 	onkeydown={handleShortcut}
-	onresize={constrainDesktopPanelWidths}
+	onresize={handleWindowResize}
 	onpointermove={resizePanels}
 	onpointerup={stopPanelResize}
 	onpointercancel={stopPanelResize}
@@ -2824,7 +2830,7 @@
 				</Button>
 			{/if}
 			<Button
-				variant="focal"
+				variant="default"
 				size="sm"
 				class="h-11 md:h-11 lg:h-8"
 				onclick={() => openExport(returnToken && editor.canEdit ? 'attach' : 'download')}

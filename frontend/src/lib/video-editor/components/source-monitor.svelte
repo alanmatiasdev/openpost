@@ -740,7 +740,7 @@
 	onfocusout={handleSourceFocusOut}
 >
 	<header class="flex h-9 shrink-0 items-center gap-2 border-b border-[oklch(0.23_0.012_55)] px-3">
-		<span class="text-[10px] font-semibold tracking-widest text-[oklch(0.67_0.015_55)] uppercase">
+		<span class="text-xs font-medium text-[oklch(0.72_0.015_55)]">
 			{m.video_editor_source_monitor()}
 		</span>
 		<span class="min-w-0 flex-1 truncate text-xs text-[oklch(0.82_0.012_55)]">
@@ -748,7 +748,7 @@
 		</span>
 		<button
 			type="button"
-			class="rounded p-1 text-[oklch(0.68_0.015_55)] hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)]"
+			class="rounded p-1 text-[oklch(0.68_0.015_55)] hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[oklch(0.66_0.14_45)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
 			aria-label={m.video_editor_source_close()}
 			onclick={onclose}
 		>
@@ -1039,13 +1039,19 @@
 
 <style>
 	:global(.source-scrubber [data-slot='slider-thumb']) {
+		border: 0;
+		background: transparent;
+		box-shadow: none;
+		cursor: ew-resize;
+	}
+	:global(.source-scrubber [data-slot='slider-thumb'])::after {
+		display: block;
 		width: 2px;
 		height: 18px;
 		border: 0;
 		border-radius: 1px;
 		background: oklch(0.9 0.02 45);
 		box-shadow: 0 0 0 1px oklch(0.1 0 0);
-		cursor: ew-resize;
 	}
 	.transport-button,
 	.mark-button,
