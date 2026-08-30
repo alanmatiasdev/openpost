@@ -110,10 +110,7 @@ async function decodeSourceSlice(
 	signal?: AbortSignal
 ): Promise<DecodedAudioChunk> {
 	throwIfAborted(signal);
-	const input = new Input({
-		source: new BlobSource(blob),
-		formats: ALL_FORMATS
-	});
+	const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
 	let sink: AudioSampleSink | null = null;
 	try {
 		const track = await input.getPrimaryAudioTrack();
@@ -269,6 +266,22 @@ class EntryAutomation {
 	}
 }
 
+function playbackRateAtEntrySecond(entry: MixEntry, seconds: number): number {
+	const curve = entry.playbackRateCurve;
+	if (!curve || curve.length === 0) return entry.playbackRate;
+	if (seconds <= curve[0]!.atSeconds) return curve[0]!.rate;
+	for (let index = 1; index < curve.length; index += 1) {
+		const right = curve[index]!;
+		if (seconds > right.atSeconds) continue;
+		const left = curve[index - 1]!;
+		const duration = right.atSeconds - left.atSeconds;
+		if (duration <= 0) return right.rate;
+		const progress = (seconds - left.atSeconds) / duration;
+		return left.rate + (right.rate - left.rate) * progress;
+	}
+	return curve.at(-1)!.rate;
+}
+
 async function* streamEntryAudio(
 	entry: MixEntry,
 	signal?: AbortSignal,
@@ -281,19 +294,28 @@ async function* streamEntryAudio(
 		blob = await resolveMediaBlob(media);
 	} catch (error) {
 		if (isAbortError(error)) throw error;
-		throw new Error("A timeline clip's media could not be opened.", {
-			cause: error
-		});
+		throw new Error("A timeline clip's media could not be opened.", { cause: error });
 	}
 
 	const targetFrames = Math.max(0, Math.ceil(entry.durationSeconds * MIX_SAMPLE_RATE));
+	const hasVariableSpeed = (entry.playbackRateCurve?.length ?? 0) > 0;
 	const sourceDuration = entry.durationSeconds * entry.playbackRate + SOURCE_GUARD_SECONDS;
-	const sourceStart = entry.reversed
-		? Math.max(0, entry.sourceOffsetSeconds - sourceDuration)
-		: Math.max(0, entry.sourceOffsetSeconds);
-	const sourceEnd = entry.reversed
-		? Math.max(0, entry.sourceOffsetSeconds)
-		: sourceStart + sourceDuration;
+	const sourceStart = hasVariableSpeed
+		? Math.max(
+				0,
+				(entry.sourceWindowStartSeconds ?? 0) - (entry.reversed ? SOURCE_GUARD_SECONDS : 0)
+			)
+		: entry.reversed
+			? Math.max(0, entry.sourceOffsetSeconds - sourceDuration)
+			: Math.max(0, entry.sourceOffsetSeconds);
+	const sourceEnd = hasVariableSpeed
+		? Math.max(
+				sourceStart,
+				(entry.sourceWindowEndSeconds ?? sourceStart) + (entry.reversed ? 0 : SOURCE_GUARD_SECONDS)
+			)
+		: entry.reversed
+			? Math.max(0, entry.sourceOffsetSeconds)
+			: sourceStart + sourceDuration;
 	let cursor = entry.reversed ? sourceEnd : sourceStart;
 	let sampleRate = 0;
 	let channelCount = 0;
@@ -303,10 +325,12 @@ async function* streamEntryAudio(
 	let noiseReduction: StreamingNoiseReduction | null = null;
 	let resamplers: AbsolutePhaseResampler[] | null = null;
 	let emittedFrames = 0;
-	const sourceWindowSeconds = SOURCE_WINDOW_SECONDS * Math.min(1, entry.playbackRate);
 
 	while (emittedFrames < targetFrames) {
 		throwIfAborted(signal);
+		const currentRate = playbackRateAtEntrySecond(entry, emittedFrames / MIX_SAMPLE_RATE);
+		const sourceWindowSeconds =
+			(hasVariableSpeed ? 0.12 : SOURCE_WINDOW_SECONDS) * Math.min(1, currentRate);
 		const chunkStart = entry.reversed
 			? Math.max(sourceStart, cursor - sourceWindowSeconds)
 			: cursor;
@@ -317,9 +341,7 @@ async function* streamEntryAudio(
 			decoded = await decodeSourceSlice(blob, chunkStart, chunkEnd, signal);
 		} catch (error) {
 			if (isAbortError(error)) throw error;
-			throw new Error('A timeline clip could not be decoded.', {
-				cause: error
-			});
+			throw new Error('A timeline clip could not be decoded.', { cause: error });
 		}
 		cursor = entry.reversed ? chunkStart : chunkEnd;
 		const sourceFinished = entry.reversed ? cursor <= sourceStart : cursor >= sourceEnd;
@@ -332,6 +354,7 @@ async function* streamEntryAudio(
 			sampleRate = decoded.sampleRate;
 			channelCount = decoded.channels.length;
 			const needsStretch =
+				hasVariableSpeed ||
 				Math.abs(entry.playbackRate - 1) > ACTIVE_EPSILON ||
 				Math.abs(entry.pitchShiftSemitones) > ACTIVE_EPSILON;
 			if (needsStretch) {
@@ -363,7 +386,14 @@ async function* streamEntryAudio(
 		let channels = entry.reversed ? reverseChannels(decoded.channels) : decoded.channels;
 		if (noiseReduction) channels = noiseReduction.process(channels, sourceFinished, signal);
 		if (channels[0]?.length === 0) continue;
-		if (timeStretch) channels = timeStretch.process(channels, sourceFinished);
+		if (timeStretch) {
+			timeStretch.setTempo(currentRate);
+			channels = timeStretch.process(
+				channels,
+				sourceFinished,
+				Math.ceil(entry.durationSeconds * sampleRate)
+			);
+		}
 		if (channels[0]?.length === 0) continue;
 		channels = eq!.process(channels);
 		if (effectChain && !effectChain.isEmpty()) channels = effectChain.process(channels);
@@ -482,11 +512,7 @@ export async function* mixAudioWindows(
 	durationSeconds: number,
 	signal?: AbortSignal,
 	diagnostics?: AudioMixDiagnostics
-): AsyncGenerator<{
-	samples: Float32Array[];
-	sampleRate: number;
-	channels: number;
-}> {
+): AsyncGenerator<{ samples: Float32Array[]; sampleRate: number; channels: number }> {
 	throwIfAborted(signal);
 	if (entries.length === 0 || durationSeconds <= 0) return;
 	const totalSamples = Math.ceil(durationSeconds * MIX_SAMPLE_RATE);
@@ -552,11 +578,7 @@ export async function* mixAudioWindows(
 					if (Math.abs(channel[sample]!) > 1) channel[sample] = Math.tanh(channel[sample]!);
 				}
 			}
-			yield {
-				samples: mix,
-				sampleRate: MIX_SAMPLE_RATE,
-				channels: MIX_CHANNELS
-			};
+			yield { samples: mix, sampleRate: MIX_SAMPLE_RATE, channels: MIX_CHANNELS };
 		}
 	} finally {
 		await Promise.all(prepared.map((entry) => entry.reader?.close()));

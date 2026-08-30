@@ -615,6 +615,59 @@ test("Transcript word cuts own Backspace and ripple linked media with undo", asy
     .toBe(audioLeftBefore);
 });
 
+test("Speed curves retime linked picture and sound from the inspector", async ({ page }) => {
+  test.setTimeout(60_000);
+  await createProject(page, "Speed curve route proof");
+  await seedTranscriptEditProject(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const primaryVideo = page.locator('[data-timeline-item-id="video-primary"]');
+  const primaryAudio = page.locator('[data-timeline-item-id="audio-primary"]');
+  await primaryVideo.locator(":scope > button").first().click();
+  const videoWidthBefore = await primaryVideo.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.width),
+  );
+  const audioWidthBefore = await primaryAudio.evaluate((clip) =>
+    parseFloat((clip as HTMLElement).style.width),
+  );
+
+  const playhead = page.getByRole("slider", { name: "Timeline playhead" });
+  await playhead.focus();
+  for (let frame = 0; frame < 30; frame += 1) await page.keyboard.press("ArrowRight");
+
+  const inspector = page.getByRole("complementary", { name: "Edit" });
+  const speedCurve = inspector.getByTestId("speed-ramp-editor");
+  await speedCurve.getByRole("button", { name: "Add point" }).click();
+  await speedCurve.getByRole("spinbutton", { name: "Speed 2" }).fill("2");
+  await speedCurve.getByRole("spinbutton", { name: "Speed 2" }).press("Enter");
+  await speedCurve.getByRole("button", { name: "Easing for segment starting at frame 30" }).click();
+  await page.getByRole("option", { name: "Hold" }).click();
+
+  await expect(speedCurve.getByRole("img", { name: "Speed" })).toBeVisible();
+  await expect(speedCurve.getByRole("button", { name: "Delete Speed 2" })).toBeVisible();
+  await expect
+    .poll(() => primaryVideo.evaluate((clip) => parseFloat((clip as HTMLElement).style.width)))
+    .toBeLessThan(videoWidthBefore);
+  await expect
+    .poll(() => primaryAudio.evaluate((clip) => parseFloat((clip as HTMLElement).style.width)))
+    .toBeLessThan(audioWidthBefore);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-speed-curve-1280.png",
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobilePanels = page.getByRole("navigation", { name: "Editor panels" });
+  await mobilePanels.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(speedCurve).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: "frontend/.svelte-kit/openpost-video-editor-speed-curve-390.png",
+    fullPage: true,
+  });
+});
+
 test("Video Editor restores its workspace before reloading a project deep link", async ({
   page,
 }) => {

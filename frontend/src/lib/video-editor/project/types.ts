@@ -246,6 +246,15 @@ export interface TimelineItemCornerPin {
 	referenceHeight?: number;
 }
 
+/** A persisted playback-rate anchor positioned in source-native frames. */
+export interface SpeedRampPoint {
+	id: string;
+	sourceFrame: number;
+	speed: number;
+	/** Interpolation from this anchor to the next anchor. */
+	easing: EasingType;
+}
+
 /**
  * Ported from FreeCut (MIT) - types/keyframe.ts.
  */
@@ -677,6 +686,8 @@ export interface TimelineItem
 	sourceDuration?: number;
 	sourceFps?: number;
 	speed?: number;
+	/** Source-anchored speed curve shared by preview, audio, transcript edits, and export. */
+	speedRamp?: SpeedRampPoint[];
 	/** Play the selected source window from its exclusive end back to its start. */
 	isReversed?: boolean;
 

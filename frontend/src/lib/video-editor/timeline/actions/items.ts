@@ -6,7 +6,12 @@
  * aligned with linked selection, transitions, and sync-lock ripple rules.
  */
 
-import type { ShapeType, TimelineItem } from '$lib/video-editor/project/types';
+import type {
+	EasingType,
+	ShapeType,
+	SpeedRampPoint,
+	TimelineItem
+} from '$lib/video-editor/project/types';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { detachTransformChildrenForRemoval } from './transform-parenting';
 import { editorSession } from '../../editor.svelte';
@@ -37,6 +42,7 @@ import {
 	timelineToSourceFrames
 } from '../utils/source-calculations';
 import { DEFAULT_MARKER_COLOR } from '../markers';
+import { timelineOffsetToSourceFrame, variableSpeedDurationInFrames } from '../source-time-map';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -105,14 +111,7 @@ export function addTransformController(label: string): string {
 			durationInFrames: Math.max(timelineStore.fps, timelineStore.maxItemEndFrame),
 			label,
 			type: 'controller',
-			transform: {
-				x: 0,
-				y: 0,
-				width: size,
-				height: size,
-				rotation: 0,
-				opacity: 1
-			}
+			transform: { x: 0, y: 0, width: size, height: size, rotation: 0, opacity: 1 }
 		});
 		return id;
 	});
@@ -542,10 +541,7 @@ export function trimItemStart(id: string, newFrom: number, newSourceStart?: numb
 		const delta = newFrom - item.from;
 		const nextDuration = item.durationInFrames - delta;
 		if (nextDuration <= 0 || delta < 0) return false;
-		const patch: Partial<TimelineItem> = {
-			from: newFrom,
-			durationInFrames: nextDuration
-		};
+		const patch: Partial<TimelineItem> = { from: newFrom, durationInFrames: nextDuration };
 		if ((item.type === 'video' || item.type === 'audio') && newSourceStart !== undefined) {
 			patch.sourceStart = newSourceStart;
 		}
@@ -841,7 +837,13 @@ export function setItemSpeed(id: string, speed: number): boolean {
 	}
 
 	const clamped = clampSpeed(speed);
-	if (targets.every((candidate) => Math.abs((candidate.speed ?? 1) - clamped) < 1e-9)) {
+	if (
+		targets.every(
+			(candidate) =>
+				Math.abs((candidate.speed ?? 1) - clamped) < 1e-9 &&
+				(candidate.speedRamp?.length ?? 0) === 0
+		)
+	) {
 		return false;
 	}
 	execute('SET_ITEM_SPEED', () => {
@@ -865,6 +867,7 @@ export function setItemSpeed(id: string, speed: number): boolean {
 				id: candidate.id,
 				patch: {
 					speed: clamped,
+					speedRamp: undefined,
 					durationInFrames,
 					keyframes: scaleItemKeyframes(
 						candidate.keyframes,
@@ -922,7 +925,10 @@ export function setItemsSpeedLive(itemIds: string[], speed: number): SetItemsSpe
 			locked++;
 			continue;
 		}
-		if (Math.abs((candidate.speed ?? 1) - clamped) < 1e-9) {
+		if (
+			Math.abs((candidate.speed ?? 1) - clamped) < 1e-9 &&
+			(candidate.speedRamp?.length ?? 0) === 0
+		) {
 			noop++;
 			continue;
 		}
@@ -950,6 +956,7 @@ export function setItemsSpeedLive(itemIds: string[], speed: number): SetItemsSpe
 			id: candidate.id,
 			patch: {
 				speed: clamped,
+				speedRamp: undefined,
 				durationInFrames,
 				keyframes: scaleItemKeyframes(
 					candidate.keyframes,
@@ -969,6 +976,178 @@ export function setItemsSpeedLive(itemIds: string[], speed: number): SetItemsSpe
 	timelineStore._updateItems(updates);
 	pruneInvalidTransitions();
 	return { changed: toUpdate.length, locked, noop };
+}
+
+export interface SpeedRampEditResult {
+	changed: string[];
+	locked: number;
+	pointId?: string;
+}
+
+interface SpeedRampTargets {
+	targets: TimelineItem[];
+	locked: number;
+}
+
+function speedRampTargets(itemIds: string[]): SpeedRampTargets {
+	const expanded = new Map<string, TimelineItem>();
+	for (const id of itemIds) {
+		const item = timelineStore.itemById.get(id);
+		if (!item || (item.type !== 'video' && item.type !== 'audio')) continue;
+		const synchronized = getSynchronizedLinkedItems(timelineStore.items, id).filter(
+			(candidate) => candidate.type === 'video' || candidate.type === 'audio'
+		);
+		for (const candidate of synchronized) {
+			if (candidate.type === 'video' || candidate.type === 'audio') {
+				expanded.set(candidate.id, candidate);
+			}
+		}
+		if (synchronized.length === 0) expanded.set(item.id, item);
+	}
+	const trackById = new Map(
+		effectiveMediaTracks(timelineStore.tracks).map((track) => [track.id, track])
+	);
+	const targets = [...expanded.values()];
+	return {
+		targets,
+		locked: targets.filter((candidate) => trackById.get(candidate.trackId)?.locked).length
+	};
+}
+
+function speedRampUpdate(
+	candidate: TimelineItem,
+	speedRamp: SpeedRampPoint[]
+): Partial<TimelineItem> {
+	const nextItem = { ...candidate, speedRamp };
+	const durationInFrames = Math.max(
+		1,
+		Math.round(variableSpeedDurationInFrames(nextItem, timelineStore.fps))
+	);
+	return {
+		speedRamp,
+		durationInFrames,
+		keyframes: scaleItemKeyframes(
+			candidate.keyframes,
+			candidate.durationInFrames,
+			durationInFrames
+		),
+		...(candidate.vectorKeyframes && {
+			vectorKeyframes: scaleItemVectorKeyframes(
+				candidate.vectorKeyframes,
+				candidate.durationInFrames,
+				durationInFrames
+			)
+		})
+	};
+}
+
+/** Add one source-anchored speed point at an absolute timeline frame. */
+export function addItemsSpeedPoint(itemIds: string[], timelineFrame: number): SpeedRampEditResult {
+	const { targets, locked } = speedRampTargets(itemIds);
+	if (targets.length === 0 || locked > 0) return { changed: [], locked };
+	const pointId = crypto.randomUUID();
+	const startId = crypto.randomUUID();
+	const endId = crypto.randomUUID();
+	const updates: Array<{ id: string; patch: Partial<TimelineItem> }> = [];
+	for (const candidate of targets) {
+		if (
+			timelineFrame < candidate.from ||
+			timelineFrame > candidate.from + candidate.durationInFrames
+		) {
+			continue;
+		}
+		const sourceStart = candidate.sourceStart ?? 0;
+		const sourceEnd = candidate.sourceEnd;
+		if (sourceEnd === undefined || sourceEnd <= sourceStart) continue;
+		const sourceFrame = Math.max(
+			sourceStart,
+			Math.min(
+				sourceEnd,
+				Math.round(
+					timelineOffsetToSourceFrame(candidate, timelineFrame - candidate.from, timelineStore.fps)
+				)
+			)
+		);
+		const existing = candidate.speedRamp ?? [];
+		if (existing.some((point) => point.sourceFrame === sourceFrame)) continue;
+		const baseSpeed = candidate.speed ?? 1;
+		const initial =
+			existing.length > 0
+				? existing
+				: [
+						{
+							id: sourceFrame === sourceStart ? pointId : startId,
+							sourceFrame: sourceStart,
+							speed: baseSpeed,
+							easing: 'linear' as const
+						},
+						{
+							id: sourceFrame === sourceEnd ? pointId : endId,
+							sourceFrame: sourceEnd,
+							speed: baseSpeed,
+							easing: 'linear' as const
+						}
+					];
+		const speedRamp = initial.some((point) => point.sourceFrame === sourceFrame)
+			? initial
+			: [
+					...initial,
+					{ id: pointId, sourceFrame, speed: baseSpeed, easing: 'linear' as const }
+				].sort((left, right) => left.sourceFrame - right.sourceFrame);
+		updates.push({ id: candidate.id, patch: speedRampUpdate(candidate, speedRamp) });
+	}
+	if (updates.length === 0) return { changed: [], locked, pointId };
+	execute('ADD_ITEMS_SPEED_POINT', () => {
+		timelineStore._updateItems(updates);
+		pruneInvalidTransitions();
+	});
+	return { changed: updates.map((update) => update.id), locked, pointId };
+}
+
+export function updateItemsSpeedPoint(
+	itemIds: string[],
+	pointId: string,
+	patch: { speed?: number; easing?: EasingType }
+): SpeedRampEditResult {
+	const { targets, locked } = speedRampTargets(itemIds);
+	if (targets.length === 0 || locked > 0) return { changed: [], locked, pointId };
+	const updates: Array<{ id: string; patch: Partial<TimelineItem> }> = [];
+	for (const candidate of targets) {
+		const current = candidate.speedRamp ?? [];
+		const currentPoint = current.find((point) => point.id === pointId);
+		if (!currentPoint) continue;
+		const nextSpeed = patch.speed === undefined ? currentPoint.speed : clampSpeed(patch.speed);
+		const nextEasing = patch.easing ?? currentPoint.easing;
+		if (nextSpeed === currentPoint.speed && nextEasing === currentPoint.easing) continue;
+		const speedRamp = current.map((point) =>
+			point.id === pointId ? { ...point, speed: nextSpeed, easing: nextEasing } : point
+		);
+		updates.push({ id: candidate.id, patch: speedRampUpdate(candidate, speedRamp) });
+	}
+	if (updates.length === 0) return { changed: [], locked, pointId };
+	execute('UPDATE_ITEMS_SPEED_POINT', () => {
+		timelineStore._updateItems(updates);
+		pruneInvalidTransitions();
+	});
+	return { changed: updates.map((update) => update.id), locked, pointId };
+}
+
+export function removeItemsSpeedPoint(itemIds: string[], pointId: string): SpeedRampEditResult {
+	const { targets, locked } = speedRampTargets(itemIds);
+	if (targets.length === 0 || locked > 0) return { changed: [], locked, pointId };
+	const updates: Array<{ id: string; patch: Partial<TimelineItem> }> = [];
+	for (const candidate of targets) {
+		const current = candidate.speedRamp ?? [];
+		const speedRamp = current.filter((point) => point.id !== pointId);
+		if (speedRamp.length === current.length) continue;
+		updates.push({ id: candidate.id, patch: speedRampUpdate(candidate, speedRamp) });
+	}
+	if (updates.length === 0) return { changed: [], locked, pointId };
+	execute('REMOVE_ITEMS_SPEED_POINT', () => {
+		timelineStore._updateItems(updates);
+		pruneInvalidTransitions();
+	});
+	return { changed: updates.map((update) => update.id), locked, pointId };
 }
 
 export interface SetItemsVolumeResult {

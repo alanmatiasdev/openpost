@@ -10,6 +10,7 @@
  */
 
 import type { TimelineItem } from '../../project/types';
+import { hasVariableSpeed, sourceFrameToTimelineOffset } from '../source-time-map';
 import {
 	getSourceProperties,
 	sourceToTimelineFrames,
@@ -38,6 +39,9 @@ export function sourceSecondsToTimelineFrame(
 ): number {
 	const sourceFps = getMediaSourceFps(item, timelineFps);
 	const sourceFrame = Math.round(sourceSeconds * sourceFps);
+	if (hasVariableSpeed(item)) {
+		return Math.round(item.from + sourceFrameToTimelineOffset(item, sourceFrame, timelineFps));
+	}
 	const isMedia = item.type === 'video' || item.type === 'audio';
 	const sourceStart = isMedia ? (item.sourceStart ?? 0) : 0;
 	const sourceEnd = isMedia
@@ -65,8 +69,5 @@ export function getItemSourceSpanSeconds(
 	const sourceFps = getMediaSourceFps(item, timelineFps);
 	const sourceFrames = timelineToSourceFrames(item.durationInFrames, speed, timelineFps, sourceFps);
 	const sourceEnd = item.sourceEnd ?? sourceStart + sourceFrames;
-	return {
-		start: sourceStart / sourceFps,
-		end: sourceEnd / sourceFps
-	};
+	return { start: sourceStart / sourceFps, end: sourceEnd / sourceFps };
 }

@@ -628,6 +628,79 @@ describe('bounded audio export product path', () => {
 		expect(Math.max(...boundaryJumps)).toBeLessThan(0.2);
 	}, 30_000);
 
+	it('renders a variable-speed source window into the planned output duration', async () => {
+		const rate = 48_000;
+		const source = Float32Array.from(
+			{ length: rate * 4 },
+			(_, frame) => (Math.floor(frame / rate) + 1) * 0.1
+		);
+		const blob = wavBlobFromMono(source, rate);
+		const file = new File([blob], 'speed-curve.wav', { type: 'audio/wav' });
+		mediaPool.upsert(
+			{
+				id: 'speed-curve',
+				storageType: 'handle',
+				fileHandle: linkedFileHandle(file),
+				fileName: file.name,
+				fileSize: file.size,
+				mimeType: 'audio/wav',
+				duration: 4,
+				width: 0,
+				height: 0,
+				fps: 0,
+				codec: '',
+				audioCodec: 'pcm-s16',
+				audioCodecSupported: true,
+				bitrate: 0,
+				tags: ['audio']
+			},
+			'ready'
+		);
+		const entry: MixEntry = {
+			itemId: 'speed-curve-item',
+			mediaId: 'speed-curve',
+			trackId: 'audio-track',
+			whenSeconds: 0,
+			sourceOffsetSeconds: 0,
+			sourceWindowStartSeconds: 0,
+			sourceWindowEndSeconds: 4,
+			playbackRate: 1,
+			playbackRateCurve: [
+				{ atSeconds: 0, rate: 1 },
+				{ atSeconds: 0.9999999, rate: 1 },
+				{ atSeconds: 1, rate: 2 },
+				{ atSeconds: 1.9999999, rate: 2 },
+				{ atSeconds: 2, rate: 1 },
+				{ atSeconds: 3, rate: 1 }
+			],
+			pitchShiftSemitones: 0,
+			audioEqStages: [],
+			audioEffects: [],
+			reversed: false,
+			durationSeconds: 3,
+			gainPoints: [{ whenSeconds: 0, value: 1 }],
+			previewGainPoints: [],
+			mixerTrackGain: 1,
+			transitionGainSpans: []
+		};
+		const output = new Float32Array(rate * 3);
+		let offset = 0;
+		for await (const window of mixAudioWindows([entry], 3)) {
+			output.set(window.samples[0]!, offset);
+			offset += window.samples[0]!.length;
+		}
+		const average = (start: number, end: number) => {
+			let total = 0;
+			for (let frame = start; frame < end; frame += 1) total += output[frame]!;
+			return total / (end - start);
+		};
+
+		expect(offset).toBe(rate * 3);
+		expect(average(rate / 4, rate / 2)).toBeCloseTo(0.1, 1);
+		expect(average(rate * 1.3, rate * 1.7)).toBeGreaterThan(0.2);
+		expect(average(rate * 2.5, rate * 2.75)).toBeCloseTo(0.4, 1);
+	}, 30_000);
+
 	it('streams reversed audio with effect tails without extending the composition', async () => {
 		const rate = 44_100;
 		const durationSeconds = 11;

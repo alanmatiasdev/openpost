@@ -28,7 +28,9 @@
 	} from '$lib/video-editor/timeline/commands/snapshot.svelte';
 	import type { TimelineSnapshot } from '$lib/video-editor/timeline/commands/types';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
+	import { getSynchronizedLinkedItems } from '$lib/video-editor/timeline/utils/linked-items';
 	import ScrubbableNumberInput from './scrubbable-number-input.svelte';
+	import SpeedRampEditor from './speed-ramp-editor.svelte';
 
 	let {
 		itemId,
@@ -48,6 +50,14 @@
 	const videoItems = $derived(items.filter((item) => item.type === 'video'));
 	const selectedIds = $derived(items.map((item) => item.id));
 	const primaryVideo = $derived(videoItems.find((item) => item.id === itemId) ?? videoItems[0]);
+	const speedCurveItem = $derived(items.find((item) => item.id === itemId) ?? items[0]);
+	const canEditSpeedCurve = $derived.by(() => {
+		if (!speedCurveItem) return false;
+		const synchronizedIds = new Set(
+			getSynchronizedLinkedItems(timelineStore.items, speedCurveItem.id).map((item) => item.id)
+		);
+		return items.every((item) => synchronizedIds.has(item.id));
+	});
 	const speedValue = $derived(mixedValue(items, (item) => item.speed ?? 1));
 	let gesture = $state<{
 		kind: 'speed' | 'fadeIn' | 'fadeOut';
@@ -225,6 +235,10 @@
 					</button>
 				</div>
 			</div>
+
+			{#if canEditSpeedCurve && speedCurveItem}
+				<SpeedRampEditor itemId={speedCurveItem.id} itemIds={selectedIds} {onedit} />
+			{/if}
 
 			{#if videoItems.length > 0}
 				{#each [{ field: 'fadeIn', label: m.video_editor_clip_fade_in_seconds() }, { field: 'fadeOut', label: m.video_editor_clip_fade_out_seconds() }] as control (control.field)}

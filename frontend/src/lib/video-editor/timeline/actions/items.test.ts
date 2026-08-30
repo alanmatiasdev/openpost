@@ -6,6 +6,7 @@ import { timelineStore } from '../stores/timeline-store.svelte';
 import type { TimelineItem } from '$lib/video-editor/project/types';
 import {
 	addAdjustmentLayer,
+	addItemsSpeedPoint,
 	addMarker,
 	addShapeItem,
 	addTextItem,
@@ -22,6 +23,7 @@ import {
 	setItemSpeed,
 	setItemsReversed,
 	splitItemsAtFrame,
+	updateItemsSpeedPoint,
 	updateItemProperties,
 	updateMarker,
 	unlinkItems
@@ -792,6 +794,53 @@ describe('linked item actions', () => {
 		commandHistory.undo();
 		expect(timelineStore.items.map((item) => item.durationInFrames)).toEqual([30, 30]);
 		expect(timelineStore.items.map((item) => item.speed)).toEqual([2, 2]);
+	});
+
+	it('authors one source-anchored speed point across linked A/V and undoes it atomically', () => {
+		timelineStore._setItems([
+			clip({
+				id: 'video',
+				linkedGroupId: 'group',
+				durationInFrames: 120,
+				sourceEnd: 120,
+				sourceFps: 30
+			}),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				linkedGroupId: 'group',
+				durationInFrames: 120,
+				sourceEnd: 120,
+				sourceFps: 30
+			})
+		]);
+
+		const added = addItemsSpeedPoint(['video'], 30);
+		expect(added.changed).toEqual(['video', 'audio']);
+		expect(added.pointId).toBeDefined();
+		if (!added.pointId) return;
+
+		const edited = updateItemsSpeedPoint(['video'], added.pointId, {
+			speed: 2,
+			easing: 'hold'
+		});
+		expect(edited.changed).toEqual(['video', 'audio']);
+		expect(timelineStore.itemById.get('video')?.speedRamp).toEqual(
+			timelineStore.itemById.get('audio')?.speedRamp
+		);
+		expect(timelineStore.itemById.get('video')?.durationInFrames).toBeLessThan(120);
+		expect(timelineStore.itemById.get('audio')?.durationInFrames).toBe(
+			timelineStore.itemById.get('video')?.durationInFrames
+		);
+		expect(commandHistory.getLastCommandType()).toBe('UPDATE_ITEMS_SPEED_POINT');
+
+		commandHistory.undo();
+		expect(
+			timelineStore.itemById.get('video')?.speedRamp?.find((point) => point.id === added.pointId)
+				?.speed
+		).toBe(1);
+		expect(timelineStore.itemById.get('video')?.durationInFrames).toBe(120);
 	});
 
 	it('joins linked split siblings and repairs transition endpoints as one undo step', () => {

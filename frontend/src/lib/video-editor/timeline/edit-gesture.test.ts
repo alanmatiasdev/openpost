@@ -36,6 +36,31 @@ describe('timeline edit gestures', () => {
 		});
 	});
 
+	it('trims variable-speed edges at the source frames visible under each handle', () => {
+		const ramped = mediaItem({
+			from: 100,
+			durationInFrames: 90,
+			sourceStart: 0,
+			sourceEnd: 120,
+			speedRamp: [
+				{ id: 'normal-in', sourceFrame: 0, speed: 1, easing: 'hold' },
+				{ id: 'fast', sourceFrame: 30, speed: 2, easing: 'hold' },
+				{ id: 'normal-out', sourceFrame: 90, speed: 1, easing: 'hold' },
+				{ id: 'end', sourceFrame: 120, speed: 1, easing: 'linear' }
+			]
+		});
+
+		expect(planTrimGesture(ramped, 'start', 20, [], 30, [], 2).patch).toEqual({
+			from: 120,
+			durationInFrames: 70,
+			sourceStart: 20
+		});
+		expect(planTrimGesture(ramped, 'end', -30, [], 30, [], 2).patch).toEqual({
+			durationInFrames: 60,
+			sourceEnd: 90
+		});
+	});
+
 	it('extends the start only as far as available source material', () => {
 		expect(planTrimGesture(mediaItem(), 'start', -50, [], 30, [], 2).patch).toEqual({
 			from: 70,

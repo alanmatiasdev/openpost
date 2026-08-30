@@ -319,6 +319,45 @@ describe('ClipPropertiesPanel reverse playback', () => {
 		panel.style.width = '288px';
 		expect(panel.scrollWidth).toBeLessThanOrEqual(288);
 	});
+
+	it('authors an accessible speed curve for linked picture and sound', async () => {
+		timelineStore._setCurrentFrame(30);
+		const onedit = vi.fn();
+		const screen = await render(ClipPropertiesPanel, {
+			itemId: 'video-item',
+			itemIds: ['video-item', 'audio-item'],
+			onedit
+		});
+
+		await screen.getByRole('button', { name: 'Add point' }).click();
+		const speedPoint = screen.getByRole('spinbutton', { name: 'Speed 2' }).query();
+		if (!(speedPoint instanceof HTMLInputElement)) {
+			throw new Error('The speed point control did not render.');
+		}
+		speedPoint.value = '2';
+		speedPoint.dispatchEvent(new Event('change', { bubbles: true }));
+		await screen.getByRole('button', { name: 'Easing for segment starting at frame 60' }).click();
+		await screen.getByRole('option', { name: 'Hold' }).click();
+
+		const video = timelineStore.itemById.get('video-item');
+		const audio = timelineStore.itemById.get('audio-item');
+		expect(video?.speedRamp).toEqual(audio?.speedRamp);
+		expect(video?.speedRamp?.find((point) => point.sourceFrame === 60)).toMatchObject({
+			speed: 2,
+			easing: 'hold'
+		});
+		expect(video?.durationInFrames).toBe(51);
+		expect(audio?.durationInFrames).toBe(51);
+		expect(onedit).toHaveBeenCalledTimes(3);
+
+		const editor = screen.getByTestId('speed-ramp-editor').query();
+		editor.style.width = '280px';
+		expect(editor.scrollWidth).toBeLessThanOrEqual(280);
+		await page.screenshot({
+			element: editor,
+			path: '../../../../.svelte-kit/openpost-speed-ramp-editor.png'
+		});
+	});
 });
 
 describe('ClipPropertiesPanel transform workflow', () => {
