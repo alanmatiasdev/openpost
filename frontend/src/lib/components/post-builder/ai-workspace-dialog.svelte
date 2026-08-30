@@ -101,9 +101,9 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class={cn(
-			'flex flex-col gap-0 overflow-hidden p-0',
+			'flex flex-col gap-0 overflow-hidden p-0 transition-none motion-reduce:transition-none! sm:transition-[width,height] sm:duration-[260ms] sm:ease-[cubic-bezier(0.16,1,0.3,1)]',
 			step === 'brief'
-				? 'h-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] max-w-[42rem] rounded-xl'
+				? 'h-[min(22rem,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] max-w-[42rem] rounded-xl sm:max-w-[42rem]'
 				: 'h-dvh max-h-dvh max-w-none rounded-none sm:h-[min(760px,calc(100dvh-2rem))] sm:w-[min(96vw,90rem)] sm:max-w-[90rem] sm:rounded-xl'
 		)}
 		data-testid="ai-workspace-dialog"

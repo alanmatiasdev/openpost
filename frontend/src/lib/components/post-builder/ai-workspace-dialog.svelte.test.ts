@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import type { ComponentProps } from 'svelte';
+import { createRawSnippet, type ComponentProps } from 'svelte';
 import AIWorkspaceDialog from './ai-workspace-dialog.svelte';
 import type { AIAngle, AIOpportunity, AIWorkspaceDialogCopy } from './ai-workspace-types';
 import '../../../routes/layout.css';
@@ -66,6 +66,19 @@ const angle: AIAngle = {
 	premise: 'Explain what became simpler and what the change cost.',
 	recommended: true
 };
+
+const briefContext = createRawSnippet(() => ({
+	render: () => `
+		<label class="mx-auto grid max-w-2xl gap-2 text-sm font-medium">
+			Brief (optional)
+			<textarea
+				class="min-h-24 w-full resize-none rounded-md border border-input bg-input/20 px-2 py-2 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+				rows="5"
+				placeholder="A topic, launch, lesson, or goal"
+			></textarea>
+		</label>
+	`
+}));
 
 type DialogProps = ComponentProps<typeof AIWorkspaceDialog>;
 
@@ -190,17 +203,98 @@ describe('AI workspace dialog', () => {
 	});
 
 	it('starts ideation only after Get ideas is pressed', async () => {
+		await page.viewport(1280, 900);
 		const onDiscover = vi.fn();
 		const screen = await render(AIWorkspaceDialog, {
-			props: dialogProps({ step: 'brief', opportunities: [], onDiscover })
+			props: dialogProps({ step: 'brief', opportunities: [], context: briefContext, onDiscover })
 		});
 
 		await expect.element(screen.getByTestId('ai-opportunity-grid')).not.toBeInTheDocument();
 		const dialog = document.querySelector<HTMLElement>('[data-testid="ai-workspace-dialog"]');
 		if (!dialog) throw new Error('AI workspace dialog did not render.');
 		await expectWithinViewport(dialog);
-		expect(dialog.getBoundingClientRect().height).toBeLessThan(window.innerHeight * 0.75);
+		const briefBounds = dialog.getBoundingClientRect();
+		expect(briefBounds.width).toBeGreaterThanOrEqual(620);
+		expect(briefBounds.width).toBeLessThanOrEqual(680);
+		expect(briefBounds.height).toBeLessThan(window.innerHeight * 0.55);
+		await page.screenshot({
+			element: dialog,
+			path: '../../../.svelte-kit/openpost-ai-workspace-brief-1280.png'
+		});
 		await screen.getByRole('button', { name: copy.getIdeas }).click();
 		expect(onDiscover).toHaveBeenCalledOnce();
+
+		await screen.rerender(dialogProps({ step: 'opportunities', onDiscover }));
+		expect(document.querySelector('[data-testid="ai-workspace-dialog"]')).toBe(dialog);
+		const transitionProperties = getComputedStyle(dialog)
+			.transitionProperty.split(',')
+			.map((property) => property.trim());
+		expect(transitionProperties).toEqual(expect.arrayContaining(['width', 'height']));
+		const transitionDuration = Math.max(
+			...getComputedStyle(dialog)
+				.transitionDuration.split(',')
+				.map((duration) => Number.parseFloat(duration))
+		);
+		expect(transitionDuration).toBeGreaterThanOrEqual(0.2);
+		await vi.waitFor(() => {
+			const expandedBounds = dialog.getBoundingClientRect();
+			expect(expandedBounds.width).toBeGreaterThan(briefBounds.width + 400);
+			expect(expandedBounds.height).toBeGreaterThan(briefBounds.height + 250);
+		});
+	});
+
+	it('keeps the compact brief inside phone viewports in both themes', async () => {
+		await page.viewport(390, 844);
+		document.documentElement.classList.add('dark');
+		const screen = await render(AIWorkspaceDialog, {
+			props: dialogProps({
+				step: 'brief',
+				opportunities: [],
+				context: briefContext,
+				onDiscover: vi.fn()
+			})
+		});
+		const dialog = document.querySelector<HTMLElement>('[data-testid="ai-workspace-dialog"]');
+		if (!dialog) throw new Error('AI workspace dialog did not render.');
+		await expectWithinViewport(dialog);
+		const briefBounds = dialog.getBoundingClientRect();
+		expect(briefBounds.left).toBeGreaterThanOrEqual(15.5);
+		expect(window.innerWidth - briefBounds.right).toBeGreaterThanOrEqual(15.5);
+		expect(getComputedStyle(dialog).transitionProperty).toBe('none');
+		await expect.element(screen.getByRole('textbox')).toBeVisible();
+		await expect.element(screen.getByRole('button', { name: copy.getIdeas })).toBeVisible();
+		await page.screenshot({
+			element: dialog,
+			path: '../../../.svelte-kit/openpost-ai-workspace-brief-dark-390.png'
+		});
+
+		await screen.rerender(dialogProps({ step: 'opportunities', onDiscover: vi.fn() }));
+		await vi.waitFor(() => {
+			const expandedBounds = dialog.getBoundingClientRect();
+			expect(expandedBounds.left).toBeLessThanOrEqual(0.5);
+			expect(expandedBounds.top).toBeLessThanOrEqual(0.5);
+			expect(expandedBounds.right).toBeGreaterThanOrEqual(window.innerWidth - 0.5);
+			expect(expandedBounds.bottom).toBeGreaterThanOrEqual(window.innerHeight - 0.5);
+		});
+		await page.screenshot({
+			element: dialog,
+			path: '../../../.svelte-kit/openpost-ai-workspace-opportunities-dark-390.png'
+		});
+
+		document.documentElement.classList.remove('dark');
+		await page.viewport(320, 568);
+		await screen.rerender(
+			dialogProps({
+				step: 'brief',
+				opportunities: [],
+				context: briefContext,
+				onDiscover: vi.fn()
+			})
+		);
+		await expectWithinViewport(dialog);
+		await page.screenshot({
+			element: dialog,
+			path: '../../../.svelte-kit/openpost-ai-workspace-brief-light-320.png'
+		});
 	});
 });
