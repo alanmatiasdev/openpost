@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Reject the public secret shown by older binary-install instructions and generate independent JWT and encryption keys in the current guide.
+- Kept X OAuth callbacks working across mixed keyring rollout peers and removed expired plaintext request secrets during encryption-key rotation.
 - Refuse to start when JWT or encryption secrets still use tracked public example placeholders, and keep bootstrap and data-plane credentials deployment-owned.
 - Added rollback-safe, versioned encryption-key rotation with dual reads, bounded database re-encryption, and authenticated current-key verification across every persisted ciphertext store.
 - Hosted readiness now proves PostgreSQL and required S3 write, read, and delete access with bounded requests, while release CI exercises the production-shaped data plane without skipped PostgreSQL coverage.
