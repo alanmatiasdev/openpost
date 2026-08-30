@@ -101,6 +101,67 @@ test("Image Editor autosaves without replaying the saved-status animation", asyn
     .toBe(0);
 });
 
+test("Image Editor uses one object marquee across the image edge", async ({ page }) => {
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  const designCanvas = page.getByRole("application", { name: "Design canvas" });
+  const stage = page.getByTestId("image-editor-stage");
+  await expect(stage).toBeVisible();
+
+  await page.getByRole("button", { name: "Shape", exact: true }).click();
+  const rectangleLayer = page.getByRole("treeitem", { name: /Rectangle, shape/ });
+  await expect(rectangleLayer).toBeVisible();
+  await page.keyboard.press("v");
+
+  const [canvasBox, stageBox] = await Promise.all([
+    designCanvas.boundingBox(),
+    stage.boundingBox(),
+  ]);
+  if (!canvasBox || !stageBox) {
+    throw new Error("Image Editor canvas did not produce measurable bounds");
+  }
+  await page.mouse.click(canvasBox.x + 8, canvasBox.y + canvasBox.height / 2);
+  await expect(rectangleLayer).not.toHaveAttribute("aria-selected", "true");
+
+  const start = {
+    x: stageBox.x + stageBox.width * 0.05,
+    y: stageBox.y + stageBox.height * 0.05,
+  };
+  const end = {
+    x: Math.min(canvasBox.x + canvasBox.width - 8, stageBox.x + stageBox.width + 40),
+    y: stageBox.y + stageBox.height * 0.95,
+  };
+  expect(end.x).toBeGreaterThan(stageBox.x + stageBox.width);
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 8 });
+  const marquee = page.getByTestId("image-editor-object-selection-outline");
+  await expect(marquee).toBeVisible();
+  await expect(marquee).toHaveCSS("stroke", "rgb(251, 146, 60)");
+  await expect
+    .poll(() => marquee.evaluate((element) => getComputedStyle(element).strokeDasharray))
+    .not.toBe("none");
+  const marqueeBox = await marquee.boundingBox();
+  if (!marqueeBox) throw new Error("Object marquee did not produce measurable bounds");
+  expect(marqueeBox.x + marqueeBox.width).toBeGreaterThan(stageBox.x + stageBox.width);
+  await page.mouse.up();
+  await expect(rectangleLayer).toHaveAttribute("aria-selected", "true");
+
+  const properties = page.locator(".image-editor-inspector");
+  await properties.getByRole("button", { name: "Transform", exact: true }).click();
+  const xInput = properties.getByRole("spinbutton", { name: "X", exact: true });
+  const xBefore = Number(await xInput.inputValue());
+  await page.mouse.move(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + stageBox.width / 2 + 30, stageBox.y + stageBox.height / 2, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await xInput.inputValue())).toBeGreaterThan(xBefore);
+  await expect(marquee).toHaveCount(0);
+});
+
 test("public Image Editor keeps edits open when device storage fails", async ({ page }) => {
   await page.goto("/image-editor");
   await page.getByRole("button", { name: /Instagram square/ }).click();
