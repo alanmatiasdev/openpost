@@ -53,9 +53,9 @@ is the only source for public provider-format certification claims.
 
 <!-- provider-certification:begin -->
 
-The checked-in public certification manifest contains **0 exact provider-format claims**.
+OpenPost Hosted has passed our full live check for **0 ways to post**.
 
-No Hosted service provider-format certification claim is current. Implementation descriptions do not assert Hosted service availability.
+Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.
 <!-- provider-certification:end -->
 
 The release manifest binds that file's exact SHA-256 digest, schema version,

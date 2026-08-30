@@ -102,15 +102,15 @@ export function renderPublicClaimProjection(manifest) {
   );
   const lines = [
     publicProjectionStart,
-    `The checked-in public certification manifest contains **${claims.length} exact provider-format claim${claims.length === 1 ? "" : "s"}**.`,
+    `OpenPost Hosted has passed our full live check for **${claims.length} way${claims.length === 1 ? "" : "s"} to post**.`,
     "",
   ];
   if (claims.length === 0) {
     lines.push(
-      "No Hosted service provider-format certification claim is current. Implementation descriptions do not assert Hosted service availability.",
+      "Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.",
     );
   } else {
-    lines.push("Current exact claims:");
+    lines.push("Ready on OpenPost Hosted:");
     for (const claim of claims) {
       const subject = claim.subject;
       lines.push(

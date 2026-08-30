@@ -29,9 +29,9 @@ Working code and app keys do not prove that a real account can publish each post
 
 <!-- provider-certification:begin -->
 
-The checked-in public certification manifest contains **0 exact provider-format claims**.
+OpenPost Hosted has passed our full live check for **0 ways to post**.
 
-No Hosted service provider-format certification claim is current. Implementation descriptions do not assert Hosted service availability.
+Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.
 <!-- provider-certification:end -->
 
 Social app keys can come from older environment variables, `OPENPOST_PROVIDER_APPS` JSON, or encrypted rows managed in **Settings → Instance → Configuration → Provider apps**. Environment-defined apps are read-only in the interface and win over matching database rows. Matching database fallbacks remain visible and can be deleted while the environment app stays active.

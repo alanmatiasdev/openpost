@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -264,6 +264,33 @@ const mediaFixtures = [
   },
 ];
 
+const editorMediaFixtures = [
+  {
+    id: "media-editor-background",
+    filename: "lisbon-tram.png",
+    artwork: "lisbon-tram",
+    width: 1923,
+    height: 818,
+    size: 1_996_336,
+    favorite: true,
+    usage: 1,
+    canDelete: false,
+  },
+  {
+    id: "media-editor-logo",
+    filename: "logo.png",
+    artwork: "openpost-logo",
+    width: 512,
+    height: 512,
+    size: 10_994,
+    favorite: true,
+    usage: 1,
+    canDelete: false,
+  },
+];
+
+const allMediaFixtures = [...mediaFixtures, ...editorMediaFixtures];
+
 const artwork = {
   workflow: `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
@@ -300,6 +327,42 @@ const artwork = {
       <text x="175" y="650" fill="#6f655f" font-family="system-ui,sans-serif" font-size="46">Notes on software, design, and the work.</text>
     </svg>`,
 } as const;
+
+function mediaFixtureURL(artworkKey: string): string {
+  if (artworkKey === "command-review") return "/marketing-fixtures/command-review.png";
+  if (artworkKey === "lisbon-tram") return "/marketing-fixtures/lisbon-tram.png";
+  if (artworkKey === "openpost-logo") return "/marketing-fixtures/openpost-logo.png";
+  return `/marketing-fixtures/${artworkKey}.svg`;
+}
+
+async function uploadImageFixture(
+  request: APIRequestContext,
+  token: string,
+  workspaceID: string,
+  filename: string,
+  image: Buffer,
+): Promise<string> {
+  const response = await request.post("/api/v1/media/upload", {
+    headers: { Authorization: `Bearer ${token}` },
+    multipart: {
+      workspace_id: workspaceID,
+      source: "upload",
+      asset_kind: "library",
+      retention_class: "library",
+      file: {
+        name: filename,
+        mimeType: "image/png",
+        buffer: image,
+      },
+    },
+  });
+  if (!response.ok()) {
+    throw new Error(`Could not upload ${filename}: ${await response.text()}`);
+  }
+  const body = (await response.json()) as { id?: string };
+  if (!body.id) throw new Error(`Upload for ${filename} returned no media ID`);
+  return body.id;
+}
 
 function publicationFixture(
   workspaceID: string,
@@ -476,7 +539,7 @@ function analyticsFixture() {
   };
 }
 
-async function installLocalVideoWorkspace(page: Page): Promise<void> {
+async function installLocalVideoWorkspace(page: Page, sourceBase64: string): Promise<void> {
   await page.addInitScript(
     ({ source }) => {
       Object.defineProperty(window, "showDirectoryPicker", {
@@ -502,9 +565,10 @@ async function installLocalVideoWorkspace(page: Page): Promise<void> {
       Object.defineProperty(window, "showOpenFilePicker", {
         configurable: true,
         value: async () => {
-          const file = new File([source], "openpost-workflow.svg", {
-            type: "image/svg+xml",
-            lastModified: Date.parse("2026-08-20T14:00:00.000Z"),
+          const bytes = Uint8Array.from(atob(source), (character) => character.charCodeAt(0));
+          const file = new File([bytes], "study-sos-demo.mp4", {
+            type: "video/mp4",
+            lastModified: Date.parse("2026-03-04T20:29:34.000Z"),
           });
           return [
             {
@@ -516,7 +580,7 @@ async function installLocalVideoWorkspace(page: Page): Promise<void> {
         },
       });
     },
-    { source: artwork.workflow },
+    { source: sourceBase64 },
   );
 }
 
@@ -526,13 +590,15 @@ async function createVideoEditorProject(page: Page, name: string): Promise<void>
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.getByRole("button", { name: "New project" }).click();
   await page.getByRole("textbox", { name: "Project name" }).fill(name);
-  await page.getByRole("button", { name: /Instagram square, 1080 × 1080/u }).click();
+  await page.getByRole("button", { name: /YouTube, 1920 × 1080/u }).click();
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page).toHaveURL(/\/video-editor\/[0-9a-f-]+$/u);
   await expect(page.getByRole("tablist", { name: "Editor workspaces" })).toBeVisible();
 }
 
 test.describe("product screenshot capture", () => {
+  test.setTimeout(120_000);
+
   test.skip(
     !captureEnabled,
     "Run bun run capture:product-screenshots to update canonical product images.",
@@ -551,13 +617,24 @@ test.describe("product screenshot capture", () => {
     request,
   }) => {
     await mkdir(screenshotDirectory, { recursive: true });
-    const [rodrigoAvatar, commandReviewImage] = await Promise.all([
-      readFile(join(fixtureDirectory, "rodrigo-avatar.png")),
-      readFile(join(fixtureDirectory, "command-review.png")),
-    ]);
+    const [rodrigoAvatar, commandReviewImage, lisbonTramImage, openpostLogoImage, studySOSVideo] =
+      await Promise.all([
+        readFile(join(fixtureDirectory, "rodrigo-avatar.png")),
+        readFile(join(fixtureDirectory, "command-review.png")),
+        readFile(join(fixtureDirectory, "lisbon-tram.png")),
+        readFile(join(fixtureDirectory, "openpost-logo.png")),
+        // A short excerpt from https://www.youtube.com/watch?v=-m-ea3jfRpo.
+        readFile(join(fixtureDirectory, "study-sos-demo.mp4")),
+      ]);
 
     const auth = await registerUser(request, "me@rgo.pt");
     const workspace = await createWorkspace(request, auth.token, "Personal");
+    const [backgroundMediaID, logoMediaID] = await Promise.all([
+      uploadImageFixture(request, auth.token, workspace.id, "lisbon-tram.png", lisbonTramImage),
+      uploadImageFixture(request, auth.token, workspace.id, "logo.png", openpostLogoImage),
+    ]);
+    editorMediaFixtures[0].id = backgroundMediaID;
+    editorMediaFixtures[1].id = logoMediaID;
     const profile = await request.patch("/api/v1/auth/profile", {
       headers: { Authorization: `Bearer ${auth.token}` },
       data: {
@@ -730,6 +807,9 @@ test.describe("product screenshot capture", () => {
     });
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await page.clock.setFixedTime(new Date(fixedNow));
+    let editorMediaFixturesEnabled = false;
+    const visibleMediaFixtures = () =>
+      editorMediaFixturesEnabled ? allMediaFixtures : mediaFixtures;
 
     await page.route("**/marketing-fixtures/**", async (route) => {
       const filename = new URL(route.request().url()).pathname.split("/").at(-1);
@@ -751,6 +831,24 @@ test.describe("product screenshot capture", () => {
         });
         return;
       }
+      if (filename === "lisbon-tram.png") {
+        await route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          headers: { "cache-control": "public, max-age=31536000, immutable" },
+          body: lisbonTramImage,
+        });
+        return;
+      }
+      if (filename === "openpost-logo.png") {
+        await route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          headers: { "cache-control": "public, max-age=31536000, immutable" },
+          body: openpostLogoImage,
+        });
+        return;
+      }
       const key = filename?.replace(/\.svg$/, "");
       const body = key ? artwork[key as keyof typeof artwork] : undefined;
       if (!body) {
@@ -766,13 +864,22 @@ test.describe("product screenshot capture", () => {
     });
     await page.route("**/media/media-*", async (route) => {
       const mediaID = new URL(route.request().url()).pathname.split("/").at(-1);
-      const item = mediaFixtures.find((candidate) => candidate.id === mediaID);
+      const item = allMediaFixtures.find((candidate) => candidate.id === mediaID);
       if (item?.artwork === "command-review") {
         await route.fulfill({
           status: 200,
           contentType: "image/png",
           headers: { "cache-control": "public, max-age=31536000, immutable" },
           body: commandReviewImage,
+        });
+        return;
+      }
+      if (item?.artwork === "lisbon-tram" || item?.artwork === "openpost-logo") {
+        await route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          headers: { "cache-control": "public, max-age=31536000, immutable" },
+          body: item.artwork === "lisbon-tram" ? lisbonTramImage : openpostLogoImage,
         });
         return;
       }
@@ -881,13 +988,14 @@ test.describe("product screenshot capture", () => {
       });
     });
     await page.route("**/api/v1/media?**", async (route) => {
+      const fixtures = visibleMediaFixtures();
       await route.fulfill({
         contentType: "application/json",
         json: {
-          total: mediaFixtures.length,
+          total: fixtures.length,
           limit: 40,
           offset: 0,
-          media: mediaFixtures.map((item, index) => ({
+          media: fixtures.map((item, index) => ({
             id: item.id,
             workspace_id: workspace.id,
             mime_type: "image/png",
@@ -898,14 +1006,8 @@ test.describe("product screenshot capture", () => {
             alt_text: `${item.filename.replace(/\.png$/, "")} marketing artwork`,
             is_favorite: item.favorite,
             created_at: new Date(Date.parse(fixedNow) - index * 86_400_000).toISOString(),
-            url:
-              item.artwork === "command-review"
-                ? "/marketing-fixtures/command-review.png"
-                : `/marketing-fixtures/${item.artwork}.svg`,
-            thumbnail_url:
-              item.artwork === "command-review"
-                ? "/marketing-fixtures/command-review.png"
-                : `/marketing-fixtures/${item.artwork}.svg`,
+            url: mediaFixtureURL(item.artwork),
+            thumbnail_url: mediaFixtureURL(item.artwork),
             usage_count: item.usage,
             can_delete: item.canDelete,
             processing_status: "ready",
@@ -925,7 +1027,7 @@ test.describe("product screenshot capture", () => {
         contentType: "application/json",
         json: {
           used_bytes: 31_247_565,
-          asset_count: mediaFixtures.length,
+          asset_count: visibleMediaFixtures().length,
           internal_bytes: 0,
           limit_bytes: 0,
         },
@@ -1099,88 +1201,94 @@ test.describe("product screenshot capture", () => {
     await page.evaluate(() => {
       localStorage.setItem("openpost-image-editor-first-edit-v1", "1");
     });
+    editorMediaFixturesEnabled = true;
     await page.goto(`/image-editor/new?workspace=${workspace.id}`);
-    await page
-      .getByRole("region", { name: "Starter templates" })
-      .getByRole("button", { name: /How-to carousel/u })
-      .click();
+    await page.getByRole("spinbutton", { name: "Width" }).fill("1500");
+    await page.getByRole("spinbutton", { name: "Height" }).fill("500");
+    await page.getByRole("button", { name: "Create custom design" }).click();
     await expect(page).toHaveURL(/\/image-editor\/[0-9a-f-]+$/u);
     const imageEditorStage = page.getByTestId("image-editor-stage");
     await expect(imageEditorStage).toBeVisible();
-    await page.getByRole("textbox", { name: "Design title" }).fill("Launch carousel");
-    const originalImageHeadline = page.getByRole("treeitem", {
-      name: /How to get it done, text/u,
-    });
-    await originalImageHeadline.click();
+    await page.getByRole("textbox", { name: "Design title" }).fill("X Banner");
     const imageProperties = page.locator(".image-editor-inspector");
-    await imageProperties.getByRole("textbox", { name: "Layer name" }).fill("Publish clearly.");
-    await imageProperties.getByRole("textbox", { name: "Layer name" }).press("Tab");
-    await imageProperties.locator("textarea").fill("Publish clearly.");
-    const imageHeadline = page.getByRole("treeitem", {
-      name: /Publish clearly\., text/u,
-    });
-    const imageSubline = page.getByRole("treeitem", {
-      name: /A focused five-page walkthrough\., text/u,
-    });
-    await imageSubline.click();
-    await imageProperties.locator("textarea").fill("Create once. Adapt each version.");
-    await imageHeadline.click();
-    const expandPages = page.getByRole("button", { name: "Expand pages" });
-    if (await expandPages.isVisible()) await expandPages.click();
+    await imageProperties.getByRole("button", { name: "Image", exact: true }).click();
+    await page.getByRole("button", { name: /lisbon-tram\.png/u }).click();
+    await imageProperties.getByRole("button", { name: "Fit" }).click();
+    await page.getByRole("option", { name: "Stretch", exact: true }).click();
+    await page.getByRole("button", { name: /logo\.png/u }).click();
+    const logoLayer = page.getByRole("treeitem", { name: /logo\.png, image/u });
+    await expect(logoLayer).toHaveAttribute("aria-selected", "true");
+    await imageProperties.getByRole("button", { name: "Transform", exact: true }).click();
+    await imageProperties.getByRole("spinbutton", { name: "W", exact: true }).fill("147");
+    await imageProperties.getByRole("spinbutton", { name: "W", exact: true }).press("Tab");
+    await imageProperties.getByRole("button", { name: "Center X" }).click();
+    await imageProperties.getByRole("button", { name: "Center Y" }).click();
+    await expect(imageProperties.getByRole("spinbutton", { name: "W", exact: true })).toHaveValue(
+      "147",
+    );
+    await expect(imageProperties.getByRole("spinbutton", { name: "H", exact: true })).toHaveValue(
+      "147",
+    );
+    await imageProperties.getByRole("button", { name: "Transform", exact: true }).click();
     await expect(page.getByTestId("image-editor-save-indicator")).toHaveAttribute(
       "data-state",
       "saved",
       { timeout: 15_000 },
     );
-    await expect(page.getByText("Start with the headline.")).toHaveCount(0);
     await capture(page, "image-editor-dark.png", [
       imageEditorStage,
-      imageHeadline,
-      page.getByRole("button", { name: /Page 5:/u }),
+      logoLayer,
+      imageProperties.getByRole("heading", { name: "Image" }),
+      imageProperties.getByRole("button", { name: "Edit", exact: true }),
     ]);
 
-    await installLocalVideoWorkspace(page);
-    await createVideoEditorProject(page, "Launch video");
+    await installLocalVideoWorkspace(page, studySOSVideo.toString("base64"));
+    await createVideoEditorProject(page, "Study SOS cut");
     await page.getByRole("button", { name: "Import media" }).click();
-    const placeWorkflow = page.getByRole("button", {
-      name: /Place on timeline: openpost-workflow\.png/u,
+    const placeStudySOS = page.getByRole("button", {
+      name: /Place on timeline: study-sos-demo\.mp4/u,
     });
-    await expect(placeWorkflow).toBeVisible({ timeout: 30_000 });
-    const videoMediaPool = page.getByRole("complementary", { name: "Media pool" });
-    await expect(videoMediaPool.getByText("1200 × 1200", { exact: true })).toBeVisible();
-    await placeWorkflow.click();
+    await expect(placeStudySOS).toBeVisible({ timeout: 30_000 });
+    await placeStudySOS.click();
     await expect(page.locator("[data-media-placement-status]")).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     const timelineItems = page.locator("[data-timeline-item-id]");
     await expect(timelineItems).toHaveCount(1);
-    await videoMediaPool.getByRole("button", { name: "Add layer" }).click();
-    await page.getByRole("menuitem", { name: "Add text", exact: true }).click();
-    await expect(timelineItems).toHaveCount(2);
-    const videoInspector = page.getByRole("complementary", { name: "Edit" });
-    const videoText = videoInspector.locator("textarea").first();
-    await expect(videoText).toHaveValue("Your text");
-    await videoText.fill("Publish clearly.");
-    await videoText.press("Tab");
-    await videoInspector.getByRole("button", { name: "Apply Launch" }).click();
-    const videoTextSpans = videoInspector.locator("textarea");
-    await expect(videoTextSpans).toHaveCount(3);
-    await videoTextSpans.nth(0).fill("OPENPOST");
-    await videoTextSpans.nth(1).fill("Publish clearly.");
-    await videoTextSpans.nth(2).fill("Create once. Adapt each version.");
-    await videoTextSpans.nth(2).press("Tab");
-    await videoInspector.locator(".template-strip").evaluate((element) => {
-      const eventTemplate = element.querySelector<HTMLElement>('button[aria-label="Apply Event"]');
-      if (!eventTemplate) throw new Error("Event text template is missing");
-      element.scrollLeft +=
-        eventTemplate.getBoundingClientRect().left - element.getBoundingClientRect().left;
+    await expect(timelineItems.first().locator("[data-filmstrip-tile]").first()).toBeVisible({
+      timeout: 15_000,
     });
-    await expect(page.locator("[data-program-monitor]")).toBeVisible();
+    await expect(timelineItems.first().locator("[data-waveform-window]")).toBeVisible({
+      timeout: 15_000,
+    });
+    const videoInspector = page.getByRole("complementary", { name: "Edit" });
+    const programMonitor = page.locator("[data-program-monitor]");
+    const programVideo = programMonitor.locator("video").first();
+    await expect(programMonitor).toBeVisible();
+    await expect(programVideo).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          programVideo.evaluate((video) => ({
+            hasFrame: video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+            width: video.videoWidth,
+            height: video.videoHeight,
+          })),
+        { timeout: 15_000 },
+      )
+      .toEqual({ hasFrame: true, width: 640, height: 360 });
+    await programVideo.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }),
+    );
+    const propertiesTab = videoInspector.getByRole("tab", { name: "Properties" });
+    await expect(propertiesTab).toHaveAttribute("aria-selected", "true");
     await capture(page, "video-editor-dark.png", [
-      page.locator("[data-program-monitor]"),
+      programMonitor,
       timelineItems.first(),
-      timelineItems.last(),
-      videoInspector.getByRole("tab", { name: "Properties" }),
+      propertiesTab,
     ]);
 
     await page.goto("/settings?tab=general");

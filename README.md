@@ -11,7 +11,7 @@
 <p align="center">
   <strong>Your socials, on steroids.</strong>
   <br>
-  Create, adapt, schedule, and track social content from one workspace.
+  Write it once. Make it fit. Pick a time. See what worked.
 </p>
 
 <p align="center">
@@ -40,10 +40,10 @@
 </p>
 
 <p align="center">
-  <img alt="OpenPost composer with channel-specific versions, media, scheduling, and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
+  <img alt="OpenPost with one post ready for several social apps" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
 </p>
 
-Turn a launch, update, or lesson into destination-specific content, schedule it, and track what shipped. OpenPost shows each provider's limits and publishing state.
+One place for your posts, pictures, videos, calendar, results, and replies. Start with an idea. Make it fit each app. Pick a time. See what happened.
 
 <table>
   <tr>
@@ -58,68 +58,72 @@ Turn a launch, update, or lesson into destination-specific content, schedule it,
   </tr>
 </table>
 
-<p align="center">
-  <img alt="OpenPost Image Editor with a five-page carousel, layers, and text controls" src="./assets/screenshots/image-editor-dark.webp" width="94%">
-  <br><sub>OpenPost Image Editor</sub>
-</p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img alt="OpenPost Image Editor with a selected logo over a Lisbon tram photo" src="./assets/screenshots/image-editor-dark.webp" width="100%">
+      <br><sub>Image Editor</sub>
+    </td>
+    <td width="50%" align="center">
+      <img alt="OpenPost Video Editor cutting a Study SOS screen recording" src="./assets/screenshots/video-editor-dark.webp" width="100%">
+      <br><sub>Video Editor</sub>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <img alt="OpenPost Video Editor with a populated preview, media pool, inspector, and multitrack timeline" src="./assets/screenshots/video-editor-dark.webp" width="94%">
-  <br><sub>OpenPost Video Editor</sub>
-</p>
+## What you can do
 
-## What you get
+- Write one post, then tweak it for each social app.
+- Add pictures, clips, and links.
+- Put posts on the calendar.
+- Make images, cut videos, and make memes.
+- See what went out, what failed, and how each post did.
+- Read and answer comments.
 
-- **Channel-specific versions.** Adapt text, media, format, and timing for each account while keeping one source publication.
-- **A durable queue.** Scheduled work stays in the database, with clear queued, published, failed, and retrying states.
-- **One workspace.** Publications, media, calendar, analytics, and comments stay together.
-- **Built-in creative tools.** Edit images, cut videos, make memes, and save the result to the Media library.
-- **Consistent access.** The web app, HTTP API, CLI, and MCP use the same permissions within each workspace.
+OpenPost is for posting. It does not manage sales, ads, or every mention of your name.
 
-OpenPost focuses on publishing. It does not include a CRM, ad manager, or social listening. Hosted manages the service for you. Self-hosting leaves the server, backups, and provider setup to you.
+## Try it
 
-## Get started
+The fastest way in is [OpenPost Hosted](https://app.openpost.social). We run it for you.
 
-Use the [Hosted service](https://app.openpost.social) if you want OpenPost managed for you.
-
-To run it yourself:
+Want to run it yourself?
 
 ```bash
 git clone https://github.com/getopenpost/openpost.git
 cd openpost
 cp .env.example .env
-# Set OPENPOST_APP_URL and replace the two example secrets in .env.
+# Set OPENPOST_APP_URL and replace the two sample secrets in .env.
 docker compose up -d
 ```
 
-Open `http://localhost:8080`, create the first account, and connect a social account. The default setup uses one container, SQLite, local media, and database-backed jobs. The current amd64 image is published at [`ghcr.io/getopenpost/openpost`](https://github.com/getopenpost/openpost/pkgs/container/openpost).
+Open `http://localhost:8080`, make your first account, and connect a social app.
 
-[Read the self-hosting quickstart](https://docs.openpost.social/guide/quickstart) · [Installation reference](https://docs.openpost.social/self-hosting/) · [Hosted and self-hosted boundary](https://openpost.social/self-hosting)
+[Self-hosting guide](https://docs.openpost.social/guide/quickstart) · [Install help](https://docs.openpost.social/self-hosting/) · [Hosted or self-hosted?](https://openpost.social/self-hosting)
 
-## Providers
+## Where you can post
 
-OpenPost has adapters for X, Mastodon, Bluesky, LinkedIn profiles and company pages, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord webhooks.
+OpenPost can connect to X, Mastodon, Bluesky, LinkedIn, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord.
 
-An adapter means the integration exists. It does not mean it is ready on Hosted. Some need app review, a specific account type, or extra scopes. OpenPost shows that state before you publish.
+Each social app has its own rules. Some must approve the connection first. Others need a certain kind of account. OpenPost tells you what is missing before you try to post.
 
 <!-- provider-certification:begin -->
 
-The checked-in public certification manifest contains **0 exact provider-format claims**.
+OpenPost Hosted has passed our full live check for **0 ways to post**.
 
-No Hosted service provider-format certification claim is current. Implementation descriptions do not assert Hosted service availability.
+Nothing is marked ready on OpenPost Hosted yet. A connection may be in the code before it is ready for real accounts.
 <!-- provider-certification:end -->
 
-[Provider readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Platform limits](https://docs.openpost.social/providers/)
+[Social app readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Posting limits](https://docs.openpost.social/providers/)
 
-## Automate it
+## Build with it
 
-API, CLI, and MCP tokens use the same workspace permissions as the web app. They never expose social account credentials.
+Use the API, CLI, or MCP server to make posts, plan them, and check them. They can do only what your OpenPost account can do. They never show your social app login details.
 
 [CLI guide](https://docs.openpost.social/cli/) · [MCP guide](https://docs.openpost.social/mcp/) · [API reference](https://docs.openpost.social/development/api-reference)
 
-## Develop OpenPost
+## Work on OpenPost
 
-OpenPost uses Go, Svelte 5, SvelteKit, Bun, and Devenv.
+OpenPost is built with Go, Svelte 5, SvelteKit, Bun, and Devenv.
 
 ```bash
 direnv allow
@@ -127,11 +131,11 @@ devenv shell -- setup
 bun run verify
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](https://docs.openpost.social/development/setup) before opening a pull request.
+Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and the [setup guide](https://docs.openpost.social/development/setup).
 
 ## Help OpenPost grow
 
-If OpenPost is useful to you, **star the repository**. It helps other self-hosters find the project and tells us which work is worth continuing.
+If OpenPost saves you time, **star the repo**. It helps more people find it.
 
 <!-- star-history:start -->
 <picture>
@@ -142,4 +146,4 @@ If OpenPost is useful to you, **star the repository**. It helps other self-hoste
 
 ## License and security
 
-OpenPost is licensed under [AGPL-3.0-only](LICENSE). Report vulnerabilities privately through the [security policy](SECURITY.md).
+OpenPost uses the [AGPL-3.0-only license](LICENSE). Report security bugs privately through the [security policy](SECURITY.md).

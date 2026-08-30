@@ -52,10 +52,7 @@ test("public provider claims are derived from the manifest on every claim surfac
     () =>
       validatePublicClaimSurfaceSources(manifest, {
         ...sources,
-        providerIndex: sources.providerIndex.replace(
-          "0 exact provider-format claims",
-          "1 exact provider-format claim",
-        ),
+        providerIndex: sources.providerIndex.replace("0 ways to post", "1 way to post"),
       }),
     /projection is stale/u,
   );
