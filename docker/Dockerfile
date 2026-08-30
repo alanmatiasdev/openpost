@@ -68,7 +68,8 @@ LABEL org.opencontainers.image.title="OpenPost" \
       org.opencontainers.image.base.digest="sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b" \
       io.openpost.release-manifest.sha256="${RELEASE_MANIFEST_SHA256}"
 
-RUN apk add --no-cache ca-certificates ffmpeg tzdata sqlite
+RUN apk add --no-cache ca-certificates ffmpeg tzdata sqlite \
+    'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0'
 
 RUN adduser -D -u 1000 openpost
 
