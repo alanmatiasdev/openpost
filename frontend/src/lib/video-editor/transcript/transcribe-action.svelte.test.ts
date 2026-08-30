@@ -68,6 +68,8 @@ describe('transcription timeline mapping', () => {
 		]);
 		const subtitle = timelineStore.itemById.get(subtitleId);
 		expect(subtitle).toMatchObject({ from: source.from, type: 'subtitle' });
+		expect(subtitle?.trackId).not.toBe(source.trackId);
+		expect(timelineStore.tracks).toHaveLength(2);
 		expect(subtitle?.cues?.[0]).toMatchObject({
 			text: 'Hello',
 			startFrame: 15,

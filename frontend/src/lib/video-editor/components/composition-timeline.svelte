@@ -49,6 +49,7 @@
 		calculateMoveSnap
 	} from '$lib/video-editor/timeline/snapping';
 	import { planLinkedMoveGesture, planTrimGesture } from '$lib/video-editor/timeline/edit-gesture';
+	import { findForwardOpenTrackShift } from '$lib/video-editor/timeline/track-occupancy';
 	import { planTrimCompositionToRange } from '$lib/video-editor/timeline/trim-composition-range';
 	import { timelinePreviewScrub } from '$lib/video-editor/preview/timeline-preview-scrub';
 	import { editorKeyframes, keyframeIdentity } from '$lib/video-editor/timeline/keyframe-editor';
@@ -903,6 +904,9 @@
 			from: item.from + 10,
 			label: item.label ? `${item.label} copy` : item.type
 		}));
+		const shift = findForwardOpenTrackShift(newItems, timelineStore.items);
+		if (shift === null) return;
+		if (shift > 0) newItems.forEach((item) => (item.from += shift));
 		timelineStore._setItems([...timelineStore.items, ...newItems]);
 		commandHistory.addUndoEntry({ type: 'DUPLICATE_ITEMS' }, before);
 		onedit();
@@ -925,6 +929,9 @@
 			id: crypto.randomUUID(),
 			from: Math.max(0, item.from + offset)
 		}));
+		const shift = findForwardOpenTrackShift(newItems, timelineStore.items);
+		if (shift === null) return;
+		if (shift > 0) newItems.forEach((item) => (item.from += shift));
 		timelineStore._setItems([...timelineStore.items, ...newItems]);
 		commandHistory.addUndoEntry({ type: 'PASTE_ITEMS' }, before);
 		onedit();

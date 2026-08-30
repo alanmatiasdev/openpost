@@ -10,6 +10,7 @@ import type {
 } from '../project/types';
 import { commandHistory, execute, executeAtomic } from '../timeline/commands/command-store.svelte';
 import { clonePropertyRuntime } from '../timeline/actions/property-runtime';
+import { ensureOpenTrackForRange } from '../timeline/actions/track-placement';
 import {
 	detachedTransformParentBinding,
 	detachTransformChildrenForRemoval
@@ -272,10 +273,22 @@ export function sequenceDeletionImpactFor(compositionIds: string[]): SequenceDel
 export function nestSequence(compositionId: string, from = timelineStore.currentFrame): string[] {
 	return execute('NEST_SEQUENCE', () => {
 		const composition = assertCompositionCanNest(compositionId);
+		const durationInFrames = Math.max(1, composition.durationInFrames);
 		const effectiveTracks = effectiveMediaTracks(timelineStore.tracks);
-		const visualTrack = effectiveTracks
+		const preferredVisualTrack = effectiveTracks
 			.filter((track) => track.kind !== 'audio' && !track.locked)
 			.toSorted((left, right) => left.order - right.order)[0];
+		const visualTrack =
+			hasVisual(composition.items) && preferredVisualTrack
+				? ensureOpenTrackForRange({
+						kind: 'video',
+						itemType: 'composition',
+						from,
+						durationInFrames,
+						label: composition.name,
+						preferredTrackId: preferredVisualTrack.id
+					})
+				: undefined;
 		const audioTrack = effectiveTracks
 			.filter((track) => track.kind === 'audio' && !track.locked)
 			.toSorted((left, right) => right.order - left.order)[0];
@@ -388,7 +401,18 @@ export function createCompoundClip(
 					!expandedIds.has(transition.fromItemId) && !expandedIds.has(transition.toItemId)
 			)
 		);
-		const visualTrack = visualTrackFor(selected, timelineStore.tracks);
+		const preferredVisualTrack = visualTrackFor(selected, timelineStore.tracks);
+		const visualTrack =
+			hasVisual(selected) && preferredVisualTrack
+				? ensureOpenTrackForRange({
+						kind: 'video',
+						itemType: 'composition',
+						from: minFrom,
+						durationInFrames: composition.durationInFrames,
+						label: name,
+						preferredTrackId: preferredVisualTrack.id
+					})
+				: undefined;
 		const audioTrack = audioTrackFor(selected, timelineStore.tracks);
 		const linkedGroupId =
 			hasVisual(selected) && hasAudio(selected) ? crypto.randomUUID() : undefined;

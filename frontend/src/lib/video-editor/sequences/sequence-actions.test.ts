@@ -297,6 +297,26 @@ describe('compound clips', () => {
 		expect(timelineStore.items.map((entry) => entry.id)).toEqual(['visual', 'audio-item']);
 	});
 
+	it('places a compound wrapper on another visual track when its span contains an unselected item', () => {
+		timelineStore._setItems([
+			item({ id: 'left', from: 0, durationInFrames: 30 }),
+			item({ id: 'blocker', from: 30, durationInFrames: 30 }),
+			item({ id: 'right', from: 60, durationInFrames: 30 })
+		]);
+
+		const compositionId = createCompoundClip(['left', 'right'], 'Selected clips');
+		const visualWrapper = timelineStore.items.find(
+			(entry) => entry.type === 'composition' && entry.compositionId === compositionId
+		);
+
+		expect(visualWrapper?.trackId).not.toBe('video');
+		expect(timelineStore.itemById.get('blocker')?.trackId).toBe('video');
+		expect(timelineStore.tracks).toHaveLength(3);
+		commandHistory.undo();
+		expect(timelineStore.tracks).toHaveLength(2);
+		expect(timelineStore.items.map((entry) => entry.id)).toEqual(['left', 'blocker', 'right']);
+	});
+
 	it('cuts transform relationships cleanly at a new composition boundary', () => {
 		const parent = item({
 			id: 'parent',
@@ -531,6 +551,27 @@ describe('compound clips', () => {
 		switchSequence('a');
 		expect(() => nestSequence('a')).toThrow('cannot contain itself');
 		expect(() => nestSequence('b')).toThrow('cannot contain itself');
+	});
+
+	it('nests a sequence on another visual track when the preferred range is occupied', () => {
+		const nested = composition('nested', [item({ id: 'inside' })]);
+		sequenceStore.addComposition(nested, true);
+		timelineStore._setItems([
+			item({ id: 'occupied', from: 40, durationInFrames: 20 }),
+			item({ id: 'audio-mix', trackId: 'audio', type: 'audio', from: 40, durationInFrames: 20 })
+		]);
+
+		const ids = nestSequence('nested', 45);
+		const wrappers = ids.map((id) => timelineStore.itemById.get(id));
+		const visualWrapper = wrappers.find((candidate) => candidate?.type === 'composition');
+		const audioWrapper = wrappers.find((candidate) => candidate?.type === 'audio');
+
+		expect(visualWrapper?.trackId).not.toBe('video');
+		expect(audioWrapper?.trackId).toBe('audio');
+		expect(timelineStore.tracks).toHaveLength(3);
+		commandHistory.undo();
+		expect(timelineStore.tracks).toHaveLength(2);
+		expect(timelineStore.items.map((entry) => entry.id)).toEqual(['occupied', 'audio-mix']);
 	});
 
 	it('nests linked visual and audio wrappers on exact open tracks as one undo step', () => {

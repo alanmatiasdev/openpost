@@ -37,6 +37,11 @@ import {
 	timelineToSourceFrames
 } from '../utils/source-calculations';
 import { DEFAULT_MARKER_COLOR } from '../markers';
+import { ensureOpenTrackForRange } from './track-placement';
+import {
+	findForwardOpenTrackShift,
+	updatesIntroduceExclusiveTrackOverlap
+} from '../track-occupancy';
 
 export function addItems(newItems: TimelineItem[]): void {
 	execute('ADD_ITEMS', () => {
@@ -46,17 +51,28 @@ export function addItems(newItems: TimelineItem[]): void {
 
 export function addTextItem(label: string): string {
 	return execute('ADD_TEXT_ITEM', () => {
-		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
-			.filter((track) => track.kind !== 'audio' && !track.locked)
-			.toSorted((left, right) => left.order - right.order)[0];
-		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add text.');
-
+		if (
+			!effectiveMediaTracks(timelineStore.tracks).some(
+				(track) => track.kind !== 'audio' && !track.locked
+			)
+		) {
+			throw new Error('An unlocked visual track is required to add text.');
+		}
+		const from = timelineStore.currentFrame;
+		const durationInFrames = timelineStore.fps * 3;
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'text',
+			from,
+			durationInFrames,
+			label
+		});
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
 			id,
-			trackId: topVisualTrack.id,
-			from: timelineStore.currentFrame,
-			durationInFrames: timelineStore.fps * 3,
+			trackId: targetTrack.id,
+			from,
+			durationInFrames,
 			label,
 			text: label,
 			type: 'text'
@@ -67,16 +83,27 @@ export function addTextItem(label: string): string {
 
 export function addTextItemAtFrame(label: string, frame: number): string {
 	return execute('ADD_TEXT_ITEM', () => {
-		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
-			.filter((track) => track.kind !== 'audio' && !track.locked)
-			.toSorted((left, right) => left.order - right.order)[0];
-		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add text.');
+		if (
+			!effectiveMediaTracks(timelineStore.tracks).some(
+				(track) => track.kind !== 'audio' && !track.locked
+			)
+		) {
+			throw new Error('An unlocked visual track is required to add text.');
+		}
+		const durationInFrames = timelineStore.fps * 3;
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'text',
+			from: frame,
+			durationInFrames,
+			label
+		});
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
 			id,
-			trackId: topVisualTrack.id,
+			trackId: targetTrack.id,
 			from: frame,
-			durationInFrames: timelineStore.fps * 3,
+			durationInFrames,
 			label,
 			text: label,
 			type: 'text'
@@ -132,20 +159,31 @@ const SHAPE_LABELS = {
 /** Add a styled three-second shape on the top unlocked visual track. */
 export function addShapeItem(shapeType: ShapeType, label = SHAPE_LABELS[shapeType]): string {
 	return execute('ADD_SHAPE_ITEM', () => {
-		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
-			.filter((track) => track.kind !== 'audio' && !track.locked)
-			.toSorted((left, right) => left.order - right.order)[0];
-		if (!topVisualTrack) throw new Error('An unlocked visual track is required to add a shape.');
-
+		if (
+			!effectiveMediaTracks(timelineStore.tracks).some(
+				(track) => track.kind !== 'audio' && !track.locked
+			)
+		) {
+			throw new Error('An unlocked visual track is required to add a shape.');
+		}
 		const projectWidth = editorSession.project?.metadata.width ?? 1920;
 		const projectHeight = editorSession.project?.metadata.height ?? 1080;
 		const size = Math.max(80, Math.round(Math.min(projectWidth, projectHeight) * 0.28));
+		const from = timelineStore.currentFrame;
+		const durationInFrames = timelineStore.fps * 3;
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'shape',
+			from,
+			durationInFrames,
+			label
+		});
 		const id = crypto.randomUUID();
 		timelineStore._addItem({
 			id,
-			trackId: topVisualTrack.id,
-			from: timelineStore.currentFrame,
-			durationInFrames: timelineStore.fps * 3,
+			trackId: targetTrack.id,
+			from,
+			durationInFrames,
 			label,
 			type: 'shape',
 			shapeType,
@@ -396,6 +434,11 @@ export function duplicateItems(ids: string[]): string[] {
 				from: item.from + item.durationInFrames
 			});
 		}
+		const shift = findForwardOpenTrackShift(duplicates, timelineStore.items);
+		if (shift === null) return [];
+		if (shift > 0) {
+			for (const duplicate of duplicates) duplicate.from += shift;
+		}
 		if (duplicates.length > 0) {
 			timelineStore._setItems([...timelineStore.items, ...duplicates]);
 		}
@@ -555,16 +598,18 @@ export function trimItemStart(id: string, newFrom: number, newSourceStart?: numb
 }
 
 export function trimItemEnd(id: string, newEnd: number, newSourceEnd?: number): boolean {
+	const item = timelineStore.itemById.get(id);
+	if (!item) return false;
+	const nextDuration = newEnd - item.from;
+	if (nextDuration <= 0 || newEnd < item.from + 1) return false;
+	const patch: Partial<TimelineItem> = { durationInFrames: nextDuration };
+	if ((item.type === 'video' || item.type === 'audio') && newSourceEnd !== undefined) {
+		patch.sourceEnd = newSourceEnd;
+	}
+	const updates = [{ id, patch }];
+	if (updatesIntroduceExclusiveTrackOverlap(timelineStore.items, updates)) return false;
 	return execute('TRIM_ITEM_END', () => {
-		const item = timelineStore.itemById.get(id);
-		if (!item) return false;
-		const nextDuration = newEnd - item.from;
-		if (nextDuration <= 0 || newEnd < item.from + 1) return false;
-		const patch: Partial<TimelineItem> = { durationInFrames: nextDuration };
-		if ((item.type === 'video' || item.type === 'audio') && newSourceEnd !== undefined) {
-			patch.sourceEnd = newSourceEnd;
-		}
-		timelineStore._updateItems([{ id, patch }]);
+		timelineStore._updateItems(updates);
 		return true;
 	});
 }
@@ -821,6 +866,45 @@ export function slipItem(id: string, deltaSourceFrames: number): void {
 	});
 }
 
+function buildRateStretchUpdates(targets: readonly TimelineItem[], speed: number) {
+	return targets.map((candidate) => {
+		const sourceFps = candidate.sourceFps ?? timelineStore.fps;
+		const currentSpeed = candidate.speed ?? 1;
+		const sourceFrames =
+			candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
+				? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
+				: timelineToSourceFrames(
+						candidate.durationInFrames,
+						currentSpeed,
+						timelineStore.fps,
+						sourceFps
+					);
+		const durationInFrames = Math.max(
+			1,
+			sourceToTimelineFrames(sourceFrames, speed, sourceFps, timelineStore.fps)
+		);
+		return {
+			id: candidate.id,
+			patch: {
+				speed,
+				durationInFrames,
+				keyframes: scaleItemKeyframes(
+					candidate.keyframes,
+					candidate.durationInFrames,
+					durationInFrames
+				),
+				...(candidate.vectorKeyframes && {
+					vectorKeyframes: scaleItemVectorKeyframes(
+						candidate.vectorKeyframes,
+						candidate.durationInFrames,
+						durationInFrames
+					)
+				})
+			} satisfies Partial<TimelineItem>
+		};
+	});
+}
+
 /** Rate-stretch synchronized A/V while keeping the source window and start fixed. */
 export function setItemSpeed(id: string, speed: number): boolean {
 	const item = timelineStore.itemById.get(id);
@@ -844,43 +928,9 @@ export function setItemSpeed(id: string, speed: number): boolean {
 	if (targets.every((candidate) => Math.abs((candidate.speed ?? 1) - clamped) < 1e-9)) {
 		return false;
 	}
+	const updates = buildRateStretchUpdates(targets, clamped);
+	if (updatesIntroduceExclusiveTrackOverlap(timelineStore.items, updates)) return false;
 	execute('SET_ITEM_SPEED', () => {
-		const updates = targets.map((candidate) => {
-			const sourceFps = candidate.sourceFps ?? timelineStore.fps;
-			const currentSpeed = candidate.speed ?? 1;
-			const sourceFrames =
-				candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
-					? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
-					: timelineToSourceFrames(
-							candidate.durationInFrames,
-							currentSpeed,
-							timelineStore.fps,
-							sourceFps
-						);
-			const durationInFrames = Math.max(
-				1,
-				sourceToTimelineFrames(sourceFrames, clamped, sourceFps, timelineStore.fps)
-			);
-			return {
-				id: candidate.id,
-				patch: {
-					speed: clamped,
-					durationInFrames,
-					keyframes: scaleItemKeyframes(
-						candidate.keyframes,
-						candidate.durationInFrames,
-						durationInFrames
-					),
-					...(candidate.vectorKeyframes && {
-						vectorKeyframes: scaleItemVectorKeyframes(
-							candidate.vectorKeyframes,
-							candidate.durationInFrames,
-							durationInFrames
-						)
-					})
-				} satisfies Partial<TimelineItem>
-			};
-		});
 		timelineStore._updateItems(updates);
 		pruneInvalidTransitions();
 	});
@@ -930,42 +980,10 @@ export function setItemsSpeedLive(itemIds: string[], speed: number): SetItemsSpe
 	}
 	if (toUpdate.length === 0) return { changed: 0, locked, noop };
 	if (locked > 0) return { changed: 0, locked, noop };
-	const updates = toUpdate.map((candidate) => {
-		const sourceFps = candidate.sourceFps ?? timelineStore.fps;
-		const currentSpeed = candidate.speed ?? 1;
-		const sourceFrames =
-			candidate.sourceStart !== undefined && candidate.sourceEnd !== undefined
-				? Math.max(1, candidate.sourceEnd - candidate.sourceStart)
-				: timelineToSourceFrames(
-						candidate.durationInFrames,
-						currentSpeed,
-						timelineStore.fps,
-						sourceFps
-					);
-		const durationInFrames = Math.max(
-			1,
-			sourceToTimelineFrames(sourceFrames, clamped, sourceFps, timelineStore.fps)
-		);
-		return {
-			id: candidate.id,
-			patch: {
-				speed: clamped,
-				durationInFrames,
-				keyframes: scaleItemKeyframes(
-					candidate.keyframes,
-					candidate.durationInFrames,
-					durationInFrames
-				),
-				...(candidate.vectorKeyframes && {
-					vectorKeyframes: scaleItemVectorKeyframes(
-						candidate.vectorKeyframes,
-						candidate.durationInFrames,
-						durationInFrames
-					)
-				})
-			} satisfies Partial<TimelineItem>
-		};
-	});
+	const updates = buildRateStretchUpdates(toUpdate, clamped);
+	if (updatesIntroduceExclusiveTrackOverlap(timelineStore.items, updates)) {
+		return { changed: 0, locked, noop: 0 };
+	}
 	timelineStore._updateItems(updates);
 	pruneInvalidTransitions();
 	return { changed: toUpdate.length, locked, noop };

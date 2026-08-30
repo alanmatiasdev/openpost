@@ -155,6 +155,41 @@ describe('beat sync timeline actions', () => {
 		expect(commandHistory.canUndo).toBe(false);
 	});
 
+	it('rejects a beat sync that would overlap visible items on one track', () => {
+		timelineStore._setTracks([track('visual')]);
+		timelineStore._setItems([
+			clip('first', { from: 0, durationInFrames: 40 }),
+			clip('second', { from: 80, durationInFrames: 40 })
+		]);
+
+		expect(
+			syncTracksToBeatMarkersAtomic({
+				trackIds: ['visual'],
+				beatFrames: [0, 30],
+				config: { mode: 'preserve-duration', cadence: 1, offsetFrames: 0 }
+			})
+		).toEqual({ changed: 0, skippedLocked: 0, skippedUnavailable: 1 });
+		expect(timelineStore.items.map((item) => item.from)).toEqual([0, 80]);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('allows beat-synced audio items to overlap for mixing', () => {
+		timelineStore._setTracks([track('audio')]);
+		timelineStore._setItems([
+			clip('first', { trackId: 'audio', type: 'audio', from: 0, durationInFrames: 40 }),
+			clip('second', { trackId: 'audio', type: 'audio', from: 80, durationInFrames: 40 })
+		]);
+
+		expect(
+			syncTracksToBeatMarkersAtomic({
+				trackIds: ['audio'],
+				beatFrames: [0, 30],
+				config: { mode: 'preserve-duration', cadence: 1, offsetFrames: 0 }
+			})
+		).toEqual({ changed: 1, skippedLocked: 0, skippedUnavailable: 0 });
+		expect(timelineStore.items.map((item) => item.from)).toEqual([0, 30]);
+	});
+
 	it('splits on the requested beat cadence and undoes the whole cut set', () => {
 		timelineStore._setTracks([track('visual'), track('audio')]);
 		timelineStore._setItems([

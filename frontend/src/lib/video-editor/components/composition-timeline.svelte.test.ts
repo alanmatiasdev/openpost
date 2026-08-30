@@ -158,7 +158,15 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		keyboardShortcuts.setBinding('COMPOSITION_NUDGE_RIGHT', 'alt+9');
 		keyboardShortcuts.setBinding('DELETE_SELECTED', 'alt+0');
 		sequenceStore.load(
-			{ ...createEmptyTimeline(), compositions: [composition()] },
+			{
+				...createEmptyTimeline(),
+				compositions: [
+					composition({
+						items: [makeItem({ id: 'one' }), makeItem({ id: 'two', from: 90 })],
+						durationInFrames: 150
+					})
+				]
+			},
 			{ width: 1920, height: 1080, fps: 30 }
 		);
 		sequenceStore.switchTo('comp-1');
@@ -228,6 +236,9 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		await expect.element(screen.getByRole('menuitem', { name: 'Paste' })).not.toBeDisabled();
 		await screen.getByRole('menuitem', { name: 'Paste' }).click();
 		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(3));
+		expect(timelineStore.items.find((item) => item.id !== 'one' && item.id !== 'two')?.from).toBe(
+			120
+		);
 		expect(commandHistory.undoStack).toHaveLength(historyBefore + 1);
 		expect(onedit).toHaveBeenCalledTimes(1);
 		commandHistory.undo();
@@ -237,7 +248,8 @@ describe('CompositionTimeline focused 2D composition timeline', () => {
 		await screen.getByRole('menuitem', { name: 'Duplicate' }).click();
 
 		await vi.waitFor(() => expect(timelineStore.items).toHaveLength(3));
-		expect(timelineStore.items.filter((item) => item.label === 'one copy')).toHaveLength(1);
+		const duplicate = timelineStore.items.find((item) => item.label === 'one copy');
+		expect(duplicate?.from).toBe(120);
 		expect(commandHistory.undoStack).toHaveLength(historyBefore + 1);
 		expect(onedit).toHaveBeenCalledTimes(2);
 

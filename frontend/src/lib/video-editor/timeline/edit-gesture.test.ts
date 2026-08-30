@@ -352,6 +352,88 @@ describe('timeline edit gestures', () => {
 		]);
 	});
 
+	it('stops every selected and linked item at the tightest visual same-track gap', () => {
+		const firstVideo = mediaItem({
+			id: 'first-video',
+			from: 10,
+			durationInFrames: 30,
+			linkedGroupId: 'first'
+		});
+		const firstAudio = mediaItem({
+			...firstVideo,
+			id: 'first-audio',
+			trackId: 'audio',
+			type: 'audio'
+		});
+		const secondVideo = mediaItem({
+			id: 'second-video',
+			from: 100,
+			durationInFrames: 20
+		});
+		const videoBlocker = mediaItem({
+			id: 'video-blocker',
+			from: 145,
+			durationInFrames: 30
+		});
+		const audioBlocker = mediaItem({
+			id: 'audio-blocker',
+			trackId: 'audio',
+			type: 'audio',
+			from: 55,
+			durationInFrames: 30
+		});
+
+		expect(
+			planLinkedMoveGesture(
+				firstVideo,
+				50,
+				[firstVideo, firstAudio, secondVideo, videoBlocker, audioBlocker],
+				['first-video', 'second-video']
+			)
+		).toEqual([
+			{ id: 'first-video', from: 35 },
+			{ id: 'first-audio', from: 35 },
+			{ id: 'second-video', from: 125 }
+		]);
+	});
+
+	it('keeps audio-only items free to overlap for mixing', () => {
+		const moving = mediaItem({
+			id: 'moving-audio',
+			trackId: 'audio',
+			type: 'audio',
+			from: 10,
+			durationInFrames: 30
+		});
+		const mix = mediaItem({
+			id: 'mix-audio',
+			trackId: 'audio',
+			type: 'audio',
+			from: 55,
+			durationInFrames: 30
+		});
+
+		expect(planLinkedMoveGesture(moving, 50, [moving, mix])).toEqual([
+			{ id: 'moving-audio', from: 50 }
+		]);
+	});
+
+	it('can leave a legacy overlap and ignores simultaneous items on another track', () => {
+		const moving = mediaItem({ id: 'moving', from: 50, durationInFrames: 30 });
+		const legacyOverlap = mediaItem({ id: 'legacy', from: 40, durationInFrames: 30 });
+		const otherTrack = mediaItem({
+			id: 'overlay',
+			trackId: 'overlay',
+			from: 80,
+			durationInFrames: 100
+		});
+		const newBlocker = mediaItem({ id: 'new-blocker', from: 130, durationInFrames: 30 });
+
+		expect(
+			planLinkedMoveGesture(moving, 120, [moving, legacyOverlap, otherTrack, newBlocker])
+		).toEqual([{ id: 'moving', from: 100 }]);
+	});
+
 	it('slips synchronized linked media in one source-space edit', () => {
 		const video = mediaItem({
 			id: 'video',

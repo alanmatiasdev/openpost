@@ -26,6 +26,7 @@ import {
 	getSynchronizedLinkedCounterpartPair,
 	getSynchronizedLinkedItems
 } from './utils/linked-items';
+import { clampMoveDeltaToTrackGaps } from './track-occupancy';
 
 export interface TrimGesturePlan {
 	patch: Partial<TimelineItem>;
@@ -102,7 +103,7 @@ export function planLinkedMoveGesture(
 	participantById.set(item.id, item);
 	const participants = [...participantById.values()];
 	let delta = proposedFrom - item.from;
-	for (const participant of participants) delta = Math.max(delta, -participant.from);
+	delta = clampMoveDeltaToTrackGaps(items, new Set(participantById.keys()), delta);
 	return participants.map((participant) => ({
 		id: participant.id,
 		from: participant.from + delta

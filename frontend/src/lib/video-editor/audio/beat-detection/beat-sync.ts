@@ -10,6 +10,7 @@ import {
 import { scaleItemKeyframes } from '$lib/video-editor/timeline/edit-constraints';
 import { scaleItemVectorKeyframes } from '$lib/video-editor/timeline/vector-keyframes';
 import { pruneInvalidTransitions } from '$lib/video-editor/timeline/actions/transitions.svelte';
+import { updatesIntroduceExclusiveTrackOverlap } from '$lib/video-editor/timeline/track-occupancy';
 
 export type BeatSyncMode = 'smart' | 'one-per-beat' | 'preserve-duration';
 export type BeatCadence = 1 | 2 | 4;
@@ -238,13 +239,16 @@ export function syncTracksToBeatMarkersAtomic(request: BeatSyncRequest): BeatSyn
 	}
 
 	if (updates.size === 0) return { changed: 0, skippedLocked, skippedUnavailable };
+	const plannedUpdates = [...updates].map(([id, patch]) => ({ id, patch }));
+	if (updatesIntroduceExclusiveTrackOverlap(timelineStore.items, plannedUpdates)) {
+		return {
+			changed: 0,
+			skippedLocked,
+			skippedUnavailable: skippedUnavailable + updates.size
+		};
+	}
 	return executeAtomic('SYNC_CLIPS_TO_BEATS', () => {
-		timelineStore._updateItems(
-			[...updates].map(([id, patch]) => ({
-				id,
-				patch
-			}))
-		);
+		timelineStore._updateItems(plannedUpdates);
 		pruneInvalidTransitions();
 		return { changed: updates.size, skippedLocked, skippedUnavailable };
 	});

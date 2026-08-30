@@ -22,6 +22,7 @@ import {
 	setItemSpeed,
 	setItemsReversed,
 	splitItemsAtFrame,
+	trimItemEnd,
 	updateItemProperties,
 	updateMarker,
 	unlinkItems
@@ -558,6 +559,28 @@ describe('addAdjustmentLayer', () => {
 	});
 });
 
+describe('generated visual item placement', () => {
+	beforeEach(() => {
+		timelineStore.__resetForTesting();
+		timelineStore._setTracks(createDefaultTracks());
+		commandHistory.clearHistory();
+	});
+
+	it('puts simultaneous text and shape items on separate visual tracks', () => {
+		setCurrentFrame(30);
+
+		const itemIds = [
+			addTextItem('First title'),
+			addTextItem('Second title'),
+			addShapeItem('rectangle')
+		];
+		const trackIds = itemIds.map((id) => timelineStore.itemById.get(id)?.trackId);
+
+		expect(new Set(trackIds).size).toBe(3);
+		expect(timelineStore.tracks).toHaveLength(4);
+	});
+});
+
 describe('linked item actions', () => {
 	beforeEach(() => {
 		timelineStore.__resetForTesting();
@@ -792,6 +815,106 @@ describe('linked item actions', () => {
 		commandHistory.undo();
 		expect(timelineStore.items.map((item) => item.durationInFrames)).toEqual([30, 30]);
 		expect(timelineStore.items.map((item) => item.speed)).toEqual([2, 2]);
+	});
+
+	it('rejects a linked rate stretch that would create a visual same-track overlap', () => {
+		timelineStore._setItems([
+			clip({
+				id: 'video',
+				linkedGroupId: 'group',
+				durationInFrames: 30,
+				sourceStart: 60,
+				sourceEnd: 180,
+				sourceFps: 60,
+				speed: 2
+			}),
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				linkedGroupId: 'group',
+				durationInFrames: 30,
+				sourceStart: 60,
+				sourceEnd: 180,
+				sourceFps: 60,
+				speed: 2
+			}),
+			clip({ id: 'video-blocker', from: 50, durationInFrames: 30 }),
+			clip({
+				id: 'audio-mix',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 40,
+				durationInFrames: 30
+			})
+		]);
+
+		expect(setItemSpeed('video', 1)).toBe(false);
+		expect(
+			timelineStore.items.slice(0, 2).map((item) => ({
+				speed: item.speed,
+				duration: item.durationInFrames
+			}))
+		).toEqual([
+			{ speed: 2, duration: 30 },
+			{ speed: 2, duration: 30 }
+		]);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('allows an audio-only rate stretch to overlap for mixing', () => {
+		timelineStore._setItems([
+			clip({
+				id: 'audio',
+				trackId: 'track-audio',
+				type: 'audio',
+				durationInFrames: 30,
+				sourceStart: 60,
+				sourceEnd: 180,
+				sourceFps: 60,
+				speed: 2
+			}),
+			clip({
+				id: 'audio-mix',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 40,
+				durationInFrames: 30
+			})
+		]);
+
+		expect(setItemSpeed('audio', 1)).toBe(true);
+		expect(timelineStore.itemById.get('audio')).toMatchObject({
+			speed: 1,
+			durationInFrames: 60
+		});
+	});
+
+	it('rejects an end extension that would create a visual same-track overlap', () => {
+		timelineStore._setItems([
+			clip({ id: 'video', durationInFrames: 30 }),
+			clip({ id: 'blocker', from: 40, durationInFrames: 30 })
+		]);
+
+		expect(trimItemEnd('video', 50)).toBe(false);
+		expect(timelineStore.itemById.get('video')?.durationInFrames).toBe(30);
+		expect(commandHistory.canUndo).toBe(false);
+	});
+
+	it('allows an audio end extension to overlap for mixing', () => {
+		timelineStore._setItems([
+			clip({ id: 'audio', trackId: 'track-audio', type: 'audio', durationInFrames: 30 }),
+			clip({
+				id: 'mix',
+				trackId: 'track-audio',
+				type: 'audio',
+				from: 40,
+				durationInFrames: 30
+			})
+		]);
+
+		expect(trimItemEnd('audio', 50)).toBe(true);
+		expect(timelineStore.itemById.get('audio')?.durationInFrames).toBe(50);
 	});
 
 	it('joins linked split siblings and repairs transition endpoints as one undo step', () => {

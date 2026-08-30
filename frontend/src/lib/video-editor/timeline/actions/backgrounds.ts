@@ -2,17 +2,20 @@ import { editorSession } from '../../editor.svelte';
 import { timelineStore } from '../stores/timeline-store.svelte';
 import { execute } from '../commands/command-store.svelte';
 import type { BackgroundPatternKind, ProceduralBackground } from '../../project/types';
-import { effectiveMediaTracks } from '../utils/track-groups';
 import { cloneBackground, type BackgroundPatch } from '../../backgrounds/types';
 import { getBackgroundPreset, clonePresetBackground } from '../../backgrounds/presets';
+import { ensureOpenTrackForRange } from './track-placement';
+import { effectiveMediaTracks } from '../utils/track-groups';
 
 export function addBackgroundItem(presetId?: string): string {
 	return execute('ADD_BACKGROUND_ITEM', () => {
-		const topVisualTrack = effectiveMediaTracks(timelineStore.tracks)
-			.filter((track) => track.kind !== 'audio' && !track.locked)
-			.toSorted((left, right) => left.order - right.order)[0];
-		if (!topVisualTrack)
+		if (
+			!effectiveMediaTracks(timelineStore.tracks).some(
+				(track) => track.kind !== 'audio' && !track.locked
+			)
+		) {
 			throw new Error('An unlocked visual track is required to add a background.');
+		}
 		const presetBg = presetId ? clonePresetBackground(presetId) : null;
 		const fallback = getBackgroundPreset('mesh-sunset');
 		if (!fallback) throw new Error('Missing default background preset.');
@@ -21,11 +24,20 @@ export function addBackgroundItem(presetId?: string): string {
 		const projectHeight = editorSession.project?.metadata.height ?? 1080;
 		const id = crypto.randomUUID();
 		const label = presetId ? (getBackgroundPreset(presetId)?.label ?? 'Background') : 'Background';
+		const from = timelineStore.currentFrame;
+		const durationInFrames = timelineStore.fps * 3;
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'background',
+			from,
+			durationInFrames,
+			label
+		});
 		timelineStore._addItem({
 			id,
-			trackId: topVisualTrack.id,
-			from: timelineStore.currentFrame,
-			durationInFrames: timelineStore.fps * 3,
+			trackId: targetTrack.id,
+			from,
+			durationInFrames,
 			label,
 			type: 'background',
 			background,

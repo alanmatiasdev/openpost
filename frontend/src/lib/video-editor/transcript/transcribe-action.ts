@@ -20,6 +20,7 @@ import { buildCuesFromWords, type TranscriptWord } from './cues';
 import { BrowserTranscriber } from './engine/transcriber';
 import type { TranscribeOptions } from './engine/types';
 import { isTrackEffectivelyLocked } from '../timeline/utils/track-groups';
+import { ensureOpenTrackForRange } from '../timeline/actions/track-placement';
 
 export interface TranscriptionSourceWindow {
 	sourceStartSeconds: number;
@@ -165,15 +166,26 @@ export function addGeneratedSubtitleItem(
 			throw new Error(m.video_editor_transcribe_unlock_existing());
 		}
 		const existing = matches[0];
-		const topTrack =
-			existing === undefined
-				? timelineStore.tracks.find(
-						(track) =>
-							track.kind === 'video' && !isTrackEffectivelyLocked(track.id, timelineStore.tracks)
-					)
-				: undefined;
-		if (!existing && !topTrack) throw new Error(m.video_editor_transcribe_unlock_track());
+		if (
+			!existing &&
+			!timelineStore.tracks.some(
+				(track) =>
+					track.kind === 'video' && !isTrackEffectivelyLocked(track.id, timelineStore.tracks)
+			)
+		) {
+			throw new Error(m.video_editor_transcribe_unlock_track());
+		}
 		const id = existing?.id ?? crypto.randomUUID();
+		const label = m.video_editor_transcribe();
+		const targetTrack = ensureOpenTrackForRange({
+			kind: 'video',
+			itemType: 'subtitle',
+			from: source.from,
+			durationInFrames: source.durationInFrames,
+			label,
+			preferredTrackId: existing?.trackId,
+			ignoredItemIds: new Set(matches.map((item) => item.id))
+		});
 		const resolvedCanvas =
 			canvas.width > 0 && canvas.height > 0 ? canvas : { width: 1920, height: 1080 };
 		const style = existing
@@ -187,10 +199,10 @@ export function addGeneratedSubtitleItem(
 			...(existing ?? {}),
 			...style,
 			id,
-			trackId: existing?.trackId ?? topTrack!.id,
+			trackId: targetTrack.id,
 			from: source.from,
 			durationInFrames: source.durationInFrames,
-			label: m.video_editor_transcribe(),
+			label,
 			type: 'subtitle',
 			captionSource: {
 				type: 'transcript',
