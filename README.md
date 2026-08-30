@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <img alt="OpenPost with one post ready for several social apps" src="./assets/screenshots/readme-hero-dark.webp" width="94%">
+  <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="98%">
 </p>
 
 Make something worth sharing. OpenPost helps you shape it for every social app, send it at the right time, and see what happened.

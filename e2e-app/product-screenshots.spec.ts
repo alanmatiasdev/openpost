@@ -432,13 +432,194 @@ function publicationFixture(
 }
 
 function analyticsFixture() {
+  const rangeDates = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 6, 22 + index));
+    return date.toISOString().slice(0, 10);
+  });
   const followerSeries = [
-    6712, 6715, 6714, 6716, 6720, 6721, 6724, 6722, 6728, 6740, 6775, 6810, 6831, 6828, 6835, 6849,
-    6856, 6868, 6884, 6901,
-  ].map((value, index) => ({
-    date: `2026-08-${String(index + 1).padStart(2, "0")}`,
-    value,
-  }));
+    6744, 6747, 6747, 6746, 6749, 6752, 6755, 6754, 6758, 6762, 6765, 6771, 6770, 6777, 6781, 6790,
+    6794, 6801, 6806, 6812, 6820, 6831, 6837, 6845, 6852, 6860, 6870, 6882, 6890, 6901,
+  ].map((value, index) => ({ date: rangeDates[index], value }));
+  const posts = [
+    {
+      key: "analytics-rendition-publishing",
+      label: "The boring part of publishing should stay boring",
+      platform: "threads",
+      publication_id: "analytics-publication",
+    },
+    {
+      key: "analytics-rendition-launch-week",
+      label: "A calmer way to run launch week",
+      platform: "linkedin",
+      publication_id: "analytics-publication-launch-week",
+    },
+    {
+      key: "analytics-rendition-daily-shipping",
+      label: "What we learned from shipping every day",
+      platform: "youtube",
+      publication_id: "analytics-publication-daily-shipping",
+    },
+    {
+      key: "analytics-rendition-wayland",
+      label: "Finally moved over to Wayland",
+      platform: "x",
+      publication_id: "analytics-publication-wayland",
+    },
+    {
+      key: "analytics-rendition-image-tools",
+      label: "Image tools should make the result easier to share",
+      platform: "bluesky",
+      publication_id: "analytics-publication-image-tools",
+    },
+    {
+      key: "analytics-rendition-release-notes",
+      label: "The release notes people actually read",
+      platform: "mastodon",
+      publication_id: "analytics-publication-release-notes",
+    },
+    {
+      key: "analytics-rendition-small-fixes",
+      label: "Small fixes compound",
+      platform: "threads",
+      publication_id: "analytics-publication-small-fixes",
+    },
+    {
+      key: "analytics-rendition-queue",
+      label: "Why the queue lives in the database",
+      platform: "linkedin",
+      publication_id: "analytics-publication-queue",
+    },
+    {
+      key: "analytics-rendition-studio",
+      label: "A first look at OpenPost Studio",
+      platform: "youtube",
+      publication_id: "analytics-publication-studio",
+    },
+    {
+      key: "analytics-rendition-provider-rules",
+      label: "Every social app has different rules",
+      platform: "x",
+      publication_id: "analytics-publication-provider-rules",
+    },
+    {
+      key: "analytics-rendition-content-calendar",
+      label: "Planning a month without filling every day",
+      platform: "bluesky",
+      publication_id: "analytics-publication-content-calendar",
+    },
+    {
+      key: "analytics-rendition-founder-workflow",
+      label: "The content workflow I use as a solo founder",
+      platform: "mastodon",
+      publication_id: "analytics-publication-founder-workflow",
+    },
+  ] as const;
+  type TrendSegment = readonly [postIndex: number, value: number];
+  const viewSegments: TrendSegment[][] = [
+    [],
+    [[6, 86]],
+    [[7, 3]],
+    [],
+    [[8, 14]],
+    [],
+    [[9, 136]],
+    [[10, 101]],
+    [[11, 2]],
+    [],
+    [[3, 14]],
+    [[8, 211]],
+    [[2, 18]],
+    [
+      [5, 47],
+      [1, 5],
+    ],
+    [[5, 308]],
+    [[9, 31]],
+    [[2, 432]],
+    [[2, 6]],
+    [[10, 29]],
+    [[2, 4]],
+    [[0, 928]],
+    [
+      [0, 320],
+      [1, 258],
+    ],
+    [
+      [3, 15],
+      [2, 7],
+    ],
+    [
+      [3, 194],
+      [1, 80],
+    ],
+    [[3, 94]],
+    [
+      [11, 82],
+      [0, 6],
+    ],
+    [[0, 8]],
+    [[8, 46]],
+    [[11, 202]],
+    [[5, 143]],
+  ];
+  const engagementSegments: TrendSegment[][] = [
+    [],
+    [[6, 3]],
+    [[7, 1]],
+    [],
+    [[8, 1]],
+    [],
+    [[9, 5]],
+    [[10, 4]],
+    [],
+    [],
+    [[3, 2]],
+    [[8, 8]],
+    [[2, 1]],
+    [
+      [5, 2],
+      [1, 1],
+    ],
+    [[5, 11]],
+    [[9, 2]],
+    [[2, 18]],
+    [],
+    [[10, 2]],
+    [],
+    [[0, 36]],
+    [
+      [0, 13],
+      [1, 10],
+    ],
+    [
+      [3, 1],
+      [2, 1],
+    ],
+    [
+      [3, 8],
+      [1, 3],
+    ],
+    [[3, 5]],
+    [
+      [11, 4],
+      [0, 1],
+    ],
+    [[0, 1]],
+    [[8, 3]],
+    [[11, 8]],
+    [[5, 7]],
+  ];
+  const buildContentTrend = (segmentsByDay: TrendSegment[][]) =>
+    segmentsByDay.map((segments, index) => {
+      const items = segments.map(([postIndex, value]) => ({ ...posts[postIndex], value }));
+      return {
+        date: rangeDates[index],
+        value: items.reduce((total, item) => total + item.value, 0),
+        items,
+      };
+    });
+  const viewTrend = buildContentTrend(viewSegments);
+  const engagementTrend = buildContentTrend(engagementSegments);
   return {
     generated_at: "2026-08-20T14:20:00Z",
     last_synced_at: "2026-08-20T14:18:00Z",
@@ -446,9 +627,12 @@ function analyticsFixture() {
     content_total: 49,
     summary: {
       followers: { value: 6901, delta: 157, measured: 5 },
-      engagement: { value: 37, measured: 49 },
-      views: { value: 2048, measured: 12 },
-      impressions: { value: 1432, measured: 12 },
+      engagement: {
+        value: engagementTrend.reduce((total, point) => total + point.value, 0),
+        measured: 49,
+      },
+      views: { value: viewTrend.reduce((total, point) => total + point.value, 0), measured: 12 },
+      impressions: { value: 8437, measured: 12 },
       reach: { value: 0, measured: 0 },
       published: 15,
     },
@@ -466,40 +650,8 @@ function analyticsFixture() {
           },
         ],
       })),
-      engagement: [8, 12, 5, 18, 9, 14, 7, 21, 11, 16, 13, 24].map((value, index) => ({
-        date: `2026-08-${String(index + 9).padStart(2, "0")}`,
-        value,
-        items: [
-          {
-            key: `analytics-engagement-${index % 3}`,
-            label: [
-              "The boring part of publishing should stay boring",
-              "A calmer way to run launch week",
-              "What we learned from shipping every day",
-            ][index % 3],
-            platform: ["threads", "linkedin", "x"][index % 3],
-            publication_id: `analytics-publication-${index % 3}`,
-            value,
-          },
-        ],
-      })),
-      views: [180, 260, 145, 410, 320, 510, 280, 640, 430, 720, 560, 810].map((value, index) => ({
-        date: `2026-08-${String(index + 9).padStart(2, "0")}`,
-        value,
-        items: [
-          {
-            key: `analytics-view-${index % 3}`,
-            label: [
-              "The boring part of publishing should stay boring",
-              "A calmer way to run launch week",
-              "What we learned from shipping every day",
-            ][index % 3],
-            platform: ["threads", "youtube", "linkedin"][index % 3],
-            publication_id: `analytics-publication-${index % 3}`,
-            value,
-          },
-        ],
-      })),
+      engagement: engagementTrend,
+      views: viewTrend,
     },
     accounts: connectedAccounts.map((account, index) => ({
       id: account.id,
@@ -1114,13 +1266,13 @@ test.describe("product screenshot capture", () => {
     await page
       .locator("#post-textarea-0")
       .fill(
-        "One launch, every channel.\n\nAdapt the message for each destination, schedule it once, and see what shipped.",
+        "Approval prompts FEEL safe because they ask a human.\n\nBut the human is usually tired and doesn't want to read a huge confusing bash command.\n\nWelp...",
       );
     const composer = page.getByTestId("text-thread-composer-content");
     await composer.getByRole("button", { name: "Add media" }).click();
     const mediaPicker = page.getByRole("dialog");
     await mediaPicker.getByRole("tab", { name: "Library" }).click();
-    await mediaPicker.getByRole("button", { name: "Select openpost-workflow.png" }).click();
+    await mediaPicker.getByRole("button", { name: "Select command-review.png" }).click();
     await mediaPicker.getByRole("button", { name: "Add media", exact: true }).click();
     await expect(composer.getByRole("button", { name: "Remove media" })).toBeVisible();
     await expect(page.getByTestId("composer-primary-delivery-action")).toBeVisible();
@@ -1142,9 +1294,20 @@ test.describe("product screenshot capture", () => {
     await page.goto(`/analytics?workspace=${workspace.id}`);
     await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
     await expect(page.getByText("6.9K", { exact: true }).first()).toBeVisible();
+    const dailyViewsChart = page.getByRole("img", { name: "Daily views" });
+    await expect(dailyViewsChart).toBeVisible();
+    await expect
+      .poll(() =>
+        page.getByTestId("analytics-chart-scroll").evaluate((viewport) => {
+          const canvas = viewport.firstElementChild;
+          if (!(canvas instanceof HTMLElement) || viewport.clientWidth === 0) return 0;
+          return canvas.getBoundingClientRect().width / viewport.clientWidth;
+        }),
+      )
+      .toBeGreaterThanOrEqual(0.99);
     await capture(page, "analytics-dark.png", [
       page.getByRole("heading", { name: "Highlights" }),
-      page.getByRole("heading", { name: "Daily views" }),
+      dailyViewsChart,
     ]);
 
     await page.goto("/settings?tab=accounts");
