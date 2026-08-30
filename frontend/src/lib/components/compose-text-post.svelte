@@ -5884,7 +5884,7 @@
 
 										{#if pasteFeedback.length > 0}
 											<div
-												class="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+												class="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
 												role="status"
 												aria-live="polite"
 												data-testid="composer-paste-feedback"

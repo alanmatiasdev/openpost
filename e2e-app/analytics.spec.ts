@@ -464,6 +464,24 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await expect(
     page.getByText("@video: Reconnect this account to grant: user.info.stats."),
   ).toBeVisible();
+  const reconnectNotice = page
+    .locator('[data-slot="inline-notice"]')
+    .filter({ hasText: "@video: Reconnect this account to grant: user.info.stats." });
+  const [reconnectMessageBox, reconnectActionBox] = await Promise.all([
+    reconnectNotice
+      .getByText("@video: Reconnect this account to grant: user.info.stats.", { exact: true })
+      .boundingBox(),
+    reconnectNotice.getByRole("link", { name: "Manage accounts" }).boundingBox(),
+  ]);
+  expect(reconnectMessageBox).not.toBeNull();
+  expect(reconnectActionBox).not.toBeNull();
+  expect(
+    Math.abs(
+      reconnectMessageBox!.y +
+        reconnectMessageBox!.height / 2 -
+        (reconnectActionBox!.y + reconnectActionBox!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: testInfo.outputPath("analytics-1280-chart.png"),
   });
