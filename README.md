@@ -173,7 +173,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development setup](https://docs
 If OpenPost is useful to you, **star the repository**. It helps more people find it.
 
 <!-- star-history:start -->
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/star-history/star-history-dark.svg">
   <img alt="Star history" src="assets/star-history/star-history-light.svg">
