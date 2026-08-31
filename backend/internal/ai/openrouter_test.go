@@ -249,7 +249,8 @@ func TestOpenRouterGeneratePreservesOpenRouterMediaAndSearchExtensions(t *testin
 		Audio:  []Audio{{Data: []byte("ogg"), MIMEType: "audio/ogg"}},
 		Videos: []Video{{Data: []byte("video"), MIMEType: "video/mp4"}},
 		WebSearch: WebSearchConfig{
-			Enabled: true, MaxResults: 4, MaxUses: 2, Context: WebSearchContextHigh,
+			Enabled: true, MaxResults: 4, MaxUses: 2, MaxTotalResults: 7,
+			MaxCharactersPerResult: 1500, Context: WebSearchContextHigh,
 		},
 	})
 	require.NoError(t, err)
@@ -282,7 +283,8 @@ func TestOpenRouterGeneratePreservesOpenRouterMediaAndSearchExtensions(t *testin
 	require.Equal(t, []any{map[string]any{
 		"type": "openrouter:web_search",
 		"parameters": map[string]any{
-			"max_results": float64(4), "max_uses": float64(2), "search_context_size": "high",
+			"engine": "exa", "max_results": float64(4), "max_uses": float64(2),
+			"max_total_results": float64(7), "max_characters": float64(1500), "search_context_size": "high",
 		},
 	}}, received["tools"])
 }

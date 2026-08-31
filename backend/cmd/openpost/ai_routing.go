@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	contentAIRequestTimeout = 60 * time.Second
+	contentAIRequestTimeout = 150 * time.Second
 	contentAIMaxRetries     = 12
 )
 

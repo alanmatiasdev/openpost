@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openpost/backend/internal/ai"
@@ -12,11 +13,15 @@ import (
 )
 
 const (
-	defaultTimeout      = 90 * time.Second
-	defaultResultLimit  = 6
-	maxOutputTokens     = 10_000
-	webSearchMaxResults = 8
-	webSearchMaxUses    = 3
+	defaultTimeout           = 3 * time.Minute
+	defaultResultLimit       = 6
+	maxOutputTokens          = 10_000
+	webSearchMaxResults      = 8
+	webSearchMaxUses         = 1
+	webSearchMaxTotalResults = webSearchMaxResults * webSearchMaxUses
+	webSearchMaxCharacters   = 1_200
+	maxCitationLoads         = 4
+	citationTimeout          = 30 * time.Second
 )
 
 type Config struct {
@@ -31,6 +36,17 @@ type Service struct {
 	timeout   time.Duration
 	now       func() time.Time
 	sources   sourcecontext.Loader
+}
+
+type citationLoad struct {
+	url         string
+	sourceIndex int
+	document    sourcecontext.Document
+}
+
+type citationFailure struct {
+	err         error
+	sourceIndex int
 }
 
 func New(generator ai.Generator, config Config) (*Service, error) {
@@ -81,10 +97,12 @@ func (service *Service) Discover(ctx context.Context, input Input) (Result, erro
 		MaxOutputTokens: maxOutputTokens,
 		ReasoningEffort: ai.ReasoningEffortMedium,
 		WebSearch: ai.WebSearchConfig{
-			Enabled:    true,
-			MaxResults: webSearchMaxResults,
-			MaxUses:    webSearchMaxUses,
-			Context:    ai.WebSearchContextLow,
+			Enabled:                true,
+			MaxResults:             webSearchMaxResults,
+			MaxUses:                webSearchMaxUses,
+			MaxTotalResults:        webSearchMaxTotalResults,
+			MaxCharactersPerResult: webSearchMaxCharacters,
+			Context:                ai.WebSearchContextLow,
 		},
 	})
 	if err != nil {
@@ -110,31 +128,96 @@ func (service *Service) Discover(ctx context.Context, input Input) (Result, erro
 }
 
 func (service *Service) loadCitationSources(ctx context.Context, opportunities []Opportunity) error {
-	documents := make(map[string]sourcecontext.Document)
+	loads := uniqueCitationLoads(opportunities)
+	loadContext, cancel := context.WithTimeout(ctx, citationTimeout)
+	defer cancel()
+	if err := service.loadCitationDocuments(ctx, loadContext, cancel, loads); err != nil {
+		return err
+	}
+	applyCitationTitles(opportunities, loads)
+	return nil
+}
+
+func uniqueCitationLoads(opportunities []Opportunity) []citationLoad {
+	loads := make([]citationLoad, 0)
+	loadByURL := make(map[string]struct{})
+	for opportunityIndex := range opportunities {
+		for sourceIndex := range opportunities[opportunityIndex].Sources {
+			url := opportunities[opportunityIndex].Sources[sourceIndex].URL
+			if _, exists := loadByURL[url]; exists {
+				continue
+			}
+			loadByURL[url] = struct{}{}
+			loads = append(loads, citationLoad{url: url, sourceIndex: sourceIndex})
+		}
+	}
+	return loads
+}
+
+func (service *Service) loadCitationDocuments(
+	ctx context.Context,
+	loadContext context.Context,
+	cancel context.CancelFunc,
+	loads []citationLoad,
+) error {
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	var failureLock sync.Mutex
+	var failure *citationFailure
+	for range min(maxCitationLoads, len(loads)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				document, err := service.sources.Load(loadContext, loads[index].url)
+				loads[index].document = document
+				if err == nil {
+					continue
+				}
+				failureLock.Lock()
+				if failure == nil {
+					failure = &citationFailure{err: err, sourceIndex: loads[index].sourceIndex}
+					cancel()
+				}
+				failureLock.Unlock()
+			}
+		}()
+	}
+	for index := range loads {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+
+	if failure == nil {
+		return nil
+	}
+	return citationFailureError(ctx, loadContext, *failure)
+}
+
+func applyCitationTitles(opportunities []Opportunity, loads []citationLoad) {
+	documents := make(map[string]sourcecontext.Document, len(loads))
+	for _, load := range loads {
+		documents[load.url] = load.document
+	}
 	for opportunityIndex := range opportunities {
 		for sourceIndex := range opportunities[opportunityIndex].Sources {
 			source := &opportunities[opportunityIndex].Sources[sourceIndex]
-			document, ok := documents[source.URL]
-			if !ok {
-				loaded, err := service.sources.Load(ctx, source.URL)
-				if err != nil {
-					if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-						return context.DeadlineExceeded
-					}
-					if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-						return context.Canceled
-					}
-					return fmt.Errorf("%w: cited source %d could not be loaded", ErrInvalidOutput, sourceIndex+1)
-				}
-				document = loaded
-				documents[source.URL] = document
-			}
-			if title, titleErr := requiredText(document.Title, maxSourceTitle); titleErr == nil {
+			if title, titleErr := requiredText(documents[source.URL].Title, maxSourceTitle); titleErr == nil {
 				source.Title = title
 			}
 		}
 	}
-	return nil
+}
+
+func citationFailureError(ctx, loadContext context.Context, failure citationFailure) error {
+	if errors.Is(failure.err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(loadContext.Err(), context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	if errors.Is(failure.err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+		return context.Canceled
+	}
+	return fmt.Errorf("%w: cited source %d could not be loaded", ErrInvalidOutput, failure.sourceIndex+1)
 }
 
 var _ Discoverer = (*Service)(nil)

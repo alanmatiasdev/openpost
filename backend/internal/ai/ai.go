@@ -83,10 +83,12 @@ const (
 // WebSearchConfig enables current web search for one request. The provider
 // adapter keeps this bounded so feature code cannot start an unbounded crawl.
 type WebSearchConfig struct {
-	Enabled    bool
-	MaxResults int
-	MaxUses    int
-	Context    WebSearchContext
+	Enabled                bool
+	MaxResults             int
+	MaxUses                int
+	MaxTotalResults        int
+	MaxCharactersPerResult int
+	Context                WebSearchContext
 }
 
 type GenerateRequest struct {

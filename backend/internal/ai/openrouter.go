@@ -28,6 +28,8 @@ const (
 	maxWebSearchResults          = 25
 	minWebSearchUses             = 1
 	maxWebSearchUses             = 30
+	minWebSearchCharacters       = 1
+	maxWebSearchCharacters       = 100_000
 	maxMultimodalSourceIDBytes   = 256
 )
 
@@ -479,6 +481,12 @@ func openRouterWebSearchTool(config WebSearchConfig) (map[string]any, bool, erro
 	if config.MaxUses < minWebSearchUses || config.MaxUses > maxWebSearchUses {
 		return nil, false, errors.New("AI web search maximum uses must be between 1 and 30")
 	}
+	if config.MaxTotalResults < minWebSearchResults || config.MaxTotalResults > config.MaxResults*config.MaxUses {
+		return nil, false, errors.New("AI web search total results must fit within the per-search result and use limits")
+	}
+	if config.MaxCharactersPerResult < minWebSearchCharacters || config.MaxCharactersPerResult > maxWebSearchCharacters {
+		return nil, false, errors.New("AI web search maximum characters per result must be between 1 and 100000")
+	}
 
 	contextSize, err := openRouterWebSearchContext(config.Context)
 	if err != nil {
@@ -487,8 +495,11 @@ func openRouterWebSearchTool(config WebSearchConfig) (map[string]any, bool, erro
 	return map[string]any{
 		"type": "openrouter:web_search",
 		"parameters": map[string]any{
+			"engine":              "exa",
 			"max_results":         config.MaxResults,
 			"max_uses":            config.MaxUses,
+			"max_total_results":   config.MaxTotalResults,
+			"max_characters":      config.MaxCharactersPerResult,
 			"search_context_size": contextSize,
 		},
 	}, true, nil

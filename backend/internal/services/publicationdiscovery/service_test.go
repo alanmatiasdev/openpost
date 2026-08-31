@@ -44,6 +44,7 @@ func TestDiscoverReturnsCitedPlanningCardsWithBoundedWebSearch(t *testing.T) {
 		require.Equal(t, ai.ReasoningEffortMedium, request.ReasoningEffort)
 		require.Equal(t, ai.WebSearchConfig{
 			Enabled: true, MaxResults: webSearchMaxResults, MaxUses: webSearchMaxUses,
+			MaxTotalResults: webSearchMaxTotalResults, MaxCharactersPerResult: webSearchMaxCharacters,
 			Context: ai.WebSearchContextLow,
 		}, request.WebSearch)
 		require.NotNil(t, request.ResponseSchema)
@@ -72,6 +73,7 @@ func TestDiscoverReturnsCitedPlanningCardsWithBoundedWebSearch(t *testing.T) {
 	require.Len(t, opportunity.Angles, 3)
 	require.Len(t, opportunity.Sources, 1)
 	require.True(t, opportunity.Sources[0].Primary)
+	require.Equal(t, "Verified source title", opportunity.Sources[0].Title)
 	require.Equal(t, "https://openai.com/index/new-model", opportunity.Sources[0].URL)
 	require.Equal(t, []string{"linkedin", "x"}, []string{
 		opportunity.PlatformTreatments[0].Platform,
