@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-08-31
+
+### Fixed
+
+- Connect Facebook Pages and linked Instagram professional accounts owned by a Meta Business Portfolio, and log account discovery failures for operators.
+- Make AI publication discovery complete reliably while bounding web-search context, model cost, and citation verification time.
+
 ## [4.14.0] - 2026-08-30
 
 ### Fixed
