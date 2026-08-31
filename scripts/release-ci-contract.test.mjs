@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const release = readFileSync(".github/workflows/release.yml", "utf8");
+const releaseScript = readFileSync("scripts/release.mjs", "utf8");
 const workflows = readdirSync(".github/workflows", { withFileTypes: true })
   .filter((entry) => entry.isFile() && /\.(?:ya?ml)$/u.test(entry.name))
   .map((entry) => ({
@@ -22,10 +35,86 @@ function workflowJob(workflow, jobName) {
   );
 }
 
+function workflowStepScript(workflow, jobName, stepName) {
+  const job = workflowJob(workflow, jobName);
+  const marker = `      - name: ${stepName}\n        run: |\n`;
+  const start = job.indexOf(marker);
+  assert.notEqual(start, -1, `workflow step ${stepName} must exist`);
+  const remainder = job.slice(start + marker.length);
+  const end = remainder.search(/^      - /mu);
+  const indentedScript = end < 0 ? remainder : remainder.slice(0, end);
+  return indentedScript
+    .split("\n")
+    .map((line) => line.slice(10))
+    .join("\n");
+}
+
+function writeMobileIdentity(directory, version, versionCode) {
+  writeFileSync(
+    path.join(directory, "mobile", "app.json"),
+    `${JSON.stringify({ expo: { version, android: { versionCode } } })}\n`,
+  );
+  writeFileSync(
+    path.join(directory, "mobile", "package.json"),
+    `${JSON.stringify({ name: "mobile", version })}\n`,
+  );
+}
+
 test("only the candidate image job can write packages", () => {
   const image = workflowJob(ci, "image");
   assert.match(image, /permissions:\n\s+contents: read\n\s+packages: write/u);
   assert.equal(ci.match(/packages:\s*write/g)?.length, 1);
+});
+
+test("mobile identity advances during release preparation, not every main build", () => {
+  assert.match(workflowJob(ci, "android"), /mobile-release\.mjs check-current/u);
+  const releaseCandidate = workflowJob(release, "verify-candidate");
+  assert.match(releaseCandidate, /mobile-release\.mjs check \\/u);
+  assert.match(releaseCandidate, /git tag --list 'v\*' --sort=-v:refname/u);
+  assert.match(releaseCandidate, /\[\[ "\$tag" != "\$GITHUB_REF_NAME" \]\]/u);
+  assert.doesNotMatch(releaseCandidate, /GITHUB_SHA\^/u);
+  assert.match(releaseScript, /prepareMobileReleaseFiles/u);
+});
+
+test("a second tag on one commit compares against the existing release tag", (t) => {
+  const directory = mkdtempSync(path.join(tmpdir(), "openpost-release-tags-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(path.join(directory, "mobile"));
+  mkdirSync(path.join(directory, "scripts"));
+  copyFileSync("scripts/mobile-release.mjs", path.join(directory, "scripts", "mobile-release.mjs"));
+  const git = (...args) => execFileSync("git", args, { cwd: directory, stdio: "ignore" });
+  git("init");
+  git("config", "user.email", "release-test@openpost.local");
+  git("config", "user.name", "OpenPost Release Test");
+  writeMobileIdentity(directory, "0.2.0", 2);
+  git("add", ".");
+  git("commit", "-m", "old release");
+  git("tag", "v4.14.0");
+  writeMobileIdentity(directory, "0.2.1", 3);
+  git("add", ".");
+  git("commit", "-m", "current release");
+  git("tag", "v4.15.0");
+  git("tag", "v4.15.1");
+
+  const result = spawnSync(
+    "bash",
+    [
+      "--noprofile",
+      "--norc",
+      "-e",
+      "-o",
+      "pipefail",
+      "-c",
+      workflowStepScript(release, "verify-candidate", "Require a new Android release identity"),
+    ],
+    {
+      cwd: directory,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_REF_NAME: "v4.15.1" },
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /version code 3 must be greater than released code 3/u);
 });
 
 test("external workflow actions are pinned to immutable commits", () => {

@@ -709,13 +709,13 @@ jobs:
       - name: Check the standalone mobile app
         working-directory: mobile
         run: bun run check
-      - name: Check the monotonic Android release identity
+      - name: Check the current Android release identity
         working-directory: mobile
         run: |
           latest_tag="$(git for-each-ref --count=1 --sort=-version:refname --format='%(refname:short)' 'refs/tags/v*')"
           [[ -n "$latest_tag" ]]
           git show "$latest_tag:mobile/app.json" > previous-release-app.json
-          bun ../scripts/mobile-release.mjs check \
+          bun ../scripts/mobile-release.mjs check-current \
             --config app.json \
             --package package.json \
             --previous-config previous-release-app.json

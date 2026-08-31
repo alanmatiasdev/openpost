@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 import { resolveRunArtifact } from "./ci-artifacts.mjs";
+import { prepareMobileReleaseFiles } from "./mobile-release.mjs";
 import { releaseCommandEnvironment } from "./release-command-environment.mjs";
 import {
   releasePreparationHasChanges,
@@ -260,12 +261,30 @@ async function prepare(commitMessage) {
   }
 
   const changelogPath = path.join(root, "CHANGELOG.md");
-  const originalChangelog = await readFile(changelogPath);
-  run(["bun", "scripts/prepare-release-changelog.mjs", tag]);
+  const mobileConfigPath = path.join(root, "mobile", "app.json");
+  const mobilePackagePath = path.join(root, "mobile", "package.json");
+  const [originalChangelog, originalMobileConfig, originalMobilePackage] = await Promise.all([
+    readFile(changelogPath),
+    readFile(mobileConfigPath),
+    readFile(mobilePackagePath),
+  ]);
   try {
+    const mobileIdentity = await prepareMobileReleaseFiles({
+      configPath: mobileConfigPath,
+      packagePath: mobilePackagePath,
+      previousConfig: JSON.parse(git(["show", `${latestTag}:mobile/app.json`])),
+    });
+    console.log(
+      `release prepare: mobile ${mobileIdentity.version_name} (${mobileIdentity.version_code})`,
+    );
+    run(["bun", "scripts/prepare-release-changelog.mjs", tag]);
     checkReleaseContracts();
   } catch (error) {
-    await Bun.write(changelogPath, originalChangelog);
+    await Promise.all([
+      Bun.write(changelogPath, originalChangelog),
+      Bun.write(mobileConfigPath, originalMobileConfig),
+      Bun.write(mobilePackagePath, originalMobilePackage),
+    ]);
     throw error;
   }
   run(["git", "add", "--all"]);

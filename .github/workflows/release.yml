@@ -28,9 +28,26 @@ jobs:
       digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      - name: Require a new Android release identity
+        run: |
+          previous_tag=""
+          while IFS= read -r tag; do
+            if [[ "$tag" != "$GITHUB_REF_NAME" ]]; then
+              previous_tag="$tag"
+              break
+            fi
+          done < <(git tag --list 'v*' --sort=-v:refname)
+          [[ -n "$previous_tag" ]]
+          git show "$previous_tag:mobile/app.json" > previous-release-app.json
+          bun scripts/mobile-release.mjs check \
+            --config mobile/app.json \
+            --package mobile/package.json \
+            --previous-config previous-release-app.json
       - name: Require successful CI for the tagged SHA
         id: candidate
         env:

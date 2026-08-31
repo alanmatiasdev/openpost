@@ -42,6 +42,48 @@ export function requireMonotonicMobileIdentity(current, previous) {
   }
 }
 
+export function requireCurrentMobileIdentity(current, previous) {
+  const versionComparison = Math.sign(compareVersions(current.version_name, previous.version_name));
+  const codeComparison = Math.sign(current.version_code - previous.version_code);
+  if (versionComparison !== codeComparison) {
+    throw new Error("mobile version and Android version code must advance together");
+  }
+  if (versionComparison < 0) {
+    throw new Error("mobile identity must not be older than released identity");
+  }
+}
+
+export function nextMobileIdentity(current, previous) {
+  requireCurrentMobileIdentity(current, previous);
+  if (current.version_code > previous.version_code) return { ...current };
+
+  const versionParts = current.version_name.split(".").map(Number);
+  versionParts[2] += 1;
+  return {
+    version_name: versionParts.join("."),
+    version_code: current.version_code + 1,
+  };
+}
+
+export async function prepareMobileReleaseFiles({ configPath, packagePath, previousConfig }) {
+  const [config, packageMetadata] = await Promise.all([
+    readJSON(configPath),
+    readJSON(packagePath),
+  ]);
+  const current = readMobileIdentity(config, packageMetadata);
+  const previous = readMobileIdentity(previousConfig);
+  const next = nextMobileIdentity(current, previous);
+
+  config.expo.version = next.version_name;
+  config.expo.android.versionCode = next.version_code;
+  packageMetadata.version = next.version_name;
+  await Promise.all([
+    writeFile(path.resolve(configPath), `${JSON.stringify(config, null, 2)}\n`),
+    writeFile(path.resolve(packagePath), `${JSON.stringify(packageMetadata, null, 2)}\n`),
+  ]);
+  return next;
+}
+
 export function createMobileReleaseManifest({ identity, revision, apkSHA256 }) {
   const manifest = {
     schema_version: 1,
@@ -146,10 +188,11 @@ async function main() {
   if (!options.config) throw new Error("--config is required");
   const identity = await readConfiguredIdentity(options);
 
-  if (command === "check") {
+  if (command === "check" || command === "check-current") {
     if (options["previous-config"]) {
       const previous = readMobileIdentity(await readJSON(options["previous-config"]));
-      requireMonotonicMobileIdentity(identity, previous);
+      if (command === "check-current") requireCurrentMobileIdentity(identity, previous);
+      else requireMonotonicMobileIdentity(identity, previous);
     }
     process.stdout.write(`${identity.version_name} (${identity.version_code})\n`);
     return;
@@ -180,7 +223,9 @@ async function main() {
     process.stdout.write(`${identity.version_name} (${identity.version_code}) ${apkSHA256}\n`);
     return;
   }
-  throw new Error("usage: mobile-release.mjs <check|create|verify> --config FILE [options]");
+  throw new Error(
+    "usage: mobile-release.mjs <check|check-current|create|verify> --config FILE [options]",
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
