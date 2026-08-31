@@ -11,25 +11,40 @@
 <p align="center">
   <strong>Your socials, on steroids.</strong>
   <br>
-  Turn one post into the right version for each account, then schedule it and see what worked.
+  Create the post, make the media, adapt it for each account, schedule it, reply to people, and see what worked.
 </p>
 
 <p align="center">
   <a href="https://github.com/getopenpost/openpost/releases">
-    <img src="https://img.shields.io/github/v/release/getopenpost/openpost?label=release" alt="Latest release">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/release/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
+      <img src="https://shieldcn.dev/github/release/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Latest release">
+    </picture>
+  </a>
+  <a href="https://github.com/getopenpost/openpost/actions/workflows/ci.yml">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
+      <img src="https://shieldcn.dev/github/ci/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Build status">
+    </picture>
   </a>
   <a href="https://github.com/getopenpost/openpost">
-    <img src="https://img.shields.io/github/stars/getopenpost/openpost" alt="GitHub stars">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
+      <img src="https://shieldcn.dev/github/stars/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="GitHub stars">
+    </picture>
   </a>
   <a href="https://github.com/getopenpost/openpost/releases">
-    <img src="https://img.shields.io/github/downloads/getopenpost/openpost/total" alt="Release downloads">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/downloads/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=dark">
+      <img src="https://shieldcn.dev/github/downloads/getopenpost/openpost.svg?variant=outline&amp;size=sm&amp;font=geist&amp;mode=light" alt="Release downloads">
+    </picture>
   </a>
 </p>
 
 <p align="center">
   <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start a 14-day trial</strong></a>
   ·
-  <a href="https://docs.openpost.social/guide/quickstart"><strong>Run your own</strong></a>
+  <a href="https://docs.openpost.social/guide/quickstart"><strong>Self-host</strong></a>
   ·
   <a href="https://docs.openpost.social"><strong>Docs</strong></a>
   ·
@@ -40,17 +55,17 @@
   <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.webp" width="98%">
 </p>
 
-Start with something you already have: a launch, a product update, or the bug you finally fixed. OpenPost lets you adapt it for each account, schedule every version, and see the result each provider reports. Views, impressions, and reach stay separate because each platform defines them differently.
+You already have the material. A launch, a product update, the bug you finally fixed. OpenPost turns it into the right version for each account, publishes it when you want, and brings the results, replies, and messages back into one place.
 
 <table>
   <tr>
     <td width="50%" align="center">
       <img alt="OpenPost monthly publishing calendar with published and scheduled posts" src="./assets/screenshots/calendar-dark.webp" width="100%">
-      <br><strong>Plan the month</strong><br><sub>Keep scheduled and published work in one calendar.</sub>
+      <br><strong>Plan the month</strong><br><sub>Never miss a day.</sub>
     </td>
     <td width="50%" align="center">
       <img alt="OpenPost results with account growth, post results, and follower trend" src="./assets/screenshots/analytics-dark.webp" width="100%">
-      <br><strong>See what worked</strong><br><sub>Compare daily views, engagement, and follower changes without combining unlike metrics.</sub>
+      <br><strong>See what worked</strong><br><sub>And then do more of it.</sub>
     </td>
   </tr>
 </table>
@@ -59,24 +74,43 @@ Start with something you already have: a launch, a product update, or the bug yo
   <tr>
     <td width="50%" align="center">
       <img alt="OpenPost Image Editor with a selected logo over a Lisbon tram photo" src="./assets/screenshots/image-editor-dark.webp" width="100%">
-      <br><strong>Edit the image</strong><br><sub>Layer text, shapes, and workspace media, then save the result back to Media.</sub>
+      <br><strong>Make the thumbnail</strong><br><sub>Photoshop, in your browser, but it's easy to use.</sub>
     </td>
     <td width="50%" align="center">
       <img alt="OpenPost Video Editor cutting a Study SOS screen recording" src="./assets/screenshots/video-editor-dark.webp" width="100%">
-      <br><strong>Cut the video</strong><br><sub>Export an MP4 or send it straight to OpenPost Media.</sub>
+      <br><strong>Edit the video</strong><br><sub>DaVinci Resolve, in your browser (still in BETA)</sub>
     </td>
   </tr>
 </table>
 
-## What you get
+## What OpenPost does
 
-- Write one post, then adjust its text, media, format, timing, and provider settings for each account.
-- Scheduled work lives in the database. Restart the server and it is still there. You can see what is scheduled, published, failed, or waiting to retry.
-- Posts, saved media, the calendar, analytics, and replies stay in the same workspace.
-- Edit images, cut video, make memes, and add alt text without moving files between apps.
-- The web app, HTTP API, CLI, and MCP server read and change the same saved posts under the same permissions. Android focuses on quick capture, queue checks, and small edits.
+* **Composer.** Write one post or thread, then change the text, media, format, timing, and platform settings for each account.
+* **Social Sets.** Save groups of accounts you usually post to together.
+* **Calendar and scheduling.** Plan ahead, use saved posting slots, and see what is drafted, scheduled, published, failed, or waiting to retry.
+* **Image Editor.** Make posts, carousels, Stories, and thumbnails with layers, templates, text, shapes, brand assets, background removal, and version history.
+* **Video Editor.** Edit video on a multitrack timeline with effects, transitions, motion, color, audio, captions, transcription, and local AI tools.
+* **Quick Cut.** Cut video and audio without re-encoding when possible, or make exact cuts when you need them.
+* **Recorder.** Record your screen, camera, and microphone as separate synced tracks, then open them in the Video Editor.
+* **Meme creator.** Pick a template or describe the joke, change the captions, preview it, and attach it straight to your post.
+* **Media library.** Keep images, videos, designs, exports, tags, alt text, and reusable assets together.
+* **Brand kit.** Save your colors and fonts so they are ready inside the Image Editor.
+* **Analytics.** Track follower growth and post results. Views, impressions, and reach stay separate because platforms do not mean the same thing by them.
+* **Comments and replies.** Pull supported replies into one inbox, respond to them, and moderate where the platform allows it.
+* **Direct messages.** Read and send supported DMs without jumping between social apps.
+* **Notifications.** Get alerts for failed posts, account problems, replies, messages, workspace invites, and successful posts. Email can be immediate or sent as a daily digest.
+* **Grow.** Find people worth following on Bluesky and Mastodon using followers, mutuals, and follow-back signals. OpenPost never follows anyone for you.
+* **Auto reposts.** Repost content from another account after a delay or once it reaches the engagement rules you set.
+* **AI writing.** Use Ideate when you need something to post about or Build with AI when you already have the idea. OpenPost can make a different draft for every destination, and you review it before anything changes.
+* **Workspaces.** Keep separate brands, clients, accounts, media, schedules, and members apart.
+* **Android app.** Capture posts, attach photos, publish or schedule, and check your calendar and queue from your phone.
+* **API, CLI, and MCP.** Let scripts and AI tools work with the same posts and permissions as the web app without giving them your social account passwords.
 
-OpenPost is for publishing. It is not a CRM, ad manager, or broad social listening tool. Hosted runs the service for you. Self-hosting means you own the server, backups, updates, provider apps, and secrets.
+OpenPost is built around your own social accounts. It covers creating content, publishing it, talking to people, tracking the results, and growing your accounts where the social network lets us.
+
+It is not a CRM, ad manager, or broad social listening tool.
+
+Hosted runs OpenPost for you. Self-hosting means you own the server, backups, updates, provider apps, and secrets.
 
 ## Get started
 
@@ -92,34 +126,39 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open `http://localhost:8080`, create the first account, and connect a social account. The default setup runs one container with SQLite, local media, and database-backed jobs. The published container supports `linux/amd64`. Other host architectures need amd64 emulation. A native image requires a custom build and full runtime validation.
+Open `http://localhost:8080`, create the first account, and connect a social account.
+
+The default setup runs one container with SQLite, local media, and database-backed jobs. The published container supports `linux/amd64` only. ARM64 hosts need amd64 emulation. A native ARM64 image requires a custom build and its own runtime validation.
 
 [Self-hosting quickstart](https://docs.openpost.social/guide/quickstart) · [Installation reference](https://docs.openpost.social/self-hosting/) · [Hosted or self-hosted?](https://openpost.social/self-hosting)
 
 ## Providers
 
-OpenPost has adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business or Creator accounts, TikTok, YouTube, and Discord webhooks.
+OpenPost includes integrations for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business or Creator accounts, TikTok, YouTube, and Discord webhooks.
 
-An adapter in the code does not mean OpenPost Hosted can use it today. Some providers still require app review, a certain account type, extra scopes, or public media URLs. OpenPost shows what is missing before you publish.
+Support differs by feature. A platform can support publishing without supporting DMs, comments, analytics, or Grow. Some also require app review, certain account types, extra permissions, or public media URLs. OpenPost shows what is missing before you publish.
 
 <!-- provider-certification:begin -->
 
 No posting option has passed our final live check on OpenPost Hosted yet.
 
 A social app can appear in OpenPost before it is ready for real accounts.
+
 <!-- provider-certification:end -->
 
 [Provider readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Platform rules](https://docs.openpost.social/providers/)
 
 ## Automate it
 
-The API, CLI, and MCP server use the same workspace permissions as the app. They can create, validate, schedule, and inspect publications without exposing social account credentials. Give each client its own token, choose the narrowest scope that works, and bind it to one workspace when possible.
+The API, CLI, and MCP server work with the same saved posts and workspace permissions as the app. They can create, validate, schedule, and inspect publications without access to your social account credentials.
+
+Give each client its own token, use the narrowest scope that works, and bind it to one workspace when possible.
 
 [CLI guide](https://docs.openpost.social/cli/) · [MCP guide](https://docs.openpost.social/mcp/) · [API reference](https://docs.openpost.social/development/api-reference)
 
 ## Develop OpenPost
 
-OpenPost uses Go, Svelte 5, SvelteKit, Bun, and Devenv.
+OpenPost uses Go, Svelte 5, SvelteKit, Bun, Expo, and Devenv.
 
 ```bash
 direnv allow
@@ -131,9 +170,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development setup](https://docs
 
 ## Help OpenPost grow
 
-If OpenPost is useful to you, **star the repository**. It helps other self-hosters find the project.
+If OpenPost is useful to you, **star the repository**. It helps more people find it.
 
 <!-- star-history:start -->
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/star-history/star-history-dark.svg">
   <img alt="Star history" src="assets/star-history/star-history-light.svg">
