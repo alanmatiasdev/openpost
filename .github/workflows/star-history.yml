@@ -2,9 +2,7 @@ name: Star History
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
-  watch:
-    types: [started]
+    - cron: "17 4 1,15 * *"
   workflow_dispatch:
 
 permissions:
