@@ -112,11 +112,59 @@ It is not a CRM, ad manager, or broad social listening tool.
 
 Hosted runs OpenPost for you. Self-hosting means you own the server, backups, updates, provider apps, and secrets.
 
+## Supported platforms
+
+OpenPost includes publishing integrations for these ten destinations.
+
+<table>
+  <tr>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Instagram.svg" alt="" width="40"><br><sub><strong>Instagram</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Facebook.svg" alt="" width="40"><br><sub><strong>Facebook</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Linkedin.svg" alt="" width="40"><br><sub><strong>LinkedIn</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/X.svg" alt="" width="40"><br><sub><strong>X</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/TikTok.svg" alt="" width="40"><br><sub><strong>TikTok</strong></sub></td>
+  </tr>
+  <tr>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Youtube.svg" alt="" width="40"><br><sub><strong>YouTube</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Threads.svg" alt="" width="40"><br><sub><strong>Threads</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Bluesky.svg" alt="" width="40"><br><sub><strong>Bluesky</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Mastodon.svg" alt="" width="40"><br><sub><strong>Mastodon</strong></sub></td>
+    <td width="20%" align="center"><img src="assets/postiz-socials/Discord.svg" alt="" width="40"><br><sub><strong>Discord</strong></sub></td>
+  </tr>
+</table>
+
+LinkedIn supports profiles and Organization Pages. Facebook supports Pages, Instagram supports Business and Creator accounts, and Discord publishes through webhooks.
+
+Support differs by feature. A platform can support publishing without supporting DMs, comments, analytics, or Grow. Some also require app review, certain account types, extra permissions, or public media URLs. OpenPost shows what is missing before you publish.
+
+<!-- provider-certification:begin -->
+
+No posting option has passed our final live check on OpenPost Hosted yet.
+
+A social app can appear in OpenPost before it is ready for real accounts.
+
+<!-- provider-certification:end -->
+
+[Provider readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Platform rules](https://docs.openpost.social/providers/)
+
 ## Get started
 
-Choose [OpenPost Hosted](https://app.openpost.social) if you want us to run it.
+<table>
+  <tr>
+    <td width="22%"><strong>Hosted</strong></td>
+    <td>We host, update, and operate OpenPost. <a href="https://app.openpost.social/register?plan=founder&amp;billing_period=monthly"><strong>Start a 14-day trial &rarr;</strong></a></td>
+  </tr>
+  <tr>
+    <td width="22%"><strong>Self-host</strong></td>
+    <td>Run OpenPost on your own server with Docker. <a href="https://docs.openpost.social/guide/quickstart"><strong>Read the quickstart &rarr;</strong></a></td>
+  </tr>
+  <tr>
+    <td width="22%"><strong>Automate</strong></td>
+    <td>Connect scripts and AI tools through the API, CLI, or MCP server. <a href="https://docs.openpost.social/mcp/"><strong>Set up MCP &rarr;</strong></a></td>
+  </tr>
+</table>
 
-To run it yourself:
+To run OpenPost yourself:
 
 ```bash
 git clone https://github.com/getopenpost/openpost.git
@@ -130,23 +178,7 @@ Open `http://localhost:8080`, create the first account, and connect a social acc
 
 The default setup runs one container with SQLite, local media, and database-backed jobs. The published container supports `linux/amd64` only. ARM64 hosts need amd64 emulation. A native ARM64 image requires a custom build and its own runtime validation.
 
-[Self-hosting quickstart](https://docs.openpost.social/guide/quickstart) · [Installation reference](https://docs.openpost.social/self-hosting/) · [Hosted or self-hosted?](https://openpost.social/self-hosting)
-
-## Providers
-
-OpenPost includes integrations for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business or Creator accounts, TikTok, YouTube, and Discord webhooks.
-
-Support differs by feature. A platform can support publishing without supporting DMs, comments, analytics, or Grow. Some also require app review, certain account types, extra permissions, or public media URLs. OpenPost shows what is missing before you publish.
-
-<!-- provider-certification:begin -->
-
-No posting option has passed our final live check on OpenPost Hosted yet.
-
-A social app can appear in OpenPost before it is ready for real accounts.
-
-<!-- provider-certification:end -->
-
-[Provider readiness](https://docs.openpost.social/operations/provider-launch-matrix) · [Platform rules](https://docs.openpost.social/providers/)
+[Installation reference](https://docs.openpost.social/self-hosting/) · [Hosted or self-hosted?](https://openpost.social/self-hosting)
 
 ## Automate it
 
