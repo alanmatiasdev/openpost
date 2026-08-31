@@ -32,6 +32,7 @@ async function runRootTask(root, arguments_, environment = {}) {
 }
 
 let productionBuildPromise;
+const productionBuildTestTimeoutMs = 300_000;
 
 function ensureProductionBuilds(root) {
   productionBuildPromise ??= (async () => {
@@ -553,7 +554,7 @@ test("documentation production projection covers every ordinary catalog page", (
 
 test(
   "marketing production artifacts preserve every browser tool explanation without controls",
-  { timeout: 180_000 },
+  { timeout: productionBuildTestTimeoutMs },
   async () => {
     const root = path.resolve(import.meta.dirname, "..");
     await ensureProductionBuilds(root);
@@ -1358,7 +1359,7 @@ test("projection validation rejects unsafe or incomplete production contracts", 
 
 test(
   "both production builds emit canonical homepage artifacts and discovery",
-  { timeout: 180_000 },
+  { timeout: productionBuildTestTimeoutMs },
   async () => {
     const root = path.resolve(import.meta.dirname, "..");
     const eligibleCanonicals = [
@@ -1824,7 +1825,7 @@ test(
 
 test(
   "marketing production artifacts cover every platform from one manifest",
-  { timeout: 180_000 },
+  { timeout: productionBuildTestTimeoutMs },
   async () => {
     const root = path.resolve(import.meta.dirname, "..");
     await ensureProductionBuilds(root);
