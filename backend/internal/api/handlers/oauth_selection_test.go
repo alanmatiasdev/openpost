@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -27,6 +29,7 @@ type selectionTestAdapter struct {
 	profileCalls  int
 	listCalls     int
 	selectCalls   int
+	listErr       error
 	onSelect      func()
 }
 
@@ -70,6 +73,9 @@ func (a *selectionTestAdapter) Publish(context.Context, string, string, *platfor
 
 func (a *selectionTestAdapter) ListAccountSelections(_ context.Context, token *platform.TokenResult) ([]platform.AccountSelectionOption, error) {
 	a.listCalls++
+	if a.listErr != nil {
+		return nil, a.listErr
+	}
 	if token.AccessToken != "user-access-token" {
 		return nil, nil
 	}
@@ -100,6 +106,24 @@ func (a *selectionTestAdapter) SelectAccount(_ context.Context, token *platform.
 			},
 		},
 	}, nil
+}
+
+func TestOAuthCallbackLogsAccountDiscoveryFailure(t *testing.T) {
+	var logs bytes.Buffer
+	previousOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previousOutput) })
+
+	adapter := &selectionTestAdapter{listErr: errors.New("facebook pages: no manageable Pages found")}
+	e, state, _ := newOAuthCallbackRedirectTestServer(t, "facebook", adapter)
+
+	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/facebook/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
+	result := rec.Result()
+	t.Cleanup(func() { _ = result.Body.Close() })
+
+	require.Equal(t, http.StatusTemporaryRedirect, result.StatusCode)
+	require.Equal(t, "https://app.openpost.test/settings?oauth_status=failed&tab=accounts&workspace_id=ws-1", result.Header.Get("Location"))
+	require.Contains(t, logs.String(), "[Callback] Failed to list selectable accounts: platform=facebook error=facebook pages: no manageable Pages found")
 }
 
 func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {

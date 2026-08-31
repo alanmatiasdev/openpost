@@ -1090,9 +1090,11 @@ func (h *OAuthHandler) saveAccountSelectionAndRedirect(
 
 	options, err := selector.ListAccountSelections(ctx, tokenResp)
 	if err != nil {
+		log.Printf("[Callback] Failed to list selectable accounts: platform=%s error=%v", platformName, err)
 		return h.redirectWithError(fmt.Sprintf("failed to list selectable accounts: %s", err.Error()), workspaceID)
 	}
 	if len(options) == 0 {
+		log.Printf("[Callback] No selectable accounts found: platform=%s", platformName)
 		return h.redirectWithError("no selectable accounts found for this provider", workspaceID)
 	}
 	if err := h.requireProviderConnectionCompletion(

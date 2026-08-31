@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	defaultMetaGraphAPIVersion = "v25.0"
-	facebookOAuthBaseURL       = "https://www.facebook.com"
-	facebookGraphBaseURL       = "https://graph.facebook.com"
+	defaultMetaGraphAPIVersion  = "v25.0"
+	facebookOAuthBaseURL        = "https://www.facebook.com"
+	facebookGraphBaseURL        = "https://graph.facebook.com"
+	metaBusinessManagementScope = "business_management"
 )
 
 type FacebookAdapter struct {
@@ -679,7 +680,7 @@ func isFacebookVideoMime(mimeType string) bool {
 
 func facebookScopes() []string {
 	return []string{
-		"business_management",
+		metaBusinessManagementScope,
 		"pages_show_list",
 		"pages_read_engagement",
 		"pages_manage_engagement",

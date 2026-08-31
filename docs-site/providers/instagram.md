@@ -19,6 +19,7 @@ https://your-domain.com/api/v1/accounts/instagram/callback
 ```
 
 - App permissions:
+  - `business_management`
   - `instagram_basic`
   - `instagram_content_publish`
   - `instagram_manage_comments`
@@ -71,6 +72,6 @@ Analytics is an optional feature per connected Instagram account. It starts off 
 
 ## Troubleshooting
 
-- `facebook account has no connected instagram business accounts` usually means the Meta user has no eligible Pages with connected Instagram Business accounts, or the app lacks the required scopes.
+- `facebook account has no connected instagram business accounts` usually means the Meta user has no eligible Pages with connected Instagram professional accounts, lacks full control of the Page, or the app lacks the required scopes. Business Portfolio Pages require `business_management` for discovery.
 - Media publish failures usually mean the media URL is not public HTTPS or Meta cannot fetch it.
 - Permission errors usually require Meta app review for the Instagram and Page permissions above.

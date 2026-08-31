@@ -14,6 +14,7 @@ https://your-domain.com/api/v1/accounts/facebook/callback
 ```
 
 - App permissions:
+  - `business_management`
   - `pages_show_list`
   - `pages_read_engagement`
   - `pages_manage_engagement`
@@ -65,6 +66,6 @@ Analytics is an optional feature per connected Facebook Page. It starts off for 
 
 ## Troubleshooting
 
-- `facebook account has no manageable pages` usually means the authenticated user has no eligible Pages or the app lacks `pages_show_list`.
+- `facebook account has no manageable pages` usually means the authenticated user has no eligible Pages, lacks full control of the Page, or the app lacks `business_management` or `pages_show_list`. Business Portfolio Pages require `business_management` for discovery.
 - Media publish failures usually mean the media URL is not public HTTPS or Meta cannot fetch it.
 - Permission errors usually require Meta app review for the Pages permissions above.

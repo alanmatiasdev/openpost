@@ -86,14 +86,14 @@ OpenPost saves the error type, status, safe error code, next retry time, and the
 ## Facebook
 
 - Facebook connects Pages, not personal profile timelines.
-- `facebook account has no manageable pages` usually means the user has no eligible Pages or the app lacks `pages_show_list`.
+- `facebook account has no manageable pages` usually means the user has no eligible Pages, lacks full control of the Page, or the app lacks `business_management` or `pages_show_list`. Business Portfolio Pages require `business_management` for discovery.
 - Page publishing requires `pages_show_list`, `pages_read_engagement`, and `pages_manage_posts`, often with Meta app review.
 - Single-media posts and Stories support one JPEG, PNG, WebP, MP4, or MOV file. Multi-photo posts support 2–10 JPEG, PNG, or WebP images. Every media URL must use public HTTPS.
 
 ## Instagram
 
 - Instagram requires an Instagram Business or Creator account connected to a Facebook Page.
-- `facebook account has no connected instagram business accounts` means the authenticated Meta user has no eligible Page-backed Instagram account or the app lacks required scopes.
+- `facebook account has no connected instagram business accounts` means the authenticated Meta user has no eligible Page-backed Instagram account, lacks full control of the Page, or the app lacks required scopes. Business Portfolio Pages require `business_management` for discovery.
 - Publishing requires `instagram_basic`, `instagram_content_publish`, Page scopes, and often Meta app review.
 - Instagram does not publish text-only posts. Feed posts use one image, carousels use 2–10 JPEG, PNG, WebP, MP4, or MOV items, and Stories use one image or video. Reels use one video.
 

@@ -672,7 +672,7 @@ func isInstagramVideoMime(mimeType string) bool {
 
 func instagramScopes() []string {
 	return []string{
-		"business_management",
+		metaBusinessManagementScope,
 		"instagram_basic",
 		"instagram_content_publish",
 		"instagram_manage_comments",
